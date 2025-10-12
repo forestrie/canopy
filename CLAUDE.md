@@ -82,12 +82,32 @@ The system implements a transparency log following SCITT (Supply Chain Integrity
 
 ### Environment Configuration
 
-The project uses `FOREST_PROJECT_ID` variable throughout for resource naming:
-- R2 bucket: `${FOREST_PROJECT_ID}-canopy`
-- Queue: `${FOREST_PROJECT_ID}-ranger`
-- Terraform state: `${FOREST_PROJECT_ID}-tfstate`
+The project uses separate identifiers for different purposes:
 
-This allows multiple environments (dev, staging, prod) with isolated resources.
+**Canopy-specific identifiers:**
+- `CANOPY_ID`: Instance identifier for resource naming
+  - R2 bucket: `${CANOPY_ID}-statements`
+  - Queue: `${CANOPY_ID}-sequencer`
+- `CANOPY_STATE_ID`: Terraform state management
+  - Terraform state: `${CANOPY_STATE_ID}-tfstate`
+
+**External references:**
+- `FOREST_PROJECT_ID`: Reference to external Forest project for integration
+
+This separation allows:
+- Multiple Canopy instances with different configurations
+- Independent state management per instance
+- Clear distinction between Canopy resources and external Forest project references
+
+### API Token Architecture
+
+The project uses a three-tier token system for security:
+- **R2_ADMIN**: Infrastructure management only (Terraform)
+- **R2_WRITER**: Application read/write operations (SvelteKit app)
+- **R2_READER**: Read-only access (optional, for monitoring)
+- **QUEUE_ADMIN**: Queue management (Terraform)
+
+The application NEVER has access to R2_ADMIN, ensuring infrastructure cannot be modified from the app.
 
 ### Deployment Strategy
 

@@ -2,22 +2,19 @@ version: '3'
 
 vars:
   CANOPY_DIR: './packages/apps/canopy'
+  CANOPY_ID: '{{.CANOPY_ID}}'
   FOREST_PROJECT_ID: '{{.FOREST_PROJECT_ID}}'
 
 tasks:
   all:
-    desc: |
-      Build all packages in the monorepo
-      This includes the SvelteKit app and all shared packages
+    desc: Build all packages in the monorepo
     cmds:
       - echo "🔨 Building all packages..."
       - pnpm run build
       - echo "✅ Build complete!"
 
   canopy:
-    desc: |
-      Build the Canopy SvelteKit application
-      Builds for Cloudflare Workers deployment
+    desc: Build SvelteKit app for Cloudflare Workers
     dir: '{{.CANOPY_DIR}}'
     cmds:
       - echo "🏗️  Building Canopy app for Cloudflare Workers..."
@@ -25,18 +22,14 @@ tasks:
       - echo "✅ Canopy build complete!"
 
   shared:
-    desc: |
-      Build shared packages
-      Builds cbor-utils, scitt-types, and mmr-utils
+    desc: Build shared packages (cbor, scitt, mmr utils)
     cmds:
       - echo "📦 Building shared packages..."
       - pnpm --filter "./packages/shared/*" run build
       - echo "✅ Shared packages built!"
 
   clean:
-    desc: |
-      Clean all build artifacts
-      Removes dist, build, and .svelte-kit directories
+    desc: Clean all build artifacts
     cmds:
       - echo "🧹 Cleaning build artifacts..."
       - rm -rf packages/apps/canopy/.svelte-kit
@@ -46,26 +39,20 @@ tasks:
       - echo "✅ Clean complete!"
 
   watch:
-    desc: |
-      Build and watch for changes
-      Runs build in watch mode for development
+    desc: Build and watch for changes
     cmds:
       - echo "👀 Starting build watch mode..."
       - pnpm run build --watch
 
   check:
-    desc: |
-      Type-check all TypeScript code
-      Runs tsc to verify type correctness
+    desc: Type-check all TypeScript code
     cmds:
       - echo "🔍 Type-checking TypeScript..."
       - pnpm -r run check
       - echo "✅ Type check complete!"
 
   lint:
-    desc: |
-      Lint all code
-      Runs ESLint and Prettier checks
+    desc: Lint and format check all code
     cmds:
       - echo "🎨 Linting code..."
       - pnpm run lint
@@ -73,9 +60,7 @@ tasks:
       - echo "✅ Linting complete!"
 
   preview:
-    desc: |
-      Preview the production build locally
-      Starts a local server with the production build
+    desc: Preview production build locally
     dir: '{{.CANOPY_DIR}}'
     deps: [canopy]
     cmds:
@@ -83,15 +68,16 @@ tasks:
       - pnpm run preview
 
   vercel:
-    desc: |
-      Build as Vercel would
-      Simulates Vercel's build process locally
+    desc: Simulate Vercel build process locally
+    dir: '{{.CANOPY_DIR}}'
     env:
       VERCEL: '1'
       VERCEL_ENV: 'production'
+      CANOPY_ID: '{{.CANOPY_ID}}'
       FOREST_PROJECT_ID: '{{.FOREST_PROJECT_ID}}'
     cmds:
       - echo "🔺 Building with Vercel configuration..."
-      - echo "  FOREST_PROJECT_ID: {{.FOREST_PROJECT_ID}}"
-      - cd {{.CANOPY_DIR}} && pnpm run build
+      - 'echo "  CANOPY_ID: {{.CANOPY_ID}}"'
+      - 'echo "  FOREST_PROJECT_ID: {{.FOREST_PROJECT_ID}}"'
+      - pnpm run build
       - echo "✅ Vercel build simulation complete!"

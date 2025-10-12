@@ -1,0 +1,8 @@
+# Development environment variables for Wrangler
+# Copy to .dev.vars and add your tokens
+
+# R2 Writer token for read/write operations
+R2_WRITER=your_r2_writer_token_here
+
+# API authentication secret
+API_KEY_SECRET=dev-secret-key

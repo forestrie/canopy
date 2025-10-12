@@ -14,10 +14,10 @@ terraform {
 
   # Backend configuration for storing state in R2
   # Uncomment and configure after initial bootstrap
-  # Replace ${FOREST_PROJECT_ID} with your actual forest project id
+  # Replace ${CANOPY_STATE_ID} with your actual canopy state id
   # backend "s3" {
-  #   bucket                      = "${FOREST_PROJECT_ID}-tfstate"
-  #   key                        = "canopy/terraform.tfstate"
+  #   bucket                      = "${CANOPY_STATE_ID}-tfstate"
+  #   key                        = "terraform.tfstate"
   #   region                     = "auto"
   #   skip_credentials_validation = true
   #   skip_metadata_api_check     = true
@@ -30,5 +30,16 @@ terraform {
 }
 
 provider "cloudflare" {
-  api_token = var.cloudflare_api_token
+  alias     = "r2_admin"
+  api_token = var.r2_admin_token
+}
+
+provider "cloudflare" {
+  alias     = "queue_admin"
+  api_token = var.queue_admin_token
+}
+
+# Default provider uses R2 admin for backward compatibility
+provider "cloudflare" {
+  api_token = var.r2_admin_token
 }

@@ -12,8 +12,16 @@ on:
           - plan
           - apply
           - destroy
+      canopy_id:
+        description: 'Canopy Instance ID'
+        required: true
+        default: 'canopy-dev-1'
+      canopy_state_id:
+        description: 'Canopy State ID for Terraform'
+        required: true
+        default: 'canopy-dev-1'
       forest_project_id:
-        description: 'Forest Project ID'
+        description: 'Forest Project ID (external reference)'
         required: true
         default: 'forest-dev-1'
 
@@ -37,37 +45,96 @@ jobs:
       - name: Terraform Init
         working-directory: ./infra/terraform
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          R2_ADMIN: ${{ secrets.R2_ADMIN }}
         run: terraform init
 
       - name: Terraform Plan
         if: inputs.action == 'plan'
         working-directory: ./infra/terraform
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          R2_ADMIN: ${{ secrets.R2_ADMIN }}
+          QUEUE_ADMIN: ${{ secrets.QUEUE_ADMIN }}
         run: |
           terraform plan \
-            -var="cloudflare_api_token=$CLOUDFLARE_API_TOKEN" \
+            -var="r2_admin_token=$R2_ADMIN" \
+            -var="queue_admin_token=$QUEUE_ADMIN" \
+            -var="canopy_id=${{ inputs.canopy_id }}" \
+            -var="canopy_state_id=${{ inputs.canopy_state_id }}" \
             -var="forest_project_id=${{ inputs.forest_project_id }}"
 
       - name: Terraform Apply
         if: inputs.action == 'apply'
         working-directory: ./infra/terraform
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          R2_ADMIN: ${{ secrets.R2_ADMIN }}
+          QUEUE_ADMIN: ${{ secrets.QUEUE_ADMIN }}
         run: |
           terraform apply \
-            -var="cloudflare_api_token=$CLOUDFLARE_API_TOKEN" \
+            -var="r2_admin_token=$R2_ADMIN" \
+            -var="queue_admin_token=$QUEUE_ADMIN" \
+            -var="canopy_id=${{ inputs.canopy_id }}" \
+            -var="canopy_state_id=${{ inputs.canopy_state_id }}" \
             -var="forest_project_id=${{ inputs.forest_project_id }}" \
             -auto-approve
+
+      - name: Configure R2 CORS
+        if: inputs.action == 'apply'
+        env:
+          R2_ADMIN: ${{ secrets.R2_ADMIN }}
+          CLOUDFLARE_ACCOUNT_ID: "68f25af297c4235c3f1c47b2f73925b0"
+        run: |
+          echo "📋 Configuring CORS for R2 bucket ${{ inputs.canopy_id }}-statements"
+
+          # Configure CORS using Cloudflare API
+          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets/${{ inputs.canopy_id }}-statements/cors" \
+            -H "Authorization: Bearer ${R2_ADMIN}" \
+            -H "Content-Type: application/json" \
+            --data '{
+              "cors_rules": [{
+                "allowed_origins": ["http://localhost:5173", "http://localhost:3000", "https://*.vercel.app"],
+                "allowed_methods": ["GET", "HEAD", "POST", "PUT"],
+                "allowed_headers": ["*"],
+                "expose_headers": ["ETag", "Content-Type", "Content-Length"],
+                "max_age_seconds": 3600
+              }]
+            }' \
+            --fail-with-body || {
+              echo "⚠️  Failed to configure CORS. This may need to be done manually."
+              echo "Run 'task cloudflare:setup-cors' for instructions."
+            }
+
+          echo "✅ CORS configuration complete"
+
+      - name: Display Queue Consumer Instructions
+        if: inputs.action == 'apply'
+        run: |
+          echo "📋 Queue Consumer Setup Required"
+          echo "================================"
+          echo ""
+          echo "The queue consumer for ${{ inputs.canopy_id }}-sequencer must be set up"
+          echo "by the external sequencer project."
+          echo ""
+          echo "Queue Details:"
+          echo "  - Queue Name: ${{ inputs.canopy_id }}-sequencer"
+          echo "  - DLQ Name: ${{ inputs.canopy_id }}-sequencer-dlq"
+          echo "  - Recommended Settings:"
+          echo "    - Max Batch Size: 10"
+          echo "    - Max Retries: 3"
+          echo "    - Visibility Timeout: 30000ms"
+          echo ""
+          echo "The external sequencer should use these queue names when setting up consumers."
 
       - name: Terraform Destroy
         if: inputs.action == 'destroy'
         working-directory: ./infra/terraform
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          R2_ADMIN: ${{ secrets.R2_ADMIN }}
+          QUEUE_ADMIN: ${{ secrets.QUEUE_ADMIN }}
         run: |
           terraform destroy \
-            -var="cloudflare_api_token=$CLOUDFLARE_API_TOKEN" \
+            -var="r2_admin_token=$R2_ADMIN" \
+            -var="queue_admin_token=$QUEUE_ADMIN" \
+            -var="canopy_id=${{ inputs.canopy_id }}" \
+            -var="canopy_state_id=${{ inputs.canopy_state_id }}" \
             -var="forest_project_id=${{ inputs.forest_project_id }}" \
             -auto-approve

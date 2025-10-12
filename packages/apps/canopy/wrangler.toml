@@ -3,19 +3,21 @@ main = "./.svelte-kit/cloudflare/index.js"
 compatibility_date = "2024-10-01"
 
 [vars]
+CANOPY_ID = "canopy-dev-1"
 FOREST_PROJECT_ID = "forest-dev-1"
 API_VERSION = "v1"
 NODE_ENV = "development"
+# R2_WRITER token will be set via environment or secrets
 
 # R2 bucket binding
 [[r2_buckets]]
 binding = "R2"
-bucket_name = "forest-dev-1-canopy"
+bucket_name = "canopy-dev-1-statements"
 
 # Queue binding
 [[queues.producers]]
 binding = "QUEUE"
-queue = "forest-dev-1-ranger"
+queue = "canopy-dev-1-sequencer"
 
 # Development server configuration
 [dev]

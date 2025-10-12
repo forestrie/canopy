@@ -2,7 +2,8 @@ import type { Handle } from '@sveltejs/kit';
 import { validateApiKey, extractApiKey, requiresAuth } from '$lib/server/auth';
 
 export const handle: Handle = async ({ event, resolve }) => {
-	// Extract forest project ID from environment
+	// Extract instance identifiers from environment
+	event.locals.canopyId = event.platform?.env?.CANOPY_ID || 'canopy-dev-1';
 	event.locals.forestProjectId = event.platform?.env?.FOREST_PROJECT_ID || 'forest-dev-1';
 
 	// Check if authentication is required for this path

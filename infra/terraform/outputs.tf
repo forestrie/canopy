@@ -33,7 +33,17 @@ output "r2_endpoint" {
   value       = "https://${var.cloudflare_account_id}.r2.cloudflarestorage.com"
 }
 
+output "canopy_id" {
+  description = "Canopy instance identifier"
+  value       = var.canopy_id
+}
+
+output "canopy_state_id" {
+  description = "Canopy state identifier for Terraform state"
+  value       = var.canopy_state_id
+}
+
 output "forest_project_id" {
-  description = "Forest project identifier used for resource naming"
+  description = "Forest project identifier (external reference)"
   value       = var.forest_project_id
 }

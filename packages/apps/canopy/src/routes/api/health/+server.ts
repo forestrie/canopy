@@ -10,6 +10,7 @@ export const GET: RequestHandler = async ({ platform, locals }) => {
 		status: 'healthy',
 		timestamp: Date.now(),
 		version: process.env.npm_package_version || '0.0.1',
+		canopyId: locals.canopyId,
 		forestProjectId: locals.forestProjectId,
 		environment: platform?.env?.NODE_ENV || 'development',
 		services: {

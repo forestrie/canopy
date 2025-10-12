@@ -6,34 +6,26 @@ vars:
 
 tasks:
   all:
-    desc: |
-      Run all tests
-      Executes unit tests and e2e tests
+    desc: Run all unit and e2e tests
     cmds:
       - task: unit
       - task: e2e
 
   unit:
-    desc: |
-      Run unit tests
-      Executes Vitest unit tests for all packages
+    desc: Run unit tests with Vitest
     cmds:
       - echo "🧪 Running unit tests..."
       - pnpm run test
       - echo "✅ Unit tests complete!"
 
   unit:watch:
-    desc: |
-      Run unit tests in watch mode
-      Continuously runs tests as files change
+    desc: Run unit tests in watch mode
     cmds:
       - echo "👀 Starting unit test watch mode..."
       - pnpm run test:watch
 
   e2e:
-    desc: |
-      Run end-to-end tests
-      Executes Playwright tests for API and UI
+    desc: Run Playwright e2e tests
     deps: [e2e:install]
     cmds:
       - echo "🎭 Running e2e tests..."
@@ -41,63 +33,49 @@ tasks:
       - echo "✅ E2E tests complete!"
 
   e2e:install:
-    desc: |
-      Install Playwright browsers
-      Downloads required browser binaries
+    desc: Install Playwright browsers
     cmds:
       - echo "📦 Installing Playwright browsers..."
       - npx playwright install
       - echo "✅ Playwright browsers installed!"
 
   e2e:ui:
-    desc: |
-      Run e2e tests with UI
-      Opens Playwright test runner UI
+    desc: Open Playwright test runner UI
     deps: [e2e:install]
     cmds:
       - echo "🎭 Opening Playwright UI..."
       - npx playwright test --ui
 
   e2e:debug:
-    desc: |
-      Debug e2e tests
-      Runs tests in debug mode with browser visible
+    desc: Debug e2e tests with visible browser
     deps: [e2e:install]
     cmds:
       - echo "🐛 Running e2e tests in debug mode..."
       - npx playwright test --debug
 
   api:
-    desc: |
-      Test API endpoints
-      Runs API-specific Playwright tests
+    desc: Run API-specific tests
     cmds:
       - echo "🔌 Testing API endpoints..."
       - npx playwright test --grep @api
       - echo "✅ API tests complete!"
 
   coverage:
-    desc: |
-      Run tests with coverage
-      Generates code coverage report
+    desc: Generate test coverage report
     cmds:
       - echo "📊 Running tests with coverage..."
       - pnpm run test:coverage
       - echo "✅ Coverage report generated!"
 
   lint:
-    desc: |
-      Lint test files
-      Checks test files for style and correctness
+    desc: Lint test files
     cmds:
       - echo "🎨 Linting test files..."
       - pnpm run lint
       - echo "✅ Test linting complete!"
 
   ci:
-    desc: |
-      Run tests in CI mode
-      Executes all tests suitable for CI/CD pipeline
+    desc: Run CI test suite
     cmds:
       - echo "🤖 Running CI test suite..."
       - pnpm run test:ci

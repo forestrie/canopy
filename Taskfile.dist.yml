@@ -8,6 +8,8 @@ includes:
   test: ./taskfiles/test.yml
 
 vars:
+  CANOPY_ID: '{{.CANOPY_ID | default "canopy-dev-1"}}'
+  CANOPY_STATE_ID: '{{.CANOPY_STATE_ID | default "canopy-dev-1"}}'
   FOREST_PROJECT_ID: '{{.FOREST_PROJECT_ID | default "forest-dev-1"}}'
   CLOUDFLARE_ACCOUNT_ID: '{{.CLOUDFLARE_ACCOUNT_ID}}'
 
@@ -18,9 +20,7 @@ tasks:
       - task --list
 
   install:
-    desc: |
-      Install all dependencies for the project
-      This includes pnpm packages and checks for required tools
+    desc: Install all dependencies and check required tools
     cmds:
       - task: tools:check
       - pnpm install
@@ -32,9 +32,7 @@ tasks:
       - pnpm dev
 
   tools:check:
-    desc: |
-      Check if required tools are installed
-      Provides installation instructions for missing tools
+    desc: Check for required tools (Node, pnpm, Terraform, Wrangler)
     silent: true
     cmds:
       - |

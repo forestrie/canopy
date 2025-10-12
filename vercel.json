@@ -5,12 +5,16 @@
   "framework": "sveltekit",
   "ignoreCommand": "git diff --quiet HEAD^ HEAD -- packages/apps/canopy/ packages/shared/",
   "env": {
-    "FOREST_PROJECT_ID": "@forest-project-id"
+    "CANOPY_ID": "@canopy-id",
+    "FOREST_PROJECT_ID": "@forest-project-id",
+    "R2_WRITER": "@r2-writer-token"
   },
   "build": {
     "env": {
       "NODE_ENV": "production",
-      "FOREST_PROJECT_ID": "@forest-project-id"
+      "CANOPY_ID": "@canopy-id",
+      "FOREST_PROJECT_ID": "@forest-project-id",
+      "R2_WRITER": "@r2-writer-token"
     }
   },
   "functions": {

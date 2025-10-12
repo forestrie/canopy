@@ -6,16 +6,23 @@ declare global {
 			// [AUTH HOOK POINT] - API key validation result
 			authenticated: boolean;
 			apiKey?: string;
+			canopyId: string;
 			forestProjectId: string;
 		}
 
 		interface Platform {
 			env: {
-				// Environment variables
-				FOREST_PROJECT_ID: string;
+				// Instance identifiers
+				CANOPY_ID: string;
+				FOREST_PROJECT_ID: string;  // External forest project reference
+
+				// Resource names
 				R2_BUCKET_NAME: string;
 				QUEUE_NAME: string;
 				API_KEY_SECRET?: string;
+
+				// R2 API tokens (R2_WRITER used by app for read/write operations)
+				R2_WRITER: string;
 
 				// Cloudflare bindings
 				R2: R2Bucket;
