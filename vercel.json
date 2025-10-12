@@ -1,0 +1,27 @@
+{
+  "buildCommand": "cd packages/apps/canopy && pnpm build",
+  "outputDirectory": "packages/apps/canopy/.svelte-kit/cloudflare",
+  "installCommand": "pnpm install",
+  "framework": "sveltekit",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- packages/apps/canopy/ packages/shared/",
+  "env": {
+    "FOREST_PROJECT_ID": "@forest-project-id"
+  },
+  "build": {
+    "env": {
+      "NODE_ENV": "production",
+      "FOREST_PROJECT_ID": "@forest-project-id"
+    }
+  },
+  "functions": {
+    "packages/apps/canopy/src/routes/api/**/*": {
+      "runtime": "edge"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    }
+  ]
+}

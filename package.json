@@ -1,0 +1,26 @@
+{
+  "name": "canopy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SCITT/SCRAPI transparency log frontend and API",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "test:e2e": "playwright test",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write .",
+    "check": "prettier --check .",
+    "install:task": "sh -c 'curl -sSfL https://taskfile.dev/install.sh | sh -s -- -d -b /usr/local/bin'"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}

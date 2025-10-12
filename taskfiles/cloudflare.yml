@@ -1,0 +1,176 @@
+version: '3'
+
+vars:
+  TERRAFORM_DIR: './infra/terraform'
+  FOREST_PROJECT_ID: '{{.FOREST_PROJECT_ID}}'
+  TF_BUCKET_NAME: '{{.FOREST_PROJECT_ID}}-tfstate'
+
+tasks:
+  tools-check:
+    desc: |
+      Check for required Cloudflare tools
+      Verifies terraform and wrangler are installed
+    silent: true
+    cmds:
+      - |
+        echo "Checking Cloudflare tools..."
+        MISSING=""
+
+        if ! command -v terraform &> /dev/null; then
+          MISSING="${MISSING}  ❌ terraform: Install from https://www.terraform.io/downloads\n"
+        else
+          echo "  ✅ terraform"
+        fi
+
+        if ! command -v wrangler &> /dev/null; then
+          MISSING="${MISSING}  ❌ wrangler: Install with 'pnpm add -g wrangler'\n"
+        fi
+
+        if [ -n "$MISSING" ]; then
+          echo -e "\n⚠️  Missing tools:\n$MISSING"
+          exit 1
+        fi
+
+  bootstrap:
+    desc: |
+      Bootstrap Cloudflare infrastructure
+      Creates R2 buckets, queues, and configures Terraform backend
+      This task must be run before any other infrastructure operations
+    deps: [tools-check]
+    vars:
+      TF_VAR_forest_project_id: '{{.FOREST_PROJECT_ID}}'
+    cmds:
+      - echo "🚀 Bootstrapping Cloudflare infrastructure for project {{.FOREST_PROJECT_ID}}..."
+      - |
+        cd {{.TERRAFORM_DIR}}
+
+        # Check for API token
+        if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+          echo "❌ CLOUDFLARE_API_TOKEN not set in .env.secrets"
+          echo "Please set your Cloudflare API token and try again."
+          exit 1
+        fi
+
+        # Initialize Terraform with local backend
+        echo "📦 Initializing Terraform..."
+        terraform init
+
+        # Plan the bootstrap
+        echo "📋 Planning infrastructure..."
+        terraform plan \
+          -var="cloudflare_api_token=$CLOUDFLARE_API_TOKEN" \
+          -var="forest_project_id={{.FOREST_PROJECT_ID}}" \
+          -out=bootstrap.tfplan
+
+        # Apply the bootstrap
+        echo "🔨 Creating infrastructure..."
+        terraform apply bootstrap.tfplan
+
+        # Save outputs
+        terraform output -json > ../../.terraform-outputs.json
+
+        echo ""
+        echo "✅ Bootstrap complete!"
+        echo ""
+        echo "📝 Next steps:"
+        echo "1. Uncomment the backend configuration in infra/terraform/providers.tf"
+        echo "2. Replace <account-id> with: {{.CLOUDFLARE_ACCOUNT_ID}}"
+        echo "3. Replace \${FOREST_PROJECT_ID} with: {{.FOREST_PROJECT_ID}}"
+        echo "4. Run 'task cloudflare:migrate-state' to migrate state to R2"
+
+  migrate-state:
+    desc: |
+      Migrate Terraform state to R2 backend
+      Run this after uncommenting backend configuration in providers.tf
+    cmds:
+      - |
+        cd {{.TERRAFORM_DIR}}
+
+        echo "🔄 Migrating Terraform state to R2..."
+
+        # Check if backend is configured
+        if ! grep -q '^[[:space:]]*backend "s3"' providers.tf; then
+          echo "❌ Backend configuration not found in providers.tf"
+          echo "Please uncomment and configure the backend block first."
+          exit 1
+        fi
+
+        # Reinitialize with backend
+        terraform init -migrate-state \
+          -backend-config="access_key=$AWS_ACCESS_KEY_ID" \
+          -backend-config="secret_key=$AWS_SECRET_ACCESS_KEY"
+
+        echo "✅ State migration complete!"
+
+  status:
+    desc: |
+      Show current infrastructure status
+      Displays the current state of Cloudflare resources
+    cmds:
+      - |
+        cd {{.TERRAFORM_DIR}}
+
+        echo "📊 Cloudflare Infrastructure Status for {{.FOREST_PROJECT_ID}}:"
+        echo ""
+
+        # Check if terraform is initialized
+        if [ ! -d .terraform ]; then
+          echo "⚠️  Terraform not initialized. Run 'task cloudflare:bootstrap' first."
+          exit 1
+        fi
+
+        # Show current resources
+        terraform show -json | jq -r '
+          .values.root_module.resources[] |
+          "  • \(.type): \(.name) [\(.values.id // .values.name)]"
+        ' 2>/dev/null || echo "No resources found. Run 'task cloudflare:bootstrap' to create infrastructure."
+
+        # Show outputs if available
+        if [ -f ../../.terraform-outputs.json ]; then
+          echo ""
+          echo "📤 Outputs:"
+          jq -r 'to_entries[] | "  • \(.key): \(.value.value)"' ../../.terraform-outputs.json
+        fi
+
+  destroy:
+    desc: |
+      Destroy all Cloudflare infrastructure
+      ⚠️  WARNING: This will delete all R2 buckets and queues!
+    prompt: This will destroy all Cloudflare infrastructure. Are you sure?
+    cmds:
+      - |
+        cd {{.TERRAFORM_DIR}}
+
+        echo "🗑️  Destroying Cloudflare infrastructure..."
+
+        terraform destroy \
+          -var="cloudflare_api_token=$CLOUDFLARE_API_TOKEN" \
+          -var="forest_project_id={{.FOREST_PROJECT_ID}}" \
+          -auto-approve
+
+        rm -f ../../.terraform-outputs.json
+
+        echo "✅ Infrastructure destroyed"
+
+  plan:
+    desc: |
+      Plan infrastructure changes
+      Shows what changes would be made without applying them
+    cmds:
+      - |
+        cd {{.TERRAFORM_DIR}}
+        terraform plan \
+          -var="cloudflare_api_token=$CLOUDFLARE_API_TOKEN" \
+          -var="forest_project_id={{.FOREST_PROJECT_ID}}"
+
+  apply:
+    desc: |
+      Apply infrastructure changes
+      Updates existing infrastructure with any configuration changes
+    cmds:
+      - |
+        cd {{.TERRAFORM_DIR}}
+        terraform apply \
+          -var="cloudflare_api_token=$CLOUDFLARE_API_TOKEN" \
+          -var="forest_project_id={{.FOREST_PROJECT_ID}}" \
+          -auto-approve

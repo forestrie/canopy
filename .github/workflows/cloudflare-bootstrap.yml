@@ -1,0 +1,73 @@
+name: Cloudflare Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Infrastructure action'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+      forest_project_id:
+        description: 'Forest Project ID'
+        required: true
+        default: 'forest-dev-1'
+
+env:
+  TERRAFORM_VERSION: '1.5.0'
+
+jobs:
+  terraform:
+    name: Terraform ${{ inputs.action }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Terraform Init
+        working-directory: ./infra/terraform
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: terraform init
+
+      - name: Terraform Plan
+        if: inputs.action == 'plan'
+        working-directory: ./infra/terraform
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          terraform plan \
+            -var="cloudflare_api_token=$CLOUDFLARE_API_TOKEN" \
+            -var="forest_project_id=${{ inputs.forest_project_id }}"
+
+      - name: Terraform Apply
+        if: inputs.action == 'apply'
+        working-directory: ./infra/terraform
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          terraform apply \
+            -var="cloudflare_api_token=$CLOUDFLARE_API_TOKEN" \
+            -var="forest_project_id=${{ inputs.forest_project_id }}" \
+            -auto-approve
+
+      - name: Terraform Destroy
+        if: inputs.action == 'destroy'
+        working-directory: ./infra/terraform
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          terraform destroy \
+            -var="cloudflare_api_token=$CLOUDFLARE_API_TOKEN" \
+            -var="forest_project_id=${{ inputs.forest_project_id }}" \
+            -auto-approve

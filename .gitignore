@@ -1,0 +1,59 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Environment
+.env.secrets
+.env.local
+.env.*.local
+
+# Build outputs
+dist
+build
+.svelte-kit
+.vercel
+.netlify
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+coverage
+.nyc_output
+test-results
+playwright-report
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform
+.terraform.lock.hcl
+*.tfplan
+*.tfvars
+!*.example.tfvars
+infra/terraform/.terraform/
+
+# Cloudflare
+.wrangler
+.dev.vars
+
+# Misc
+*.pem
+*.key
+*.cert
+.cache

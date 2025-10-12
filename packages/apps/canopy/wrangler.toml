@@ -1,0 +1,34 @@
+name = "canopy"
+main = "./.svelte-kit/cloudflare/index.js"
+compatibility_date = "2024-10-01"
+
+[vars]
+FOREST_PROJECT_ID = "forest-dev-1"
+API_VERSION = "v1"
+NODE_ENV = "development"
+
+# R2 bucket binding
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "forest-dev-1-canopy"
+
+# Queue binding
+[[queues.producers]]
+binding = "QUEUE"
+queue = "forest-dev-1-ranger"
+
+# Development server configuration
+[dev]
+port = 8788
+local_protocol = "http"
+
+# Build configuration
+[build]
+command = "pnpm build"
+
+# Environment specific configuration can be added
+[env.production]
+vars = { NODE_ENV = "production" }
+
+[env.staging]
+vars = { NODE_ENV = "staging" }
