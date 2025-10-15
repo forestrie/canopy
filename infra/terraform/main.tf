@@ -14,21 +14,4 @@ resource "cloudflare_r2_bucket" "terraform_state" {
   location   = "WEUR"
 }
 
-# Cloudflare Queue for sequencer events
-resource "cloudflare_queue" "sequencer_queue" {
-  provider   = cloudflare.queue_admin
-  account_id = var.cloudflare_account_id
-  name       = local.queue_name
-}
-
-# Dead letter queue for failed sequencer messages
-resource "cloudflare_queue" "sequencer_dlq" {
-  provider   = cloudflare.queue_admin
-  account_id = var.cloudflare_account_id
-  name       = "${local.queue_name}-dlq"
-}
-
-# Note: Queue consumers and CORS configuration must be set up via:
-# 1. Wrangler CLI for queue consumers (wrangler queues consumer add)
-# 2. R2 CORS is configured via bucket settings in Cloudflare dashboard or API
-# These are not yet supported in Terraform provider v4.x
+# Note: Queue resources intentionally omitted per current design

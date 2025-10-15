@@ -1,38 +1,16 @@
-# sv
+# Canopy
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+A SvelteKit-based transparency log surface implementing portions of the SCITT SCRAPI draft with CBOR-only responses (except `/api/health`).
 
-## Creating a project
+## Endpoints (baseline)
 
-If you're seeing this, you've probably already done this step. Congrats!
+- `/.well-known/scitt-configuration` — Transparency configuration (CBOR)
+- `/api/v1/keys` — Transparency Service Keys (CBOR; may be empty)
+- `/api/v1/logs/{logId}/statements` — Register Signed Statement (POST, CBOR-only). Returns 202 with statement identity.
+- `/api/health` — JSON health check (only JSON endpoint)
 
-```sh
-# create a new project in the current directory
-npx sv create
+## Notes
 
-# create a new project in my-app
-npx sv create my-app
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+- Statements are stored in Cloudflare R2 under `logs/{logId}/leaves/{fenceIndex}/{md5}` with MD5 used for content addressing (not security).
+- `fenceIndex` is currently provided by a mock service (returns 0).
+- All SCRAPI endpoints strictly use `application/cbor` for request and response bodies; concise CBOR problem details are returned on errors.

@@ -7,17 +7,12 @@ CANOPY_ID = "canopy-dev-1"
 FOREST_PROJECT_ID = "forest-dev-1"
 API_VERSION = "v1"
 NODE_ENV = "development"
-# R2_WRITER token will be set via environment or secrets
+R2_WRITER = "${R2_WRITER}"
 
 # R2 bucket binding
 [[r2_buckets]]
 binding = "R2"
 bucket_name = "canopy-dev-1-statements"
-
-# Queue binding
-[[queues.producers]]
-binding = "QUEUE"
-queue = "canopy-dev-1-sequencer"
 
 # Development server configuration
 [dev]

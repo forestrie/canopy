@@ -54,8 +54,8 @@ task test:ci
 ### SCITT/SCRAPI Implementation
 The system implements a transparency log following SCITT (Supply Chain Integrity, Transparency and Trust) and SCRAPI (SCITT REST API) specifications:
 
-1. **Pre-sequencing Phase**: Statements are stored in R2 with content-addressed paths before sequencing
-2. **Queue Integration**: Cloudflare Queue sends references to an external sequencer
+1. **Pre-sequencing Phase**: Statements are stored in R2 with content-addressed paths
+2. **No Queue**: Queue integration is currently removed to simplify the baseline
 3. **Content Addressing**: Uses MD5 hashes for content-addressed storage paths: `/logs/{logId}/leaves/{fenceIndex}/{md5Hash}`
 4. **MMR Indexing**: Mock service returns fence index 0, ready for real Merkle Mountain Range integration
 
@@ -71,14 +71,11 @@ The system implements a transparency log following SCITT (Supply Chain Integrity
 - Immutable objects with permanent caching
 - Metadata tracking for sequencing status
 
-**Queue Integration** (packages/apps/canopy/src/lib/server/queue.ts):
-- Submits statement references to external sequencer
-- Dead letter queue for failed messages
-- Configured via Terraform
+**Queue Integration**: Not in use at this time (module kept as a placeholder only)
 
 **API Layering**:
-- Native layer: Direct CBOR/COSE handling (future: `/api/native/`)
-- SCRAPI layer: Standards-compliant REST API (`/api/v1/`)
+- Well-known SCRAPI discovery at `/.well-known/scitt-configuration`
+- SCRAPI v1 endpoints under `/api/v1/`
 
 ### Environment Configuration
 
@@ -87,7 +84,6 @@ The project uses separate identifiers for different purposes:
 **Canopy-specific identifiers:**
 - `CANOPY_ID`: Instance identifier for resource naming
   - R2 bucket: `${CANOPY_ID}-statements`
-  - Queue: `${CANOPY_ID}-sequencer`
 - `CANOPY_STATE_ID`: Terraform state management
   - Terraform state: `${CANOPY_STATE_ID}-tfstate`
 
@@ -101,11 +97,10 @@ This separation allows:
 
 ### API Token Architecture
 
-The project uses a three-tier token system for security:
+The project uses a three-tier token system for security (R2 only at this time):
 - **R2_ADMIN**: Infrastructure management only (Terraform)
 - **R2_WRITER**: Application read/write operations (SvelteKit app)
 - **R2_READER**: Read-only access (optional, for monitoring)
-- **QUEUE_ADMIN**: Queue management (Terraform)
 
 The application NEVER has access to R2_ADMIN, ensuring infrastructure cannot be modified from the app.
 
@@ -118,26 +113,26 @@ The application NEVER has access to R2_ADMIN, ensuring infrastructure cannot be 
 
 **Cloudflare Workers**:
 - Wrangler configuration in `packages/apps/canopy/wrangler.toml`
-- R2 and Queue bindings configured for local development
+- R2 binding configured for local development
 - Platform bindings accessible via `event.platform.env`
 
 ### Testing Approach
 
 **API Testing** (tests/e2e/*.api.test.ts):
 - Playwright used for API endpoint testing
-- Tests CBOR/JSON content submission
+- Tests CBOR request/response handling (JSON allowed only for `/api/health`)
 - Validates authentication and error handling
 
 **Local Development**:
 - SvelteKit dev server proxies to Cloudflare Workers
-- Wrangler provides local R2 and Queue emulation
+- Wrangler provides local R2 emulation
 - Environment variables loaded from `.env` and `.env.secrets`
 
 ## Important Implementation Notes
 
 1. **MD5 for Content Addressing**: MD5 is used for content addressing, not security. It provides efficient content-addressed storage paths.
 
-2. **Async Response Pattern**: POST to `/api/v1/logs/{logId}/statements` returns 202 Accepted with pre-sequence identity, allowing async sequencing.
+2. **Async Response Pattern**: POST to `/api/v1/logs/{logId}/statements` returns 202 Accepted with pre-sequence identity. External sequencing is out-of-scope for now (no queue).
 
 3. **Terraform State Migration**: After initial bootstrap, uncomment backend configuration in `infra/terraform/providers.tf` and run `task cloudflare:migrate-state`.
 
