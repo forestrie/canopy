@@ -32,7 +32,7 @@ tasks:
         fi
 
   bootstrap:
-    desc: Bootstrap Cloudflare infrastructure (R2, Queues)
+    desc: Bootstrap Cloudflare infrastructure (R2 only)
     deps: [tools-check]
     vars:
       TF_VAR_canopy_id: '{{.CANOPY_ID}}'
@@ -50,11 +50,7 @@ tasks:
           exit 1
         fi
 
-        if [ -z "$QUEUE_ADMIN" ]; then
-          echo "❌ QUEUE_ADMIN token not set in .env.secrets"
-          echo "Please set your Queue admin API token and try again."
-          exit 1
-        fi
+        # No queue required
 
         # Initialize Terraform with local backend
         echo "📦 Initializing Terraform..."
@@ -64,7 +60,6 @@ tasks:
         echo "📋 Planning infrastructure..."
         terraform plan \
           -var="r2_admin_token=$R2_ADMIN" \
-          -var="queue_admin_token=$QUEUE_ADMIN" \
           -var="canopy_id={{.CANOPY_ID}}" \
           -var="canopy_state_id={{.CANOPY_STATE_ID}}" \
           -var="forest_project_id={{.FOREST_PROJECT_ID}}" \
@@ -82,7 +77,6 @@ tasks:
         echo ""
         echo "📝 Next steps:"
         echo "1. Run 'task cloudflare:setup-cors' to configure CORS for R2 bucket"
-        echo "2. Run 'task cloudflare:setup-queue-consumer' for queue consumer setup instructions"
         echo ""
         echo "For Terraform state migration:"
         echo "1. Uncomment the backend configuration in infra/terraform/providers.tf"
@@ -152,7 +146,6 @@ tasks:
 
         terraform destroy \
           -var="r2_admin_token=$R2_ADMIN" \
-          -var="queue_admin_token=$QUEUE_ADMIN" \
           -var="canopy_id={{.CANOPY_ID}}" \
           -var="canopy_state_id={{.CANOPY_STATE_ID}}" \
           -var="forest_project_id={{.FOREST_PROJECT_ID}}" \
@@ -169,7 +162,6 @@ tasks:
         cd {{.TERRAFORM_DIR}}
         terraform plan \
           -var="r2_admin_token=$R2_ADMIN" \
-          -var="queue_admin_token=$QUEUE_ADMIN" \
           -var="canopy_id={{.CANOPY_ID}}" \
           -var="canopy_state_id={{.CANOPY_STATE_ID}}" \
           -var="forest_project_id={{.FOREST_PROJECT_ID}}"
@@ -226,41 +218,14 @@ tasks:
             --fail-with-body && echo "✅ CORS configured successfully!" || echo "❌ Failed to configure CORS. Please check your R2_ADMIN token and try again."
         fi
 
-  setup-queue-consumer:
-    desc: Configure queue consumer (manual step)
-    cmds:
-      - echo "📋 Setting up queue consumer for {{.CANOPY_ID}}-sequencer"
-      - echo ""
-      - echo "⚠️  Queue consumers must be configured via Wrangler CLI or Workers."
-      - echo ""
-      - echo "To add a consumer using Wrangler:"
-      - echo ""
-      - echo "1. Create a Worker that will consume messages:"
-      - echo "   wrangler init sequencer-consumer"
-      - echo ""
-      - echo "2. Add queue consumer binding in wrangler.toml:"
-      - echo "   [[queues.consumers]]"
-      - echo "   queue = \"{{.CANOPY_ID}}-sequencer\""
-      - echo "   max_batch_size = 10"
-      - echo "   max_retries = 3"
-      - echo "   visibility_timeout_ms = 30000"
-      - echo "   dead_letter_queue = \"{{.CANOPY_ID}}-sequencer-dlq\""
-      - echo ""
-      - echo "3. Deploy the worker:"
-      - echo "   wrangler deploy"
-      - echo ""
-      - echo "Note: The external sequencer project will handle the actual consumer implementation."
+  # queue setup removed per current design
 
   post-bootstrap:
-    desc: Complete post-bootstrap setup (CORS and queue consumer)
+    desc: Complete post-bootstrap setup (CORS)
     deps: [bootstrap]
     cmds:
       - task: setup-cors
       - echo ""
       - echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
       - echo ""
-      - task: setup-queue-consumer
-      - echo ""
-      - echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-      - echo ""
-      - echo "✅ Bootstrap complete! Please complete the manual steps above."
+      - echo "✅ Bootstrap complete!"

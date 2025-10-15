@@ -1,7 +1,6 @@
 /**
  * R2 Storage utilities for SCITT/SCRAPI statements
  */
-import { createHash } from 'crypto';
 import type { R2Bucket, R2Object } from '@cloudflare/workers-types';
 
 export interface StatementMetadata {
@@ -31,31 +30,40 @@ export async function storeStatement(
 	content: ArrayBuffer,
 	contentType: string = 'application/cbor'
 ): Promise<{ path: string; hash: string; etag: string }> {
-	// Calculate MD5 hash of content
-	const hash = await calculateMD5(content);
+    // Calculate MD5 hash (hex for identity + raw digest for R2 integrity header)
+    const { hex: hash, raw } = await calculateMD5(content);
 
 	// Build the content-addressed path
 	const path = buildStatementPath(logId, fenceIndex, hash);
 
 	// Prepare metadata
-	const metadata: StatementMetadata = {
-		logId,
-		fenceIndex,
-		contentHash: hash,
-		contentType,
-		timestamp: Date.now(),
-		sequenced: false
-	};
+    const meta: StatementMetadata = {
+        logId,
+        fenceIndex,
+        contentHash: hash,
+        contentType,
+        timestamp: Date.now(),
+        sequenced: false
+    };
 
 	// Store in R2 with content hash as ETag
-	const result = await bucket.put(path, content, {
-		httpMetadata: {
-			contentType,
-			cacheControl: 'public, max-age=31536000, immutable' // Content-addressed, can cache forever
-		},
-		customMetadata: metadata as any,
-		md5: hash
-	});
+    const result = await bucket.put(path, content, {
+        httpMetadata: {
+            contentType,
+            cacheControl: 'public, max-age=31536000, immutable' // Content-addressed, can cache forever
+        },
+        // R2 customMetadata must be string values
+        customMetadata: {
+            logId: meta.logId,
+            fenceIndex: String(meta.fenceIndex),
+            contentHash: meta.contentHash,
+            contentType: meta.contentType,
+            timestamp: String(meta.timestamp),
+            sequenced: String(meta.sequenced)
+        } as Record<string, string>,
+        // Provide raw MD5 digest for integrity
+        md5: raw
+    });
 
 	return {
 		path,
@@ -79,7 +87,16 @@ export async function getStatement(
 	if (!object) return null;
 
 	const content = await object.arrayBuffer();
-	const metadata = object.customMetadata as unknown as StatementMetadata;
+    const md = (object.customMetadata || {}) as Record<string, string>;
+    const metadata: StatementMetadata = {
+        logId: md.logId,
+        fenceIndex: Number(md.fenceIndex || 0),
+        contentHash: md.contentHash,
+        contentType: md.contentType,
+        timestamp: Number(md.timestamp || Date.now()),
+        sequenced: md.sequenced === 'true',
+        sequencerIndex: md.sequencerIndex ? Number(md.sequencerIndex) : undefined
+    };
 
 	return { content, metadata };
 }
@@ -107,13 +124,12 @@ export function buildStatementPath(
  * @param content The content to hash
  * @returns The hex-encoded MD5 hash
  */
-async function calculateMD5(content: ArrayBuffer): Promise<string> {
-	// Use Web Crypto API for MD5 (note: MD5 is used for content addressing, not security)
-	// In Cloudflare Workers, we'll use the crypto global
-	const hashBuffer = await crypto.subtle.digest('MD5', content);
-	const hashArray = Array.from(new Uint8Array(hashBuffer));
-	const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-	return hashHex;
+async function calculateMD5(content: ArrayBuffer): Promise<{ hex: string; raw: ArrayBuffer }> {
+    // Use Web Crypto API for MD5 (note: MD5 is used for content addressing, not security)
+    const hashBuffer = await crypto.subtle.digest('MD5', content);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+    return { hex: hashHex, raw: hashBuffer };
 }
 
 /**

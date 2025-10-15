@@ -8,20 +8,7 @@ output "r2_bucket_id" {
   value       = cloudflare_r2_bucket.canopy_statements.id
 }
 
-output "queue_name" {
-  description = "Name of the sequencer queue"
-  value       = cloudflare_queue.sequencer_queue.name
-}
-
-output "queue_id" {
-  description = "ID of the sequencer queue"
-  value       = cloudflare_queue.sequencer_queue.id
-}
-
-output "dlq_name" {
-  description = "Name of the dead letter queue"
-  value       = cloudflare_queue.sequencer_dlq.name
-}
+## Queue outputs removed per current design
 
 output "tfstate_bucket_name" {
   description = "Name of the Terraform state bucket"

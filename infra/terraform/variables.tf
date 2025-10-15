@@ -4,11 +4,6 @@ variable "r2_admin_token" {
   sensitive   = true
 }
 
-variable "queue_admin_token" {
-  description = "Cloudflare API token with Queue admin permissions"
-  type        = string
-  sensitive   = true
-}
 
 variable "cloudflare_account_id" {
   description = "Cloudflare account ID"
@@ -50,21 +45,9 @@ variable "r2_cors_allowed_origins" {
   ]
 }
 
-variable "queue_max_retries" {
-  description = "Maximum number of retries for queue messages"
-  type        = number
-  default     = 3
-}
-
-variable "queue_visibility_timeout_ms" {
-  description = "Visibility timeout for queue messages in milliseconds"
-  type        = number
-  default     = 30000 # 30 seconds
-}
 
 # Computed locals for resource naming
 locals {
   r2_bucket_name = "${var.canopy_id}-statements"
-  queue_name     = "${var.canopy_id}-sequencer"
   tfstate_bucket = "${var.canopy_state_id}-tfstate"
 }

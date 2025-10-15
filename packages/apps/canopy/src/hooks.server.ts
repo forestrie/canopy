@@ -1,5 +1,6 @@
 import type { Handle } from '@sveltejs/kit';
 import { validateApiKey, extractApiKey, requiresAuth } from '$lib/server/auth';
+import { ClientErrors } from '$lib/scrapi/problem-details';
 
 export const handle: Handle = async ({ event, resolve }) => {
 	// Extract instance identifiers from environment
@@ -20,16 +21,21 @@ export const handle: Handle = async ({ event, resolve }) => {
 		event.locals.authenticated = isValid;
 		event.locals.apiKey = apiKey;
 
-		// [AUTH HOOK POINT] - Reject unauthorized requests
-		if (!isValid) {
-			return new Response('Unauthorized', {
-				status: 401,
-				headers: {
-					'WWW-Authenticate': 'Bearer realm="api"',
-					'Content-Type': 'text/plain'
-				}
-			});
-		}
+        // [AUTH HOOK POINT] - Reject unauthorized requests (CBOR for API routes, JSON allowed for /api/health)
+        if (!isValid) {
+            if (event.url.pathname === '/api/health') {
+                return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+                    status: 401,
+                    headers: {
+                        'content-type': 'application/json',
+                        'WWW-Authenticate': 'Bearer realm="api"'
+                    }
+                });
+            }
+            return ClientErrors.unauthorized('Missing or invalid API key', {
+                'WWW-Authenticate': 'Bearer realm="api"'
+            });
+        }
 	} else {
 		// Public endpoint - no auth required
 		event.locals.authenticated = false;

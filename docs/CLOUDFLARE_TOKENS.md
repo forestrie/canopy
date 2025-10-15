@@ -1,6 +1,6 @@
 # Cloudflare API Token Configuration
 
-This document explains the three-tier API token system used by Canopy for secure access to Cloudflare R2 and Queue resources.
+This document explains the API token system used by Canopy for secure access to Cloudflare R2 resources.
 
 ## Token Types
 
@@ -48,17 +48,9 @@ This document explains the three-tier API token system used by Canopy for secure
 
 **Security**: Safe for wider distribution as it only allows read operations.
 
-### 4. QUEUE_ADMIN - Queue Management Token
+### (Removed) Queue tokens
 
-**Purpose**: Create and manage Cloudflare Queues
-**Used by**: Terraform, queue configuration
-**Required permissions**:
-- Account → Cloudflare Queues:Edit
-
-**When to use**:
-- Creating queues via Terraform
-- Managing queue consumers
-- Dead letter queue configuration
+Queue tokens and configuration are not used in the current design.
 
 ## Creating Tokens
 
@@ -123,7 +115,7 @@ This document explains the three-tier API token system used by Canopy for secure
    R2_ADMIN=your_r2_admin_token
    R2_WRITER=your_r2_writer_token
    R2_READER=your_r2_reader_token
-   QUEUE_ADMIN=your_queue_admin_token
+   # No queue token required
    ```
 
 3. For Wrangler development, copy `.dev.vars.example` to `.dev.vars`:
@@ -192,9 +184,7 @@ curl -X GET "https://api.cloudflare.com/client/v4/accounts/YOUR_ACCOUNT_ID/r2/bu
    - Verify R2_WRITER token is correctly set in environment
    - Check token has access to the specific bucket
 
-3. **Queue operations failing**
-   - Verify QUEUE_ADMIN token has Queues:Edit permission
-   - Ensure queue names match configuration
+3. (N/A) Queue operations guidance removed
 
 ### Token Rotation
 
@@ -220,4 +210,3 @@ When rotating tokens:
 
 - [Cloudflare API Tokens Documentation](https://developers.cloudflare.com/api/tokens/)
 - [R2 API Documentation](https://developers.cloudflare.com/r2/api/)
-- [Cloudflare Queues Documentation](https://developers.cloudflare.com/queues/)
