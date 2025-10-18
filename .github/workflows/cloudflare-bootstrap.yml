@@ -6,18 +6,14 @@ on:
       action:
         description: 'Infrastructure action'
         required: true
-        default: 'plan'
+        default: 'apply'
         type: choice
         options:
-          - plan
           - apply
           - destroy
+          - status
       canopy_id:
         description: 'Canopy Instance ID'
-        required: true
-        default: 'canopy-dev-1'
-      canopy_state_id:
-        description: 'Canopy State ID for Terraform'
         required: true
         default: 'canopy-dev-1'
       forest_project_id:
@@ -25,68 +21,74 @@ on:
         required: true
         default: 'forest-dev-1'
 
-env:
-  TERRAFORM_VERSION: '1.5.0'
-
 jobs:
-  terraform:
-    name: Terraform ${{ inputs.action }}
+  wrangler:
+    name: Wrangler ${{ inputs.action }}
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          node-version: '20'
+          cache: 'pnpm'
 
-      - name: Terraform Init
-        working-directory: ./infra/terraform
-        env:
-          R2_ADMIN: ${{ secrets.R2_ADMIN }}
-        run: terraform init
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
 
-      - name: Terraform Plan
-        if: inputs.action == 'plan'
-        working-directory: ./infra/terraform
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Wrangler
+        run: pnpm add -g wrangler
+
+      - name: Authenticate Wrangler
         env:
-          R2_ADMIN: ${{ secrets.R2_ADMIN }}
-          QUEUE_ADMIN: ${{ secrets.QUEUE_ADMIN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
-          terraform plan \
-            -var="r2_admin_token=$R2_ADMIN" \
-            -var="queue_admin_token=$QUEUE_ADMIN" \
-            -var="canopy_id=${{ inputs.canopy_id }}" \
-            -var="canopy_state_id=${{ inputs.canopy_state_id }}" \
-            -var="forest_project_id=${{ inputs.forest_project_id }}"
+          echo "🔐 Authenticating with Cloudflare..."
+          wrangler whoami
 
-      - name: Terraform Apply
+      - name: Apply Infrastructure
         if: inputs.action == 'apply'
-        working-directory: ./infra/terraform
         env:
-          R2_ADMIN: ${{ secrets.R2_ADMIN }}
-          QUEUE_ADMIN: ${{ secrets.QUEUE_ADMIN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CANOPY_ID: ${{ inputs.canopy_id }}
+          R2_BUCKET_NAME: ${{ inputs.canopy_id }}-leaves
+          QUEUE_NAME: ${{ inputs.canopy_id }}-ranger
+          QUEUE_DLQ_NAME: ${{ inputs.canopy_id }}-ranger-dlq
         run: |
-          terraform apply \
-            -var="r2_admin_token=$R2_ADMIN" \
-            -var="queue_admin_token=$QUEUE_ADMIN" \
-            -var="canopy_id=${{ inputs.canopy_id }}" \
-            -var="canopy_state_id=${{ inputs.canopy_state_id }}" \
-            -var="forest_project_id=${{ inputs.forest_project_id }}" \
-            -auto-approve
+          echo "🚀 Creating Cloudflare infrastructure with Wrangler..."
+          echo "CANOPY_ID: ${CANOPY_ID}"
+          echo "R2_BUCKET_NAME: ${R2_BUCKET_NAME}"
+          echo "QUEUE_NAME: ${QUEUE_NAME}"
+          echo "QUEUE_DLQ_NAME: ${QUEUE_DLQ_NAME}"
+
+          echo "=== Creating R2 Bucket ==="
+          wrangler r2 bucket create "${R2_BUCKET_NAME}" --location WEUR || echo "✓ Bucket already exists"
+
+          echo "=== Creating Queues ==="
+          wrangler queues create "${QUEUE_NAME}" || echo "✓ Queue already exists"
+          wrangler queues create "${QUEUE_DLQ_NAME}" || echo "✓ Dead letter queue already exists"
+
+          echo "✅ Infrastructure created successfully!"
 
       - name: Configure R2 CORS
         if: inputs.action == 'apply'
         env:
           R2_ADMIN: ${{ secrets.R2_ADMIN }}
           CLOUDFLARE_ACCOUNT_ID: "68f25af297c4235c3f1c47b2f73925b0"
+          R2_BUCKET_NAME: ${{ inputs.canopy_id }}-leaves
         run: |
-          echo "📋 Configuring CORS for R2 bucket ${{ inputs.canopy_id }}-statements"
+          echo "📋 Configuring CORS for R2 bucket ${R2_BUCKET_NAME}"
 
           # Configure CORS using Cloudflare API
-          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets/${{ inputs.canopy_id }}-statements/cors" \
+          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets/${R2_BUCKET_NAME}/cors" \
             -H "Authorization: Bearer ${R2_ADMIN}" \
             -H "Content-Type: application/json" \
             --data '{
@@ -100,41 +102,69 @@ jobs:
             }' \
             --fail-with-body || {
               echo "⚠️  Failed to configure CORS. This may need to be done manually."
-              echo "Run 'task cloudflare:setup-cors' for instructions."
             }
 
           echo "✅ CORS configuration complete"
 
+      - name: Show Status
+        if: inputs.action == 'status'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          echo "📊 Cloudflare Infrastructure Status"
+          echo "CANOPY_ID: ${{ inputs.canopy_id }}"
+          echo ""
+
+          echo "=== R2 Buckets ==="
+          wrangler r2 bucket list
+
+          echo ""
+          echo "=== Queues ==="
+          wrangler queues list
+
+      - name: Destroy Infrastructure
+        if: inputs.action == 'destroy'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CANOPY_ID: ${{ inputs.canopy_id }}
+          R2_BUCKET_NAME: ${{ inputs.canopy_id }}-leaves
+          QUEUE_NAME: ${{ inputs.canopy_id }}-ranger
+          QUEUE_DLQ_NAME: ${{ inputs.canopy_id }}-ranger-dlq
+        run: |
+          echo "🗑️ Destroying Cloudflare infrastructure..."
+          echo "CANOPY_ID: ${CANOPY_ID}"
+          echo "R2_BUCKET_NAME: ${R2_BUCKET_NAME}"
+          echo "QUEUE_NAME: ${QUEUE_NAME}"
+          echo "QUEUE_DLQ_NAME: ${QUEUE_DLQ_NAME}"
+
+          echo "=== Deleting Queues ==="
+          wrangler queues delete "${QUEUE_NAME}" || echo "⚠️ Queue not found"
+          wrangler queues delete "${QUEUE_DLQ_NAME}" || echo "⚠️ Dead letter queue not found"
+
+          echo "=== Deleting R2 Bucket ==="
+          echo "⚠️ Note: Bucket must be empty to delete"
+          wrangler r2 bucket delete "${R2_BUCKET_NAME}" || echo "⚠️ Failed to delete (may not be empty)"
+
+          echo "✅ Infrastructure destruction complete!"
+
       - name: Display Queue Consumer Instructions
         if: inputs.action == 'apply'
+        env:
+          QUEUE_NAME: ${{ inputs.canopy_id }}-ranger
+          QUEUE_DLQ_NAME: ${{ inputs.canopy_id }}-ranger-dlq
         run: |
           echo "📋 Queue Consumer Setup Required"
           echo "================================"
           echo ""
-          echo "The queue consumer for ${{ inputs.canopy_id }}-sequencer must be set up"
+          echo "The queue consumer for ${QUEUE_NAME} must be set up"
           echo "by the external sequencer project."
           echo ""
           echo "Queue Details:"
-          echo "  - Queue Name: ${{ inputs.canopy_id }}-sequencer"
-          echo "  - DLQ Name: ${{ inputs.canopy_id }}-sequencer-dlq"
+          echo "  - Queue Name: ${QUEUE_NAME}"
+          echo "  - DLQ Name: ${QUEUE_DLQ_NAME}"
           echo "  - Recommended Settings:"
           echo "    - Max Batch Size: 10"
           echo "    - Max Retries: 3"
           echo "    - Visibility Timeout: 30000ms"
           echo ""
           echo "The external sequencer should use these queue names when setting up consumers."
-
-      - name: Terraform Destroy
-        if: inputs.action == 'destroy'
-        working-directory: ./infra/terraform
-        env:
-          R2_ADMIN: ${{ secrets.R2_ADMIN }}
-          QUEUE_ADMIN: ${{ secrets.QUEUE_ADMIN }}
-        run: |
-          terraform destroy \
-            -var="r2_admin_token=$R2_ADMIN" \
-            -var="queue_admin_token=$QUEUE_ADMIN" \
-            -var="canopy_id=${{ inputs.canopy_id }}" \
-            -var="canopy_state_id=${{ inputs.canopy_state_id }}" \
-            -var="forest_project_id=${{ inputs.forest_project_id }}" \
-            -auto-approve

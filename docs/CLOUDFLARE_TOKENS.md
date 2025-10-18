@@ -7,7 +7,7 @@ This document explains the three-tier API token system used by Canopy for secure
 ### 1. R2_ADMIN - Infrastructure Management Token
 
 **Purpose**: Create, configure, and destroy R2 buckets and infrastructure
-**Used by**: Terraform, infrastructure automation
+**Used by**: Wrangler CLI, infrastructure automation
 **Required permissions**:
 - Account → Cloudflare R2 Storage:Edit (full account access)
 - Account → Workers R2 Storage:Edit
@@ -15,7 +15,7 @@ This document explains the three-tier API token system used by Canopy for secure
 **When to use**:
 - Running `task cloudflare:bootstrap`
 - Running `task cloudflare:destroy`
-- Any Terraform operations
+- Any Wrangler infrastructure operations
 
 **Security**: Never deploy this token to production applications. Keep it restricted to CI/CD and admin operations only.
 
@@ -51,12 +51,12 @@ This document explains the three-tier API token system used by Canopy for secure
 ### 4. QUEUE_ADMIN - Queue Management Token
 
 **Purpose**: Create and manage Cloudflare Queues
-**Used by**: Terraform, queue configuration
+**Used by**: Wrangler CLI, queue configuration
 **Required permissions**:
 - Account → Cloudflare Queues:Edit
 
 **When to use**:
-- Creating queues via Terraform
+- Creating queues via Wrangler
 - Managing queue consumers
 - Dead letter queue configuration
 
@@ -113,7 +113,6 @@ This document explains the three-tier API token system used by Canopy for secure
 1. Configure environment variables in `.env`:
    ```bash
    CANOPY_ID=canopy-dev-1
-   CANOPY_STATE_ID=canopy-dev-1
    FOREST_PROJECT_ID=forest-dev-1  # External project reference
    ```
 
@@ -184,9 +183,10 @@ curl -X GET "https://api.cloudflare.com/client/v4/accounts/YOUR_ACCOUNT_ID/r2/bu
 
 ### Common Issues
 
-1. **"Unauthorized" errors in Terraform**
+1. **"Unauthorized" errors in Wrangler**
    - Verify R2_ADMIN token has full R2 Storage:Edit permissions
    - Check token hasn't expired
+   - Ensure you're authenticated: `wrangler whoami`
 
 2. **"Permission denied" in application**
    - Verify R2_WRITER token is correctly set in environment

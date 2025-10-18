@@ -1,0 +1,248 @@
+---
+# MinIO local development setup for mocking Cloudflare R2
+
+version: "3"
+
+vars:
+  MINIO_ROOT_USER: '{{.MINIO_ROOT_USER | default "minioadmin"}}'
+  MINIO_ROOT_PASSWORD: '{{.MINIO_ROOT_PASSWORD | default "minioadmin"}}'
+  MINIO_API_PORT: '{{.MINIO_API_PORT | default "9000"}}'
+  MINIO_CONSOLE_PORT: '{{.MINIO_CONSOLE_PORT | default "9001"}}'
+  CANOPY_ID: '{{.CANOPY_ID | default "canopy"}}'
+  BUCKET_LEAVES: '{{.BUCKET_LEAVES | default (print .CANOPY_ID "-leaves")}}'
+  BUCKET_STAGING: '{{.BUCKET_STAGING | default (print .CANOPY_ID "-staging")}}'
+  DOCKER_COMPOSE: '{{if eq OS "windows"}}docker compose{{else}}docker-compose{{end}}'
+
+tasks:
+  check-docker:
+    desc: Check if Docker is installed and running
+    silent: true
+    cmds:
+      - cmd: |
+          if ! command -v docker &> /dev/null; then
+            echo "❌ Docker is not installed. Please install Docker first."
+            echo "   Visit: https://docs.docker.com/get-docker/"
+            exit 1
+          fi
+          if ! docker info &> /dev/null; then
+            echo "❌ Docker is not running. Please start Docker Desktop."
+            exit 1
+          fi
+          echo "✅ Docker is installed and running"
+
+  check-mc:
+    desc: Check if MinIO client is installed
+    silent: true
+    cmds:
+      - cmd: |
+          if ! command -v mc &> /dev/null; then
+            echo "⚠️  MinIO client (mc) not found."
+            echo "   Install with:"
+            echo "   - macOS:  brew install minio-mc"
+            echo "   - Linux:  wget https://dl.min.io/client/mc/release/linux-amd64/mc && chmod +x mc"
+            echo "   - Windows: Download from https://min.io/download#/windows"
+            exit 1
+          fi
+          echo "✅ MinIO client (mc) is installed"
+
+  setup:
+    desc: Complete MinIO setup for local development
+    deps: [check-docker]
+    cmds:
+      - task: start
+      - task: wait-healthy
+      - task: create-buckets
+      - task: info
+
+  start:
+    desc: Start MinIO containers
+    deps: [check-docker]
+    cmds:
+      - cmd: |
+          echo "🚀 Starting MinIO containers..."
+          {{.DOCKER_COMPOSE}} up -d
+
+  stop:
+    desc: Stop MinIO containers
+    cmds:
+      - cmd: |
+          echo "🛑 Stopping MinIO containers..."
+          {{.DOCKER_COMPOSE}} stop
+
+  down:
+    desc: Stop and remove MinIO containers (preserves data)
+    cmds:
+      - cmd: |
+          echo "🛑 Removing MinIO containers..."
+          {{.DOCKER_COMPOSE}} down
+
+  clean:
+    desc: Stop and remove MinIO containers and volumes (DELETES ALL DATA)
+    prompt: This will DELETE all MinIO data. Are you sure?
+    cmds:
+      - cmd: |
+          echo "🧹 Cleaning up MinIO containers and data..."
+          {{.DOCKER_COMPOSE}} down -v
+          echo "✅ MinIO cleanup complete"
+
+  restart:
+    desc: Restart MinIO containers
+    cmds:
+      - task: stop
+      - task: start
+
+  wait-healthy:
+    desc: Wait for MinIO to be healthy
+    silent: true
+    cmds:
+      - cmd: |
+          echo "⏳ Waiting for MinIO to be ready..."
+          for i in {1..30}; do
+            if docker exec canopy-minio curl -f http://localhost:{{.MINIO_API_PORT}}/minio/health/live &> /dev/null; then
+              echo "✅ MinIO is ready!"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "❌ MinIO failed to start after 30 seconds"
+          exit 1
+
+  create-buckets:
+    desc: Create required S3 buckets in MinIO
+    deps: [check-mc]
+    cmds:
+      - cmd: |
+          echo "🪣 Creating buckets..."
+          mc alias set local http://localhost:{{.MINIO_API_PORT}} {{.MINIO_ROOT_USER}} {{.MINIO_ROOT_PASSWORD}} 2>/dev/null || true
+          mc mb --ignore-existing local/{{.BUCKET_LEAVES}}
+          mc mb --ignore-existing local/{{.BUCKET_STAGING}}
+          mc anonymous set download local/{{.BUCKET_LEAVES}} 2>/dev/null || true
+          echo "✅ Buckets created: {{.BUCKET_LEAVES}}, {{.BUCKET_STAGING}}"
+
+  list-buckets:
+    desc: List all MinIO buckets
+    deps: [check-mc]
+    cmds:
+      - cmd: |
+          mc alias set local http://localhost:{{.MINIO_API_PORT}} {{.MINIO_ROOT_USER}} {{.MINIO_ROOT_PASSWORD}} 2>/dev/null || true
+          mc ls local/
+
+  list-objects:
+    desc: List objects in a bucket
+    deps: [check-mc]
+    vars:
+      BUCKET: '{{.BUCKET | default .BUCKET_LEAVES}}'
+    cmds:
+      - cmd: |
+          mc alias set local http://localhost:{{.MINIO_API_PORT}} {{.MINIO_ROOT_USER}} {{.MINIO_ROOT_PASSWORD}} 2>/dev/null || true
+          echo "📦 Objects in bucket: {{.BUCKET}}"
+          mc ls -r local/{{.BUCKET}}
+
+  logs:
+    desc: Show MinIO container logs
+    cmds:
+      - cmd: docker logs -f canopy-minio
+
+  status:
+    desc: Show MinIO status and health
+    cmds:
+      - cmd: |
+          echo "📊 MinIO Status"
+          echo "==============="
+          if docker ps | grep -q canopy-minio; then
+            echo "✅ Container: Running"
+            if docker exec canopy-minio curl -f http://localhost:{{.MINIO_API_PORT}}/minio/health/live &> /dev/null; then
+              echo "✅ Health: OK"
+            else
+              echo "❌ Health: Not responding"
+            fi
+            echo ""
+            echo "📝 Connection Details:"
+            echo "   API Endpoint:    http://localhost:{{.MINIO_API_PORT}}"
+            echo "   Console:         http://localhost:{{.MINIO_CONSOLE_PORT}}"
+            echo "   Access Key:      {{.MINIO_ROOT_USER}}"
+            echo "   Secret Key:      {{.MINIO_ROOT_PASSWORD}}"
+          else
+            echo "❌ Container: Not running"
+            echo "   Run 'task minio:setup' to start"
+          fi
+
+  info:
+    desc: Display MinIO connection information
+    cmds:
+      - cmd: |
+          echo "🎉 MinIO is ready for development!"
+          echo ""
+          echo "📝 Connection Details:"
+          echo "   API Endpoint:    http://localhost:{{.MINIO_API_PORT}}"
+          echo "   Console:         http://localhost:{{.MINIO_CONSOLE_PORT}}"
+          echo "   Access Key:      {{.MINIO_ROOT_USER}}"
+          echo "   Secret Key:      {{.MINIO_ROOT_PASSWORD}}"
+          echo ""
+          echo "🪣 Buckets:"
+          echo "   - {{.BUCKET_LEAVES}}"
+          echo "   - {{.BUCKET_STAGING}}"
+          echo ""
+          echo "🔧 To use MinIO with Canopy:"
+          echo "   1. Set environment variables:"
+          echo "      export R2_ENDPOINT=http://localhost:{{.MINIO_API_PORT}}"
+          echo "      export R2_ACCESS_KEY_ID={{.MINIO_ROOT_USER}}"
+          echo "      export R2_SECRET_ACCESS_KEY={{.MINIO_ROOT_PASSWORD}}"
+          echo ""
+          echo "   2. Start development server with debugging:"
+          echo "      NODE_OPTIONS='--inspect' pnpm dev"
+          echo ""
+          echo "   3. Attach VSCode debugger:"
+          echo "      Select 'Debug Backend (MinIO)' from the debug dropdown"
+          echo ""
+          echo "📊 View MinIO Console at: http://localhost:{{.MINIO_CONSOLE_PORT}}"
+
+  console:
+    desc: Open MinIO console in browser
+    cmds:
+      - cmd: |
+          echo "🌐 Opening MinIO console..."
+          echo "   Username: {{.MINIO_ROOT_USER}}"
+          echo "   Password: {{.MINIO_ROOT_PASSWORD}}"
+          {{if eq OS "darwin"}}open{{else if eq OS "linux"}}xdg-open{{else}}start{{end}} http://localhost:{{.MINIO_CONSOLE_PORT}}
+
+  export-env:
+    desc: Export MinIO environment variables
+    cmds:
+      - cmd: |
+          echo "# Add these to your shell or .env file:"
+          echo "export R2_ENDPOINT=http://localhost:{{.MINIO_API_PORT}}"
+          echo "export R2_ACCESS_KEY_ID={{.MINIO_ROOT_USER}}"
+          echo "export R2_SECRET_ACCESS_KEY={{.MINIO_ROOT_PASSWORD}}"
+          echo "export R2_USE_PATH_STYLE=true"
+
+  test-connection:
+    desc: Test MinIO connection and permissions
+    deps: [check-mc, wait-healthy]
+    cmds:
+      - cmd: |
+          echo "🧪 Testing MinIO connection..."
+          mc alias set local http://localhost:{{.MINIO_API_PORT}} {{.MINIO_ROOT_USER}} {{.MINIO_ROOT_PASSWORD}} 2>/dev/null || true
+
+          # Test bucket operations
+          TEST_BUCKET="test-connection-$(date +%s)"
+          mc mb local/$TEST_BUCKET 2>/dev/null
+          echo "test" | mc pipe local/$TEST_BUCKET/test.txt
+          mc cat local/$TEST_BUCKET/test.txt > /dev/null
+          mc rb --force local/$TEST_BUCKET
+
+          echo "✅ MinIO connection test successful"
+
+  dev:
+    desc: Start MinIO and run development server with debugging
+    deps: [setup]
+    env:
+      R2_ENDPOINT: "http://localhost:{{.MINIO_API_PORT}}"
+      R2_ACCESS_KEY_ID: "{{.MINIO_ROOT_USER}}"
+      R2_SECRET_ACCESS_KEY: "{{.MINIO_ROOT_PASSWORD}}"
+      R2_USE_PATH_STYLE: "true"
+      NODE_OPTIONS: "--inspect"
+    cmds:
+      - cmd: |
+          echo "🚀 Starting development server with MinIO..."
+          cd packages/apps/canopy && pnpm dev

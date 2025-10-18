@@ -35,7 +35,7 @@ export default defineConfig({
 	],
 
 	webServer: {
-		command: 'cd packages/apps/canopy && pnpm dev',
+		command: 'cd packages/apps/canopy && pnpm dev:vite',
 		url: 'http://localhost:5173',
 		reuseExistingServer: !process.env.CI,
 		timeout: 120 * 1000

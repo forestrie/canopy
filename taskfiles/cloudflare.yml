@@ -1,266 +1,67 @@
-version: '3'
+---
+# Cloudflare infrastructure management using Wrangler
+
+version: "3"
 
 vars:
-  TERRAFORM_DIR: './infra/terraform'
-  CANOPY_ID: '{{.CANOPY_ID}}'
-  CANOPY_STATE_ID: '{{.CANOPY_STATE_ID}}'
-  FOREST_PROJECT_ID: '{{.FOREST_PROJECT_ID}}'
-  TF_BUCKET_NAME: '{{.CANOPY_STATE_ID}}-tfstate'
+  CANOPY_ID: '{{.CANOPY_ID | default "canopy-dev-1"}}'
+  R2_BUCKET_NAME: '{{.R2_BUCKET_NAME | default (print .CANOPY_ID "-leaves")}}'
+  QUEUE_NAME: '{{.QUEUE_NAME | default (print .CANOPY_ID "-ranger")}}'
+  QUEUE_DLQ_NAME: '{{.QUEUE_DLQ_NAME | default (print .QUEUE_NAME "-dlq")}}'
 
 tasks:
   tools-check:
-    desc: Check for Terraform and Wrangler CLI
-    silent: true
+    desc: Check for required tools
     cmds:
-      - |
-        echo "Checking Cloudflare tools..."
-        MISSING=""
+      - cmd: |
+          if ! command -v wrangler &> /dev/null; then
+            echo "ERROR: wrangler not found. Install with 'pnpm add -g wrangler'"
+            exit 1
+          fi
 
-        if ! command -v terraform &> /dev/null; then
-          MISSING="${MISSING}  ❌ terraform: Install from https://www.terraform.io/downloads\n"
-        else
-          echo "  ✅ terraform"
-        fi
-
-        if ! command -v wrangler &> /dev/null; then
-          MISSING="${MISSING}  ❌ wrangler: Install with 'pnpm add -g wrangler'\n"
-        fi
-
-        if [ -n "$MISSING" ]; then
-          echo -e "\n⚠️  Missing tools:\n$MISSING"
-          exit 1
-        fi
+  validate:
+    desc: Validate Wrangler is installed and authenticated
+    deps: [tools-check]
+    cmds:
+      - cmd: |
+          if ! wrangler whoami &> /dev/null; then
+            echo "ERROR: Wrangler is not authenticated. Run: wrangler login"
+            exit 1
+          fi
 
   bootstrap:
-    desc: Bootstrap Cloudflare infrastructure (R2, Queues)
-    deps: [tools-check]
-    vars:
-      TF_VAR_canopy_id: '{{.CANOPY_ID}}'
-      TF_VAR_canopy_state_id: '{{.CANOPY_STATE_ID}}'
-      TF_VAR_forest_project_id: '{{.FOREST_PROJECT_ID}}'
+    desc: Create all Cloudflare resources (R2 buckets and queues)
+    deps: [validate]
     cmds:
-      - echo "🚀 Bootstrapping Cloudflare infrastructure for Canopy instance {{.CANOPY_ID}}..."
-      - |
-        cd {{.TERRAFORM_DIR}}
-
-        # Check for API tokens
-        if [ -z "$R2_ADMIN" ]; then
-          echo "❌ R2_ADMIN token not set in .env.secrets"
-          echo "Please set your R2 admin API token and try again."
-          exit 1
-        fi
-
-        if [ -z "$QUEUE_ADMIN" ]; then
-          echo "❌ QUEUE_ADMIN token not set in .env.secrets"
-          echo "Please set your Queue admin API token and try again."
-          exit 1
-        fi
-
-        # Initialize Terraform with local backend
-        echo "📦 Initializing Terraform..."
-        terraform init
-
-        # Plan the bootstrap
-        echo "📋 Planning infrastructure..."
-        terraform plan \
-          -var="r2_admin_token=$R2_ADMIN" \
-          -var="queue_admin_token=$QUEUE_ADMIN" \
-          -var="canopy_id={{.CANOPY_ID}}" \
-          -var="canopy_state_id={{.CANOPY_STATE_ID}}" \
-          -var="forest_project_id={{.FOREST_PROJECT_ID}}" \
-          -out=bootstrap.tfplan
-
-        # Apply the bootstrap
-        echo "🔨 Creating infrastructure..."
-        terraform apply bootstrap.tfplan
-
-        # Save outputs
-        terraform output -json > ../../.terraform-outputs.json
-
-        echo ""
-        echo "✅ Terraform resources created!"
-        echo ""
-        echo "📝 Next steps:"
-        echo "1. Run 'task cloudflare:setup-cors' to configure CORS for R2 bucket"
-        echo "2. Run 'task cloudflare:setup-queue-consumer' for queue consumer setup instructions"
-        echo ""
-        echo "For Terraform state migration:"
-        echo "1. Uncomment the backend configuration in infra/terraform/providers.tf"
-        echo "2. Replace <account-id> with: {{.CLOUDFLARE_ACCOUNT_ID}}"
-        echo "3. Replace \${CANOPY_STATE_ID} with: {{.CANOPY_STATE_ID}}"
-        echo "4. Run 'task cloudflare:migrate-state' to migrate state to R2"
-
-  migrate-state:
-    desc: Migrate Terraform state to R2 backend
-    cmds:
-      - |
-        cd {{.TERRAFORM_DIR}}
-
-        echo "🔄 Migrating Terraform state to R2..."
-
-        # Check if backend is configured
-        if ! grep -q '^[[:space:]]*backend "s3"' providers.tf; then
-          echo "❌ Backend configuration not found in providers.tf"
-          echo "Please uncomment and configure the backend block first."
-          exit 1
-        fi
-
-        # Reinitialize with backend
-        terraform init -migrate-state \
-          -backend-config="access_key=$AWS_ACCESS_KEY_ID" \
-          -backend-config="secret_key=$AWS_SECRET_ACCESS_KEY"
-
-        echo "✅ State migration complete!"
-
-  status:
-    desc: Show current infrastructure status
-    cmds:
-      - |
-        cd {{.TERRAFORM_DIR}}
-
-        echo "📊 Cloudflare Infrastructure Status for Canopy {{.CANOPY_ID}}:"
-        echo "   (Connected to Forest project: {{.FOREST_PROJECT_ID}})"
-        echo ""
-
-        # Check if terraform is initialized
-        if [ ! -d .terraform ]; then
-          echo "⚠️  Terraform not initialized. Run 'task cloudflare:bootstrap' first."
-          exit 1
-        fi
-
-        # Show current resources
-        terraform show -json | jq -r '
-          .values.root_module.resources[] |
-          "  • \(.type): \(.name) [\(.values.id // .values.name)]"
-        ' 2>/dev/null || echo "No resources found. Run 'task cloudflare:bootstrap' to create infrastructure."
-
-        # Show outputs if available
-        if [ -f ../../.terraform-outputs.json ]; then
-          echo ""
-          echo "📤 Outputs:"
-          jq -r 'to_entries[] | "  • \(.key): \(.value.value)"' ../../.terraform-outputs.json
-        fi
-
-  destroy:
-    desc: ⚠️  Destroy all Cloudflare infrastructure (deletes all data!)
-    prompt: This will destroy all Cloudflare infrastructure. Are you sure?
-    cmds:
-      - |
-        cd {{.TERRAFORM_DIR}}
-
-        echo "🗑️  Destroying Cloudflare infrastructure..."
-
-        terraform destroy \
-          -var="r2_admin_token=$R2_ADMIN" \
-          -var="queue_admin_token=$QUEUE_ADMIN" \
-          -var="canopy_id={{.CANOPY_ID}}" \
-          -var="canopy_state_id={{.CANOPY_STATE_ID}}" \
-          -var="forest_project_id={{.FOREST_PROJECT_ID}}" \
-          -auto-approve
-
-        rm -f ../../.terraform-outputs.json
-
-        echo "✅ Infrastructure destroyed"
-
-  plan:
-    desc: Plan infrastructure changes without applying
-    cmds:
-      - |
-        cd {{.TERRAFORM_DIR}}
-        terraform plan \
-          -var="r2_admin_token=$R2_ADMIN" \
-          -var="queue_admin_token=$QUEUE_ADMIN" \
-          -var="canopy_id={{.CANOPY_ID}}" \
-          -var="canopy_state_id={{.CANOPY_STATE_ID}}" \
-          -var="forest_project_id={{.FOREST_PROJECT_ID}}"
+      - cmd: |
+          echo "Creating Cloudflare infrastructure..."
+          wrangler r2 bucket create "{{.R2_BUCKET_NAME}}" --location weur 2>/dev/null || true
+          wrangler queues create "{{.QUEUE_NAME}}" 2>/dev/null || true
+          wrangler queues create "{{.QUEUE_DLQ_NAME}}" 2>/dev/null || true
+          echo "Infrastructure ready"
 
   apply:
-    desc: Apply infrastructure changes
-    cmds:
-      - |
-        cd {{.TERRAFORM_DIR}}
-        terraform apply \
-          -var="r2_admin_token=$R2_ADMIN" \
-          -var="queue_admin_token=$QUEUE_ADMIN" \
-          -var="canopy_id={{.CANOPY_ID}}" \
-          -var="canopy_state_id={{.CANOPY_STATE_ID}}" \
-          -var="forest_project_id={{.FOREST_PROJECT_ID}}" \
-          -auto-approve
-
-  setup-cors:
-    desc: Configure CORS for R2 buckets
-    cmds:
-      - echo "📋 Setting up CORS for R2 bucket {{.CANOPY_ID}}-statements"
-      - echo ""
-      - |
-        if [ -z "$R2_ADMIN" ]; then
-          echo "⚠️  R2_ADMIN token not set. Showing manual instructions..."
-          echo ""
-          echo "Option 1: Via Cloudflare Dashboard"
-          echo "1. Go to Cloudflare Dashboard > R2"
-          echo "2. Select bucket: {{.CANOPY_ID}}-statements"
-          echo "3. Go to Settings > CORS"
-          echo "4. Add CORS rule with:"
-          echo "   - Allowed origins: http://localhost:5173, http://localhost:3000, https://*.vercel.app"
-          echo "   - Allowed methods: GET, HEAD, POST, PUT"
-          echo "   - Allowed headers: *"
-          echo "   - Expose headers: ETag, Content-Type, Content-Length"
-          echo "   - Max age: 3600"
-          echo ""
-          echo "Option 2: Set R2_ADMIN token and run this command again"
-        else
-          echo "Configuring CORS via API..."
-
-          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/{{.CLOUDFLARE_ACCOUNT_ID}}/r2/buckets/{{.CANOPY_ID}}-statements/cors" \
-            -H "Authorization: Bearer $R2_ADMIN" \
-            -H "Content-Type: application/json" \
-            --data '{
-              "cors_rules": [{
-                "allowed_origins": ["http://localhost:5173", "http://localhost:3000", "https://*.vercel.app"],
-                "allowed_methods": ["GET", "HEAD", "POST", "PUT"],
-                "allowed_headers": ["*"],
-                "expose_headers": ["ETag", "Content-Type", "Content-Length"],
-                "max_age_seconds": 3600
-              }]
-            }' \
-            --fail-with-body && echo "✅ CORS configured successfully!" || echo "❌ Failed to configure CORS. Please check your R2_ADMIN token and try again."
-        fi
-
-  setup-queue-consumer:
-    desc: Configure queue consumer (manual step)
-    cmds:
-      - echo "📋 Setting up queue consumer for {{.CANOPY_ID}}-sequencer"
-      - echo ""
-      - echo "⚠️  Queue consumers must be configured via Wrangler CLI or Workers."
-      - echo ""
-      - echo "To add a consumer using Wrangler:"
-      - echo ""
-      - echo "1. Create a Worker that will consume messages:"
-      - echo "   wrangler init sequencer-consumer"
-      - echo ""
-      - echo "2. Add queue consumer binding in wrangler.toml:"
-      - echo "   [[queues.consumers]]"
-      - echo "   queue = \"{{.CANOPY_ID}}-sequencer\""
-      - echo "   max_batch_size = 10"
-      - echo "   max_retries = 3"
-      - echo "   visibility_timeout_ms = 30000"
-      - echo "   dead_letter_queue = \"{{.CANOPY_ID}}-sequencer-dlq\""
-      - echo ""
-      - echo "3. Deploy the worker:"
-      - echo "   wrangler deploy"
-      - echo ""
-      - echo "Note: The external sequencer project will handle the actual consumer implementation."
-
-  post-bootstrap:
-    desc: Complete post-bootstrap setup (CORS and queue consumer)
+    desc: Alias for bootstrap
     deps: [bootstrap]
+
+  status:
+    desc: Show status of all Cloudflare resources
+    deps: [validate]
     cmds:
-      - task: setup-cors
-      - echo ""
-      - echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-      - echo ""
-      - task: setup-queue-consumer
-      - echo ""
-      - echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-      - echo ""
-      - echo "✅ Bootstrap complete! Please complete the manual steps above."
+      - cmd: |
+          echo "R2 Buckets:"
+          wrangler r2 bucket list
+      - cmd: |
+          echo "Queues:"
+          wrangler queues list
+
+  destroy:
+    desc: Delete all Cloudflare resources (DESTRUCTIVE!)
+    deps: [validate]
+    cmds:
+      - cmd: |
+          echo "Destroying Cloudflare infrastructure..."
+          wrangler queues delete "{{.QUEUE_NAME}}" 2>/dev/null || true
+          wrangler queues delete "{{.QUEUE_DLQ_NAME}}" 2>/dev/null || true
+          wrangler r2 bucket delete "{{.R2_BUCKET_NAME}}" 2>/dev/null || echo "Note: Bucket must be empty to delete"
+          echo "Destruction complete"

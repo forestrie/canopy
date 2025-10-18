@@ -7,11 +7,8 @@ const config = {
 
 	kit: {
 		adapter: adapter({
-			// Cloudflare Pages configuration
-			routes: {
-				include: ['/*'],
-				exclude: ['<all>']
-			}
+			// Build for Cloudflare Workers (not Pages)
+			// This will output to .svelte-kit/cloudflare
 		}),
 		// Service worker registration disabled for Cloudflare Workers
 		serviceWorker: {
@@ -19,7 +16,7 @@ const config = {
 		},
 		// CSRF protection
 		csrf: {
-			checkOrigin: true
+			trustedOrigins: ['https://canopy.forestrie.dev']
 		}
 	}
 };

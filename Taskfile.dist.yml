@@ -1,17 +1,17 @@
-version: '3'
+version: "3"
 
-dotenv: ['.env', '.env.secrets']
+dotenv: [".env", ".env.secrets"]
 
 includes:
+  scrapi: ./taskfiles/scrapi.yml
   cloudflare: ./taskfiles/cloudflare.yml
-  build: ./taskfiles/build.yml
-  test: ./taskfiles/test.yml
+  minio: ./taskfiles/minio.yml
+  wrangler: ./taskfiles/wrangler.yml
 
 vars:
   CANOPY_ID: '{{.CANOPY_ID | default "canopy-dev-1"}}'
-  CANOPY_STATE_ID: '{{.CANOPY_STATE_ID | default "canopy-dev-1"}}'
   FOREST_PROJECT_ID: '{{.FOREST_PROJECT_ID | default "forest-dev-1"}}'
-  CLOUDFLARE_ACCOUNT_ID: '{{.CLOUDFLARE_ACCOUNT_ID}}'
+  CLOUDFLARE_ACCOUNT_ID: "{{.CLOUDFLARE_ACCOUNT_ID}}"
 
 tasks:
   default:
@@ -19,69 +19,45 @@ tasks:
     cmds:
       - task --list
 
-  install:
-    desc: Install all dependencies and check required tools
-    cmds:
-      - task: tools:check
-      - pnpm install
-
-  dev:
-    desc: Start development environment
-    deps: [install]
-    cmds:
-      - pnpm dev
-
-  tools:check:
-    desc: Check for required tools (Node, pnpm, Terraform, Wrangler)
-    silent: true
+  test:
+    desc: run all the current tests
     cmds:
       - |
-        echo "Checking required tools..."
+        cd packages/apps/canopy
+        pnpm test:unit
+        pnpm test:scrapi
+        pnpm test:compliance
+
+  tools:check:
+    desc: Check for required tools (Node, pnpm, Wrangler)
+    cmds:
+      - |
         MISSING_TOOLS=""
 
         # Check Node.js
         if ! command -v node &> /dev/null; then
-          MISSING_TOOLS="${MISSING_TOOLS}  ❌ Node.js: Install from https://nodejs.org/\n"
-        else
-          echo "  ✅ Node.js: $(node --version)"
+          MISSING_TOOLS="${MISSING_TOOLS}  Node.js: Install from https://nodejs.org/\n"
         fi
 
         # Check pnpm
         if ! command -v pnpm &> /dev/null; then
-          MISSING_TOOLS="${MISSING_TOOLS}  ❌ pnpm: Install with 'npm install -g pnpm' or from https://pnpm.io/\n"
-        else
-          echo "  ✅ pnpm: $(pnpm --version)"
-        fi
-
-        # Check Terraform
-        if ! command -v terraform &> /dev/null; then
-          MISSING_TOOLS="${MISSING_TOOLS}  ❌ Terraform: Install from https://www.terraform.io/downloads\n"
-        else
-          echo "  ✅ Terraform: $(terraform version -json | jq -r .terraform_version 2>/dev/null || terraform --version | head -1)"
+          MISSING_TOOLS="${MISSING_TOOLS}  pnpm: Install with 'npm install -g pnpm' or from https://pnpm.io/\n"
         fi
 
         # Check Wrangler (Cloudflare CLI)
         if ! command -v wrangler &> /dev/null; then
-          MISSING_TOOLS="${MISSING_TOOLS}  ❌ Wrangler: Install with 'pnpm add -g wrangler'\n"
-        else
-          echo "  ✅ Wrangler: $(wrangler --version | cut -d' ' -f2)"
+          MISSING_TOOLS="${MISSING_TOOLS}  Wrangler: Install with 'pnpm add -g wrangler'\n"
         fi
 
         # Check Playwright (for e2e tests)
-        if ! npx playwright --version &> /dev/null; then
-          MISSING_TOOLS="${MISSING_TOOLS}  ❌ Playwright: Will be installed with 'pnpm install'\n"
-        else
-          echo "  ✅ Playwright: $(npx playwright --version)"
+        if ! npx playwright --version &> /dev/null 2>&1; then
+          MISSING_TOOLS="${MISSING_TOOLS}  Playwright: Will be installed with 'pnpm install'\n"
         fi
 
         if [ -n "$MISSING_TOOLS" ]; then
-          echo ""
-          echo "⚠️  Missing tools detected:"
+          echo "Missing tools detected:"
           echo -e "$MISSING_TOOLS"
-          echo ""
           echo "Please install the missing tools before proceeding."
           exit 1
-        else
-          echo ""
-          echo "✨ All required tools are installed!"
         fi
+

@@ -16,9 +16,6 @@ declare global {
 				CANOPY_ID: string;
 				FOREST_PROJECT_ID: string;  // External forest project reference
 
-				// Resource names
-				R2_BUCKET_NAME: string;
-				QUEUE_NAME: string;
 				API_KEY_SECRET?: string;
 
 				// R2 API tokens (R2_WRITER used by app for read/write operations)
@@ -26,7 +23,6 @@ declare global {
 
 				// Cloudflare bindings
 				R2: R2Bucket;
-				QUEUE: Queue;
 
 				// Additional env vars
 				NODE_ENV: string;
@@ -42,4 +38,5 @@ declare global {
 	}
 }
 
-export {};
+export { };
+

@@ -1,0 +1,151 @@
+version: "3"
+
+tasks:
+  workerd:status:
+    desc: Check status of workerd and wrangler processes
+    cmds:
+      - |
+        echo "Checking workerd and wrangler processes..."
+        echo ""
+
+        # Count actual workerd and wrangler processes (exclude task command itself)
+        WORKERD_COUNT=$(ps aux | grep -E "workerd-darwin-arm64/bin/workerd" | grep -v grep | wc -l | tr -d ' ')
+        WRANGLER_COUNT=$(ps aux | grep -E "wrangler/wrangler-dist/cli.js|wrangler/bin/wrangler.js" | grep -v grep | wc -l | tr -d ' ')
+
+        if [ "$WORKERD_COUNT" -eq 0 ] && [ "$WRANGLER_COUNT" -eq 0 ]; then
+          echo "No workerd or wrangler processes running"
+        else
+          echo "Process Summary:"
+          echo "  - Workerd processes: $WORKERD_COUNT"
+          echo "  - Wrangler processes: $WRANGLER_COUNT"
+          echo ""
+
+          if [ "$WORKERD_COUNT" -gt 0 ] || [ "$WRANGLER_COUNT" -gt 0 ]; then
+            echo "Detailed process list:"
+            echo ""
+            ps aux | grep -E "wrangler|workerd" | grep -v grep | awk '{print $2, $11, $12, $13, $14, $15}'
+          fi
+        fi
+
+        # Check if inspector port is in use
+        echo ""
+        echo "Checking inspector port 9229..."
+        if lsof -i :9229 > /dev/null 2>&1; then
+          echo "Inspector port 9229 is active:"
+          lsof -i :9229 | grep LISTEN
+        else
+          echo "Inspector port 9229 is not in use"
+        fi
+
+        # Check if dev server port is in use
+        echo ""
+        echo "Checking dev server port 8788..."
+        if lsof -i :8788 > /dev/null 2>&1; then
+          echo "Dev server port 8788 is active:"
+          lsof -i :8788 | grep LISTEN
+        else
+          echo "Dev server port 8788 is not in use"
+        fi
+    silent: false
+
+  workerd:kill:
+    desc: Kill all workerd and wrangler processes
+    cmds:
+      - |
+        echo "Cleaning up workerd and wrangler processes..."
+
+        # Count processes before killing (exclude task command itself)
+        BEFORE_WORKERD=$(ps aux | grep -E "workerd-darwin-arm64/bin/workerd" | grep -v grep | wc -l | tr -d ' ')
+        BEFORE_WRANGLER=$(ps aux | grep -E "wrangler/wrangler-dist/cli.js|wrangler/bin/wrangler.js" | grep -v grep | wc -l | tr -d ' ')
+
+        if [ "$BEFORE_WORKERD" -eq 0 ] && [ "$BEFORE_WRANGLER" -eq 0 ]; then
+          echo "No processes to clean up"
+          exit 0
+        fi
+
+        echo "Found $BEFORE_WORKERD workerd and $BEFORE_WRANGLER wrangler processes"
+
+        # Kill processes gracefully first
+        echo "Attempting graceful shutdown..."
+        pkill -TERM -f workerd 2>/dev/null || true
+        pkill -TERM -f wrangler 2>/dev/null || true
+
+        # Wait a moment for graceful shutdown
+        sleep 2
+
+        # Check if any remain (exclude task command itself)
+        REMAINING_WORKERD=$(ps aux | grep -E "workerd-darwin-arm64/bin/workerd" | grep -v grep | wc -l | tr -d ' ')
+        REMAINING_WRANGLER=$(ps aux | grep -E "wrangler/wrangler-dist/cli.js|wrangler/bin/wrangler.js" | grep -v grep | wc -l | tr -d ' ')
+
+        if [ "$REMAINING_WORKERD" -gt 0 ] || [ "$REMAINING_WRANGLER" -gt 0 ]; then
+          echo "Some processes didn't stop gracefully. Force killing..."
+          pkill -9 -f workerd 2>/dev/null || true
+          pkill -9 -f wrangler 2>/dev/null || true
+          sleep 1
+        fi
+
+        # Final check (exclude task command itself)
+        AFTER_WORKERD=$(ps aux | grep -E "workerd-darwin-arm64/bin/workerd" | grep -v grep | wc -l | tr -d ' ')
+        AFTER_WRANGLER=$(ps aux | grep -E "wrangler/wrangler-dist/cli.js|wrangler/bin/wrangler.js" | grep -v grep | wc -l | tr -d ' ')
+
+        if [ "$AFTER_WORKERD" -eq 0 ] && [ "$AFTER_WRANGLER" -eq 0 ]; then
+          echo "Successfully killed all processes"
+          echo "   Cleaned up: $BEFORE_WORKERD workerd + $BEFORE_WRANGLER wrangler processes"
+        else
+          echo "Failed to kill some processes:"
+          echo "   Remaining: $AFTER_WORKERD workerd + $AFTER_WRANGLER wrangler processes"
+          ps aux | grep -E "wrangler|workerd" | grep -v grep
+          exit 1
+        fi
+
+        # Clean up temp files
+        echo "Cleaning up temp files..."
+        rm -rf packages/apps/canopy/.wrangler/tmp/* 2>/dev/null || true
+
+        echo "Cleanup complete!"
+    silent: false
+
+  workerd:restart:
+    desc: Kill all processes and start fresh dev server
+    deps:
+      - workerd:kill
+    cmds:
+      - |
+        echo "Starting fresh dev server..."
+        cd packages/apps/canopy && pnpm dev
+
+  dev:
+    desc: Start Canopy dev server with Wrangler
+    dir: packages/apps/canopy
+    cmds:
+      - pnpm dev
+
+  dev:debug:
+    desc: Start Canopy dev server with debugging enabled
+    dir: packages/apps/canopy
+    cmds:
+      - |
+        echo "Starting dev server with debugging on port 9229..."
+        echo "To attach debugger in VSCode:"
+        echo "   1. Open Debug panel (Cmd+Shift+D)"
+        echo "   2. Select 'Attach to Workerd'"
+        echo "   3. Press F5"
+        pnpm dev
+
+  dev:check:
+    desc: Check if dev server is running and healthy
+    cmds:
+      - |
+        echo "Checking dev server health..."
+        if curl -s http://localhost:8788/api/health > /dev/null 2>&1; then
+          echo "Dev server is running and healthy!"
+          echo ""
+          echo "Server info:"
+          curl -s http://localhost:8788/api/health | jq '.'
+        else
+          echo "Dev server is not responding on http://localhost:8788"
+          echo ""
+          echo "Try running: task wrangler:dev"
+        fi
+    silent: false
+
