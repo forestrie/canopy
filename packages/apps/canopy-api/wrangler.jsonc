@@ -21,5 +21,22 @@
   },
   "observability": {
     "enabled": true
+  },
+  "env": {
+    "production": {
+      "name": "canopy-api-production",
+      "vars": {
+        "CANOPY_ID": "canopy-prod-1",
+        "FOREST_PROJECT_ID": "forest-prod-1",
+        "API_VERSION": "v1",
+        "NODE_ENV": "production"
+      },
+      "r2_buckets": [
+        {
+          "binding": "R2",
+          "bucket_name": "canopy-prod-1-leaves"
+        }
+      ]
+    }
   }
 }

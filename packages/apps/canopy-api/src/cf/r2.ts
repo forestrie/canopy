@@ -55,7 +55,7 @@ export async function storeLeaf(
   let result;
   try {
 
-    result = await bucket.put(path, uint8Content as unknown as BodyInit, {
+    result = await bucket.put(path, uint8Content, {
       httpMetadata: {
         contentType,
         cacheControl: 'public, max-age=31536000, immutable' // Content-addressed, can cache forever
