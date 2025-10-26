@@ -6,7 +6,6 @@
  * - Completed registrations: /entries/00000000
  */
 
-import type { R2Bucket } from '@cloudflare/workers-types';
 import { ClientErrors } from './problem-details';
 import { cborResponse, seeOtherResponse } from './cbor-response';
 import { CBOR_CONTENT_TYPES } from './cbor-content-types';

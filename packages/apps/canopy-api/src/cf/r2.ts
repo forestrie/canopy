@@ -1,7 +1,6 @@
 /**
  * R2 Storage utilities for SCITT/SCRAPI statements
  */
-import type { R2Bucket, R2Object } from '@cloudflare/workers-types';
 import SparkMD5 from 'spark-md5';
 
 export interface LeafObjectMetadata {

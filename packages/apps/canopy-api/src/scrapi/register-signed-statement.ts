@@ -2,7 +2,6 @@
  * Register Signed Statement operation for SCRAPI
  */
 
-import type { R2Bucket } from '@cloudflare/workers-types';
 import { getLowerBoundMMRIndex } from './mmr-mock';
 import { storeLeaf } from '../cf/r2';
 import { CBOR_CONTENT_TYPES } from './cbor-content-types';

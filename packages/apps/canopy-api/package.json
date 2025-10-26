@@ -21,7 +21,6 @@
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.9.13",
-    "@cloudflare/workers-types": "^4.20241127.0",
     "@types/spark-md5": "^3.0.5",
     "@types/uuid": "^10.0.0",
     "typescript": "^5.9.2",
