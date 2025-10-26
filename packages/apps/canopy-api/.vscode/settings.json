@@ -1,0 +1,3 @@
+  {
+    "vitest.cliArguments": "--inspect=9229 --no-file-parallelism"
+  }

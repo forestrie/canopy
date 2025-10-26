@@ -4,7 +4,7 @@ dotenv: [".env", ".env.secrets"]
 
 includes:
   scrapi: ./taskfiles/scrapi.yml
-  cloudflare: ./taskfiles/cloudflare.yml
+  cf: ./taskfiles/cloudflare.yml
   minio: ./taskfiles/minio.yml
   wrangler: ./taskfiles/wrangler.yml
 
@@ -60,4 +60,3 @@ tasks:
           echo "Please install the missing tools before proceeding."
           exit 1
         fi
-

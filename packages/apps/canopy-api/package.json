@@ -1,0 +1,27 @@
+{
+  "name": "@canopy/api",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest --run",
+    "test:debug": "vitest --inspect --no-file-parallelism"
+  },
+  "dependencies": {
+    "cbor-x": "^1.5.9",
+    "cose-js": "^0.9.0",
+    "spark-md5": "^3.0.2",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.9.13",
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "@types/spark-md5": "^3.0.5",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.43.0"
+  }
+}

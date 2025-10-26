@@ -60,8 +60,5 @@ tasks:
     deps: [validate]
     cmds:
       - cmd: |
-          echo "Destroying Cloudflare infrastructure..."
-          wrangler queues delete "{{.QUEUE_NAME}}" 2>/dev/null || true
-          wrangler queues delete "{{.QUEUE_DLQ_NAME}}" 2>/dev/null || true
           wrangler r2 bucket delete "{{.R2_BUCKET_NAME}}" 2>/dev/null || echo "Note: Bucket must be empty to delete"
           echo "Destruction complete"

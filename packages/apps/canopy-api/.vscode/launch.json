@@ -1,0 +1,33 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Run Vitest with Inspector",
+      "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
+      "args": ["--inspect=9229", "--no-file-parallelism"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "name": "Attach to Workers Runtime",
+      "type": "node",
+      "request": "attach",
+      "port": 9229,
+      "skipFiles": ["<node_internals>/**"],
+      "sourceMaps": true,
+      "resolveSourceMapLocations": null,
+      "attachExistingChildren": false,
+      "autoAttachChildProcesses": false
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Debug Workers Tests",
+      "configurations": ["Run Vitest with Inspector", "Attach to Workers Runtime"],
+      "stopAll": true
+    }
+  ]
+}

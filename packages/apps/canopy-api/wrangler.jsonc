@@ -1,0 +1,25 @@
+{
+  "name": "canopy-api",
+  "main": "./src/index.ts",
+  "compatibility_date": "2024-10-01",
+  "compatibility_flags": ["nodejs_compat_v2"],
+  "vars": {
+    "CANOPY_ID": "canopy-dev-1",
+    "FOREST_PROJECT_ID": "forest-dev-1",
+    "API_VERSION": "v1",
+    "NODE_ENV": "development"
+  },
+  "r2_buckets": [
+    {
+      "binding": "R2",
+      "bucket_name": "canopy-dev-1-leaves"
+    }
+  ],
+  "dev": {
+    "port": 8789,
+    "local_protocol": "http"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
