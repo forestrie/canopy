@@ -10,6 +10,7 @@
 This is a Cloudflare Workers API implementation (`packages/apps/canopy-api`) within a pnpm monorepo. It implements the SCITT SCRAPI specification for transparency log operations.
 
 **Key Technologies**:
+
 - Cloudflare Workers (native, no SvelteKit)
 - TypeScript with generated runtime types (migrated from `@cloudflare/workers-types`)
 - Vitest with `@cloudflare/vitest-pool-workers` for testing
@@ -25,6 +26,7 @@ This is a Cloudflare Workers API implementation (`packages/apps/canopy-api`) wit
 **Problem**: Breakpoints worked when running tests via `launch.json` but not from VS Code Test Explorer.
 
 **Solution**: Added to `.vscode/settings.json`:
+
 ```json
 {
   "vitest.commandLine": "npx vitest --inspect-brk=9229 --no-file-parallelism",
@@ -33,6 +35,7 @@ This is a Cloudflare Workers API implementation (`packages/apps/canopy-api`) wit
 ```
 
 **Updated `vitest.config.ts`** with:
+
 ```typescript
 inspector: {
   enabled: true,
@@ -55,12 +58,14 @@ poolOptions: {
 **Changes Made**:
 
 #### a) Register Signed Statement (`src/scrapi/register-signed-statement.ts`)
+
 - Now returns **303 See Other** instead of 202 Accepted
 - Location header format: `{origin}{pathname}/{fenceIndex}/{etag}`
   - In-progress: `/logs/{logId}/entries/00000000/{md5hash}`
 - Includes `Retry-After: 5` header
 
 #### b) Resolve Receipt (`src/scrapi/resolve-receipt.ts`)
+
 - New endpoint implementation for GET `/logs/{logId}/entries/{entryId}`
 - Parses operation IDs to distinguish:
   - **Completed**: `/entries/00000000` (just fenceIndex)
@@ -74,17 +79,20 @@ poolOptions: {
   - Redirecting to permanent URL when complete
 
 #### c) Operations Helper Functions (`src/scrapi/operations.ts`)
+
 - `parseEntry(entryPath)` - Parses fence index and etag from paths
 - `parseEntrySegments(segments)` - Internal parser for path segments
 - `isCompletedEntry(entryPath)` - Checks if entry is completed (no etag suffix)
 
 #### d) Updated Routing (`src/index.ts`)
+
 - Separated POST and GET routes:
   - `POST /logs/{logId}/entries` → `registerSignedStatement()`
   - `GET /logs/{logId}/entries/{entryId}` → `resolveReceipt()`
 - Fixed import paths (using `cbor-response.ts`, not `cborresponse.ts`)
 
 #### e) Added Response Helper (`src/scrapi/cbor-response.ts`)
+
 - `seeOtherResponse(location, retryAfter?)` - Returns 303 See Other responses per SCRAPI spec
 
 ### 3. Fixed Build System for Cloudflare Deployment
@@ -94,9 +102,11 @@ poolOptions: {
 **Solutions Applied**:
 
 #### a) Removed `@cloudflare/workers-types` Dependency
+
 ```bash
 pnpm remove @cloudflare/workers-types
 ```
+
 - Migrated to Wrangler-generated runtime types (`worker-configuration.d.ts`)
 - Removed imports from `@cloudflare/workers-types` in:
   - `src/cf/r2.ts`
@@ -105,7 +115,9 @@ pnpm remove @cloudflare/workers-types
 - Types like `R2Bucket`, `R2Object` are now globally available
 
 #### b) Fixed R2 Type Error
+
 **File**: `src/cf/r2.ts:58`
+
 ```typescript
 // Before (incorrect):
 result = await bucket.put(path, uint8Content as unknown as BodyInit, { ... });
@@ -113,24 +125,29 @@ result = await bucket.put(path, uint8Content as unknown as BodyInit, { ... });
 // After (correct):
 result = await bucket.put(path, uint8Content, { ... });
 ```
+
 `Uint8Array` is directly compatible with R2's put method.
 
 #### c) Fixed Test Environment Types
-**Created**: `test/env.d.ts`
-```typescript
-import type { Env } from '../src/index';
 
-declare module 'cloudflare:test' {
+**Created**: `test/env.d.ts`
+
+```typescript
+import type { Env } from "../src/index";
+
+declare module "cloudflare:test" {
   interface ProvidedEnv extends Env {}
 }
 ```
+
 This provides types for `import { env } from 'cloudflare:test'` in test files.
 
 #### d) Updated `tsconfig.json`
+
 ```json
 {
   "compilerOptions": {
-    "types": ["@cloudflare/vitest-pool-workers"], // Removed @cloudflare/workers-types
+    "types": ["@cloudflare/vitest-pool-workers"] // Removed @cloudflare/workers-types
     // ...
   },
   "include": ["src/**/*", "test/**/*", "worker-configuration.d.ts"]
@@ -144,17 +161,20 @@ This provides types for `import { env } from 'cloudflare:test'` in test files.
 **Changes Made**:
 
 #### a) Queue Producer Binding (`wrangler.jsonc`)
+
 - Added queue producer binding for both dev and production environments
 - Development: `canopy-dev-1-ranger`
 - Production: `canopy-prod-1-ranger`
 - Binding name: `RANGER_QUEUE`
 
 #### b) Queue Message Schema (`src/scrapi/queue-message.ts`)
+
 - Created `LeafRegistrationMessage` interface defining message structure:
   - `logId`, `fenceIndex`, `path`, `hash`, `etag`, `timestamp`, `canopyId`, `forestProjectId`
 - Helper function `createLeafRegistrationMessage()` for message construction
 
 #### c) Integrated Queue Sending (`src/scrapi/register-signed-statement.ts`)
+
 - After successful R2 storage, sends message to `RANGER_QUEUE`
 - Queue send is non-blocking and failure-tolerant:
   - Logs errors but doesn't fail registration (statement already in R2)
@@ -162,16 +182,19 @@ This provides types for `import { env } from 'cloudflare:test'` in test files.
 - Updated function signature to accept `Queue` binding and environment IDs
 
 #### d) Updated Worker Environment (`src/index.ts`)
+
 - Added `RANGER_QUEUE: Queue` to `Env` interface
 - Passes queue binding and environment variables to registration handler
 
 #### e) Security Hardening
+
 - **Queue creation**: Managed in Canopy infrastructure (CI/CD only)
 - **Queue send**: Uses Worker binding (no token needed, built-in security)
 - **Queue consumption**: Ranger uses minimal `QUEUE_CONSUMER` token (read-only)
 - Documentation updated in `docs/CLOUDFLARE_TOKENS.md` with token guidance
 
 **Security Model**:
+
 - ✅ Ranger has minimal permissions (consumer-only token)
 - ✅ Canopy Worker uses binding (no runtime tokens)
 - ✅ `QUEUE_ADMIN` token only in CI/CD (not in runtime)
@@ -184,9 +207,11 @@ This provides types for `import { env } from 'cloudflare:test'` in test files.
 
 **Solution**:
 Update Cloudflare project settings:
+
 - **Deploy command**: Change from `pnpm deploy` to `pnpm exec wrangler deploy` or just `wrangler deploy`
 
 **Worker Configuration** (`wrangler.jsonc`):
+
 ```json
 {
   "name": "canopy-api",
@@ -195,7 +220,7 @@ Update Cloudflare project settings:
   "compatibility_flags": ["nodejs_compat_v2"],
   "env": {
     "production": {
-      "name": "canopy-api-production",
+      "name": "canopy-api-production"
       // ... production config
     }
   }
@@ -203,6 +228,7 @@ Update Cloudflare project settings:
 ```
 
 **Build Scripts** (`package.json`):
+
 ```json
 {
   "scripts": {
@@ -223,6 +249,7 @@ Update Cloudflare project settings:
 ## Current Project State
 
 ### ✅ Working
+
 - Local development: `pnpm dev`
 - Type checking: `pnpm typecheck`
 - Testing: `pnpm test` (with debugger support in VS Code)
@@ -232,6 +259,7 @@ Update Cloudflare project settings:
 ### 🚧 TODO Items in Code
 
 **High Priority** (marked with TODO comments):
+
 1. **Queue Error Handling** (`src/scrapi/register-signed-statement.ts:113`)
    - Consider implementing retry mechanism for queue send failures
    - Add dead-letter queue configuration
@@ -251,6 +279,7 @@ Update Cloudflare project settings:
    - Verify entry exists before returning receipt
 
 ### ⚠️ Known Issues
+
 - Build warning about multiple environments - recommend using `--env=""` flag for default environment
 - Wrangler version is 4.43.0 (update available: 4.45.0) - consider upgrading
 
@@ -357,12 +386,14 @@ pnpm wrangler types          # Regenerate runtime types (run after wrangler.json
 ## Environment Configuration
 
 **Development** (`wrangler.jsonc` default):
+
 - Worker: `canopy-api`
 - R2 Bucket: `canopy-dev-1-leaves`
 - Queue: `canopy-dev-1-ranger` (producer binding: `RANGER_QUEUE`)
 - Variables: `CANOPY_ID=canopy-dev-1`, `FOREST_PROJECT_ID=forest-dev-1`
 
 **Production** (`--env production`):
+
 - Worker: `canopy-api-production`
 - R2 Bucket: `canopy-prod-1-leaves`
 - Queue: `canopy-prod-1-ranger` (producer binding: `RANGER_QUEUE`)
@@ -381,6 +412,7 @@ pnpm wrangler types          # Regenerate runtime types (run after wrangler.json
 ---
 
 **Session completed successfully** - Queue integration implemented with security hardening. Ready for deployment once:
+
 1. Cloudflare queues are created (`task cloudflare:bootstrap`)
 2. `QUEUE_CONSUMER` token created and shared with Arbor/Ranger
 3. CI config updated

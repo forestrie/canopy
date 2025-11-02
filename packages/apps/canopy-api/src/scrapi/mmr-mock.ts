@@ -4,9 +4,9 @@
  */
 
 export interface MMRIndexResponse {
-	fenceIndex: number;
-	massifHeight: number;
-	timestamp: number;
+  fenceIndex: number;
+  massifHeight: number;
+  timestamp: number;
 }
 
 /**
@@ -20,17 +20,17 @@ export interface MMRIndexResponse {
  * @returns The current fence MMR index
  */
 export async function getFenceMMRIndex(
-	logId: string,
-	serviceEndpoint?: string
+  logId: string,
+  serviceEndpoint?: string,
 ): Promise<MMRIndexResponse> {
-	// Mock implementation - always returns 0
-	console.log(`[MMR Mock] Returning fence index 0 for log ${logId}`);
+  // Mock implementation - always returns 0
+  console.log(`[MMR Mock] Returning fence index 0 for log ${logId}`);
 
-	return {
-		fenceIndex: 0,
-		massifHeight: 0,
-		timestamp: Date.now()
-	};
+  return {
+    fenceIndex: 0,
+    massifHeight: 0,
+    timestamp: Date.now(),
+  };
 }
 
 /**
@@ -41,6 +41,6 @@ export async function getFenceMMRIndex(
  * @returns The lower bound MMR index
  */
 export async function getLowerBoundMMRIndex(logId: string): Promise<number> {
-	const response = await getFenceMMRIndex(logId);
-	return response.fenceIndex;
+  const response = await getFenceMMRIndex(logId);
+  return response.fenceIndex;
 }

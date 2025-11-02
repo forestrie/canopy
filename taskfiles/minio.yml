@@ -131,7 +131,7 @@ tasks:
     desc: List objects in a bucket
     deps: [check-mc]
     vars:
-      BUCKET: '{{.BUCKET | default .BUCKET_LEAVES}}'
+      BUCKET: "{{.BUCKET | default .BUCKET_LEAVES}}"
     cmds:
       - cmd: |
           mc alias set local http://localhost:{{.MINIO_API_PORT}} {{.MINIO_ROOT_USER}} {{.MINIO_ROOT_PASSWORD}} 2>/dev/null || true

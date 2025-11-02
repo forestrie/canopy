@@ -37,11 +37,18 @@ export interface TransparencyConfiguration {
  * Default configuration values
  */
 const DEFAULT_CONFIG = {
-  scrapiVersion: 'draft-ietf-scitt-scrapi-05',
-  supportedHashAlgorithms: ['sha-256', 'sha-384', 'sha-512'],
-  supportedSignatureAlgorithms: ['ES256', 'ES384', 'ES512', 'RS256', 'RS384', 'RS512'],
+  scrapiVersion: "draft-ietf-scitt-scrapi-05",
+  supportedHashAlgorithms: ["sha-256", "sha-384", "sha-512"],
+  supportedSignatureAlgorithms: [
+    "ES256",
+    "ES384",
+    "ES512",
+    "RS256",
+    "RS384",
+    "RS512",
+  ],
   maxStatementSize: 4 * 1024 * 1024, // 10MB
-  maxEntriesPerPage: 100
+  maxEntriesPerPage: 100,
 } as const;
 
 /**
@@ -54,17 +61,19 @@ export function getTransparencyConfiguration(
     name?: string;
     description?: string;
     contact?: string;
-  }
+  },
 ): TransparencyConfiguration {
   return {
     serviceId,
     scrapiVersion: DEFAULT_CONFIG.scrapiVersion,
     supportedHashAlgorithms: [...DEFAULT_CONFIG.supportedHashAlgorithms],
-    supportedSignatureAlgorithms: [...DEFAULT_CONFIG.supportedSignatureAlgorithms],
+    supportedSignatureAlgorithms: [
+      ...DEFAULT_CONFIG.supportedSignatureAlgorithms,
+    ],
     maxStatementSize: DEFAULT_CONFIG.maxStatementSize,
     maxEntriesPerPage: DEFAULT_CONFIG.maxEntriesPerPage,
     baseUrl,
-    metadata
+    metadata,
   };
 }
 
@@ -72,14 +81,18 @@ export function getTransparencyConfiguration(
  * Validate if a hash algorithm is supported
  */
 export function isHashAlgorithmSupported(algorithm: string): boolean {
-  return DEFAULT_CONFIG.supportedHashAlgorithms.includes(algorithm.toLowerCase() as any);
+  return DEFAULT_CONFIG.supportedHashAlgorithms.includes(
+    algorithm.toLowerCase() as any,
+  );
 }
 
 /**
  * Validate if a signature algorithm is supported
  */
 export function isSignatureAlgorithmSupported(algorithm: string): boolean {
-  return DEFAULT_CONFIG.supportedSignatureAlgorithms.includes(algorithm.toUpperCase() as any);
+  return DEFAULT_CONFIG.supportedSignatureAlgorithms.includes(
+    algorithm.toUpperCase() as any,
+  );
 }
 
 /**

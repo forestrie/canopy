@@ -1,6 +1,6 @@
 # Canopy - SCITT/SCRAPI Transparency Log
 
-Canopy provides a front end and  API surface for a SCITT/SCRAPI personality transparency log.
+Canopy provides a front end and API surface for a SCITT/SCRAPI personality transparency log.
 
 - The api is built using cloudflare workers
 - The frontend management console and user portals are built using sveltekit
@@ -8,6 +8,7 @@ Canopy provides a front end and  API surface for a SCITT/SCRAPI personality tran
 ## Prerequisites
 
 Required tools:
+
 - Node.js 18+
 - pnpm 8+
 - Wrangler CLI (Cloudflare)
@@ -40,6 +41,7 @@ task cloudflare:bootstrap
 Note: Queue consumers must be configured by the external sequencer project that will process messages from the queue.
 
 For detailed infrastructure management:
+
 ```bash
 task cloudflare:status --summary
 ```
@@ -52,6 +54,7 @@ The project uses a two-file environment configuration:
 - `.env.secrets` - Sensitive credentials (git-ignored)
 
 Key variables:
+
 - `CANOPY_ID` - Canopy instance identifier for resource naming
 - `FOREST_PROJECT_ID` - External Forest project reference for integration
 - `CLOUDFLARE_ACCOUNT_ID` - Cloudflare account ID

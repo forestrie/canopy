@@ -9,6 +9,7 @@ This document outlines the plan to replace the explicit queue message sending wi
 ## Current Architecture
 
 Currently, the flow is:
+
 1. Client POSTs statement to `/logs/{logId}/entries`
 2. Canopy Worker:
    - Validates and stores statement in R2 (`storeLeaf()`)
@@ -17,6 +18,7 @@ Currently, the flow is:
 3. Ranger service pulls messages from queue and processes them
 
 **Current Message Format** (`LeafRegistrationMessage`):
+
 ```typescript
 {
   logId: string;
@@ -33,6 +35,7 @@ Currently, the flow is:
 ## Proposed Architecture (Option A - Direct Consumption)
 
 With R2 notifications enabled:
+
 1. Client POSTs statement to `/logs/{logId}/entries`
 2. Canopy Worker:
    - Validates and stores statement in R2 (`storeLeaf()`)
@@ -44,6 +47,7 @@ With R2 notifications enabled:
 ## R2 Notification Message Format
 
 Based on Cloudflare documentation, R2 event notifications to queues include:
+
 ```json
 {
   "account": "your-account-id",
@@ -59,6 +63,7 @@ Based on Cloudflare documentation, R2 event notifications to queues include:
 ```
 
 **Key Points:**
+
 - `object.key` contains the full path: `logs/{logId}/leaves/{fenceIndex}/{hash}`
 - `object.eTag` is the R2-provided ETag (currently MD5, but we'll switch to SHA256)
 - `object.size` is the object size in bytes
@@ -68,6 +73,7 @@ Based on Cloudflare documentation, R2 event notifications to queues include:
 ## Chosen Approach: Option A (Direct Consumption)
 
 **Rationale:**
+
 - Green field deployment allows for clean implementation
 - Simpler architecture (no transformation layer)
 - Lower latency (direct path from R2 → Queue → Ranger)
@@ -79,6 +85,7 @@ Based on Cloudflare documentation, R2 event notifications to queues include:
 #### Step 1: Switch from MD5 to SHA256 Hash
 
 **Rationale:**
+
 - SHA256 is cryptographically stronger (though MD5 is only used for content addressing, not security)
 - Better alignment with transparency log practices (SHA256 is standard)
 - The configured hash algorithm for the log will be the content hash used for the path
@@ -102,11 +109,13 @@ Based on Cloudflare documentation, R2 event notifications to queues include:
    - Path format: `logs/{logId}/leaves/{fenceIndex}/{sha256hash}`
 
 **Architectural Decision:**
+
 - Hash in path is the source of truth
 - Ranger trusts the hash in the path, or can read the object and compute SHA256 to verify
 - No redundancy - simpler, more maintainable
 
 **Performance Consideration:**
+
 - SHA256 calculation: ~same performance as MD5 in Workers (both use Web Crypto API)
 - Path length: 64 chars vs 32 chars - negligible impact
 
@@ -122,6 +131,7 @@ The R2 event notifications are automatically configured when running:
 - **Local Taskfile**: `task cloudflare:bootstrap`
 
 Both methods will:
+
 1. Create the R2 bucket (if it doesn't exist)
 2. Create the queue (if it doesn't exist)
 3. **Automatically configure R2 event notifications** from bucket to queue
@@ -167,6 +177,7 @@ wrangler r2 bucket notification list canopy-dev-1-leaves
 **Changes Required in `arbor/services/ranger/consumer.go`:**
 
 1. Define R2 notification message structure:
+
 ```go
 // R2Notification represents the message format from R2 event notifications
 type R2Notification struct {
@@ -204,6 +215,7 @@ type R2Object struct {
 Since the R2 bucket is content-addressed and contains public transparency data, we'll start with a public bucket.
 
 **Public R2 Bucket Approach:**
+
 - Make R2 bucket publicly readable
 - Ranger reads directly via public URLs
 - Format: `https://<account-id>.r2.cloudflarestorage.com/<bucket-name>/<object-key>`
@@ -213,6 +225,7 @@ Since the R2 bucket is content-addressed and contains public transparency data, 
 **Cost Assessment for Public Bucket Abuse:**
 
 **R2 Egress Pricing (as of 2024):**
+
 - First 10 GB per month: **FREE** (included in R2 storage plan)
 - Additional egress: **$0.09 per GB**
 - Storage: **$0.015 per GB/month**
@@ -233,7 +246,7 @@ Since the R2 bucket is content-addressed and contains public transparency data, 
 3. **Repeated Requests (DDoS-style):**
    - Attacker requests same object repeatedly: 1 million reads
    - Class B operations: 1M × $0.36/M = **$0.36**
-   - **Mitigation**: 
+   - **Mitigation**:
      - Cloudflare CDN can cache objects (immutable cache headers)
      - Rate limiting at Cloudflare level
      - CORS restrictions if needed
@@ -241,13 +254,14 @@ Since the R2 bucket is content-addressed and contains public transparency data, 
 4. **Worst Case (Multiple Attackers, Full Bucket):**
    - 10 attackers, each downloading 100 GB/month
    - Total: 1 TB egress = (1000 GB - 10 GB free) × $0.09 = **$89.10/month**
-   - **Mitigation**: 
+   - **Mitigation**:
      - Monitor egress usage in Cloudflare dashboard
      - Set up billing alerts
      - Add rate limiting proxy if costs become significant
      - Consider Cloudflare Access or token-based auth if abuse persists
 
 **Recommendation:**
+
 - Start with public bucket (costs likely minimal for transparency log use case)
 - Monitor egress usage in first few months
 - Set billing alerts at $10, $50, $100 thresholds
@@ -256,15 +270,16 @@ Since the R2 bucket is content-addressed and contains public transparency data, 
 
 **Configuration in Ranger:**
 Add to `config.go`:
+
 ```go
 type Config struct {
 	// ... existing fields ...
-	
+
 	// R2 Access Configuration (public bucket approach)
 	R2BucketName    string // e.g., "canopy-dev-1-leaves"
 	R2AccountID     string // Cloudflare account ID
 	R2PublicURL     string // Public R2 URL template
-	
+
 	// Deployment configuration (not from messages)
 	CanopyID        string // e.g., "canopy-dev-1"
 	ForestProjectID string // e.g., "forest-dev-1"
@@ -274,28 +289,31 @@ type Config struct {
 #### Step 5: Remove Explicit Queue Send from Canopy API
 
 **Update `src/scrapi/register-signed-statement.ts`:**
+
 - Remove `rangerQueue: Queue` parameter
 - Remove `createLeafRegistrationMessage` import
 - Remove queue send logic (lines 91-114)
 - Keep error handling for R2 storage failures
 
 **Simplified function signature:**
+
 ```typescript
 export async function registerSignedStatement(
   request: Request,
   logId: string,
   r2Bucket: R2Bucket,
   canopyId?: string,
-  forestProjectId?: string
-): Promise<Response>
+  forestProjectId?: string,
+): Promise<Response>;
 ```
 
 #### Step 6: Update Wrangler Configuration
 
 **Remove queue producer from `canopy-api/wrangler.jsonc`:**
+
 ```json
 {
-  "name": "canopy-api",
+  "name": "canopy-api"
   // ... other config ...
   // Remove this section:
   // "queues": {
@@ -307,6 +325,7 @@ export async function registerSignedStatement(
 #### Step 7: Update Worker Bindings
 
 **Remove from `src/index.ts` Env interface:**
+
 ```typescript
 export interface Env {
   R2: R2Bucket;
@@ -319,6 +338,7 @@ export interface Env {
 ```
 
 **Update function call:**
+
 ```typescript
 const response = await registerSignedStatement(
   request,
@@ -326,7 +346,7 @@ const response = await registerSignedStatement(
   env.R2,
   // env.RANGER_QUEUE,  // Remove this
   env.CANOPY_ID,
-  env.FOREST_PROJECT_ID
+  env.FOREST_PROJECT_ID,
 );
 ```
 
@@ -335,22 +355,26 @@ const response = await registerSignedStatement(
 Since this is a green field deployment, we can implement in any order. Recommended sequence:
 
 ### Phase 1: Update Hash Algorithm (SHA256)
+
 1. Update `r2.ts` to use SHA256 instead of MD5
 2. Update tests
 3. Deploy and validate
 
 ### Phase 2: Configure R2 Notifications
+
 1. Configure R2 bucket notifications to send to existing `canopy-dev-1-ranger` queue
 2. Test with sample object upload
 3. Verify notification format in queue
 
 ### Phase 3: Update Ranger
+
 1. Update `consumer.go` to parse R2 notification format
 2. Implement path parsing for `logId`, `fenceIndex`, `hash`
 3. Configure R2 access (public URL or API token)
 4. Test message processing
 
 ### Phase 4: Remove Explicit Queue Send
+
 1. Remove queue send logic from `register-signed-statement.ts`
 2. Remove queue producer binding from wrangler.jsonc
 3. Deploy updated canopy-api
@@ -359,11 +383,13 @@ Since this is a green field deployment, we can implement in any order. Recommend
 ## Testing Strategy
 
 ### Unit Tests
+
 - Test transformation logic with mock R2 notifications
 - Test path parsing for valid/invalid formats
 - Test metadata extraction from R2 objects
 
 ### Integration Tests
+
 1. Upload object to R2 via canopy-api
 2. Verify notification appears in R2 notification queue
 3. Verify transformation worker processes it
@@ -371,6 +397,7 @@ Since this is a green field deployment, we can implement in any order. Recommend
 5. Verify Ranger processes message successfully
 
 ### Error Handling Tests
+
 - Missing R2 object (object deleted between notification and read)
 - Invalid object path format
 - Missing custom metadata
@@ -379,35 +406,43 @@ Since this is a green field deployment, we can implement in any order. Recommend
 ## Open Questions
 
 ### 1. Custom Metadata in Notifications
+
 **Question**: Do R2 notifications include `customMetadata` in the payload?
 **Current Understanding**: Based on Cloudflare docs, notifications include `account`, `action`, `bucket`, `object.key`, `object.size`, `object.eTag`, `eventTime` - but NOT custom metadata.
-**Action Required**: 
+**Action Required**:
+
 - Test with real notification to confirm
 - If NOT included: Ranger reads R2 object to get metadata (minor performance impact)
 - If INCLUDED: Use it directly (no R2 read needed)
-**Impact**: If metadata is included, we can include SHA256 hash in metadata and avoid R2 read
+  **Impact**: If metadata is included, we can include SHA256 hash in metadata and avoid R2 read
 
 ### 2. Performance Impact of Metadata Read
+
 **Question**: If metadata is NOT included, what's the performance impact of Ranger reading R2 object?
 **Analysis**:
+
 - Ranger already needs to read object content for processing
 - Reading metadata is a HEAD request (or same GET request with metadata)
 - Minimal overhead (metadata comes with object GET)
-**Recommendation**: Even if metadata read is needed, it's acceptable given Ranger processes the object anyway
+  **Recommendation**: Even if metadata read is needed, it's acceptable given Ranger processes the object anyway
 
 ### 3. Duplicate Notifications
+
 **Question**: Can R2 send duplicate notifications for the same object?
 **Recommendation**: Implement idempotency in Ranger based on object key + etag
 **Impact**: Should check if message already processed before processing again
 
 ### 4. SHA256 Hash Storage
+
 **Question**: Should SHA256 hash be stored in:
+
 - Path (already planned - part of content addressing)
 - Custom metadata (for easy access without parsing path)
 - Both (recommended)
-**Recommendation**: Store in both for flexibility
+  **Recommendation**: Store in both for flexibility
 
 ### 5. R2 Access Method
+
 **Question**: Public bucket vs API token for Ranger access?
 **Recommendation**: Start with public bucket (simpler), add proxy/rate limiting later if needed
 
@@ -424,26 +459,33 @@ Since this is a green field deployment, we can implement in any order. Recommend
 ## Risks & Mitigations
 
 ### Risk 1: Notification Delay
+
 **Concern**: R2 notifications might have slight latency vs explicit send
 **Mitigation**: Monitor notification latency, add alerting. Acceptable for transparency log use case.
 
 ### Risk 2: Path Parsing Errors
+
 **Concern**: If object path format changes, Ranger parsing fails
-**Mitigation**: 
+**Mitigation**:
+
 - Robust path parsing with validation
 - Clear error messages
 - Path format is part of API contract (unlikely to change)
 
 ### Risk 3: Missing Metadata
+
 **Concern**: Custom metadata not in notifications
-**Mitigation**: 
+**Mitigation**:
+
 - Store hash in path (always available)
 - Read R2 object if additional metadata needed
 - Acceptable performance trade-off
 
 ### Risk 4: R2 Access Configuration
+
 **Concern**: Public bucket vs token access decision
-**Mitigation**: 
+**Mitigation**:
+
 - Start simple (public bucket)
 - Can migrate to token-based access later if needed
 - Add rate limiting proxy if needed
@@ -466,16 +508,16 @@ Since this is a green field deployment, we can implement in any order. Recommend
    - Ranger can verify by reading object and computing hash if needed
    - No metadata storage of hash
 
-2. **R2 Access for Ranger**: 
+2. **R2 Access for Ranger**:
    - Start with public bucket (simpler)
    - Monitor egress costs (first 10GB/month free)
    - Add rate limiting proxy later if abuse occurs
 
-3. **Metadata Requirements**: 
+3. **Metadata Requirements**:
    - Ranger extracts `logId`, `fenceIndex`, `hash`, `etag`, `timestamp` from R2 notification
    - `canopyId` and `forestProjectId` from Ranger deployment configuration (not per message)
 
-4. **Error Handling**: 
+4. **Error Handling**:
    - Remove explicit queue send completely (green field allows this)
    - **Note**: Could not find specific Cloudflare recommendation about keeping explicit send as fallback
    - R2 event notifications have 99.9% SLA, same as R2 service overall
@@ -494,12 +536,14 @@ Since this is a green field deployment, we can implement in any order. Recommend
 **Finding**: I could not locate a specific Cloudflare recommendation to keep explicit queue send as a fallback for R2 event notifications.
 
 **What Cloudflare docs say:**
+
 - R2 event notifications documentation focuses on setup and message format
 - No explicit guidance on producer-side fallback mechanisms
 - Error handling recommendations focus on consumer-side: retries, exponential backoff, dead letter queues
 - R2 service has 99.9% SLA (same applies to event notifications as part of R2 service)
 
 **Recommendation for this project:**
+
 - Given green field deployment, remove explicit queue send completely
 - Rely on R2 event notifications as primary mechanism
 - Implement robust error handling in Ranger consumer:
@@ -509,4 +553,3 @@ Since this is a green field deployment, we can implement in any order. Recommend
 - This approach is simpler and aligns with Cloudflare's event-driven architecture
 
 **If you find specific documentation recommending fallback**, please share and we can update the plan accordingly.
-

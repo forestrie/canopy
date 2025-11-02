@@ -13,25 +13,25 @@
 export interface LeafRegistrationMessage {
   /** The log identifier (UUID) */
   logId: string;
-  
+
   /** The fence MMR index assigned to this statement */
   fenceIndex: number;
-  
+
   /** The storage path in R2 (content-addressed) */
   path: string;
-  
+
   /** The MD5 hash of the content (hex) */
   hash: string;
-  
+
   /** The ETag returned by R2 (used for integrity verification) */
   etag: string;
-  
+
   /** Timestamp when the statement was registered (ISO 8601) */
   timestamp: string;
-  
+
   /** The canopy ID that registered this statement */
   canopyId: string;
-  
+
   /** The forest project ID */
   forestProjectId: string;
 }
@@ -46,7 +46,7 @@ export function createLeafRegistrationMessage(
   hash: string,
   etag: string,
   canopyId: string,
-  forestProjectId: string
+  forestProjectId: string,
 ): LeafRegistrationMessage {
   return {
     logId,
@@ -56,7 +56,6 @@ export function createLeafRegistrationMessage(
     etag,
     timestamp: new Date().toISOString(),
     canopyId,
-    forestProjectId
+    forestProjectId,
   };
 }
-

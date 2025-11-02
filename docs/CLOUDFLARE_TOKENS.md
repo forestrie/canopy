@@ -9,10 +9,12 @@ This document explains the three-tier API token system used by Canopy for secure
 **Purpose**: Create, configure, and destroy R2 buckets and infrastructure
 **Used by**: Wrangler CLI, infrastructure automation
 **Required permissions**:
+
 - Account → Cloudflare R2 Storage:Edit (full account access)
 - Account → Workers R2 Storage:Edit
 
 **When to use**:
+
 - Running `task cloudflare:bootstrap`
 - Running `task cloudflare:destroy`
 - Any Wrangler infrastructure operations
@@ -24,10 +26,12 @@ This document explains the three-tier API token system used by Canopy for secure
 **Purpose**: Read and write objects in R2 buckets
 **Used by**: Canopy SvelteKit application
 **Required permissions**:
+
 - Account → Cloudflare R2 Storage:Edit (scoped to specific buckets)
 - Recommended: Scope to `forest-*-canopy` buckets only
 
 **When to use**:
+
 - Production application deployment
 - Development with `wrangler dev`
 - Vercel deployments
@@ -39,9 +43,11 @@ This document explains the three-tier API token system used by Canopy for secure
 **Purpose**: Read objects from R2 buckets
 **Used by**: External services needing read-only access
 **Required permissions**:
+
 - Account → Cloudflare R2 Storage:Read (scoped to specific buckets)
 
 **When to use**:
+
 - Public API endpoints (future)
 - Monitoring services
 - Analytics tools
@@ -53,9 +59,11 @@ This document explains the three-tier API token system used by Canopy for secure
 **Purpose**: Create and manage Cloudflare Queues
 **Used by**: Wrangler CLI, queue configuration (Canopy CI/CD)
 **Required permissions**:
+
 - Account → Cloudflare Queues:Edit
 
 **When to use**:
+
 - Creating queues via Wrangler (`task cloudflare:bootstrap`)
 - Managing queue consumers
 - Dead letter queue configuration
@@ -67,10 +75,12 @@ This document explains the three-tier API token system used by Canopy for secure
 **Purpose**: Consume messages from Cloudflare Queues (read-only access)
 **Used by**: Ranger service (Arbor project)
 **Required permissions**:
+
 - Account → Cloudflare Queues → Read (or Consumer operations only if available)
 - Recommended: Scope to specific queue (`canopy-*-ranger`)
 
 **When to use**:
+
 - Ranger service runtime (deployed to Kubernetes)
 - External services that need to consume queue messages
 - Production applications that only need to pull/ack messages
@@ -141,6 +151,7 @@ This document explains the three-tier API token system used by Canopy for secure
 ### Local Development
 
 1. Configure environment variables in `.env`:
+
    ```bash
    CANOPY_ID=canopy-dev-1
    FOREST_PROJECT_ID=forest-dev-1  # External project reference
@@ -148,6 +159,7 @@ This document explains the three-tier API token system used by Canopy for secure
 
 2. Copy `.env.example.secrets` to `.env.secrets`
 3. Add your tokens:
+
    ```bash
    R2_ADMIN=your_r2_admin_token
    R2_WRITER=your_r2_writer_token
@@ -156,7 +168,7 @@ This document explains the three-tier API token system used by Canopy for secure
    # QUEUE_CONSUMER is not used in Canopy - it's shared with Arbor/Ranger
    ```
 
-3. For Wrangler development, copy `.dev.vars.example` to `.dev.vars`:
+4. For Wrangler development, copy `.dev.vars.example` to `.dev.vars`:
    ```bash
    cd packages/apps/canopy
    cp .dev.vars.example .dev.vars
@@ -168,6 +180,7 @@ This document explains the three-tier API token system used by Canopy for secure
 #### GitHub Actions
 
 Add secrets to your repository:
+
 - `R2_ADMIN` - For infrastructure management workflows
 - `QUEUE_ADMIN` - For queue management
 - `R2_WRITER` - For application deployment (if deploying from GitHub)
@@ -177,6 +190,7 @@ Add secrets to your repository:
 #### Vercel
 
 Add environment variables in Vercel dashboard:
+
 - `r2-writer-token` - The R2_WRITER token value
 
 ### Production Deployment

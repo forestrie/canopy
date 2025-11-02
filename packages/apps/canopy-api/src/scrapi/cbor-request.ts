@@ -1,6 +1,5 @@
-
-import { decode as decodeCbor } from 'cbor-x';
-import { CBOR_MIME } from './cbor-const';
+import { decode as decodeCbor } from "cbor-x";
+import { CBOR_MIME } from "./cbor-const";
 
 /**
  * Parse CBOR request body
@@ -15,9 +14,9 @@ export async function parseCborBody<T = unknown>(request: Request): Promise<T> {
  */
 export function validateContentSize(
   request: Request,
-  maxSize: number
+  maxSize: number,
 ): { valid: boolean; size?: number; error?: string } {
-  const contentLength = request.headers.get('content-length');
+  const contentLength = request.headers.get("content-length");
   if (!contentLength) {
     return { valid: true }; // Accept without header - will be checked when reading body
   }
@@ -26,14 +25,14 @@ export function validateContentSize(
     return {
       valid: false,
       size,
-      error: `Content size ${size} exceeds maximum ${maxSize} bytes`
+      error: `Content size ${size} exceeds maximum ${maxSize} bytes`,
     };
   }
   return { valid: true, size };
 }
 
 export function getContentSize(request: Request): number | undefined {
-  const contentLength = request.headers.get('content-length');
+  const contentLength = request.headers.get("content-length");
   if (!contentLength) {
     return undefined;
   }
@@ -66,20 +65,26 @@ export function convertHeaders(init: HeadersInit): Record<string, string> {
  * Check ETag header for conditional requests
  */
 export function checkETag(request: Request, etag: string): boolean {
-  const ifNoneMatch = request.headers.get('if-none-match');
+  const ifNoneMatch = request.headers.get("if-none-match");
   if (!ifNoneMatch) return false;
   // Support wildcard, quoted and unquoted ETags
-  return ifNoneMatch === '*' || ifNoneMatch === etag || ifNoneMatch === `"${etag}"`;
+  return (
+    ifNoneMatch === "*" || ifNoneMatch === etag || ifNoneMatch === `"${etag}"`
+  );
 }
 
 /**
  * Check if request accepts CBOR
  */
 export function acceptsCbor(request: Request): boolean {
-  const accept = request.headers.get('accept');
+  const accept = request.headers.get("accept");
   if (!accept) return true; // No accept header means accept all
-  return accept.split(',').some((v) => {
+  return accept.split(",").some((v) => {
     const trimmed = v.trim().toLowerCase();
-    return trimmed.startsWith(CBOR_MIME) || trimmed.includes('*/*') || trimmed === '*';
+    return (
+      trimmed.startsWith(CBOR_MIME) ||
+      trimmed.includes("*/*") ||
+      trimmed === "*"
+    );
   });
 }

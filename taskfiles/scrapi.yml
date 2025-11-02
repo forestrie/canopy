@@ -20,4 +20,3 @@ tasks:
           -H "Authorization: Bearer {{.API_KEY}}" \
           --output post-entry.response \
           --data-binary @-
-

@@ -4,22 +4,22 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: 'Infrastructure action'
+        description: "Infrastructure action"
         required: true
-        default: 'apply'
+        default: "apply"
         type: choice
         options:
           - apply
           - destroy
           - status
       canopy_id:
-        description: 'Canopy Instance ID'
+        description: "Canopy Instance ID"
         required: true
-        default: 'canopy-dev-1'
+        default: "canopy-dev-1"
       forest_project_id:
-        description: 'Forest Project ID (external reference)'
+        description: "Forest Project ID (external reference)"
         required: true
-        default: 'forest-dev-1'
+        default: "forest-dev-1"
 
 jobs:
   wrangler:
@@ -33,8 +33,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'pnpm'
+          node-version: "20"
+          cache: "pnpm"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v3

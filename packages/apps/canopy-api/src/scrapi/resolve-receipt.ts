@@ -6,9 +6,9 @@
  * - Completed registrations: /entries/00000000
  */
 
-import { ClientErrors } from './problem-details';
-import { cborResponse, seeOtherResponse } from './cbor-response';
-import { CBOR_CONTENT_TYPES } from './cbor-content-types';
+import { ClientErrors } from "./problem-details";
+import { cborResponse, seeOtherResponse } from "./cbor-response";
+import { CBOR_CONTENT_TYPES } from "./cbor-content-types";
 
 /**
  * Placeholder receipt structure
@@ -16,7 +16,7 @@ import { CBOR_CONTENT_TYPES } from './cbor-content-types';
  */
 interface PlaceholderReceipt {
   index: string;
-  status: 'completed';
+  status: "completed";
   // TODO: Add proper receipt fields per SCITT spec
 }
 
@@ -31,7 +31,7 @@ interface PlaceholderReceipt {
 export async function resolveReceipt(
   request: Request,
   entrySegments: string[],
-  r2Bucket: R2Bucket
+  r2Bucket: R2Bucket,
 ): Promise<Response> {
   const [logID, _, index, etag] = entrySegments;
   try {
@@ -46,7 +46,7 @@ export async function resolveReceipt(
 
       const receipt: PlaceholderReceipt = {
         index,
-        status: 'completed'
+        status: "completed",
       };
 
       return cborResponse(receipt, 200, CBOR_CONTENT_TYPES.SCITT_RECEIPT);
@@ -68,12 +68,11 @@ export async function resolveReceipt(
     const currentLocation = `${requestUrl.origin}${requestUrl.pathname}`;
 
     return seeOtherResponse(currentLocation, 5); // Retry after 5 seconds
-
   } catch (error) {
-    console.error('Error resolving receipt:', error);
+    console.error("Error resolving receipt:", error);
 
     return ClientErrors.notFound(
-      `Entry ${logID}/${index}/${etag} not found or error retrieving receipt`
+      `Entry ${logID}/${index}/${etag} not found or error retrieving receipt`,
     );
   }
 }

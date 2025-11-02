@@ -2,14 +2,14 @@
  * Register Signed Statement operation for SCRAPI
  */
 
-import { storeLeaf } from '../cf/r2';
-import { CBOR_CONTENT_TYPES } from './cbor-content-types';
-import { getContentSize, parseCborBody } from './cbor-request';
-import { seeOtherResponse } from './cbor-response';
-import { getLowerBoundMMRIndex } from './mmr-mock';
+import { storeLeaf } from "../cf/r2";
+import { CBOR_CONTENT_TYPES } from "./cbor-content-types";
+import { getContentSize, parseCborBody } from "./cbor-request";
+import { seeOtherResponse } from "./cbor-response";
+import { getLowerBoundMMRIndex } from "./mmr-mock";
 
-import { ClientErrors, ServerErrors } from './problem-details';
-import { getMaxStatementSize } from './transparency-configuration';
+import { ClientErrors, ServerErrors } from "./problem-details";
+import { getMaxStatementSize } from "./transparency-configuration";
 
 /**
  * Statement Registration Request
@@ -26,7 +26,7 @@ export interface RegisterStatementResponse {
   /** Operation ID for tracking the registration */
   operationId: string;
   /** Status of the registration */
-  status: 'accepted' | 'pending';
+  status: "accepted" | "pending";
 }
 
 /**
@@ -35,32 +35,31 @@ export interface RegisterStatementResponse {
 export async function registerSignedStatement(
   request: Request,
   logId: string,
-  r2Bucket: R2Bucket
+  r2Bucket: R2Bucket,
 ): Promise<Response> {
   try {
-
     const maxSize = getMaxStatementSize();
     const size = getContentSize(request);
-    if (typeof size === 'number' && size > maxSize) {
+    if (typeof size === "number" && size > maxSize) {
       return ClientErrors.payloadTooLarge(size, maxSize);
     }
 
     // Parse the body dealing with either COSE or CBOR
     let statementData: Uint8Array;
-    const contentType = request.headers.get('content-type') || '';
+    const contentType = request.headers.get("content-type") || "";
 
-    if (contentType.includes('cose')) {
+    if (contentType.includes("cose")) {
       // Direct COSE Sign1 data
       const buffer = await request.arrayBuffer();
       statementData = new Uint8Array(buffer);
-    } else if (contentType.includes('cbor')) {
+    } else if (contentType.includes("cbor")) {
       // CBOR-encoded request
       try {
         const body = await parseCborBody<RegisterStatementRequest>(request);
         statementData = body.signedStatement;
       } catch (error) {
         return ClientErrors.invalidStatement(
-          `Failed to parse CBOR body: ${error instanceof Error ? error.message : 'Unknown error'}`
+          `Failed to parse CBOR body: ${error instanceof Error ? error.message : "Unknown error"}`,
         );
       }
     } else {
@@ -69,7 +68,7 @@ export async function registerSignedStatement(
 
     // Validate COSE Sign1 structure (basic validation)
     if (!validateCoseSign1Structure(statementData)) {
-      return ClientErrors.invalidStatement('Invalid COSE Sign1 structure');
+      return ClientErrors.invalidStatement("Invalid COSE Sign1 structure");
     }
 
     // Get the fence MMR index
@@ -82,11 +81,11 @@ export async function registerSignedStatement(
       logId,
       fenceIndex,
       statementData.buffer as ArrayBuffer,
-      CBOR_CONTENT_TYPES.COSE_SIGN1
+      CBOR_CONTENT_TYPES.COSE_SIGN1,
     );
 
     // Generate operation ID
-    const fenceIndexPadded = fenceIndex.toString().padStart(8, '0');
+    const fenceIndexPadded = fenceIndex.toString().padStart(8, "0");
 
     // Derive Location header from request URL
     const requestUrl = new URL(request.url);
@@ -95,18 +94,17 @@ export async function registerSignedStatement(
     // Return 303 See Other - registration is running (per SCRAPI 2.1.3.2)
     // This is always async for this implementation
     return seeOtherResponse(location, 5); // Suggest retry after 5 seconds
-
   } catch (error) {
-    console.error('Error registering statement:', error);
+    console.error("Error registering statement:", error);
 
     if (error instanceof Error) {
-      if (error.message.includes('R2')) {
-        return ServerErrors.storageError(error.message, 'store');
+      if (error.message.includes("R2")) {
+        return ServerErrors.storageError(error.message, "store");
       }
     }
 
     return ServerErrors.internal(
-      error instanceof Error ? error.message : 'Failed to register statement'
+      error instanceof Error ? error.message : "Failed to register statement",
     );
   }
 }

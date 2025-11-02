@@ -1,2 +1,1 @@
-
-export const CBOR_MIME = 'application/cbor';
+export const CBOR_MIME = "application/cbor";

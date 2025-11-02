@@ -15,11 +15,14 @@
  * @param secret The secret to validate against
  * @returns True if valid, false otherwise
  */
-export async function validateApiKey(apiKey: string | undefined, secret: string | undefined): Promise<boolean> {
-	// [AUTH HOOK] - Currently returns true for all requests
-	// TODO: Implement actual validation logic
-	console.log('[AUTH] API key validation stub - returning true');
-	return true;
+export async function validateApiKey(
+  apiKey: string | undefined,
+  secret: string | undefined,
+): Promise<boolean> {
+  // [AUTH HOOK] - Currently returns true for all requests
+  // TODO: Implement actual validation logic
+  console.log("[AUTH] API key validation stub - returning true");
+  return true;
 }
 
 /**
@@ -29,17 +32,17 @@ export async function validateApiKey(apiKey: string | undefined, secret: string 
  * @returns The extracted API key or undefined
  */
 export function extractApiKey(authHeader: string | null): string | undefined {
-	if (!authHeader) return undefined;
+  if (!authHeader) return undefined;
 
-	// Support both "Bearer <key>" and "ApiKey <key>" formats
-	const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
-	if (bearerMatch) return bearerMatch[1];
+  // Support both "Bearer <key>" and "ApiKey <key>" formats
+  const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (bearerMatch) return bearerMatch[1];
 
-	const apiKeyMatch = authHeader.match(/^ApiKey\s+(.+)$/i);
-	if (apiKeyMatch) return apiKeyMatch[1];
+  const apiKeyMatch = authHeader.match(/^ApiKey\s+(.+)$/i);
+  if (apiKeyMatch) return apiKeyMatch[1];
 
-	// If no prefix, treat entire header as key
-	return authHeader;
+  // If no prefix, treat entire header as key
+  return authHeader;
 }
 
 /**
@@ -49,24 +52,19 @@ export function extractApiKey(authHeader: string | null): string | undefined {
  * @returns True if authentication is required
  */
 export function requiresAuth(pathname: string): boolean {
-	// Public endpoints that don't require auth
-	const publicPaths = [
-		'/',
-		'/health',
-		'/api/health',
-		'/api/v1/status'
-	];
+  // Public endpoints that don't require auth
+  const publicPaths = ["/", "/health", "/api/health", "/api/v1/status"];
 
-	// Check if path is public
-	if (publicPaths.includes(pathname)) {
-		return false;
-	}
+  // Check if path is public
+  if (publicPaths.includes(pathname)) {
+    return false;
+  }
 
-	// All API routes require auth by default
-	if (pathname.startsWith('/api/')) {
-		return true;
-	}
+  // All API routes require auth by default
+  if (pathname.startsWith("/api/")) {
+    return true;
+  }
 
-	// Frontend routes don't require auth
-	return false;
+  // Frontend routes don't require auth
+  return false;
 }

@@ -26,7 +26,7 @@ export async function storeLeaf(
   logId: string,
   fenceIndex: number,
   content: ArrayBuffer,
-  contentType: string = 'application/cbor'
+  contentType: string = "application/cbor",
 ): Promise<{ path: string; hash: string; etag: string }> {
   // Calculate SHA256 hash for content addressing
   const hash = await calculateSHA256(content);
@@ -40,7 +40,7 @@ export async function storeLeaf(
     fenceIndex,
     contentType,
     timestamp: Date.now(),
-    sequenced: false
+    sequenced: false,
   };
 
   // Convert ArrayBuffer to Uint8Array for R2/Miniflare compatibility
@@ -53,7 +53,7 @@ export async function storeLeaf(
     result = await bucket.put(path, uint8Content, {
       httpMetadata: {
         contentType,
-        cacheControl: 'public, max-age=31536000, immutable' // Content-addressed, can cache forever
+        cacheControl: "public, max-age=31536000, immutable", // Content-addressed, can cache forever
       },
       // R2 customMetadata must be string values
       // Note: hash is NOT stored in metadata - path is authoritative
@@ -62,19 +62,19 @@ export async function storeLeaf(
         fenceIndex: String(meta.fenceIndex),
         contentType: meta.contentType,
         timestamp: String(meta.timestamp),
-        sequenced: String(meta.sequenced)
-      } as Record<string, string>
+        sequenced: String(meta.sequenced),
+      } as Record<string, string>,
       // Removed md5 option - R2's md5 expects MD5 format, we use SHA256 in path
     });
   } catch (error) {
-    console.error('Error storing leaf in R2:', error);
+    console.error("Error storing leaf in R2:", error);
     throw error;
   }
 
   return {
     path,
     hash,
-    etag: result.etag
+    etag: result.etag,
   };
 }
 
@@ -87,7 +87,7 @@ export async function storeLeaf(
  */
 export async function getLeafObject(
   bucket: R2Bucket,
-  path: string
+  path: string,
 ): Promise<{ content: ArrayBuffer; metadata: LeafObjectMetadata } | null> {
   const object = await bucket.get(path);
   if (!object) return null;
@@ -99,8 +99,8 @@ export async function getLeafObject(
     fenceIndex: Number(md.fenceIndex || 0),
     contentType: md.contentType,
     timestamp: Number(md.timestamp || Date.now()),
-    sequenced: md.sequenced === 'true',
-    sequencerIndex: md.sequencerIndex ? Number(md.sequencerIndex) : undefined
+    sequenced: md.sequenced === "true",
+    sequencerIndex: md.sequencerIndex ? Number(md.sequencerIndex) : undefined,
   };
 
   return { content, metadata };
@@ -118,7 +118,7 @@ export async function getLeafObject(
 export function buildLeafPath(
   logId: string,
   fenceIndex: number,
-  contentHash: string
+  contentHash: string,
 ): string {
   return `logs/${logId}/leaves/${fenceIndex}/${contentHash}`;
 }
@@ -131,9 +131,11 @@ export function buildLeafPath(
  * @returns The hex-encoded SHA256 hash (64 hex characters)
  */
 async function calculateSHA256(content: ArrayBuffer): Promise<string> {
-  const hashBuffer = await crypto.subtle.digest('SHA-256', content);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", content);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  const hashHex = hashArray
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
   return hashHex;
 }
 
@@ -145,21 +147,22 @@ export async function listLeaves(
   logId: string,
   fenceIndex?: number,
   limit: number = 100,
-  cursor?: string
+  cursor?: string,
 ): Promise<{ objects: R2Object[]; cursor?: string }> {
-  const prefix = fenceIndex !== undefined
-    ? `logs/${logId}/leaves/${fenceIndex}/`
-    : `logs/${logId}/leaves/`;
+  const prefix =
+    fenceIndex !== undefined
+      ? `logs/${logId}/leaves/${fenceIndex}/`
+      : `logs/${logId}/leaves/`;
 
   const result = await bucket.list({
     prefix,
     limit,
-    cursor
+    cursor,
   });
 
   return {
     objects: result.objects,
-    cursor: result.truncated ? result.cursor : undefined
+    cursor: result.truncated ? result.cursor : undefined,
   };
 }
 
@@ -169,11 +172,12 @@ export async function listLeaves(
 export async function countLeaves(
   bucket: R2Bucket,
   logId: string,
-  fenceIndex?: number
+  fenceIndex?: number,
 ): Promise<number> {
-  const prefix = fenceIndex !== undefined
-    ? `logs/${logId}/leaves/${fenceIndex}/`
-    : `logs/${logId}/leaves/`;
+  const prefix =
+    fenceIndex !== undefined
+      ? `logs/${logId}/leaves/${fenceIndex}/`
+      : `logs/${logId}/leaves/`;
 
   let total = 0;
   let cursor: string | undefined;
@@ -182,7 +186,7 @@ export async function countLeaves(
     const result = await bucket.list({
       prefix,
       limit: 1000,
-      cursor
+      cursor,
     });
 
     total += result.objects.length;

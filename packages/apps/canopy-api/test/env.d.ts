@@ -1,4 +1,4 @@
-import type { Env } from '../src/index';
+import type { Env } from "../src/index";
 
 declare module "cloudflare:test" {
   // ProvidedEnv controls the type of `import("cloudflare:test").env`
