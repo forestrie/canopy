@@ -2,11 +2,11 @@
  * Register Signed Statement operation for SCRAPI
  */
 
-import { getLowerBoundMMRIndex } from './mmr-mock';
 import { storeLeaf } from '../cf/r2';
 import { CBOR_CONTENT_TYPES } from './cbor-content-types';
+import { getContentSize, parseCborBody } from './cbor-request';
 import { seeOtherResponse } from './cbor-response';
-import { parseCborBody, getContentSize } from './cbor-request';
+import { getLowerBoundMMRIndex } from './mmr-mock';
 
 import { ClientErrors, ServerErrors } from './problem-details';
 import { getMaxStatementSize } from './transparency-configuration';
@@ -76,7 +76,8 @@ export async function registerSignedStatement(
     const fenceIndex = await getLowerBoundMMRIndex(logId);
 
     // Store leaf in R2
-    const { etag } = await storeLeaf(
+    // R2 event notifications will automatically send a message to the queue
+    const { path, hash, etag } = await storeLeaf(
       r2Bucket,
       logId,
       fenceIndex,

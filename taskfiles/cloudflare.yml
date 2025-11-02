@@ -30,7 +30,7 @@ tasks:
           fi
 
   bootstrap:
-    desc: Create all Cloudflare resources (R2 buckets and queues)
+    desc: Create all Cloudflare resources (R2 buckets, queues, and event notifications)
     deps: [validate]
     cmds:
       - cmd: |
@@ -38,6 +38,12 @@ tasks:
           wrangler r2 bucket create "{{.R2_BUCKET_NAME}}" --location weur 2>/dev/null || true
           wrangler queues create "{{.QUEUE_NAME}}" 2>/dev/null || true
           wrangler queues create "{{.QUEUE_DLQ_NAME}}" 2>/dev/null || true
+          echo "Configuring R2 event notifications..."
+          wrangler r2 bucket notification create "{{.R2_BUCKET_NAME}}" \
+            --event-type object-create \
+            --queue "{{.QUEUE_NAME}}" \
+            --prefix "logs/" \
+            2>/dev/null || echo "Note: Notification may already be configured"
           echo "Infrastructure ready"
 
   apply:
@@ -54,6 +60,9 @@ tasks:
       - cmd: |
           echo "Queues:"
           wrangler queues list
+      - cmd: |
+          echo "R2 Event Notifications for {{.R2_BUCKET_NAME}}:"
+          wrangler r2 bucket notification list "{{.R2_BUCKET_NAME}}" 2>/dev/null || echo "  No notifications configured"
 
   destroy:
     desc: Delete all Cloudflare resources (DESTRUCTIVE!)

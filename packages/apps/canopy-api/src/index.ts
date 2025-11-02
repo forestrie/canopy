@@ -4,10 +4,10 @@
  * Minimal SCRAPI-compatible API without SvelteKit
  */
 
+import { problemResponse } from './scrapi/cbor-response';
 import { registerSignedStatement } from './scrapi/register-signed-statement';
 import { resolveReceipt } from './scrapi/resolve-receipt';
 import { getTransparencyConfiguration } from './scrapi/transparency-configuration';
-import { problemResponse } from './scrapi/cbor-response';
 
 export interface Env {
   R2: R2Bucket;
@@ -81,8 +81,12 @@ export default {
       if (request.method === 'POST') {
 
         // POST /logs/{logId}/entries - Register new statement
-        //
-        const response = await registerSignedStatement(request, segments[1], env.R2);
+        // R2 event notifications will automatically send messages to the queue
+        const response = await registerSignedStatement(
+          request,
+          segments[1],
+          env.R2
+        );
 
         const headers = new Headers(response.headers);
         Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));

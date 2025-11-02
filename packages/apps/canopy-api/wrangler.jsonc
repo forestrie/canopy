@@ -1,5 +1,5 @@
 {
-  "name": "scrapi-canopy",
+  "name": "canopy-api",
   "main": "./src/index.ts",
   "compatibility_date": "2024-10-01",
   "compatibility_flags": ["nodejs_compat_v2"],
@@ -24,7 +24,7 @@
   },
   "env": {
     "production": {
-      "name": "scrapi-canopy-production",
+      "name": "canopy-api-production",
       "vars": {
         "CANOPY_ID": "canopy-prod-1",
         "FOREST_PROJECT_ID": "forest-prod-1",

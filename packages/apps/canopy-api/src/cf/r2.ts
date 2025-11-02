@@ -1,12 +1,10 @@
 /**
  * R2 Storage utilities for SCITT/SCRAPI statements
  */
-import SparkMD5 from 'spark-md5';
 
 export interface LeafObjectMetadata {
   logId: string;
   fenceIndex: number;
-  contentHash: string;
   contentType: string;
   timestamp: number;
   sequenced: boolean;
@@ -30,8 +28,8 @@ export async function storeLeaf(
   content: ArrayBuffer,
   contentType: string = 'application/cbor'
 ): Promise<{ path: string; hash: string; etag: string }> {
-  // Calculate MD5 hash (hex for identity + raw digest for R2 integrity header)
-  const { hex: hash } = await calculateMD5(content);
+  // Calculate SHA256 hash for content addressing
+  const hash = await calculateSHA256(content);
 
   // Build the content-addressed path
   const path = buildLeafPath(logId, fenceIndex, hash);
@@ -40,7 +38,6 @@ export async function storeLeaf(
   const meta: LeafObjectMetadata = {
     logId,
     fenceIndex,
-    contentHash: hash,
     contentType,
     timestamp: Date.now(),
     sequenced: false
@@ -50,26 +47,24 @@ export async function storeLeaf(
   // This fixes the serialization issue with Miniflare
   const uint8Content = new Uint8Array(content);
 
-  // Store in R2 with content hash as ETag
+  // Store in R2 - hash is in path, not stored separately
   let result;
   try {
-
     result = await bucket.put(path, uint8Content, {
       httpMetadata: {
         contentType,
         cacheControl: 'public, max-age=31536000, immutable' // Content-addressed, can cache forever
       },
       // R2 customMetadata must be string values
+      // Note: hash is NOT stored in metadata - path is authoritative
       customMetadata: {
         logId: meta.logId,
         fenceIndex: String(meta.fenceIndex),
-        contentHash: meta.contentHash,
         contentType: meta.contentType,
         timestamp: String(meta.timestamp),
         sequenced: String(meta.sequenced)
-      } as Record<string, string>,
-      // R2 expects hex-encoded MD5 (32 hex characters)
-      md5: hash
+      } as Record<string, string>
+      // Removed md5 option - R2's md5 expects MD5 format, we use SHA256 in path
     });
   } catch (error) {
     console.error('Error storing leaf in R2:', error);
@@ -102,7 +97,6 @@ export async function getLeafObject(
   const metadata: LeafObjectMetadata = {
     logId: md.logId,
     fenceIndex: Number(md.fenceIndex || 0),
-    contentHash: md.contentHash,
     contentType: md.contentType,
     timestamp: Number(md.timestamp || Date.now()),
     sequenced: md.sequenced === 'true',
@@ -114,11 +108,11 @@ export async function getLeafObject(
 
 /**
  * Build the content-addressed storage path
- * Format: /logs/<LOG_ID>/leaves/{FENCE_MMRINDEX}/{MD5_CONTENT_DIGEST}
+ * Format: /logs/<LOG_ID>/leaves/{FENCE_MMRINDEX}/{SHA256_CONTENT_DIGEST}
  *
  * @param logId The log identifier
  * @param fenceIndex The fence MMR index
- * @param contentHash The MD5 hash of the content
+ * @param contentHash The SHA256 hash of the content (64 hex characters)
  * @returns The storage path
  */
 export function buildLeafPath(
@@ -130,27 +124,17 @@ export function buildLeafPath(
 }
 
 /**
- * Calculate MD5 hash of content
- * Note: MD5 is used for content addressing, NOT for security
+ * Calculate SHA256 hash of content
+ * Uses Web Crypto API (available in Cloudflare Workers)
  *
  * @param content The content to hash
- * @returns The hex-encoded MD5 hash and raw buffer
+ * @returns The hex-encoded SHA256 hash (64 hex characters)
  */
-async function calculateMD5(content: ArrayBuffer): Promise<{ hex: string; raw: ArrayBuffer }> {
-  // Use spark-md5 which works in both Node.js and Cloudflare Workers
-  const spark = new SparkMD5.ArrayBuffer();
-  spark.append(content);
-  const hashHex = spark.end();
-  const hashRaw = spark.end(true);
-
-  // Convert hex string to ArrayBuffer for the raw value
-  const md5Raw = new Uint8Array(16);
-  for (let i = 0; i < 16; i++) {
-    // md5Raw[i] = parseInt(hashHex.substr(i * 2, 2), 16);
-    md5Raw[i] = hashRaw.charCodeAt(i);
-  }
-
-  return { hex: hashHex, raw: md5Raw.buffer };
+async function calculateSHA256(content: ArrayBuffer): Promise<string> {
+  const hashBuffer = await crypto.subtle.digest('SHA-256', content);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashHex;
 }
 
 /**

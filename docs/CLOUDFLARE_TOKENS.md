@@ -51,14 +51,31 @@ This document explains the three-tier API token system used by Canopy for secure
 ### 4. QUEUE_ADMIN - Queue Management Token
 
 **Purpose**: Create and manage Cloudflare Queues
-**Used by**: Wrangler CLI, queue configuration
+**Used by**: Wrangler CLI, queue configuration (Canopy CI/CD)
 **Required permissions**:
 - Account → Cloudflare Queues:Edit
 
 **When to use**:
-- Creating queues via Wrangler
+- Creating queues via Wrangler (`task cloudflare:bootstrap`)
 - Managing queue consumers
 - Dead letter queue configuration
+
+**Security**: Never deploy this token to production applications. Keep it restricted to CI/CD and admin operations only.
+
+### 5. QUEUE_CONSUMER - Queue Consumer Token
+
+**Purpose**: Consume messages from Cloudflare Queues (read-only access)
+**Used by**: Ranger service (Arbor project)
+**Required permissions**:
+- Account → Cloudflare Queues → Read (or Consumer operations only if available)
+- Recommended: Scope to specific queue (`canopy-*-ranger`)
+
+**When to use**:
+- Ranger service runtime (deployed to Kubernetes)
+- External services that need to consume queue messages
+- Production applications that only need to pull/ack messages
+
+**Security**: Safe for deployment to production runtime environments. This token only allows consuming messages, not creating/deleting queues or modifying queue configuration.
 
 ## Creating Tokens
 
@@ -106,6 +123,19 @@ This document explains the three-tier API token system used by Canopy for secure
 4. Account resources: Include → Your account
 5. Continue to summary → Create Token
 
+### Step 6: Create QUEUE_CONSUMER Token (for Ranger)
+
+1. Use "Custom token" template
+2. Token name: `canopy-queue-consumer` (or `ranger-queue-token` for clarity)
+3. Permissions:
+   - Account → Cloudflare Queues → Read (or Consumer if available)
+   - **Note**: If Cloudflare doesn't offer separate Consumer permissions, use Read and scope to specific queues
+4. Account resources: Include → Your account
+5. (Recommended) Add IP filtering to restrict to GKE cluster IPs
+6. Continue to summary → Create Token
+
+**Important**: This token is shared with the Arbor project (Ranger service) and should be configured as a secret in the Ranger Kubernetes deployment.
+
 ## Configuration
 
 ### Local Development
@@ -123,6 +153,7 @@ This document explains the three-tier API token system used by Canopy for secure
    R2_WRITER=your_r2_writer_token
    R2_READER=your_r2_reader_token
    QUEUE_ADMIN=your_queue_admin_token
+   # QUEUE_CONSUMER is not used in Canopy - it's shared with Arbor/Ranger
    ```
 
 3. For Wrangler development, copy `.dev.vars.example` to `.dev.vars`:
@@ -141,6 +172,8 @@ Add secrets to your repository:
 - `QUEUE_ADMIN` - For queue management
 - `R2_WRITER` - For application deployment (if deploying from GitHub)
 
+**Note**: `QUEUE_CONSUMER` token should be configured in the Arbor repository (for Ranger service), not in Canopy.
+
 #### Vercel
 
 Add environment variables in Vercel dashboard:
@@ -150,11 +183,17 @@ Add environment variables in Vercel dashboard:
 
 **Important Security Notes**:
 
-1. **Never expose R2_ADMIN in production applications**
+1. **Never expose R2_ADMIN or QUEUE_ADMIN in production applications**
 2. **Scope tokens to minimum necessary permissions**
-3. **Use separate tokens for different environments**
+   - Canopy Worker: Uses queue binding (no token needed for send)
+   - Ranger Service: Uses QUEUE_CONSUMER token (read-only)
+   - CI/CD only: Uses QUEUE_ADMIN (full queue management)
+3. **Use separate tokens for different environments** (dev/staging/prod)
 4. **Rotate tokens regularly**
 5. **Monitor token usage in Cloudflare Analytics**
+6. **Separate producer and consumer permissions**
+   - Producers (Canopy Worker) use bindings (built-in, no token)
+   - Consumers (Ranger) use minimal read-only tokens
 
 ## Token Validation
 

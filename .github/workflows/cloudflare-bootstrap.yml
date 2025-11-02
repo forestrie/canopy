@@ -76,6 +76,14 @@ jobs:
           wrangler queues create "${QUEUE_NAME}" || echo "✓ Queue already exists"
           wrangler queues create "${QUEUE_DLQ_NAME}" || echo "✓ Dead letter queue already exists"
 
+          echo "=== Configuring R2 Event Notifications ==="
+          echo "Setting up notifications from ${R2_BUCKET_NAME} to ${QUEUE_NAME}"
+          wrangler r2 bucket notification create "${R2_BUCKET_NAME}" \
+            --event-type object-create \
+            --queue "${QUEUE_NAME}" \
+            --prefix "logs/" \
+            || echo "✓ Notification already configured (or configuration failed - may need manual setup)"
+
           echo "✅ Infrastructure created successfully!"
 
       - name: Configure R2 CORS
@@ -110,6 +118,8 @@ jobs:
         if: inputs.action == 'status'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          R2_BUCKET_NAME: ${{ inputs.canopy_id }}-leaves
+          QUEUE_NAME: ${{ inputs.canopy_id }}-ranger
         run: |
           echo "📊 Cloudflare Infrastructure Status"
           echo "CANOPY_ID: ${{ inputs.canopy_id }}"
@@ -121,6 +131,11 @@ jobs:
           echo ""
           echo "=== Queues ==="
           wrangler queues list
+
+          echo ""
+          echo "=== R2 Event Notifications ==="
+          echo "Checking notifications for bucket: ${R2_BUCKET_NAME}"
+          wrangler r2 bucket notification list "${R2_BUCKET_NAME}" 2>/dev/null || echo "⚠️  Could not list notifications (may not be configured)"
 
       - name: Destroy Infrastructure
         if: inputs.action == 'destroy'
