@@ -12,8 +12,8 @@
     "test": "pnpm -r test",
     "test:e2e": "playwright test",
     "lint": "pnpm -r lint",
-    "format": "prettier --write .",
-    "check": "prettier --check .",
+    "format": "prettier --write packages",
+    "check": "prettier --check packages",
     "install:task": "sh -c 'curl -sSfL https://taskfile.dev/install.sh | sh -s -- -d -b /usr/local/bin'"
   },
   "devDependencies": {
