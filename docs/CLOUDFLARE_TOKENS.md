@@ -10,6 +10,8 @@ This document explains the three-tier API token system used by Canopy for secure
 **Used by**: Wrangler CLI, infrastructure automation
 **Required permissions**:
 
+- Account → Workers Scripts:Edit (allows Wrangler deploy)
+- Account → Workers Scripts:Read
 - Account → Cloudflare R2 Storage:Edit (full account access)
 - Account → Workers R2 Storage:Edit
 
@@ -76,7 +78,7 @@ This document explains the three-tier API token system used by Canopy for secure
 **Used by**: Ranger service (Arbor project)
 **Required permissions**:
 
-- Account → Cloudflare Queues → Read (or Consumer operations only if available)
+- Account → Cloudflare Queues → Edit (pull consumers must read + acknowledge messages)
 - Recommended: Scope to specific queue (`canopy-*-ranger`)
 
 **When to use**:
@@ -86,6 +88,47 @@ This document explains the three-tier API token system used by Canopy for secure
 - Production applications that only need to pull/ack messages
 
 **Security**: Safe for deployment to production runtime environments. This token only allows consuming messages, not creating/deleting queues or modifying queue configuration.
+
+## Cloudflare Resource Provisioning Checklist
+
+Wrangler bindings declared in `wrangler.jsonc` reference existing Cloudflare resources — deploying a Worker does **not** create buckets or queues automatically. Before running `wrangler deploy` for Canopy, ensure each environment (dev, prod) has the following provisioned:
+
+1. **R2 bucket (per environment)**  
+   ```bash
+   wrangler r2 bucket create canopy-dev-1-leaves --location weur
+   wrangler r2 bucket create canopy-prod-1-leaves --location weur
+   ```
+2. **Queue + DLQ**  
+   ```bash
+   wrangler queues create canopy-dev-1-ranger
+   wrangler queues create canopy-dev-1-ranger-dlq
+   wrangler queues create canopy-prod-1-ranger
+   wrangler queues create canopy-prod-1-ranger-dlq
+   ```
+3. **Enable HTTP pull consumer (matches ranger)**  
+   ```bash
+   wrangler queues consumer http add canopy-dev-1-ranger
+   wrangler queues consumer http add canopy-prod-1-ranger
+   ```
+   (_Wrangler automatically exposes the DLQ; no pull consumer required there._)
+4. **Wire R2 notifications to the queue** (so Ranger receives events)  
+   ```bash
+   wrangler r2 bucket notification create canopy-dev-1-leaves \
+     --event-type object-create \
+     --queue canopy-dev-1-ranger \
+     --prefix "logs/"
+
+   wrangler r2 bucket notification create canopy-prod-1-leaves \
+     --event-type object-create \
+     --queue canopy-prod-1-ranger \
+     --prefix "logs/"
+   ```
+5. **Deploy/update Worker with Wrangler**  
+   ```bash
+   wrangler deploy
+   ```
+
+If any command reports the resource already exists, it is safe to continue. Re-run the `queues consumer http add` command whenever the pull consumer configuration needs to be re-applied (for example after deleting and recreating a queue).
 
 ## Creating Tokens
 
@@ -100,6 +143,8 @@ This document explains the three-tier API token system used by Canopy for secure
 1. Use "Custom token" template
 2. Token name: `canopy-r2-admin`
 3. Permissions:
+   - Account → Workers Scripts → Edit
+   - Account → Workers Scripts → Read
    - Account → Cloudflare R2 Storage → Edit
    - Account → Workers R2 Storage → Edit
 4. Account resources: Include → Your account

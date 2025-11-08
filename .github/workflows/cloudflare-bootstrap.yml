@@ -74,7 +74,9 @@ jobs:
 
           echo "=== Creating Queues ==="
           wrangler queues create "${QUEUE_NAME}" || echo "✓ Queue already exists"
+          wrangler queues consumer http add "${QUEUE_NAME}" || echo "✓ HTTP consumer already enabled"
           wrangler queues create "${QUEUE_DLQ_NAME}" || echo "✓ Dead letter queue already exists"
+          wrangler queues consumer http add "${QUEUE_DLQ_NAME}" || echo "✓ HTTP consumer already enabled"
 
           echo "=== Configuring R2 Event Notifications ==="
           echo "Setting up notifications from ${R2_BUCKET_NAME} to ${QUEUE_NAME}"

@@ -10,64 +10,131 @@ vars:
   QUEUE_DLQ_NAME: '{{.QUEUE_DLQ_NAME | default (print .QUEUE_NAME "-dlq")}}'
 
 tasks:
-  tools-check:
-    desc: Check for required tools
+  bootstrap:
+    desc: Alias for bootstrap
+    cmds:
+      - task: validate
+      - task: create
+      - task: sync
+      - task: status
+
+  status:
+    desc: Show status of all Cloudflare resources
+    cmds:
+      - task: validate
+      - cmd: |
+          echo "--------- :buckets: --------------------------------------------------"
+          wrangler r2 bucket list
+      - cmd: |
+          echo "--------- :queues:  --------------------------------------------------"
+          wrangler queues list
+      - cmd: |
+          echo "--------- :bucket notifications:  ------------------------------------"
+          wrangler r2 bucket notification list "{{.R2_BUCKET_NAME}}" 2>/dev/null || echo "  No notifications configured"
+
+  validate:
+    desc: Validate Wrangler is installed and authenticated
     cmds:
       - cmd: |
           if ! command -v wrangler &> /dev/null; then
             echo "ERROR: wrangler not found. Install with 'pnpm add -g wrangler'"
             exit 1
           fi
-
-  validate:
-    desc: Validate Wrangler is installed and authenticated
-    deps: [tools-check]
-    cmds:
       - cmd: |
           if ! wrangler whoami &> /dev/null; then
             echo "ERROR: Wrangler is not authenticated. Run: wrangler login"
             exit 1
           fi
 
-  bootstrap:
-    desc: Create all Cloudflare resources (R2 buckets, queues, and event notifications)
-    deps: [validate]
+  bucket:create:
+    desc: Create R2 bucket
+    cmds:
+      - cmd: wrangler r2 bucket create "{{.R2_BUCKET_NAME}}" --location weur 2>/dev/null || echo "✓ Bucket {{.R2_BUCKET_NAME}} may already exist"
+
+  bucket:delete:
+    desc: Delete R2 bucket (DESTRUCTIVE! Bucket must be empty)
+    cmds:
+      - cmd: wrangler r2 bucket delete "{{.R2_BUCKET_NAME}}" 2>/dev/null || echo "✓ Bucket {{.R2_BUCKET_NAME}} not found or not empty"
+
+  queue:create:
+    desc: Create Cloudflare queues with HTTP pull enabled
     cmds:
       - cmd: |
-          echo "Creating Cloudflare infrastructure..."
-          wrangler r2 bucket create "{{.R2_BUCKET_NAME}}" --location weur 2>/dev/null || true
-          wrangler queues create "{{.QUEUE_NAME}}" 2>/dev/null || true
-          wrangler queues create "{{.QUEUE_DLQ_NAME}}" 2>/dev/null || true
-          echo "Configuring R2 event notifications..."
+          wrangler queues create "{{.QUEUE_NAME}}" 2>/dev/null || echo "✓ Queue {{.QUEUE_NAME}} may already exist"
+          wrangler queues create "{{.QUEUE_DLQ_NAME}}" 2>/dev/null || echo "✓ DLQ {{.QUEUE_DLQ_NAME}} may already exist"
+
+  queue:http-enable:
+    desc: Ensure HTTP pull consumers are configured on queues
+    cmds:
+      - cmd: |
+          wrangler queues consumer http add "{{.QUEUE_NAME}}" 2>/dev/null || echo "✓ HTTP pull already configured for {{.QUEUE_NAME}}"
+
+  queue:inspect:
+    desc: Show queue configuration (including consumer type)
+    cmds:
+      - cmd: |
+          set -a
+          [ -f .env ] && source .env
+          [ -f .env.secrets ] && source .env.secrets
+          set +a
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "ERROR: CLOUDFLARE_API_TOKEN is not set. Populate it in .env/.env.secrets."
+            exit 1
+          fi
+          RESPONSE=$(curl -fsS \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/{{.CLOUDFLARE_ACCOUNT_ID}}/queues/{{.QUEUE_NAME}}") || exit 1
+          echo "$RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$RESPONSE"
+
+  queue:delete:
+    desc: Delete Cloudflare queues (DESTRUCTIVE!)
+    cmds:
+      - cmd: |
+          wrangler queues delete "{{.QUEUE_NAME}}"
+          wrangler queues delete "{{.QUEUE_DLQ_NAME}}"
+
+  notification:create:
+    desc: Create R2 event notification to queue
+    cmds:
+      - cmd: |
           wrangler r2 bucket notification create "{{.R2_BUCKET_NAME}}" \
             --event-type object-create \
             --queue "{{.QUEUE_NAME}}" \
             --prefix "logs/" \
-            2>/dev/null || echo "Note: Notification may already be configured"
-          echo "Infrastructure ready"
+            2>/dev/null || echo "✓ Notification may already be configured"
 
-  apply:
-    desc: Alias for bootstrap
-    deps: [bootstrap]
-
-  status:
-    desc: Show status of all Cloudflare resources
-    deps: [validate]
+  notification:delete:
+    desc: Delete R2 event notifications
     cmds:
       - cmd: |
-          echo "R2 Buckets:"
-          wrangler r2 bucket list
+          wrangler r2 bucket notification list "{{.R2_BUCKET_NAME}}" 2>/dev/null | grep -q "logs/" && \
+            wrangler r2 bucket notification delete "{{.R2_BUCKET_NAME}}" --queue "{{.QUEUE_NAME}}" 2>/dev/null || \
+            echo "No notifications to delete"
+
+  create:
+    desc: Create all Cloudflare resources (R2 buckets, queues, and event notifications)
+    deps:
+      - bucket:create
+      - queue:create
+    cmds:
+      - task: notification:create
+      - cmd: echo "Resources provisioned. Run 'task cloudflare:sync' to apply Wrangler bindings."
+
+  sync:
+    desc: Apply Wrangler configuration (deploy worker + ensure HTTP pull)
+    deps:
+      - validate
+    cmds:
       - cmd: |
-          echo "Queues:"
-          wrangler queues list
-      - cmd: |
-          echo "R2 Event Notifications for {{.R2_BUCKET_NAME}}:"
-          wrangler r2 bucket notification list "{{.R2_BUCKET_NAME}}" 2>/dev/null || echo "  No notifications configured"
+          cd packages/apps/canopy-api
+          wrangler deploy
+      - task: queue:http-enable
 
   destroy:
     desc: Delete all Cloudflare resources (DESTRUCTIVE!)
-    deps: [validate]
+    deps:
+      - notification:delete
+      - queue:delete
+      - bucket:delete
     cmds:
-      - cmd: |
-          wrangler r2 bucket delete "{{.R2_BUCKET_NAME}}" 2>/dev/null || echo "Note: Bucket must be empty to delete"
-          echo "Destruction complete"
+      - cmd: echo "✓ Destruction complete"

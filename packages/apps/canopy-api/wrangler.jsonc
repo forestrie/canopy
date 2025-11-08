@@ -19,6 +19,17 @@
     "port": 8789,
     "local_protocol": "http",
   },
+  "queues": {
+    "consumers": [
+      {
+        "queue": "canopy-dev-1-ranger",
+        "type": "http_pull",
+        "visibility_timeout_ms": 30000,
+        "max_retries": 5,
+        "dead_letter_queue": "canopy-dev-1-ranger-dlq",
+      },
+    ],
+  },
   "observability": {
     "enabled": true,
   },
@@ -37,6 +48,17 @@
           "bucket_name": "canopy-prod-1-leaves",
         },
       ],
+      "queues": {
+        "consumers": [
+          {
+            "queue": "canopy-prod-1-ranger",
+            "type": "http_pull",
+            "visibility_timeout_ms": 30000,
+            "max_retries": 5,
+            "dead_letter_queue": "canopy-prod-1-ranger-dlq",
+          },
+        ],
+      },
     },
   },
 }
