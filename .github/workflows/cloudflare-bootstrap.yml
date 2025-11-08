@@ -29,6 +29,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Install go-task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -63,31 +68,12 @@ jobs:
           QUEUE_NAME: ${{ inputs.canopy_id }}-ranger
           QUEUE_DLQ_NAME: ${{ inputs.canopy_id }}-ranger-dlq
         run: |
-          echo "🚀 Creating Cloudflare infrastructure with Wrangler..."
+          echo "Creating Cloudflare infrastructure with Wrangler..."
           echo "CANOPY_ID: ${CANOPY_ID}"
           echo "R2_BUCKET_NAME: ${R2_BUCKET_NAME}"
           echo "QUEUE_NAME: ${QUEUE_NAME}"
           echo "QUEUE_DLQ_NAME: ${QUEUE_DLQ_NAME}"
-
-          echo "=== Creating R2 Bucket ==="
-          wrangler r2 bucket create "${R2_BUCKET_NAME}" --location WEUR || echo "✓ Bucket already exists"
-
-          echo "=== Creating Queues ==="
-          wrangler queues create "${QUEUE_NAME}" || echo "✓ Queue already exists"
-          wrangler queues consumer http add "${QUEUE_NAME}" || echo "✓ HTTP consumer already enabled"
-          wrangler queues create "${QUEUE_DLQ_NAME}" || echo "✓ Dead letter queue already exists"
-          wrangler queues consumer http add "${QUEUE_DLQ_NAME}" || echo "✓ HTTP consumer already enabled"
-
-          echo "=== Configuring R2 Event Notifications ==="
-          echo "Setting up notifications from ${R2_BUCKET_NAME} to ${QUEUE_NAME}"
-          wrangler r2 bucket notification create "${R2_BUCKET_NAME}" \
-            --event-type object-create \
-            --queue "${QUEUE_NAME}" \
-            --prefix "logs/" \
-            || echo "✓ Notification already configured (or configuration failed - may need manual setup)"
-
-          echo "✅ Infrastructure created successfully!"
-
+          task cf:bootstrap
       - name: Configure R2 CORS
         if: inputs.action == 'apply'
         env:
@@ -114,8 +100,6 @@ jobs:
               echo "⚠️  Failed to configure CORS. This may need to be done manually."
             }
 
-          echo "✅ CORS configuration complete"
-
       - name: Show Status
         if: inputs.action == 'status'
         env:
@@ -124,20 +108,7 @@ jobs:
           QUEUE_NAME: ${{ inputs.canopy_id }}-ranger
         run: |
           echo "📊 Cloudflare Infrastructure Status"
-          echo "CANOPY_ID: ${{ inputs.canopy_id }}"
-          echo ""
-
-          echo "=== R2 Buckets ==="
-          wrangler r2 bucket list
-
-          echo ""
-          echo "=== Queues ==="
-          wrangler queues list
-
-          echo ""
-          echo "=== R2 Event Notifications ==="
-          echo "Checking notifications for bucket: ${R2_BUCKET_NAME}"
-          wrangler r2 bucket notification list "${R2_BUCKET_NAME}" 2>/dev/null || echo "⚠️  Could not list notifications (may not be configured)"
+          task cf:status
 
       - name: Destroy Infrastructure
         if: inputs.action == 'destroy'
@@ -153,35 +124,4 @@ jobs:
           echo "R2_BUCKET_NAME: ${R2_BUCKET_NAME}"
           echo "QUEUE_NAME: ${QUEUE_NAME}"
           echo "QUEUE_DLQ_NAME: ${QUEUE_DLQ_NAME}"
-
-          echo "=== Deleting Queues ==="
-          wrangler queues delete "${QUEUE_NAME}" || echo "⚠️ Queue not found"
-          wrangler queues delete "${QUEUE_DLQ_NAME}" || echo "⚠️ Dead letter queue not found"
-
-          echo "=== Deleting R2 Bucket ==="
-          echo "⚠️ Note: Bucket must be empty to delete"
-          wrangler r2 bucket delete "${R2_BUCKET_NAME}" || echo "⚠️ Failed to delete (may not be empty)"
-
-          echo "✅ Infrastructure destruction complete!"
-
-      - name: Display Queue Consumer Instructions
-        if: inputs.action == 'apply'
-        env:
-          QUEUE_NAME: ${{ inputs.canopy_id }}-ranger
-          QUEUE_DLQ_NAME: ${{ inputs.canopy_id }}-ranger-dlq
-        run: |
-          echo "📋 Queue Consumer Setup Required"
-          echo "================================"
-          echo ""
-          echo "The queue consumer for ${QUEUE_NAME} must be set up"
-          echo "by the external sequencer project."
-          echo ""
-          echo "Queue Details:"
-          echo "  - Queue Name: ${QUEUE_NAME}"
-          echo "  - DLQ Name: ${QUEUE_DLQ_NAME}"
-          echo "  - Recommended Settings:"
-          echo "    - Max Batch Size: 10"
-          echo "    - Max Retries: 3"
-          echo "    - Visibility Timeout: 30000ms"
-          echo ""
-          echo "The external sequencer should use these queue names when setting up consumers."
+          task cf:destroy
