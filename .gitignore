@@ -37,6 +37,7 @@ coverage
 .nyc_output
 test-results
 playwright-report
+*.response
 
 # Terraform
 *.tfstate

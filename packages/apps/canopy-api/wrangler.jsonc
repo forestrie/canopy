@@ -2,7 +2,9 @@
   "name": "canopy-api",
   "main": "./src/index.ts",
   "compatibility_date": "2024-10-01",
-  "compatibility_flags": ["nodejs_compat_v2"],
+  "compatibility_flags": [
+    "nodejs_compat_v2"
+  ],
   "vars": {
     "CANOPY_ID": "canopy-dev-1",
     "FOREST_PROJECT_ID": "forest-dev-1",

@@ -1,8 +1,11 @@
 /**
  * API Tests for Canopy Native Workers Implementation
+ *
+ * These tests exercise the worker directly via Miniflare. For HTTP surface
+ * coverage, see the Playwright suite under `packages/tests/canopy-api`.
  */
 import { env } from "cloudflare:test";
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import worker from "../src/index";
 
 describe("Canopy API", () => {

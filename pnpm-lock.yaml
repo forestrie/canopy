@@ -17,6 +17,12 @@ importers:
       '@types/node':
         specifier: ^24.8.1
         version: 24.8.1
+      cbor:
+        specifier: ^10.0.11
+        version: 10.0.11
+      cose-js:
+        specifier: ^0.9.0
+        version: 0.9.0
       dotenv:
         specifier: ^17.2.3
         version: 17.2.3
@@ -26,6 +32,9 @@ importers:
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
+      uuid:
+        specifier: ^10.0.0
+        version: 10.0.0
 
   packages/apps/canopy-api:
     dependencies:
@@ -54,6 +63,19 @@ importers:
       wrangler:
         specifier: ^4.43.0
         version: 4.43.0(@cloudflare/workers-types@4.20251011.0)
+
+  packages/tests/canopy-api:
+    dependencies:
+      '@canopy/api':
+        specifier: workspace:*
+        version: link:../../apps/canopy-api
+    devDependencies:
+      '@playwright/test':
+        specifier: ^1.48.0
+        version: 1.56.0
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
 
 packages:
 
@@ -631,6 +653,10 @@ packages:
 
   cbor-x@1.6.0:
     resolution: {integrity: sha512-0kareyRwHSkL6ws5VXHEf8uY1liitysCVJjlmhaLG+IXLqhSaOO+t63coaso7yjwEzWZzLy8fJo06gZDVQM9Qg==}
+
+  cbor@10.0.11:
+    resolution: {integrity: sha512-vIwORDd/WyB8Nc23o2zNN5RrtFGlR6Fca61TtjkUXueI3Jf2DOZDl1zsshvBntZ3wZHBM9ztjnkXSmzQDaq3WA==}
+    engines: {node: '>=20'}
 
   cbor@8.1.0:
     resolution: {integrity: sha512-DwGjNW9omn6EwP70aXsn7FQJx5kO12tX0bZkaTjzdVFM6/7nhA4t0EENocKGx6D2Bch9PE2KzCUf5SceBdeijg==}
@@ -1477,6 +1503,10 @@ snapshots:
   cbor-x@1.6.0:
     optionalDependencies:
       cbor-extract: 2.2.0
+
+  cbor@10.0.11:
+    dependencies:
+      nofilter: 3.1.0
 
   cbor@8.1.0:
     dependencies:

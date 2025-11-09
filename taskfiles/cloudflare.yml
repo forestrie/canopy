@@ -18,6 +18,34 @@ tasks:
       - task: sync
       - task: status
 
+  create:
+    desc: Create all Cloudflare resources (R2 buckets, queues, and event notifications)
+    deps:
+      - bucket:create
+      - queue:create
+    cmds:
+      - task: notification:create
+      - cmd: echo "Resources provisioned. Run 'task cloudflare:sync' to apply Wrangler bindings."
+
+  sync:
+    desc: Apply Wrangler configuration (deploy worker + ensure HTTP pull)
+    deps:
+      - validate
+    cmds:
+      - cmd: |
+          cd packages/apps/canopy-api
+          wrangler deploy
+      - task: queue:http-enable
+
+  destroy:
+    desc: Delete all Cloudflare resources (DESTRUCTIVE!)
+    deps:
+      - notification:delete
+      - queue:delete
+      - bucket:delete
+    cmds:
+      - cmd: echo "✓ Destruction complete"
+
   status:
     desc: Show status of all Cloudflare resources
     cmds:
@@ -110,31 +138,3 @@ tasks:
           wrangler r2 bucket notification list "{{.R2_BUCKET_NAME}}" 2>/dev/null | grep -q "logs/" && \
             wrangler r2 bucket notification delete "{{.R2_BUCKET_NAME}}" --queue "{{.QUEUE_NAME}}" 2>/dev/null || \
             echo "No notifications to delete"
-
-  create:
-    desc: Create all Cloudflare resources (R2 buckets, queues, and event notifications)
-    deps:
-      - bucket:create
-      - queue:create
-    cmds:
-      - task: notification:create
-      - cmd: echo "Resources provisioned. Run 'task cloudflare:sync' to apply Wrangler bindings."
-
-  sync:
-    desc: Apply Wrangler configuration (deploy worker + ensure HTTP pull)
-    deps:
-      - validate
-    cmds:
-      - cmd: |
-          cd packages/apps/canopy-api
-          wrangler deploy
-      - task: queue:http-enable
-
-  destroy:
-    desc: Delete all Cloudflare resources (DESTRUCTIVE!)
-    deps:
-      - notification:delete
-      - queue:delete
-      - bucket:delete
-    cmds:
-      - cmd: echo "✓ Destruction complete"

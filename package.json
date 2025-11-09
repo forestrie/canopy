@@ -10,7 +10,9 @@
     "deploy": "pnpm --filter @canopy/api deploy",
     "deploy:production": "pnpm --filter @canopy/api deploy:production",
     "test": "pnpm -r test",
-    "test:e2e": "playwright test",
+    "test:e2e": "pnpm --filter @canopy/api-e2e test:e2e",
+    "test:e2e:local": "pnpm --filter @canopy/api-e2e test:e2e:local",
+    "test:e2e:remote": "pnpm --filter @canopy/api-e2e test:e2e:remote",
     "lint": "pnpm -r lint",
     "format": "prettier --write packages",
     "check": "prettier --check packages",
@@ -19,9 +21,12 @@
   "devDependencies": {
     "@playwright/test": "^1.48.0",
     "@types/node": "^24.8.1",
+    "cbor": "^10.0.11",
+    "cose-js": "^0.9.0",
     "dotenv": "^17.2.3",
     "prettier": "^3.3.3",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "uuid": "^10.0.0"
   },
   "pnpm": {
     "overrides": {

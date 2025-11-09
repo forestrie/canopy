@@ -1,0 +1,19 @@
+{
+  "name": "@canopy/api-e2e",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "test:e2e": "pnpm exec playwright test --project=remote",
+    "test:e2e:local": "pnpm exec playwright test --project=local",
+    "test:e2e:remote": "pnpm exec playwright test --project=remote"
+  },
+  "dependencies": {
+    "@canopy/api": "workspace:*"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "typescript": "^5.9.2"
+  }
+}
+
