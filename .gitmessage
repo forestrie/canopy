@@ -1,0 +1,10 @@
+# Commit message template for forestrie/canopy
+#
+# Use Conventional Commits, e.g.:
+#   feat(scope): add new feature
+#   fix(iam): allow flux image reflector to read artifact registry
+#
+# Subject line: max 79 characters.
+# Body lines: wrap at 72 characters.
+#
+# Explain what and why, not how. Reference issues/PRs if relevant.
