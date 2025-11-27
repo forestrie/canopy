@@ -1,0 +1,56 @@
+---
+# curl examples that exercise the scout endpoints
+
+version: "3"
+
+vars:
+  BASE_URL: '{{.BASE_URL | default "https://scout.dev-1.forestrie.dev"}}'
+  LOG_ID: '{{.LOG_ID | default "3062ea57-c184-41d8-bd61-296b02c680d8"}}'
+  APP_ID: '{{.APP_ID | default "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}}'
+  EXTRA_BYTES: '{{.EXTRA_BYTES | default "0123456789abcdef0123456789abcdef0123456789abcdef"}}'
+  FENCE_INDEX: '{{.FENCE_INDEX | default "0"}}'
+  MASSIF_RANGE: '{{.MASSIF_RANGE | default "1"}}'
+
+tasks:
+  head-index:
+    desc: Get the head index for a log
+    cmds:
+      - cmd: |
+          curl -v -X GET "{{.BASE_URL}}/api/logs/{{.LOG_ID}}/head-index" \
+          -H 'Accept: application/cbor' \
+          --output head-index.response
+
+  find-appid:
+    desc: Find entries by application ID
+    cmds:
+      - cmd: |
+          curl -v -X GET "{{.BASE_URL}}/api/logs/{{.LOG_ID}}/find-appid/{{.APP_ID}}?fence-index={{.FENCE_INDEX}}&massif-range={{.MASSIF_RANGE}}" \
+          -H 'Accept: application/cbor' \
+          --output find-appid.response
+
+  find-extrabytes:
+    desc: Find entries by extra bytes
+    cmds:
+      - cmd: |
+          curl -v -X GET "{{.BASE_URL}}/api/logs/{{.LOG_ID}}/find-extrabytes/{{.EXTRA_BYTES}}?fence-index={{.FENCE_INDEX}}&massif-range={{.MASSIF_RANGE}}" \
+          -H 'Accept: application/cbor' \
+          --output find-extrabytes.response
+
+  find-extrabytes-with-timestamp:
+    desc: Find entries by extra bytes with ID timestamp
+    vars:
+      ID_TIMESTAMP: '{{.ID_TIMESTAMP | default "1234567890abcdef"}}'
+    cmds:
+      - cmd: |
+          curl -v -X GET "{{.BASE_URL}}/api/logs/{{.LOG_ID}}/find-extrabytes/{{.EXTRA_BYTES}}?fence-index={{.FENCE_INDEX}}&massif-range={{.MASSIF_RANGE}}&idtimestamp={{.ID_TIMESTAMP}}" \
+          -H 'Accept: application/cbor' \
+          --output find-extrabytes-timestamp.response
+
+  test-all:
+    desc: Run all scout API tests
+    cmds:
+      - task: head-index
+      - task: find-appid
+      - task: find-extrabytes
+      - task: find-extrabytes-with-timestamp
+      - echo "All scout API tests completed. Check *.response files for results."

@@ -4,6 +4,7 @@ dotenv: [".env", ".env.secrets"]
 
 includes:
   scrapi: ./taskfiles/scrapi.yml
+  scout: ./taskfiles/scout.yml
   cf: ./taskfiles/cloudflare.yml
   minio: ./taskfiles/minio.yml
   wrangler: ./taskfiles/wrangler.yml
