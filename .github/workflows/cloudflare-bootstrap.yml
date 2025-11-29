@@ -93,7 +93,7 @@ jobs:
                     "http://localhost:3000",
                     "https://canopy.vercel.app",
                     "https://canopy.dev-1.forestrie.dev",
-                    "https://scrapi.dev-1.forestrie.dev",
+                    "https://scrapi.dev-1.forestrie.dev"
                   ],
                   "methods": ["GET", "HEAD", "POST", "PUT"],
                   "headers": ["*"]
