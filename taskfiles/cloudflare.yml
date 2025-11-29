@@ -23,7 +23,7 @@ tasks:
     desc: Create all Cloudflare resources (R2 buckets, queues, KV namespaces, and event notifications)
     deps:
       - bucket:create
-      - queue:create
+      - queue:create:ranger
       - kv:create:all
     cmds:
       - task: notification:create
@@ -37,13 +37,13 @@ tasks:
       - cmd: |
           cd packages/apps/canopy-api
           yes n | wrangler deploy
-      - task: queue:http-enable
+      - task: queue:http-enable:ranger
 
   destroy:
     desc: Delete all Cloudflare resources (including KV namespaces) (DESTRUCTIVE!)
     deps:
       - notification:delete
-      - queue:delete
+      - queue:delete:ranger
       - bucket:delete
       - kv:destroy:all
     cmds:
@@ -196,21 +196,31 @@ tasks:
           fi
           echo "$NAMESPACE_ID"
 
-  queue:create:
-    desc: Create Cloudflare queues with HTTP pull enabled
+  queue:create:*:
+    desc: Create a Cloudflare queue and its dead-letter queue
+    vars:
+      NAME: "{{.MATCH}}"
+      QUEUE_NAME: '{{.QUEUE_NAME | default (print .CANOPY_ID "-" .NAME)}}'
+      QUEUE_DLQ_NAME: '{{.QUEUE_DLQ_NAME | default (print .QUEUE_NAME "-dlq")}}'
     cmds:
       - cmd: |
-          yes n | wrangler queues create "{{.QUEUE_NAME}}" 2>/dev/null || echo "Queue {{.QUEUE_NAME}} may already exist"
-          yes n | wrangler queues create "{{.QUEUE_DLQ_NAME}}" 2>/dev/null || echo "DLQ {{.QUEUE_DLQ_NAME}} may already exist"
+          yes n | wrangler queues create "{{.QUEUE_NAME}}" || echo "Queue {{.QUEUE_NAME}} may already exist"
+          yes n | wrangler queues create "{{.QUEUE_DLQ_NAME}}" || echo "DLQ {{.QUEUE_DLQ_NAME}} may already exist"
 
-  queue:http-enable:
-    desc: Ensure HTTP pull consumers are configured on queues
+  queue:http-enable:*:
+    desc: Ensure HTTP pull consumer is configured on a queue
+    vars:
+      NAME: "{{.MATCH}}"
+      QUEUE_NAME: '{{.QUEUE_NAME | default (print .CANOPY_ID "-" .NAME)}}'
     cmds:
       - cmd: |
-          yes n | wrangler queues consumer http add "{{.QUEUE_NAME}}" 2>/dev/null || echo "HTTP pull already configured for {{.QUEUE_NAME}}"
+          yes n | wrangler queues consumer http add "{{.QUEUE_NAME}}" || echo "HTTP pull already configured for {{.QUEUE_NAME}}"
 
-  queue:inspect:
+  queue:inspect:*:
     desc: Show queue configuration (including consumer type)
+    vars:
+      NAME: "{{.MATCH}}"
+      QUEUE_NAME: '{{.QUEUE_NAME | default (print .CANOPY_ID "-" .NAME)}}'
     cmds:
       - cmd: |
           set -a
@@ -221,17 +231,26 @@ tasks:
             echo "ERROR: CLOUDFLARE_API_TOKEN is not set. Populate it in .env/.env.secrets."
             exit 1
           fi
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "jq is required for queue:inspect:*" >&2
+            exit 1
+          fi
           RESPONSE=$(curl -fsS \
             -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
             "https://api.cloudflare.com/client/v4/accounts/{{.CLOUDFLARE_ACCOUNT_ID}}/queues/{{.QUEUE_NAME}}") || exit 1
-          echo "$RESPONSE" | python3 -m json.tool 2>/dev/null || echo "$RESPONSE"
+          echo "$RESPONSE" | jq .
 
-  queue:delete:
-    desc: Delete Cloudflare queues (DESTRUCTIVE!)
+  queue:delete:*:
+    desc: Delete a Cloudflare queue and its dead-letter queue (DESTRUCTIVE!)
+    vars:
+      NAME: "{{.MATCH}}"
+      QUEUE_NAME: '{{.QUEUE_NAME | default (print .CANOPY_ID "-" .NAME)}}'
+      QUEUE_DLQ_NAME: '{{.QUEUE_DLQ_NAME | default (print .QUEUE_NAME "-dlq")}}'
     cmds:
       - cmd: |
           yes n | wrangler queues delete "{{.QUEUE_NAME}}"
           yes n | wrangler queues delete "{{.QUEUE_DLQ_NAME}}"
+
 
   notification:create:
     desc: Create R2 event notification to queue
