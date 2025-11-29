@@ -63,10 +63,4 @@
       }
     }
   },
-  "kv_namespaces": [
-    {
-      "binding": "canopy_dev_1_massifs",
-      "id": "b3fd43a1afa6418e8f67c817459c9259"
-    }
-  ]
 }
