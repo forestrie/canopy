@@ -25,7 +25,7 @@ interface PlaceholderReceipt {
  *
  * @param request - The HTTP request
  * @param entrySegments - [logid, 'entries', index, etag?]
- * @param r2Bucket - R2 bucket for storage
+ * @param r2Bucket - R2_LEAVES bucket for storage
  * @returns Response with receipt or redirect
  */
 export async function resolveReceipt(

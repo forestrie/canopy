@@ -1,5 +1,5 @@
 /**
- * R2 Storage utilities for SCITT/SCRAPI statements
+ * R2_LEAVES Storage utilities for SCITT/SCRAPI statements
  */
 
 export interface LeafObjectMetadata {
@@ -12,9 +12,9 @@ export interface LeafObjectMetadata {
 }
 
 /**
- * Store a statement in R2 with content-addressed path
+ * Store a statement in R2_LEAVES with content-addressed path
  *
- * @param bucket The R2 bucket
+ * @param bucket The R2_LEAVES bucket
  * @param logId The log identifier (UUID)
  * @param fenceIndex The fence MMR index
  * @param content The statement content (CBOR/COSE)
@@ -43,11 +43,11 @@ export async function storeLeaf(
     sequenced: false,
   };
 
-  // Convert ArrayBuffer to Uint8Array for R2/Miniflare compatibility
+  // Convert ArrayBuffer to Uint8Array for R2_LEAVES/Miniflare compatibility
   // This fixes the serialization issue with Miniflare
   const uint8Content = new Uint8Array(content);
 
-  // Store in R2 - hash is in path, not stored separately
+  // Store in R2_LEAVES - hash is in path, not stored separately
   let result;
   try {
     result = await bucket.put(path, uint8Content, {
@@ -55,7 +55,7 @@ export async function storeLeaf(
         contentType,
         cacheControl: "public, max-age=31536000, immutable", // Content-addressed, can cache forever
       },
-      // R2 customMetadata must be string values
+      // R2_LEAVES customMetadata must be string values
       // Note: hash is NOT stored in metadata - path is authoritative
       customMetadata: {
         logId: meta.logId,
@@ -64,10 +64,10 @@ export async function storeLeaf(
         timestamp: String(meta.timestamp),
         sequenced: String(meta.sequenced),
       } as Record<string, string>,
-      // Removed md5 option - R2's md5 expects MD5 format, we use SHA256 in path
+      // Removed md5 option - R2_LEAVES's md5 expects MD5 format, we use SHA256 in path
     });
   } catch (error) {
-    console.error("Error storing leaf in R2:", error);
+    console.error("Error storing leaf in R2_LEAVES:", error);
     throw error;
   }
 
@@ -79,9 +79,9 @@ export async function storeLeaf(
 }
 
 /**
- * Retrieve a statement from R2
+ * Retrieve a statement from R2_LEAVES
  *
- * @param bucket The R2 bucket
+ * @param bucket The R2_LEAVES bucket
  * @param path The statement path
  * @returns The statement content and metadata
  */

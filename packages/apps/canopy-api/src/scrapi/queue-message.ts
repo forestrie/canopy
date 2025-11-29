@@ -5,7 +5,7 @@
  */
 
 /**
- * Message sent to queue when a new statement is registered in R2
+ * Message sent to queue when a new statement is registered in R2_LEAVES
  *
  * This message is consumed by the ranger service which sequences the statement
  * into the transparency log.
@@ -17,13 +17,13 @@ export interface LeafRegistrationMessage {
   /** The fence MMR index assigned to this statement */
   fenceIndex: number;
 
-  /** The storage path in R2 (content-addressed) */
+  /** The storage path in R2_LEAVES (content-addressed) */
   path: string;
 
   /** The MD5 hash of the content (hex) */
   hash: string;
 
-  /** The ETag returned by R2 (used for integrity verification) */
+  /** The ETag returned by R2_LEAVES (used for integrity verification) */
   etag: string;
 
   /** Timestamp when the statement was registered (ISO 8601) */

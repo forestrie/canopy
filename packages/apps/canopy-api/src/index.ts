@@ -10,7 +10,7 @@ import { resolveReceipt } from "./scrapi/resolve-receipt";
 import { getTransparencyConfiguration } from "./scrapi/transparency-configuration";
 
 export interface Env {
-  R2: R2Bucket;
+  R2_LEAVES: R2Bucket;
   CANOPY_ID: string;
   FOREST_PROJECT_ID: string;
   API_VERSION: string;
@@ -86,11 +86,11 @@ export default {
 
       if (request.method === "POST") {
         // POST /logs/{logId}/entries - Register new statement
-        // R2 event notifications will automatically send messages to the queue
+        // R2_LEAVES event notifications will automatically send messages to the queue
         const response = await registerSignedStatement(
           request,
           segments[1],
-          env.R2,
+          env.R2_LEAVES,
         );
 
         const headers = new Headers(response.headers);
@@ -113,7 +113,7 @@ export default {
       }
 
       // GET /logs/{logId}/entries/{entryId} - Retrieve receipt
-      const response = await resolveReceipt(request, segments.slice(1), env.R2);
+      const response = await resolveReceipt(request, segments.slice(1), env.R2_LEAVES);
 
       const headers = new Headers(response.headers);
       Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));

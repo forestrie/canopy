@@ -16,8 +16,8 @@ export default defineWorkersConfig({
           configPath: "./wrangler.jsonc",
         },
         miniflare: {
-          // Enable local R2 bindings for testing
-          r2Buckets: ["R2"],
+          // Enable local R2_LEAVES bindings for testing
+          r2Buckets: ["R2_LEAVES"],
           // Persist data between test runs (optional)
           r2Persist: ".wrangler/state/v3/r2",
         },

@@ -74,8 +74,8 @@ export async function registerSignedStatement(
     // Get the fence MMR index
     const fenceIndex = await getLowerBoundMMRIndex(logId);
 
-    // Store leaf in R2
-    // R2 event notifications will automatically send a message to the queue
+    // Store leaf in R2_LEAVES
+    // R2_LEAVES event notifications will automatically send a message to the queue
     const { path, hash, etag } = await storeLeaf(
       r2Bucket,
       logId,
@@ -98,7 +98,7 @@ export async function registerSignedStatement(
     console.error("Error registering statement:", error);
 
     if (error instanceof Error) {
-      if (error.message.includes("R2")) {
+      if (error.message.includes("R2_LEAVES")) {
         return ServerErrors.storageError(error.message, "store");
       }
     }

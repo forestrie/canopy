@@ -10,7 +10,7 @@ declare namespace Cloudflare {
     FOREST_PROJECT_ID: "forest-dev-1" | "forest-prod-1";
     API_VERSION: "v1";
     NODE_ENV: "development" | "production";
-    R2: R2Bucket;
+    R2_LEAVES: R2Bucket;
     RANGER_QUEUE: Queue;
   }
 }
@@ -7121,7 +7121,7 @@ interface RequestInitCfProperties extends Record<string, unknown> {
   minify?: RequestInitCfPropertiesImageMinify;
   mirage?: boolean;
   polish?: "lossy" | "lossless" | "off";
-  r2?: RequestInitCfPropertiesR2;
+  r2?: RequestInitCfPropertiesR2_LEAVES;
   /**
    * Redirects the request to an alternate origin server. You can use this,
    * for example, to implement load balancing across several origins.
@@ -7344,7 +7344,7 @@ interface RequestInitCfPropertiesImageMinify {
   css?: boolean;
   html?: boolean;
 }
-interface RequestInitCfPropertiesR2 {
+interface RequestInitCfPropertiesR2_LEAVES {
   /**
    * Colo id of bucket that an object is stored in
    */

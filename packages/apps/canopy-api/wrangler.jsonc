@@ -13,7 +13,7 @@
   },
   "r2_buckets": [
     {
-      "binding": "R2",
+      "binding": "R2_LEAVES",
       "bucket_name": "canopy-dev-1-leaves"
     }
   ],
@@ -46,7 +46,7 @@
       },
       "r2_buckets": [
         {
-          "binding": "R2",
+          "binding": "R2_LEAVES",
           "bucket_name": "canopy-prod-1-leaves"
         }
       ],
