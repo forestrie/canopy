@@ -104,15 +104,29 @@ jobs:
             ]
           }
           EOF
+
+          if ! jq . cors.json >/dev/null 2>&1; then
+            echo "❌ cors.json is not valid JSON"
+            cat cors.json
+            exit 1
+          fi
           echo "Configuring CORS for R2 bucket ${R2_BUCKET_NAME}"
 
-          curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets/${R2_BUCKET_NAME}/cors" \
+              # --- Apply policy ---
+          APPLY_RESPONSE=$(curl -sS -X PUT \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets/${R2_BUCKET_NAME}/cors" \
             -H "Authorization: Bearer ${R2_ADMIN}" \
             -H "Content-Type: application/json" \
             --data-binary @cors.json \
-            --fail-with-body || {
-              echo "⚠️  Failed to configure CORS. This may need to be done manually."
-            }
+            --fail-with-body
+          ) || {
+            echo $APPLY_RESPONSE
+            echo "❌ Failed to configure CORS (PUT request failed)"
+            exit 1
+          }
+
+          # Optional debug
+          echo "RESPONSE: ${APPLY_RESPONSE}"
 
       - name: Show Status
         if: inputs.action == 'status'
