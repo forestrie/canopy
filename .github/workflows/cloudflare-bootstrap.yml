@@ -57,7 +57,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           echo "Authenticating with Cloudflare..."
-          wrangler whoami
+          yes n | wrangler whoami
 
       - name: Apply Infrastructure
         if: inputs.action == 'apply'
@@ -106,7 +106,7 @@ jobs:
           EOF
 
           if ! jq . cors.json >/dev/null 2>&1; then
-            echo "❌ cors.json is not valid JSON"
+            echo "cors.json is not valid JSON"
             cat cors.json
             exit 1
           fi
@@ -121,7 +121,7 @@ jobs:
             --fail-with-body
           ) || {
             echo $APPLY_RESPONSE
-            echo "❌ Failed to configure CORS (PUT request failed)"
+            echo "Failed to configure CORS (PUT request failed)"
             exit 1
           }
 

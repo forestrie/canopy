@@ -8,6 +8,7 @@ vars:
   R2_BUCKET_NAME: '{{.R2_BUCKET_NAME | default (print .CANOPY_ID "-leaves")}}'
   QUEUE_NAME: '{{.QUEUE_NAME | default (print .CANOPY_ID "-ranger")}}'
   QUEUE_DLQ_NAME: '{{.QUEUE_DLQ_NAME | default (print .QUEUE_NAME "-dlq")}}'
+  KV_STORE_NAME: '{{.KV_STORE_NAME | default (print .CANOPY_ID "-massifs")}}'
 
 tasks:
   bootstrap:
@@ -19,10 +20,11 @@ tasks:
       - task: status
 
   create:
-    desc: Create all Cloudflare resources (R2 buckets, queues, and event notifications)
+    desc: Create all Cloudflare resources (R2 buckets, queues, KV namespaces, and event notifications)
     deps:
       - bucket:create
       - queue:create
+      - kv:create:all
     cmds:
       - task: notification:create
       - cmd: echo "Resources provisioned. Run 'task cloudflare:sync' to apply Wrangler bindings."
@@ -34,17 +36,18 @@ tasks:
     cmds:
       - cmd: |
           cd packages/apps/canopy-api
-          wrangler deploy
+          yes n | wrangler deploy
       - task: queue:http-enable
 
   destroy:
-    desc: Delete all Cloudflare resources (DESTRUCTIVE!)
+    desc: Delete all Cloudflare resources (including KV namespaces) (DESTRUCTIVE!)
     deps:
       - notification:delete
       - queue:delete
       - bucket:delete
+      - kv:destroy:all
     cmds:
-      - cmd: echo "✓ Destruction complete"
+      - cmd: echo "Destruction complete"
 
   status:
     desc: Show status of all Cloudflare resources
@@ -52,13 +55,18 @@ tasks:
       - task: validate
       - cmd: |
           echo "--------- :buckets: --------------------------------------------------"
-          wrangler r2 bucket list
+          yes n | wrangler r2 bucket list
       - cmd: |
           echo "--------- :queues:  --------------------------------------------------"
-          wrangler queues list
+          yes n | wrangler queues list
+      - cmd: |
+          echo "--------- :kv:  ------------------------------------------------------"
+          NAMESPACES=$(yes n | wrangler kv namespace list 2>/dev/null || echo "")
+          echo "$NAMESPACES" | grep "{{.CANOPY_ID}}-massifs" || echo "  {{.CANOPY_ID}}-massifs (not found)"
+          echo "$NAMESPACES" | grep "{{.CANOPY_ID}}-fenced-entries" || echo "  {{.CANOPY_ID}}-fenced-entries (not found)"
       - cmd: |
           echo "--------- :bucket notifications:  ------------------------------------"
-          wrangler r2 bucket notification list "{{.R2_BUCKET_NAME}}" 2>/dev/null || echo "  No notifications configured"
+          yes n | wrangler r2 bucket notification list "{{.R2_BUCKET_NAME}}" 2>/dev/null || echo "  No notifications configured"
 
   validate:
     desc: Validate Wrangler is installed and authenticated
@@ -77,25 +85,129 @@ tasks:
   bucket:create:
     desc: Create R2 bucket
     cmds:
-      - cmd: wrangler r2 bucket create "{{.R2_BUCKET_NAME}}" --location weur 2>/dev/null || echo "✓ Bucket {{.R2_BUCKET_NAME}} may already exist"
+      - cmd: yes n | wrangler r2 bucket create "{{.R2_BUCKET_NAME}}" --location weur 2>/dev/null || echo "Bucket {{.R2_BUCKET_NAME}} may already exist"
 
   bucket:delete:
     desc: Delete R2 bucket (DESTRUCTIVE! Bucket must be empty)
     cmds:
-      - cmd: wrangler r2 bucket delete "{{.R2_BUCKET_NAME}}" 2>/dev/null || echo "✓ Bucket {{.R2_BUCKET_NAME}} not found or not empty"
+      - cmd: yes n | wrangler r2 bucket delete "{{.R2_BUCKET_NAME}}" 2>/dev/null || echo "Bucket {{.R2_BUCKET_NAME}} not found or not empty"
+
+  kv:create:all:
+    desc: Create all well-known Cloudflare KV namespaces
+    cmds:
+      - task: kv:create:massifs
+      - task: kv:create:fenced-entries
+
+  kv:bind:massifs:canopy-api:
+    desc: Ensure canopy-api Wrangler config is bound to the massifs KV namespace
+    cmds:
+      - cmd: WFILE=packages/apps/canopy-api/wrangler.jsonc task cf:kv:bind:massifs
+
+  kv:list:
+    desc: List {{.CANOPY_ID}}-* Cloudflare KV namespaces
+    cmds:
+      - cmd: |
+          OUTPUT=$(yes n | wrangler kv namespace list 2>/dev/null || echo "[]")
+          echo "$OUTPUT" | jq -r --arg canopy "{{.CANOPY_ID}}" '.[] | select(.title | startswith($canopy + "-")) | "\(.id)  \(.title)"'
+
+  kv:create:*:
+    desc: Create Cloudflare KV namespace
+    vars:
+      NAME: "{{.MATCH}}"
+      KV_STORE_NAME: '{{.KV_STORE_NAME | default (print .CANOPY_ID "-" .NAME)}}'
+    cmds:
+      - cmd: yes n | wrangler kv namespace create "{{.KV_STORE_NAME}}" || echo "KV namespace {{.KV_STORE_NAME}} may already exist"
+
+  kv:bind:*:
+    desc: Ensure Wrangler KV binding exists and is up to date for a namespace
+    vars:
+      NAME: "{{.MATCH}}"
+      KV_STORE_NAME: '{{.KV_STORE_NAME | default (print .CANOPY_ID "-" .NAME)}}'
+      WFILE: "{{.WFILE}}"
+    cmds:
+      - cmd: |
+          if [ -z "${WFILE}" ]; then
+            echo "WFILE must be set (path to wrangler.jsonc)" >&2
+            exit 1
+          fi
+          if [ ! -f "${WFILE}" ]; then
+            echo "Wrangler config file not found: ${WFILE}" >&2
+            exit 1
+          fi
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "jq is required for kv:bind:*" >&2
+            exit 1
+          fi
+
+          OUTPUT=$(yes n | wrangler kv namespace list 2>/dev/null || echo "[]")
+          NAMESPACE_ID=$(echo "$OUTPUT" | jq -r --arg name "{{.KV_STORE_NAME}}" '.[] | select(.title == $name) | .id' | head -n 1)
+          if [ -z "$NAMESPACE_ID" ] || [ "$NAMESPACE_ID" = "null" ]; then
+            echo "No KV namespace found with title {{.KV_STORE_NAME}}" >&2
+            exit 1
+          fi
+
+          BINDING_NAME=$(printf '%s\n' "{{.KV_STORE_NAME}}" | tr '-' '_')
+          TMP=$(mktemp)
+
+          jq --arg binding "$BINDING_NAME" --arg id "$NAMESPACE_ID" '
+            .kv_namespaces = (
+              (.kv_namespaces // [])
+              | map(select(.binding != $binding))
+              + [{"binding": $binding, "id": $id}]
+            )
+          ' "${WFILE}" > "$TMP"
+          mv "$TMP" "${WFILE}"
+
+  kv:destroy:all:
+    desc: Delete all well-known Cloudflare KV namespaces (DESTRUCTIVE!)
+    cmds:
+      - task: kv:destroy:massifs
+      - task: kv:destroy:fenced-entries
+
+  kv:destroy:*:
+    desc: Delete Cloudflare KV namespace (DESTRUCTIVE!)
+    vars:
+      NAME: "{{.MATCH}}"
+      KV_STORE_NAME: '{{.KV_STORE_NAME | default (print .CANOPY_ID "-" .NAME)}}'
+    cmds:
+      - cmd: |
+          OUTPUT=$(yes n | wrangler kv namespace list 2>/dev/null || echo "[]")
+          NAMESPACE_ID=$(echo "$OUTPUT" | jq -r --arg name "{{.KV_STORE_NAME}}" '.[] | select(.title == $name) | .id' | head -n 1)
+
+          if [ -z "$NAMESPACE_ID" ]; then
+            echo "KV namespace {{.KV_STORE_NAME}} not found"
+            exit 1
+          fi
+          yes n | wrangler kv namespace delete --namespace-id="$NAMESPACE_ID" || echo "KV namespace {{.KV_STORE_NAME}} not found"
+
+  kv:id:*:
+    desc: Get the id of the {{.CANOPY_ID}}-* Cloudflare KV store
+    vars:
+      NAME: "{{.MATCH}}"
+      KV_STORE_NAME: '{{.KV_STORE_NAME | default (print .CANOPY_ID "-" .NAME)}}'
+    cmds:
+      - cmd: |
+          OUTPUT=$(yes n | wrangler kv namespace list 2>/dev/null || echo "[]")
+          NAMESPACE_ID=$(echo "$OUTPUT" | jq -r --arg name "{{.KV_STORE_NAME}}" '.[] | select(.title == $name) | .id' | head -n 1)
+
+          if [ -z "$NAMESPACE_ID" ]; then
+            echo "KV namespace {{.KV_STORE_NAME}} not found" >&2
+            exit 1
+          fi
+          echo "$NAMESPACE_ID"
 
   queue:create:
     desc: Create Cloudflare queues with HTTP pull enabled
     cmds:
       - cmd: |
-          wrangler queues create "{{.QUEUE_NAME}}" 2>/dev/null || echo "✓ Queue {{.QUEUE_NAME}} may already exist"
-          wrangler queues create "{{.QUEUE_DLQ_NAME}}" 2>/dev/null || echo "✓ DLQ {{.QUEUE_DLQ_NAME}} may already exist"
+          yes n | wrangler queues create "{{.QUEUE_NAME}}" 2>/dev/null || echo "Queue {{.QUEUE_NAME}} may already exist"
+          yes n | wrangler queues create "{{.QUEUE_DLQ_NAME}}" 2>/dev/null || echo "DLQ {{.QUEUE_DLQ_NAME}} may already exist"
 
   queue:http-enable:
     desc: Ensure HTTP pull consumers are configured on queues
     cmds:
       - cmd: |
-          wrangler queues consumer http add "{{.QUEUE_NAME}}" 2>/dev/null || echo "✓ HTTP pull already configured for {{.QUEUE_NAME}}"
+          yes n | wrangler queues consumer http add "{{.QUEUE_NAME}}" 2>/dev/null || echo "HTTP pull already configured for {{.QUEUE_NAME}}"
 
   queue:inspect:
     desc: Show queue configuration (including consumer type)
@@ -118,24 +230,23 @@ tasks:
     desc: Delete Cloudflare queues (DESTRUCTIVE!)
     cmds:
       - cmd: |
-          wrangler queues delete "{{.QUEUE_NAME}}"
-          wrangler queues delete "{{.QUEUE_DLQ_NAME}}"
+          yes n | wrangler queues delete "{{.QUEUE_NAME}}"
+          yes n | wrangler queues delete "{{.QUEUE_DLQ_NAME}}"
 
   notification:create:
     desc: Create R2 event notification to queue
     cmds:
       - cmd: |
-          wrangler r2 bucket notification create "{{.R2_BUCKET_NAME}}" \
+          yes n | wrangler r2 bucket notification create "{{.R2_BUCKET_NAME}}" \
             --event-type object-create \
             --queue "{{.QUEUE_NAME}}" \
             --prefix "logs/" \
-            2>/dev/null || echo "✓ Notification may already be configured"
+            2>/dev/null || echo "Notification may already be configured"
 
   notification:delete:
     desc: Delete R2 event notifications
     cmds:
       - cmd: |
-          wrangler r2 bucket notification list "{{.R2_BUCKET_NAME}}" 2>/dev/null | grep -q "logs/" && \
-            wrangler r2 bucket notification delete "{{.R2_BUCKET_NAME}}" --queue "{{.QUEUE_NAME}}" 2>/dev/null || \
+          yes n | wrangler r2 bucket notification list "{{.R2_BUCKET_NAME}}" 2>/dev/null | grep -q "logs/" && \
+            yes n | wrangler r2 bucket notification delete "{{.R2_BUCKET_NAME}}" --queue "{{.QUEUE_NAME}}" 2>/dev/null || \
             echo "No notifications to delete"
-
