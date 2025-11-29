@@ -16,7 +16,7 @@ tasks:
     desc: Get the head index for a log
     cmds:
       - cmd: |
-          curl -v -X GET "{{.BASE_URL}}/api/logs/{{.LOG_ID}}/head-index" \
+          curl -v -X GET "{{.BASE_URL}}/scout/v1/api/logs/{{.LOG_ID}}/head-index" \
           -H 'Accept: application/cbor' \
           --output head-index.response
 
@@ -24,7 +24,7 @@ tasks:
     desc: Find entries by application ID
     cmds:
       - cmd: |
-          curl -v -X GET "{{.BASE_URL}}/api/logs/{{.LOG_ID}}/find-appid/{{.APP_ID}}?fence-index={{.FENCE_INDEX}}&massif-range={{.MASSIF_RANGE}}" \
+          curl -v -X GET "{{.BASE_URL}}/scout/v1/api/logs/{{.LOG_ID}}/find-appid/{{.APP_ID}}?fence-index={{.FENCE_INDEX}}&massif-range={{.MASSIF_RANGE}}" \
           -H 'Accept: application/cbor' \
           --output find-appid.response
 
@@ -32,7 +32,7 @@ tasks:
     desc: Find entries by extra bytes
     cmds:
       - cmd: |
-          curl -v -X GET "{{.BASE_URL}}/api/logs/{{.LOG_ID}}/find-extrabytes/{{.EXTRA_BYTES}}?fence-index={{.FENCE_INDEX}}&massif-range={{.MASSIF_RANGE}}" \
+          curl -v -X GET "{{.BASE_URL}}/scout/v1/api/logs/{{.LOG_ID}}/find-extrabytes/{{.EXTRA_BYTES}}?fence-index={{.FENCE_INDEX}}&massif-range={{.MASSIF_RANGE}}" \
           -H 'Accept: application/cbor' \
           --output find-extrabytes.response
 
@@ -42,7 +42,7 @@ tasks:
       ID_TIMESTAMP: '{{.ID_TIMESTAMP | default "1234567890abcdef"}}'
     cmds:
       - cmd: |
-          curl -v -X GET "{{.BASE_URL}}/api/logs/{{.LOG_ID}}/find-extrabytes/{{.EXTRA_BYTES}}?fence-index={{.FENCE_INDEX}}&massif-range={{.MASSIF_RANGE}}&idtimestamp={{.ID_TIMESTAMP}}" \
+          curl -v -X GET "{{.BASE_URL}}/scout/v1/api/logs/{{.LOG_ID}}/find-extrabytes/{{.EXTRA_BYTES}}?fence-index={{.FENCE_INDEX}}&massif-range={{.MASSIF_RANGE}}&idtimestamp={{.ID_TIMESTAMP}}" \
           -H 'Accept: application/cbor' \
           --output find-extrabytes-timestamp.response
 

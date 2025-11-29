@@ -37,7 +37,7 @@ export default defineConfig({
           process.env.CANOPY_E2E_BASE_URL ??
           //"https://canopy-api-robin-dev.dev.forestrie.com",
           // "https://canopy-api-robin-dev.dev.forestrie.com",
-          "https://canopy-api.robinbryce.workers.dev"
+          "https://canopy-api.robinbryce.workers.dev",
       },
     },
   ],
@@ -59,4 +59,3 @@ function detectWranglerPort(): number | undefined {
   }
   return undefined;
 }
-

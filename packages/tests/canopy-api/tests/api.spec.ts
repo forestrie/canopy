@@ -34,7 +34,10 @@ test.describe("Canopy API", () => {
     expect(config.baseUrl).toBeTruthy();
   });
 
-  test("registers a COSE statement", async ({ authorizedRequest, authToken }) => {
+  test("registers a COSE statement", async ({
+    authorizedRequest,
+    authToken,
+  }) => {
     test.skip(
       false,
       "TODO: enable once /logs endpoint accepts COSE payloads in test environments",
@@ -60,7 +63,7 @@ test.describe("Canopy API", () => {
       data: Buffer.from(mockCoseSign1),
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',
-        "authorization": `Bearer ${authToken}`,
+        authorization: `Bearer ${authToken}`,
       },
       maxRedirects: 0, // because register statement *always* returns 303 if its successful
     });
@@ -72,8 +75,9 @@ test.describe("Canopy API", () => {
     const location = response.headers()["location"];
     expect(location).toBeTruthy();
     expect(location).toMatch(
-      new RegExp(`/logs/${logId.replace(/[-]/g, "\\-")}/entries/\\d{8}/[a-f0-9]{32}$`)
+      new RegExp(
+        `/logs/${logId.replace(/[-]/g, "\\-")}/entries/\\d{8}/[a-f0-9]{32}$`,
+      ),
     );
   });
 });
-

@@ -19,4 +19,3 @@ This package houses the Playwright API-mode tests for the Canopy Worker. It depe
 - Fixtures live in `tests/fixtures`.
 - Specs live under `tests/` and focus on HTTP-level coverage.
 - Worker-level unit and integration tests remain in `packages/apps/canopy-api/test`.
-

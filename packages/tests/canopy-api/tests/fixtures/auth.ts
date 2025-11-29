@@ -1,8 +1,8 @@
 import {
-    APIRequestContext,
-    test as base,
-    expect,
-    request,
+  APIRequestContext,
+  test as base,
+  expect,
+  request,
 } from "@playwright/test";
 
 type AuthFixtures = {
@@ -44,4 +44,3 @@ export const test = base.extend<AuthFixtures>({
 });
 
 export const expectAPI = expect;
-

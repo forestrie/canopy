@@ -138,3 +138,4 @@ tasks:
           wrangler r2 bucket notification list "{{.R2_BUCKET_NAME}}" 2>/dev/null | grep -q "logs/" && \
             wrangler r2 bucket notification delete "{{.R2_BUCKET_NAME}}" --queue "{{.QUEUE_NAME}}" 2>/dev/null || \
             echo "No notifications to delete"
+
