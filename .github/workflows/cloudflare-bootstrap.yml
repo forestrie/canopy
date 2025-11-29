@@ -81,21 +81,35 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: "68f25af297c4235c3f1c47b2f73925b0"
           R2_BUCKET_NAME: ${{ inputs.canopy_id }}-leaves
         run: |
-          echo "📋 Configuring CORS for R2 bucket ${R2_BUCKET_NAME}"
+          echo "Configuring CORS for R2 bucket ${R2_BUCKET_NAME}"
 
-          # Configure CORS using Cloudflare API
+          cat > cors.json <<'EOF'
+          {
+            "rules": [
+              {
+                "allowed": {
+                  "origins": [
+                    "http://localhost:5173",
+                    "http://localhost:3000",
+                    "https://canopy.vercel.app",
+                    "https://canopy.dev-1.forestrie.dev",
+                    "https://scrapi.dev-1.forestrie.dev",
+                  ],
+                  "methods": ["GET", "HEAD", "POST", "PUT"],
+                  "headers": ["*"]
+                },
+                "exposeHeaders": ["ETag", "Content-Type", "Content-Length"],
+                "maxAgeSeconds": 3600
+              }
+            ]
+          }
+          EOF
+          echo "Configuring CORS for R2 bucket ${R2_BUCKET_NAME}"
+
           curl -X PUT "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets/${R2_BUCKET_NAME}/cors" \
             -H "Authorization: Bearer ${R2_ADMIN}" \
             -H "Content-Type: application/json" \
-            --data '{
-              "cors_rules": [{
-                "allowed_origins": ["http://localhost:5173", "http://localhost:3000", "https://*.vercel.app"],
-                "allowed_methods": ["GET", "HEAD", "POST", "PUT"],
-                "allowed_headers": ["*"],
-                "expose_headers": ["ETag", "Content-Type", "Content-Length"],
-                "max_age_seconds": 3600
-              }]
-            }' \
+            --data-binary @cors.json \
             --fail-with-body || {
               echo "⚠️  Failed to configure CORS. This may need to be done manually."
             }
@@ -107,7 +121,7 @@ jobs:
           R2_BUCKET_NAME: ${{ inputs.canopy_id }}-leaves
           QUEUE_NAME: ${{ inputs.canopy_id }}-ranger
         run: |
-          echo "📊 Cloudflare Infrastructure Status"
+          echo "Cloudflare Infrastructure Status"
           task cf:status
 
       - name: Destroy Infrastructure
@@ -119,10 +133,9 @@ jobs:
           QUEUE_NAME: ${{ inputs.canopy_id }}-ranger
           QUEUE_DLQ_NAME: ${{ inputs.canopy_id }}-ranger-dlq
         run: |
-          echo "🗑️ Destroying Cloudflare infrastructure..."
+          echo "Destroying Cloudflare infrastructure..."
           echo "CANOPY_ID: ${CANOPY_ID}"
           echo "R2_BUCKET_NAME: ${R2_BUCKET_NAME}"
           echo "QUEUE_NAME: ${QUEUE_NAME}"
           echo "QUEUE_DLQ_NAME: ${QUEUE_DLQ_NAME}"
           task cf:destroy
-
