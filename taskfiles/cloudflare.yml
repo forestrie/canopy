@@ -91,17 +91,17 @@ tasks:
     cmds:
       - cmd: yes n | wrangler r2 bucket delete "{{.R2_BUCKET_NAME}}" 2>/dev/null || echo "Bucket {{.R2_BUCKET_NAME}} not found or not empty"
 
-  kv:create:all:
+  kv:create:ranger-cache:
     desc: Create all well-known Cloudflare KV namespaces
     cmds:
-      - task: kv:create:massifs
-      - task: kv:create:fenced-entries
+      - task: kv:create:ranger-mmr-index
+      - task: kv:create:ranger-mmr-massifs
 
   kv:bind:ranger-cache:
     desc: Ensure canopy-api Wrangler config is bound to the massifs KV namespace
     cmds:
       - cmd: WFILE=packages/apps/ranger-cache/wrangler.jsonc task -s cf:kv:bind:ranger-mmr-index
-      - cmd: WFILE=packages/apps/ranger-cache/wrangler.jsonc task -s cf:kv:bind:ranger-mmr-cache
+      - cmd: WFILE=packages/apps/ranger-cache/wrangler.jsonc task -s cf:kv:bind:ranger-mmr-massifs
 
   kv:list:
     desc: List {{.CANOPY_ID}}-* Cloudflare KV namespaces
