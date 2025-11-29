@@ -23,11 +23,11 @@ tasks:
   test:
     desc: run all the current tests
     cmds:
-      - |
-        cd packages/apps/canopy
-        pnpm test:unit
-        pnpm test:scrapi
-        pnpm test:compliance
+      - pnpm -r test
+  build:
+    desc: build everything
+    cmds:
+      - pnpm -r build
 
   tools:check:
     desc: Check for required tools (Node, pnpm, Wrangler)
