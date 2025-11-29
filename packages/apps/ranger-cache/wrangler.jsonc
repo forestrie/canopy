@@ -17,7 +17,7 @@
     },
     {
       "binding": "R2_MMRS",
-      "bucket_name": "forest-dev-1-logs"
+      "bucket_name": "arbor-dev-1-logs"
     }
   ],
   "kv_namespaces": [
