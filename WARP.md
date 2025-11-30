@@ -120,6 +120,37 @@ When modifying Worker code or tests:
 - Keep `tsconfig` includes consistent so new `src/` or `test/` directories are picked up.
 - If you add bindings or environment variables, ensure they are reflected both in Wrangler config and Task-based infra automation.
 
+## Type and Interface Organization
+
+### General Principles
+
+When organizing types and interfaces in TypeScript packages:
+
+1. **Avoid monolithic types.ts files**: Instead of putting all types in a single `types.ts` file, organize types and interfaces into individual files based on their domain or related functionality.
+
+2. **Keep related code together**: Code that primarily works with specific interfaces should be organized in the same file as those interfaces. This improves discoverability and reduces the need to jump between files.
+
+3. **Avoid circular dependencies**: Structure imports to prevent circular dependencies. Use re-exports in a central `types.ts` or `index.ts` file for external consumers, but keep the actual definitions in separate files.
+
+4. **File naming conventions**:
+   - Interface files: `{name}.ts` (e.g., `massifstart.ts` for `MassifStart` interface)
+   - Constant files: `{name}-const.ts` (e.g., `logformat-const.ts` for format constants)
+   - Re-export files: `types.ts` can serve as a convenience re-export point
+
+### Example Structure
+
+For a module like `massifs`:
+- `massifstart.ts`: Contains the `MassifStart` interface and its related constants (byte offsets)
+- `logformat-const.ts`: Contains file format constants (VALUE_BYTES, START_HEADER_SIZE, etc.)
+- `massif.ts`: Contains the `Massif` class that implements functionality using the interfaces
+- `types.ts`: Re-exports all types and constants for external consumers
+
+This structure:
+- Prevents circular dependencies (each file has a clear dependency direction)
+- Keeps related code together (interface + its constants in one file)
+- Provides a clean external API (via `types.ts` re-exports)
+- Avoids monolithic files that become hard to navigate
+
 ### End-to-end test package (`@canopy/api-e2e`)
 
 Location: `packages/tests/canopy-api`.

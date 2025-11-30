@@ -1,0 +1,19 @@
+{
+  "name": "@canopy/merklelog",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "test:debug": "vitest --inspect --no-file-parallelism"
+  },
+  "dependencies": {
+    "@canopy/merklelog": "link:"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

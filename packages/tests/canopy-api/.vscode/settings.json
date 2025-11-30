@@ -1,8 +1,9 @@
 {
-  // Playwright configuration for canopy folder
+  // Playwright configuration for canopy-api e2e tests
   "playwright.reuseBrowser": true,
   
   // Test discovery settings
   "testing.automaticallyOpenPeekView": "never",
   "testing.followRunningTest": false
 }
+

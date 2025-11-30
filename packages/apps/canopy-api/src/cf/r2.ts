@@ -4,11 +4,10 @@
 
 export interface LeafObjectMetadata {
   logId: string;
-  fenceIndex: number;
   contentType: string;
-  timestamp: number;
-  sequenced: boolean;
-  sequencerIndex?: number;
+  appId: string;
+  extraBytes0: string;
+  extraBytes1: string;
 }
 
 /**
@@ -34,14 +33,17 @@ export async function storeLeaf(
   // Build the content-addressed path
   const path = buildLeafPath(logId, fenceIndex, hash);
 
-  // Prepare metadata
-  const meta: LeafObjectMetadata = {
-    logId,
-    fenceIndex,
-    contentType,
-    timestamp: Date.now(),
-    sequenced: false,
-  };
+  // Convert hash hex string to bytes for extraBytes calculations
+  const hashBytes = hexStringToBytes(hash);
+
+  // Calculate extraBytes1: fenceIndex (64-bit big-endian BigInt) + hash bytes (40 bytes total)
+  const fenceBigInt = BigInt(fenceIndex);
+  const fenceBytes = bigIntToBigEndianBytes(fenceBigInt, 8);
+  const extraBytesBytes = new Uint8Array(40);
+  extraBytesBytes.set(fenceBytes, 0);
+  extraBytesBytes.set(hashBytes, 8);
+  const extraBytes0 = bytesToHexString(extraBytesBytes.slice(0, 24));
+  const extraBytes1 = bytesToHexString(extraBytesBytes.slice(24));
 
   // Convert ArrayBuffer to Uint8Array for R2_LEAVES/Miniflare compatibility
   // This fixes the serialization issue with Miniflare
@@ -58,11 +60,11 @@ export async function storeLeaf(
       // R2_LEAVES customMetadata must be string values
       // Note: hash is NOT stored in metadata - path is authoritative
       customMetadata: {
-        logId: meta.logId,
-        fenceIndex: String(meta.fenceIndex),
-        contentType: meta.contentType,
-        timestamp: String(meta.timestamp),
-        sequenced: String(meta.sequenced),
+        logId: logId,
+        contentType: contentType,
+        appId: path,
+        extraBytes0: extraBytes0,
+        extraBytes1: extraBytes1,
       } as Record<string, string>,
       // Removed md5 option - R2_LEAVES's md5 expects MD5 format, we use SHA256 in path
     });
@@ -101,6 +103,9 @@ export async function getLeafObject(
     timestamp: Number(md.timestamp || Date.now()),
     sequenced: md.sequenced === "true",
     sequencerIndex: md.sequencerIndex ? Number(md.sequencerIndex) : undefined,
+    appId: md.appId || "",
+    extraBytes0: md.extraBytes0 || "",
+    extraBytes1: md.extraBytes1 || "",
   };
 
   return { content, metadata };
@@ -137,6 +142,49 @@ async function calculateSHA256(content: ArrayBuffer): Promise<string> {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
   return hashHex;
+}
+
+/**
+ * Convert hex string to Uint8Array bytes
+ *
+ * @param hex The hex string (must have even length)
+ * @returns The bytes as Uint8Array
+ */
+function hexStringToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+  }
+  return bytes;
+}
+
+/**
+ * Convert Uint8Array bytes to hex string
+ *
+ * @param bytes The bytes to convert
+ * @returns The hex string
+ */
+function bytesToHexString(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * Convert BigInt to big-endian bytes
+ *
+ * @param value The BigInt value
+ * @param byteLength The number of bytes to output
+ * @returns The bytes as Uint8Array in big-endian order
+ */
+function bigIntToBigEndianBytes(value: bigint, byteLength: number): Uint8Array {
+  const bytes = new Uint8Array(byteLength);
+  let remaining = value;
+  for (let i = byteLength - 1; i >= 0; i--) {
+    bytes[i] = Number(remaining & 0xffn);
+    remaining = remaining >> 8n;
+  }
+  return bytes;
 }
 
 /**

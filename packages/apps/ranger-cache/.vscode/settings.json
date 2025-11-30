@@ -1,0 +1,11 @@
+{
+  // Vitest configuration for ranger-cache package
+  "vitest.enable": true,
+  "vitest.workspaceConfig": "./vitest.config.ts",
+  "vitest.commandLine": "pnpm exec vitest",
+  "vitest.nodeEnv": {
+    "NODE_ENV": "test"
+  },
+  "vitest.cliArguments": "--inspect --no-file-parallelism"
+}
+
