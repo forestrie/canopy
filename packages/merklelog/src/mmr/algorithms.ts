@@ -67,7 +67,7 @@ export function calculateRoot(
   hasher: Hasher,
   leafHash: Uint8Array,
   proof: Proof,
-  leafIndex: bigint
+  leafIndex: bigint,
 ): Uint8Array {
   let currentHash = leafHash;
   const mmrIndex = new Uint64(leafIndex);
@@ -113,14 +113,15 @@ export function verifyInclusion(
   hasher: Hasher,
   leafHash: Uint8Array,
   proof: Proof,
-  root: Uint8Array
+  root: Uint8Array,
 ): boolean {
   // Check for undefined/null, not falsy (since 0n is falsy but valid)
   if (proof.leafIndex === undefined && proof.mmrIndex === undefined) {
     throw new Error("Proof must have either leafIndex or mmrIndex");
   }
 
-  const leafIdx = proof.leafIndex !== undefined ? proof.leafIndex : proof.mmrIndex!;
+  const leafIdx =
+    proof.leafIndex !== undefined ? proof.leafIndex : proof.mmrIndex!;
   const calculatedRoot = calculateRoot(hasher, leafHash, proof, leafIdx);
 
   return arraysEqual(calculatedRoot, root);
@@ -141,7 +142,7 @@ export function verifyConsistency(
   proof1: Proof,
   proof2: Proof,
   root1: Uint8Array,
-  root2: Uint8Array
+  root2: Uint8Array,
 ): boolean {
   // Verify both proofs independently
   // This is a simplified version - full implementation would need
@@ -157,4 +158,3 @@ export function verifyConsistency(
     // TODO: Implement full consistency check
   );
 }
-

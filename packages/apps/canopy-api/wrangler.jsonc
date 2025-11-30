@@ -2,24 +2,22 @@
   "name": "canopy-api",
   "main": "./src/index.ts",
   "compatibility_date": "2024-10-01",
-  "compatibility_flags": [
-    "nodejs_compat_v2"
-  ],
+  "compatibility_flags": ["nodejs_compat_v2"],
   "vars": {
     "CANOPY_ID": "canopy-dev-1",
     "FOREST_PROJECT_ID": "forest-dev-1",
     "API_VERSION": "v1",
-    "NODE_ENV": "development"
+    "NODE_ENV": "development",
   },
   "r2_buckets": [
     {
       "binding": "R2_LEAVES",
-      "bucket_name": "canopy-dev-1-leaves"
-    }
+      "bucket_name": "canopy-dev-1-leaves",
+    },
   ],
   "dev": {
     "port": 8789,
-    "local_protocol": "http"
+    "local_protocol": "http",
   },
   "queues": {
     "consumers": [
@@ -28,12 +26,12 @@
         "type": "http_pull",
         "visibility_timeout_ms": 30000,
         "max_retries": 5,
-        "dead_letter_queue": "canopy-dev-1-ranger-dlq"
-      }
-    ]
+        "dead_letter_queue": "canopy-dev-1-ranger-dlq",
+      },
+    ],
   },
   "observability": {
-    "enabled": true
+    "enabled": true,
   },
   "env": {
     "production": {
@@ -42,13 +40,13 @@
         "CANOPY_ID": "canopy-prod-1",
         "FOREST_PROJECT_ID": "forest-prod-1",
         "API_VERSION": "v1",
-        "NODE_ENV": "production"
+        "NODE_ENV": "production",
       },
       "r2_buckets": [
         {
           "binding": "R2_LEAVES",
-          "bucket_name": "canopy-prod-1-leaves"
-        }
+          "bucket_name": "canopy-prod-1-leaves",
+        },
       ],
       "queues": {
         "consumers": [
@@ -57,10 +55,10 @@
             "type": "http_pull",
             "visibility_timeout_ms": 30000,
             "max_retries": 5,
-            "dead_letter_queue": "canopy-prod-1-ranger-dlq"
-          }
-        ]
-      }
-    }
+            "dead_letter_queue": "canopy-prod-1-ranger-dlq",
+          },
+        ],
+      },
+    },
   },
 }

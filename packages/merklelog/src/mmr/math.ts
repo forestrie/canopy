@@ -160,4 +160,3 @@ export function leafCount(mmrSize: Uint64): Uint64 {
 export function leafCountFromHeightIndex(heightIndex: number): Uint64 {
   return new Uint64(1).shl(heightIndex);
 }
-

@@ -59,7 +59,7 @@ While `Buffer` offers some performance advantages in Node.js, the current `Uint8
    - **Cost**: Memory allocation + copying
    - **Frequency**: Every operation that needs Buffer methods
 
-2. **Cross-platform compatibility**: 
+2. **Cross-platform compatibility**:
    - **Impact**: Critical - Cloudflare Workers don't have native Buffer
    - **Cost**: Would require polyfills or runtime checks everywhere
    - **Frequency**: Every deployment
@@ -99,12 +99,12 @@ While `Buffer` offers some performance advantages in Node.js, the current `Uint8
 
 Based on typical JavaScript performance characteristics:
 
-| Operation | Uint8Array | Buffer (with conversion) | Buffer (native) |
-|-----------|------------|--------------------------|-----------------|
-| 32-byte comparison | 100% (baseline) | 85% (conversion overhead) | 110% (C++ optimized) |
-| 32-byte slice | 100% | 80% | 105% |
-| DataView read | 100% | 95% | N/A (would use Buffer methods) |
-| ArrayBuffer → Type | 100% | 120% (extra step) | 120% |
+| Operation          | Uint8Array      | Buffer (with conversion)  | Buffer (native)                |
+| ------------------ | --------------- | ------------------------- | ------------------------------ |
+| 32-byte comparison | 100% (baseline) | 85% (conversion overhead) | 110% (C++ optimized)           |
+| 32-byte slice      | 100%            | 80%                       | 105%                           |
+| DataView read      | 100%            | 95%                       | N/A (would use Buffer methods) |
+| ArrayBuffer → Type | 100%            | 120% (extra step)         | 120%                           |
 
 **Note**: Native Buffer is only available in Node.js. In Cloudflare Workers, Buffer would be slower due to polyfill overhead.
 
@@ -113,6 +113,7 @@ Based on typical JavaScript performance characteristics:
 ### Keep Current Uint8Array Implementation
 
 **Reasons:**
+
 1. ✅ **Zero conversion overhead**: Works directly with native types
 2. ✅ **Cross-platform**: Works in Node.js, browsers, and edge runtimes
 3. ✅ **Modern optimization**: JS engines optimize TypedArray operations well
@@ -144,10 +145,10 @@ The current `Uint8Array`-based implementation is optimal for this package becaus
 - **Bundle size**: No polyfills needed
 
 Switching to `Buffer` would:
+
 - ❌ Add conversion overhead in most cases
 - ❌ Require polyfills for edge runtimes
 - ❌ Break cross-platform compatibility
 - ❌ Add complexity without meaningful performance gains
 
 **Final Recommendation**: Keep `Uint8Array` as the fundamental type. The current implementation is well-optimized and appropriate for a performance-critical, cross-platform package.
-

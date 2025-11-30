@@ -17,14 +17,28 @@ export class Massif {
    * Creates a new Massif instance from buffer data
    * @param data - The massif data as ArrayBuffer, Uint8Array, or Buffer
    */
-  constructor(data: ArrayBuffer | Uint8Array | Buffer | { buffer: ArrayBuffer; byteOffset: number; byteLength: number }) {
+  constructor(
+    data:
+      | ArrayBuffer
+      | Uint8Array
+      | Buffer
+      | { buffer: ArrayBuffer; byteOffset: number; byteLength: number },
+  ) {
     if (data instanceof ArrayBuffer) {
       this.buffer = new Uint8Array(data);
     } else if (data instanceof Uint8Array) {
       this.buffer = data;
-    } else if ('buffer' in data && 'byteOffset' in data && 'byteLength' in data) {
+    } else if (
+      "buffer" in data &&
+      "byteOffset" in data &&
+      "byteLength" in data
+    ) {
       // Node.js Buffer or similar
-      this.buffer = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      this.buffer = new Uint8Array(
+        data.buffer,
+        data.byteOffset,
+        data.byteLength,
+      );
     } else {
       throw new Error("Unsupported buffer type");
     }
@@ -87,7 +101,6 @@ export class Massif {
     return this.buffer.slice(offset, offset + length);
   }
 
-
   /**
    * Reads a big-endian uint64 from the buffer
    */
@@ -95,7 +108,7 @@ export class Massif {
     const view = new DataView(
       this.buffer.buffer,
       this.buffer.byteOffset + offset,
-      8
+      8,
     );
     return view.getBigUint64(0, false); // false = big-endian
   }
@@ -107,7 +120,7 @@ export class Massif {
     const view = new DataView(
       this.buffer.buffer,
       this.buffer.byteOffset + offset,
-      4
+      4,
     );
     return view.getUint32(0, false); // false = big-endian
   }
@@ -119,7 +132,7 @@ export class Massif {
     const view = new DataView(
       this.buffer.buffer,
       this.buffer.byteOffset + offset,
-      2
+      2,
     );
     return view.getUint16(0, false); // false = big-endian
   }

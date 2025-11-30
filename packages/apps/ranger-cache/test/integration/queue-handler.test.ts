@@ -46,13 +46,11 @@ describe("ranger-cache queue handler", () => {
     await (worker as any).queue(batch, env, ctx);
     await Promise.all(pending);
 
+    expect(puts.some((entry) => entry.startsWith("logs/log-123/head="))).toBe(
+      true,
+    );
     expect(
-      puts.some((entry) => entry.startsWith("logs/log-123/head=")),
-    ).toBe(true);
-    expect(
-      puts.some((entry) =>
-        entry.startsWith("logs/log-123/massifs/42="),
-      ),
+      puts.some((entry) => entry.startsWith("logs/log-123/massifs/42=")),
     ).toBe(true);
   });
 });

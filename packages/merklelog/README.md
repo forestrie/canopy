@@ -81,4 +81,3 @@ This package follows the terminology defined in the [term cheatsheet](https://ra
 ## License
 
 See LICENSE file in the repository.
-

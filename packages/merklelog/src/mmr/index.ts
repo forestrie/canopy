@@ -31,7 +31,10 @@ export function leafMinusSpurSum(leafIndex: bigint): bigint {
  *
  * Translated from go-merklelog/massifs/massifstart.go MassifFirstLeaf
  */
-export function massifFirstLeaf(massifHeight: number, massifIndex: number): bigint {
+export function massifFirstLeaf(
+  massifHeight: number,
+  massifIndex: number,
+): bigint {
   // The number of nodes 'm' in a massif is: m = (1 << h) - 1
   const m = BigInt((1 << massifHeight) - 1);
 
@@ -70,4 +73,3 @@ export function mmrIndex(leafIndex: bigint): bigint {
 
   return sum;
 }
-

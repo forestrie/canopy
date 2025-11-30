@@ -139,7 +139,7 @@ export class Uint64 {
   toNumber(): number {
     if (this.value > BigInt(Number.MAX_SAFE_INTEGER)) {
       throw new Error(
-        `Value ${this.value} exceeds Number.MAX_SAFE_INTEGER (${Number.MAX_SAFE_INTEGER})`
+        `Value ${this.value} exceeds Number.MAX_SAFE_INTEGER (${Number.MAX_SAFE_INTEGER})`,
       );
     }
     return Number(this.value);
@@ -162,4 +162,3 @@ export class Uint64 {
     return this.value === other.value;
   }
 }
-

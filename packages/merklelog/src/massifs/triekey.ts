@@ -94,14 +94,13 @@ export interface TrieKeyOptions {
 export async function computeTrieKey(
   opts: TrieKeyOptions,
   logId: Uint8Array,
-  appId: Uint8Array
+  appId: Uint8Array,
 ): Promise<Uint8Array> {
   const data = new Uint8Array(1 + logId.length + appId.length);
   data[0] = opts.domain;
   data.set(logId, 1);
   data.set(appId, 1 + logId.length);
-  
+
   const hashBuffer = await crypto.subtle.digest("SHA-256", data);
   return new Uint8Array(hashBuffer);
 }
-

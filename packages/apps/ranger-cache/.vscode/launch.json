@@ -26,10 +26,7 @@
         "${workspaceFolder}/**",
         "!**/node_modules/**"
       ],
-      "outFiles": [
-        "${workspaceFolder}/**/*.js",
-        "!**/node_modules/**"
-      ]
+      "outFiles": ["${workspaceFolder}/**/*.js", "!**/node_modules/**"]
     },
     {
       "type": "node",
@@ -57,10 +54,7 @@
         "${workspaceFolder}/**",
         "!**/node_modules/**"
       ],
-      "outFiles": [
-        "${workspaceFolder}/**/*.js",
-        "!**/node_modules/**"
-      ]
+      "outFiles": ["${workspaceFolder}/**/*.js", "!**/node_modules/**"]
     },
     {
       "type": "node",
@@ -86,10 +80,7 @@
         "${workspaceFolder}/**",
         "!**/node_modules/**"
       ],
-      "outFiles": [
-        "${workspaceFolder}/**/*.js",
-        "!**/node_modules/**"
-      ]
+      "outFiles": ["${workspaceFolder}/**/*.js", "!**/node_modules/**"]
     },
     {
       "type": "node",
@@ -110,12 +101,8 @@
   "compounds": [
     {
       "name": "Debug with Worker Inspector",
-      "configurations": [
-        "Debug Vitest Tests",
-        "Attach to Worker Inspector"
-      ],
+      "configurations": ["Debug Vitest Tests", "Attach to Worker Inspector"],
       "stopAll": true
     }
   ]
 }
-

@@ -113,7 +113,11 @@ export default {
       }
 
       // GET /logs/{logId}/entries/{entryId} - Retrieve receipt
-      const response = await resolveReceipt(request, segments.slice(1), env.R2_LEAVES);
+      const response = await resolveReceipt(
+        request,
+        segments.slice(1),
+        env.R2_LEAVES,
+      );
 
       const headers = new Headers(response.headers);
       Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));

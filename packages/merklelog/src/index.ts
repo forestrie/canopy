@@ -27,11 +27,7 @@ export {
 } from "./massifs/types.js";
 
 // Export mmr module
-export {
-  mmrIndex,
-  massifFirstLeaf,
-  leafMinusSpurSum,
-} from "./mmr/index.js";
+export { mmrIndex, massifFirstLeaf, leafMinusSpurSum } from "./mmr/index.js";
 export {
   heightIndex,
   height,
@@ -50,4 +46,3 @@ export {
 } from "./mmr/algorithms.js";
 export type { Proof, Peak } from "./mmr/types.js";
 export type { Hasher } from "./mmr/types.js";
-

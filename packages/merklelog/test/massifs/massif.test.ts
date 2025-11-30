@@ -133,16 +133,15 @@ describe("Massif", () => {
 
     it("should return different views for different indices", () => {
       const buffer = new Uint8Array(128); // 4 fields
-      buffer[0] = 0xAA; // Field 0, byte 0
-      buffer[32] = 0xBB; // Field 1, byte 0
+      buffer[0] = 0xaa; // Field 0, byte 0
+      buffer[32] = 0xbb; // Field 1, byte 0
 
       const massif = new Massif(buffer);
       const field0 = massif.fieldref(0);
       const field1 = massif.fieldref(1);
 
-      expect(field0[0]).toBe(0xAA);
-      expect(field1[0]).toBe(0xBB);
+      expect(field0[0]).toBe(0xaa);
+      expect(field1[0]).toBe(0xbb);
     });
   });
 });
-

@@ -1,10 +1,7 @@
 import type { R2ObjectReference, RangerR2Bucket } from "../r2";
 import type { RangerKVBindings } from "../kv";
 import { writeHeadIndex, writeMassifCacheEntry } from "../kv";
-import {
-  deriveMassifCacheKey,
-  parseMassifCoordinateFromKey,
-} from "../massifs";
+import { deriveMassifCacheKey, parseMassifCoordinateFromKey } from "../massifs";
 
 export interface RangerDependencies {
   r2: RangerR2Bucket;

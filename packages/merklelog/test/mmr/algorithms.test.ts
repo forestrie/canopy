@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { bagPeaks, calculateRoot, verifyInclusion, Hasher } from "../../src/mmr/algorithms.js";
+import {
+  bagPeaks,
+  calculateRoot,
+  verifyInclusion,
+  Hasher,
+} from "../../src/mmr/algorithms.js";
 import type { Proof } from "../../src/mmr/types.js";
 
 // Simple SHA-256 hasher implementation for testing
@@ -125,7 +130,7 @@ describe("MMR Algorithms", () => {
       };
 
       const wrongRoot = new Uint8Array(32);
-      wrongRoot[0] = 0xFF;
+      wrongRoot[0] = 0xff;
 
       const isValid = verifyInclusion(hasher, leafHash, proof, wrongRoot);
       expect(isValid).toBe(false);
@@ -143,4 +148,3 @@ describe("MMR Algorithms", () => {
     });
   });
 });
-

@@ -35,4 +35,3 @@ export interface Hasher {
   /** Finalize and return the hash */
   digest(): Uint8Array;
 }
-

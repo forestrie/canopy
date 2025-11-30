@@ -16,7 +16,16 @@ export { MassifStartFmt } from "./massifstart.js";
 export { LogFormat, peakStackEnd, massifLogEntries } from "./logformat.js";
 
 // Re-export find entry functions
-export { findTrieEntry, findAppEntry, type FindEntryOptions } from "./findentry.js";
+export {
+  findTrieEntry,
+  findAppEntry,
+  type FindEntryOptions,
+} from "./findentry.js";
 
 // Re-export trie key functions and types
-export { TrieEntryFmt, TrieKeyDomains, computeTrieKey, type TrieKeyOptions } from "./triekey.js";
+export {
+  TrieEntryFmt,
+  TrieKeyDomains,
+  computeTrieKey,
+  type TrieKeyOptions,
+} from "./triekey.js";

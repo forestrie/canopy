@@ -18,20 +18,20 @@ export interface FindEntryOptions {
    * If undefined, defaults to TrieKeyDomains.ApplicationContent (only used by findAppEntry)
    */
   domain?: number;
-  
+
   /**
    * Start index for search (inclusive, zero-based)
    * If undefined, search starts at 0
    */
   start?: number;
-  
+
   /**
    * End index for search (exclusive, zero-based)
    * If undefined, search ends at trieEntryCount
    * If both start and end are set, end - start must be > 0
    */
   end?: number;
-  
+
   /**
    * Optional extra bytes for defense-in-depth check
    * If present, verifies stored extraBytes match provided extraBytes
@@ -58,21 +58,17 @@ export async function findAppEntry(
   massif: Massif,
   appId: Uint8Array,
   logId: Uint8Array,
-  opts?: FindEntryOptions
+  opts?: FindEntryOptions,
 ): Promise<number | null> {
   // Compute expected trie key
   const domain = opts?.domain ?? TrieKeyDomains.ApplicationContent;
-  const expectedTrieKey = await computeTrieKey(
-    { domain },
-    logId,
-    appId
-  );
-  
+  const expectedTrieKey = await computeTrieKey({ domain }, logId, appId);
+
   // Get content hash prefix (first 24 bytes of appId)
   // Pad with zeros if appId is shorter than 24 bytes
   const contentHashPrefix = new Uint8Array(24);
   contentHashPrefix.set(appId.slice(0, Math.min(24, appId.length)), 0);
-  
+
   // Delegate to findTrieEntry with computed key and extraBytes for defense-in-depth
   return findTrieEntry(massif, expectedTrieKey, {
     start: opts?.start,
@@ -96,65 +92,76 @@ export async function findAppEntry(
 export async function findTrieEntry(
   massif: Massif,
   expectedTrieKey: Uint8Array,
-  opts?: FindEntryOptions
+  opts?: FindEntryOptions,
 ): Promise<number | null> {
   const start = massif.getStart();
-  
+
   // Calculate trie data start offset
   // TrieDataStart = StartHeaderEnd + IndexHeaderBytes
-  const trieDataStart = BigInt(LogFormat.StartHeaderSize) + BigInt(LogFormat.IndexHeaderBytes);
-  
+  const trieDataStart =
+    BigInt(LogFormat.StartHeaderSize) + BigInt(LogFormat.IndexHeaderBytes);
+
   // Calculate number of trie entries from massif height
   // TrieDataEntryCount = 1 << massifHeight
   const trieEntryCount = 1 << start.massifHeight;
-  
+
   // Validate and set search range
   const searchStart = opts?.start ?? 0;
   const searchEnd = opts?.end ?? trieEntryCount;
-  
+
   // Validate range if both start and end are provided
   if (opts?.start !== undefined && opts?.end !== undefined) {
     if (searchEnd - searchStart <= 0) {
-      throw new Error(`Invalid search range: end (${searchEnd}) - start (${searchStart}) must be > 0`);
+      throw new Error(
+        `Invalid search range: end (${searchEnd}) - start (${searchStart}) must be > 0`,
+      );
     }
   }
-  
+
   // Validate bounds
   if (searchStart < 0 || searchStart >= trieEntryCount) {
-    throw new Error(`Invalid start index: ${searchStart} (must be 0 <= start < ${trieEntryCount})`);
+    throw new Error(
+      `Invalid start index: ${searchStart} (must be 0 <= start < ${trieEntryCount})`,
+    );
   }
   if (searchEnd < 0 || searchEnd > trieEntryCount) {
-    throw new Error(`Invalid end index: ${searchEnd} (must be 0 <= end <= ${trieEntryCount})`);
+    throw new Error(
+      `Invalid end index: ${searchEnd} (must be 0 <= end <= ${trieEntryCount})`,
+    );
   }
-  
+
   // Iterate through trie entries efficiently
   const trieDataStartNum = Number(trieDataStart);
   for (let i = searchStart; i < searchEnd; i++) {
     const entryOffset = trieDataStartNum + i * TrieEntryFmt.TrieEntryBytes;
-    
+
     // Read trie key directly from buffer (first 32 bytes of entry)
-    const storedTrieKey = massif.readBytes(entryOffset, TrieEntryFmt.TrieKeyBytes);
-    
+    const storedTrieKey = massif.readBytes(
+      entryOffset,
+      TrieEntryFmt.TrieKeyBytes,
+    );
+
     // Compare trie keys
     if (arraysEqual(storedTrieKey, expectedTrieKey)) {
       // Defense in depth: verify extraBytes match if provided
       if (opts?.extraBytes !== undefined) {
         const extraBytesOffset = entryOffset + TrieEntryFmt.ExtraBytesStart;
-        const storedExtraBytes = massif.readBytes(extraBytesOffset, TrieEntryFmt.ExtraBytesSize);
-        
+        const storedExtraBytes = massif.readBytes(
+          extraBytesOffset,
+          TrieEntryFmt.ExtraBytesSize,
+        );
+
         if (!arraysEqual(storedExtraBytes, opts.extraBytes)) {
           throw new Error(
             `Trie key match found at index ${i}, but extraBytes do not match. ` +
-            `This indicates data corruption or a hash collision.`
+              `This indicates data corruption or a hash collision.`,
           );
         }
       }
-      
+
       return i; // Return trie index (zero-based, relative to massif)
     }
   }
-  
+
   return null; // Not found
 }
-
-

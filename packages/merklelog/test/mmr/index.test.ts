@@ -8,7 +8,11 @@ import {
   leafCount,
   leafCountFromHeightIndex,
 } from "../../src/mmr/math.js";
-import { mmrIndex, massifFirstLeaf, leafMinusSpurSum } from "../../src/mmr/index.js";
+import {
+  mmrIndex,
+  massifFirstLeaf,
+  leafMinusSpurSum,
+} from "../../src/mmr/index.js";
 
 describe("MMR Math Functions", () => {
   describe("heightIndex", () => {
@@ -127,4 +131,3 @@ describe("MMR Index Functions", () => {
     });
   });
 });
-

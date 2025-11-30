@@ -74,12 +74,17 @@ export function peakStackEnd(massifHeight: number): bigint {
   // Where:
   // - FixedHeaderEnd = StartHeaderSize
   // - TrieDataSize = TrieEntryBytes * (1 << massifHeight)
-  
+
   const fixedHeaderEnd = BigInt(LogFormat.StartHeaderSize);
   const trieDataSize = BigInt(LogFormat.TrieEntryBytes * (1 << massifHeight));
   const peakStackSize = BigInt(LogFormat.MaxMmrHeight * LogFormat.ValueBytes);
-  
-  return fixedHeaderEnd + BigInt(LogFormat.IndexHeaderBytes) + trieDataSize + peakStackSize;
+
+  return (
+    fixedHeaderEnd +
+    BigInt(LogFormat.IndexHeaderBytes) +
+    trieDataSize +
+    peakStackSize
+  );
 }
 
 /**
@@ -100,16 +105,18 @@ export function peakStackEnd(massifHeight: number): bigint {
  * @returns Number of log entries (nodes) in the blob
  * @throws Error if the data length is too short to contain the required headers
  */
-export function massifLogEntries(dataLen: number, massifHeight: number): bigint {
+export function massifLogEntries(
+  dataLen: number,
+  massifHeight: number,
+): bigint {
   const stackEnd = peakStackEnd(massifHeight);
-  
+
   if (BigInt(dataLen) < stackEnd) {
     throw new Error(
-      `Massif data length ${dataLen} is too short. Minimum required: ${stackEnd} bytes`
+      `Massif data length ${dataLen} is too short. Minimum required: ${stackEnd} bytes`,
     );
   }
-  
+
   const mmrByteCount = BigInt(dataLen) - stackEnd;
   return mmrByteCount / BigInt(LogFormat.ValueBytes);
 }
-

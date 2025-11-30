@@ -65,4 +65,3 @@ export namespace MassifStartFmt {
   /** Massif index field - end byte offset */
   export const MassifEnd = MassifFirstByte + MassifSize;
 }
-
