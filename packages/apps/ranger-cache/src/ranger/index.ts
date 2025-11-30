@@ -11,7 +11,7 @@ export interface RangerDependencies {
 /**
  * Core ranger orchestration logic.
  *
- * Given a reference to an R2_LEAVES object that has changed, this function is
+ * Given a reference to an R2_MMRS object that has changed, this function is
  * responsible for updating the KV-backed caches. The implementation is
  * intentionally minimal for now and focuses on wiring and testability.
  */

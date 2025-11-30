@@ -5,7 +5,7 @@ import {
 } from "../../src/massifs";
 
 describe("massifs helpers", () => {
-  it("parses massif coordinates from canonical R2_LEAVES keys", () => {
+  it("parses massif coordinates from canonical R2_MMRS keys", () => {
     const coordinate = parseMassifCoordinateFromKey(
       "logs/log-123/massifs/42.cbor",
     );

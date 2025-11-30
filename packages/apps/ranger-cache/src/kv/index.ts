@@ -2,7 +2,7 @@
  * Cloudflare KV-specific helpers for ranger cache.
  *
  * This module is intentionally small and focused: it knows about KV
- * bindings and key shapes, but nothing about R2_LEAVES or massif formats.
+ * bindings and key shapes, but nothing about R2_MMRS or massif formats.
  */
 
 export interface RangerKVNamespace {

@@ -1,5 +1,5 @@
 /**
- * R2_LEAVES-specific helpers and minimal types used by ranger cache.
+ * R2_MMRS-specific helpers and minimal types used by ranger cache.
  *
  * This module abstracts over the Cloudflare R2Bucket binding so the rest
  * of the code only depends on the small surface it needs.
@@ -17,7 +17,7 @@ export interface RangerR2Bucket {
 
 /**
  * Minimal representation of the payload we expect on the queue for an
- * R2_LEAVES object change notification.
+ * R2_MMRS object change notification.
  */
 export interface R2ObjectReference {
   bucket: string;
@@ -43,7 +43,7 @@ export function toR2ObjectReference(body: unknown): R2ObjectReference | null {
   const { bucket, key, etag } = body as any;
 
   return {
-    bucket: typeof bucket === "string" ? bucket : "R2_LEAVES",
+    bucket: typeof bucket === "string" ? bucket : "R2_MMRS",
     key,
     etag: typeof etag === "string" ? etag : undefined,
   };

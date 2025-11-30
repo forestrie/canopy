@@ -19,7 +19,7 @@ export function deriveMassifCacheKey(ref: MassifCoordinate): string {
 }
 
 /**
- * Parse a massif coordinate from a raw R2_LEAVES object key.
+ * Parse a massif coordinate from a raw R2_MMRS object key.
  *
  * This implementation is a placeholder that assumes keys of the form:
  *   logs/{logId}/massifs/{index}.cbor

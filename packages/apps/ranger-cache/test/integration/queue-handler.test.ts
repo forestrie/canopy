@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import worker, { Env } from "../../src";
 
 describe("ranger-cache queue handler", () => {
-  it("processes R2_LEAVES notifications and writes to KV namespaces", async () => {
+  it("processes R2_MMRS notifications and writes to KV namespaces", async () => {
     const puts: string[] = [];
 
     const fakeKV = {
@@ -14,8 +14,8 @@ describe("ranger-cache queue handler", () => {
     };
 
     const env: Env = {
-      R2_LEAVES: {
-        // For this structural test we do not actually read from R2_LEAVES.
+      R2_MMRS: {
+        // For this structural test we do not actually read from R2_MMRS.
         get: vi.fn(),
       } as any,
       RANGER_MMR_INDEX: fakeKV as any,
