@@ -76,19 +76,6 @@ importers:
         specifier: ^4.43.0
         version: 4.43.0(@cloudflare/workers-types@4.20251011.0)
 
-  packages/merklelog:
-    dependencies:
-      '@canopy/merklelog':
-        specifier: 'link:'
-        version: 'link:'
-    devDependencies:
-      typescript:
-        specifier: ^5.9.2
-        version: 5.9.3
-      vitest:
-        specifier: ^3.2.4
-        version: 3.2.4(@types/node@24.8.1)
-
   packages/tests/canopy-api:
     dependencies:
       '@canopy/api':
