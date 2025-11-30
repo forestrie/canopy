@@ -4,8 +4,9 @@
 version: "3"
 
 vars:
-  BASE_URL: '{{.BASE_URL | default "https://canopy-api.robinbryce.workers.dev/logs/3062ea57-c184-41d8-bd61-296b02c680d8"}}' # wrangler
+  BASE_URL: "{{.BASE_URL}}" # wrangler
   #BASE_URL: '{{.BASE_URL | default "http://localhost:5173"}}' # vite
+  #BASE_URL: https://canopy-api.robinbryce.workers.dev/logs/3062ea57-c184-41d8-bd61-296b02c680d8
   API_KEY: "test-api-key"
   SIGN1_MSG0: '\x84\x40\xa0\x45\x48\x65\x6c\x6c\x6f\x40'
   SIGN1_MSG1: '\x84\x40\xa0\x45\x48\x65\x6c\x6f\x6f\x40'

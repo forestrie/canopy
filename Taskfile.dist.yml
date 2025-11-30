@@ -3,8 +3,14 @@ version: "3"
 dotenv: [".env", ".env.secrets"]
 
 includes:
-  scrapi: ./taskfiles/scrapi.yml
-  scout: ./taskfiles/scout.yml
+  scrapi:
+    taskfile: ./taskfiles/scrapi.yml
+    vars:
+      BASE_URL: https://canopy-api.robinbryce.workers.dev/logs/3062ea57-c184-41d8-bd61-296b02c680d8
+  scout:
+    taskfile: ./taskfiles/scout.yml
+    vars:
+      BASE_URL: https://scout.dev-1.forestrie.dev
   cf: ./taskfiles/cloudflare.yml
   minio: ./taskfiles/minio.yml
   wrangler: ./taskfiles/wrangler.yml

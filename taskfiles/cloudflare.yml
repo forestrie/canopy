@@ -5,7 +5,7 @@ version: "3"
 
 vars:
   CANOPY_ID: '{{.CANOPY_ID | default "canopy-dev-1"}}'
-  R2_BUCKET_NAME: '{{.R2_BUCKET_NAME | default (print .CANOPY_ID "-leaves")}}'
+  R2_BUCKET_NAME_LEAVES: '{{.R2_BUCKET_NAME_LEAVES | default (print .CANOPY_ID "-leaves")}}'
 
 tasks:
   bootstrap:
@@ -23,9 +23,14 @@ tasks:
       - queue:create:ranger
       - kv:create:all
     cmds:
-      - task: notification:create:ranger
+      - task: r2notification:create:ranger
         vars:
+          R2_BUCKET_NAME: "{{ .R2_BUCKET_NAME_LEAVES_LEAVES }}"
           PREFIX: "logs/"
+      - task: r2notification:create:ranger-cache
+        vars:
+          R2_BUCKET_NAME: "{{ .R2_BUCKET_NAME_LEAVES_MMRS }}"
+          PREFIX: "v1/mmrs/"
       - cmd: echo "Resources provisioned. Run 'task cloudflare:sync' to apply Wrangler bindings."
 
   sync:
@@ -41,7 +46,7 @@ tasks:
   destroy:
     desc: Delete all Cloudflare resources (including KV namespaces) (DESTRUCTIVE!)
     deps:
-      - notification:delete:ranger
+      - r2notification:delete:ranger
       - queue:delete:ranger
       - bucket:delete
       - kv:destroy:all
@@ -59,13 +64,8 @@ tasks:
           echo "--------- :queues:  --------------------------------------------------"
           yes n | wrangler queues list
       - cmd: |
-          echo "--------- :kv:  ------------------------------------------------------"
-          NAMESPACES=$(yes n | wrangler kv namespace list 2>/dev/null || echo "")
-          echo "$NAMESPACES" | grep "{{.CANOPY_ID}}-massifs" || echo "  {{.CANOPY_ID}}-massifs (not found)"
-          echo "$NAMESPACES" | grep "{{.CANOPY_ID}}-fenced-entries" || echo "  {{.CANOPY_ID}}-fenced-entries (not found)"
-      - cmd: |
           echo "--------- :bucket notifications:  ------------------------------------"
-          yes n | wrangler r2 bucket notification list "{{.R2_BUCKET_NAME}}" 2>/dev/null || echo "  No notifications configured"
+          yes n | wrangler r2 bucket notification list "{{.R2_BUCKET_NAME_LEAVES}}" 2>/dev/null || echo "  No notifications configured"
 
   validate:
     desc: Validate Wrangler is installed and authenticated
@@ -84,12 +84,12 @@ tasks:
   bucket:create:
     desc: Create R2 bucket
     cmds:
-      - cmd: yes n | wrangler r2 bucket create "{{.R2_BUCKET_NAME}}" --location weur 2>/dev/null || echo "Bucket {{.R2_BUCKET_NAME}} may already exist"
+      - cmd: yes n | wrangler r2 bucket create "{{.R2_BUCKET_NAME_LEAVES}}" --location weur 2>/dev/null || echo "Bucket {{.R2_BUCKET_NAME_LEAVES}} may already exist"
 
   bucket:delete:
     desc: Delete R2 bucket (DESTRUCTIVE! Bucket must be empty)
     cmds:
-      - cmd: yes n | wrangler r2 bucket delete "{{.R2_BUCKET_NAME}}" 2>/dev/null || echo "Bucket {{.R2_BUCKET_NAME}} not found or not empty"
+      - cmd: yes n | wrangler r2 bucket delete "{{.R2_BUCKET_NAME_LEAVES}}" 2>/dev/null || echo "Bucket {{.R2_BUCKET_NAME_LEAVES}} not found or not empty"
 
   kv:create:ranger-cache:
     desc: Create all well-known Cloudflare KV namespaces
@@ -242,16 +242,19 @@ tasks:
           yes n | wrangler queues delete "{{.QUEUE_NAME}}"
           yes n | wrangler queues delete "{{.QUEUE_DLQ_NAME}}"
 
-  notification:create:*:
+  r2notification:create:*:
     desc: Create R2 event notification to queue
     vars:
       NAME: "{{index .MATCH 0}}"
       QUEUE_NAME: '{{.QUEUE_NAME | default (print .CANOPY_ID "-" .NAME)}}'
       PREFIX: "{{.PREFIX}}"
+      R2_BUCKET_NAME: "{{.R2_BUCKET_NAME}}"
+    requires:
+      vars: [R2_BUCKET_NAME]
     cmds:
       - cmd: |
           if [ -z "{{.PREFIX}}" ]; then
-            echo "PREFIX must be set for notification:create:*" >&2
+            echo "PREFIX must be set for r2notification:create:*" >&2
             exit 1
           fi
           yes n | wrangler r2 bucket notification create "{{.R2_BUCKET_NAME}}" \
@@ -259,11 +262,14 @@ tasks:
             --queue "{{.QUEUE_NAME}}" \
             --prefix "{{.PREFIX}}" || echo "Notification may already be configured"
 
-  notification:delete:*:
+  r2notification:delete:*:
     desc: Delete R2 event notifications
     vars:
       NAME: "{{index .MATCH 0}}"
       QUEUE_NAME: '{{.QUEUE_NAME | default (print .CANOPY_ID "-" .NAME)}}'
+      R2_BUCKET_NAME: "{{.R2_BUCKET_NAME}}"
+    requires:
+      vars: [R2_BUCKET_NAME]
     cmds:
       - cmd: |
           yes n | wrangler r2 bucket notification list "{{.R2_BUCKET_NAME}}" | grep -q "logs/" && \

@@ -4,7 +4,7 @@
 version: "3"
 
 vars:
-  BASE_URL: '{{.BASE_URL | default "https://scout.dev-1.forestrie.dev"}}'
+  BASE_URL: "{{.BASE_URL}}"
   LOG_ID: '{{.LOG_ID | default "3062ea57-c184-41d8-bd61-296b02c680d8"}}'
   APP_ID: '{{.APP_ID | default "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}}'
   EXTRA_BYTES: '{{.EXTRA_BYTES | default "0123456789abcdef0123456789abcdef0123456789abcdef"}}'

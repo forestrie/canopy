@@ -35,7 +35,7 @@
       {
         "queue": "canopy-dev-1-ranger-cache",
         "max_batch_size": 10,
-        "max_batch_timeout": 30,
+        "max_batch_timeout": 1,
         "max_retries": 10,
         "dead_letter_queue": "canopy-dev-1-ranger-cache-dlq"
       }
@@ -67,7 +67,7 @@
           {
             "queue": "canopy-prod-1-ranger-cache",
             "max_batch_size": 10,
-            "max_batch_timeout": 30,
+            "max_batch_timeout": 1,
             "max_retries": 10,
             "dead_letter_queue": "canopy-prod-1-ranger-cache-dlq"
           }
