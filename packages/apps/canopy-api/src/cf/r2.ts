@@ -97,12 +97,8 @@ export async function getLeafObject(
   const content = await object.arrayBuffer();
   const md = (object.customMetadata || {}) as Record<string, string>;
   const metadata: LeafObjectMetadata = {
-    logId: md.logId,
-    fenceIndex: Number(md.fenceIndex || 0),
-    contentType: md.contentType,
-    timestamp: Number(md.timestamp || Date.now()),
-    sequenced: md.sequenced === "true",
-    sequencerIndex: md.sequencerIndex ? Number(md.sequencerIndex) : undefined,
+    logId: md.logId || "",
+    contentType: md.contentType || "",
     appId: md.appId || "",
     extraBytes0: md.extraBytes0 || "",
     extraBytes1: md.extraBytes1 || "",
