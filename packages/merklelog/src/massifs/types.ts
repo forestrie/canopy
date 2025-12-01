@@ -29,3 +29,12 @@ export {
   computeTrieKey,
   type TrieKeyOptions,
 } from "./triekey.js";
+
+// Re-export MMR index functions
+export { computeLastMMRIndex } from "./mmrindex.js";
+
+// Re-export massif fullness functions
+export { isMassifFull } from "./massiffull.js";
+
+// Re-export trie entry functions and types
+export { readTrieEntry, type TrieEntryData } from "./trieentry.js";

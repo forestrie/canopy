@@ -22,8 +22,12 @@ export {
   findAppEntry,
   TrieEntryFmt,
   TrieKeyDomains,
+  computeLastMMRIndex,
+  isMassifFull,
+  readTrieEntry,
   type FindEntryOptions,
   type TrieKeyOptions,
+  type TrieEntryData,
 } from "./massifs/types.js";
 
 // Export mmr module

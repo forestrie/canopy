@@ -13,7 +13,9 @@
     "test:debug": "vitest --inspect --no-file-parallelism",
     "cf-typegen": "wrangler types"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@canopy/merklelog": "workspace:*"
+  },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.9.13",
     "typescript": "^5.9.2",

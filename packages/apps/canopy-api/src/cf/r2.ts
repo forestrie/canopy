@@ -36,7 +36,8 @@ export async function storeLeaf(
   // Convert hash hex string to bytes for extraBytes calculations
   const hashBytes = hexStringToBytes(hash);
 
-  // Calculate extraBytes1: fenceIndex (64-bit big-endian BigInt) + hash bytes (40 bytes total)
+  // Calculate extraBytes0: 24 bytes zero-padded with fenceIndex at the last 8 bytes
+  // Calculate extraBytes1: full hashBytes (32 bytes)
   const fenceBigInt = BigInt(fenceIndex);
   const fenceBytes = bigIntToBigEndianBytes(fenceBigInt, 8);
   const extraBytesBytes = new Uint8Array(40);

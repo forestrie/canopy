@@ -8,22 +8,10 @@ vars:
   #BASE_URL: '{{.BASE_URL | default "http://localhost:5173"}}' # vite
   #BASE_URL: https://canopy-api.robinbryce.workers.dev/logs/3062ea57-c184-41d8-bd61-296b02c680d8
   API_KEY: "test-api-key"
-  SIGN1_MSG0: '\x84\x40\xa0\x45\x48\x65\x6c\x6c\x6f\x40'
-  SIGN1_MSG1: '\x84\x40\xa0\x45\x48\x65\x6c\x6f\x6f\x40'
 
 tasks:
-  post-entry:
-    desc: Post a CBOR-encoded SCRAPI entry to the /entries endpoint
-    cmds:
-      - cmd: |
-          printf '{{.SIGN1_MSG1}}' \
-          | curl -v -X POST "{{.BASE_URL}}/entries" \
-          -H 'Content-Type: application/cose; cose-type="cose-sign1"' \
-          -H "Authorization: Bearer {{.API_KEY}}" \
-          --output post-entry.response \
-          --data-binary @-
 
-  post-entry-rand:
+  post-entry:
     desc: Post a COSE Sign1 message with random UUID to the /entries endpoint
     cmds:
       - cmd: |

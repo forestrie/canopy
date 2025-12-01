@@ -7,9 +7,22 @@
  */
 
 import type { RangerR2Bucket } from "./r2";
-import type { RangerKVBindings, RangerKVNamespace } from "./kv";
+import type { RangerKVBindings, RangerKVNamespace, KVBulkEntry } from "./kv";
 import { toR2ObjectReference } from "./r2";
 import { processR2ObjectNotification } from "./ranger";
+import { bulkWriteMMRIndex } from "./kv";
+import {
+  Massif,
+  massifLogEntries,
+  mmrIndex,
+  massifFirstLeaf,
+  LogFormat,
+  TrieEntryFmt,
+  computeLastMMRIndex,
+  isMassifFull,
+  readTrieEntry,
+  type TrieEntryData,
+} from "@canopy/merklelog";
 
 // Minimal execution context surface we rely on.
 interface ExecutionContext {
@@ -23,6 +36,12 @@ export interface Env {
   CANOPY_ID: string;
   FOREST_PROJECT_ID: string;
   NODE_ENV: string;
+  /** Cloudflare API token for REST API bulk writes */
+  RANGER_CACHE_WRITER: string;
+  /** Cloudflare account ID for REST API bulk writes */
+  CLOUDFLARE_ACCOUNT_ID: string;
+  /** KV namespace ID for RANGER_MMR_INDEX (for REST API) */
+  RANGER_MMR_INDEX_NAMESPACE_ID: string;
 }
 
 function kvBindingsFromEnv(env: Env): RangerKVBindings {
@@ -175,6 +194,82 @@ export function parseMassifKey(key: string): ParsedMassifKey {
 }
 
 /**
+ * Build KV entries for bulk write to RANGER_MMR_INDEX.
+ *
+ * @param parsedKey - Parsed massif key components
+ * @param massif - Massif instance
+ * @param blobSize - Size of the massif blob in bytes
+ * @param lastIndex - Last MMR index in the massif
+ * @param isFull - Whether the massif is full
+ * @returns Array of KV entries ready for bulk write
+ */
+function buildKVEntries(
+  parsedKey: ParsedMassifKey,
+  massif: Massif,
+  blobSize: number,
+  lastIndex: bigint,
+  isFull: boolean,
+): KVBulkEntry[] {
+  // Convert 1-based height to 0-based height index
+  const heightIndex = parsedKey.massifHeight - 1;
+
+  // Calculate number of leaves
+  const logEntries = massifLogEntries(blobSize, heightIndex);
+  const actualLeaves = (logEntries + 1n) >> 1n;
+  const numLeaves = Number(actualLeaves);
+
+  // Pre-allocate entries array for efficiency
+  const entries: KVBulkEntry[] = new Array(numLeaves);
+
+  // Calculate number of leaves per massif: f = (m + 1) / 2 where m = (1 << h) - 1
+  const m = BigInt((1 << parsedKey.massifHeight) - 1);
+  const leavesPerMassif = (m + 1n) >> 1n;
+  // First global leaf index in this massif
+  const firstGlobalLeafIndex = leavesPerMassif * BigInt(parsedKey.massifIndex);
+
+  // Pre-allocate value buffer once (104 bytes: 8 + 64 + 32)
+  const valueBytes = new Uint8Array(104);
+  const valueView = new DataView(valueBytes.buffer);
+
+  // Set expiry once (same for all entries in a massif)
+  const expiration_ttl = isFull ? 2147483647 : 3600; // ~68 years for full, 1 hour for incomplete
+
+  // Iterate through all leaves
+  for (let leafIdx = 0; leafIdx < numLeaves; leafIdx++) {
+    // Calculate global leaf index
+    const globalLeafIndex = firstGlobalLeafIndex + BigInt(leafIdx);
+    const trieData = readTrieEntry(
+      massif,
+      leafIdx,
+      heightIndex,
+      globalLeafIndex,
+    );
+
+    // Convert extraData1 to hex string for key (efficient single-pass conversion)
+    const extraData1Hex = Array.from<number, string>(trieData.extraData1, (b) =>
+      b.toString(16).padStart(2, "0"),
+    ).join("");
+
+    // Build key based on whether massif is full
+    const key = isFull
+      ? `${parsedKey.logId}:${trieData.fenceIndex}:${extraData1Hex}`
+      : `${parsedKey.logId}:${trieData.fenceIndex}:${extraData1Hex}:${lastIndex}:`;
+
+    // Build value directly in pre-allocated buffer: mmrIndex (8 bytes BE) || trieEntry (64 bytes) || extraData1 (32 bytes)
+    valueView.setBigUint64(0, trieData.mmrIndex, false); // false = big-endian
+    valueBytes.set(trieData.trieEntry, 8);
+    valueBytes.set(trieData.extraData1, 8 + 64);
+
+    // Convert to base64 efficiently - use spread operator for small arrays (104 bytes)
+    const value = btoa(String.fromCharCode(...valueBytes));
+
+    entries[leafIdx] = { key, value, expiration_ttl };
+  }
+
+  return entries;
+}
+
+/**
  * Type guard to check if a value matches the R2Notification structure.
  */
 function isR2Notification(body: unknown): body is R2Notification {
@@ -204,6 +299,23 @@ function isR2Notification(body: unknown): body is R2Notification {
 
 const worker = {
   async queue(batch: RangerQueueBatch, env: Env, ctx: ExecutionContext) {
+    // Validate required environment variables for REST API bulk writes
+    if (!env.RANGER_CACHE_WRITER) {
+      const error = "RANGER_CACHE_WRITER secret is required but not set";
+      console.error(error);
+      throw new Error(error);
+    }
+    if (!env.CLOUDFLARE_ACCOUNT_ID) {
+      const error = "CLOUDFLARE_ACCOUNT_ID is required but not set";
+      console.error(error);
+      throw new Error(error);
+    }
+    if (!env.RANGER_MMR_INDEX_NAMESPACE_ID) {
+      const error = "RANGER_MMR_INDEX_NAMESPACE_ID is required but not set";
+      console.error(error);
+      throw new Error(error);
+    }
+
     const deps = {
       r2: env.R2_MMRS,
       kv: kvBindingsFromEnv(env),
@@ -242,12 +354,62 @@ const worker = {
       let parsedKey: ParsedMassifKey;
       try {
         parsedKey = parseMassifKey(obj.key);
-        console.log("Parsed massif key:", parsedKey);
       } catch (error) {
         console.error(
           `Failed to parse object key "${obj.key}":`,
           error instanceof Error ? error.message : String(error),
         );
+        continue;
+      }
+
+      // Populate the RANGER_MMR_INDEX kv with the mmr index and related information
+      try {
+        // 1. Fetch massif data from R2
+        const r2Object = await deps.r2.get(obj.key);
+        if (!r2Object) {
+          console.error(`Massif not found in R2: ${obj.key}`);
+          continue;
+        }
+
+        const massifData = await r2Object.arrayBuffer();
+        const massif = new Massif(massifData);
+
+        // 2. Compute last MMR index
+        const heightIndex = parsedKey.massifHeight - 1;
+        const logEntries = massifLogEntries(obj.size, heightIndex);
+        const lastIndex = computeLastMMRIndex(
+          parsedKey.massifHeight,
+          parsedKey.massifIndex,
+          obj.size,
+        );
+
+        // 3. Determine if massif is full
+        const full = isMassifFull(parsedKey.massifHeight, logEntries);
+
+        // 4. Build KV entries
+        const kvEntries = buildKVEntries(
+          parsedKey,
+          massif,
+          obj.size,
+          lastIndex,
+          full,
+        );
+
+        // 5. Bulk write to RANGER_MMR_INDEX
+        await bulkWriteMMRIndex(
+          deps.kv.mmrIndexKV,
+          kvEntries,
+          env.RANGER_CACHE_WRITER,
+          env.CLOUDFLARE_ACCOUNT_ID,
+          env.RANGER_MMR_INDEX_NAMESPACE_ID,
+        );
+      } catch (error) {
+        console.error(
+          `Failed to process massif and write to KV for "${obj.key}":`,
+          error instanceof Error ? error.message : String(error),
+          error instanceof Error ? error.stack : undefined,
+        );
+        // Continue processing other messages even if this one fails
         continue;
       }
 
