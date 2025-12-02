@@ -52,7 +52,7 @@ describe("ranger-cache queue handler", () => {
             action: "PutObject",
             bucket: "arbor-dev-1-logs",
             object: {
-              key: "v1/mmrs/tenant/3062ea57-c184-41d8-bd61-296b02c680d8/0/massifs/0000000000000000.log",
+              key: "v2/merklelog/massifs/14/3062ea57-c184-41d8-bd61-296b02c680d8/0000000000000000.log",
               size: 600000,
               eTag: "test-etag",
             },
