@@ -137,36 +137,93 @@ export interface ParsedMassifKey {
 /**
  * Parse an R2 object key to extract log ID, massif height, and massif index.
  *
- * Expected key format: v1/mmrs/tenant/{logId}/{massifHeight}/massifs/{massifIndex}.log
+ * Supports both formats:
+ * - Old: v1/mmrs/tenant/{logId}/{massifHeight}/massifs/{massifIndex}.log
+ * - New: v2/merklelog/massifs/{massifHeight}/{logId}/{massifIndex}.log
+ * - New: v2/merklelog/checkpoints/{massifHeight}/{logId}/{massifIndex}.sth
  *
  * @param key - The object key path from the R2 notification
  * @returns Parsed components including logId, massifHeight, and massifIndex
- * @throws Error if the key doesn't have at least 4 components or if parsing fails
+ * @throws Error if the key doesn't match expected format or if parsing fails
  */
 export function parseMassifKey(key: string): ParsedMassifKey {
   const parts = key.split("/");
 
-  if (parts.length < 4) {
+  // Check for new v2 format: v2/merklelog/massifs/{massifHeight}/{logId}/{index}.log
+  // or v2/merklelog/checkpoints/{massifHeight}/{logId}/{index}.sth
+  if (parts.length >= 6 && parts[0] === "v2" && parts[1] === "merklelog") {
+    const typePart = parts[2]; // "massifs" or "checkpoints"
+    const massifHeightStr = parts[3];
+    const logId = parts[4];
+    const filename = parts[5];
+
+    // Validate extension
+    const expectedExt = typePart === "massifs" ? ".log" : ".sth";
+    if (!filename.endsWith(expectedExt)) {
+      throw new Error(
+        `Expected ${expectedExt} extension for ${typePart}, got: ${filename}`,
+      );
+    }
+
+    // Parse massif index (hex, 16 digits)
+    const massifIndexStr = filename.slice(0, -expectedExt.length);
+    if (massifIndexStr.length !== 16) {
+      throw new Error(
+        `Massif index must be 16 hex digits, got ${massifIndexStr.length}: ${massifIndexStr}`,
+      );
+    }
+
+    const massifIndex = Number.parseInt(massifIndexStr, 16);
+    if (!Number.isFinite(massifIndex)) {
+      throw new Error(
+        `Failed to parse massif index as hex number: ${massifIndexStr}`,
+      );
+    }
+
+    // Parse massifHeight
+    const massifHeight = Number.parseInt(massifHeightStr, 10);
+    if (!Number.isFinite(massifHeight)) {
+      throw new Error(
+        `Failed to parse massif height as number: ${massifHeightStr}`,
+      );
+    }
+
+    return {
+      logId,
+      massifHeight,
+      massifIndex,
+    };
+  }
+
+  // Old v1 format: v1/mmrs/tenant/{logId}/{massifHeight}/massifs/{massifIndex}.log
+  if (parts.length < 6) {
     throw new Error(
-      `Object key must have at least 4 components, got ${parts.length}: ${key}`,
+      `Object key must have at least 6 components for v1 format, got ${parts.length}: ${key}`,
     );
   }
 
-  // Get the last 4 components from the end
+  // Check if it's v1 format
+  if (parts[0] !== "v1" || parts[1] !== "mmrs" || parts[2] !== "tenant") {
+    throw new Error(`Unrecognized path format: ${key}`);
+  }
+
   const lastComponent = parts[parts.length - 1]; // e.g., "0000000000000000.log"
   const secondLast = parts[parts.length - 2]; // e.g., "massifs" (ignored)
   const thirdLast = parts[parts.length - 3]; // e.g., "0" -> massifHeight
   const fourthLast = parts[parts.length - 4]; // e.g., "3062ea57-c184-41d8-bd61-296b02c680d8" -> logId
 
-  // Parse last component: remove .log suffix and parse as number
-  if (!lastComponent.endsWith(".log")) {
-    throw new Error(`Last component must end with .log, got: ${lastComponent}`);
+  // Parse last component: remove .log or .sth suffix and parse as number
+  if (!lastComponent.endsWith(".log") && !lastComponent.endsWith(".sth")) {
+    throw new Error(
+      `Last component must end with .log or .sth, got: ${lastComponent}`,
+    );
   }
 
-  const massifIndexStr = lastComponent.slice(0, -4); // Remove ".log"
+  const ext = lastComponent.endsWith(".log") ? ".log" : ".sth";
+  const massifIndexStr = lastComponent.slice(0, -ext.length);
   if (massifIndexStr.length !== 16) {
     throw new Error(
-      `Massif index must be 16 characters after removing .log suffix, got ${massifIndexStr.length}: ${massifIndexStr}`,
+      `Massif index must be 16 characters after removing ${ext} suffix, got ${massifIndexStr.length}: ${massifIndexStr}`,
     );
   }
 
@@ -177,7 +234,7 @@ export function parseMassifKey(key: string): ParsedMassifKey {
     );
   }
 
-  // Parse third last component: massifHeight (special case: '0' -> 14)
+  // Parse third last component: massifHeight (special case: '0' -> 14 for backward compatibility)
   const massifHeight = thirdLast === "0" ? 14 : Number.parseInt(thirdLast, 10);
   if (!Number.isFinite(massifHeight)) {
     throw new Error(`Failed to parse massif height as number: ${thirdLast}`);
