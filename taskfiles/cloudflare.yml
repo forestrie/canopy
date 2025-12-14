@@ -6,6 +6,10 @@ version: "3"
 vars:
   CANOPY_ID: '{{.CANOPY_ID | default "canopy-dev-1"}}'
   R2_BUCKET_NAME_LEAVES: '{{.R2_BUCKET_NAME_LEAVES | default (print .CANOPY_ID "-leaves")}}'
+  R2_BUCKET_NAME_MERKLELOGS: '{{.R2_BUCKET_NAME_MERKLELOGS | default "arbor-dev-1-logs"}}'
+  BUCKET_PREFIX_LEAVES: "logs/"
+  BUCKET_PREFIX_MASSIFS: "v2/merklelog/massifs/"
+  BUCKET_PREFIX_CHECKPOINTS: "v2/merklelog/checkpoints/"
 
 tasks:
   bootstrap:
@@ -21,16 +25,23 @@ tasks:
     deps:
       - bucket:create
       - queue:create:ranger
+      - queue:create:sealer
       - kv:create:all
     cmds:
       - task: r2notification:create:ranger
         vars:
-          R2_BUCKET_NAME: "{{ .R2_BUCKET_NAME_LEAVES_LEAVES }}"
-          PREFIX: "logs/"
+          R2_BUCKET_NAME: "{{ .R2_BUCKET_NAME_LEAVES }}"
+          PREFIX: "{{.BUCKET_PREFIX_LEAVES}}"
+
+      - task: r2notification:create:sealer
+        vars:
+          R2_BUCKET_NAME: "{{ .R2_BUCKET_NAME_MERKLELOGS }}"
+          PREFIX: "{{.BUCKET_PREFIX_MASSIFS}}"
+
       - task: r2notification:create:ranger-cache
         vars:
-          R2_BUCKET_NAME: "{{ .R2_BUCKET_NAME_LEAVES_MMRS }}"
-          PREFIX: "v1/mmrs/"
+          R2_BUCKET_NAME: "{{ .R2_BUCKET_NAME_MERKLELOGS }}"
+          PREFIX: "{{.BUCKET_PREFIX_CHECKPOINTS}}"
       - cmd: echo "Resources provisioned. Run 'task cloudflare:sync' to apply Wrangler bindings."
 
   sync:
@@ -42,12 +53,14 @@ tasks:
           cd packages/apps/canopy-api
           yes n | wrangler deploy
       - task: queue:http-enable:ranger
+      - task: queue:http-enable:sealer
 
   destroy:
     desc: Delete all Cloudflare resources (including KV namespaces) (DESTRUCTIVE!)
     deps:
       - r2notification:delete:ranger
       - queue:delete:ranger
+      - queue:delete:sealer
       - bucket:delete
       - kv:destroy:all
     cmds:
@@ -66,6 +79,7 @@ tasks:
       - cmd: |
           echo "--------- :bucket notifications:  ------------------------------------"
           yes n | wrangler r2 bucket notification list "{{.R2_BUCKET_NAME_LEAVES}}" 2>/dev/null || echo "  No notifications configured"
+          yes n | wrangler r2 bucket notification list "{{.R2_BUCKET_NAME_MERKLELOGS}}" 2>/dev/null || echo "  No notifications configured"
 
   validate:
     desc: Validate Wrangler is installed and authenticated
