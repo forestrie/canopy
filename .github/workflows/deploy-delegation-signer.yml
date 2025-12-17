@@ -55,18 +55,18 @@ jobs:
           yes n | wrangler whoami
 
       - name: Unit tests
-        run: pnpm --filter @canopy/delegation-signer test
+        run: pnpm --filter @canopy/delegation-signer run test
 
       - name: Deploy (development)
         if: github.event_name == 'push' || github.event.inputs.target == 'development'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: pnpm --filter @canopy/delegation-signer deploy
+        run: pnpm --filter @canopy/delegation-signer run deploy
 
       - name: Deploy (production)
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'production'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: pnpm --filter @canopy/delegation-signer deploy:production
+        run: pnpm --filter @canopy/delegation-signer run deploy:production
 
 

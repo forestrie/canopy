@@ -39,7 +39,10 @@ function toFixedWidthUnsigned(intBytes: Uint8Array, width: number): Uint8Array {
   return out;
 }
 
-export function derEcdsaToRawRs(der: Uint8Array, width: number = 32): Uint8Array {
+export function derEcdsaToRawRs(
+  der: Uint8Array,
+  width: number = 32,
+): Uint8Array {
   if (der.length < 8) throw new Error("DER signature too short");
   let offset = 0;
 
@@ -74,5 +77,3 @@ export function derEcdsaToRawRs(der: Uint8Array, width: number = 32): Uint8Array
   out.set(sFixed, width);
   return out;
 }
-
-

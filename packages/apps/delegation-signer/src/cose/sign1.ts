@@ -99,5 +99,3 @@ export function assembleCoseSign1(
 export function kmsDerSignatureToCoseRaw(der: Uint8Array): Uint8Array {
   return derEcdsaToRawRs(der, 32);
 }
-
-

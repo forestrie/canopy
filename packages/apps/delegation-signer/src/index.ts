@@ -1,7 +1,15 @@
 import { canonicalizeCbor } from "./cbor/canonical";
 import { parseCborBody } from "./cbor/codec";
-import { ClientErrors, ServerErrors, cborResponse } from "./http/problem-details";
-import { KmsError, kmsAsymmetricSignSha256, kmsGetPublicKeyDer } from "./kms/client";
+import {
+  ClientErrors,
+  ServerErrors,
+  cborResponse,
+} from "./http/problem-details";
+import {
+  KmsError,
+  kmsAsymmetricSignSha256,
+  kmsGetPublicKeyDer,
+} from "./kms/client";
 import {
   assembleCoseSign1,
   buildDelegationToBeSigned,
@@ -57,7 +65,9 @@ type PrefixScopedDelegationRequest = {
   log_id_prefix?: string;
 };
 
-type DelegationRequest = LogSpecificDelegationRequest | PrefixScopedDelegationRequest;
+type DelegationRequest =
+  | LogSpecificDelegationRequest
+  | PrefixScopedDelegationRequest;
 
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
@@ -102,8 +112,9 @@ function normalizeLogIdPrefix(raw: unknown): string | undefined {
   const trimmed = raw.trim();
   if (!trimmed) return undefined;
 
-  const without0x =
-    trimmed.toLowerCase().startsWith("0x") ? trimmed.slice(2) : trimmed;
+  const without0x = trimmed.toLowerCase().startsWith("0x")
+    ? trimmed.slice(2)
+    : trimmed;
 
   if (!without0x) return undefined;
   if (without0x.length > 32) {
@@ -183,7 +194,8 @@ function parseDelegatedCoseKey(value: unknown): DelegatedCoseKey {
   // Expect a CBOR map (decoded as Map or object) with integer keys.
   const get = (k: number): unknown => {
     if (value instanceof Map) return value.get(k);
-    if (typeof value === "object" && value !== null) return (value as any)[String(k)];
+    if (typeof value === "object" && value !== null)
+      return (value as any)[String(k)];
     return undefined;
   };
 
@@ -221,7 +233,9 @@ async function getKidForCurve(
   curve: DelegationCurve,
 ): Promise<Uint8Array> {
   const override =
-    curve === "secp256k1" ? env.KMS_KID_SECP256K1_B64 : env.KMS_KID_SECP256R1_B64;
+    curve === "secp256k1"
+      ? env.KMS_KID_SECP256K1_B64
+      : env.KMS_KID_SECP256R1_B64;
   if (override) {
     const kid = base64ToBytes(override);
     if (kid.length !== 16) {
@@ -230,7 +244,8 @@ async function getKidForCurve(
     return kid;
   }
 
-  const cryptoKey = curve === "secp256k1" ? env.KMS_KEY_SECP256K1 : env.KMS_KEY_SECP256R1;
+  const cryptoKey =
+    curve === "secp256k1" ? env.KMS_KEY_SECP256K1 : env.KMS_KEY_SECP256R1;
   const der = await kmsGetPublicKeyDer(accessToken, {
     projectId: env.FOREST_PROJECT_ID,
     location: env.GCP_LOCATION,
@@ -242,7 +257,11 @@ async function getKidForCurve(
 }
 
 function policyMaxWidth(massifHeight: number): bigint {
-  if (!Number.isFinite(massifHeight) || !Number.isInteger(massifHeight) || massifHeight <= 0) {
+  if (
+    !Number.isFinite(massifHeight) ||
+    !Number.isInteger(massifHeight) ||
+    massifHeight <= 0
+  ) {
     throw new Error("MASSIF_HEIGHT must be a positive integer");
   }
   return (1n << BigInt(massifHeight)) - 1n;
@@ -260,9 +279,12 @@ function mapKmsError(err: unknown): Response {
 async function handleDelegation(request: Request, env: Env): Promise<Response> {
   const token = extractBearerToken(request.headers.get("authorization"));
   if (!token) {
-    return ClientErrors.unauthorized("Missing or invalid Authorization header", {
-      "WWW-Authenticate": "Bearer",
-    });
+    return ClientErrors.unauthorized(
+      "Missing or invalid Authorization header",
+      {
+        "WWW-Authenticate": "Bearer",
+      },
+    );
   }
 
   const contentType = (request.headers.get("content-type") || "").toLowerCase();
@@ -383,14 +405,16 @@ async function handleDelegation(request: Request, env: Env): Promise<Response> {
     const merged =
       logId === undefined
         ? addLogIdPrefixToConstraints(constraintsInput, logIdPrefix)
-        : constraintsInput ?? new Map();
+        : (constraintsInput ?? new Map());
 
     // Enforce a single source of truth:
     // - For log-scoped requests, log_id_prefix is not allowed at all.
     // - For prefix/no-log requests, addLogIdPrefixToConstraints already enforces that
     //   the caller doesn't smuggle log_id_prefix via constraints.
     if (logId !== undefined && constraintsHasKey(merged, "log_id_prefix")) {
-      throw new Error("log_id_prefix is only valid for prefix/no-log delegations");
+      throw new Error(
+        "log_id_prefix is only valid for prefix/no-log delegations",
+      );
     }
 
     constraints = canonicalizeCbor(merged);
@@ -407,7 +431,9 @@ async function handleDelegation(request: Request, env: Env): Promise<Response> {
   try {
     kid = await getKidForCurve(token, env, curve);
   } catch (e) {
-    return ServerErrors.internal(e instanceof Error ? e.message : "failed to derive kid");
+    return ServerErrors.internal(
+      e instanceof Error ? e.message : "failed to derive kid",
+    );
   }
 
   const tbs = await buildDelegationToBeSigned(curve, kid, {
@@ -421,17 +447,22 @@ async function handleDelegation(request: Request, env: Env): Promise<Response> {
     expiresAt,
   });
 
-  const cryptoKey = curve === "secp256k1" ? env.KMS_KEY_SECP256K1 : env.KMS_KEY_SECP256R1;
+  const cryptoKey =
+    curve === "secp256k1" ? env.KMS_KEY_SECP256K1 : env.KMS_KEY_SECP256R1;
 
   let signatureDer: Uint8Array;
   try {
-    signatureDer = await kmsAsymmetricSignSha256(token, {
-      projectId: env.FOREST_PROJECT_ID,
-      location: env.GCP_LOCATION,
-      keyRing: env.KMS_KEY_RING,
-      cryptoKey,
-      cryptoKeyVersion: env.KMS_KEY_VERSION,
-    }, tbs.digestSha256);
+    signatureDer = await kmsAsymmetricSignSha256(
+      token,
+      {
+        projectId: env.FOREST_PROJECT_ID,
+        location: env.GCP_LOCATION,
+        keyRing: env.KMS_KEY_RING,
+        cryptoKey,
+        cryptoKeyVersion: env.KMS_KEY_VERSION,
+      },
+      tbs.digestSha256,
+    );
   } catch (e) {
     return mapKmsError(e);
   }
@@ -441,11 +472,17 @@ async function handleDelegation(request: Request, env: Env): Promise<Response> {
     signatureRaw = kmsDerSignatureToCoseRaw(signatureDer);
   } catch (e) {
     return ServerErrors.internal(
-      e instanceof Error ? `signature conversion failed: ${e.message}` : "signature conversion failed",
+      e instanceof Error
+        ? `signature conversion failed: ${e.message}`
+        : "signature conversion failed",
     );
   }
 
-  const cose = assembleCoseSign1(tbs.protectedBytes, tbs.payloadBytes, signatureRaw);
+  const cose = assembleCoseSign1(
+    tbs.protectedBytes,
+    tbs.payloadBytes,
+    signatureRaw,
+  );
   return new Response(cose as unknown as BodyInit, {
     status: 200,
     headers: {
@@ -473,15 +510,13 @@ export default {
 
     if (url.pathname === "/api/delegations") {
       if (request.method !== "POST") {
-        return ClientErrors.methodNotAllowed(
-          `Use POST for ${url.pathname}`,
-        );
+        return ClientErrors.methodNotAllowed(`Use POST for ${url.pathname}`);
       }
       return handleDelegation(request, env);
     }
 
-    return ClientErrors.notFound(`The requested resource ${url.pathname} was not found`);
+    return ClientErrors.notFound(
+      `The requested resource ${url.pathname} was not found`,
+    );
   },
 };
-
-

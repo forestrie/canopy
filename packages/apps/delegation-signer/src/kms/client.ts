@@ -69,7 +69,11 @@ export async function kmsAsymmetricSignSha256(
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => undefined);
-    throw new KmsError(`KMS asymmetricSign failed (${resp.status})`, resp.status, text);
+    throw new KmsError(
+      `KMS asymmetricSign failed (${resp.status})`,
+      resp.status,
+      text,
+    );
   }
 
   const json = (await resp.json()) as { signature?: string };
@@ -99,7 +103,11 @@ export async function kmsGetPublicKeyDer(
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => undefined);
-    throw new KmsError(`KMS getPublicKey failed (${resp.status})`, resp.status, text);
+    throw new KmsError(
+      `KMS getPublicKey failed (${resp.status})`,
+      resp.status,
+      text,
+    );
   }
 
   const json = (await resp.json()) as { pem?: string };
@@ -111,5 +119,3 @@ export async function kmsGetPublicKeyDer(
   publicKeyDerCache.set(name, der);
   return der;
 }
-
-

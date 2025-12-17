@@ -8,5 +8,3 @@ export async function parseCborBody<T = unknown>(request: Request): Promise<T> {
   const arrayBuffer = await request.arrayBuffer();
   return decodeCbor(new Uint8Array(arrayBuffer)) as T;
 }
-
-

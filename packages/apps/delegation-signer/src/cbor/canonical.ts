@@ -76,5 +76,3 @@ export function canonicalizeCbor(value: unknown): unknown {
 
   return value;
 }
-
-

@@ -14,5 +14,3 @@ export async function deriveKidFromPublicKeyDer(
   const digest = await sha256(publicKeyDer);
   return digest.slice(0, 16);
 }
-
-

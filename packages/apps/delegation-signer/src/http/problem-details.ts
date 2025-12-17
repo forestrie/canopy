@@ -2,7 +2,9 @@ import { encodeToCbor } from "../cbor/codec";
 
 export const CBOR_MIME = "application/cbor";
 
-function headersToRecord(init: HeadersInit | undefined): Record<string, string> {
+function headersToRecord(
+  init: HeadersInit | undefined,
+): Record<string, string> {
   if (!init) return {};
   if (init instanceof Headers) {
     const out: Record<string, string> = {};
@@ -63,5 +65,3 @@ export const ServerErrors = {
   internal: (detail?: string) => pd(500, "Internal Server Error", detail),
   badGateway: (detail?: string) => pd(502, "Bad Gateway", detail),
 };
-
-

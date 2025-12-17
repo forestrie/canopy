@@ -58,7 +58,9 @@ describe("delegation-signer worker", () => {
 
   it("converts DER ECDSA signatures to raw r||s", () => {
     // SEQUENCE { INTEGER 1, INTEGER 2 }
-    const der = new Uint8Array([0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02]);
+    const der = new Uint8Array([
+      0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02,
+    ]);
     const raw = kmsDerSignatureToCoseRaw(der);
     expect(raw.byteLength).toBe(64);
     expect(raw[31]).toBe(1);
@@ -72,7 +74,9 @@ describe("delegation-signer worker", () => {
     (env as any).KMS_KID_SECP256K1_B64 = encodeB64(kid);
 
     // Stub KMS asymmetricSign call.
-    const derSig = new Uint8Array([0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02]);
+    const derSig = new Uint8Array([
+      0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02,
+    ]);
     const signature = encodeB64(derSig);
 
     const fetchStub = vi.fn(async (input: RequestInfo | URL) => {
@@ -133,9 +137,12 @@ describe("delegation-signer worker", () => {
     expect(signatureRaw[63]).toBe(2);
 
     const protectedHdr = decodeCbor(protectedBytes) as any;
-    const alg = protectedHdr instanceof Map ? protectedHdr.get(1) : protectedHdr["1"];
-    const cty = protectedHdr instanceof Map ? protectedHdr.get(3) : protectedHdr["3"];
-    const hdrKid = protectedHdr instanceof Map ? protectedHdr.get(4) : protectedHdr["4"];
+    const alg =
+      protectedHdr instanceof Map ? protectedHdr.get(1) : protectedHdr["1"];
+    const cty =
+      protectedHdr instanceof Map ? protectedHdr.get(3) : protectedHdr["3"];
+    const hdrKid =
+      protectedHdr instanceof Map ? protectedHdr.get(4) : protectedHdr["4"];
 
     expect(alg).toBe(-47);
     expect(cty).toBe("application/forestrie.delegation+cbor");
@@ -154,7 +161,9 @@ describe("delegation-signer worker", () => {
     (env as any).KMS_KID_SECP256K1_B64 = encodeB64(kid);
 
     // Stub KMS asymmetricSign call.
-    const derSig = new Uint8Array([0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02]);
+    const derSig = new Uint8Array([
+      0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02,
+    ]);
     const signature = encodeB64(derSig);
 
     const fetchStub = vi.fn(async (input: RequestInfo | URL) => {
@@ -250,5 +259,3 @@ describe("delegation-signer worker", () => {
     expect(pd).toHaveProperty("title", "Forbidden");
   });
 });
-
-
