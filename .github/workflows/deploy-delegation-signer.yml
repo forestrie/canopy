@@ -1,0 +1,72 @@
+name: Deploy Delegation Signer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/apps/delegation-signer/**"
+      - "packages/merklelog/**"
+      - ".github/workflows/deploy-delegation-signer.yml"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Deployment target"
+        required: true
+        default: "development"
+        type: choice
+        options:
+          - development
+          - production
+
+jobs:
+  deploy:
+    name: Deploy (${{ github.event_name == 'push' && 'development' || github.event.inputs.target }})
+    runs-on: ubuntu-latest
+    concurrency:
+      group: delegation-signer-deploy
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.6.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Wrangler
+        run: pnpm add -g wrangler
+
+      - name: Authenticate Wrangler
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          echo "Authenticating with Cloudflare..."
+          yes n | wrangler whoami
+
+      - name: Unit tests
+        run: pnpm --filter @canopy/delegation-signer test
+
+      - name: Deploy (development)
+        if: github.event_name == 'push' || github.event.inputs.target == 'development'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: pnpm --filter @canopy/delegation-signer deploy
+
+      - name: Deploy (production)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'production'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: pnpm --filter @canopy/delegation-signer deploy:production
+
+
