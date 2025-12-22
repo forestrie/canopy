@@ -68,7 +68,7 @@ describe("Canopy API", () => {
     // Should accept the statement
     expect(response.status).toBe(303);
     expect(response.headers.get("Location")).toMatch(
-      /http:\/\/localhost\/logs\/logid-1\/entries\/\d{8}\/[a-f0-9]{32}$/,
+      /http:\/\/localhost\/logs\/logid-1\/entries\/[a-f0-9]{64}$/,
     );
   });
 

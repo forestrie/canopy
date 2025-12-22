@@ -6,8 +6,6 @@ export interface LeafObjectMetadata {
   logId: string;
   contentType: string;
   appId: string;
-  extraBytes0: string;
-  extraBytes1: string;
 }
 
 /**
@@ -15,7 +13,6 @@ export interface LeafObjectMetadata {
  *
  * @param bucket The R2_LEAVES bucket
  * @param logId The log identifier (UUID)
- * @param fenceIndex The fence MMR index
  * @param content The statement content (CBOR/COSE)
  * @param contentType The MIME type of the content
  * @returns The storage result with path and hash
@@ -23,7 +20,6 @@ export interface LeafObjectMetadata {
 export async function storeLeaf(
   bucket: R2Bucket,
   logId: string,
-  fenceIndex: number,
   content: ArrayBuffer,
   contentType: string = "application/cbor",
 ): Promise<{ path: string; hash: string; etag: string }> {
@@ -31,27 +27,27 @@ export async function storeLeaf(
   const hash = await calculateSHA256(content);
 
   // Build the content-addressed path
-  const path = buildLeafPath(logId, fenceIndex, hash);
-
-  // Convert hash hex string to bytes for extraBytes calculations
-  const hashBytes = hexStringToBytes(hash);
-
-  // Calculate extraBytes0: 24 bytes zero-padded with fenceIndex at the last 8 bytes
-  // Calculate extraBytes1: full hashBytes (32 bytes)
-  const fenceBigInt = BigInt(fenceIndex);
-  const fenceBytes = bigIntToBigEndianBytes(fenceBigInt, 8);
-  const extraBytesBytes = new Uint8Array(40);
-  extraBytesBytes.set(fenceBytes, 0);
-  extraBytesBytes.set(hashBytes, 8);
-  const extraBytes0 = bytesToHexString(extraBytesBytes.slice(0, 24));
-  const extraBytes1 = bytesToHexString(extraBytesBytes.slice(24));
+  const path = buildLeafPath(logId, hash);
 
   // Convert ArrayBuffer to Uint8Array for R2_LEAVES/Miniflare compatibility
   // This fixes the serialization issue with Miniflare
   const uint8Content = new Uint8Array(content);
 
   // Store in R2_LEAVES - hash is in path, not stored separately
-  let result;
+  //
+  // IMPORTANT: this write is intentionally CREATE-ONLY.
+  //
+  // SCRAPI allows pre-sequence identifiers to be transient and expirable. In
+  // Forestrie, the content hash is used as the temporary id within a bounded
+  // sequencing window defined by ingress lifecycle/expiry policy.
+  //
+  // - While the object exists at this key, re-registering identical content is
+  //   idempotent (no duplicate sequencing, no new queue notification).
+  // - After the object expires and is removed, re-registering the same content
+  //   will create a new ingress object and may sequence again. In that case,
+  //   the same temporary id (content hash) will intentionally resolve to the
+  //   most recent registration.
+  let result: R2Object | null;
   try {
     result = await bucket.put(path, uint8Content, {
       httpMetadata: {
@@ -64,11 +60,23 @@ export async function storeLeaf(
         logId: logId,
         contentType: contentType,
         appId: path,
-        extraBytes0: extraBytes0,
-        extraBytes1: extraBytes1,
       } as Record<string, string>,
       // Removed md5 option - R2_LEAVES's md5 expects MD5 format, we use SHA256 in path
+      onlyIf: {
+        // Create-only: fail if the object already exists.
+        etagDoesNotMatch: "*",
+      },
     });
+    // If create-only fails, R2 returns null. Treat as idempotent success.
+    if (!result) {
+      const head = await bucket.head(path);
+      if (!head) {
+        throw new Error(
+          "Create-only put returned null but object is not present on head()",
+        );
+      }
+      result = head;
+    }
   } catch (error) {
     console.error("Error storing leaf in R2_LEAVES:", error);
     throw error;
@@ -101,8 +109,6 @@ export async function getLeafObject(
     logId: md.logId || "",
     contentType: md.contentType || "",
     appId: md.appId || "",
-    extraBytes0: md.extraBytes0 || "",
-    extraBytes1: md.extraBytes1 || "",
   };
 
   return { content, metadata };
@@ -110,19 +116,17 @@ export async function getLeafObject(
 
 /**
  * Build the content-addressed storage path
- * Format: /logs/<LOG_ID>/leaves/{FENCE_MMRINDEX}/{SHA256_CONTENT_DIGEST}
+ * Format: /logs/<LOG_ID>/leaves/{SHA256_CONTENT_DIGEST}
  *
  * @param logId The log identifier
- * @param fenceIndex The fence MMR index
  * @param contentHash The SHA256 hash of the content (64 hex characters)
  * @returns The storage path
  */
 export function buildLeafPath(
   logId: string,
-  fenceIndex: number,
   contentHash: string,
 ): string {
-  return `logs/${logId}/leaves/${fenceIndex}/${contentHash}`;
+  return `logs/${logId}/leaves/${contentHash}`;
 }
 
 /**
@@ -142,62 +146,15 @@ async function calculateSHA256(content: ArrayBuffer): Promise<string> {
 }
 
 /**
- * Convert hex string to Uint8Array bytes
- *
- * @param hex The hex string (must have even length)
- * @returns The bytes as Uint8Array
- */
-function hexStringToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) {
-    bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
-  }
-  return bytes;
-}
-
-/**
- * Convert Uint8Array bytes to hex string
- *
- * @param bytes The bytes to convert
- * @returns The hex string
- */
-function bytesToHexString(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-/**
- * Convert BigInt to big-endian bytes
- *
- * @param value The BigInt value
- * @param byteLength The number of bytes to output
- * @returns The bytes as Uint8Array in big-endian order
- */
-function bigIntToBigEndianBytes(value: bigint, byteLength: number): Uint8Array {
-  const bytes = new Uint8Array(byteLength);
-  let remaining = value;
-  for (let i = byteLength - 1; i >= 0; i--) {
-    bytes[i] = Number(remaining & 0xffn);
-    remaining = remaining >> 8n;
-  }
-  return bytes;
-}
-
-/**
- * List leaves (statements) for a log, optionally filtered by fence index
+ * List leaves (statements) for a log.
  */
 export async function listLeaves(
   bucket: R2Bucket,
   logId: string,
-  fenceIndex?: number,
   limit: number = 100,
   cursor?: string,
 ): Promise<{ objects: R2Object[]; cursor?: string }> {
-  const prefix =
-    fenceIndex !== undefined
-      ? `logs/${logId}/leaves/${fenceIndex}/`
-      : `logs/${logId}/leaves/`;
+  const prefix = `logs/${logId}/leaves/`;
 
   const result = await bucket.list({
     prefix,
@@ -212,17 +169,13 @@ export async function listLeaves(
 }
 
 /**
- * Count total leaves for a log, optionally filtered by fence index
+ * Count total leaves for a log.
  */
 export async function countLeaves(
   bucket: R2Bucket,
   logId: string,
-  fenceIndex?: number,
 ): Promise<number> {
-  const prefix =
-    fenceIndex !== undefined
-      ? `logs/${logId}/leaves/${fenceIndex}/`
-      : `logs/${logId}/leaves/`;
+  const prefix = `logs/${logId}/leaves/`;
 
   let total = 0;
   let cursor: string | undefined;
@@ -239,4 +192,111 @@ export async function countLeaves(
   } while (cursor);
 
   return total;
+}
+
+export interface DeleteExpiredLeavesResult {
+  scanned: number;
+  deleted: number;
+  timedOut: boolean;
+}
+
+export interface DeleteExpiredLeavesOptions {
+  /**
+   * Prefix to scan. Defaults to `logs/`.
+   *
+   * Note: We further filter keys to those containing `/leaves/` to avoid deleting other R2 data.
+   */
+  prefix?: string;
+  /** Max number of objects to fetch per list page. Defaults to 1000. */
+  listLimit?: number;
+  /** Max number of keys to send per delete call. Defaults to 1000. */
+  deleteBatchSize?: number;
+  /**
+   * Soft time budget for the sweep. When exceeded, we stop scanning further pages.
+   * Defaults to 10 seconds.
+   */
+  timeBudgetMs?: number;
+  /**
+   * Override "now" for testing/determinism (milliseconds since epoch).
+   * Defaults to Date.now() at the start of the sweep.
+   */
+  now?: number;
+}
+
+/**
+ * Best-effort expiry for transient ingress leaves.
+ *
+ * Cloudflare R2's built-in lifecycle rules are bucket-level and not suitable for
+ * minute-level TTL (and are not configurable via `wrangler.jsonc`). We implement
+ * a scheduled sweep that deletes leaf objects older than a given TTL.
+ */
+export async function deleteExpiredLeaves(
+  bucket: R2Bucket,
+  ttlSeconds: number,
+  options: DeleteExpiredLeavesOptions = {},
+): Promise<DeleteExpiredLeavesResult> {
+  if (!Number.isFinite(ttlSeconds) || ttlSeconds <= 0) {
+    return { scanned: 0, deleted: 0, timedOut: false };
+  }
+
+  const prefix = options.prefix ?? "logs/";
+  const listLimit = options.listLimit ?? 1000;
+  const deleteBatchSize = options.deleteBatchSize ?? 1000;
+  const timeBudgetMs = options.timeBudgetMs ?? 10_000;
+
+  const startTime = Date.now();
+  const now = options.now ?? startTime;
+  const ttlMs = ttlSeconds * 1000;
+
+  let scanned = 0;
+  let deleted = 0;
+  let timedOut = false;
+
+  let cursor: string | undefined;
+  let toDelete: string[] = [];
+
+  const flushDeletes = async () => {
+    if (toDelete.length === 0) return;
+    const batch = toDelete;
+    toDelete = [];
+    await bucket.delete(batch);
+    deleted += batch.length;
+  };
+
+  while (true) {
+    const result = await bucket.list({
+      prefix,
+      limit: listLimit,
+      cursor,
+    });
+
+    for (const obj of result.objects) {
+      scanned += 1;
+
+      // Defensive: only delete leaf objects under the expected keyspace.
+      if (!obj.key.includes("/leaves/")) continue;
+
+      const uploadedMs = obj.uploaded.getTime();
+      const ageMs = now - uploadedMs;
+      if (ageMs < ttlMs) continue;
+
+      toDelete.push(obj.key);
+
+      if (toDelete.length >= deleteBatchSize) {
+        await flushDeletes();
+      }
+    }
+
+    if (Date.now() - startTime > timeBudgetMs) {
+      timedOut = true;
+      break;
+    }
+
+    if (!result.truncated) break;
+    cursor = result.cursor;
+  }
+
+  await flushDeletes();
+
+  return { scanned, deleted, timedOut };
 }

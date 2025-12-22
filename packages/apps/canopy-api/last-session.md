@@ -60,16 +60,16 @@ poolOptions: {
 #### a) Register Signed Statement (`src/scrapi/register-signed-statement.ts`)
 
 - Now returns **303 See Other** instead of 202 Accepted
-- Location header format: `{origin}{pathname}/{fenceIndex}/{etag}`
-  - In-progress: `/logs/{logId}/entries/00000000/{md5hash}`
+- Location header format: `{origin}{pathname}/{contentHash}`
+  - In-progress: `/logs/{logId}/entries/{sha256hash}`
 - Includes `Retry-After: 5` header
 
 #### b) Resolve Receipt (`src/scrapi/resolve-receipt.ts`)
 
 - New endpoint implementation for GET `/logs/{logId}/entries/{entryId}`
 - Parses operation IDs to distinguish:
-  - **Completed**: `/entries/00000000` (just fenceIndex)
-  - **In-progress**: `/entries/00000000/{etag}` (fenceIndex + MD5 hash)
+  - **Completed**: `/entries/{idtimestamp}` (permanent id)
+  - **In-progress**: `/entries/{sha256hash}` (transient id, expirable)
 - Returns placeholder receipt for completed entries (200 status)
 - Returns 303 See Other for in-progress operations
 - **TODO comments** added for:
@@ -170,7 +170,7 @@ This provides types for `import { env } from 'cloudflare:test'` in test files.
 #### b) Queue Message Schema (`src/scrapi/queue-message.ts`)
 
 - Created `LeafRegistrationMessage` interface defining message structure:
-  - `logId`, `fenceIndex`, `path`, `hash`, `etag`, `timestamp`, `canopyId`, `forestProjectId`
+  - `logId`, `path`, `hash` (sha256), `etag`, `timestamp`, `canopyId`, `forestProjectId`
 - Helper function `createLeafRegistrationMessage()` for message construction
 
 #### c) Integrated Queue Sending (`src/scrapi/register-signed-statement.ts`)
@@ -272,10 +272,10 @@ Update Cloudflare project settings:
 3. **Completion Detection** (`src/scrapi/resolve-receipt.ts:60-66`)
    - Check if in-progress registration has completed
    - Redirect to permanent URL when complete
-   - Verify entry exists in R2 using fenceIndex and hash
+   - Verify entry exists in R2 using content hash
 
 4. **Entry Verification** (`src/scrapi/resolve-receipt.ts:45`)
-   - Fetch actual entry from R2 using fenceIndex
+   - Fetch actual entry from R2 using content hash
    - Verify entry exists before returning receipt
 
 ### ⚠️ Known Issues
@@ -373,7 +373,7 @@ pnpm wrangler types          # Regenerate runtime types (run after wrangler.json
 ## Key Decisions Made
 
 1. **Always return 303 for registrations** - Per SCRAPI spec, this implementation always does async processing
-2. **Operation ID format**: `{fenceIndex}-{md5hash}` for in-progress, `{fenceIndex}` for completed
+2. **Operation ID format**: `{sha256hash}` for in-progress, `{idtimestamp}` for completed
 3. **Placeholder receipts** - Temporary simple structure until proper SCITT receipts implemented
 4. **Use generated types** - Migrated from `@cloudflare/workers-types` to Wrangler-generated types
 5. **R2 persistence in tests** - Using `.wrangler/state/v3/r2` for test data persistence

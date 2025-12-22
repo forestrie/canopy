@@ -18,9 +18,11 @@ The number is sequential. Short names are lowercase with hyphens.
 
 ### Line Length
 
-All ADR documents must be formatted with a maximum line length of 79
-characters. This ensures readability in standard terminal windows and
-maintains consistency across all documentation.
+All ADR documents must be formatted with an ideal maximum line length of 79 characters.
+Lines that exceed this should be broken an the first punctuation character.
+This ensures readability in standard terminal windows and maintains consistency across all documentation.
+It, crucially, is more amenable to patching and diffing than hard breaking at word boundaries.
+Note that this paragraph is compliant with this rule.
 
 ### Document Structure
 

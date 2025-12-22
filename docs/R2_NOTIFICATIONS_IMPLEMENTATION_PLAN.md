@@ -22,7 +22,8 @@ Currently, the flow is:
 ```typescript
 {
   logId: string;
-  fenceIndex: number;
+  // NOTE: the lower-bound index has been removed. The transient request identifier is the
+  // content hash, and ingress writes are create-only within the expiry window.
   path: string;
   hash: string;
   etag: string;
@@ -64,7 +65,7 @@ Based on Cloudflare documentation, R2 event notifications to queues include:
 
 **Key Points:**
 
-- `object.key` contains the full path: `logs/{logId}/leaves/{fenceIndex}/{hash}`
+- `object.key` contains the full path: `logs/{logId}/leaves/{hash}`
 - `object.eTag` is the R2-provided ETag (currently MD5, but we'll switch to SHA256)
 - `object.size` is the object size in bytes
 - Custom metadata is **NOT included** in the notification payload
@@ -77,7 +78,7 @@ Based on Cloudflare documentation, R2 event notifications to queues include:
 - Green field deployment allows for clean implementation
 - Simpler architecture (no transformation layer)
 - Lower latency (direct path from R2 → Queue → Ranger)
-- Ranger can parse object key to extract `logId` and `fenceIndex`
+- Ranger can parse object key to extract `logId` and `hash` (content hash)
 - Custom metadata can be read from R2 object if needed (with minimal performance impact)
 
 ### Implementation Steps
@@ -106,7 +107,7 @@ Based on Cloudflare documentation, R2 event notifications to queues include:
 
 3. Update `buildLeafPath()`:
    - Ensure it works with 64-character hash (should already work)
-   - Path format: `logs/{logId}/leaves/{fenceIndex}/{sha256hash}`
+   - Path format: `logs/{logId}/leaves/{sha256hash}`
 
 **Architectural Decision:**
 
@@ -197,8 +198,7 @@ type R2Object struct {
 
 2. Update `ProcessMessage()` to parse R2 notification:
    - Parse `R2Notification` from message body
-   - Extract `logId` and `fenceIndex` from `object.key` path: `logs/{logId}/leaves/{fenceIndex}/{hash}`
-   - Extract `hash` (SHA256) from path (last segment after fenceIndex)
+   - Extract `logId` and `hash` (SHA256) from `object.key` path: `logs/{logId}/leaves/{hash}`
    - Use `object.eTag` as the ETag
    - Use `eventTime` as timestamp
    - **Note**: `canopyId` and `forestProjectId` come from Ranger deployment configuration, not message
@@ -369,7 +369,7 @@ Since this is a green field deployment, we can implement in any order. Recommend
 ### Phase 3: Update Ranger
 
 1. Update `consumer.go` to parse R2 notification format
-2. Implement path parsing for `logId`, `fenceIndex`, `hash`
+2. Implement path parsing for `logId`, `hash`
 3. Configure R2 access (public URL or API token)
 4. Test message processing
 
@@ -503,7 +503,7 @@ Since this is a green field deployment, we can implement in any order. Recommend
 
 ## Decisions Made
 
-1. **SHA256 Hash**: Store SHA256 hash in path only (`logs/{logId}/leaves/{fenceIndex}/{sha256hash}`)
+1. **SHA256 Hash**: Store SHA256 hash in path only (`logs/{logId}/leaves/{sha256hash}`)
    - Path is authoritative source
    - Ranger can verify by reading object and computing hash if needed
    - No metadata storage of hash
@@ -514,7 +514,7 @@ Since this is a green field deployment, we can implement in any order. Recommend
    - Add rate limiting proxy later if abuse occurs
 
 3. **Metadata Requirements**:
-   - Ranger extracts `logId`, `fenceIndex`, `hash`, `etag`, `timestamp` from R2 notification
+   - Ranger extracts `logId`, `hash`, `etag`, `timestamp` from R2 notification
    - `canopyId` and `forestProjectId` from Ranger deployment configuration (not per message)
 
 4. **Error Handling**:

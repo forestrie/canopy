@@ -33,21 +33,14 @@ export function validateOperationId(id: string | undefined): Response | null {
 }
 
 export function validateEntryId(id: string | undefined): Response | null {
-  // Entry IDs can be UUIDs or content hashes (hex strings)
+  // Permanent entry IDs are 16 bytes, hex-encoded (32 hex characters):
+  // entryId = hex(idtimestamp_be8 || mmrIndex_be8)
   if (!id) return ClientErrors.badRequest("Missing entryId");
 
-  // Check if it's a UUID
-  const isUuid =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      id,
-    );
-  if (isUuid) return null;
-
-  // Check if it's a hex hash (32 or 64 characters for MD5/SHA256)
-  const isHash = /^[0-9a-f]{32,64}$/i.test(id);
-  if (isHash) return null;
-
-  return ClientErrors.badRequest("entryId must be a UUID or hex hash");
+  const ok = /^[0-9a-f]{32}$/i.test(id);
+  return ok
+    ? null
+    : ClientErrors.badRequest("entryId must be 32 hex characters");
 }
 
 export function validateScrapiRequest(

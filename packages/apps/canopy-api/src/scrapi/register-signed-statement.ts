@@ -6,7 +6,6 @@ import { storeLeaf } from "../cf/r2";
 import { CBOR_CONTENT_TYPES } from "./cbor-content-types";
 import { getContentSize, parseCborBody } from "./cbor-request";
 import { seeOtherResponse } from "./cbor-response";
-import { getLowerBoundMMRIndex } from "./mmr-mock";
 
 import { ClientErrors, ServerErrors } from "./problem-details";
 import { getMaxStatementSize } from "./transparency-configuration";
@@ -71,25 +70,28 @@ export async function registerSignedStatement(
       return ClientErrors.invalidStatement("Invalid COSE Sign1 structure");
     }
 
-    // Get the fence MMR index
-    const fenceIndex = await getLowerBoundMMRIndex(logId);
-
     // Store leaf in R2_LEAVES
     // R2_LEAVES event notifications will automatically send a message to the queue
     const { path, hash, etag } = await storeLeaf(
       r2Bucket,
       logId,
-      fenceIndex,
       statementData.buffer as ArrayBuffer,
       CBOR_CONTENT_TYPES.COSE_SIGN1,
     );
 
-    // Generate operation ID
-    const fenceIndexPadded = fenceIndex.toString().padStart(8, "0");
+    // The SCRAPI pre-sequence identifier is intentionally transient and expirable.
+    // In Forestrie, we use the content hash as the temporary identifier.
+    //
+    // IMPORTANT:
+    // - Ingress writes are create-only, so re-registering identical content is
+    //   idempotent until the ingress object expires and is removed.
+    // - Re-using a stale content-hash identifier (after expiry + re-registration)
+    //   will intentionally resolve to the most recent registration.
 
     // Derive Location header from request URL
     const requestUrl = new URL(request.url);
-    const location = `${requestUrl.origin}${requestUrl.pathname}/${fenceIndexPadded}/${etag}`;
+    // Note: we return the content hash as the operation id location.
+    const location = `${requestUrl.origin}${requestUrl.pathname}/${hash}`;
 
     // Return 303 See Other - registration is running (per SCRAPI 2.1.3.2)
     // This is always async for this implementation
