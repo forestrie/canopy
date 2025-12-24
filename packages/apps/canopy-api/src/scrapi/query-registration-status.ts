@@ -84,7 +84,11 @@ export async function queryRegistrationStatus(
     }
 
     const massifHeight = parsed.massifHeight;
-    if (!Number.isInteger(massifHeight) || massifHeight < 1 || massifHeight > 64) {
+    if (
+      !Number.isInteger(massifHeight) ||
+      massifHeight < 1 ||
+      massifHeight > 64
+    ) {
       return ServerErrors.internal(
         `Invalid massifHeight in receipt cache value for ${key}`,
       );
@@ -112,7 +116,9 @@ export async function queryRegistrationStatus(
   } catch (error) {
     console.error("Error querying registration status:", error);
     return ServerErrors.internal(
-      error instanceof Error ? error.message : "Failed to query registration status",
+      error instanceof Error
+        ? error.message
+        : "Failed to query registration status",
     );
   }
 }

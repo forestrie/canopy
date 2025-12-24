@@ -54,7 +54,12 @@ describe("SCRAPI flow", () => {
     // Minimal pre-signed peak receipt (detached payload).
     const emptyBstr = new Uint8Array();
     const emptySig = new Uint8Array();
-    const peakReceipt: any[] = [emptyBstr, new Map<number, unknown>(), null, emptySig];
+    const peakReceipt: any[] = [
+      emptyBstr,
+      new Map<number, unknown>(),
+      null,
+      emptySig,
+    ];
     const peakReceiptBytes = encodeCbor(peakReceipt) as Uint8Array;
 
     // Checkpoint payload: CBOR map with key 1 => mmrSize.
@@ -66,7 +71,12 @@ describe("SCRAPI flow", () => {
     const checkpointUnprotected = new Map<number, unknown>([
       [SEAL_PEAK_RECEIPTS_LABEL, [peakReceiptBytes]],
     ]);
-    const checkpoint: any[] = [emptyBstr, checkpointUnprotected, stateBytes, emptySig];
+    const checkpoint: any[] = [
+      emptyBstr,
+      checkpointUnprotected,
+      stateBytes,
+      emptySig,
+    ];
     const checkpointBytes = encodeCbor(checkpoint) as Uint8Array;
 
     // Massif blob layout (v2):
@@ -87,7 +97,8 @@ describe("SCRAPI flow", () => {
     const leafCount = 1 << (massifHeight - 1);
     const mBits = BLOOM_BITS_PER_ELEMENT_V1 * leafCount;
     const bitsetBytes = Math.ceil(mBits / 8);
-    const bloomRegionBytes = BLOOM_HEADER_BYTES_V1 + BLOOM_FILTERS * bitsetBytes;
+    const bloomRegionBytes =
+      BLOOM_HEADER_BYTES_V1 + BLOOM_FILTERS * bitsetBytes;
     const bloomBitsetsBytes = bloomRegionBytes - BLOOM_HEADER_BYTES_V1;
 
     const leafTableBytes = leafCount * URKLE_LEAF_RECORD_BYTES;
@@ -123,10 +134,8 @@ describe("SCRAPI flow", () => {
     massifBytes.set(node2, logStart + 2 * VALUE_BYTES);
 
     const objectIndex = "0000000000000000";
-    const checkpointKey =
-      `v2/merklelog/checkpoints/${massifHeight}/${logId}/${objectIndex}.sth`;
-    const massifKey =
-      `v2/merklelog/massifs/${massifHeight}/${logId}/${objectIndex}.log`;
+    const checkpointKey = `v2/merklelog/checkpoints/${massifHeight}/${logId}/${objectIndex}.sth`;
+    const massifKey = `v2/merklelog/massifs/${massifHeight}/${logId}/${objectIndex}.log`;
 
     await proveEnvHasMMRSBucket(env);
     await env.R2_MMRS.put(checkpointKey, checkpointBytes);
@@ -143,7 +152,9 @@ describe("SCRAPI flow", () => {
       "application/scitt-receipt+cbor",
     );
 
-    const decoded = decodeCbor(new Uint8Array(await response.arrayBuffer())) as any;
+    const decoded = decodeCbor(
+      new Uint8Array(await response.arrayBuffer()),
+    ) as any;
     expect(Array.isArray(decoded)).toBe(true);
     expect(decoded).toHaveLength(4);
 
@@ -170,9 +181,7 @@ function headerGet(objOrMap: any, key: number): any {
   return (objOrMap as any)[key] ?? (objOrMap as any)[String(key)];
 }
 
-async function proveEnvHasMMRSBucket(
-  e: typeof env,
-): Promise<void> {
+async function proveEnvHasMMRSBucket(e: typeof env): Promise<void> {
   if (!("R2_MMRS" in e)) {
     throw new Error(
       "test env missing R2_MMRS binding (run wrangler types / update worker-configuration.d.ts)",

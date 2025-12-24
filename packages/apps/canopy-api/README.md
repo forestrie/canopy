@@ -27,5 +27,3 @@ We enforce expiry with a **scheduled cleanup sweep**:
 ### Configuration
 
 - `LEAF_TTL_SECONDS`: string, TTL in seconds for leaf objects (default `"300"`).
-
-

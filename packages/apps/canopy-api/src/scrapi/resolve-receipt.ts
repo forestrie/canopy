@@ -73,7 +73,11 @@ export async function resolveReceipt(
       return ClientErrors.badRequest("massifHeight must be an integer");
     }
     const massifHeight = Number.parseInt(massifHeightRaw, 10);
-    if (!Number.isInteger(massifHeight) || massifHeight < 1 || massifHeight > 64) {
+    if (
+      !Number.isInteger(massifHeight) ||
+      massifHeight < 1 ||
+      massifHeight > 64
+    ) {
       return ClientErrors.badRequest("massifHeight must be in range 1..64");
     }
 
@@ -93,10 +97,14 @@ export async function resolveReceipt(
 
     const checkpointObject = await mmrs.get(checkpointKey);
     if (!checkpointObject) {
-      return ClientErrors.notFound("Entry receipt not found (checkpoint missing)");
+      return ClientErrors.notFound(
+        "Entry receipt not found (checkpoint missing)",
+      );
     }
 
-    const checkpointBytes = new Uint8Array(await checkpointObject.arrayBuffer());
+    const checkpointBytes = new Uint8Array(
+      await checkpointObject.arrayBuffer(),
+    );
     const checkpoint = decodeCbor(checkpointBytes) as unknown;
     const checkpointSign1 = requireCoseSign1(checkpoint, "checkpoint");
 
@@ -120,7 +128,9 @@ export async function resolveReceipt(
     const state = decodeCbor(checkpointPayload) as unknown;
     const mmrSize = readStateMMRSize(state);
     if (mmrSize <= 0n) {
-      return ClientErrors.notFound("Entry receipt not found (invalid MMR size)");
+      return ClientErrors.notFound(
+        "Entry receipt not found (invalid MMR size)",
+      );
     }
 
     const mmrLastIndex = mmrSize - 1n;
@@ -167,7 +177,9 @@ export async function resolveReceipt(
         // Ancestor peak in the fixed peak-stack region.
         const peakIdx = peakStackMap.get(i);
         if (peakIdx === undefined) {
-          throw new Error(`missing ancestor peak for mmr index ${i.toString(10)}`);
+          throw new Error(
+            `missing ancestor peak for mmr index ${i.toString(10)}`,
+          );
         }
 
         const off = peakStackStart + BigInt(peakIdx) * 32n;
@@ -339,15 +351,25 @@ function indexDataBytesV2(leafCount: bigint): bigint {
   const leafTableBytes = leafCount * URKLE_LEAF_RECORD_BYTES;
   const nodeStoreBytes = (2n * leafCount - 1n) * URKLE_NODE_RECORD_BYTES;
 
-  return bloomBitsetsBytes + URKLE_FRONTIER_STATE_V1_BYTES + leafTableBytes + nodeStoreBytes;
+  return (
+    bloomBitsetsBytes +
+    URKLE_FRONTIER_STATE_V1_BYTES +
+    leafTableBytes +
+    nodeStoreBytes
+  );
 }
 
 function slice32(buf: Uint8Array, offset: bigint, label: string): Uint8Array {
   if (offset < 0n) {
     throw new Error(`negative offset for ${label}`);
   }
-  if (offset > BigInt(buf.byteLength) || offset + 32n > BigInt(buf.byteLength)) {
-    throw new Error(`out of range read for ${label}: off=${offset.toString(10)}`);
+  if (
+    offset > BigInt(buf.byteLength) ||
+    offset + 32n > BigInt(buf.byteLength)
+  ) {
+    throw new Error(
+      `out of range read for ${label}: off=${offset.toString(10)}`,
+    );
   }
   const start = Number(offset);
   return buf.slice(start, start + 32);
@@ -491,7 +513,10 @@ function leafIndexFromMMRIndex(mmrIndex: bigint): bigint {
   return leafCount - 1n;
 }
 
-function massifIndexFromMMRIndex(massifHeight: number, mmrIndex: bigint): bigint {
+function massifIndexFromMMRIndex(
+  massifHeight: number,
+  mmrIndex: bigint,
+): bigint {
   // go-merklelog/massifs/massifindex.go MassifIndexFromMMRIndex
   const leafIndex = leafIndexFromMMRIndex(mmrIndex);
   const massifMaxLeaves = 1n << BigInt(massifHeight - 1);

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { decodeEntryId, encodeEntryId, isEntryIdHex } from "../src/scrapi/entry-id";
+import {
+  decodeEntryId,
+  encodeEntryId,
+  isEntryIdHex,
+} from "../src/scrapi/entry-id";
 
 describe("entryId", () => {
   it("encodes and decodes (idtimestamp, mmrIndex)", () => {

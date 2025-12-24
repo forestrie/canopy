@@ -27,3 +27,96 @@ tasks:
             echo "Error response body (decoded):"
             node scripts/decode-problem-details.mjs < post-entry-rand.response
           fi
+
+  resolve-receipt:
+    desc: Poll query-registration-status (0.5s) then fetch receipt to resolve-receipt.cbor
+    cmds:
+      - cmd: |
+          set -euo pipefail
+
+          # 1) POST /entries to obtain the registration-status URL (Location header)
+          post_headers=$(mktemp)
+          post_body=$(mktemp)
+
+          post_code=$(node scripts/gen-cose-sign1.mjs \
+            | curl -sS -D "$post_headers" -w "%{http_code}" -X POST "{{.BASE_URL}}/entries" \
+              -H 'Content-Type: application/cose; cose-type="cose-sign1"' \
+              -H "Authorization: Bearer {{.API_KEY}}" \
+              --output "$post_body" \
+              --data-binary @-)
+
+          post_location=$(grep -i '^location:' "$post_headers" | awk '{print $2}' | tr -d '\r')
+
+          if [ "$post_code" -ge 400 ]; then
+            echo ""
+            echo "Error response body (decoded):"
+            node scripts/decode-problem-details.mjs < "$post_body"
+            exit 1
+          fi
+
+          if [ "$post_code" != "303" ] || [ -z "$post_location" ]; then
+            echo "Unexpected response from post-entry: http_code=$post_code location=$post_location"
+            exit 1
+          fi
+
+          status_url="$post_location"
+
+          # 2) Poll query-registration-status until it redirects to a /receipt URL.
+          max_attempts=${MAX_ATTEMPTS:-240} # 240 * 0.5s = 120s
+          attempt=0
+          receipt_url=""
+
+          while [ "$attempt" -lt "$max_attempts" ]; do
+            attempt=$((attempt + 1))
+
+            poll_headers=$(mktemp)
+            poll_body=$(mktemp)
+
+            poll_code=$(curl -sS -D "$poll_headers" -w "%{http_code}" -X GET "$status_url" \
+              -H "Authorization: Bearer {{.API_KEY}}" \
+              --output "$poll_body")
+
+            poll_location=$(grep -i '^location:' "$poll_headers" | awk '{print $2}' | tr -d '\r')
+
+            if [ "$poll_code" -ge 400 ]; then
+              echo ""
+              echo "Error response body (decoded):"
+              node scripts/decode-problem-details.mjs < "$poll_body"
+              exit 1
+            fi
+
+            if [ "$poll_code" != "303" ] || [ -z "$poll_location" ]; then
+              echo "Unexpected registration-status response: http_code=$poll_code location=$poll_location"
+              exit 1
+            fi
+
+            if echo "$poll_location" | grep -q '/receipt$'; then
+              receipt_url="$poll_location"
+              break
+            fi
+
+            sleep 0.5
+          done
+
+          if [ -z "$receipt_url" ]; then
+            echo "Timed out waiting for receipt. status_url=$status_url"
+            exit 1
+          fi
+
+          # 3) GET /receipt and save to resolve-receipt.cbor
+          tmp_receipt=$(mktemp)
+
+          receipt_code=$(curl -sS -w "%{http_code}" -X GET "$receipt_url" \
+            -H "Authorization: Bearer {{.API_KEY}}" \
+            -H 'Accept: application/scitt-receipt+cbor' \
+            --output "$tmp_receipt")
+
+          if [ "$receipt_code" -ge 400 ]; then
+            echo ""
+            echo "Error response body (decoded):"
+            node scripts/decode-problem-details.mjs < "$tmp_receipt"
+            exit 1
+          fi
+
+          mv "$tmp_receipt" resolve-receipt.cbor
+          echo "Saved receipt to resolve-receipt.cbor"

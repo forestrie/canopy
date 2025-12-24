@@ -122,10 +122,7 @@ export async function getLeafObject(
  * @param contentHash The SHA256 hash of the content (64 hex characters)
  * @returns The storage path
  */
-export function buildLeafPath(
-  logId: string,
-  contentHash: string,
-): string {
+export function buildLeafPath(logId: string, contentHash: string): string {
   return `logs/${logId}/leaves/${contentHash}`;
 }
 
