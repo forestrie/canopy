@@ -75,9 +75,7 @@ test.describe("Canopy API", () => {
     const location = response.headers()["location"];
     expect(location).toBeTruthy();
     expect(location).toMatch(
-      new RegExp(
-        `/logs/${logId.replace(/[-]/g, "\\-")}/entries/[a-f0-9]{64}$`,
-      ),
+      new RegExp(`/logs/${logId.replace(/[-]/g, "\\-")}/entries/[a-f0-9]{64}$`),
     );
   });
 });
