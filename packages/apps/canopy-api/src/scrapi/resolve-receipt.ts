@@ -113,11 +113,11 @@ export async function resolveReceipt(
       isArray: Array.isArray(checkpoint),
       isMap: checkpoint instanceof Map,
       mapKeys:
-        checkpoint instanceof Map
-          ? Array.from(checkpoint.keys())
-          : undefined,
+        checkpoint instanceof Map ? Array.from(checkpoint.keys()) : undefined,
       objectKeys:
-        checkpoint && typeof checkpoint === "object" && !(checkpoint instanceof Map)
+        checkpoint &&
+        typeof checkpoint === "object" &&
+        !(checkpoint instanceof Map)
           ? Object.keys(checkpoint as any)
           : undefined,
     });
