@@ -47,18 +47,38 @@ export async function queryRegistrationStatus(
   const contentHash = contentHashRaw.toLowerCase();
   const key = `ranger/v1/${logID}/latest/${contentHash}`;
 
+  // Lightweight debug logging to help trace cache lookups end-to-end.
+  console.log("[query-registration-status] begin", {
+    logID,
+    contentHash,
+    key,
+    url: request.url,
+  });
+
   try {
     const raw = await kv.get(key);
     if (!raw) {
+      console.log("[query-registration-status] cache miss", { key });
+
       // Still processing - return 303 with current location and retry-after.
       const requestUrl = new URL(request.url);
       const currentLocation = `${requestUrl.origin}${requestUrl.pathname}`;
       return seeOtherResponse(currentLocation, 5);
     }
 
+    const rawTrimmed = raw.trim();
+    console.log("[query-registration-status] cache hit", {
+      key,
+      rawPreview: rawTrimmed.slice(0, 128),
+    });
+
     // During rollout, older values may be stored as a bare decimal string idtimestamp.
     // We cannot build the permanent identifier without (massifHeight, mmrIndex).
-    if (!raw.trim().startsWith("{")) {
+    if (!rawTrimmed.startsWith("{")) {
+      console.error(
+        "[query-registration-status] schema mismatch (non-JSON value)",
+        { key, rawPreview: rawTrimmed.slice(0, 128) },
+      );
       return ServerErrors.serviceUnavailable(
         `Receipt cache schema mismatch for ${key}; expected v1 JSON value`,
       );
@@ -66,8 +86,13 @@ export async function queryRegistrationStatus(
 
     let parsed: ReceiptCacheValueV1;
     try {
-      parsed = JSON.parse(raw) as ReceiptCacheValueV1;
+      parsed = JSON.parse(rawTrimmed) as ReceiptCacheValueV1;
     } catch (error) {
+      console.error("[query-registration-status] JSON parse failed", {
+        key,
+        rawPreview: rawTrimmed.slice(0, 128),
+        error: error instanceof Error ? error.message : String(error),
+      });
       return ServerErrors.internal(
         `Failed to parse receipt cache JSON for ${key}: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -80,6 +105,10 @@ export async function queryRegistrationStatus(
       typeof parsed.mmrIndex !== "string" ||
       typeof parsed.idtimestamp !== "string"
     ) {
+      console.error("[query-registration-status] invalid cache value shape", {
+        key,
+        parsed,
+      });
       return ServerErrors.internal(`Invalid receipt cache value for ${key}`);
     }
 
@@ -89,32 +118,64 @@ export async function queryRegistrationStatus(
       massifHeight < 1 ||
       massifHeight > 64
     ) {
+      console.error(
+        "[query-registration-status] invalid massifHeight in cache value",
+        { key, massifHeight },
+      );
       return ServerErrors.internal(
         `Invalid massifHeight in receipt cache value for ${key}`,
       );
     }
 
     if (!/^[0-9]+$/.test(parsed.mmrIndex)) {
+      console.error(
+        "[query-registration-status] invalid mmrIndex in cache value",
+        { key, mmrIndex: parsed.mmrIndex },
+      );
       return ServerErrors.internal(
         `Invalid mmrIndex in receipt cache value for ${key}`,
       );
     }
-    if (!/^[0-9]+$/.test(parsed.idtimestamp)) {
+    if (!/^[0-9a-f]+$/i.test(parsed.idtimestamp)) {
+      console.error(
+        "[query-registration-status] invalid idtimestamp in cache value",
+        { key, idtimestamp: parsed.idtimestamp },
+      );
       return ServerErrors.internal(
         `Invalid idtimestamp in receipt cache value for ${key}`,
       );
     }
 
+    let idtimestampBigInt: bigint;
+    try {
+      // Forester writes idtimestamp as lowercase hex digits without a 0x prefix.
+      idtimestampBigInt = BigInt(`0x${parsed.idtimestamp}`);
+    } catch (error) {
+      console.error(
+        "[query-registration-status] failed to parse idtimestamp as hex",
+        { key, idtimestamp: parsed.idtimestamp, error },
+      );
+      return ServerErrors.internal(
+        `Failed to parse idtimestamp in receipt cache value for ${key}`,
+      );
+    }
+
     const entryId = encodeEntryId({
-      idtimestamp: parsed.idtimestamp,
+      idtimestamp: idtimestampBigInt,
       mmrIndex: parsed.mmrIndex,
     });
 
     const requestUrl = new URL(request.url);
     const permanentLocation = `${requestUrl.origin}/logs/${logID}/${massifHeight}/entries/${entryId}/receipt`;
+    console.log("[query-registration-status] redirecting to receipt", {
+      key,
+      massifHeight,
+      entryId,
+      permanentLocation,
+    });
     return seeOtherResponse(permanentLocation);
   } catch (error) {
-    console.error("Error querying registration status:", error);
+    console.error("[query-registration-status] unhandled error", error);
     return ServerErrors.internal(
       error instanceof Error
         ? error.message

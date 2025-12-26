@@ -11,7 +11,7 @@ describe("SCRAPI flow", () => {
     const contentHash = "ab".repeat(32);
 
     const massifHeight = 14;
-    const idtimestamp = "72623859790382856";
+    const idtimestampHex = "0102030405060708";
     const mmrIndex = "42";
 
     const key = `ranger/v1/${logId}/latest/${contentHash}`;
@@ -19,12 +19,15 @@ describe("SCRAPI flow", () => {
       v: 1,
       massifHeight,
       mmrIndex,
-      idtimestamp,
+      idtimestamp: idtimestampHex,
     });
 
     await env.RANGER_MMR_INDEX.put(key, value);
 
-    const expectedEntryId = encodeEntryId({ idtimestamp, mmrIndex });
+    const expectedEntryId = encodeEntryId({
+      idtimestamp: BigInt(`0x${idtimestampHex}`),
+      mmrIndex,
+    });
 
     const request = new Request(
       `http://localhost/logs/${logId}/entries/${contentHash}`,

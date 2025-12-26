@@ -10,7 +10,6 @@ vars:
   API_KEY: "test-api-key"
 
 tasks:
-
   post-entry:
     desc: Post a COSE Sign1 message with random UUID to the /entries endpoint
     cmds:
@@ -60,9 +59,11 @@ tasks:
           fi
 
           status_url="$post_location"
+          echo "status_url: $status_url"
 
           # 2) Poll query-registration-status until it redirects to a /receipt URL.
-          max_attempts=${MAX_ATTEMPTS:-240} # 240 * 0.5s = 120s
+          # Default: 30 attempts with 1s between each (30s total), override via MAX_ATTEMPTS.
+          max_attempts=${MAX_ATTEMPTS:-30}
           attempt=0
           receipt_url=""
 
@@ -95,7 +96,7 @@ tasks:
               break
             fi
 
-            sleep 0.5
+            sleep 1
           done
 
           if [ -z "$receipt_url" ]; then
