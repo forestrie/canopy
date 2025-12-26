@@ -106,6 +106,22 @@ export async function resolveReceipt(
       await checkpointObject.arrayBuffer(),
     );
     const checkpoint = decodeCbor(checkpointBytes) as unknown;
+
+    // Temporary diagnostics to understand real-world checkpoint encoding.
+    console.log("[resolve-receipt] decoded checkpoint shape", {
+      type: typeof checkpoint,
+      isArray: Array.isArray(checkpoint),
+      isMap: checkpoint instanceof Map,
+      mapKeys:
+        checkpoint instanceof Map
+          ? Array.from(checkpoint.keys())
+          : undefined,
+      objectKeys:
+        checkpoint && typeof checkpoint === "object" && !(checkpoint instanceof Map)
+          ? Object.keys(checkpoint as any)
+          : undefined,
+    });
+
     const checkpointSign1 = requireCoseSign1(checkpoint, "checkpoint");
 
     const checkpointUnprotected = toHeaderMap(checkpointSign1[1]);

@@ -1,0 +1,12 @@
+---
+version: "3"
+
+tasks:
+  idtimestamp:utc:*:
+    desc: convert an idtimestamp to utc
+    vars:
+      IDTS: "{{index .MATCH 0}}"
+    cmds:
+      - cmd: |
+          ms=$(python3 scripts/idtimestamp-unixms.py {{.IDTS}})
+          date -u -r $(($ms/1000)) +"%Y-%m-%dT%H:%M:%S%Z"

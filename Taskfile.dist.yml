@@ -14,6 +14,7 @@ includes:
   cf: ./taskfiles/cloudflare.yml
   minio: ./taskfiles/minio.yml
   wrangler: ./taskfiles/wrangler.yml
+  merklelog: ./taskfiles/merklelog.yml
 
 vars:
   CANOPY_ID: '{{.CANOPY_ID | default "canopy-dev-1"}}'
