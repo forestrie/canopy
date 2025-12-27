@@ -2,12 +2,6 @@
  * R2_LEAVES Storage utilities for SCITT/SCRAPI statements
  */
 
-export interface LeafObjectMetadata {
-  logId: string;
-  contentType: string;
-  appId: string;
-}
-
 /**
  * Store a statement in R2_LEAVES with content-addressed path
  *
@@ -90,31 +84,6 @@ export async function storeLeaf(
 }
 
 /**
- * Retrieve a statement from R2_LEAVES
- *
- * @param bucket The R2_LEAVES bucket
- * @param path The statement path
- * @returns The statement content and metadata
- */
-export async function getLeafObject(
-  bucket: R2Bucket,
-  path: string,
-): Promise<{ content: ArrayBuffer; metadata: LeafObjectMetadata } | null> {
-  const object = await bucket.get(path);
-  if (!object) return null;
-
-  const content = await object.arrayBuffer();
-  const md = (object.customMetadata || {}) as Record<string, string>;
-  const metadata: LeafObjectMetadata = {
-    logId: md.logId || "",
-    contentType: md.contentType || "",
-    appId: md.appId || "",
-  };
-
-  return { content, metadata };
-}
-
-/**
  * Build the content-addressed storage path
  * Format: /logs/<LOG_ID>/leaves/{SHA256_CONTENT_DIGEST}
  *
@@ -140,55 +109,6 @@ async function calculateSHA256(content: ArrayBuffer): Promise<string> {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
   return hashHex;
-}
-
-/**
- * List leaves (statements) for a log.
- */
-export async function listLeaves(
-  bucket: R2Bucket,
-  logId: string,
-  limit: number = 100,
-  cursor?: string,
-): Promise<{ objects: R2Object[]; cursor?: string }> {
-  const prefix = `logs/${logId}/leaves/`;
-
-  const result = await bucket.list({
-    prefix,
-    limit,
-    cursor,
-  });
-
-  return {
-    objects: result.objects,
-    cursor: result.truncated ? result.cursor : undefined,
-  };
-}
-
-/**
- * Count total leaves for a log.
- */
-export async function countLeaves(
-  bucket: R2Bucket,
-  logId: string,
-): Promise<number> {
-  const prefix = `logs/${logId}/leaves/`;
-
-  let total = 0;
-  let cursor: string | undefined;
-
-  do {
-    const result = await bucket.list({
-      prefix,
-      limit: 1000,
-      cursor,
-    });
-
-    total += result.objects.length;
-    cursor = result.truncated ? result.cursor : undefined;
-  } while (cursor);
-
-  return total;
 }
 
 export interface DeleteExpiredLeavesResult {
