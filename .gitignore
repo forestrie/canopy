@@ -58,3 +58,4 @@ infra/terraform/.terraform/
 *.key
 *.cert
 .cache
+receipt.cbor
