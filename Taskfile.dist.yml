@@ -12,6 +12,7 @@ includes:
     vars:
       BASE_URL: https://scout.dev-1.forestrie.dev
   cf: ./taskfiles/cloudflare.yml
+  deploy: ./taskfiles/deploy.yml
   minio: ./taskfiles/minio.yml
   wrangler: ./taskfiles/wrangler.yml
   merklelog: ./taskfiles/merklelog.yml

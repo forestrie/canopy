@@ -15,10 +15,10 @@ export default defineWorkersConfig({
           configPath: "./wrangler.jsonc",
         },
         miniflare: {
-          // R2 buckets and KV namespaces are loaded from wrangler.jsonc
+          // R2 buckets and Durable Objects are loaded from wrangler.jsonc
           // Persist data between test runs (optional)
           r2Persist: ".wrangler/state/v3/r2",
-          kvPersist: ".wrangler/state/v3/kv",
+          durableObjectsPersist: ".wrangler/state/v3/do",
         },
       },
     },

@@ -1,52 +1,64 @@
 import { describe, it, expect } from "vitest";
+import { peakStackEnd } from "../../src/massifs/peakstackend.js";
+import { massifLogEntries } from "../../src/massifs/massiflogentries.js";
+import { LogFormat } from "../../src/massifs/logformat.js";
 import {
-  peakStackEnd,
-  massifLogEntries,
-  LogFormat,
-} from "../../src/massifs/logformat.js";
+  indexDataBytesV2,
+  leafCountForMassifHeight,
+} from "../../src/massifs/indexformat.js";
 
-describe("logformat", () => {
+describe("logformat v2", () => {
   describe("peakStackEnd", () => {
-    it("should calculate peak stack end for massif height 0", () => {
-      const result = peakStackEnd(0);
-      // FixedHeaderEnd (256) + IndexHeaderBytes (32) + TrieDataSize (64 * 1) + PeakStackSize (64 * 32)
-      const expected =
-        BigInt(LogFormat.StartHeaderSize) +
-        BigInt(LogFormat.IndexHeaderBytes) +
-        BigInt(LogFormat.TrieEntryBytes * 1) +
-        BigInt(LogFormat.MaxMmrHeight * LogFormat.ValueBytes);
-      expect(result).toBe(expected);
-    });
-
     it("should calculate peak stack end for massif height 1", () => {
+      // massifHeight = 1 (one-based), leafCount = 2^(1-1) = 1
       const result = peakStackEnd(1);
-      // FixedHeaderEnd (256) + IndexHeaderBytes (32) + TrieDataSize (64 * 2) + PeakStackSize (64 * 32)
+
+      // Expected: StartHeader(256) + IndexHeader(32) + IndexData + PeakStack(2048)
+      const leafCount = leafCountForMassifHeight(1);
+      const indexData = indexDataBytesV2(leafCount);
       const expected =
         BigInt(LogFormat.StartHeaderSize) +
         BigInt(LogFormat.IndexHeaderBytes) +
-        BigInt(LogFormat.TrieEntryBytes * 2) +
+        indexData +
         BigInt(LogFormat.MaxMmrHeight * LogFormat.ValueBytes);
       expect(result).toBe(expected);
     });
 
     it("should calculate peak stack end for massif height 3", () => {
+      // massifHeight = 3 (one-based), leafCount = 2^(3-1) = 4
       const result = peakStackEnd(3);
-      // FixedHeaderEnd (256) + IndexHeaderBytes (32) + TrieDataSize (64 * 8) + PeakStackSize (64 * 32)
+
+      const leafCount = leafCountForMassifHeight(3);
+      const indexData = indexDataBytesV2(leafCount);
       const expected =
         BigInt(LogFormat.StartHeaderSize) +
         BigInt(LogFormat.IndexHeaderBytes) +
-        BigInt(LogFormat.TrieEntryBytes * 8) +
+        indexData +
+        BigInt(LogFormat.MaxMmrHeight * LogFormat.ValueBytes);
+      expect(result).toBe(expected);
+    });
+
+    it("should calculate peak stack end for massif height 14", () => {
+      // massifHeight = 14 (one-based), leafCount = 2^13 = 8192
+      const result = peakStackEnd(14);
+
+      const leafCount = leafCountForMassifHeight(14);
+      const indexData = indexDataBytesV2(leafCount);
+      const expected =
+        BigInt(LogFormat.StartHeaderSize) +
+        BigInt(LogFormat.IndexHeaderBytes) +
+        indexData +
         BigInt(LogFormat.MaxMmrHeight * LogFormat.ValueBytes);
       expect(result).toBe(expected);
     });
 
     it("should increase with massif height", () => {
-      const result0 = peakStackEnd(0);
       const result1 = peakStackEnd(1);
       const result2 = peakStackEnd(2);
+      const result3 = peakStackEnd(3);
 
-      expect(result1).toBeGreaterThan(result0);
       expect(result2).toBeGreaterThan(result1);
+      expect(result3).toBeGreaterThan(result2);
     });
   });
 
@@ -54,7 +66,7 @@ describe("logformat", () => {
     it("should calculate log entries for a valid massif", () => {
       const massifHeight = 3;
       const stackEnd = peakStackEnd(massifHeight);
-      const dataLen = Number(stackEnd) + 100 * LogFormat.ValueBytes; // 100 entries after stack
+      const dataLen = Number(stackEnd) + 100 * LogFormat.ValueBytes;
 
       const entries = massifLogEntries(dataLen, massifHeight);
       expect(entries).toBe(100n);
@@ -63,7 +75,7 @@ describe("logformat", () => {
     it("should throw error if data length is too short", () => {
       const massifHeight = 3;
       const stackEnd = peakStackEnd(massifHeight);
-      const dataLen = Number(stackEnd) - 1; // One byte too short
+      const dataLen = Number(stackEnd) - 1;
 
       expect(() => massifLogEntries(dataLen, massifHeight)).toThrow();
     });
@@ -80,10 +92,9 @@ describe("logformat", () => {
     it("should handle partial entries correctly", () => {
       const massifHeight = 3;
       const stackEnd = peakStackEnd(massifHeight);
-      const dataLen = Number(stackEnd) + 50 * LogFormat.ValueBytes + 10; // 50 entries + 10 extra bytes
+      const dataLen = Number(stackEnd) + 50 * LogFormat.ValueBytes + 10;
 
       const entries = massifLogEntries(dataLen, massifHeight);
-      // Should round down to 50 entries (extra 10 bytes don't form a complete entry)
       expect(entries).toBe(50n);
     });
   });

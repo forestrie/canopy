@@ -21,13 +21,12 @@ tasks:
       - task: status
 
   create:
-    desc: Create all Cloudflare resources (R2 buckets, queues, KV namespaces, and event notifications)
+    desc: Create all Cloudflare resources (R2 buckets, queues, and event notifications)
     deps:
       - bucket:create
       - queue:create:ranger
       - queue:create:sealer
       - queue:create:forester
-      - kv:create:all
     cmds:
       - task: r2notification:create:ranger
         vars:
@@ -47,30 +46,28 @@ tasks:
       - task: r2notification:create:ranger-cache
         vars:
           R2_BUCKET_NAME: "{{ .R2_BUCKET_NAME_MERKLELOGS }}"
-          PREFIX: "{{.BUCKET_PREFIX_CHECKPOINTS}}"
+          PREFIX: "{{.BUCKET_PREFIX_MASSIFS}}"
       - cmd: echo "Resources provisioned. Run 'task cloudflare:sync' to apply Wrangler bindings."
 
   sync:
-    desc: Apply Wrangler configuration (deploy worker + ensure HTTP pull)
+    desc: Deploy workers and configure queue consumers
     deps:
       - validate
     cmds:
-      - cmd: |
-          cd packages/apps/canopy-api
-          yes n | wrangler deploy
+      - task: :wrangler:deploy:ranger-cache
+      - task: :wrangler:deploy:canopy-api
       - task: queue:http-enable:ranger
       - task: queue:http-enable:sealer
       - task: queue:http-enable:forester
 
   destroy:
-    desc: Delete all Cloudflare resources (including KV namespaces) (DESTRUCTIVE!)
+    desc: Delete all Cloudflare resources (DESTRUCTIVE!)
     deps:
       - r2notification:delete:ranger
       - queue:delete:ranger
       - queue:delete:sealer
       - queue:delete:forester
       - bucket:delete
-      - kv:destroy:all
     cmds:
       - cmd: echo "Destruction complete"
 
@@ -112,18 +109,6 @@ tasks:
     desc: Delete R2 bucket (DESTRUCTIVE! Bucket must be empty)
     cmds:
       - cmd: yes n | wrangler r2 bucket delete "{{.R2_BUCKET_NAME_LEAVES}}" 2>/dev/null || echo "Bucket {{.R2_BUCKET_NAME_LEAVES}} not found or not empty"
-
-  kv:create:ranger-cache:
-    desc: Create all well-known Cloudflare KV namespaces
-    cmds:
-      - task: kv:create:ranger-mmr-index
-      - task: kv:create:ranger-mmr-massifs
-
-  kv:bind:ranger-cache:
-    desc: Ensure canopy-api Wrangler config is bound to the massifs KV namespace
-    cmds:
-      - cmd: WFILE=packages/apps/ranger-cache/wrangler.jsonc task -s cf:kv:bind:ranger-mmr-index
-      - cmd: WFILE=packages/apps/ranger-cache/wrangler.jsonc task -s cf:kv:bind:ranger-mmr-massifs
 
   kv:list:
     desc: List {{.CANOPY_ID}}-* Cloudflare KV namespaces

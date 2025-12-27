@@ -1,0 +1,10 @@
+---
+# Deployment orchestration tasks
+
+version: "3"
+
+tasks:
+  bootstrap:
+    desc: Initial deployment of workers in correct order (ranger-cache before canopy-api)
+    cmds:
+      - task: :wrangler:deploy:ranger-cache

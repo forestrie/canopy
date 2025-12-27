@@ -1,6 +1,16 @@
 version: "3"
 
 tasks:
+  deploy:*:
+    desc: Deploy a worker app to dev (e.g., task wrangler:deploy:ranger-cache)
+    vars:
+      APP: "{{index .MATCH 0}}"
+    dir: "packages/apps/{{.APP}}"
+    cmds:
+      - cmd: |
+          echo "Deploying {{.APP}} (dev)..."
+          wrangler deploy --env=""
+
   workerd:status:
     desc: Check status of workerd and wrangler processes
     cmds:
@@ -112,17 +122,17 @@ tasks:
     cmds:
       - |
         echo "Starting fresh dev server..."
-        cd packages/apps/canopy && pnpm dev
+        cd packages/apps/canopy-api && pnpm dev
 
   dev:
-    desc: Start Canopy dev server with Wrangler
-    dir: packages/apps/canopy
+    desc: Start canopy-api dev server with Wrangler
+    dir: packages/apps/canopy-api
     cmds:
       - pnpm dev
 
   dev:debug:
-    desc: Start Canopy dev server with debugging enabled
-    dir: packages/apps/canopy
+    desc: Start canopy-api dev server with debugging enabled
+    dir: packages/apps/canopy-api
     cmds:
       - |
         echo "Starting dev server with debugging on port 9229..."

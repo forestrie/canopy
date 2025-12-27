@@ -12,29 +12,44 @@
 export type { MassifStart } from "./massifstart.js";
 export { MassifStartFmt } from "./massifstart.js";
 
-// Re-export log format namespace and functions
-export { LogFormat, peakStackEnd, massifLogEntries } from "./logformat.js";
+// Re-export log format constants
+export { LogFormat } from "./logformat.js";
 
-// Re-export find entry functions
+// Re-export index format constants and functions (v2)
 export {
-  findTrieEntry,
-  findAppEntry,
-  type FindEntryOptions,
-} from "./findentry.js";
+  Urkle,
+  Bloom,
+  IndexV2,
+  leafCountForMassifHeight,
+  leafTableBytes,
+  nodeCountMax,
+  nodeStoreBytes,
+  bloomMBits,
+  bloomBitsetBytes,
+  bloomRegionBytes,
+  indexDataBytesV2,
+} from "./indexformat.js";
 
-// Re-export trie key functions and types
+// Re-export peakStackEnd and massifLogEntries
+export { peakStackEnd } from "./peakstackend.js";
+export { massifLogEntries } from "./massiflogentries.js";
+
+// Re-export urkle index helpers
 export {
-  TrieEntryFmt,
-  TrieKeyDomains,
-  computeTrieKey,
-  type TrieKeyOptions,
-} from "./triekey.js";
+  urkleLeafTableStartFieldIndex,
+  urkleLeafTableStartByteOffset,
+  createLeafEnumerator,
+  leafComponentByteOffset,
+  leafComponentSize,
+} from "./urkleindex.js";
+export type {
+  LeafComponent,
+  LeafEnumeratorSpec,
+  LeafEntry,
+} from "./urkleindex.js";
 
 // Re-export MMR index functions
 export { computeLastMMRIndex } from "./mmrindex.js";
 
 // Re-export massif fullness functions
 export { isMassifFull } from "./massiffull.js";
-
-// Re-export trie entry functions and types
-export { readTrieEntry, type TrieEntryData } from "./trieentry.js";

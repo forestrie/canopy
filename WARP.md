@@ -183,3 +183,30 @@ This Task setup sits on top of pnpm and wrangler:
 When adding new automation, prefer to:
 - Add package-level scripts in the relevant `package.json`.
 - Wrap cross-package or infra workflows in a Taskfile under `taskfiles/` and expose them via the root `Taskfile`.
+
+## Code Ordering
+
+### Definition Order Within Files
+In source files with a clear primary piece of functionality, order definitions as follows:
+1. **Exports and primary functionality first**: The main exported class, function, or
+   interface that defines the file's purpose should appear at the top (after imports
+   and module-level type aliases).
+2. **Public methods before private**: Within classes, public methods come before
+   private methods.
+3. **Helpers in topological order**: Helper functions and private methods should be
+   ordered by their position in the call graph—methods called by the primary
+   functionality appear before their own helpers. Leaf-most helpers (those that call
+   no other local functions) appear last.
+
+This ordering allows readers to understand the main purpose of a file immediately,
+then drill down into implementation details as needed.
+
+### Example
+For a Durable Object file:
+1. Imports
+2. Module-level type aliases used by the class
+3. Exported class definition with:
+   - Constructor
+   - Public methods (the API surface)
+   - Private methods (in call-graph order, callers before callees)
+4. Module-level helper functions (leaf-most utilities last)

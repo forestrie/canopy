@@ -79,12 +79,13 @@ export class Massif {
    * to peakstack or trieindex structure.
    *
    * @param index - Zero-based field index (Number or BigInt)
-   * @returns Uint8Array view of the field (32 bytes)
+   * @param count - Number of consecutive fields to include in the view (defaults to 1)
+   * @returns Uint8Array view of the field(s) (32 bytes per field)
    */
-  fieldref(index: number | bigint): Uint8Array {
+  fieldref(index: number | bigint, count: number = 1): Uint8Array {
     const idx = typeof index === "bigint" ? Number(index) : index;
     const offset = idx * LogFormat.ValueBytes;
-    return this.buffer.slice(offset, offset + LogFormat.ValueBytes);
+    return this.buffer.slice(offset, offset + count * LogFormat.ValueBytes);
   }
 
   /**

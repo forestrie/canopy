@@ -80,7 +80,7 @@ tasks:
           status_url="$post_location"
           echo "status_url: $status_url"
 
-          # Log the derived content hash segment so we can cross-check KV keys.
+          # Log the content hash from the status URL for debugging.
           content_hash="$(printf '%s\n' "$status_url" | awk -F/ '{print $NF}')"
           echo "content_hash: $content_hash"
 
@@ -123,59 +123,10 @@ tasks:
           done
 
           if [ -z "$receipt_url" ]; then
-
-            # When we time out, inspect the KV namespace to understand timing
-            # between registration and receipt cache writes.
-            LOG_ID=$(printf '%s\n' "$status_url" | awk -F/ '{for (i=1;i<=NF;i++) if ($i=="logs") {print $(i+1); exit}}')
-
-            echo "Inspecting KV entries for log_id=$LOG_ID"
-
-            KV_NS_ID="5dbca58875874fc88653d4c9d66ac760"
-            KV_JSON=$(wrangler kv key list --config packages/apps/canopy-api/wrangler.jsonc --namespace-id "$KV_NS_ID" --remote 2>/dev/null || echo "[]")
-
-            # Collect all KV keys for this logId.
-            KV_KEYS_FOR_LOG=$(printf '%s\n' "$KV_JSON" | jq -r --arg log "$LOG_ID" '.[] | select(.name | startswith("ranger/v1/" + $log + "/latest/")) | .name' 2>/dev/null || echo "")
-
-            if [ -z "$KV_KEYS_FOR_LOG" ]; then
-              echo "No KV entries found for log_id=$LOG_ID in namespace $KV_NS_ID"
-              exit 1
-            fi
-
-            # For each key, fetch its idtimestamp and build "idtimestamp key" lines,
-            # then sort lexically by idtimestamp to find the most recent.
-            LAST_LINE=$(printf '%s\n' "$KV_KEYS_FOR_LOG" | while IFS= read -r key; do
-              [ -z "$key" ] && continue
-              val=$(wrangler kv key get --config packages/apps/canopy-api/wrangler.jsonc --namespace-id "$KV_NS_ID" --remote "$key" 2>/dev/null || echo "")
-              idhex=$(printf '%s\n' "$val" | jq -r '.idtimestamp // empty' 2>/dev/null || echo "")
-              [ -z "$idhex" ] && continue
-              printf '%s %s\n' "$idhex" "$key"
-            done | sort | tail -n 1)
-
-            if [ -z "$LAST_LINE" ]; then
-              echo "No KV entries with idtimestamp found for log_id=$LOG_ID in namespace $KV_NS_ID"
-              exit 1
-            fi
-
-            LAST_IDTS_HEX=$(printf '%s\n' "$LAST_LINE" | awk '{print $1}')
-            LAST_KEY=$(printf '%s\n' "$LAST_LINE" | cut -d' ' -f2-)
-
-            echo "Last KV entry key: $LAST_KEY"
-            echo "Last idtimestamp (hex): $LAST_IDTS_HEX"
-
-            # Use the merklelog:idtimestamp:utc task to convert idtimestamp to a UTC
-            # timestamp string. This task currently prints a UTC value like
-            # 2025-12-26T11:26:53UTC.
-            LAST_IDTS_UTC=$(task -s -t {{.ROOT_TASKFILE}} merklelog:idtimestamp:utc:$LAST_IDTS_HEX 2>/dev/null | tail -n 1 || echo "")
-
-            if [ -z "$LAST_IDTS_UTC" ]; then
-              echo "Could not obtain UTC timestamp from merklelog:idtimestamp:utc for $LAST_IDTS_HEX"
-              exit 1
-            fi
-
-            echo "Timed out waiting for receipt. status_url=$status_url"
-            printf 'START_UTC     : %s\n' "$START_UTC"
-            printf 'LAST_ENTRY_UTC: %s\n' "$LAST_IDTS_UTC"
-
+            echo "Timed out after $max_attempts attempts waiting for receipt."
+            echo "  status_url: $status_url"
+            echo "  content_hash: $content_hash"
+            echo "  started_at: $START_UTC"
             exit 1
           fi
 

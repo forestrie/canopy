@@ -20,12 +20,15 @@
       "bucket_name": "arbor-dev-1-logs",
     },
   ],
-  "kv_namespaces": [
-    {
-      "binding": "RANGER_MMR_INDEX",
-      "id": "5dbca58875874fc88653d4c9d66ac760",
-    },
-  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SEQUENCED_CONTENT",
+        "class_name": "SequencedContent",
+        "script_name": "ranger-cache",
+      },
+    ],
+  },
   "dev": {
     "port": 8789,
     "local_protocol": "http",
@@ -67,12 +70,15 @@
           "bucket_name": "arbor-prod-1-logs",
         },
       ],
-      "kv_namespaces": [
-        {
-          "binding": "RANGER_MMR_INDEX",
-          "id": "5dbca58875874fc88653d4c9d66ac760",
-        },
-      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "SEQUENCED_CONTENT",
+            "class_name": "SequencedContent",
+            "script_name": "ranger-cache-prod",
+          },
+        ],
+      },
       "queues": {
         "consumers": [
           {

@@ -18,9 +18,9 @@ export interface Env {
   // - v2/merklelog/massifs/{massifHeight}/{logId}/{massifIndex}.log
   // - v2/merklelog/checkpoints/{massifHeight}/{logId}/{massifIndex}.sth
   R2_MMRS: R2Bucket;
-  // Receipt resolution cache (written by Forester, read by canopy-api).
-  // Keys: ranger/v1/{logId}/latest/{contentHashHex} -> v1 JSON value.
-  RANGER_MMR_INDEX: KVNamespace;
+  // Durable Object namespace for querying sequenced content per log.
+  // Each log has one DO instance keyed by "{logId}/rangersequence".
+  SEQUENCED_CONTENT: DurableObjectNamespace;
   CANOPY_ID: string;
   FOREST_PROJECT_ID: string;
   API_VERSION: string;
@@ -139,7 +139,10 @@ export default {
           const response = await queryRegistrationStatus(
             request,
             segments.slice(1),
-            env.RANGER_MMR_INDEX,
+            // Type assertion: the DO binding provides SequencedContentStub methods via RPC
+            env.SEQUENCED_CONTENT as unknown as Parameters<
+              typeof queryRegistrationStatus
+            >[2],
           );
 
           const headers = new Headers(response.headers);

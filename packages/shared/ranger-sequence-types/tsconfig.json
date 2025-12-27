@@ -4,17 +4,13 @@
     "module": "ES2022",
     "lib": ["ES2022"],
     "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "allowJs": false,
-    "checkJs": false,
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
-    "noEmit": true,
-    "types": ["@cloudflare/vitest-pool-workers"]
+    "noEmit": true
   },
-  "include": ["src/**/*", "test/**/*", "worker-configuration.d.ts"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules"]
 }
