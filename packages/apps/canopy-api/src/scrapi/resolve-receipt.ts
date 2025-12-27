@@ -105,20 +105,23 @@ export async function resolveReceipt(
     const checkpointBytes = new Uint8Array(
       await checkpointObject.arrayBuffer(),
     );
-    const checkpoint = decodeCbor(checkpointBytes) as unknown;
+    const checkpointDecoded = decodeCbor(checkpointBytes) as unknown;
+    const checkpoint = unwrapCoseSign1Tag(checkpointDecoded, "checkpoint");
 
     // Temporary diagnostics to understand real-world checkpoint encoding.
     console.log("[resolve-receipt] decoded checkpoint shape", {
-      type: typeof checkpoint,
-      isArray: Array.isArray(checkpoint),
-      isMap: checkpoint instanceof Map,
+      type: typeof checkpointDecoded,
+      isArray: Array.isArray(checkpointDecoded),
+      isMap: checkpointDecoded instanceof Map,
       mapKeys:
-        checkpoint instanceof Map ? Array.from(checkpoint.keys()) : undefined,
+        checkpointDecoded instanceof Map
+          ? Array.from(checkpointDecoded.keys())
+          : undefined,
       objectKeys:
-        checkpoint &&
-        typeof checkpoint === "object" &&
-        !(checkpoint instanceof Map)
-          ? Object.keys(checkpoint as any)
+        checkpointDecoded &&
+        typeof checkpointDecoded === "object" &&
+        !(checkpointDecoded instanceof Map)
+          ? Object.keys(checkpointDecoded as any)
           : undefined,
     });
 
@@ -213,7 +216,8 @@ export async function resolveReceipt(
       );
     }
 
-    const receipt = decodeCbor(receiptBytes) as unknown;
+    const receiptDecoded = decodeCbor(receiptBytes) as unknown;
+    const receipt = unwrapCoseSign1Tag(receiptDecoded, "peak receipt");
     const receiptSign1 = requireCoseSign1(receipt, "peak receipt");
 
     const receiptUnprotected = toHeaderMap(receiptSign1[1]);
@@ -248,6 +252,27 @@ export async function resolveReceipt(
 
 interface IndexStoreGetter {
   get(i: bigint): Uint8Array;
+}
+
+function unwrapCoseSign1Tag(value: unknown, label: string): unknown {
+  if (value && typeof value === "object" && !(value instanceof Map)) {
+    const tagged: any = value;
+    if (
+      Object.prototype.hasOwnProperty.call(tagged, "value") &&
+      Object.prototype.hasOwnProperty.call(tagged, "tag")
+    ) {
+      const tag = tagged.tag;
+      if (tag === 18 || tag === "18") {
+        console.log("[resolve-receipt] unwrapped tagged COSE_Sign1", {
+          label,
+          tag,
+        });
+        return tagged.value;
+      }
+    }
+  }
+
+  return value;
 }
 
 function requireCoseSign1(value: unknown, label: string): CoseSign1 {
