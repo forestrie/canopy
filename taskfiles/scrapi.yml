@@ -5,11 +5,121 @@ version: "3"
 
 vars:
   BASE_URL: "{{.BASE_URL}}" # wrangler
-  #BASE_URL: '{{.BASE_URL | default "http://localhost:5173"}}' # vite
-  #BASE_URL: https://canopy-api.robinbryce.workers.dev/logs/3062ea57-c184-41d8-bd61-296b02c680d8
   API_KEY: "test-api-key"
 
 tasks:
+  create-statement:hello:
+    desc: Generate a hello world COSE Sign1 statement
+    cmds:
+      - node scripts/gen-cose-sign1.mjs
+
+  create-statement:*:
+    desc: Generate a COSE Sign1 statement with custom message
+    vars:
+      MESSAGE: "{{index .MATCH 0}}"
+    cmds:
+      - node scripts/gen-cose-sign1.mjs "{{.MESSAGE}}"
+
+  decode-receipt:*:
+    desc: Decode a CBOR receipt file and display in CDDL notation
+    vars:
+      RECEIPT: "{{index .MATCH 0}}"
+    cmds:
+      - node scripts/decode-receipt.mjs "{{.RECEIPT}}"
+
+  register-statement:*:
+    desc: Create, register, and resolve a COSE Sign1 statement to receipt
+    silent: true
+    vars:
+      MESSAGE: "{{index .MATCH 0}}"
+      MAX_POLLS: '{{.MAX_POLLS | default "30"}}'
+      O: '{{.O | default "receipt.cbor"}}'
+    cmds:
+      - cmd: |
+          set -euo pipefail
+
+          # Generate statement
+          STATEMENT=$(task -s -t "{{.ROOT_TASKFILE}}" "scrapi:create-statement:{{.MESSAGE}}")
+
+          START_UTC=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          # POST /entries
+          post_headers=$(mktemp)
+          post_body=$(mktemp)
+          trap 'rm -f "$post_headers" "$post_body"' EXIT
+
+          post_code=$(printf '%s' "$STATEMENT" \
+            | curl -sS -D "$post_headers" -w "%{http_code}" -X POST "{{.BASE_URL}}/entries" \
+              -H 'Content-Type: application/cose; cose-type="cose-sign1"' \
+              -H "Authorization: Bearer {{.API_KEY}}" \
+              --output "$post_body" \
+              --data-binary @-)
+
+          if [ "$post_code" -ge 400 ]; then
+            echo "POST /entries failed with $post_code" >&2
+            node scripts/decode-problem-details.mjs < "$post_body" >&2
+            exit 1
+          fi
+
+          post_location=$(grep -i '^location:' "$post_headers" | awk '{print $2}' | tr -d '\r')
+
+          if [ "$post_code" != "303" ] || [ -z "$post_location" ]; then
+            echo "Unexpected POST response: code=$post_code location=$post_location" >&2
+            exit 1
+          fi
+
+          status_url="$post_location"
+
+          # Poll for receipt
+          receipt_url=""
+          for attempt in $(seq 1 {{.MAX_POLLS}}); do
+            poll_headers=$(mktemp)
+            poll_body=$(mktemp)
+
+            poll_code=$(curl -sS -D "$poll_headers" -w "%{http_code}" -X GET "$status_url" \
+              -H "Authorization: Bearer {{.API_KEY}}" \
+              --output "$poll_body")
+
+            if [ "$poll_code" -ge 400 ]; then
+              echo "Poll failed with $poll_code" >&2
+              node scripts/decode-problem-details.mjs < "$poll_body" >&2
+              rm -f "$poll_headers" "$poll_body"
+              exit 1
+            fi
+
+            poll_location=$(grep -i '^location:' "$poll_headers" | awk '{print $2}' | tr -d '\r')
+            rm -f "$poll_headers" "$poll_body"
+
+            if echo "$poll_location" | grep -q '/receipt$'; then
+              receipt_url="$poll_location"
+              break
+            fi
+
+            sleep 1
+          done
+
+          if [ -z "$receipt_url" ]; then
+            echo "Timed out after {{.MAX_POLLS}} polls (started $START_UTC)" >&2
+            exit 1
+          fi
+
+          # GET receipt
+          receipt_body=$(mktemp)
+          receipt_code=$(curl -sS -w "%{http_code}" -X GET "$receipt_url" \
+            -H "Authorization: Bearer {{.API_KEY}}" \
+            -H 'Accept: application/scitt-receipt+cbor' \
+            --output "$receipt_body")
+
+          if [ "$receipt_code" -ge 400 ]; then
+            echo "GET receipt failed with $receipt_code" >&2
+            node scripts/decode-problem-details.mjs < "$receipt_body" >&2
+            rm -f "$receipt_body"
+            exit 1
+          fi
+
+          mv "$receipt_body" "{{.O}}"
+          echo "$(cd "$(dirname "{{.O}}")" && pwd)/$(basename "{{.O}}")"
+
   post-entry:
     desc: Post a COSE Sign1 message with random UUID to the /entries endpoint
     cmds:
@@ -26,124 +136,3 @@ tasks:
             echo "Error response body (decoded):"
             node scripts/decode-problem-details.mjs < post-entry-rand.response
           fi
-
-  resolve-receipt:
-    desc: Poll query-registration-status (0.5s) then fetch receipt to resolve-receipt.cbor
-    vars:
-      # Optional path to a pre-built COSE Sign1 statement. When unset, a random
-      # statement is generated with gen-cose-sign1.mjs.
-      S: '{{.S | default ""}}'
-    cmds:
-      - cmd: |
-          set -euo pipefail
-
-          # Capture the UTC start time for this run.
-          START_UTC=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-          # 1) POST /entries to obtain the registration-status URL (Location header)
-          post_headers=$(mktemp)
-          post_body=$(mktemp)
-
-          if [ -n "{{.S}}" ]; then
-            echo "Using pre-built statement from: {{.S}}"
-          fi
-
-          post_code=$(
-            {
-              if [ -n "{{.S}}" ]; then
-                cat "{{.S}}"
-              else
-                node scripts/gen-cose-sign1.mjs
-              fi
-            } \
-            | curl -sS -D "$post_headers" -w "%{http_code}" -X POST "{{.BASE_URL}}/entries" \
-              -H 'Content-Type: application/cose; cose-type="cose-sign1"' \
-              -H "Authorization: Bearer {{.API_KEY}}" \
-              --output "$post_body" \
-              --data-binary @-
-          )
-
-          post_location=$(grep -i '^location:' "$post_headers" | awk '{print $2}' | tr -d '\r')
-
-          if [ "$post_code" -ge 400 ]; then
-            echo ""
-            echo "Error response body (decoded):"
-            node scripts/decode-problem-details.mjs < "$post_body"
-            exit 1
-          fi
-
-          if [ "$post_code" != "303" ] || [ -z "$post_location" ]; then
-            echo "Unexpected response from post-entry: http_code=$post_code location=$post_location"
-            exit 1
-          fi
-
-          status_url="$post_location"
-          echo "status_url: $status_url"
-
-          # Log the content hash from the status URL for debugging.
-          content_hash="$(printf '%s\n' "$status_url" | awk -F/ '{print $NF}')"
-          echo "content_hash: $content_hash"
-
-          # 2) Poll query-registration-status until it redirects to a /receipt URL.
-          # Default: 200 attempts with 1s between each, override via MAX_ATTEMPTS.
-          max_attempts=${MAX_ATTEMPTS:-200}
-          attempt=0
-          receipt_url=""
-
-          while [ "$attempt" -lt "$max_attempts" ]; do
-            attempt=$((attempt + 1))
-
-            poll_headers=$(mktemp)
-            poll_body=$(mktemp)
-
-            poll_code=$(curl -sS -D "$poll_headers" -w "%{http_code}" -X GET "$status_url" \
-              -H "Authorization: Bearer {{.API_KEY}}" \
-              --output "$poll_body")
-
-            poll_location=$(grep -i '^location:' "$poll_headers" | awk '{print $2}' | tr -d '\r')
-
-            if [ "$poll_code" -ge 400 ]; then
-              echo ""
-              echo "Error response body (decoded):"
-              node scripts/decode-problem-details.mjs < "$poll_body"
-              exit 1
-            fi
-
-            if [ "$poll_code" != "303" ] || [ -z "$poll_location" ]; then
-              echo "Unexpected registration-status response: http_code=$poll_code location=$poll_location"
-              exit 1
-            fi
-
-            if echo "$poll_location" | grep -q '/receipt$'; then
-              receipt_url="$poll_location"
-              break
-            fi
-
-            sleep 1
-          done
-
-          if [ -z "$receipt_url" ]; then
-            echo "Timed out after $max_attempts attempts waiting for receipt."
-            echo "  status_url: $status_url"
-            echo "  content_hash: $content_hash"
-            echo "  started_at: $START_UTC"
-            exit 1
-          fi
-
-          # 3) GET /receipt and save to resolve-receipt.cbor
-          tmp_receipt=$(mktemp)
-
-          receipt_code=$(curl -sS -w "%{http_code}" -X GET "$receipt_url" \
-            -H "Authorization: Bearer {{.API_KEY}}" \
-            -H 'Accept: application/scitt-receipt+cbor' \
-            --output "$tmp_receipt")
-
-          if [ "$receipt_code" -ge 400 ]; then
-            echo ""
-            echo "Error response body (decoded):"
-            node scripts/decode-problem-details.mjs < "$tmp_receipt"
-            exit 1
-          fi
-
-          mv "$tmp_receipt" resolve-receipt.cbor
-          echo "Saved receipt to resolve-receipt.cbor"
