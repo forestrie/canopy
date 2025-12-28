@@ -247,7 +247,9 @@ export class SequencingQueue extends DurableObject<Env> {
 
       // Add leaf_index if missing (Phase 9)
       if (!columnNames.has("leaf_index")) {
-        console.log("[SequencingQueue] migrateSchema: adding leaf_index column");
+        console.log(
+          "[SequencingQueue] migrateSchema: adding leaf_index column",
+        );
         this.ctx.storage.sql.exec(
           "ALTER TABLE queue_entries ADD COLUMN leaf_index INTEGER DEFAULT NULL",
         );
@@ -255,7 +257,9 @@ export class SequencingQueue extends DurableObject<Env> {
 
       // Add massif_index if missing (Phase 9)
       if (!columnNames.has("massif_index")) {
-        console.log("[SequencingQueue] migrateSchema: adding massif_index column");
+        console.log(
+          "[SequencingQueue] migrateSchema: adding massif_index column",
+        );
         this.ctx.storage.sql.exec(
           "ALTER TABLE queue_entries ADD COLUMN massif_index INTEGER DEFAULT NULL",
         );
