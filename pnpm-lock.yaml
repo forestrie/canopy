@@ -38,6 +38,9 @@ importers:
       '@canopy/forestrie-ingress-types':
         specifier: workspace:*
         version: link:../../shared/forestrie-ingress
+      '@canopy/merklelog':
+        specifier: workspace:*
+        version: link:../../merklelog
       '@canopy/ranger-sequence-types':
         specifier: workspace:*
         version: link:../../shared/ranger-sequence-types

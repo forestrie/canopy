@@ -16,16 +16,16 @@ export interface Env {
   // - v2/merklelog/massifs/{massifHeight}/{logId}/{massifIndex}.log
   // - v2/merklelog/checkpoints/{massifHeight}/{logId}/{massifIndex}.sth
   R2_MMRS: R2Bucket;
-  // Durable Object namespace for querying sequenced content per log.
-  // Each log has one DO instance keyed by "{logId}/rangersequence".
-  SEQUENCED_CONTENT: DurableObjectNamespace;
   // Durable Object namespace for the ingress sequencing queue.
   // Single global instance keyed by "global". Owned by forestrie-ingress worker.
+  // Used for both enqueue (register-signed-statement) and resolveContent (query-registration-status).
   SEQUENCING_QUEUE: DurableObjectNamespace;
   CANOPY_ID: string;
   FOREST_PROJECT_ID: string;
   API_VERSION: string;
   NODE_ENV: string;
+  // Massif height for this transparency log (1-based, typically 14)
+  MASSIF_HEIGHT: string;
 }
 
 export default {
@@ -125,13 +125,16 @@ export default {
 
         // GET /logs/{logId}/entries/{contentHash} - Query registration status
         if (segments.length === 4) {
+          const massifHeight = parseInt(env.MASSIF_HEIGHT || "14", 10);
           const response = await queryRegistrationStatus(
             request,
             segments.slice(1),
-            // Type assertion: the DO binding provides SequencedContentStub methods via RPC
-            env.SEQUENCED_CONTENT as unknown as Parameters<
+            // Type assertion: the DO binding provides SequencingQueueStub methods via RPC
+            env.SEQUENCING_QUEUE as unknown as Parameters<
               typeof queryRegistrationStatus
             >[2],
+            env.R2_MMRS,
+            massifHeight,
           );
 
           const headers = new Headers(response.headers);

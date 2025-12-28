@@ -69,6 +69,21 @@ export interface SequencingQueueStub {
 
 
   /**
+   * Resolve a content hash to its sequencing result.
+   *
+   * Returns the leaf_index and massif_index if the entry has been sequenced,
+   * or null if still pending or unknown.
+   *
+   * See: arbor/docs/arc-cloudflare-do-ingress.md section 3.12.5
+   *
+   * @param contentHash - SHA-256 content hash (32 bytes)
+   * @returns Sequencing result or null if not yet sequenced
+   */
+  resolveContent(
+    contentHash: ArrayBuffer,
+  ): Promise<{ leafIndex: number; massifIndex: number } | null>;
+
+  /**
    * Get queue statistics.
    *
    * @returns Current queue stats
