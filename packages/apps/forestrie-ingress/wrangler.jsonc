@@ -1,0 +1,40 @@
+{
+  "name": "forestrie-ingress",
+  "main": "./src/index.ts",
+  "compatibility_date": "2024-10-01",
+  "compatibility_flags": ["nodejs_compat_v2"],
+  "vars": {
+    "NODE_ENV": "dev",
+    "CANOPY_ID": "canopy-dev-1",
+  },
+  "dev": {
+    "port": 8791,
+    "local_protocol": "http",
+  },
+  "observability": {
+    "enabled": true,
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SEQUENCING_QUEUE",
+        "class_name": "SequencingQueue",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["SequencingQueue"],
+    },
+  ],
+  "env": {
+    "prod": {
+      "name": "forestrie-ingress-prod",
+      "vars": {
+        "NODE_ENV": "prod",
+        "CANOPY_ID": "canopy-prod-1",
+      },
+    },
+  },
+}

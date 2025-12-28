@@ -6,7 +6,7 @@ export default defineWorkersConfig({
     pool: "@cloudflare/vitest-pool-workers",
     inspector: {
       enabled: true,
-      port: 9229,
+      port: 9231,
     },
     poolOptions: {
       workers: {
@@ -15,10 +15,6 @@ export default defineWorkersConfig({
           configPath: "./wrangler.jsonc",
         },
         miniflare: {
-          // Enable local R2 buckets bindings for testing.
-          r2Buckets: ["R2_LEAVES", "R2_MMRS"],
-          // Persist data between test runs (optional)
-          r2Persist: ".wrangler/state/v3/r2",
           durableObjectsPersist: ".wrangler/state/v3/do",
         },
       },

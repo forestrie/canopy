@@ -21,6 +21,9 @@ export interface Env {
   // Durable Object namespace for querying sequenced content per log.
   // Each log has one DO instance keyed by "{logId}/rangersequence".
   SEQUENCED_CONTENT: DurableObjectNamespace;
+  // Durable Object namespace for the ingress sequencing queue.
+  // Single global instance keyed by "global". Owned by forestrie-ingress worker.
+  SEQUENCING_QUEUE: DurableObjectNamespace;
   CANOPY_ID: string;
   FOREST_PROJECT_ID: string;
   API_VERSION: string;

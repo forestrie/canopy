@@ -35,6 +35,9 @@ importers:
 
   packages/apps/canopy-api:
     dependencies:
+      '@canopy/forestrie-ingress-types':
+        specifier: workspace:*
+        version: link:../../shared/forestrie-ingress
       '@canopy/ranger-sequence-types':
         specifier: workspace:*
         version: link:../../shared/ranger-sequence-types
@@ -83,6 +86,31 @@ importers:
         specifier: ^4.43.0
         version: 4.43.0(@cloudflare/workers-types@4.20251011.0)
 
+  packages/apps/forestrie-ingress:
+    dependencies:
+      '@canopy/forestrie-ingress-types':
+        specifier: workspace:*
+        version: link:../../shared/forestrie-ingress
+    devDependencies:
+      '@cloudflare/vitest-pool-workers':
+        specifier: ^0.9.13
+        version: 0.9.13(@cloudflare/workers-types@4.20251011.0)(@vitest/runner@3.2.4)(@vitest/snapshot@3.2.4)(vitest@3.2.4(@types/node@24.8.1))
+      '@cloudflare/workers-types':
+        specifier: ^4.20241218.0
+        version: 4.20251011.0
+      cbor-x:
+        specifier: ^1.5.9
+        version: 1.6.0
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@24.8.1)
+      wrangler:
+        specifier: ^4.43.0
+        version: 4.43.0(@cloudflare/workers-types@4.20251011.0)
+
   packages/apps/ranger-cache:
     dependencies:
       '@canopy/merklelog':
@@ -116,6 +144,12 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@24.8.1)
+
+  packages/shared/forestrie-ingress:
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
 
   packages/shared/ranger-sequence-types:
     devDependencies:

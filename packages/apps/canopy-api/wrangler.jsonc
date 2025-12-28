@@ -27,6 +27,11 @@
         "class_name": "SequencedContent",
         "script_name": "ranger-cache",
       },
+      {
+        "name": "SEQUENCING_QUEUE",
+        "class_name": "SequencingQueue",
+        "script_name": "forestrie-ingress",
+      },
     ],
   },
   "dev": {
@@ -76,6 +81,11 @@
             "name": "SEQUENCED_CONTENT",
             "class_name": "SequencedContent",
             "script_name": "ranger-cache-prod",
+          },
+          {
+            "name": "SEQUENCING_QUEUE",
+            "class_name": "SequencingQueue",
+            "script_name": "forestrie-ingress-prod",
           },
         ],
       },
