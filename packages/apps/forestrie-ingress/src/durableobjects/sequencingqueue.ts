@@ -194,15 +194,17 @@ export class SequencingQueue extends DurableObject<Env> {
   private initializeFromStorage(): void {
     // Get pending count (only entries not yet sequenced)
     const countResult = this.ctx.storage.sql
-      .exec<{ cnt: number }>(
-        "SELECT COUNT(*) as cnt FROM queue_entries WHERE leaf_index IS NULL",
-      )
+      .exec<{
+        cnt: number;
+      }>("SELECT COUNT(*) as cnt FROM queue_entries WHERE leaf_index IS NULL")
       .toArray();
     this.pendingCount = countResult[0]?.cnt ?? 0;
 
     // Get max seq for next assignment
     const maxSeqResult = this.ctx.storage.sql
-      .exec<{ max_seq: number | null }>("SELECT MAX(seq) as max_seq FROM queue_entries")
+      .exec<{
+        max_seq: number | null;
+      }>("SELECT MAX(seq) as max_seq FROM queue_entries")
       .toArray();
     const maxSeq = maxSeqResult[0]?.max_seq ?? 0;
     this.nextSeq = (maxSeq ?? 0) + 1;
@@ -211,7 +213,10 @@ export class SequencingQueue extends DurableObject<Env> {
   /**
    * Validate that an ArrayBuffer is within the allowed size for extra fields.
    */
-  private validateExtraSize(extra: ArrayBuffer | undefined, name: string): void {
+  private validateExtraSize(
+    extra: ArrayBuffer | undefined,
+    name: string,
+  ): void {
     if (extra && extra.byteLength > MAX_EXTRA_SIZE) {
       throw new Error(
         `${name} exceeds maximum size: ${extra.byteLength} > ${MAX_EXTRA_SIZE} bytes`,
@@ -317,7 +322,12 @@ export class SequencingQueue extends DurableObject<Env> {
       if (totalEntries >= request.batchSize) break;
 
       const remaining = request.batchSize - totalEntries;
-      const entries = this.pullEntriesForLog(logId, remaining, leaseExpiry, now);
+      const entries = this.pullEntriesForLog(
+        logId,
+        remaining,
+        leaseExpiry,
+        now,
+      );
 
       if (entries.length > 0) {
         // Get seq range from the first query (we need to query again for seqs)
@@ -576,7 +586,6 @@ export class SequencingQueue extends DurableObject<Env> {
     };
   }
 
-
   /**
    * Get queue statistics.
    */
@@ -592,7 +601,9 @@ export class SequencingQueue extends DurableObject<Env> {
     // Get oldest pending entry age (only entries not yet sequenced)
     const now = Date.now();
     const oldestResult = this.ctx.storage.sql
-      .exec<{ oldest: number | null }>(
+      .exec<{
+        oldest: number | null;
+      }>(
         "SELECT MIN(enqueued_at) as oldest FROM queue_entries WHERE leaf_index IS NULL",
       )
       .toArray();

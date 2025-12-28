@@ -42,7 +42,6 @@ describe("forestrie-ingress worker", () => {
 });
 
 describe("forestrie-ingress DO integration", () => {
-
   it("enqueue → stats → ack round-trip", async () => {
     const stub = getStub("integration-roundtrip-test");
     const logId = new Uint8Array(16).fill(0xa1).buffer;
@@ -147,10 +146,10 @@ describe("forestrie-ingress DO integration", () => {
 
     // Find groups by logId
     const group1 = response.logGroups.find(
-      (g) => new Uint8Array(g.logId)[0] === 0xe1
+      (g) => new Uint8Array(g.logId)[0] === 0xe1,
     );
     const group2 = response.logGroups.find(
-      (g) => new Uint8Array(g.logId)[0] === 0xe2
+      (g) => new Uint8Array(g.logId)[0] === 0xe2,
     );
 
     expect(group1).toBeDefined();
@@ -168,7 +167,7 @@ describe("forestrie-ingress DO integration", () => {
 
     // Verify extras preserved
     expect(new Uint8Array(group1!.entries[0].extra0!)).toEqual(
-      new Uint8Array(16).fill(0x11)
+      new Uint8Array(16).fill(0x11),
     );
     expect(group1!.entries[1].extra0).toBeNull();
 

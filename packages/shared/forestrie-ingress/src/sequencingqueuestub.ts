@@ -67,7 +67,6 @@ export interface SequencingQueueStub {
     massifHeight: number,
   ): Promise<{ acked: number }>;
 
-
   /**
    * Resolve a content hash to its sequencing result.
    *

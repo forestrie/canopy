@@ -163,9 +163,7 @@ describe("SequencingQueue pull", () => {
     expect(new Uint8Array(entry.extra0!)).toEqual(
       new Uint8Array(16).fill(0x11),
     );
-    expect(new Uint8Array(entry.extra1!)).toEqual(
-      new Uint8Array(8).fill(0x22),
-    );
+    expect(new Uint8Array(entry.extra1!)).toEqual(new Uint8Array(8).fill(0x22));
     expect(entry.extra2).toBeNull();
     expect(entry.extra3).toBeNull();
   });

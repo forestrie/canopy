@@ -23,10 +23,7 @@ import {
   parseCborBody,
 } from "./handler.js";
 
-export async function handleAck(
-  request: Request,
-  env: Env,
-): Promise<Response> {
+export async function handleAck(request: Request, env: Env): Promise<Response> {
   try {
     const body = await parseCborBody<AckRequest>(request);
     if (body instanceof Response) return body;
@@ -74,13 +71,14 @@ export async function handleAck(
     }
 
     // CBOR gives us ArrayBuffer directly (or Uint8Array which we convert)
-    const logIdBuffer = body.logId instanceof ArrayBuffer
-      ? body.logId
-      : new Uint8Array(
-          (body.logId as Uint8Array).buffer,
-          (body.logId as Uint8Array).byteOffset,
-          (body.logId as Uint8Array).byteLength,
-        ).slice().buffer;
+    const logIdBuffer =
+      body.logId instanceof ArrayBuffer
+        ? body.logId
+        : new Uint8Array(
+            (body.logId as Uint8Array).buffer,
+            (body.logId as Uint8Array).byteOffset,
+            (body.logId as Uint8Array).byteLength,
+          ).slice().buffer;
 
     const stub = getQueueStub(env);
     const result = await stub.ackFirst(

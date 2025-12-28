@@ -95,8 +95,20 @@ describe("CBOR encoding", () => {
           seqLo: 1,
           seqHi: 2,
           entries: [
-            { contentHash, extra0: null, extra1: null, extra2: null, extra3: null },
-            { contentHash, extra0: null, extra1: null, extra2: null, extra3: null },
+            {
+              contentHash,
+              extra0: null,
+              extra1: null,
+              extra2: null,
+              extra3: null,
+            },
+            {
+              contentHash,
+              extra0: null,
+              extra1: null,
+              extra2: null,
+              extra3: null,
+            },
           ],
         },
         {
@@ -104,7 +116,13 @@ describe("CBOR encoding", () => {
           seqLo: 3,
           seqHi: 3,
           entries: [
-            { contentHash, extra0: null, extra1: null, extra2: null, extra3: null },
+            {
+              contentHash,
+              extra0: null,
+              extra1: null,
+              extra2: null,
+              extra3: null,
+            },
           ],
         },
       ],

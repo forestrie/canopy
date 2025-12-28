@@ -6,7 +6,11 @@
  */
 
 import { encode, decode } from "cbor-x";
-import type { PullResponse, LogGroup, Entry } from "@canopy/forestrie-ingress-types";
+import type {
+  PullResponse,
+  LogGroup,
+  Entry,
+} from "@canopy/forestrie-ingress-types";
 
 /**
  * Encode a PullResponse to CBOR using positional array format.
@@ -29,7 +33,11 @@ export function encodePullResponse(response: PullResponse): ArrayBuffer {
   ]);
 
   // Use BigInt for numeric fields to ensure CBOR encodes them as uint64
-  const encoded = encode([response.version, BigInt(response.leaseExpiry), logGroups]);
+  const encoded = encode([
+    response.version,
+    BigInt(response.leaseExpiry),
+    logGroups,
+  ]);
   // Convert to ArrayBuffer (cbor-x returns Uint8Array)
   return new Uint8Array(encoded).buffer;
 }
@@ -42,7 +50,18 @@ export function decodePullResponse(data: ArrayBuffer): PullResponse {
   const decoded = decode(new Uint8Array(data)) as [
     number | bigint,
     number | bigint,
-    [ArrayBuffer, number | bigint, number | bigint, [ArrayBuffer, ArrayBuffer | null, ArrayBuffer | null, ArrayBuffer | null, ArrayBuffer | null][]][],
+    [
+      ArrayBuffer,
+      number | bigint,
+      number | bigint,
+      [
+        ArrayBuffer,
+        ArrayBuffer | null,
+        ArrayBuffer | null,
+        ArrayBuffer | null,
+        ArrayBuffer | null,
+      ][],
+    ][],
   ];
 
   const [version, leaseExpiry, logGroupsRaw] = decoded;
@@ -60,7 +79,11 @@ export function decodePullResponse(data: ArrayBuffer): PullResponse {
     return { logId, seqLo: Number(seqLo), seqHi: Number(seqHi), entries };
   });
 
-  return { version: Number(version), leaseExpiry: Number(leaseExpiry), logGroups };
+  return {
+    version: Number(version),
+    leaseExpiry: Number(leaseExpiry),
+    logGroups,
+  };
 }
 
 /**

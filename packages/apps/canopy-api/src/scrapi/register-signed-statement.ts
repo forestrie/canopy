@@ -70,14 +70,18 @@ export async function registerSignedStatement(
     }
 
     // Calculate content hash for the operation ID
-    const contentHash = await calculateSHA256(statementData.buffer as ArrayBuffer);
+    const contentHash = await calculateSHA256(
+      statementData.buffer as ArrayBuffer,
+    );
 
     // Convert logId (UUID string) to 16-byte ArrayBuffer
     const logIdBytes = uuidToBytes(logId);
 
     // Enqueue to SequencingQueue DO
     const queueId = sequencingQueue.idFromName("global");
-    const queue = sequencingQueue.get(queueId) as unknown as SequencingQueueStub;
+    const queue = sequencingQueue.get(
+      queueId,
+    ) as unknown as SequencingQueueStub;
     await queue.enqueue(logIdBytes, hexToBytes(contentHash));
 
     // The SCRAPI pre-sequence identifier is the content hash.

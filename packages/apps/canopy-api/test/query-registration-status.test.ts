@@ -63,7 +63,10 @@ function buildMassifWithIdtimestamps(
   const leafTableBytes = leafCount * URKLE_LEAF_RECORD_BYTES;
   const nodeStoreBytes = (2 * leafCount - 1) * URKLE_NODE_RECORD_BYTES;
   const indexDataBytes =
-    bloomBitsetsBytes + URKLE_FRONTIER_STATE_V1_BYTES + leafTableBytes + nodeStoreBytes;
+    bloomBitsetsBytes +
+    URKLE_FRONTIER_STATE_V1_BYTES +
+    leafTableBytes +
+    nodeStoreBytes;
 
   const fixedHeaderEnd = VALUE_BYTES + VALUE_BYTES * RESERVED_HEADER_SLOTS; // 256
   const trieHeaderEnd = fixedHeaderEnd + INDEX_HEADER_BYTES; // 288
@@ -97,7 +100,9 @@ describe("query-registration-status byte-range read", () => {
 
   beforeEach(async () => {
     // Clean up any existing test data
-    const listed = await testEnv.R2_MMRS.list({ prefix: "v2/merklelog/massifs/" });
+    const listed = await testEnv.R2_MMRS.list({
+      prefix: "v2/merklelog/massifs/",
+    });
     for (const obj of listed.objects) {
       await testEnv.R2_MMRS.delete(obj.key);
     }
@@ -354,7 +359,9 @@ describe("query-registration-status byte-range read", () => {
 
       // Verify raw bytes are in big-endian order
       const bytes = new Uint8Array(buffer);
-      expect(bytes).toEqual(new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]));
+      expect(bytes).toEqual(
+        new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]),
+      );
 
       // Verify reading back
       const readValue = view.getBigUint64(0, false);
