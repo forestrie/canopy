@@ -193,110 +193,382 @@ tasks:
           echo "Timed out after {{.MAX_POLLS}} polls (started $START_UTC)" >&2
           exit 1
 
-  batcher:*:
-    desc: Batch POST N statements then poll for sequencing, reporting latency
+  # ---------------------------------------------------------------------------
+  # Smoke test primitives
+  #
+  # These tasks are composable building blocks for throughput testing.
+  # - post-statement: POST one statement, outputs status_url to stdout
+  # - poll-status: poll a status URL until sequenced, outputs receipt_url
+  # - smoke:N: batch N statements in parallel, report throughput
+  #
+  # Design: informational output goes to stderr, data output to stdout.
+  # This allows composition via pipes and command substitution.
+  # ---------------------------------------------------------------------------
+
+  post-statement:
+    desc: Generate and POST one statement, output status_url to stdout
     silent: true
     vars:
-      COUNT: "{{index .MATCH 0}}"
+      MSG: '{{.MSG | default "smoke"}}'
+    cmds:
+      - cmd: |
+          set -euo pipefail
+          statement=$(node scripts/gen-cose-sign1.mjs "{{.MSG}}" 2>/dev/null)
+          headers=$(mktemp)
+          trap 'rm -f "$headers"' EXIT
+          code=$(printf '%s' "$statement" | curl -sS -D "$headers" -w "%{http_code}" \
+            -X POST "{{.BASE_URL}}/entries" \
+            -H 'Content-Type: application/cose; cose-type="cose-sign1"' \
+            -H "Authorization: Bearer {{.API_KEY}}" \
+            --output /dev/null --data-binary @-)
+          if [ "$code" -ge 400 ]; then
+            echo "POST failed: $code" >&2
+            exit 1
+          fi
+          grep -i '^location:' "$headers" | awk '{print $2}' | tr -d '\r'
+
+  poll-status:
+    desc: Poll a status URL until sequenced, output receipt_url to stdout
+    silent: true
+    vars:
+      STATUS_URL: '{{.STATUS_URL}}'
       MAX_POLLS: '{{.MAX_POLLS | default "120"}}'
     cmds:
       - cmd: |
           set -euo pipefail
-
-          count="{{.COUNT}}"
-          if ! [[ "$count" =~ ^[0-9]+$ ]] || [ "$count" -lt 1 ]; then
-            echo "Usage: task scrapi:trapper:<count>" >&2
-            echo "  count must be a positive integer" >&2
-            exit 1
-          fi
-
-          echo "Generating $count statements..."
-          statements=()
-          for i in $(seq 1 "$count"); do
-            statements+=("$(task -s -t "{{.ROOT_TASKFILE}}" "scrapi:create-statement:trapper-$i-$(date +%s)" 2>/dev/null)")
-          done
-          echo "Generated $count statements"
-
-          echo "POSTing $count statements..."
-          status_urls=()
-          start_times=()
-          for i in $(seq 1 "$count"); do
-            idx=$((i - 1))
-            start_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
-            start_times+=("$start_ns")
-
-            post_headers=$(mktemp)
-            post_body=$(mktemp)
-
-            post_code=$(printf '%s' "${statements[$idx]}" \
-              | curl -sS -D "$post_headers" -w "%{http_code}" -X POST "{{.BASE_URL}}/entries" \
-                -H 'Content-Type: application/cose; cose-type="cose-sign1"' \
-                -H "Authorization: Bearer {{.API_KEY}}" \
-                --output "$post_body" \
-                --data-binary @-)
-
-            if [ "$post_code" -ge 400 ]; then
-              echo "POST $i failed with $post_code" >&2
-              status_urls+=("") 
-              rm -f "$post_headers" "$post_body"
-              continue
-            fi
-
-            status_url=$(grep -i '^location:' "$post_headers" | awk '{print $2}' | tr -d '\r')
-            status_urls+=("$status_url")
-            rm -f "$post_headers" "$post_body"
-          done
-          echo "POSTed $count statements"
-          echo "---"
-
-          # Poll for all sequencing completions (indicated by /receipt in location)
-          sequenced_urls=()
-          for i in $(seq 1 "$count"); do
-            sequenced_urls+=("") 
-          done
-
-          pending=$count
           for attempt in $(seq 1 {{.MAX_POLLS}}); do
-            if [ $pending -eq 0 ]; then
-              break
+            headers=$(mktemp)
+            curl -sS -D "$headers" -o /dev/null "{{.STATUS_URL}}" \
+              -H "Authorization: Bearer {{.API_KEY}}" 2>/dev/null || true
+            loc=$(grep -i '^location:' "$headers" | awk '{print $2}' | tr -d '\r')
+            rm -f "$headers"
+            if echo "$loc" | grep -q '/receipt$'; then
+              echo "$loc"
+              exit 0
             fi
-
-            for i in $(seq 1 "$count"); do
-              idx=$((i - 1))
-              # Skip if already sequenced or no status URL
-              if [ -n "${sequenced_urls[$idx]}" ] || [ -z "${status_urls[$idx]}" ]; then
-                continue
-              fi
-
-              poll_headers=$(mktemp)
-              poll_body=$(mktemp)
-
-              poll_code=$(curl -sS -D "$poll_headers" -w "%{http_code}" -X GET "${status_urls[$idx]}" \
-                -H "Authorization: Bearer {{.API_KEY}}" \
-                --output "$poll_body" 2>/dev/null)
-
-              poll_location=$(grep -i '^location:' "$poll_headers" | awk '{print $2}' | tr -d '\r')
-              rm -f "$poll_headers" "$poll_body"
-
-              if echo "$poll_location" | grep -q '/receipt$'; then
-                sequenced_urls[$idx]="$poll_location"
-                end_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
-                latency_ms=$(( (end_ns - ${start_times[$idx]}) / 1000000 ))
-                printf "Statement %2d: %5d ms\n" "$i" "$latency_ms"
-                pending=$((pending - 1))
-              fi
-            done
-
-            if [ $pending -gt 0 ]; then
-              sleep 0.25
-            fi
+            sleep 0.25
           done
+          echo "timeout" >&2
+          exit 1
 
-          echo "---"
-          if [ $pending -gt 0 ]; then
-            echo "WARNING: $pending statements did not complete sequencing"
-          fi
-          echo "Sequenced $((count - pending)) of $count statements"
+  smoke:3:
+    desc: "Smoke test: 3 statements in parallel, report throughput"
+    silent: true
+    cmds:
+      - cmd: |
+          set -euo pipefail
+          count=3
+          start_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+          tmpdir=$(mktemp -d)
+          trap 'rm -rf "$tmpdir"' EXIT
+
+          # Parallel POST phase
+          echo "POSTing $count statements..." >&2
+          for i in $(seq 1 $count); do
+            task -s -t "{{.ROOT_TASKFILE}}" scrapi:post-statement MSG="smoke-3-$i-$start_ns" > "$tmpdir/$i.url" 2>/dev/null &
+          done
+          wait
+          post_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+
+          # Parallel poll phase
+          echo "Polling for sequencing..." >&2
+          for i in $(seq 1 $count); do
+            url=$(cat "$tmpdir/$i.url")
+            task -s -t "{{.ROOT_TASKFILE}}" scrapi:poll-status STATUS_URL="$url" >/dev/null 2>/dev/null &
+          done
+          wait
+          end_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+
+          # Report
+          post_ms=$(( (post_ns - start_ns) / 1000000 ))
+          total_ms=$(( (end_ns - start_ns) / 1000000 ))
+          throughput=$(echo "scale=1; $count * 1000 / $total_ms" | bc)
+          echo "$count statements: POST=${post_ms}ms total=${total_ms}ms (${throughput} stmt/s)"
+
+  smoke:5:
+    desc: "Smoke test: 5 statements in parallel, report throughput"
+    silent: true
+    cmds:
+      - cmd: |
+          set -euo pipefail
+          count=5
+          start_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+          tmpdir=$(mktemp -d)
+          trap 'rm -rf "$tmpdir"' EXIT
+
+          # Parallel POST phase
+          echo "POSTing $count statements..." >&2
+          for i in $(seq 1 $count); do
+            task -s -t "{{.ROOT_TASKFILE}}" scrapi:post-statement MSG="smoke-5-$i-$start_ns" > "$tmpdir/$i.url" 2>/dev/null &
+          done
+          wait
+          post_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+
+          # Parallel poll phase
+          echo "Polling for sequencing..." >&2
+          for i in $(seq 1 $count); do
+            url=$(cat "$tmpdir/$i.url")
+            task -s -t "{{.ROOT_TASKFILE}}" scrapi:poll-status STATUS_URL="$url" >/dev/null 2>/dev/null &
+          done
+          wait
+          end_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+
+          # Report
+          post_ms=$(( (post_ns - start_ns) / 1000000 ))
+          total_ms=$(( (end_ns - start_ns) / 1000000 ))
+          throughput=$(echo "scale=1; $count * 1000 / $total_ms" | bc)
+          echo "$count statements: POST=${post_ms}ms total=${total_ms}ms (${throughput} stmt/s)"
+
+  smoke:10:
+    desc: "Smoke test: 10 statements in parallel, report throughput"
+    silent: true
+    cmds:
+      - cmd: |
+          set -euo pipefail
+          count=10
+          start_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+          tmpdir=$(mktemp -d)
+          trap 'rm -rf "$tmpdir"' EXIT
+
+          # Parallel POST phase
+          echo "POSTing $count statements..." >&2
+          for i in $(seq 1 $count); do
+            task -s -t "{{.ROOT_TASKFILE}}" scrapi:post-statement MSG="smoke-10-$i-$start_ns" > "$tmpdir/$i.url" 2>/dev/null &
+          done
+          wait
+          post_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+
+          # Parallel poll phase
+          echo "Polling for sequencing..." >&2
+          for i in $(seq 1 $count); do
+            url=$(cat "$tmpdir/$i.url")
+            task -s -t "{{.ROOT_TASKFILE}}" scrapi:poll-status STATUS_URL="$url" >/dev/null 2>/dev/null &
+          done
+          wait
+          end_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+
+          # Report
+          post_ms=$(( (post_ns - start_ns) / 1000000 ))
+          total_ms=$(( (end_ns - start_ns) / 1000000 ))
+          throughput=$(echo "scale=1; $count * 1000 / $total_ms" | bc)
+          echo "$count statements: POST=${post_ms}ms total=${total_ms}ms (${throughput} stmt/s)"
+
+  smoke:25:
+    desc: "Smoke test: 25 statements in parallel, report throughput"
+    silent: true
+    cmds:
+      - cmd: |
+          set -euo pipefail
+          count=25
+          start_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+          tmpdir=$(mktemp -d)
+          trap 'rm -rf "$tmpdir"' EXIT
+
+          # Parallel POST phase
+          echo "POSTing $count statements..." >&2
+          for i in $(seq 1 $count); do
+            task -s -t "{{.ROOT_TASKFILE}}" scrapi:post-statement MSG="smoke-25-$i-$start_ns" > "$tmpdir/$i.url" 2>/dev/null &
+          done
+          wait
+          post_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+
+          # Parallel poll phase
+          echo "Polling for sequencing..." >&2
+          for i in $(seq 1 $count); do
+            url=$(cat "$tmpdir/$i.url")
+            task -s -t "{{.ROOT_TASKFILE}}" scrapi:poll-status STATUS_URL="$url" >/dev/null 2>/dev/null &
+          done
+          wait
+          end_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+
+          # Report
+          post_ms=$(( (post_ns - start_ns) / 1000000 ))
+          total_ms=$(( (end_ns - start_ns) / 1000000 ))
+          throughput=$(echo "scale=1; $count * 1000 / $total_ms" | bc)
+          echo "$count statements: POST=${post_ms}ms total=${total_ms}ms (${throughput} stmt/s)"
+
+  smoke:50:
+    desc: "Smoke test: 50 statements in parallel, report throughput"
+    silent: true
+    cmds:
+      - cmd: |
+          set -euo pipefail
+          count=50
+          start_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+          tmpdir=$(mktemp -d)
+          trap 'rm -rf "$tmpdir"' EXIT
+
+          # Parallel POST phase
+          echo "POSTing $count statements..." >&2
+          for i in $(seq 1 $count); do
+            task -s -t "{{.ROOT_TASKFILE}}" scrapi:post-statement MSG="smoke-50-$i-$start_ns" > "$tmpdir/$i.url" 2>/dev/null &
+          done
+          wait
+          post_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+
+          # Parallel poll phase
+          echo "Polling for sequencing..." >&2
+          for i in $(seq 1 $count); do
+            url=$(cat "$tmpdir/$i.url")
+            task -s -t "{{.ROOT_TASKFILE}}" scrapi:poll-status STATUS_URL="$url" >/dev/null 2>/dev/null &
+          done
+          wait
+          end_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+
+          # Report
+          post_ms=$(( (post_ns - start_ns) / 1000000 ))
+          total_ms=$(( (end_ns - start_ns) / 1000000 ))
+          throughput=$(echo "scale=1; $count * 1000 / $total_ms" | bc)
+          echo "$count statements: POST=${post_ms}ms total=${total_ms}ms (${throughput} stmt/s)"
+
+  smoke:75:
+    desc: "Smoke test: 75 statements in parallel, report throughput"
+    silent: true
+    cmds:
+      - cmd: |
+          set -euo pipefail
+          count=75
+          start_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+          tmpdir=$(mktemp -d)
+          trap 'rm -rf "$tmpdir"' EXIT
+
+          # Parallel POST phase
+          echo "POSTing $count statements..." >&2
+          for i in $(seq 1 $count); do
+            task -s -t "{{.ROOT_TASKFILE}}" scrapi:post-statement MSG="smoke-75-$i-$start_ns" > "$tmpdir/$i.url" 2>/dev/null &
+          done
+          wait
+          post_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+
+          # Parallel poll phase
+          echo "Polling for sequencing..." >&2
+          for i in $(seq 1 $count); do
+            url=$(cat "$tmpdir/$i.url")
+            task -s -t "{{.ROOT_TASKFILE}}" scrapi:poll-status STATUS_URL="$url" >/dev/null 2>/dev/null &
+          done
+          wait
+          end_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+
+          # Report
+          post_ms=$(( (post_ns - start_ns) / 1000000 ))
+          total_ms=$(( (end_ns - start_ns) / 1000000 ))
+          throughput=$(echo "scale=1; $count * 1000 / $total_ms" | bc)
+          echo "$count statements: POST=${post_ms}ms total=${total_ms}ms (${throughput} stmt/s)"
+
+  smoke:100:
+    desc: "Smoke test: 100 statements in parallel, report throughput"
+    silent: true
+    cmds:
+      - cmd: |
+          set -euo pipefail
+          count=100
+          start_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+          tmpdir=$(mktemp -d)
+          trap 'rm -rf "$tmpdir"' EXIT
+
+          # Parallel POST phase
+          echo "POSTing $count statements..." >&2
+          for i in $(seq 1 $count); do
+            task -s -t "{{.ROOT_TASKFILE}}" scrapi:post-statement MSG="smoke-100-$i-$start_ns" > "$tmpdir/$i.url" 2>/dev/null &
+          done
+          wait
+          post_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+
+          # Parallel poll phase
+          echo "Polling for sequencing..." >&2
+          for i in $(seq 1 $count); do
+            url=$(cat "$tmpdir/$i.url")
+            task -s -t "{{.ROOT_TASKFILE}}" scrapi:poll-status STATUS_URL="$url" >/dev/null 2>/dev/null &
+          done
+          wait
+          end_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+
+          # Report
+          post_ms=$(( (post_ns - start_ns) / 1000000 ))
+          total_ms=$(( (end_ns - start_ns) / 1000000 ))
+          throughput=$(echo "scale=1; $count * 1000 / $total_ms" | bc)
+          echo "$count statements: POST=${post_ms}ms total=${total_ms}ms (${throughput} stmt/s)"
+
+  smoke:150:
+    desc: "Smoke test: 150 statements in parallel, report throughput"
+    silent: true
+    cmds:
+      - cmd: |
+          set -euo pipefail
+          count=150
+          start_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+          tmpdir=$(mktemp -d)
+          trap 'rm -rf "$tmpdir"' EXIT
+
+          # Parallel POST phase
+          echo "POSTing $count statements..." >&2
+          for i in $(seq 1 $count); do
+            task -s -t "{{.ROOT_TASKFILE}}" scrapi:post-statement MSG="smoke-150-$i-$start_ns" > "$tmpdir/$i.url" 2>/dev/null &
+          done
+          wait
+          post_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+
+          # Parallel poll phase
+          echo "Polling for sequencing..." >&2
+          for i in $(seq 1 $count); do
+            url=$(cat "$tmpdir/$i.url")
+            task -s -t "{{.ROOT_TASKFILE}}" scrapi:poll-status STATUS_URL="$url" >/dev/null 2>/dev/null &
+          done
+          wait
+          end_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+
+          # Report
+          post_ms=$(( (post_ns - start_ns) / 1000000 ))
+          total_ms=$(( (end_ns - start_ns) / 1000000 ))
+          throughput=$(echo "scale=1; $count * 1000 / $total_ms" | bc)
+          echo "$count statements: POST=${post_ms}ms total=${total_ms}ms (${throughput} stmt/s)"
+
+  smoke:500:
+    desc: "Smoke test: 500 statements in parallel, report throughput"
+    silent: true
+    cmds:
+      - cmd: |
+          set -euo pipefail
+          count=500
+          start_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+          tmpdir=$(mktemp -d)
+          trap 'rm -rf "$tmpdir"' EXIT
+
+          # Parallel POST phase
+          echo "POSTing $count statements..." >&2
+          for i in $(seq 1 $count); do
+            task -s -t "{{.ROOT_TASKFILE}}" scrapi:post-statement MSG="smoke-500-$i-$start_ns" > "$tmpdir/$i.url" 2>/dev/null &
+          done
+          wait
+          post_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+
+          # Parallel poll phase
+          echo "Polling for sequencing..." >&2
+          for i in $(seq 1 $count); do
+            url=$(cat "$tmpdir/$i.url")
+            task -s -t "{{.ROOT_TASKFILE}}" scrapi:poll-status STATUS_URL="$url" >/dev/null 2>/dev/null &
+          done
+          wait
+          end_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+
+          # Report
+          post_ms=$(( (post_ns - start_ns) / 1000000 ))
+          total_ms=$(( (end_ns - start_ns) / 1000000 ))
+          throughput=$(echo "scale=1; $count * 1000 / $total_ms" | bc)
+          echo "$count statements: POST=${post_ms}ms total=${total_ms}ms (${throughput} stmt/s)"
+
+  smoke:
+    desc: "Run all smoke tests (3, 5, 10, 25, 50, 75, 100, 150, 500 statements)"
+    cmds:
+      - task: smoke:3
+      - task: smoke:5
+      - task: smoke:10
+      - task: smoke:25
+      - task: smoke:50
+      - task: smoke:75
+      - task: smoke:100
+      - task: smoke:150
+      - task: smoke:500
 
   post-entry:
     desc: Post a COSE Sign1 message with random UUID to the /entries endpoint

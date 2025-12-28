@@ -7,7 +7,12 @@
  */
 
 import type { Env } from "./env.js";
-import { handlePull, handleAck, handleStats } from "./handlers/index.js";
+import {
+  handlePull,
+  handleAck,
+  handleStats,
+  handleDebugRecent,
+} from "./handlers/index.js";
 
 // Export Durable Objects for Cloudflare runtime
 export { SequencingQueue } from "./durableobjects/index.js";
@@ -38,6 +43,9 @@ export default {
     }
     if (url.pathname === "/queue/stats" && method === "GET") {
       return handleStats(request, env);
+    }
+    if (url.pathname === "/queue/debug/recent" && method === "GET") {
+      return handleDebugRecent(request, env);
     }
 
     // Method not allowed for queue endpoints

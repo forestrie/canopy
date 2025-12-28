@@ -5,9 +5,7 @@ version: "3"
 
 vars:
   CANOPY_ID: '{{.CANOPY_ID | default "canopy-dev-1"}}'
-  R2_BUCKET_NAME_LEAVES: '{{.R2_BUCKET_NAME_LEAVES | default (print .CANOPY_ID "-leaves")}}'
   R2_BUCKET_NAME_MERKLELOGS: '{{.R2_BUCKET_NAME_MERKLELOGS | default "arbor-dev-1-logs"}}'
-  BUCKET_PREFIX_LEAVES: "logs/"
   BUCKET_PREFIX_MASSIFS: "v2/merklelog/massifs/"
   BUCKET_PREFIX_CHECKPOINTS: "v2/merklelog/checkpoints/"
 
@@ -24,26 +22,15 @@ tasks:
     desc: Create all Cloudflare resources (R2 buckets, queues, and event notifications)
     deps:
       - bucket:create
-      - queue:create:ranger
       - queue:create:sealer
       - queue:create:forester
     cmds:
-      - task: r2notification:create:ranger
-        vars:
-          R2_BUCKET_NAME: "{{ .R2_BUCKET_NAME_LEAVES }}"
-          PREFIX: "{{.BUCKET_PREFIX_LEAVES}}"
-
       - task: r2notification:create:sealer
         vars:
           R2_BUCKET_NAME: "{{ .R2_BUCKET_NAME_MERKLELOGS }}"
           PREFIX: "{{.BUCKET_PREFIX_MASSIFS}}"
 
       - task: r2notification:create:forester
-        vars:
-          R2_BUCKET_NAME: "{{ .R2_BUCKET_NAME_MERKLELOGS }}"
-          PREFIX: "{{.BUCKET_PREFIX_MASSIFS}}"
-
-      - task: r2notification:create:ranger-cache
         vars:
           R2_BUCKET_NAME: "{{ .R2_BUCKET_NAME_MERKLELOGS }}"
           PREFIX: "{{.BUCKET_PREFIX_MASSIFS}}"
@@ -54,17 +41,13 @@ tasks:
     deps:
       - validate
     cmds:
-      - task: :wrangler:deploy:ranger-cache
       - task: :wrangler:deploy:canopy-api
-      - task: queue:http-enable:ranger
       - task: queue:http-enable:sealer
       - task: queue:http-enable:forester
 
   destroy:
     desc: Delete all Cloudflare resources (DESTRUCTIVE!)
     deps:
-      - r2notification:delete:ranger
-      - queue:delete:ranger
       - queue:delete:sealer
       - queue:delete:forester
       - bucket:delete
@@ -83,7 +66,6 @@ tasks:
           yes n | wrangler queues list
       - cmd: |
           echo "--------- :bucket notifications:  ------------------------------------"
-          yes n | wrangler r2 bucket notification list "{{.R2_BUCKET_NAME_LEAVES}}" 2>/dev/null || echo "  No notifications configured"
           yes n | wrangler r2 bucket notification list "{{.R2_BUCKET_NAME_MERKLELOGS}}" 2>/dev/null || echo "  No notifications configured"
 
   validate:
@@ -101,14 +83,14 @@ tasks:
           fi
 
   bucket:create:
-    desc: Create R2 bucket
+    desc: Create R2 bucket for merklelog massifs/checkpoints
     cmds:
-      - cmd: yes n | wrangler r2 bucket create "{{.R2_BUCKET_NAME_LEAVES}}" --location weur 2>/dev/null || echo "Bucket {{.R2_BUCKET_NAME_LEAVES}} may already exist"
+      - cmd: yes n | wrangler r2 bucket create "{{.R2_BUCKET_NAME_MERKLELOGS}}" --location weur 2>/dev/null || echo "Bucket {{.R2_BUCKET_NAME_MERKLELOGS}} may already exist"
 
   bucket:delete:
-    desc: Delete R2 bucket (DESTRUCTIVE! Bucket must be empty)
+    desc: Delete R2 bucket for merklelog massifs/checkpoints (DESTRUCTIVE! Bucket must be empty)
     cmds:
-      - cmd: yes n | wrangler r2 bucket delete "{{.R2_BUCKET_NAME_LEAVES}}" 2>/dev/null || echo "Bucket {{.R2_BUCKET_NAME_LEAVES}} not found or not empty"
+      - cmd: yes n | wrangler r2 bucket delete "{{.R2_BUCKET_NAME_MERKLELOGS}}" 2>/dev/null || echo "Bucket {{.R2_BUCKET_NAME_MERKLELOGS}} not found or not empty"
 
   kv:list:
     desc: List {{.CANOPY_ID}}-* Cloudflare KV namespaces
@@ -279,6 +261,6 @@ tasks:
       vars: [R2_BUCKET_NAME]
     cmds:
       - cmd: |
-          yes n | wrangler r2 bucket notification list "{{.R2_BUCKET_NAME}}" | grep -q "logs/" && \
+          yes n | wrangler r2 bucket notification list "{{.R2_BUCKET_NAME}}" | grep -q "v2/merklelog/massifs/" && \
             yes n | wrangler r2 bucket notification delete "{{.R2_BUCKET_NAME}}" --queue "{{.QUEUE_NAME}}" || \
             echo "No notifications to delete"

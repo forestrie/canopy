@@ -11,5 +11,4 @@ hash is used as the pre-sequence operation identifier.
 ## Bindings
 
 - `SEQUENCING_QUEUE`: DO namespace for ingress queue (cross-worker RPC)
-- `SEQUENCED_CONTENT`: DO namespace for querying sequenced content (ranger-cache)
 - `R2_MMRS`: R2 bucket for merklelog storage (massifs + checkpoints)

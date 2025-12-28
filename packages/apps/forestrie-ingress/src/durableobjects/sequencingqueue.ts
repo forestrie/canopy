@@ -147,7 +147,8 @@ export class SequencingQueue extends DurableObject<Env> {
         enqueued_at INTEGER NOT NULL,
         -- Sequencing result fields (NULL until sequenced)
         leaf_index INTEGER DEFAULT NULL,
-        massif_index INTEGER DEFAULT NULL
+        massif_index INTEGER DEFAULT NULL,
+        acked_at INTEGER DEFAULT NULL
       );
 
       CREATE INDEX IF NOT EXISTS idx_log_visible
@@ -257,6 +258,14 @@ export class SequencingQueue extends DurableObject<Env> {
         console.log("[SequencingQueue] migrateSchema: adding massif_index column");
         this.ctx.storage.sql.exec(
           "ALTER TABLE queue_entries ADD COLUMN massif_index INTEGER DEFAULT NULL",
+        );
+      }
+
+      // Add acked_at if missing (latency measurement)
+      if (!columnNames.has("acked_at")) {
+        console.log("[SequencingQueue] migrateSchema: adding acked_at column");
+        this.ctx.storage.sql.exec(
+          "ALTER TABLE queue_entries ADD COLUMN acked_at INTEGER DEFAULT NULL",
         );
       }
 
@@ -573,17 +582,19 @@ export class SequencingQueue extends DurableObject<Env> {
       return { acked: 0 };
     }
 
-    // Update each entry with its computed leaf_index and derived massif_index
+    // Update each entry with its computed leaf_index, massif_index, and acked_at
+    const now = Date.now();
     for (let i = 0; i < toUpdate.length; i++) {
       const leafIndex = firstLeafIndex + i;
       const massifIndex = Math.floor(leafIndex / leavesPerMassif);
 
       this.ctx.storage.sql.exec(
         `UPDATE queue_entries
-         SET leaf_index = ?, massif_index = ?, visible_after = NULL
+         SET leaf_index = ?, massif_index = ?, visible_after = NULL, acked_at = ?
          WHERE seq = ?`,
         leafIndex,
         massifIndex,
+        now,
         toUpdate[i].seq,
       );
     }
@@ -641,6 +652,58 @@ export class SequencingQueue extends DurableObject<Env> {
       leafIndex: result[0].leaf_index,
       massifIndex: result[0].massif_index,
     };
+  }
+
+  /**
+   * Get recent entries for debugging/diagnostics.
+   * Returns the most recent entries with their timestamps.
+   */
+  async recentEntries(limit: number = 100): Promise<
+    Array<{
+      seq: number;
+      logId: string;
+      contentHash: string;
+      enqueuedAt: number;
+      ackedAt: number | null;
+      leafIndex: number | null;
+      massifIndex: number | null;
+    }>
+  > {
+    this.ensureSchema();
+
+    const rows = this.ctx.storage.sql
+      .exec<{
+        seq: number;
+        log_id: ArrayBuffer;
+        content_hash: ArrayBuffer;
+        enqueued_at: number;
+        acked_at: number | null;
+        leaf_index: number | null;
+        massif_index: number | null;
+      }>(
+        `SELECT seq, log_id, content_hash, enqueued_at, acked_at, leaf_index, massif_index
+         FROM queue_entries
+         ORDER BY seq DESC
+         LIMIT ?`,
+        limit,
+      )
+      .toArray();
+
+    return rows.map((r) => ({
+      seq: r.seq,
+      logId: this.bufferToHex(r.log_id),
+      contentHash: this.bufferToHex(r.content_hash),
+      enqueuedAt: r.enqueued_at,
+      ackedAt: r.acked_at,
+      leafIndex: r.leaf_index,
+      massifIndex: r.massif_index,
+    }));
+  }
+
+  private bufferToHex(buf: ArrayBuffer): string {
+    return Array.from(new Uint8Array(buf))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
   }
 
   /**

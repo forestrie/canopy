@@ -1,0 +1,124 @@
+name: Deploy Workers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/apps/canopy-api/**"
+      - "packages/apps/delegation-signer/**"
+      - "packages/apps/forestrie-ingress/**"
+      - "packages/shared/**"
+      - "packages/merklelog/**"
+      - "Taskfile.dist.yml"
+      - "taskfiles/wrangler.yml"
+      - ".github/workflows/deploy-workers.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect changed apps
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.apps }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            canopy_api:
+              - 'packages/apps/canopy-api/**'
+              - 'packages/shared/**'
+              - 'packages/merklelog/**'
+            delegation_signer:
+              - 'packages/apps/delegation-signer/**'
+              - 'packages/shared/**'
+              - 'packages/merklelog/**'
+            forestrie_ingress:
+              - 'packages/apps/forestrie-ingress/**'
+              - 'packages/shared/**'
+              - 'packages/merklelog/**'
+
+      - name: Build matrix
+        id: matrix
+        run: |
+          apps=()
+          if [ "${{ steps.changes.outputs.canopy_api }}" = "true" ]; then
+            apps+=("{\"app\":\"canopy-api\",\"pkg\":\"@canopy/api\"}")
+          fi
+          if [ "${{ steps.changes.outputs.delegation_signer }}" = "true" ]; then
+            apps+=("{\"app\":\"delegation-signer\",\"pkg\":\"@canopy/delegation-signer\"}")
+          fi
+          if [ "${{ steps.changes.outputs.forestrie_ingress }}" = "true" ]; then
+            apps+=("{\"app\":\"forestrie-ingress\",\"pkg\":\"@canopy/forestrie-ingress\"}")
+          fi
+
+          if [ "${#apps[@]}" -eq 0 ]; then
+            echo "apps=[]" >> "$GITHUB_OUTPUT"
+          else
+            json="[$(IFS=,; echo "${apps[*]}")]"
+            echo "apps=$json" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    name: Deploy worker
+    needs: changes
+    if: needs.changes.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: worker-deploy-${{ matrix.target.app }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.changes.outputs.matrix) }}
+
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.6.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install go-task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Wrangler
+        run: pnpm add -g wrangler
+
+      - name: Authenticate Wrangler
+        run: |
+          echo "Authenticating with Cloudflare..."
+          yes n | wrangler whoami
+
+      - name: Unit tests
+        run: pnpm --filter ${{ matrix.target.pkg }} run test
+
+      - name: Deploy ${{ matrix.target.app }}
+        run: task wrangler:deploy:${{ matrix.target.app }}
