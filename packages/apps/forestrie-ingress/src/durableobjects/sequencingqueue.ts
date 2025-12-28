@@ -446,21 +446,48 @@ export class SequencingQueue extends DurableObject<Env> {
   }
 
   /**
-   * Acknowledge a contiguous range of entries for a log.
+   * Acknowledge entries using limit-based deletion.
+   *
+   * Deletes the first N entries (by seq order) for the given log starting from
+   * seqLo. This is required because seq values are allocated globally across
+   * all logs, making per-log seq values non-contiguous.
+   *
+   * See: arbor/docs/arc-cloudflare-do-ingress.md section 2.3
    */
-  async ackRange(
+  async ackFirst(
     logId: ArrayBuffer,
-    fromSeq: number,
-    toSeq: number,
+    seqLo: number,
+    limit: number,
   ): Promise<{ deleted: number }> {
     this.ensureSchema();
 
+    if (limit <= 0) {
+      return { deleted: 0 };
+    }
+
+    // Find the first N entries for this log starting from seqLo
+    const toDelete = this.ctx.storage.sql
+      .exec<{ seq: number }>(
+        `SELECT seq FROM queue_entries
+         WHERE log_id = ? AND seq >= ?
+         ORDER BY seq ASC
+         LIMIT ?`,
+        logId,
+        seqLo,
+        limit,
+      )
+      .toArray()
+      .map((r) => r.seq);
+
+    if (toDelete.length === 0) {
+      return { deleted: 0 };
+    }
+
+    // Delete those specific entries by seq
     const result = this.ctx.storage.sql.exec(
       `DELETE FROM queue_entries
-       WHERE log_id = ? AND seq >= ? AND seq <= ?`,
-      logId,
-      fromSeq,
-      toSeq,
+       WHERE seq IN (${toDelete.map(() => "?").join(",")})`,
+      ...toDelete,
     );
 
     const deleted = result.rowsWritten;
@@ -468,6 +495,7 @@ export class SequencingQueue extends DurableObject<Env> {
 
     return { deleted };
   }
+
 
   /**
    * Get queue statistics.

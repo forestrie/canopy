@@ -47,11 +47,11 @@ describe("HTTP round-trip integration", () => {
     expect(group).toBeDefined();
     expect(group!.entries.length).toBe(2);
 
-    // Ack via HTTP using seqLo/seqHi from pull response
+    // Ack via HTTP using limit-based ack (seqLo and entry count)
     const ackRequest = createCborRequest("/queue/ack", "POST", {
       logId: logId,
-      fromSeq: group!.seqLo,
-      toSeq: group!.seqHi,
+      seqLo: group!.seqLo,
+      limit: group!.entries.length,
     });
 
     const ackResponse = await worker.fetch(
@@ -123,8 +123,8 @@ describe("HTTP round-trip integration", () => {
     // Clean up: ack the entry
     const ackRequest = createCborRequest("/queue/ack", "POST", {
       logId: logId,
-      fromSeq: group2!.seqLo,
-      toSeq: group2!.seqHi,
+      seqLo: group2!.seqLo,
+      limit: group2!.entries.length,
     });
     await worker.fetch(ackRequest, testEnv, {} as ExecutionContext);
   });
@@ -193,12 +193,12 @@ describe("HTTP round-trip integration", () => {
       expect(idsB.has(id)).toBe(false);
     }
 
-    // Clean up: ack all entries
+    // Clean up: ack all entries using limit-based ack
     for (const group of [...groupsA, ...groupsB]) {
       const ackRequest = createCborRequest("/queue/ack", "POST", {
         logId: new Uint8Array(group.logId),
-        fromSeq: group.seqLo,
-        toSeq: group.seqHi,
+        seqLo: group.seqLo,
+        limit: group.entries.length,
       });
       await worker.fetch(ackRequest, testEnv, {} as ExecutionContext);
     }

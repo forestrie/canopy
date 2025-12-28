@@ -9,10 +9,8 @@ import { registerSignedStatement } from "./scrapi/register-signed-statement";
 import { queryRegistrationStatus } from "./scrapi/query-registration-status";
 import { resolveReceipt } from "./scrapi/resolve-receipt";
 import { getTransparencyConfiguration } from "./scrapi/transparency-configuration";
-import { deleteExpiredLeaves } from "./cf/r2";
 
 export interface Env {
-  R2_LEAVES: R2Bucket;
   // Merklelog storage bucket (massifs + checkpoints) written by Arbor services.
   // Keys:
   // - v2/merklelog/massifs/{massifHeight}/{logId}/{massifIndex}.log
@@ -28,17 +26,6 @@ export interface Env {
   FOREST_PROJECT_ID: string;
   API_VERSION: string;
   NODE_ENV: string;
-  /**
-   * TTL for transient ingress leaves in R2, in seconds.
-   *
-   * Note: this is enforced by a scheduled cleanup sweep, not by native R2 lifecycle rules.
-   */
-  LEAF_TTL_SECONDS: string;
-}
-
-function getLeafTtlSeconds(env: Env): number {
-  const ttl = Number.parseInt(env.LEAF_TTL_SECONDS || "", 10);
-  return Number.isFinite(ttl) && ttl > 0 ? ttl : 0;
 }
 
 export default {
@@ -111,11 +98,10 @@ export default {
       if (segments.length >= 3 && segments[2] === "entries") {
         if (request.method === "POST") {
           // POST /logs/{logId}/entries - Register new statement
-          // R2_LEAVES event notifications will automatically send messages to the queue
           const response = await registerSignedStatement(
             request,
             segments[1],
-            env.R2_LEAVES,
+            env.SEQUENCING_QUEUE,
           );
 
           const headers = new Headers(response.headers);
@@ -210,28 +196,4 @@ export default {
     }
   },
 
-  async scheduled(
-    controller: ScheduledController,
-    env: Env,
-    ctx: ExecutionContext,
-  ): Promise<void> {
-    const ttlSeconds = getLeafTtlSeconds(env);
-    if (ttlSeconds <= 0) return;
-
-    ctx.waitUntil(
-      deleteExpiredLeaves(env.R2_LEAVES, ttlSeconds, {
-        prefix: "logs/",
-        // Keep the sweep lightweight; it will run again next minute.
-        timeBudgetMs: 10_000,
-      })
-        .then(({ scanned, deleted, timedOut }) => {
-          console.log(
-            `[leaf-expiry] ttl=${ttlSeconds}s scanned=${scanned} deleted=${deleted} timedOut=${timedOut} cron=${controller.cron}`,
-          );
-        })
-        .catch((error) => {
-          console.error("[leaf-expiry] cleanup failed:", error);
-        }),
-    );
-  },
 };

@@ -210,3 +210,30 @@ For a Durable Object file:
    - Public methods (the API surface)
    - Private methods (in call-graph order, callers before callees)
 4. Module-level helper functions (leaf-most utilities last)
+
+## Test Organization
+
+### Organizing Tests by Logical Area
+For unit and integration tests, prefer organizing test files by discrete logical area or
+API method rather than placing all tests in a single monolithic file. Use a common
+grouping prefix (typically the class or module name) to keep related tests together
+lexically.
+
+**File naming pattern**: `{prefix}-{area}.test.ts`
+
+For example, tests for a `SequencingQueue` Durable Object:
+- `sequencingqueue.test.ts` – basic instantiation and schema tests
+- `sequencingqueue-enqueue.test.ts` – enqueue() method tests
+- `sequencingqueue-pull.test.ts` – pull() method tests
+- `sequencingqueue-ack.test.ts` – ackRange() method tests
+- `sequencingqueue-stats.test.ts` – stats() method tests
+- `sequencingqueue-fixture.ts` – shared test helpers (testEnv, getStub, etc.)
+
+**Benefits**:
+- Smaller, focused test files are easier to navigate and maintain.
+- Test failures are easier to locate by file name.
+- Related tests can share a fixture file without circular dependencies.
+- Parallel test execution can benefit from finer-grained file boundaries.
+
+**Describe block naming**: Use the format `describe("{ClassName} {method}", ...)` to
+make test output readable and consistent across files.

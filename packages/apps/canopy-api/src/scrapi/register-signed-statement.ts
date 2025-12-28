@@ -2,8 +2,7 @@
  * Register Signed Statement operation for SCRAPI
  */
 
-import { storeLeaf } from "../cf/r2";
-import { CBOR_CONTENT_TYPES } from "./cbor-content-types";
+import type { SequencingQueueStub } from "@canopy/forestrie-ingress-types";
 import { getContentSize, parseCborBody } from "./cbor-request";
 import { seeOtherResponse } from "./cbor-response";
 
@@ -34,7 +33,7 @@ export interface RegisterStatementResponse {
 export async function registerSignedStatement(
   request: Request,
   logId: string,
-  r2Bucket: R2Bucket,
+  sequencingQueue: DurableObjectNamespace,
 ): Promise<Response> {
   try {
     const maxSize = getMaxStatementSize();
@@ -70,41 +69,29 @@ export async function registerSignedStatement(
       return ClientErrors.invalidStatement("Invalid COSE Sign1 structure");
     }
 
-    // Store leaf in R2_LEAVES
-    // R2_LEAVES event notifications will automatically send a message to the queue
-    const { path, hash, etag } = await storeLeaf(
-      r2Bucket,
-      logId,
-      statementData.buffer as ArrayBuffer,
-      CBOR_CONTENT_TYPES.COSE_SIGN1,
-    );
+    // Calculate content hash for the operation ID
+    const contentHash = await calculateSHA256(statementData.buffer as ArrayBuffer);
 
-    // The SCRAPI pre-sequence identifier is intentionally transient and expirable.
-    // In Forestrie, we use the content hash as the temporary identifier.
-    //
-    // IMPORTANT:
-    // - Ingress writes are create-only, so re-registering identical content is
-    //   idempotent until the ingress object expires and is removed.
-    // - Re-using a stale content-hash identifier (after expiry + re-registration)
-    //   will intentionally resolve to the most recent registration.
+    // Convert logId (UUID string) to 16-byte ArrayBuffer
+    const logIdBytes = uuidToBytes(logId);
+
+    // Enqueue to SequencingQueue DO
+    const queueId = sequencingQueue.idFromName("global");
+    const queue = sequencingQueue.get(queueId) as unknown as SequencingQueueStub;
+    await queue.enqueue(logIdBytes, hexToBytes(contentHash));
+
+    // The SCRAPI pre-sequence identifier is the content hash.
+    // This is used as the operation ID until sequencing completes.
 
     // Derive Location header from request URL
     const requestUrl = new URL(request.url);
-    // Note: we return the content hash as the operation id location.
-    const location = `${requestUrl.origin}${requestUrl.pathname}/${hash}`;
+    const location = `${requestUrl.origin}${requestUrl.pathname}/${contentHash}`;
 
     // Return 303 See Other - registration is running (per SCRAPI 2.1.3.2)
     // This is always async for this implementation
     return seeOtherResponse(location, 5); // Suggest retry after 5 seconds
   } catch (error) {
     console.error("Error registering statement:", error);
-
-    if (error instanceof Error) {
-      if (error.message.includes("R2_LEAVES")) {
-        return ServerErrors.storageError(error.message, "store");
-      }
-    }
-
     return ServerErrors.internal(
       error instanceof Error ? error.message : "Failed to register statement",
     );
@@ -128,4 +115,36 @@ function validateCoseSign1Structure(data: Uint8Array): boolean {
   }
 
   return true;
+}
+
+/**
+ * Calculate SHA256 hash of content
+ */
+async function calculateSHA256(content: ArrayBuffer): Promise<string> {
+  const hashBuffer = await crypto.subtle.digest("SHA-256", content);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Convert UUID string to 16-byte ArrayBuffer
+ */
+function uuidToBytes(uuid: string): ArrayBuffer {
+  const hex = uuid.replace(/-/g, "");
+  const bytes = new Uint8Array(16);
+  for (let i = 0; i < 16; i++) {
+    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+  }
+  return bytes.buffer;
+}
+
+/**
+ * Convert hex string to ArrayBuffer
+ */
+function hexToBytes(hex: string): ArrayBuffer {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+  }
+  return bytes.buffer;
 }

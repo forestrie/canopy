@@ -12,11 +12,11 @@ describe("/queue/ack", () => {
     const contentHash = new Uint8Array(32).fill(0xbb);
     const { seq } = await stub.enqueue(logId.buffer, contentHash.buffer);
 
-    // Ack via HTTP with CBOR-encoded body (logId as ArrayBuffer)
+    // Ack via HTTP with CBOR-encoded body using limit-based ack
     const request = createCborRequest("/queue/ack", "POST", {
       logId: logId,
-      fromSeq: seq,
-      toSeq: seq,
+      seqLo: seq,
+      limit: 1,
     });
 
     const response = await worker.fetch(
@@ -37,8 +37,8 @@ describe("/queue/ack", () => {
       method: "POST",
       body: {
         logId: "some-base64",
-        fromSeq: 1,
-        toSeq: 1,
+        seqLo: 1,
+        limit: 1,
       },
       contentType: "application/json",
     });
@@ -60,8 +60,8 @@ describe("/queue/ack", () => {
 
   it("returns 400 for missing logId", async () => {
     const request = createCborRequest("/queue/ack", "POST", {
-      fromSeq: 1,
-      toSeq: 1,
+      seqLo: 1,
+      limit: 1,
     });
 
     const response = await worker.fetch(
@@ -79,11 +79,11 @@ describe("/queue/ack", () => {
     expect(problem.detail).toContain("logId");
   });
 
-  it("returns 400 for invalid fromSeq/toSeq", async () => {
+  it("returns 400 for negative limit", async () => {
     const request = createCborRequest("/queue/ack", "POST", {
       logId: new Uint8Array(16).fill(0xcc),
-      fromSeq: 10,
-      toSeq: 5, // Invalid: toSeq < fromSeq
+      seqLo: 10,
+      limit: -5, // Invalid: negative limit
     });
 
     const response = await worker.fetch(
@@ -101,11 +101,11 @@ describe("/queue/ack", () => {
     expect(problem.type).toContain("invalid-request");
   });
 
-  it("returns 400 for negative fromSeq", async () => {
+  it("returns 400 for negative seqLo", async () => {
     const request = createCborRequest("/queue/ack", "POST", {
       logId: new Uint8Array(16).fill(0xdd),
-      fromSeq: -1,
-      toSeq: 5,
+      seqLo: -1,
+      limit: 5,
     });
 
     const response = await worker.fetch(
@@ -116,7 +116,7 @@ describe("/queue/ack", () => {
 
     expect(response.status).toBe(400);
     const problem = (await response.json()) as ProblemDetails;
-    expect(problem.detail).toContain("fromSeq");
+    expect(problem.detail).toContain("seqLo");
   });
 
   it("GET returns 405 Method Not Allowed", async () => {

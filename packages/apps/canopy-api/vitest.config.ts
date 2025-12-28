@@ -12,11 +12,12 @@ export default defineWorkersConfig({
       workers: {
         singleWorker: true,
         wrangler: {
-          configPath: "./wrangler.jsonc",
+          // Use test-specific config without cross-worker DO bindings
+          configPath: "./wrangler.test.jsonc",
         },
         miniflare: {
-          // Enable local R2 buckets bindings for testing.
-          r2Buckets: ["R2_LEAVES", "R2_MMRS"],
+          // Enable local R2 bucket bindings for testing.
+          r2Buckets: ["R2_MMRS"],
           // Persist data between test runs (optional)
           r2Persist: ".wrangler/state/v3/r2",
           durableObjectsPersist: ".wrangler/state/v3/do",

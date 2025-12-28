@@ -1,0 +1,28 @@
+{
+  // Test configuration - DO bindings are local (no script_name) for testing
+  "name": "canopy-api-test",
+  "main": "./src/index.ts",
+  "compatibility_date": "2024-10-01",
+  "compatibility_flags": ["nodejs_compat_v2"],
+  "vars": {
+    "CANOPY_ID": "canopy-dev-1",
+    "FOREST_PROJECT_ID": "forest-dev-1",
+    "API_VERSION": "v1",
+    "NODE_ENV": "test",
+  },
+  "r2_buckets": [
+    {
+      "binding": "R2_MMRS",
+      "bucket_name": "arbor-dev-1-logs",
+    },
+  ],
+  // Note: DO bindings are omitted for unit tests. Tests requiring DO interaction
+  // are skipped. Full integration testing happens via E2E tests or `wrangler dev`.
+  "dev": {
+    "port": 8789,
+    "local_protocol": "http",
+  },
+  "observability": {
+    "enabled": true,
+  },
+}

@@ -8,3 +8,4 @@ tasks:
     desc: Initial deployment of workers in correct order (ranger-cache before canopy-api)
     cmds:
       - task: :wrangler:deploy:ranger-cache
+      - task: :wrangler:deploy:forestrie-ingress

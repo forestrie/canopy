@@ -1,29 +1,15 @@
 # `@canopy/api`
 
-## R2 leaf expiry (transient ingress objects)
+Cloudflare Worker implementing the SCRAPI-compatible transparency log API.
 
-`canopy-api` stores inbound SCRAPI leaves in the `R2_LEAVES` bucket using a
-content-addressed key:
+## Statement Registration
 
-- `logs/<logId>/leaves/<sha256>`
+Inbound statements are enqueued to the `SequencingQueue` Durable Object
+(owned by `forestrie-ingress` worker) for sequencing by ranger. The content
+hash is used as the pre-sequence operation identifier.
 
-These objects are intended to be **transient** (the content hash is used as the
-temporary pre-sequence identifier).
+## Bindings
 
-### Why this is not just a `wrangler.jsonc` setting
-
-Cloudflare R2 **object lifecycle rules** are configured **at the bucket level**
-(Dashboard/API/CLI), and they are not currently declared inside
-`wrangler.jsonc`. They are also not a good fit for **minute-level TTL**.
-
-### What we do instead
-
-We enforce expiry with a **scheduled cleanup sweep**:
-
-- `wrangler.jsonc` sets a cron trigger to run every minute
-- The Worker `scheduled()` handler deletes leaf objects older than
-  `LEAF_TTL_SECONDS` (default: 300 = 5 minutes)
-
-### Configuration
-
-- `LEAF_TTL_SECONDS`: string, TTL in seconds for leaf objects (default `"300"`).
+- `SEQUENCING_QUEUE`: DO namespace for ingress queue (cross-worker RPC)
+- `SEQUENCED_CONTENT`: DO namespace for querying sequenced content (ranger-cache)
+- `R2_MMRS`: R2 bucket for merklelog storage (massifs + checkpoints)

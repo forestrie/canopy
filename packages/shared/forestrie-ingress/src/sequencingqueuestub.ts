@@ -42,18 +42,25 @@ export interface SequencingQueueStub {
   pull(request: PullRequest): Promise<PullResponse>;
 
   /**
-   * Acknowledge a contiguous range of entries for a log.
+   * Acknowledge entries using limit-based deletion.
+   *
+   * Deletes the first N entries (by seq order) for the given log starting from
+   * seqLo. This is required because seq values are allocated globally across
+   * all logs, making per-log seq values non-contiguous.
+   *
+   * See: arbor/docs/arc-cloudflare-do-ingress.md section 2.3
    *
    * @param logId - Log identifier (16 bytes)
-   * @param fromSeq - First seq to ack (inclusive)
-   * @param toSeq - Last seq to ack (inclusive)
+   * @param seqLo - Starting sequence number
+   * @param limit - Number of entries to delete
    * @returns Count of deleted entries
    */
-  ackRange(
+  ackFirst(
     logId: ArrayBuffer,
-    fromSeq: number,
-    toSeq: number,
+    seqLo: number,
+    limit: number,
   ): Promise<{ deleted: number }>;
+
 
   /**
    * Get queue statistics.

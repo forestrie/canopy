@@ -66,8 +66,8 @@ describe("forestrie-ingress DO integration", () => {
     expect(stats.pending).toBe(3);
     expect(stats.oldestEntryAgeMs).toBeGreaterThanOrEqual(0);
 
-    // Ack first two entries
-    const ackResult = await stub.ackRange(logId, 1, 2);
+    // Ack first two entries using limit-based ack
+    const ackResult = await stub.ackFirst(logId, seq1.seq, 2);
     expect(ackResult.deleted).toBe(2);
 
     // Verify one entry remains
@@ -75,7 +75,7 @@ describe("forestrie-ingress DO integration", () => {
     expect(stats.pending).toBe(1);
 
     // Ack the last entry
-    const ackResult2 = await stub.ackRange(logId, 3, 3);
+    const ackResult2 = await stub.ackFirst(logId, seq3.seq, 1);
     expect(ackResult2.deleted).toBe(1);
 
     // Queue should be empty
@@ -90,25 +90,26 @@ describe("forestrie-ingress DO integration", () => {
     const logId2 = new Uint8Array(16).fill(0xc2).buffer;
     const contentHash = new Uint8Array(32).fill(0xd3).buffer;
 
-    // Enqueue to both logs
-    await stub.enqueue(logId1, contentHash);
-    await stub.enqueue(logId1, contentHash);
-    await stub.enqueue(logId2, contentHash);
-    await stub.enqueue(logId2, contentHash);
-    await stub.enqueue(logId2, contentHash);
+    // Enqueue to both logs (interleaved to create non-contiguous seq per log)
+    const seq1 = await stub.enqueue(logId1, contentHash); // seq 1
+    await stub.enqueue(logId1, contentHash); // seq 2
+    await stub.enqueue(logId2, contentHash); // seq 3
+    await stub.enqueue(logId2, contentHash); // seq 4
+    const seq5 = await stub.enqueue(logId2, contentHash); // seq 5
 
     let stats = await stub.stats();
     expect(stats.pending).toBe(5);
 
-    // Ack all of logId1
-    const result1 = await stub.ackRange(logId1, 1, 2);
+    // Ack all of logId1 (2 entries) using limit-based ack
+    const result1 = await stub.ackFirst(logId1, seq1.seq, 2);
     expect(result1.deleted).toBe(2);
 
     stats = await stub.stats();
     expect(stats.pending).toBe(3);
 
-    // Ack all of logId2
-    const result2 = await stub.ackRange(logId2, 3, 5);
+    // Ack all of logId2 (3 entries) using limit-based ack
+    // Note: seq values for logId2 are [3, 4, 5] (contiguous in this case)
+    const result2 = await stub.ackFirst(logId2, 3, 3);
     expect(result2.deleted).toBe(3);
 
     stats = await stub.stats();
@@ -170,9 +171,9 @@ describe("forestrie-ingress DO integration", () => {
     );
     expect(group1!.entries[1].extra0).toBeNull();
 
-    // Now ack all entries using seqLo/seqHi from response
-    await stub.ackRange(logId1, group1!.seqLo, group1!.seqHi);
-    await stub.ackRange(logId2, group2!.seqLo, group2!.seqHi);
+    // Now ack all entries using limit-based ack (seqLo + entry count)
+    await stub.ackFirst(logId1, group1!.seqLo, group1!.entries.length);
+    await stub.ackFirst(logId2, group2!.seqLo, group2!.entries.length);
 
     // Queue should be empty
     const stats = await stub.stats();

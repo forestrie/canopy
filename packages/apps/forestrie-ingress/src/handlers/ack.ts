@@ -1,7 +1,11 @@
 /**
  * Handler for POST /queue/ack
  *
- * Request: CBOR { logId: ArrayBuffer, fromSeq: number, toSeq: number }
+ * Uses limit-based ack because sequence numbers are allocated globally across
+ * all logs, making per-log seq values non-contiguous. See
+ * arbor/docs/arc-cloudflare-do-ingress.md section 2.3.
+ *
+ * Request: CBOR { logId: ArrayBuffer, seqLo: number, limit: number }
  * Response: CBOR { deleted: number }
  */
 
@@ -33,20 +37,20 @@ export async function handleAck(
         "logId is required",
       );
     }
-    if (typeof body.fromSeq !== "number" || body.fromSeq < 0) {
+    if (typeof body.seqLo !== "number" || body.seqLo < 0) {
       return problemResponse(
         400,
         PROBLEM_TYPES.INVALID_REQUEST,
         "Invalid request",
-        "fromSeq is required and must be a non-negative number",
+        "seqLo is required and must be a non-negative number",
       );
     }
-    if (typeof body.toSeq !== "number" || body.toSeq < body.fromSeq) {
+    if (typeof body.limit !== "number" || body.limit < 0) {
       return problemResponse(
         400,
         PROBLEM_TYPES.INVALID_REQUEST,
         "Invalid request",
-        "toSeq is required and must be >= fromSeq",
+        "limit is required and must be a non-negative number",
       );
     }
 
@@ -60,7 +64,7 @@ export async function handleAck(
         ).slice().buffer;
 
     const stub = getQueueStub(env);
-    const result = await stub.ackRange(logIdBuffer, body.fromSeq, body.toSeq);
+    const result = await stub.ackFirst(logIdBuffer, body.seqLo, body.limit);
 
     return new Response(encodeAckResponse(result.deleted), {
       status: 200,
