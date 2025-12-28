@@ -90,6 +90,23 @@ describe("SequencingQueue Durable Object", () => {
       const result = await stub.enqueue(logId, contentHash, { extra0, extra1 });
       expect(result.seq).toBe(1);
     });
+
+    // Skip: vitest pool workers has issues with isolated storage when DO throws
+    it.skip("rejects extra fields exceeding 32 bytes", async () => {
+      const stub = getStub("enqueue-extras-reject-test");
+      const logId = new Uint8Array(16).fill(0x03).buffer;
+      const contentHash = new Uint8Array(32).fill(0xcc).buffer;
+      const oversizedExtra = new Uint8Array(33).fill(0xff).buffer; // 1 byte over
+
+      let error: Error | undefined;
+      try {
+        await stub.enqueue(logId, contentHash, { extra0: oversizedExtra });
+      } catch (e) {
+        error = e as Error;
+      }
+      expect(error).toBeDefined();
+      expect(error?.message).toContain("exceeds maximum size");
+    });
   });
 
   // Phase 2: ackRange() tests
@@ -351,6 +368,141 @@ describe("SequencingQueue Durable Object", () => {
       );
       expect(entry.extra2).toBeNull();
       expect(entry.extra3).toBeNull();
+    });
+
+    it("redelivers entries after visibility timeout expires", async () => {
+      const stub = getStub("pull-redelivery-test");
+      const logId = new Uint8Array(16).fill(0x16).buffer;
+      const contentHash = new Uint8Array(32).fill(0xaa).buffer;
+
+      await stub.enqueue(logId, contentHash);
+
+      // Pull with very short visibility (1ms)
+      const response1 = await stub.pull({
+        pollerId: "poller-1",
+        batchSize: 100,
+        visibilityMs: 1,
+      });
+      expect(response1.logGroups.length).toBe(1);
+
+      // Wait for visibility to expire
+      await new Promise((r) => setTimeout(r, 10));
+
+      // Should redeliver the entry
+      const response2 = await stub.pull({
+        pollerId: "poller-1",
+        batchSize: 100,
+        visibilityMs: 30000,
+      });
+      expect(response2.logGroups.length).toBe(1);
+      expect(response2.logGroups[0].entries.length).toBe(1);
+    });
+
+    it("multiple pollers see only their assigned logs", async () => {
+      const stub = getStub("pull-multi-poller-test");
+      const contentHash = new Uint8Array(32).fill(0xbb).buffer;
+
+      // Enqueue entries for many logs to ensure distribution
+      const logIds: ArrayBuffer[] = [];
+      for (let i = 0; i < 20; i++) {
+        const logId = new Uint8Array(16);
+        logId[0] = i;
+        logId[1] = (i * 7) & 0xff; // Add some variation
+        logIds.push(logId.buffer);
+        await stub.enqueue(logId.buffer, contentHash);
+      }
+
+      // First poller pulls
+      const response1 = await stub.pull({
+        pollerId: "poller-a",
+        batchSize: 100,
+        visibilityMs: 30000,
+      });
+
+      // Second poller pulls (different poller ID)
+      const response2 = await stub.pull({
+        pollerId: "poller-b",
+        batchSize: 100,
+        visibilityMs: 30000,
+      });
+
+      // Both pollers should get some logs
+      const logs1 = new Set(response1.logGroups.map((g) => g.logId));
+      const logs2 = new Set(response2.logGroups.map((g) => g.logId));
+
+      // Total should cover all 20 logs (since each is in one poller's response)
+      const totalLogs = response1.logGroups.length + response2.logGroups.length;
+      expect(totalLogs).toBe(20);
+
+      // No overlap (each log assigned to exactly one poller)
+      for (const log of logs1) {
+        // Check that log2 doesn't contain same logId bytes
+        const found = Array.from(logs2).some(
+          (l) =>
+            new Uint8Array(l).every(
+              (b, i) => b === new Uint8Array(log)[i],
+            ),
+        );
+        expect(found).toBe(false);
+      }
+    });
+
+    it("moves entry to dead_letters after MAX_ATTEMPTS (5)", async () => {
+      const stub = getStub("pull-deadletter-test");
+      const logId = new Uint8Array(16).fill(0x17).buffer;
+      const contentHash = new Uint8Array(32).fill(0xcc).buffer;
+
+      await stub.enqueue(logId, contentHash);
+
+      // Pull 5 times (MAX_ATTEMPTS) with expired visibility to allow re-pull
+      for (let i = 0; i < 5; i++) {
+        const response = await stub.pull({
+          pollerId: "poller-1",
+          batchSize: 100,
+          visibilityMs: 1, // Very short visibility
+        });
+        // Entry should be returned (or already moved to dead letters on 5th)
+        if (i < 4) {
+          expect(response.logGroups.length).toBe(1);
+        }
+        await new Promise((r) => setTimeout(r, 5));
+      }
+
+      // After 5 attempts, next pull should trigger move to dead letters
+      const finalResponse = await stub.pull({
+        pollerId: "poller-1",
+        batchSize: 100,
+        visibilityMs: 30000,
+      });
+      expect(finalResponse.logGroups.length).toBe(0);
+
+      // Stats should show dead letter
+      const stats = await stub.stats();
+      expect(stats.pending).toBe(0);
+      expect(stats.deadLetters).toBe(1);
+    });
+  });
+
+  // Phase 5: ackRange() edge case
+  describe("ackRange() edge cases", () => {
+    it("handles double ack gracefully (returns 0)", async () => {
+      const stub = getStub("ack-double-test");
+      const logId = new Uint8Array(16).fill(0x18).buffer;
+      const contentHash = new Uint8Array(32).fill(0xdd).buffer;
+
+      await stub.enqueue(logId, contentHash);
+
+      // First ack deletes the entry
+      const result1 = await stub.ackRange(logId, 1, 1);
+      expect(result1.deleted).toBe(1);
+
+      // Second ack on same range should return 0, not error
+      const result2 = await stub.ackRange(logId, 1, 1);
+      expect(result2.deleted).toBe(0);
+
+      // Stats should still show 0 pending
+      const stats = await stub.stats();
+      expect(stats.pending).toBe(0);
     });
   });
 });
