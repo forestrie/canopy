@@ -132,6 +132,7 @@ export class SequencingQueue extends DurableObject<Env> {
   private ensureSchema(): void {
     if (this.initialized) return;
 
+    // Create base tables first (without Phase 9 columns for existing DOs)
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS queue_entries (
         seq INTEGER PRIMARY KEY,
@@ -158,14 +159,6 @@ export class SequencingQueue extends DurableObject<Env> {
       CREATE INDEX IF NOT EXISTS idx_attempts
         ON queue_entries (attempts);
 
-      -- For resolveContent lookups by content hash
-      CREATE INDEX IF NOT EXISTS idx_content_hash
-        ON queue_entries (content_hash);
-
-      -- For cleanup queries (sequenced entries per log)
-      CREATE INDEX IF NOT EXISTS idx_log_leaf
-        ON queue_entries (log_id, leaf_index);
-
       CREATE TABLE IF NOT EXISTS dead_letters (
         seq INTEGER PRIMARY KEY,
         log_id BLOB NOT NULL,
@@ -181,6 +174,20 @@ export class SequencingQueue extends DurableObject<Env> {
       );
     `);
 
+    // Schema migration: add leaf_index and massif_index columns if missing
+    // MUST run BEFORE creating indexes that reference these columns
+    // These columns were added in Phase 9 (Return Path Unification)
+    this.migrateSchema();
+
+    // Create indexes that depend on Phase 9 columns (after migration)
+    this.ctx.storage.sql.exec(`
+      CREATE INDEX IF NOT EXISTS idx_content_hash
+        ON queue_entries (content_hash);
+
+      CREATE INDEX IF NOT EXISTS idx_log_leaf
+        ON queue_entries (log_id, leaf_index);
+    `);
+
     this.initialized = true;
 
     // Initialize in-memory state from SQLite
@@ -192,11 +199,19 @@ export class SequencingQueue extends DurableObject<Env> {
    * Called once after schema creation.
    */
   private initializeFromStorage(): void {
+    // Check if leaf_index column exists (for backwards compatibility)
+    const columns = this.ctx.storage.sql
+      .exec<{ name: string }>("PRAGMA table_info(queue_entries)")
+      .toArray();
+    const hasLeafIndex = columns.some((c) => c.name === "leaf_index");
+
     // Get pending count (only entries not yet sequenced)
+    // If leaf_index column doesn't exist, count all entries as pending
+    const pendingQuery = hasLeafIndex
+      ? "SELECT COUNT(*) as cnt FROM queue_entries WHERE leaf_index IS NULL"
+      : "SELECT COUNT(*) as cnt FROM queue_entries";
     const countResult = this.ctx.storage.sql
-      .exec<{
-        cnt: number;
-      }>("SELECT COUNT(*) as cnt FROM queue_entries WHERE leaf_index IS NULL")
+      .exec<{ cnt: number }>(pendingQuery)
       .toArray();
     this.pendingCount = countResult[0]?.cnt ?? 0;
 
@@ -208,6 +223,48 @@ export class SequencingQueue extends DurableObject<Env> {
       .toArray();
     const maxSeq = maxSeqResult[0]?.max_seq ?? 0;
     this.nextSeq = (maxSeq ?? 0) + 1;
+  }
+
+  /**
+   * Migrate schema from older versions.
+   * Adds columns that were introduced in later versions.
+   * Phase 9 added: leaf_index, massif_index columns and related indexes.
+   */
+  private migrateSchema(): void {
+    try {
+      // Check if leaf_index column exists by querying table info
+      const columns = this.ctx.storage.sql
+        .exec<{ name: string }>("PRAGMA table_info(queue_entries)")
+        .toArray();
+      const columnNames = new Set(columns.map((c) => c.name));
+
+      console.log("[SequencingQueue] migrateSchema: existing columns", {
+        columns: Array.from(columnNames),
+        hasLeafIndex: columnNames.has("leaf_index"),
+        hasMassifIndex: columnNames.has("massif_index"),
+      });
+
+      // Add leaf_index if missing (Phase 9)
+      if (!columnNames.has("leaf_index")) {
+        console.log("[SequencingQueue] migrateSchema: adding leaf_index column");
+        this.ctx.storage.sql.exec(
+          "ALTER TABLE queue_entries ADD COLUMN leaf_index INTEGER DEFAULT NULL",
+        );
+      }
+
+      // Add massif_index if missing (Phase 9)
+      if (!columnNames.has("massif_index")) {
+        console.log("[SequencingQueue] migrateSchema: adding massif_index column");
+        this.ctx.storage.sql.exec(
+          "ALTER TABLE queue_entries ADD COLUMN massif_index INTEGER DEFAULT NULL",
+        );
+      }
+
+      console.log("[SequencingQueue] migrateSchema: complete");
+    } catch (error) {
+      console.error("[SequencingQueue] migrateSchema: failed", error);
+      throw error;
+    }
   }
 
   /**
