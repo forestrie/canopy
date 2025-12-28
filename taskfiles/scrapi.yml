@@ -120,6 +120,46 @@ tasks:
           mv "$receipt_body" "{{.O}}"
           echo "$(cd "$(dirname "{{.O}}")" && pwd)/$(basename "{{.O}}")"
 
+  trapper:*:
+    desc: Run register-statement N times and report latency for each
+    silent: true
+    vars:
+      COUNT: "{{index .MATCH 0}}"
+    cmds:
+      - cmd: |
+          set -euo pipefail
+
+          count="{{.COUNT}}"
+          if ! [[ "$count" =~ ^[0-9]+$ ]] || [ "$count" -lt 1 ]; then
+            echo "Usage: task scrapi:trapper:<count>" >&2
+            echo "  count must be a positive integer" >&2
+            exit 1
+          fi
+
+          echo "Running $count iterations of register-statement:hello"
+          echo "---"
+
+          total_ms=0
+          for i in $(seq 1 "$count"); do
+            start_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+
+            output=$(task -t "{{.ROOT_TASKFILE}}" scrapi:register-statement:hello O="/tmp/trapper-receipt-$i.cbor" 2>&1) || {
+              echo "Iteration $i: FAILED"
+              echo "$output" >&2
+              continue
+            }
+
+            end_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+            latency_ms=$(( (end_ns - start_ns) / 1000000 ))
+            total_ms=$((total_ms + latency_ms))
+
+            printf "Iteration %2d: %5d ms\n" "$i" "$latency_ms"
+          done
+
+          echo "---"
+          avg_ms=$((total_ms / count))
+          echo "Average: ${avg_ms} ms over $count iterations"
+
   post-entry:
     desc: Post a COSE Sign1 message with random UUID to the /entries endpoint
     cmds:
