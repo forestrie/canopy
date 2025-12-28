@@ -31,6 +31,12 @@ const POLLER_TIMEOUT_MS = 60_000;
 /** Maximum delivery attempts before moving to dead letters */
 const MAX_ATTEMPTS = 5;
 
+/**
+ * Maximum number of active pollers before rejecting new ones.
+ * See: arbor/docs/adr-0007-cf-do-ingress-poller-limits.md
+ */
+const MAX_POLLERS = 500;
+
 /** Poller state tracked in memory */
 interface PollerState {
   lastSeen: number;
@@ -91,15 +97,15 @@ export class SequencingQueue extends DurableObject<Env> {
 
   /**
    * Update poller state and expire stale pollers.
-   * Returns the list of active poller IDs.
+   * Returns the list of active poller IDs, or null if the poller limit has
+   * been reached and this is a new poller (existing pollers are always updated).
+   *
+   * See: arbor/docs/adr-0007-cf-do-ingress-poller-limits.md
    */
-  private updatePollers(pollerId: string): string[] {
+  private updatePollers(pollerId: string): string[] | null {
     const now = Date.now();
 
-    // Update requesting poller
-    this.pollers.set(pollerId, { lastSeen: now });
-
-    // Expire stale pollers
+    // Expire stale pollers first
     const cutoff = now - POLLER_TIMEOUT_MS;
     for (const [id, state] of this.pollers) {
       if (state.lastSeen < cutoff) {
@@ -107,6 +113,15 @@ export class SequencingQueue extends DurableObject<Env> {
       }
     }
 
+    // Check if this is a new poller and we're at capacity
+    const isNewPoller = !this.pollers.has(pollerId);
+    if (isNewPoller && this.pollers.size >= MAX_POLLERS) {
+      // Don't add new poller, return null to signal empty response
+      return null;
+    }
+
+    // Update/add the poller
+    this.pollers.set(pollerId, { lastSeen: now });
     return Array.from(this.pollers.keys());
   }
 
@@ -249,6 +264,15 @@ export class SequencingQueue extends DurableObject<Env> {
 
     // Update poller state and get active pollers
     const activePollerIds = this.updatePollers(request.pollerId);
+
+    // If poller limit reached and this is a new poller, return empty response
+    if (activePollerIds === null) {
+      return {
+        version: 1,
+        leaseExpiry,
+        logGroups: [],
+      };
+    }
 
     // First, move poison messages to dead letters
     this.movePoisonToDeadLetters(now);
@@ -482,6 +506,7 @@ export class SequencingQueue extends DurableObject<Env> {
       deadLetters,
       oldestEntryAgeMs,
       activePollers,
+      pollerLimitReached: activePollers >= MAX_POLLERS,
     };
   }
 

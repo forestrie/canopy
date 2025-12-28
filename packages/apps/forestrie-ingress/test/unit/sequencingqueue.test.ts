@@ -28,6 +28,7 @@ describe("SequencingQueue Durable Object", () => {
       deadLetters: 0,
       oldestEntryAgeMs: null,
       activePollers: 0,
+      pollerLimitReached: false,
     });
   });
 
