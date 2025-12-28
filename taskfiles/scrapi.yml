@@ -120,12 +120,85 @@ tasks:
           mv "$receipt_body" "{{.O}}"
           echo "$(cd "$(dirname "{{.O}}")" && pwd)/$(basename "{{.O}}")"
 
+  sequence-statement:*:
+    desc: Create, register, and wait for sequencing (not full receipt)
+    silent: true
+    vars:
+      MESSAGE: "{{index .MATCH 0}}"
+      MAX_POLLS: '{{.MAX_POLLS | default "60"}}'
+    cmds:
+      - cmd: |
+          set -euo pipefail
+
+          # Generate statement
+          STATEMENT=$(task -s -t "{{.ROOT_TASKFILE}}" "scrapi:create-statement:{{.MESSAGE}}")
+
+          START_UTC=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          # POST /entries
+          post_headers=$(mktemp)
+          post_body=$(mktemp)
+          trap 'rm -f "$post_headers" "$post_body"' EXIT
+
+          post_code=$(printf '%s' "$STATEMENT" \
+            | curl -sS -D "$post_headers" -w "%{http_code}" -X POST "{{.BASE_URL}}/entries" \
+              -H 'Content-Type: application/cose; cose-type="cose-sign1"' \
+              -H "Authorization: Bearer {{.API_KEY}}" \
+              --output "$post_body" \
+              --data-binary @-)
+
+          if [ "$post_code" -ge 400 ]; then
+            echo "POST /entries failed with $post_code" >&2
+            node scripts/decode-problem-details.mjs < "$post_body" >&2
+            exit 1
+          fi
+
+          post_location=$(grep -i '^location:' "$post_headers" | awk '{print $2}' | tr -d '\r')
+
+          if [ "$post_code" != "303" ] || [ -z "$post_location" ]; then
+            echo "Unexpected POST response: code=$post_code location=$post_location" >&2
+            exit 1
+          fi
+
+          status_url="$post_location"
+
+          # Poll for sequencing completion (Location header changes to include /receipt)
+          for attempt in $(seq 1 {{.MAX_POLLS}}); do
+            poll_headers=$(mktemp)
+            poll_body=$(mktemp)
+
+            poll_code=$(curl -sS -D "$poll_headers" -w "%{http_code}" -X GET "$status_url" \
+              -H "Authorization: Bearer {{.API_KEY}}" \
+              --output "$poll_body")
+
+            if [ "$poll_code" -ge 400 ]; then
+              echo "Poll failed with $poll_code" >&2
+              node scripts/decode-problem-details.mjs < "$poll_body" >&2
+              rm -f "$poll_headers" "$poll_body"
+              exit 1
+            fi
+
+            poll_location=$(grep -i '^location:' "$poll_headers" | awk '{print $2}' | tr -d '\r')
+            rm -f "$poll_headers" "$poll_body"
+
+            if echo "$poll_location" | grep -q '/receipt$'; then
+              # Sequencing complete - output the receipt URL (don't fetch it)
+              echo "$poll_location"
+              exit 0
+            fi
+
+            sleep 0.25
+          done
+
+          echo "Timed out after {{.MAX_POLLS}} polls (started $START_UTC)" >&2
+          exit 1
+
   trapper:*:
-    desc: Batch POST N statements then poll for receipts, reporting latency
+    desc: Batch POST N statements then poll for sequencing, reporting latency
     silent: true
     vars:
       COUNT: "{{index .MATCH 0}}"
-      MAX_POLLS: '{{.MAX_POLLS | default "60"}}'
+      MAX_POLLS: '{{.MAX_POLLS | default "120"}}'
     cmds:
       - cmd: |
           set -euo pipefail
@@ -176,10 +249,10 @@ tasks:
           echo "POSTed $count statements"
           echo "---"
 
-          # Poll for all receipts
-          receipt_urls=()
+          # Poll for all sequencing completions (indicated by /receipt in location)
+          sequenced_urls=()
           for i in $(seq 1 "$count"); do
-            receipt_urls+=("") 
+            sequenced_urls+=("") 
           done
 
           pending=$count
@@ -190,8 +263,8 @@ tasks:
 
             for i in $(seq 1 "$count"); do
               idx=$((i - 1))
-              # Skip if already got receipt or no status URL
-              if [ -n "${receipt_urls[$idx]}" ] || [ -z "${status_urls[$idx]}" ]; then
+              # Skip if already sequenced or no status URL
+              if [ -n "${sequenced_urls[$idx]}" ] || [ -z "${status_urls[$idx]}" ]; then
                 continue
               fi
 
@@ -206,7 +279,7 @@ tasks:
               rm -f "$poll_headers" "$poll_body"
 
               if echo "$poll_location" | grep -q '/receipt$'; then
-                receipt_urls[$idx]="$poll_location"
+                sequenced_urls[$idx]="$poll_location"
                 end_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
                 latency_ms=$(( (end_ns - ${start_times[$idx]}) / 1000000 ))
                 printf "Statement %2d: %5d ms\n" "$i" "$latency_ms"
@@ -215,15 +288,15 @@ tasks:
             done
 
             if [ $pending -gt 0 ]; then
-              sleep 0.5
+              sleep 0.25
             fi
           done
 
           echo "---"
           if [ $pending -gt 0 ]; then
-            echo "WARNING: $pending statements did not receive receipts"
+            echo "WARNING: $pending statements did not complete sequencing"
           fi
-          echo "Completed $((count - pending)) of $count statements"
+          echo "Sequenced $((count - pending)) of $count statements"
 
   post-entry:
     desc: Post a COSE Sign1 message with random UUID to the /entries endpoint
