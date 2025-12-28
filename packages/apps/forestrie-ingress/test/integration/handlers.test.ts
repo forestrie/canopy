@@ -67,16 +67,17 @@ describe("forestrie-ingress DO integration", () => {
     expect(stats.oldestEntryAgeMs).toBeGreaterThanOrEqual(0);
 
     // Ack first two entries using limit-based ack
-    const ackResult = await stub.ackFirst(logId, seq1.seq, 2);
-    expect(ackResult.deleted).toBe(2);
+    // (firstLeafIndex=0, massifHeight=14 for test)
+    const ackResult = await stub.ackFirst(logId, seq1.seq, 2, 0, 14);
+    expect(ackResult.acked).toBe(2);
 
     // Verify one entry remains
     stats = await stub.stats();
     expect(stats.pending).toBe(1);
 
     // Ack the last entry
-    const ackResult2 = await stub.ackFirst(logId, seq3.seq, 1);
-    expect(ackResult2.deleted).toBe(1);
+    const ackResult2 = await stub.ackFirst(logId, seq3.seq, 1, 2, 14);
+    expect(ackResult2.acked).toBe(1);
 
     // Queue should be empty
     stats = await stub.stats();
@@ -101,16 +102,16 @@ describe("forestrie-ingress DO integration", () => {
     expect(stats.pending).toBe(5);
 
     // Ack all of logId1 (2 entries) using limit-based ack
-    const result1 = await stub.ackFirst(logId1, seq1.seq, 2);
-    expect(result1.deleted).toBe(2);
+    const result1 = await stub.ackFirst(logId1, seq1.seq, 2, 0, 14);
+    expect(result1.acked).toBe(2);
 
     stats = await stub.stats();
     expect(stats.pending).toBe(3);
 
     // Ack all of logId2 (3 entries) using limit-based ack
     // Note: seq values for logId2 are [3, 4, 5] (contiguous in this case)
-    const result2 = await stub.ackFirst(logId2, 3, 3);
-    expect(result2.deleted).toBe(3);
+    const result2 = await stub.ackFirst(logId2, 3, 3, 2, 14);
+    expect(result2.acked).toBe(3);
 
     stats = await stub.stats();
     expect(stats.pending).toBe(0);
@@ -172,8 +173,8 @@ describe("forestrie-ingress DO integration", () => {
     expect(group1!.entries[1].extra0).toBeNull();
 
     // Now ack all entries using limit-based ack (seqLo + entry count)
-    await stub.ackFirst(logId1, group1!.seqLo, group1!.entries.length);
-    await stub.ackFirst(logId2, group2!.seqLo, group2!.entries.length);
+    await stub.ackFirst(logId1, group1!.seqLo, group1!.entries.length, 0, 14);
+    await stub.ackFirst(logId2, group2!.seqLo, group2!.entries.length, 3, 14);
 
     // Queue should be empty
     const stats = await stub.stats();

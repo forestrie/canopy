@@ -66,14 +66,14 @@ export function decodePullResponse(data: ArrayBuffer): PullResponse {
 /**
  * Encode an ack response to CBOR.
  */
-export function encodeAckResponse(deleted: number): ArrayBuffer {
-  const encoded = encode({ deleted });
+export function encodeAckResponse(acked: number): ArrayBuffer {
+  const encoded = encode({ acked });
   return new Uint8Array(encoded).buffer;
 }
 
 /**
  * Decode a CBOR-encoded ack response.
  */
-export function decodeAckResponse(data: ArrayBuffer): { deleted: number } {
-  return decode(new Uint8Array(data)) as { deleted: number };
+export function decodeAckResponse(data: ArrayBuffer): { acked: number } {
+  return decode(new Uint8Array(data)) as { acked: number };
 }

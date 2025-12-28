@@ -42,24 +42,30 @@ export interface SequencingQueueStub {
   pull(request: PullRequest): Promise<PullResponse>;
 
   /**
-   * Acknowledge entries using limit-based deletion.
+   * Acknowledge entries by marking them as sequenced.
    *
-   * Deletes the first N entries (by seq order) for the given log starting from
-   * seqLo. This is required because seq values are allocated globally across
-   * all logs, making per-log seq values non-contiguous.
+   * Updates the first N entries (by seq order) for the given log starting from
+   * seqLo with their leaf indices. This is required because seq values are
+   * allocated globally across all logs, making per-log seq values non-contiguous.
    *
-   * See: arbor/docs/arc-cloudflare-do-ingress.md section 2.3
+   * massifIndex is derived: floor(leafIndex / (1 << massifHeight))
+   *
+   * See: arbor/docs/arc-cloudflare-do-ingress.md section 2.3 and 3.12
    *
    * @param logId - Log identifier (16 bytes)
    * @param seqLo - Starting sequence number
-   * @param limit - Number of entries to delete
-   * @returns Count of deleted entries
+   * @param limit - Number of entries to mark as sequenced
+   * @param firstLeafIndex - Leaf index of the first entry
+   * @param massifHeight - Massif height (log2 of leaves per massif)
+   * @returns Count of entries marked as sequenced
    */
   ackFirst(
     logId: ArrayBuffer,
     seqLo: number,
     limit: number,
-  ): Promise<{ deleted: number }>;
+    firstLeafIndex: number,
+    massifHeight: number,
+  ): Promise<{ acked: number }>;
 
 
   /**

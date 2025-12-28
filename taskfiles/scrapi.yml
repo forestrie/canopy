@@ -193,7 +193,7 @@ tasks:
           echo "Timed out after {{.MAX_POLLS}} polls (started $START_UTC)" >&2
           exit 1
 
-  trapper:*:
+  batcher:*:
     desc: Batch POST N statements then poll for sequencing, reporting latency
     silent: true
     vars:

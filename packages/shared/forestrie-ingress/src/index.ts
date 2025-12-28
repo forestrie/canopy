@@ -13,6 +13,7 @@ export type {
   Entry,
   AckRequest,
   AckResponse,
+  SequencingResult,
   QueueStats,
   EnqueueExtras,
   SequencingQueueStub,

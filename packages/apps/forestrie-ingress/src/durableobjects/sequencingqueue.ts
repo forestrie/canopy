@@ -143,7 +143,10 @@ export class SequencingQueue extends DurableObject<Env> {
         extra3 BLOB CHECK (extra3 IS NULL OR length(extra3) <= 32),
         visible_after INTEGER,
         attempts INTEGER NOT NULL DEFAULT 0,
-        enqueued_at INTEGER NOT NULL
+        enqueued_at INTEGER NOT NULL,
+        -- Sequencing result fields (NULL until sequenced)
+        leaf_index INTEGER DEFAULT NULL,
+        massif_index INTEGER DEFAULT NULL
       );
 
       CREATE INDEX IF NOT EXISTS idx_log_visible
@@ -154,6 +157,14 @@ export class SequencingQueue extends DurableObject<Env> {
 
       CREATE INDEX IF NOT EXISTS idx_attempts
         ON queue_entries (attempts);
+
+      -- For resolveContent lookups by content hash
+      CREATE INDEX IF NOT EXISTS idx_content_hash
+        ON queue_entries (content_hash);
+
+      -- For cleanup queries (sequenced entries per log)
+      CREATE INDEX IF NOT EXISTS idx_log_leaf
+        ON queue_entries (log_id, leaf_index);
 
       CREATE TABLE IF NOT EXISTS dead_letters (
         seq INTEGER PRIMARY KEY,
@@ -181,9 +192,11 @@ export class SequencingQueue extends DurableObject<Env> {
    * Called once after schema creation.
    */
   private initializeFromStorage(): void {
-    // Get pending count
+    // Get pending count (only entries not yet sequenced)
     const countResult = this.ctx.storage.sql
-      .exec<{ cnt: number }>("SELECT COUNT(*) as cnt FROM queue_entries")
+      .exec<{ cnt: number }>(
+        "SELECT COUNT(*) as cnt FROM queue_entries WHERE leaf_index IS NULL",
+      )
       .toArray();
     this.pendingCount = countResult[0]?.cnt ?? 0;
 
@@ -277,11 +290,12 @@ export class SequencingQueue extends DurableObject<Env> {
     // First, move poison messages to dead letters
     this.movePoisonToDeadLetters(now);
 
-    // Find logs with visible entries
+    // Find logs with visible pending entries (not yet sequenced)
     const visibleLogs = this.ctx.storage.sql
       .exec<{ log_id: ArrayBuffer }>(
         `SELECT DISTINCT log_id FROM queue_entries
-         WHERE visible_after IS NULL OR visible_after <= ?`,
+         WHERE leaf_index IS NULL
+           AND (visible_after IS NULL OR visible_after <= ?)`,
         now,
       )
       .toArray();
@@ -339,6 +353,7 @@ export class SequencingQueue extends DurableObject<Env> {
 
   /**
    * Pull entries for a single log, update visibility, and increment attempts.
+   * Only pulls pending entries (leaf_index IS NULL).
    */
   private pullEntriesForLog(
     logId: ArrayBuffer,
@@ -346,7 +361,7 @@ export class SequencingQueue extends DurableObject<Env> {
     leaseExpiry: number,
     now: number,
   ): Entry[] {
-    // Query visible entries for this log
+    // Query visible pending entries for this log (not yet sequenced)
     const rows = this.ctx.storage.sql
       .exec<{
         seq: number;
@@ -358,7 +373,8 @@ export class SequencingQueue extends DurableObject<Env> {
       }>(
         `SELECT seq, content_hash, extra0, extra1, extra2, extra3
          FROM queue_entries
-         WHERE log_id = ? AND (visible_after IS NULL OR visible_after <= ?)
+         WHERE log_id = ? AND leaf_index IS NULL
+           AND (visible_after IS NULL OR visible_after <= ?)
          ORDER BY seq ASC
          LIMIT ?`,
         logId,
@@ -395,9 +411,10 @@ export class SequencingQueue extends DurableObject<Env> {
 
   /**
    * Move entries exceeding MAX_ATTEMPTS to dead_letters table.
+   * Only affects pending entries (not yet sequenced).
    */
   private movePoisonToDeadLetters(now: number): void {
-    // Find poison entries
+    // Find poison entries (pending only)
     const poisonEntries = this.ctx.storage.sql
       .exec<{
         seq: number;
@@ -411,7 +428,7 @@ export class SequencingQueue extends DurableObject<Env> {
         enqueued_at: number;
       }>(
         `SELECT seq, log_id, content_hash, extra0, extra1, extra2, extra3, attempts, enqueued_at
-         FROM queue_entries WHERE attempts >= ?`,
+         FROM queue_entries WHERE leaf_index IS NULL AND attempts >= ?`,
         MAX_ATTEMPTS,
       )
       .toArray();
@@ -446,54 +463,117 @@ export class SequencingQueue extends DurableObject<Env> {
   }
 
   /**
-   * Acknowledge entries using limit-based deletion.
+   * Acknowledge entries by marking them as sequenced with leaf/massif indices.
    *
-   * Deletes the first N entries (by seq order) for the given log starting from
-   * seqLo. This is required because seq values are allocated globally across
-   * all logs, making per-log seq values non-contiguous.
+   * Updates the first N entries (by seq order) for the given log starting from
+   * seqLo, setting their leaf_index and massif_index. Entries are retained
+   * (not deleted) to serve as sequencing result cache for resolveContent.
    *
-   * See: arbor/docs/arc-cloudflare-do-ingress.md section 2.3
+   * massifIndex is derived from firstLeafIndex and massifHeight.
+   * Cleanup runs on each ack, retaining ~2 massifs worth of sequenced entries.
+   *
+   * See: arbor/docs/arc-cloudflare-do-ingress.md section 3.12
    */
   async ackFirst(
     logId: ArrayBuffer,
     seqLo: number,
     limit: number,
-  ): Promise<{ deleted: number }> {
+    firstLeafIndex: number,
+    massifHeight: number,
+  ): Promise<{ acked: number }> {
     this.ensureSchema();
 
     if (limit <= 0) {
-      return { deleted: 0 };
+      return { acked: 0 };
     }
 
-    // Find the first N entries for this log starting from seqLo
-    const toDelete = this.ctx.storage.sql
+    const leavesPerMassif = 1 << massifHeight;
+
+    // First, find the seq values to update
+    const toUpdate = this.ctx.storage.sql
       .exec<{ seq: number }>(
         `SELECT seq FROM queue_entries
-         WHERE log_id = ? AND seq >= ?
+         WHERE log_id = ? AND seq >= ? AND leaf_index IS NULL
          ORDER BY seq ASC
          LIMIT ?`,
         logId,
         seqLo,
         limit,
       )
-      .toArray()
-      .map((r) => r.seq);
+      .toArray();
 
-    if (toDelete.length === 0) {
-      return { deleted: 0 };
+    if (toUpdate.length === 0) {
+      return { acked: 0 };
     }
 
-    // Delete those specific entries by seq
-    const result = this.ctx.storage.sql.exec(
+    // Update each entry with its computed leaf_index and derived massif_index
+    for (let i = 0; i < toUpdate.length; i++) {
+      const leafIndex = firstLeafIndex + i;
+      const massifIndex = Math.floor(leafIndex / leavesPerMassif);
+
+      this.ctx.storage.sql.exec(
+        `UPDATE queue_entries
+         SET leaf_index = ?, massif_index = ?, visible_after = NULL
+         WHERE seq = ?`,
+        leafIndex,
+        massifIndex,
+        toUpdate[i].seq,
+      );
+    }
+
+    const acked = toUpdate.length;
+    this.pendingCount = Math.max(0, this.pendingCount - acked);
+
+    // Cleanup: retain ~2 massifs worth of sequenced entries per log
+    const retainCount = leavesPerMassif * 2;
+
+    this.ctx.storage.sql.exec(
       `DELETE FROM queue_entries
-       WHERE seq IN (${toDelete.map(() => "?").join(",")})`,
-      ...toDelete,
+       WHERE log_id = ?
+         AND leaf_index IS NOT NULL
+         AND leaf_index < (
+           SELECT COALESCE(MAX(leaf_index), 0) - ?
+           FROM queue_entries
+           WHERE log_id = ? AND leaf_index IS NOT NULL
+         )`,
+      logId,
+      retainCount,
+      logId,
     );
 
-    const deleted = result.rowsWritten;
-    this.pendingCount = Math.max(0, this.pendingCount - deleted);
+    return { acked };
+  }
 
-    return { deleted };
+  /**
+   * Resolve a content hash to its sequencing result.
+   *
+   * Returns the leaf_index and massif_index if the entry has been sequenced,
+   * or null if still pending or unknown.
+   *
+   * See: arbor/docs/arc-cloudflare-do-ingress.md section 3.12.5
+   */
+  async resolveContent(
+    contentHash: ArrayBuffer,
+  ): Promise<{ leafIndex: number; massifIndex: number } | null> {
+    this.ensureSchema();
+
+    const result = this.ctx.storage.sql
+      .exec<{ leaf_index: number; massif_index: number }>(
+        `SELECT leaf_index, massif_index
+         FROM queue_entries
+         WHERE content_hash = ? AND leaf_index IS NOT NULL`,
+        contentHash,
+      )
+      .toArray();
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    return {
+      leafIndex: result[0].leaf_index,
+      massifIndex: result[0].massif_index,
+    };
   }
 
 
@@ -509,11 +589,11 @@ export class SequencingQueue extends DurableObject<Env> {
       .toArray();
     const deadLetters = dlResult[0]?.cnt ?? 0;
 
-    // Get oldest entry age
+    // Get oldest pending entry age (only entries not yet sequenced)
     const now = Date.now();
     const oldestResult = this.ctx.storage.sql
       .exec<{ oldest: number | null }>(
-        "SELECT MIN(enqueued_at) as oldest FROM queue_entries",
+        "SELECT MIN(enqueued_at) as oldest FROM queue_entries WHERE leaf_index IS NULL",
       )
       .toArray();
     const oldestEnqueuedAt = oldestResult[0]?.oldest;

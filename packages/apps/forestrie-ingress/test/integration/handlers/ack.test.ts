@@ -17,6 +17,8 @@ describe("/queue/ack", () => {
       logId: logId,
       seqLo: seq,
       limit: 1,
+      firstLeafIndex: 0,
+      massifHeight: 14,
     });
 
     const response = await worker.fetch(
@@ -29,7 +31,7 @@ describe("/queue/ack", () => {
     expect(response.headers.get("Content-Type")).toBe("application/cbor");
 
     const result = decodeAckResponse(await response.arrayBuffer());
-    expect(result.deleted).toBe(1);
+    expect(result.acked).toBe(1);
   });
 
   it("returns 415 for JSON content type", async () => {

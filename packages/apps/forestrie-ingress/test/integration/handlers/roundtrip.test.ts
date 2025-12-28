@@ -52,6 +52,8 @@ describe("HTTP round-trip integration", () => {
       logId: logId,
       seqLo: group!.seqLo,
       limit: group!.entries.length,
+      firstLeafIndex: 0,
+      massifHeight: 14,
     });
 
     const ackResponse = await worker.fetch(
@@ -64,7 +66,7 @@ describe("HTTP round-trip integration", () => {
     expect(ackResponse.headers.get("Content-Type")).toBe("application/cbor");
 
     const ackResult = decodeAckResponse(await ackResponse.arrayBuffer());
-    expect(ackResult.deleted).toBe(2);
+    expect(ackResult.acked).toBe(2);
   });
 
   it("visibility timeout redelivery via HTTP", async () => {
@@ -125,6 +127,8 @@ describe("HTTP round-trip integration", () => {
       logId: logId,
       seqLo: group2!.seqLo,
       limit: group2!.entries.length,
+      firstLeafIndex: 0,
+      massifHeight: 14,
     });
     await worker.fetch(ackRequest, testEnv, {} as ExecutionContext);
   });
@@ -194,13 +198,17 @@ describe("HTTP round-trip integration", () => {
     }
 
     // Clean up: ack all entries using limit-based ack
+    let leafIndex = 0;
     for (const group of [...groupsA, ...groupsB]) {
       const ackRequest = createCborRequest("/queue/ack", "POST", {
         logId: new Uint8Array(group.logId),
         seqLo: group.seqLo,
         limit: group.entries.length,
+        firstLeafIndex: leafIndex,
+        massifHeight: 14,
       });
       await worker.fetch(ackRequest, testEnv, {} as ExecutionContext);
+      leafIndex += group.entries.length;
     }
   });
 });

@@ -40,7 +40,7 @@ describe("SequencingQueue stats", () => {
     expect(stats.oldestEntryAgeMs).toBeGreaterThanOrEqual(0);
 
     // Ack some using limit-based ack
-    await stub.ackFirst(logId, seq1.seq, 2);
+    await stub.ackFirst(logId, seq1.seq, 2, 0, 14);
 
     stats = await stub.stats();
     expect(stats.pending).toBe(1);

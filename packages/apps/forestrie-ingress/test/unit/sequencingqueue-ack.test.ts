@@ -26,8 +26,8 @@ describe("SequencingQueue ackFirst", () => {
     expect(stats.pending).toBe(5);
 
     // Ack first 3 entries starting from seq1
-    const result = await stub.ackFirst(logId, seq1.seq, 3);
-    expect(result.deleted).toBe(3);
+    const result = await stub.ackFirst(logId, seq1.seq, 3, 0, 14);
+    expect(result.acked).toBe(3);
 
     // Stats should reflect remaining
     stats = await stub.stats();
@@ -49,9 +49,9 @@ describe("SequencingQueue ackFirst", () => {
     await stub.enqueue(logIdA, contentHash); // seq 5
 
     // Ack first 2 entries for logA starting from seqA1
-    // Should delete entries with seq 1 and 3 (the first 2 for logA)
-    const result = await stub.ackFirst(logIdA, seqA1.seq, 2);
-    expect(result.deleted).toBe(2);
+    // Should mark entries with seq 1 and 3 as sequenced (the first 2 for logA)
+    const result = await stub.ackFirst(logIdA, seqA1.seq, 2, 0, 14);
+    expect(result.acked).toBe(2);
 
     // Should have 3 entries left (1 for logA, 2 for logB)
     const stats = await stub.stats();
@@ -74,8 +74,8 @@ describe("SequencingQueue ackFirst", () => {
     expect(stats.pending).toBe(4);
 
     // Ack only logId1's entries
-    const result = await stub.ackFirst(logId1, seq1.seq, 2);
-    expect(result.deleted).toBe(2);
+    const result = await stub.ackFirst(logId1, seq1.seq, 2, 0, 14);
+    expect(result.acked).toBe(2);
 
     // logId2's entries should remain
     stats = await stub.stats();
@@ -89,8 +89,8 @@ describe("SequencingQueue ackFirst", () => {
 
     await stub.enqueue(logId, contentHash);
 
-    const result = await stub.ackFirst(logId, 1, 0);
-    expect(result.deleted).toBe(0);
+    const result = await stub.ackFirst(logId, 1, 0, 0, 14);
+    expect(result.acked).toBe(0);
 
     const stats = await stub.stats();
     expect(stats.pending).toBe(1);
@@ -100,8 +100,8 @@ describe("SequencingQueue ackFirst", () => {
     const stub = getStub("ack-first-empty-test");
     const logId = new Uint8Array(16).fill(0x46).buffer;
 
-    const result = await stub.ackFirst(logId, 1, 10);
-    expect(result.deleted).toBe(0);
+    const result = await stub.ackFirst(logId, 1, 10, 0, 14);
+    expect(result.acked).toBe(0);
   });
 
   it("handles double ack gracefully (returns 0)", async () => {
@@ -111,13 +111,13 @@ describe("SequencingQueue ackFirst", () => {
 
     const { seq } = await stub.enqueue(logId, contentHash);
 
-    // First ack deletes the entry
-    const result1 = await stub.ackFirst(logId, seq, 1);
-    expect(result1.deleted).toBe(1);
+    // First ack marks the entry as sequenced
+    const result1 = await stub.ackFirst(logId, seq, 1, 0, 14);
+    expect(result1.acked).toBe(1);
 
-    // Second ack on same params should return 0, not error
-    const result2 = await stub.ackFirst(logId, seq, 1);
-    expect(result2.deleted).toBe(0);
+    // Second ack on same params should return 0 (already sequenced)
+    const result2 = await stub.ackFirst(logId, seq, 1, 0, 14);
+    expect(result2.acked).toBe(0);
 
     // Stats should still show 0 pending
     const stats = await stub.stats();
