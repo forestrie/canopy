@@ -12,6 +12,8 @@ import { DurableObject } from "cloudflare:workers";
 import type {
   PullRequest,
   PullResponse,
+  LogGroup,
+  Entry,
   QueueStats,
   EnqueueExtras,
 } from "@canopy/forestrie-ingress-types";
@@ -22,6 +24,49 @@ const MAX_PENDING = 100_000;
 
 /** Maximum size for extra fields in bytes */
 const MAX_EXTRA_SIZE = 32;
+
+/** Poller is considered inactive after this many ms without a pull */
+const POLLER_TIMEOUT_MS = 60_000;
+
+/** Maximum delivery attempts before moving to dead letters */
+const MAX_ATTEMPTS = 5;
+
+/** Poller state tracked in memory */
+interface PollerState {
+  lastSeen: number;
+}
+
+/**
+ * Simple hash function (djb2) for consistent hashing.
+ * Returns a non-negative 32-bit integer.
+ *
+ * This is intentionally a non-cryptographic hash. It's used only for load
+ * distribution across pollers, which is not security-sensitive.
+ * See: arbor/docs/adr-0006-cf-do-ingress-hash-function.md
+ *
+ * @internal Exported for testing
+ */
+export function djb2Hash(data: Uint8Array): number {
+  let hash = 5381;
+  for (let i = 0; i < data.length; i++) {
+    hash = ((hash << 5) + hash + data[i]) >>> 0;
+  }
+  return hash >>> 0;
+}
+
+/**
+ * Assign a log to a poller using consistent hashing.
+ * Given a sorted list of poller IDs, returns the assigned poller ID.
+ * @internal Exported for testing
+ */
+export function assignLog(logId: ArrayBuffer, pollerIds: string[]): string {
+  if (pollerIds.length === 0) {
+    throw new Error("No active pollers");
+  }
+  const sorted = [...pollerIds].sort();
+  const hash = djb2Hash(new Uint8Array(logId));
+  return sorted[hash % sorted.length];
+}
 
 /**
  * SequencingQueue Durable Object class.
@@ -37,8 +82,32 @@ export class SequencingQueue extends DurableObject<Env> {
   /** Next sequence number to assign */
   private nextSeq = 1;
 
+  /** Active pollers tracked in memory */
+  private pollers: Map<string, PollerState> = new Map();
+
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+  }
+
+  /**
+   * Update poller state and expire stale pollers.
+   * Returns the list of active poller IDs.
+   */
+  private updatePollers(pollerId: string): string[] {
+    const now = Date.now();
+
+    // Update requesting poller
+    this.pollers.set(pollerId, { lastSeen: now });
+
+    // Expire stale pollers
+    const cutoff = now - POLLER_TIMEOUT_MS;
+    for (const [id, state] of this.pollers) {
+      if (state.lastSeen < cutoff) {
+        this.pollers.delete(id);
+      }
+    }
+
+    return Array.from(this.pollers.keys());
   }
 
   /**
@@ -175,13 +244,181 @@ export class SequencingQueue extends DurableObject<Env> {
   async pull(request: PullRequest): Promise<PullResponse> {
     this.ensureSchema();
 
-    // Stub: return empty response
-    // TODO: Implement in Phase 3
+    const now = Date.now();
+    const leaseExpiry = now + request.visibilityMs;
+
+    // Update poller state and get active pollers
+    const activePollerIds = this.updatePollers(request.pollerId);
+
+    // First, move poison messages to dead letters
+    this.movePoisonToDeadLetters(now);
+
+    // Find logs with visible entries
+    const visibleLogs = this.ctx.storage.sql
+      .exec<{ log_id: ArrayBuffer }>(
+        `SELECT DISTINCT log_id FROM queue_entries
+         WHERE visible_after IS NULL OR visible_after <= ?`,
+        now,
+      )
+      .toArray();
+
+    // Filter to logs assigned to this poller
+    const assignedLogIds: ArrayBuffer[] = [];
+    for (const row of visibleLogs) {
+      const assignedPoller = assignLog(row.log_id, activePollerIds);
+      if (assignedPoller === request.pollerId) {
+        assignedLogIds.push(row.log_id);
+      }
+    }
+
+    // Build grouped response
+    const logGroups: LogGroup[] = [];
+    let totalEntries = 0;
+
+    for (const logId of assignedLogIds) {
+      if (totalEntries >= request.batchSize) break;
+
+      const remaining = request.batchSize - totalEntries;
+      const entries = this.pullEntriesForLog(logId, remaining, leaseExpiry, now);
+
+      if (entries.length > 0) {
+        // Get seq range from the first query (we need to query again for seqs)
+        const seqResult = this.ctx.storage.sql
+          .exec<{ seq_lo: number; seq_hi: number }>(
+            `SELECT MIN(seq) as seq_lo, MAX(seq) as seq_hi FROM queue_entries
+             WHERE log_id = ? AND visible_after = ?`,
+            logId,
+            leaseExpiry,
+          )
+          .toArray();
+
+        const seqLo = seqResult[0]?.seq_lo ?? 0;
+        const seqHi = seqResult[0]?.seq_hi ?? 0;
+
+        logGroups.push({
+          logId,
+          seqLo,
+          seqHi,
+          entries,
+        });
+
+        totalEntries += entries.length;
+      }
+    }
+
     return {
       version: 1,
-      leaseExpiry: Date.now() + request.visibilityMs,
-      logGroups: [],
+      leaseExpiry,
+      logGroups,
     };
+  }
+
+  /**
+   * Pull entries for a single log, update visibility, and increment attempts.
+   */
+  private pullEntriesForLog(
+    logId: ArrayBuffer,
+    limit: number,
+    leaseExpiry: number,
+    now: number,
+  ): Entry[] {
+    // Query visible entries for this log
+    const rows = this.ctx.storage.sql
+      .exec<{
+        seq: number;
+        content_hash: ArrayBuffer;
+        extra0: ArrayBuffer | null;
+        extra1: ArrayBuffer | null;
+        extra2: ArrayBuffer | null;
+        extra3: ArrayBuffer | null;
+      }>(
+        `SELECT seq, content_hash, extra0, extra1, extra2, extra3
+         FROM queue_entries
+         WHERE log_id = ? AND (visible_after IS NULL OR visible_after <= ?)
+         ORDER BY seq ASC
+         LIMIT ?`,
+        logId,
+        now,
+        limit,
+      )
+      .toArray();
+
+    if (rows.length === 0) return [];
+
+    // Update visibility and increment attempts
+    const seqs = rows.map((r) => r.seq);
+    const seqLo = seqs[0];
+    const seqHi = seqs[seqs.length - 1];
+
+    this.ctx.storage.sql.exec(
+      `UPDATE queue_entries
+       SET visible_after = ?, attempts = attempts + 1
+       WHERE log_id = ? AND seq >= ? AND seq <= ?`,
+      leaseExpiry,
+      logId,
+      seqLo,
+      seqHi,
+    );
+
+    return rows.map((row) => ({
+      contentHash: row.content_hash,
+      extra0: row.extra0,
+      extra1: row.extra1,
+      extra2: row.extra2,
+      extra3: row.extra3,
+    }));
+  }
+
+  /**
+   * Move entries exceeding MAX_ATTEMPTS to dead_letters table.
+   */
+  private movePoisonToDeadLetters(now: number): void {
+    // Find poison entries
+    const poisonEntries = this.ctx.storage.sql
+      .exec<{
+        seq: number;
+        log_id: ArrayBuffer;
+        content_hash: ArrayBuffer;
+        extra0: ArrayBuffer | null;
+        extra1: ArrayBuffer | null;
+        extra2: ArrayBuffer | null;
+        extra3: ArrayBuffer | null;
+        attempts: number;
+        enqueued_at: number;
+      }>(
+        `SELECT seq, log_id, content_hash, extra0, extra1, extra2, extra3, attempts, enqueued_at
+         FROM queue_entries WHERE attempts >= ?`,
+        MAX_ATTEMPTS,
+      )
+      .toArray();
+
+    for (const entry of poisonEntries) {
+      // Insert into dead_letters
+      this.ctx.storage.sql.exec(
+        `INSERT INTO dead_letters
+         (seq, log_id, content_hash, extra0, extra1, extra2, extra3, attempts, enqueued_at, dead_at, reason)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        entry.seq,
+        entry.log_id,
+        entry.content_hash,
+        entry.extra0,
+        entry.extra1,
+        entry.extra2,
+        entry.extra3,
+        entry.attempts,
+        entry.enqueued_at,
+        now,
+        `exceeded max attempts (${MAX_ATTEMPTS})`,
+      );
+
+      // Delete from queue_entries
+      this.ctx.storage.sql.exec(
+        `DELETE FROM queue_entries WHERE seq = ?`,
+        entry.seq,
+      );
+
+      this.pendingCount = Math.max(0, this.pendingCount - 1);
+    }
   }
 
   /**
@@ -221,6 +458,7 @@ export class SequencingQueue extends DurableObject<Env> {
     const deadLetters = dlResult[0]?.cnt ?? 0;
 
     // Get oldest entry age
+    const now = Date.now();
     const oldestResult = this.ctx.storage.sql
       .exec<{ oldest: number | null }>(
         "SELECT MIN(enqueued_at) as oldest FROM queue_entries",
@@ -228,10 +466,16 @@ export class SequencingQueue extends DurableObject<Env> {
       .toArray();
     const oldestEnqueuedAt = oldestResult[0]?.oldest;
     const oldestEntryAgeMs =
-      oldestEnqueuedAt !== null ? Date.now() - oldestEnqueuedAt : null;
+      oldestEnqueuedAt !== null ? now - oldestEnqueuedAt : null;
 
-    // Active pollers will be tracked in Phase 3
-    const activePollers = 0;
+    // Expire stale pollers and count active ones
+    const cutoff = now - POLLER_TIMEOUT_MS;
+    for (const [id, state] of this.pollers) {
+      if (state.lastSeen < cutoff) {
+        this.pollers.delete(id);
+      }
+    }
+    const activePollers = this.pollers.size;
 
     return {
       pending: this.pendingCount,
