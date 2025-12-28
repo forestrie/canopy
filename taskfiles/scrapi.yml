@@ -121,10 +121,11 @@ tasks:
           echo "$(cd "$(dirname "{{.O}}")" && pwd)/$(basename "{{.O}}")"
 
   trapper:*:
-    desc: Run register-statement N times and report latency for each
+    desc: Batch POST N statements then poll for receipts, reporting latency
     silent: true
     vars:
       COUNT: "{{index .MATCH 0}}"
+      MAX_POLLS: '{{.MAX_POLLS | default "60"}}'
     cmds:
       - cmd: |
           set -euo pipefail
@@ -136,29 +137,93 @@ tasks:
             exit 1
           fi
 
-          echo "Running $count iterations of register-statement:hello"
+          echo "Generating $count statements..."
+          statements=()
+          for i in $(seq 1 "$count"); do
+            statements+=("$(task -s -t "{{.ROOT_TASKFILE}}" "scrapi:create-statement:trapper-$i-$(date +%s)" 2>/dev/null)")
+          done
+          echo "Generated $count statements"
+
+          echo "POSTing $count statements..."
+          status_urls=()
+          start_times=()
+          for i in $(seq 1 "$count"); do
+            idx=$((i - 1))
+            start_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+            start_times+=("$start_ns")
+
+            post_headers=$(mktemp)
+            post_body=$(mktemp)
+
+            post_code=$(printf '%s' "${statements[$idx]}" \
+              | curl -sS -D "$post_headers" -w "%{http_code}" -X POST "{{.BASE_URL}}/entries" \
+                -H 'Content-Type: application/cose; cose-type="cose-sign1"' \
+                -H "Authorization: Bearer {{.API_KEY}}" \
+                --output "$post_body" \
+                --data-binary @-)
+
+            if [ "$post_code" -ge 400 ]; then
+              echo "POST $i failed with $post_code" >&2
+              status_urls+=("") 
+              rm -f "$post_headers" "$post_body"
+              continue
+            fi
+
+            status_url=$(grep -i '^location:' "$post_headers" | awk '{print $2}' | tr -d '\r')
+            status_urls+=("$status_url")
+            rm -f "$post_headers" "$post_body"
+          done
+          echo "POSTed $count statements"
           echo "---"
 
-          total_ms=0
+          # Poll for all receipts
+          receipt_urls=()
           for i in $(seq 1 "$count"); do
-            start_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+            receipt_urls+=("") 
+          done
 
-            output=$(task -t "{{.ROOT_TASKFILE}}" scrapi:register-statement:hello O="/tmp/trapper-receipt-$i.cbor" 2>&1) || {
-              echo "Iteration $i: FAILED"
-              echo "$output" >&2
-              continue
-            }
+          pending=$count
+          for attempt in $(seq 1 {{.MAX_POLLS}}); do
+            if [ $pending -eq 0 ]; then
+              break
+            fi
 
-            end_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
-            latency_ms=$(( (end_ns - start_ns) / 1000000 ))
-            total_ms=$((total_ms + latency_ms))
+            for i in $(seq 1 "$count"); do
+              idx=$((i - 1))
+              # Skip if already got receipt or no status URL
+              if [ -n "${receipt_urls[$idx]}" ] || [ -z "${status_urls[$idx]}" ]; then
+                continue
+              fi
 
-            printf "Iteration %2d: %5d ms\n" "$i" "$latency_ms"
+              poll_headers=$(mktemp)
+              poll_body=$(mktemp)
+
+              poll_code=$(curl -sS -D "$poll_headers" -w "%{http_code}" -X GET "${status_urls[$idx]}" \
+                -H "Authorization: Bearer {{.API_KEY}}" \
+                --output "$poll_body" 2>/dev/null)
+
+              poll_location=$(grep -i '^location:' "$poll_headers" | awk '{print $2}' | tr -d '\r')
+              rm -f "$poll_headers" "$poll_body"
+
+              if echo "$poll_location" | grep -q '/receipt$'; then
+                receipt_urls[$idx]="$poll_location"
+                end_ns=$(python3 -c 'import time; print(int(time.time_ns()))')
+                latency_ms=$(( (end_ns - ${start_times[$idx]}) / 1000000 ))
+                printf "Statement %2d: %5d ms\n" "$i" "$latency_ms"
+                pending=$((pending - 1))
+              fi
+            done
+
+            if [ $pending -gt 0 ]; then
+              sleep 0.5
+            fi
           done
 
           echo "---"
-          avg_ms=$((total_ms / count))
-          echo "Average: ${avg_ms} ms over $count iterations"
+          if [ $pending -gt 0 ]; then
+            echo "WARNING: $pending statements did not receive receipts"
+          fi
+          echo "Completed $((count - pending)) of $count statements"
 
   post-entry:
     desc: Post a COSE Sign1 message with random UUID to the /entries endpoint
