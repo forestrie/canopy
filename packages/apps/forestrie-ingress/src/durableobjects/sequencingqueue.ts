@@ -17,6 +17,12 @@ import type {
 } from "@canopy/forestrie-ingress-types";
 import type { Env } from "../env.js";
 
+/** Maximum pending entries before backpressure kicks in */
+const MAX_PENDING = 100_000;
+
+/** Maximum size for extra fields in bytes */
+const MAX_EXTRA_SIZE = 32;
+
 /**
  * SequencingQueue Durable Object class.
  *
@@ -24,6 +30,12 @@ import type { Env } from "../env.js";
  */
 export class SequencingQueue extends DurableObject<Env> {
   private initialized = false;
+
+  /** In-memory count of pending entries (not yet acked) */
+  private pendingCount = 0;
+
+  /** Next sequence number to assign */
+  private nextSeq = 1;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -75,6 +87,39 @@ export class SequencingQueue extends DurableObject<Env> {
     `);
 
     this.initialized = true;
+
+    // Initialize in-memory state from SQLite
+    this.initializeFromStorage();
+  }
+
+  /**
+   * Initialize in-memory counters from SQLite state.
+   * Called once after schema creation.
+   */
+  private initializeFromStorage(): void {
+    // Get pending count
+    const countResult = this.ctx.storage.sql
+      .exec<{ cnt: number }>("SELECT COUNT(*) as cnt FROM queue_entries")
+      .toArray();
+    this.pendingCount = countResult[0]?.cnt ?? 0;
+
+    // Get max seq for next assignment
+    const maxSeqResult = this.ctx.storage.sql
+      .exec<{ max_seq: number | null }>("SELECT MAX(seq) as max_seq FROM queue_entries")
+      .toArray();
+    const maxSeq = maxSeqResult[0]?.max_seq ?? 0;
+    this.nextSeq = (maxSeq ?? 0) + 1;
+  }
+
+  /**
+   * Validate that an ArrayBuffer is within the allowed size for extra fields.
+   */
+  private validateExtraSize(extra: ArrayBuffer | undefined, name: string): void {
+    if (extra && extra.byteLength > MAX_EXTRA_SIZE) {
+      throw new Error(
+        `${name} exceeds maximum size: ${extra.byteLength} > ${MAX_EXTRA_SIZE} bytes`,
+      );
+    }
   }
 
   /**
@@ -87,9 +132,41 @@ export class SequencingQueue extends DurableObject<Env> {
   ): Promise<{ seq: number }> {
     this.ensureSchema();
 
-    // Stub: return placeholder seq
-    // TODO: Implement in Phase 2
-    return { seq: 0 };
+    // Validate extra field sizes
+    if (extras) {
+      this.validateExtraSize(extras.extra0, "extra0");
+      this.validateExtraSize(extras.extra1, "extra1");
+      this.validateExtraSize(extras.extra2, "extra2");
+      this.validateExtraSize(extras.extra3, "extra3");
+    }
+
+    // Check backpressure
+    if (this.pendingCount >= MAX_PENDING) {
+      throw new Error(
+        `Queue full: pending count ${this.pendingCount} >= ${MAX_PENDING}`,
+      );
+    }
+
+    const seq = this.nextSeq++;
+    const now = Date.now();
+
+    this.ctx.storage.sql.exec(
+      `INSERT INTO queue_entries
+       (seq, log_id, content_hash, extra0, extra1, extra2, extra3, visible_after, enqueued_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`,
+      seq,
+      logId,
+      contentHash,
+      extras?.extra0 ?? null,
+      extras?.extra1 ?? null,
+      extras?.extra2 ?? null,
+      extras?.extra3 ?? null,
+      now,
+    );
+
+    this.pendingCount++;
+
+    return { seq };
   }
 
   /**
@@ -117,9 +194,18 @@ export class SequencingQueue extends DurableObject<Env> {
   ): Promise<{ deleted: number }> {
     this.ensureSchema();
 
-    // Stub: return zero deleted
-    // TODO: Implement in Phase 2
-    return { deleted: 0 };
+    const result = this.ctx.storage.sql.exec(
+      `DELETE FROM queue_entries
+       WHERE log_id = ? AND seq >= ? AND seq <= ?`,
+      logId,
+      fromSeq,
+      toSeq,
+    );
+
+    const deleted = result.rowsWritten;
+    this.pendingCount = Math.max(0, this.pendingCount - deleted);
+
+    return { deleted };
   }
 
   /**
@@ -128,13 +214,30 @@ export class SequencingQueue extends DurableObject<Env> {
   async stats(): Promise<QueueStats> {
     this.ensureSchema();
 
-    // Stub: return empty stats
-    // TODO: Implement in Phase 2
+    // Count dead letters
+    const dlResult = this.ctx.storage.sql
+      .exec<{ cnt: number }>("SELECT COUNT(*) as cnt FROM dead_letters")
+      .toArray();
+    const deadLetters = dlResult[0]?.cnt ?? 0;
+
+    // Get oldest entry age
+    const oldestResult = this.ctx.storage.sql
+      .exec<{ oldest: number | null }>(
+        "SELECT MIN(enqueued_at) as oldest FROM queue_entries",
+      )
+      .toArray();
+    const oldestEnqueuedAt = oldestResult[0]?.oldest;
+    const oldestEntryAgeMs =
+      oldestEnqueuedAt !== null ? Date.now() - oldestEnqueuedAt : null;
+
+    // Active pollers will be tracked in Phase 3
+    const activePollers = 0;
+
     return {
-      pending: 0,
-      deadLetters: 0,
-      oldestEntryAgeMs: null,
-      activePollers: 0,
+      pending: this.pendingCount,
+      deadLetters,
+      oldestEntryAgeMs,
+      activePollers,
     };
   }
 
