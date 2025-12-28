@@ -7,7 +7,7 @@
  */
 
 import type { Env } from "./env.js";
-import { handlePull, handleAck, handleStats } from "./handlers.js";
+import { handlePull, handleAck, handleStats } from "./handlers/index.js";
 
 // Export Durable Objects for Cloudflare runtime
 export { SequencingQueue } from "./durableobjects/index.js";

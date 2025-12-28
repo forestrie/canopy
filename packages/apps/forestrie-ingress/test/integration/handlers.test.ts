@@ -1,188 +1,47 @@
-import { env } from "cloudflare:test";
+/**
+ * Worker-level and DO integration tests.
+ * HTTP handler tests are in handlers/ directory.
+ */
+
 import { describe, expect, it } from "vitest";
-import { decode } from "cbor-x";
 import worker from "../../src/index";
-import type { Env } from "../../src/env";
-import type { QueueStats, ProblemDetails } from "@canopy/forestrie-ingress-types";
+import { testEnv, getStub, createRequest } from "./handlers/fixture";
 
-// Cast env to our Env type (it's provided by the test pool from wrangler.jsonc)
-const testEnv = env as unknown as Env;
-
-describe("forestrie-ingress worker handlers", () => {
+describe("forestrie-ingress worker", () => {
   it("health endpoint returns 200", async () => {
-    const request = new Request("http://localhost/_forestrie-ingress/health", {
-      method: "GET",
-    });
+    const request = createRequest("/_forestrie-ingress/health");
 
-    const response = await worker.fetch(request, testEnv, {} as ExecutionContext);
+    const response = await worker.fetch(
+      request,
+      testEnv,
+      {} as ExecutionContext,
+    );
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as { status: string; canopyId: string };
+    const body = (await response.json()) as {
+      status: string;
+      canopyId: string;
+    };
     expect(body.status).toBe("ok");
     expect(body.canopyId).toBe(testEnv.CANOPY_ID);
   });
 
   it("default response for unknown paths", async () => {
-    const request = new Request("http://localhost/unknown", {
-      method: "GET",
-    });
+    const request = createRequest("/unknown");
 
-    const response = await worker.fetch(request, testEnv, {} as ExecutionContext);
+    const response = await worker.fetch(
+      request,
+      testEnv,
+      {} as ExecutionContext,
+    );
 
     expect(response.status).toBe(200);
     const body = await response.text();
     expect(body).toBe("forestrie-ingress worker");
   });
-
-  // Phase 4: HTTP endpoint tests
-  describe("/queue/stats", () => {
-    it("GET returns JSON stats", async () => {
-      const request = new Request("http://localhost/queue/stats", {
-        method: "GET",
-      });
-
-      const response = await worker.fetch(request, testEnv, {} as ExecutionContext);
-
-      expect(response.status).toBe(200);
-      expect(response.headers.get("Content-Type")).toContain("application/json");
-
-      const stats = (await response.json()) as QueueStats;
-      expect(stats).toHaveProperty("pending");
-      expect(stats).toHaveProperty("deadLetters");
-      expect(stats).toHaveProperty("activePollers");
-      expect(stats).toHaveProperty("pollerLimitReached");
-    });
-  });
-
-  describe("/queue/pull", () => {
-    it("POST returns CBOR response", async () => {
-      const request = new Request("http://localhost/queue/pull", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pollerId: "http-test-poller",
-          batchSize: 100,
-          visibilityMs: 30000,
-        }),
-      });
-
-      const response = await worker.fetch(request, testEnv, {} as ExecutionContext);
-
-      expect(response.status).toBe(200);
-      expect(response.headers.get("Content-Type")).toBe("application/cbor");
-
-      // Decode CBOR response
-      const buffer = await response.arrayBuffer();
-      const decoded = decode(new Uint8Array(buffer)) as [number, number, unknown[]];
-
-      // Verify positional array format: [version, leaseExpiry, logGroups]
-      expect(decoded[0]).toBe(1); // version
-      expect(decoded[1]).toBeGreaterThan(Date.now()); // leaseExpiry
-      expect(Array.isArray(decoded[2])).toBe(true); // logGroups
-    });
-
-    it("returns 400 for missing pollerId", async () => {
-      const request = new Request("http://localhost/queue/pull", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          batchSize: 100,
-          visibilityMs: 30000,
-        }),
-      });
-
-      const response = await worker.fetch(request, testEnv, {} as ExecutionContext);
-
-      expect(response.status).toBe(400);
-      expect(response.headers.get("Content-Type")).toBe("application/problem+json");
-
-      const problem = (await response.json()) as ProblemDetails;
-      expect(problem.type).toContain("invalid-request");
-      expect(problem.detail).toContain("pollerId");
-    });
-  });
-
-  describe("/queue/ack", () => {
-    it("POST with base64 logId returns JSON response", async () => {
-      // First enqueue an entry via DO RPC
-      const stub = testEnv.SEQUENCING_QUEUE.get(
-        testEnv.SEQUENCING_QUEUE.idFromName("global")
-      );
-      const logId = new Uint8Array(16).fill(0xaa);
-      const contentHash = new Uint8Array(32).fill(0xbb);
-      const { seq } = await stub.enqueue(logId.buffer, contentHash.buffer);
-
-      // Ack via HTTP with base64-encoded logId
-      const logIdBase64 = btoa(String.fromCharCode(...logId));
-      const request = new Request("http://localhost/queue/ack", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          logId: logIdBase64,
-          fromSeq: seq,
-          toSeq: seq,
-        }),
-      });
-
-      const response = await worker.fetch(request, testEnv, {} as ExecutionContext);
-
-      expect(response.status).toBe(200);
-      expect(response.headers.get("Content-Type")).toContain("application/json");
-
-      const result = (await response.json()) as { deleted: number };
-      expect(result.deleted).toBe(1);
-    });
-
-    it("returns 400 for invalid fromSeq/toSeq", async () => {
-      const logIdBase64 = btoa(String.fromCharCode(...new Uint8Array(16).fill(0xcc)));
-      const request = new Request("http://localhost/queue/ack", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          logId: logIdBase64,
-          fromSeq: 10,
-          toSeq: 5, // Invalid: toSeq < fromSeq
-        }),
-      });
-
-      const response = await worker.fetch(request, testEnv, {} as ExecutionContext);
-
-      expect(response.status).toBe(400);
-      expect(response.headers.get("Content-Type")).toBe("application/problem+json");
-
-      const problem = (await response.json()) as ProblemDetails;
-      expect(problem.type).toContain("invalid-request");
-    });
-  });
-
-  describe("method not allowed", () => {
-    it("GET /queue/pull returns 405", async () => {
-      const request = new Request("http://localhost/queue/pull", {
-        method: "GET",
-      });
-
-      const response = await worker.fetch(request, testEnv, {} as ExecutionContext);
-      expect(response.status).toBe(405);
-    });
-
-    it("POST /queue/stats returns 405", async () => {
-      const request = new Request("http://localhost/queue/stats", {
-        method: "POST",
-        body: "{}",
-      });
-
-      const response = await worker.fetch(request, testEnv, {} as ExecutionContext);
-      expect(response.status).toBe(405);
-    });
-  });
 });
 
 describe("forestrie-ingress DO integration", () => {
-  function getStub(name: string) {
-    return testEnv.SEQUENCING_QUEUE.get(
-      testEnv.SEQUENCING_QUEUE.idFromName(name)
-    );
-  }
 
   it("enqueue → stats → ack round-trip", async () => {
     const stub = getStub("integration-roundtrip-test");
