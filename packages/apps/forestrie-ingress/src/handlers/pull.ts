@@ -1,5 +1,8 @@
 /**
  * Handler for POST /queue/pull
+ *
+ * Request: CBOR { pollerId, batchSize, visibilityMs }
+ * Response: CBOR PullResponse
  */
 
 import type { Env } from "../env.js";
@@ -10,23 +13,16 @@ import {
   problemResponse,
   internalError,
   getQueueStub,
-  parseRequestBody,
+  parseCborBody,
 } from "./handler.js";
 
-/**
- * Handle POST /queue/pull
- *
- * Request body (JSON or CBOR):
- * { pollerId: string, batchSize: number, visibilityMs: number }
- *
- * Response: CBOR-encoded PullResponse
- */
 export async function handlePull(
   request: Request,
   env: Env,
 ): Promise<Response> {
   try {
-    const body = await parseRequestBody<PullRequest>(request);
+    const body = await parseCborBody<PullRequest>(request);
+    if (body instanceof Response) return body;
 
     // Validate required fields
     if (!body.pollerId || typeof body.pollerId !== "string") {

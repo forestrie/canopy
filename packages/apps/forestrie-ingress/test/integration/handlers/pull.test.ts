@@ -2,17 +2,14 @@ import { describe, expect, it } from "vitest";
 import { decode } from "cbor-x";
 import worker from "../../../src/index";
 import type { ProblemDetails } from "@canopy/forestrie-ingress-types";
-import { testEnv, createRequest } from "./fixture";
+import { testEnv, createRequest, createCborRequest } from "./fixture";
 
 describe("/queue/pull", () => {
-  it("POST returns CBOR response", async () => {
-    const request = createRequest("/queue/pull", {
-      method: "POST",
-      body: {
-        pollerId: "http-test-poller",
-        batchSize: 100,
-        visibilityMs: 30000,
-      },
+  it("POST with CBOR returns CBOR response", async () => {
+    const request = createCborRequest("/queue/pull", "POST", {
+      pollerId: "http-test-poller",
+      batchSize: 100,
+      visibilityMs: 30000,
     });
 
     const response = await worker.fetch(
@@ -38,13 +35,36 @@ describe("/queue/pull", () => {
     expect(Array.isArray(decoded[2])).toBe(true); // logGroups
   });
 
-  it("returns 400 for missing pollerId", async () => {
+  it("returns 415 for JSON content type", async () => {
     const request = createRequest("/queue/pull", {
       method: "POST",
       body: {
+        pollerId: "test-poller",
         batchSize: 100,
         visibilityMs: 30000,
       },
+      contentType: "application/json",
+    });
+
+    const response = await worker.fetch(
+      request,
+      testEnv,
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(415);
+    expect(response.headers.get("Content-Type")).toBe(
+      "application/problem+json",
+    );
+
+    const problem = (await response.json()) as ProblemDetails;
+    expect(problem.detail).toContain("application/cbor");
+  });
+
+  it("returns 400 for missing pollerId", async () => {
+    const request = createCborRequest("/queue/pull", "POST", {
+      batchSize: 100,
+      visibilityMs: 30000,
     });
 
     const response = await worker.fetch(
@@ -54,7 +74,9 @@ describe("/queue/pull", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(response.headers.get("Content-Type")).toBe("application/problem+json");
+    expect(response.headers.get("Content-Type")).toBe(
+      "application/problem+json",
+    );
 
     const problem = (await response.json()) as ProblemDetails;
     expect(problem.type).toContain("invalid-request");
@@ -62,13 +84,10 @@ describe("/queue/pull", () => {
   });
 
   it("returns 400 for invalid batchSize", async () => {
-    const request = createRequest("/queue/pull", {
-      method: "POST",
-      body: {
-        pollerId: "test-poller",
-        batchSize: -1,
-        visibilityMs: 30000,
-      },
+    const request = createCborRequest("/queue/pull", "POST", {
+      pollerId: "test-poller",
+      batchSize: -1,
+      visibilityMs: 30000,
     });
 
     const response = await worker.fetch(

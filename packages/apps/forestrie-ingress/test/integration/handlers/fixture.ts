@@ -3,6 +3,7 @@
  */
 
 import { env } from "cloudflare:test";
+import { encode } from "cbor-x";
 import type { Env } from "../../../src/env";
 
 // Cast env to our Env type (it's provided by the test pool from wrangler.jsonc)
@@ -18,7 +19,7 @@ export function getStub(name: string) {
 }
 
 /**
- * Helper to create a test request.
+ * Helper to create a test request with JSON body.
  */
 export function createRequest(
   path: string,
@@ -28,7 +29,11 @@ export function createRequest(
     contentType?: string;
   },
 ): Request {
-  const { method = "GET", body, contentType = "application/json" } = options ?? {};
+  const {
+    method = "GET",
+    body,
+    contentType = "application/json",
+  } = options ?? {};
 
   const init: RequestInit = { method };
 
@@ -41,8 +46,17 @@ export function createRequest(
 }
 
 /**
- * Encode bytes as base64 string.
+ * Helper to create a CBOR request (for pull/ack endpoints).
  */
-export function toBase64(bytes: Uint8Array): string {
-  return btoa(String.fromCharCode(...bytes));
+export function createCborRequest(
+  path: string,
+  method: string,
+  body: unknown,
+): Request {
+  const encoded = encode(body);
+  return new Request(`http://localhost${path}`, {
+    method,
+    body: encoded,
+    headers: { "Content-Type": "application/cbor" },
+  });
 }

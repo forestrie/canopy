@@ -1,5 +1,8 @@
 /**
  * Common handler utilities for forestrie-ingress HTTP endpoints.
+ *
+ * Non-observability endpoints (pull, ack) use CBOR exclusively.
+ * Observability endpoints (stats) use JSON.
  */
 
 import { decode } from "cbor-x";
@@ -8,6 +11,8 @@ import {
   PROBLEM_TYPES,
   PROBLEM_CONTENT_TYPE,
 } from "@canopy/forestrie-ingress-types";
+
+const CBOR_CONTENT_TYPE = "application/cbor";
 
 /**
  * Create a Problem Details error response (RFC 9457).
@@ -54,16 +59,22 @@ export function getQueueStub(env: Env) {
 }
 
 /**
- * Parse request body as CBOR or JSON based on Content-Type.
+ * Parse CBOR request body, returning 415 if content type is not application/cbor.
  */
-export async function parseRequestBody<T>(request: Request): Promise<T> {
+export async function parseCborBody<T>(
+  request: Request,
+): Promise<T | Response> {
   const contentType = request.headers.get("Content-Type") ?? "";
 
-  if (contentType.includes("application/cbor")) {
-    const buffer = await request.arrayBuffer();
-    return decode(new Uint8Array(buffer)) as T;
+  if (!contentType.includes(CBOR_CONTENT_TYPE)) {
+    return problemResponse(
+      415,
+      PROBLEM_TYPES.INVALID_REQUEST,
+      "Unsupported Media Type",
+      "Content-Type must be application/cbor",
+    );
   }
 
-  // Default to JSON
-  return (await request.json()) as T;
+  const buffer = await request.arrayBuffer();
+  return decode(new Uint8Array(buffer)) as T;
 }

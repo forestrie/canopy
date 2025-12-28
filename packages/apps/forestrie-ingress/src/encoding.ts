@@ -61,3 +61,18 @@ export function decodePullResponse(data: ArrayBuffer): PullResponse {
 
   return { version, leaseExpiry, logGroups };
 }
+
+/**
+ * Encode an ack response to CBOR.
+ */
+export function encodeAckResponse(deleted: number): ArrayBuffer {
+  const encoded = encode({ deleted });
+  return new Uint8Array(encoded).buffer;
+}
+
+/**
+ * Decode a CBOR-encoded ack response.
+ */
+export function decodeAckResponse(data: ArrayBuffer): { deleted: number } {
+  return decode(new Uint8Array(data)) as { deleted: number };
+}

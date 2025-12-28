@@ -1,31 +1,28 @@
 /**
  * Handler for POST /queue/ack
+ *
+ * Request: CBOR { logId: ArrayBuffer, fromSeq: number, toSeq: number }
+ * Response: CBOR { deleted: number }
  */
 
 import type { Env } from "../env.js";
 import type { AckRequest } from "@canopy/forestrie-ingress-types";
 import { PROBLEM_TYPES } from "@canopy/forestrie-ingress-types";
+import { encodeAckResponse } from "../encoding.js";
 import {
   problemResponse,
   internalError,
   getQueueStub,
-  parseRequestBody,
+  parseCborBody,
 } from "./handler.js";
 
-/**
- * Handle POST /queue/ack
- *
- * Request body (JSON or CBOR):
- * { logId: ArrayBuffer (base64 in JSON), fromSeq: number, toSeq: number }
- *
- * Response: JSON { deleted: number }
- */
 export async function handleAck(
   request: Request,
   env: Env,
 ): Promise<Response> {
   try {
-    const body = await parseRequestBody<AckRequest>(request);
+    const body = await parseCborBody<AckRequest>(request);
+    if (body instanceof Response) return body;
 
     // Validate required fields
     if (!body.logId) {
@@ -53,40 +50,22 @@ export async function handleAck(
       );
     }
 
-    // Convert logId to ArrayBuffer if it came as base64 string (JSON case)
-    // The type is ArrayBuffer per interface, but JSON may send base64 string
-    const rawLogId = body.logId as ArrayBuffer | string | ArrayBufferView;
-    let logIdBuffer: ArrayBuffer;
-    if (typeof rawLogId === "string") {
-      // Base64 decode
-      const binary = atob(rawLogId);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-      }
-      logIdBuffer = bytes.buffer;
-    } else if (rawLogId instanceof ArrayBuffer) {
-      logIdBuffer = rawLogId;
-    } else if (ArrayBuffer.isView(rawLogId)) {
-      // Copy to new ArrayBuffer to handle both ArrayBuffer and SharedArrayBuffer
-      logIdBuffer = new Uint8Array(
-        rawLogId.buffer,
-        rawLogId.byteOffset,
-        rawLogId.byteLength,
-      ).slice().buffer;
-    } else {
-      return problemResponse(
-        400,
-        PROBLEM_TYPES.INVALID_REQUEST,
-        "Invalid request",
-        "logId must be base64 string or ArrayBuffer",
-      );
-    }
+    // CBOR gives us ArrayBuffer directly (or Uint8Array which we convert)
+    const logIdBuffer = body.logId instanceof ArrayBuffer
+      ? body.logId
+      : new Uint8Array(
+          (body.logId as Uint8Array).buffer,
+          (body.logId as Uint8Array).byteOffset,
+          (body.logId as Uint8Array).byteLength,
+        ).slice().buffer;
 
     const stub = getQueueStub(env);
     const result = await stub.ackRange(logIdBuffer, body.fromSeq, body.toSeq);
 
-    return Response.json(result);
+    return new Response(encodeAckResponse(result.deleted), {
+      status: 200,
+      headers: { "Content-Type": "application/cbor" },
+    });
   } catch (error) {
     return internalError(error);
   }
