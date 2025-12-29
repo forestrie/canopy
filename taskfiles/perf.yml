@@ -1,0 +1,137 @@
+---
+# k6 performance testing tasks for canopy-api
+#
+# Provides sustained load testing using constant-arrival-rate executor.
+# Complements the burst-oriented smoke tests in scrapi.yml.
+#
+# Note: We use CANOPY_PERF_ prefix (not K6_) for environment variables to
+# avoid conflicts with k6's built-in environment variable handling.
+
+version: "3"
+
+vars:
+  K6_DIR: "{{.ROOT_DIR}}/perf/k6/canopy-api"
+  # Required vars (must be set via env or CLI)
+  CANOPY_PERF_BASE_URL: '{{.CANOPY_PERF_BASE_URL | default ""}}'
+  CANOPY_PERF_API_TOKEN: '{{.CANOPY_PERF_API_TOKEN | default "test-api-key"}}'
+  CANOPY_PERF_LOG_ID: '{{.CANOPY_PERF_LOG_ID | default ""}}'
+  # Optional vars with defaults
+  CANOPY_PERF_RATE: '{{.CANOPY_PERF_RATE | default "10"}}'
+  CANOPY_PERF_DURATION: '{{.CANOPY_PERF_DURATION | default "3m"}}'
+  CANOPY_PERF_WARMUP: '{{.CANOPY_PERF_WARMUP | default "30s"}}'
+  CANOPY_PERF_MSG_BYTES: '{{.CANOPY_PERF_MSG_BYTES | default "64"}}'
+  CANOPY_PERF_SAMPLE_RATE: '{{.CANOPY_PERF_SAMPLE_RATE | default "0.01"}}'
+
+tasks:
+  check:
+    desc: Check k6 is installed
+    silent: true
+    cmds:
+      - |
+        if ! command -v k6 &> /dev/null; then
+          echo "k6 not found. Install from https://k6.io/docs/get-started/installation/" >&2
+          exit 1
+        fi
+        k6 version
+
+  # ---------------------------------------------------------------------------
+  # write:rate - Main sustained write test at configurable rate
+  # ---------------------------------------------------------------------------
+  write:rate:
+    desc: "Run k6 write test at specified rate (CANOPY_PERF_RATE, default 10)"
+    deps: [check]
+    env:
+      CANOPY_PERF_BASE_URL: "{{.CANOPY_PERF_BASE_URL}}"
+      CANOPY_PERF_API_TOKEN: "{{.CANOPY_PERF_API_TOKEN}}"
+      CANOPY_PERF_LOG_ID: "{{.CANOPY_PERF_LOG_ID}}"
+      CANOPY_PERF_RATE: "{{.CANOPY_PERF_RATE}}"
+      CANOPY_PERF_DURATION: "{{.CANOPY_PERF_DURATION}}"
+      CANOPY_PERF_WARMUP: "{{.CANOPY_PERF_WARMUP}}"
+      CANOPY_PERF_MSG_BYTES: "{{.CANOPY_PERF_MSG_BYTES}}"
+      CANOPY_PERF_SAMPLE_RATE: "{{.CANOPY_PERF_SAMPLE_RATE}}"
+    cmds:
+      - |
+        if [ -z "$CANOPY_PERF_BASE_URL" ]; then
+          echo "CANOPY_PERF_BASE_URL is required" >&2
+          exit 1
+        fi
+        if [ -z "$CANOPY_PERF_LOG_ID" ]; then
+          echo "CANOPY_PERF_LOG_ID is required" >&2
+          exit 1
+        fi
+        k6 run "{{.K6_DIR}}/scenarios/write-constant-arrival.js"
+
+  # ---------------------------------------------------------------------------
+  # Convenience targets for specific rates
+  # ---------------------------------------------------------------------------
+  write:10:
+    desc: "Sustained write test at 10 req/s"
+    cmds:
+      - task: write:rate
+        vars:
+          CANOPY_PERF_RATE: "10"
+
+  write:100:
+    desc: "Sustained write test at 100 req/s"
+    cmds:
+      - task: write:rate
+        vars:
+          CANOPY_PERF_RATE: "100"
+
+  write:150:
+    desc: "Sustained write test at 150 req/s"
+    cmds:
+      - task: write:rate
+        vars:
+          CANOPY_PERF_RATE: "150"
+
+  write:300:
+    desc: "Sustained write test at 300 req/s"
+    cmds:
+      - task: write:rate
+        vars:
+          CANOPY_PERF_RATE: "300"
+
+  # ---------------------------------------------------------------------------
+  # Quick smoke test - low rate, short duration
+  # ---------------------------------------------------------------------------
+  write:smoke:
+    desc: "Quick smoke test: 5 req/s for 30s"
+    deps: [check]
+    env:
+      CANOPY_PERF_BASE_URL: "{{.CANOPY_PERF_BASE_URL}}"
+      CANOPY_PERF_API_TOKEN: "{{.CANOPY_PERF_API_TOKEN}}"
+      CANOPY_PERF_LOG_ID: "{{.CANOPY_PERF_LOG_ID}}"
+      CANOPY_PERF_RATE: "5"
+      CANOPY_PERF_DURATION: "30s"
+      CANOPY_PERF_WARMUP: "5s"
+      CANOPY_PERF_MSG_BYTES: "{{.CANOPY_PERF_MSG_BYTES}}"
+      CANOPY_PERF_SAMPLE_RATE: "0"
+    cmds:
+      - |
+        if [ -z "$CANOPY_PERF_BASE_URL" ]; then
+          echo "CANOPY_PERF_BASE_URL is required" >&2
+          exit 1
+        fi
+        if [ -z "$CANOPY_PERF_LOG_ID" ]; then
+          echo "CANOPY_PERF_LOG_ID is required" >&2
+          exit 1
+        fi
+        k6 run "{{.K6_DIR}}/scenarios/write-constant-arrival.js"
+
+  # ---------------------------------------------------------------------------
+  # Local development targets (uses wrangler dev URL)
+  # ---------------------------------------------------------------------------
+  write:local:smoke:
+    desc: "Quick smoke test against local wrangler dev (port 8787)"
+    env:
+      CANOPY_PERF_BASE_URL: "http://localhost:8787"
+      CANOPY_PERF_API_TOKEN: "test-api-key"
+      CANOPY_PERF_LOG_ID: "test-log-id"
+      CANOPY_PERF_RATE: "5"
+      CANOPY_PERF_DURATION: "30s"
+      CANOPY_PERF_WARMUP: "5s"
+      CANOPY_PERF_SAMPLE_RATE: "0"
+    cmds:
+      - task: check
+      - k6 run "{{.K6_DIR}}/scenarios/write-constant-arrival.js"

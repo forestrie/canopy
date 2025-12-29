@@ -1,0 +1,205 @@
+name: Performance Tests
+
+on:
+  # Run after successful deploy-workers completion
+  workflow_run:
+    workflows: ["Deploy Workers"]
+    types:
+      - completed
+    branches: [main]
+  # Allow manual trigger with rate selection
+  workflow_dispatch:
+    inputs:
+      rate:
+        description: "Request rate (req/s)"
+        required: false
+        default: "10"
+        type: choice
+        options:
+          - "10"
+          - "100"
+          - "150"
+          - "300"
+      duration:
+        description: "Test duration"
+        required: false
+        default: "3m"
+        type: string
+      warmup:
+        description: "Warmup duration"
+        required: false
+        default: "30s"
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CANOPY_PERF_BASE_URL: https://canopy-api.robinbryce.workers.dev
+  CANOPY_PERF_LOG_ID: 3062ea57-c184-41d8-bd61-296b02c680d8
+
+jobs:
+  perf-test:
+    name: k6 Performance Test (${{ matrix.rate }} req/s)
+    runs-on: ubuntu-latest
+    # Only run if deploy-workers succeeded (for workflow_run trigger)
+    # Always run for workflow_dispatch
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        rate:
+          - ${{ github.event.inputs.rate || '10' }}
+
+    env:
+      CANOPY_PERF_API_TOKEN: ${{ secrets.CANOPY_PERF_API_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Run k6 performance test
+        id: k6
+        env:
+          CANOPY_PERF_RATE: ${{ matrix.rate }}
+          CANOPY_PERF_DURATION: ${{ github.event.inputs.duration || '3m' }}
+          CANOPY_PERF_WARMUP: ${{ github.event.inputs.warmup || '30s' }}
+          CANOPY_PERF_SAMPLE_RATE: "0"
+        run: |
+          echo "Running k6 performance test"
+          echo "  Rate: ${CANOPY_PERF_RATE} req/s"
+          echo "  Duration: ${CANOPY_PERF_DURATION}"
+          echo "  Warmup: ${CANOPY_PERF_WARMUP}"
+          echo "  Target: ${CANOPY_PERF_BASE_URL}/logs/${CANOPY_PERF_LOG_ID}/entries"
+          k6 run --no-usage-report perf/k6/canopy-api/scenarios/write-constant-arrival.js
+
+      - name: Generate job summary
+        if: always()
+        run: |
+          if [ -f summary.json ]; then
+            echo "## 📊 k6 Performance Test Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Extract config
+            BASE_URL=$(jq -r '.config.baseUrl' summary.json)
+            LOG_ID=$(jq -r '.config.logId' summary.json)
+            RATE=$(jq -r '.config.rate' summary.json)
+            DURATION=$(jq -r '.config.duration' summary.json)
+            WARMUP=$(jq -r '.config.warmup' summary.json)
+
+            echo "### Configuration" >> $GITHUB_STEP_SUMMARY
+            echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Target URL | \`${BASE_URL}/logs/${LOG_ID}/entries\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Target Rate | ${RATE} req/s |" >> $GITHUB_STEP_SUMMARY
+            echo "| Duration | ${WARMUP} warmup + ${DURATION} sustained |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Extract metrics
+            HTTP_COUNT=$(jq -r '.metrics.http_reqs.count // "N/A"' summary.json)
+            HTTP_RATE=$(jq -r '.metrics.http_reqs.rate // "N/A"' summary.json)
+            ERRORS=$(jq -r '.metrics.post_errors.count // 0' summary.json)
+
+            echo "### Throughput" >> $GITHUB_STEP_SUMMARY
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Total Requests | ${HTTP_COUNT} |" >> $GITHUB_STEP_SUMMARY
+            if [ "$HTTP_RATE" != "N/A" ]; then
+              HTTP_RATE_FMT=$(printf "%.2f" "$HTTP_RATE")
+              echo "| Achieved Rate | ${HTTP_RATE_FMT} req/s |" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "| Errors | ${ERRORS} |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Extract latency
+            AVG=$(jq -r '.metrics.post_latency.avg // "N/A"' summary.json)
+            MED=$(jq -r '.metrics.post_latency.med // "N/A"' summary.json)
+            P90=$(jq -r '.metrics.post_latency.p90 // "N/A"' summary.json)
+            P95=$(jq -r '.metrics.post_latency.p95 // "N/A"' summary.json)
+            P99=$(jq -r '.metrics.post_latency.p99 // "N/A"' summary.json)
+            MAX=$(jq -r '.metrics.post_latency.max // "N/A"' summary.json)
+
+            echo "### POST Latency" >> $GITHUB_STEP_SUMMARY
+            echo "| Percentile | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|------------|-------|" >> $GITHUB_STEP_SUMMARY
+            if [ "$AVG" != "N/A" ]; then
+              AVG_FMT=$(printf "%.0f" "$AVG")
+              echo "| avg | ${AVG_FMT} ms |" >> $GITHUB_STEP_SUMMARY
+            fi
+            if [ "$MED" != "N/A" ]; then
+              MED_FMT=$(printf "%.0f" "$MED")
+              echo "| p50 (median) | ${MED_FMT} ms |" >> $GITHUB_STEP_SUMMARY
+            fi
+            if [ "$P90" != "N/A" ]; then
+              P90_FMT=$(printf "%.0f" "$P90")
+              echo "| p90 | ${P90_FMT} ms |" >> $GITHUB_STEP_SUMMARY
+            fi
+            if [ "$P95" != "N/A" ]; then
+              P95_FMT=$(printf "%.0f" "$P95")
+              echo "| p95 | ${P95_FMT} ms |" >> $GITHUB_STEP_SUMMARY
+            fi
+            if [ "$P99" != "N/A" ]; then
+              P99_FMT=$(printf "%.0f" "$P99")
+              echo "| p99 | ${P99_FMT} ms |" >> $GITHUB_STEP_SUMMARY
+            fi
+            if [ "$MAX" != "N/A" ]; then
+              MAX_FMT=$(printf "%.0f" "$MAX")
+              echo "| max | ${MAX_FMT} ms |" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Thresholds
+            echo "### Thresholds" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Check each threshold
+            POST_LATENCY_OK=$(jq -r '.thresholds.post_latency["p(99)<5000"] // false' summary.json)
+            HTTP_DURATION_P95_OK=$(jq -r '.thresholds.http_req_duration["p(95)<3000"] // false' summary.json)
+            HTTP_DURATION_P99_OK=$(jq -r '.thresholds.http_req_duration["p(99)<5000"] // false' summary.json)
+            HTTP_FAILED_OK=$(jq -r '.thresholds.http_req_failed["rate<0.01"] // false' summary.json)
+
+            if [ "$POST_LATENCY_OK" = "true" ]; then
+              echo "- ✅ POST latency p99 < 5000ms" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- ❌ POST latency p99 < 5000ms" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            if [ "$HTTP_DURATION_P95_OK" = "true" ]; then
+              echo "- ✅ HTTP duration p95 < 3000ms" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- ❌ HTTP duration p95 < 3000ms" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            if [ "$HTTP_DURATION_P99_OK" = "true" ]; then
+              echo "- ✅ HTTP duration p99 < 5000ms" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- ❌ HTTP duration p99 < 5000ms" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            if [ "$HTTP_FAILED_OK" = "true" ]; then
+              echo "- ✅ HTTP failure rate < 1%" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- ❌ HTTP failure rate < 1%" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "_Generated at $(jq -r '.timestamp' summary.json)_" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ⚠️ Performance Test" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "No summary.json file found. Test may have failed before completion." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload summary artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-summary-${{ matrix.rate }}rps
+          path: summary.json
+          retention-days: 30
+          if-no-files-found: ignore
