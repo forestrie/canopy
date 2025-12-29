@@ -71,12 +71,33 @@ tasks:
         vars:
           CANOPY_PERF_RATE: "10"
 
+  write:25:
+    desc: "Sustained write test at 25 req/s"
+    cmds:
+      - task: write:rate
+        vars:
+          CANOPY_PERF_RATE: "25"
+
+  write:50:
+    desc: "Sustained write test at 50 req/s"
+    cmds:
+      - task: write:rate
+        vars:
+          CANOPY_PERF_RATE: "50"
+
   write:100:
     desc: "Sustained write test at 100 req/s"
     cmds:
       - task: write:rate
         vars:
           CANOPY_PERF_RATE: "100"
+
+  write:110:
+    desc: "Sustained write test at 110 req/s"
+    cmds:
+      - task: write:rate
+        vars:
+          CANOPY_PERF_RATE: "110"
 
   write:150:
     desc: "Sustained write test at 150 req/s"

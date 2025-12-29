@@ -17,7 +17,10 @@ on:
         type: choice
         options:
           - "10"
+          - "25"
+          - "50"
           - "100"
+          - "110"
           - "150"
           - "300"
       duration:
