@@ -23,13 +23,16 @@
  *   k6 run scenarios/write-constant-arrival.js
  */
 
-import { check, sleep } from "k6";
+import { check } from "k6";
 import { encodeCoseSign1, generateUniquePayload } from "../lib/cose.js";
 import {
-  postEntry,
+  postAndMaybeWait,
   postLatency,
   postErrors,
-  e2eLatencySampled,
+  e2eLatency,
+  e2eSuccessCount,
+  e2eTimeoutCount,
+  pollCount,
 } from "../lib/http.js";
 
 // Read configuration from environment
@@ -136,13 +139,18 @@ export default function (data) {
   const payload = generateUniquePayload(data.msgBytes);
   const coseSign1 = encodeCoseSign1(payload);
 
-  // POST the statement
-  const result = postEntry(
+  // Decide if this request should measure e2e latency (sampled)
+  const measureE2E = data.sampleRate > 0 && Math.random() < data.sampleRate;
+
+  // POST the statement (and optionally wait for sequencing)
+  const result = postAndMaybeWait(
     data.baseUrl,
     data.logId,
     data.apiToken,
     coseSign1,
-    data.sampleRate
+    measureE2E,
+    60, // maxPolls
+    250 // pollIntervalMs
   );
 
   // Check the result
@@ -150,6 +158,12 @@ export default function (data) {
     "POST returned 303": (r) => r.statusCode === 303,
     "POST has status URL": (r) => r.statusUrl !== null,
   });
+
+  if (measureE2E) {
+    check(result, {
+      "e2e sequencing succeeded": (r) => r.e2eSuccess === true,
+    });
+  }
 
   if (!result.success) {
     console.error(`POST failed: ${result.error}`);
@@ -189,6 +203,47 @@ export function handleSummary(data) {
       p95: data.metrics.post_latency.values["p(95)"],
       p99: data.metrics.post_latency.values["p(99)"],
     };
+  }
+
+  // Get e2e sample counts first (Counter metrics have values.count)
+  const e2eSuccessCount = data.metrics.e2e_success_count
+    ? data.metrics.e2e_success_count.values.count
+    : 0;
+  const e2eTimeoutCount = data.metrics.e2e_timeout_count
+    ? data.metrics.e2e_timeout_count.values.count
+    : 0;
+
+  // Extract e2e_latency if available (sampled requests that completed)
+  // Note: k6 Trend metrics don't have count in values, use e2e_success_count
+  if (data.metrics.e2e_latency && e2eSuccessCount > 0) {
+    const e2eVals = data.metrics.e2e_latency.values;
+    summary.metrics.e2e_latency = {
+      count: e2eSuccessCount,
+      avg: e2eVals.avg,
+      min: e2eVals.min,
+      med: e2eVals.med,
+      max: e2eVals.max,
+      p90: e2eVals["p(90)"],
+      p95: e2eVals["p(95)"],
+      p99: e2eVals["p(99)"],
+    };
+  }
+
+  // Extract poll_count if available
+  if (data.metrics.poll_count && e2eSuccessCount > 0) {
+    const pollVals = data.metrics.poll_count.values;
+    summary.metrics.poll_count = {
+      avg: pollVals.avg,
+      max: pollVals.max,
+    };
+  }
+
+  // Store e2e success/timeout counts
+  if (e2eSuccessCount > 0) {
+    summary.metrics.e2e_success_count = e2eSuccessCount;
+  }
+  if (e2eTimeoutCount > 0) {
+    summary.metrics.e2e_timeout_count = e2eTimeoutCount;
   }
 
   // Extract http_reqs for throughput
@@ -247,15 +302,33 @@ function textSummary(data, options) {
 
   if (data.metrics.post_latency) {
     const pl = data.metrics.post_latency.values;
-    lines.push(`\nPOST latency:`);
+    lines.push(`\nPOST latency (time to 303):`);
     lines.push(`  avg: ${pl.avg.toFixed(0)}ms`);
     lines.push(`  p95: ${pl["p(95)"].toFixed(0)}ms`);
     lines.push(`  p99: ${pl["p(99)"].toFixed(0)}ms`);
     lines.push(`  max: ${pl.max.toFixed(0)}ms`);
   }
 
+  // Use e2e_success_count for sample count since Trend doesn't have count
+  const e2eSuccessCnt = data.metrics.e2e_success_count
+    ? data.metrics.e2e_success_count.values.count
+    : 0;
+  if (data.metrics.e2e_latency && e2eSuccessCnt > 0) {
+    const e2e = data.metrics.e2e_latency.values;
+    lines.push(`\nE2E latency (POST to sequenced, sampled):`);
+    lines.push(`  samples: ${e2eSuccessCnt}`);
+    lines.push(`  avg: ${e2e.avg.toFixed(0)}ms`);
+    lines.push(`  p95: ${e2e["p(95)"].toFixed(0)}ms`);
+    lines.push(`  p99: ${e2e["p(99)"].toFixed(0)}ms`);
+    lines.push(`  max: ${e2e.max.toFixed(0)}ms`);
+  }
+
   if (data.metrics.post_errors) {
     lines.push(`\nErrors: ${data.metrics.post_errors.values.count}`);
+  }
+
+  if (data.metrics.e2e_timeout_count && data.metrics.e2e_timeout_count.values.count > 0) {
+    lines.push(`E2E timeouts: ${data.metrics.e2e_timeout_count.values.count}`);
   }
 
   lines.push("\nThresholds:");

@@ -4,22 +4,21 @@
  * Provides:
  * - POST /entries with COSE Sign1 payload
  * - 303 redirect parsing
- * - Sampled polling for e2e latency measurement
+ * - Inline sampled polling for e2e latency measurement
  */
 
 import http from "k6/http";
+import { sleep } from "k6";
 import { Trend, Counter } from "k6/metrics";
 
 // Custom metrics
 export const postLatency = new Trend("post_latency", true);
-export const e2eLatencySampled = new Trend("e2e_latency_sampled", true);
+export const e2eLatency = new Trend("e2e_latency", true);
+export const pollCount = new Trend("poll_count", true);
 export const postErrors = new Counter("post_errors");
 export const pollErrors = new Counter("poll_errors");
-
-// Shared state for sampled polling (populated by writer, consumed by poller)
-// Note: In k6, this is per-VU, so we use a simple approach where each VU
-// tracks its own sampled requests.
-const sampledRequests = [];
+export const e2eSuccessCount = new Counter("e2e_success_count");
+export const e2eTimeoutCount = new Counter("e2e_timeout_count");
 
 /**
  * POST a COSE Sign1 statement to /entries.
@@ -28,10 +27,9 @@ const sampledRequests = [];
  * @param {string} logId - Log ID for the target log
  * @param {string} apiToken - Bearer token for Authorization
  * @param {Uint8Array} cosePayload - CBOR-encoded COSE Sign1 message
- * @param {number} [sampleRate=0] - Probability (0-1) of sampling for e2e polling
  * @returns {Object} - { success, statusCode, statusUrl, error, startTime }
  */
-export function postEntry(baseUrl, logId, apiToken, cosePayload, sampleRate = 0) {
+export function postEntry(baseUrl, logId, apiToken, cosePayload) {
   const url = `${baseUrl}/logs/${logId}/entries`;
   const startTime = Date.now();
 
@@ -50,11 +48,6 @@ export function postEntry(baseUrl, logId, apiToken, cosePayload, sampleRate = 0)
   if (response.status === 303) {
     const statusUrl = response.headers["Location"];
     if (statusUrl) {
-      // Sample for e2e polling?
-      if (sampleRate > 0 && Math.random() < sampleRate) {
-        sampledRequests.push({ statusUrl, startTime });
-      }
-
       return {
         success: true,
         statusCode: 303,
@@ -121,11 +114,9 @@ export function pollUntilSequenced(
       };
     }
 
-    // Sleep before next poll
-    // Note: k6's sleep is in seconds
+    // Sleep before next poll (k6's sleep is in seconds)
     if (i < maxPolls - 1) {
-      // eslint-disable-next-line no-undef
-      __ENV.K6_POLL_SLEEP && sleep(pollIntervalMs / 1000);
+      sleep(pollIntervalMs / 1000);
     }
   }
 
@@ -139,39 +130,61 @@ export function pollUntilSequenced(
 }
 
 /**
- * Process sampled requests for e2e latency measurement.
- * Call this periodically from the poller scenario.
+ * POST and optionally poll until sequenced (for sampled e2e latency).
  *
- * @param {string} apiToken - Bearer token for Authorization
- * @param {number} [maxPolls=60] - Maximum polls per request
- * @param {number} [pollIntervalMs=250] - Milliseconds between polls
- * @returns {number} - Number of requests processed
+ * @param {string} baseUrl - Base URL
+ * @param {string} logId - Log ID
+ * @param {string} apiToken - Bearer token
+ * @param {Uint8Array} cosePayload - CBOR-encoded COSE Sign1 message
+ * @param {boolean} [measureE2E=false] - Whether to poll until sequenced
+ * @param {number} [maxPolls=60] - Maximum poll attempts for e2e
+ * @param {number} [pollIntervalMs=250] - Poll interval for e2e
+ * @returns {Object} - { success, statusCode, statusUrl, e2eLatencyMs, polls, error }
  */
-export function processSampledRequests(
+export function postAndMaybeWait(
+  baseUrl,
+  logId,
   apiToken,
+  cosePayload,
+  measureE2E = false,
   maxPolls = 60,
   pollIntervalMs = 250
 ) {
-  let processed = 0;
+  const postResult = postEntry(baseUrl, logId, apiToken, cosePayload);
 
-  while (sampledRequests.length > 0) {
-    const req = sampledRequests.shift();
-    const result = pollUntilSequenced(
-      req.statusUrl,
-      apiToken,
-      maxPolls,
-      pollIntervalMs
-    );
-
-    if (result.success) {
-      const e2eLatency = Date.now() - req.startTime;
-      e2eLatencySampled.add(e2eLatency);
-    }
-
-    processed++;
+  if (!postResult.success || !measureE2E) {
+    return {
+      ...postResult,
+      e2eLatencyMs: null,
+      polls: 0,
+    };
   }
 
-  return processed;
+  // Poll until sequenced
+  const pollResult = pollUntilSequenced(
+    postResult.statusUrl,
+    apiToken,
+    maxPolls,
+    pollIntervalMs
+  );
+
+  const e2eLatencyMs = Date.now() - postResult.startTime;
+
+  if (pollResult.success) {
+    e2eLatency.add(e2eLatencyMs);
+    pollCount.add(pollResult.polls);
+    e2eSuccessCount.add(1);
+  } else {
+    e2eTimeoutCount.add(1);
+  }
+
+  return {
+    ...postResult,
+    e2eLatencyMs,
+    polls: pollResult.polls,
+    e2eSuccess: pollResult.success,
+    e2eError: pollResult.error,
+  };
 }
 
 /**

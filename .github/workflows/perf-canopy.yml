@@ -72,12 +72,13 @@ jobs:
           CANOPY_PERF_RATE: ${{ matrix.rate }}
           CANOPY_PERF_DURATION: ${{ github.event.inputs.duration || '3m' }}
           CANOPY_PERF_WARMUP: ${{ github.event.inputs.warmup || '30s' }}
-          CANOPY_PERF_SAMPLE_RATE: "0"
+          CANOPY_PERF_SAMPLE_RATE: "0.05"
         run: |
           echo "Running k6 performance test"
           echo "  Rate: ${CANOPY_PERF_RATE} req/s"
           echo "  Duration: ${CANOPY_PERF_DURATION}"
           echo "  Warmup: ${CANOPY_PERF_WARMUP}"
+          echo "  Sample rate: ${CANOPY_PERF_SAMPLE_RATE} (for e2e latency)"
           echo "  Target: ${CANOPY_PERF_BASE_URL}/logs/${CANOPY_PERF_LOG_ID}/entries"
           k6 run --no-usage-report perf/k6/canopy-api/scenarios/write-constant-arrival.js
 
@@ -127,7 +128,7 @@ jobs:
             P99=$(jq -r '.metrics.post_latency.p99 // "N/A"' summary.json)
             MAX=$(jq -r '.metrics.post_latency.max // "N/A"' summary.json)
 
-            echo "### POST Latency" >> $GITHUB_STEP_SUMMARY
+            echo "### POST Latency (time to 303)" >> $GITHUB_STEP_SUMMARY
             echo "| Percentile | Value |" >> $GITHUB_STEP_SUMMARY
             echo "|------------|-------|" >> $GITHUB_STEP_SUMMARY
             if [ "$AVG" != "N/A" ]; then
@@ -155,6 +156,45 @@ jobs:
               echo "| max | ${MAX_FMT} ms |" >> $GITHUB_STEP_SUMMARY
             fi
             echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Extract e2e latency (sampled)
+            E2E_COUNT=$(jq -r '.metrics.e2e_latency.count // 0' summary.json)
+            if [ "$E2E_COUNT" != "0" ] && [ "$E2E_COUNT" != "null" ]; then
+              E2E_AVG=$(jq -r '.metrics.e2e_latency.avg // "N/A"' summary.json)
+              E2E_MED=$(jq -r '.metrics.e2e_latency.med // "N/A"' summary.json)
+              E2E_P95=$(jq -r '.metrics.e2e_latency.p95 // "N/A"' summary.json)
+              E2E_P99=$(jq -r '.metrics.e2e_latency.p99 // "N/A"' summary.json)
+              E2E_MAX=$(jq -r '.metrics.e2e_latency.max // "N/A"' summary.json)
+              E2E_TIMEOUTS=$(jq -r '.metrics.e2e_timeout_count // 0' summary.json)
+
+              echo "### E2E Latency (POST to sequenced, ${E2E_COUNT} samples)" >> $GITHUB_STEP_SUMMARY
+              echo "| Percentile | Value |" >> $GITHUB_STEP_SUMMARY
+              echo "|------------|-------|" >> $GITHUB_STEP_SUMMARY
+              if [ "$E2E_AVG" != "N/A" ]; then
+                E2E_AVG_FMT=$(printf "%.0f" "$E2E_AVG")
+                echo "| avg | ${E2E_AVG_FMT} ms |" >> $GITHUB_STEP_SUMMARY
+              fi
+              if [ "$E2E_MED" != "N/A" ]; then
+                E2E_MED_FMT=$(printf "%.0f" "$E2E_MED")
+                echo "| p50 (median) | ${E2E_MED_FMT} ms |" >> $GITHUB_STEP_SUMMARY
+              fi
+              if [ "$E2E_P95" != "N/A" ]; then
+                E2E_P95_FMT=$(printf "%.0f" "$E2E_P95")
+                echo "| p95 | ${E2E_P95_FMT} ms |" >> $GITHUB_STEP_SUMMARY
+              fi
+              if [ "$E2E_P99" != "N/A" ]; then
+                E2E_P99_FMT=$(printf "%.0f" "$E2E_P99")
+                echo "| p99 | ${E2E_P99_FMT} ms |" >> $GITHUB_STEP_SUMMARY
+              fi
+              if [ "$E2E_MAX" != "N/A" ]; then
+                E2E_MAX_FMT=$(printf "%.0f" "$E2E_MAX")
+                echo "| max | ${E2E_MAX_FMT} ms |" >> $GITHUB_STEP_SUMMARY
+              fi
+              if [ "$E2E_TIMEOUTS" != "0" ] && [ "$E2E_TIMEOUTS" != "null" ]; then
+                echo "| ⚠️ timeouts | ${E2E_TIMEOUTS} |" >> $GITHUB_STEP_SUMMARY
+              fi
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
 
             # Thresholds
             echo "### Thresholds" >> $GITHUB_STEP_SUMMARY
