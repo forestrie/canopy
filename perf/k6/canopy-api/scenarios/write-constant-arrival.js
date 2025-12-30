@@ -8,7 +8,8 @@
  * Environment variables:
  *   CANOPY_PERF_BASE_URL   - Base URL of canopy-api (required)
  *   CANOPY_PERF_API_TOKEN  - Bearer token for Authorization (required)
- *   CANOPY_PERF_LOG_ID     - Target log ID (required)
+ *   CANOPY_PERF_LOG_IDS    - Comma-separated list of log IDs (required)
+ *   CANOPY_PERF_LOG_COUNT  - Number of logs to use (default: 1)
  *   CANOPY_PERF_RATE       - Requests per second (default: 10)
  *   CANOPY_PERF_DURATION   - Stage duration (default: 3m)
  *   CANOPY_PERF_WARMUP     - Warmup duration (default: 30s)
@@ -18,7 +19,7 @@
  * Example:
  *   CANOPY_PERF_BASE_URL=https://canopy-api.example.workers.dev \
  *   CANOPY_PERF_API_TOKEN=your-token \
- *   CANOPY_PERF_LOG_ID=your-log-id \
+ *   CANOPY_PERF_LOG_IDS=uuid1,uuid2,uuid3 \
  *   CANOPY_PERF_RATE=100 \
  *   k6 run scenarios/write-constant-arrival.js
  */
@@ -40,12 +41,16 @@ import {
 // environment variable handling which can override scenario configuration.
 const BASE_URL = __ENV.CANOPY_PERF_BASE_URL;
 const API_TOKEN = __ENV.CANOPY_PERF_API_TOKEN;
-const LOG_ID = __ENV.CANOPY_PERF_LOG_ID;
+const LOG_IDS_RAW = __ENV.CANOPY_PERF_LOG_IDS;
+const LOG_COUNT = parseInt(__ENV.CANOPY_PERF_LOG_COUNT || "1", 10);
 const RATE = parseInt(__ENV.CANOPY_PERF_RATE || "10", 10);
 const DURATION = __ENV.CANOPY_PERF_DURATION || "3m";
 const WARMUP = __ENV.CANOPY_PERF_WARMUP || "30s";
 const MSG_BYTES = parseInt(__ENV.CANOPY_PERF_MSG_BYTES || "64", 10);
 const SAMPLE_RATE = parseFloat(__ENV.CANOPY_PERF_SAMPLE_RATE || "0.01");
+
+// Parse log IDs from comma-separated string
+const LOG_IDS = LOG_IDS_RAW ? LOG_IDS_RAW.split(",") : [];
 
 // Validate required environment variables
 if (!BASE_URL) {
@@ -54,8 +59,8 @@ if (!BASE_URL) {
 if (!API_TOKEN) {
   throw new Error("CANOPY_PERF_API_TOKEN is required");
 }
-if (!LOG_ID) {
-  throw new Error("CANOPY_PERF_LOG_ID is required");
+if (LOG_IDS.length === 0) {
+  throw new Error("CANOPY_PERF_LOG_IDS is required (comma-separated list)");
 }
 
 // k6 options
@@ -115,10 +120,15 @@ function parseDuration(dur) {
 // Counter for unique payloads per VU
 let vuCounter = 0;
 
+// Request counter for round-robin log distribution
+let requestCounter = 0;
+
 // Setup function - runs once per VU at start
 export function setup() {
   console.log(`k6 write-constant-arrival starting`);
-  console.log(`  Target: ${BASE_URL}/logs/${LOG_ID}/entries`);
+  console.log(`  Target: ${BASE_URL}/logs/.../entries`);
+  console.log(`  Log count: ${LOG_IDS.length}`);
+  console.log(`  Log IDs: ${LOG_IDS.join(", ")}`);
   console.log(`  Rate: ${RATE} req/s`);
   console.log(`  Duration: ${WARMUP} warmup + ${DURATION} sustained`);
   console.log(`  Payload: ${MSG_BYTES} bytes`);
@@ -127,7 +137,8 @@ export function setup() {
   return {
     baseUrl: BASE_URL,
     apiToken: API_TOKEN,
-    logId: LOG_ID,
+    logIds: LOG_IDS,
+    logCount: LOG_IDS.length,
     msgBytes: MSG_BYTES,
     sampleRate: SAMPLE_RATE,
   };
@@ -139,13 +150,18 @@ export default function (data) {
   const payload = generateUniquePayload(data.msgBytes);
   const coseSign1 = encodeCoseSign1(payload);
 
+  // Round-robin distribute requests across log IDs
+  const logIndex = requestCounter % data.logCount;
+  const logId = data.logIds[logIndex];
+  requestCounter++;
+
   // Decide if this request should measure e2e latency (sampled)
   const measureE2E = data.sampleRate > 0 && Math.random() < data.sampleRate;
 
   // POST the statement (and optionally wait for sequencing)
   const result = postAndMaybeWait(
     data.baseUrl,
-    data.logId,
+    logId,
     data.apiToken,
     coseSign1,
     measureE2E,
@@ -182,7 +198,8 @@ export function handleSummary(data) {
     timestamp: new Date().toISOString(),
     config: {
       baseUrl: BASE_URL,
-      logId: LOG_ID,
+      logIds: LOG_IDS,
+      logCount: LOG_IDS.length,
       rate: RATE,
       duration: DURATION,
       warmup: WARMUP,
@@ -287,7 +304,8 @@ export function handleSummary(data) {
 function textSummary(data, options) {
   const lines = [];
   lines.push("\n=== k6 write-constant-arrival Summary ===\n");
-  lines.push(`Target: ${BASE_URL}/logs/${LOG_ID}/entries`);
+  lines.push(`Target: ${BASE_URL}/logs/.../entries`);
+  lines.push(`Log count: ${LOG_IDS.length}`);
   lines.push(`Rate: ${RATE} req/s, Duration: ${WARMUP} warmup + ${DURATION}`);
   lines.push("");
 
