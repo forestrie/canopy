@@ -40,6 +40,8 @@ permissions:
 env:
   CANOPY_PERF_BASE_URL: https://canopy-api.robinbryce.workers.dev
   CANOPY_PERF_LOG_ID: 3062ea57-c184-41d8-bd61-296b02c680d8
+  # forestrie-ingress URL for queue stats (same worker, different route)
+  FORESTRIE_INGRESS_URL: https://forestrie-ingress.robinbryce.workers.dev
 
 jobs:
   perf-test:
@@ -66,6 +68,18 @@ jobs:
       - name: Setup k6
         uses: grafana/setup-k6-action@v1
 
+      - name: Capture queue stats (before)
+        id: stats_before
+        run: |
+          echo "Fetching queue stats before test..."
+          STATS=$(curl -s -H "Authorization: Bearer $CANOPY_PERF_API_TOKEN" \
+            "${FORESTRIE_INGRESS_URL}/queue/stats")
+          echo "stats=$STATS" >> $GITHUB_OUTPUT
+          PENDING=$(echo "$STATS" | jq -r '.pending // 0')
+          echo "pending=$PENDING" >> $GITHUB_OUTPUT
+          echo "Queue pending before: $PENDING"
+          date +%s > /tmp/test_start_time
+
       - name: Run k6 performance test
         id: k6
         env:
@@ -82,8 +96,24 @@ jobs:
           echo "  Target: ${CANOPY_PERF_BASE_URL}/logs/${CANOPY_PERF_LOG_ID}/entries"
           k6 run --no-usage-report perf/k6/canopy-api/scenarios/write-constant-arrival.js
 
+      - name: Capture queue stats (after)
+        if: always()
+        id: stats_after
+        run: |
+          echo "Fetching queue stats after test..."
+          STATS=$(curl -s -H "Authorization: Bearer $CANOPY_PERF_API_TOKEN" \
+            "${FORESTRIE_INGRESS_URL}/queue/stats")
+          echo "stats=$STATS" >> $GITHUB_OUTPUT
+          PENDING=$(echo "$STATS" | jq -r '.pending // 0')
+          echo "pending=$PENDING" >> $GITHUB_OUTPUT
+          echo "Queue pending after: $PENDING"
+          date +%s > /tmp/test_end_time
+
       - name: Generate job summary
         if: always()
+        env:
+          PENDING_BEFORE: ${{ steps.stats_before.outputs.pending }}
+          PENDING_AFTER: ${{ steps.stats_after.outputs.pending }}
         run: |
           if [ -f summary.json ]; then
             echo "## 📊 k6 Performance Test Results" >> $GITHUB_STEP_SUMMARY
@@ -194,6 +224,52 @@ jobs:
                 echo "| ⚠️ timeouts | ${E2E_TIMEOUTS} |" >> $GITHUB_STEP_SUMMARY
               fi
               echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            # Sequencing throughput (calculated from queue stats)
+            if [ -f /tmp/test_start_time ] && [ -f /tmp/test_end_time ]; then
+              START_TIME=$(cat /tmp/test_start_time)
+              END_TIME=$(cat /tmp/test_end_time)
+              TEST_DURATION=$((END_TIME - START_TIME))
+
+              # Get pending counts from env (set by step outputs)
+              QUEUE_BEFORE=${PENDING_BEFORE:-0}
+              QUEUE_AFTER=${PENDING_AFTER:-0}
+
+              if [ "$TEST_DURATION" -gt 0 ] && [ "$HTTP_COUNT" != "N/A" ]; then
+                # Backlog growth = after - before
+                BACKLOG_GROWTH=$((QUEUE_AFTER - QUEUE_BEFORE))
+
+                # Sequenced = total requests - backlog growth
+                # (entries that went in and came out during the test)
+                HTTP_COUNT_INT=$(printf "%.0f" "$HTTP_COUNT")
+                SEQUENCED=$((HTTP_COUNT_INT - BACKLOG_GROWTH))
+
+                # Rates
+                SEQ_RATE=$(echo "scale=2; $SEQUENCED / $TEST_DURATION" | bc)
+                BACKLOG_RATE=$(echo "scale=2; $BACKLOG_GROWTH / $TEST_DURATION" | bc)
+
+                echo "### Sequencing Throughput (from queue stats)" >> $GITHUB_STEP_SUMMARY
+                echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+                echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+                echo "| Queue pending (before) | ${QUEUE_BEFORE} |" >> $GITHUB_STEP_SUMMARY
+                echo "| Queue pending (after) | ${QUEUE_AFTER} |" >> $GITHUB_STEP_SUMMARY
+                echo "| Backlog growth | ${BACKLOG_GROWTH} |" >> $GITHUB_STEP_SUMMARY
+                echo "| Test duration | ${TEST_DURATION}s |" >> $GITHUB_STEP_SUMMARY
+                echo "| **Sequencing rate** | **${SEQ_RATE} entries/s** |" >> $GITHUB_STEP_SUMMARY
+                echo "| Backlog growth rate | ${BACKLOG_RATE} entries/s |" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+
+                # Add interpretation
+                if [ "$BACKLOG_GROWTH" -gt 0 ]; then
+                  echo "> ⚠️ **Queue building backlog**: Ingress rate exceeds sequencing capacity" >> $GITHUB_STEP_SUMMARY
+                elif [ "$BACKLOG_GROWTH" -lt 0 ]; then
+                  echo "> ✅ **Queue draining**: Sequencing keeping up with ingress" >> $GITHUB_STEP_SUMMARY
+                else
+                  echo "> ✅ **Queue stable**: Sequencing matches ingress rate" >> $GITHUB_STEP_SUMMARY
+                fi
+                echo "" >> $GITHUB_STEP_SUMMARY
+              fi
             fi
 
             # Thresholds
