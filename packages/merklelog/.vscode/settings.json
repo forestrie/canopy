@@ -1,5 +1,5 @@
 {
-  // Vitest configuration for ranger-cache package
+  // Vitest configuration for merklelog package
   "vitest.enable": true,
   "vitest.workspaceConfig": "./vitest.config.ts",
   "vitest.commandLine": "pnpm exec vitest",

@@ -13,7 +13,7 @@ on:
       rate:
         description: "Request rate (req/s)"
         required: false
-        default: "10"
+        default: "300"
         type: choice
         options:
           - "10"
@@ -22,7 +22,11 @@ on:
           - "100"
           - "110"
           - "150"
+          - "250"
           - "300"
+          - "400"
+          - "800"
+          - "1000"
       duration:
         description: "Test duration"
         required: false

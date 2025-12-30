@@ -2,7 +2,7 @@ version: "3"
 
 tasks:
   deploy:*:
-    desc: Deploy a worker app to dev (e.g., task wrangler:deploy:ranger-cache)
+    desc: Deploy a worker app to dev (e.g., task wrangler:deploy:canopy-api)
     vars:
       APP: "{{index .MATCH 0}}"
     dir: "packages/apps/{{.APP}}"

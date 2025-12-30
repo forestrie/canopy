@@ -5,9 +5,8 @@
  * This endpoint resolves that transient id to a permanent identifier once
  * sequencing is complete, by consulting the SequencingQueue Durable Object.
  *
- * Phase 9 (Return Path Unification): Uses the SEQUENCING_QUEUE DO directly
- * instead of the old ranger-cache SEQUENCED_CONTENT DO. On cache hit, reads
- * the idtimestamp from the massif using an efficient byte-range request.
+ * On cache hit, reads the idtimestamp from the massif using an efficient
+ * byte-range request.
  *
  * See: arbor/docs/arc-cloudflare-do-ingress.md section 3.12
  */

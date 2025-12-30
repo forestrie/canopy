@@ -16,7 +16,6 @@
   "dependencies": {
     "@canopy/forestrie-ingress-types": "workspace:*",
     "@canopy/merklelog": "workspace:*",
-    "@canopy/ranger-sequence-types": "workspace:*",
     "cbor-x": "^1.5.9",
     "cose-js": "^0.9.0",
     "uuid": "^10.0.0"
