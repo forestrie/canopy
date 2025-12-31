@@ -26,7 +26,7 @@ const MAX_PENDING = 100_000;
 const MAX_EXTRA_SIZE = 32;
 
 /** Poller is considered inactive after this many ms without a pull */
-const POLLER_TIMEOUT_MS = 60_000;
+const POLLER_TIMEOUT_MS = 4000;
 
 /** Maximum delivery attempts before moving to dead letters */
 const MAX_ATTEMPTS = 5;
@@ -35,7 +35,7 @@ const MAX_ATTEMPTS = 5;
  * Maximum number of active pollers before rejecting new ones.
  * See: arbor/docs/adr-0007-cf-do-ingress-poller-limits.md
  */
-const MAX_POLLERS = 500;
+const MAX_POLLERS = 50;
 
 /** Poller state tracked in memory */
 interface PollerState {
