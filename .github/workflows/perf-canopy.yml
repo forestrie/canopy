@@ -133,8 +133,11 @@ jobs:
             "${FORESTRIE_INGRESS_URL}/queue/stats")
           echo "stats=$STATS" >> $GITHUB_OUTPUT
           PENDING=$(echo "$STATS" | jq -r '.pending // 0')
+          SHARD_COUNT=$(echo "$STATS" | jq -r '.shardCount // 1')
           echo "pending=$PENDING" >> $GITHUB_OUTPUT
-          echo "Queue pending before: $PENDING"
+          echo "shard_count=$SHARD_COUNT" >> $GITHUB_OUTPUT
+          echo "Queue pending before: $PENDING (across $SHARD_COUNT shards)"
+          echo "$STATS" | jq -c '.perShard[]? | {shard: .index, pending: .pending, pollers: .activePollers}' 2>/dev/null || true
           date +%s > /tmp/test_start_time
 
       - name: Run k6 performance test
@@ -168,6 +171,10 @@ jobs:
           PENDING=$(echo "$STATS" | jq -r '.pending // 0')
           echo "pending=$PENDING" >> $GITHUB_OUTPUT
           echo "Queue pending after: $PENDING"
+          # Save full stats for per-shard analysis
+          echo "$STATS" > /tmp/stats_after.json
+          echo "Per-shard breakdown:"
+          echo "$STATS" | jq -c '.perShard[]? | {shard: .index, pending: .pending, pollers: .activePollers}' 2>/dev/null || true
           date +%s > /tmp/test_end_time
 
       - name: Generate job summary
@@ -175,6 +182,7 @@ jobs:
         env:
           PENDING_BEFORE: ${{ steps.stats_before.outputs.pending }}
           PENDING_AFTER: ${{ steps.stats_after.outputs.pending }}
+          SHARD_COUNT: ${{ steps.stats_before.outputs.shard_count }}
         run: |
           if [ -f summary.json ]; then
             echo "## 📊 k6 Performance Test Results" >> $GITHUB_STEP_SUMMARY
@@ -193,6 +201,7 @@ jobs:
             echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
             echo "| Target URL | \`${BASE_URL}/logs/.../entries\` |" >> $GITHUB_STEP_SUMMARY
             echo "| Log count | ${LOG_COUNT} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Shard count | ${SHARD_COUNT:-1} |" >> $GITHUB_STEP_SUMMARY
             echo "| Target Rate | ${RATE} req/s |" >> $GITHUB_STEP_SUMMARY
             echo "| Duration | ${WARMUP} warmup + ${DURATION} sustained |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
@@ -331,6 +340,18 @@ jobs:
                 else
                   echo "> ✅ **Queue stable**: Sequencing matches ingress rate" >> $GITHUB_STEP_SUMMARY
                 fi
+                echo "" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+
+            # Per-shard breakdown (if stats file exists)
+            if [ -f /tmp/stats_after.json ]; then
+              SHARD_COUNT_VAL=$(jq -r '.shardCount // 0' /tmp/stats_after.json)
+              if [ "$SHARD_COUNT_VAL" -gt 1 ]; then
+                echo "### Per-Shard Queue Status (after test)" >> $GITHUB_STEP_SUMMARY
+                echo "| Shard | Pending | Active Pollers |" >> $GITHUB_STEP_SUMMARY
+                echo "|-------|---------|----------------|" >> $GITHUB_STEP_SUMMARY
+                jq -r '.perShard[]? | "| \(.index) | \(.pending) | \(.activePollers) |"' /tmp/stats_after.json >> $GITHUB_STEP_SUMMARY
                 echo "" >> $GITHUB_STEP_SUMMARY
               fi
             fi
