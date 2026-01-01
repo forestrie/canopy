@@ -59,3 +59,4 @@ infra/terraform/.terraform/
 *.cert
 .cache
 receipt.cbor
+summary.json
