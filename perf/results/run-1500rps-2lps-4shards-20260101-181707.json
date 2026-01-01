@@ -1,0 +1,70 @@
+{
+  "timestamp": "2026-01-01T18:16:47.729Z",
+  "config": {
+    "baseUrl": "https://canopy-api.robinbryce.workers.dev",
+    "logIds": [
+      "16bbd973-775d-456b-bfed-683637a5cc07",
+      "09d46728-932f-4951-8e70-2f85bc52c695",
+      "30750f16-d15c-42a3-b259-c7b5eb3b64c9",
+      "df3f10a2-386e-4128-8535-68cbd262e872",
+      "22439250-4ba2-4c7a-bfc6-2ddf3c9bac80",
+      "391a4f5c-9c9f-492f-9ba9-cc40ae1f1b33",
+      "bbac98ad-f694-4a1e-a490-bb2da62d80a6",
+      "ecea2cc9-ece9-436f-84f3-30547b20c731"
+    ],
+    "logCount": 8,
+    "rate": 1500,
+    "duration": "3m",
+    "warmup": "30s",
+    "msgBytes": 64,
+    "sampleRate": 0.05
+  },
+  "metrics": {
+    "post_latency": {
+      "avg": 90.60442972895159,
+      "min": 74,
+      "med": 87,
+      "max": 846,
+      "p90": 105,
+      "p95": 116,
+      "p99": 140
+    },
+    "e2e_latency": {
+      "count": 14628,
+      "avg": 1758.8694284933006,
+      "min": 913,
+      "med": 1681,
+      "max": 3628,
+      "p90": 2302,
+      "p95": 2366,
+      "p99": 2699.7299999999996
+    },
+    "poll_count": {
+      "avg": 5.299630844954881,
+      "max": 11
+    },
+    "e2e_success_count": 14628,
+    "http_reqs": {
+      "count": 369279,
+      "rate": 1741.3765043910958
+    },
+    "post_errors": {
+      "count": 0
+    }
+  },
+  "thresholds": {
+    "http_req_failed{operation:!poll_status}": {
+      "rate<0.01": true
+    },
+    "post_errors": {
+      "count<2700": true
+    },
+    "post_latency": {
+      "p(99)<5000": true
+    },
+    "http_req_duration{operation:!poll_status}": {
+      "p(95)<3000": true,
+      "p(99)<5000": true
+    }
+  }
+}
