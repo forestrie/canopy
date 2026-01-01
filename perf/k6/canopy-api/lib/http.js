@@ -39,6 +39,8 @@ export function postEntry(baseUrl, logId, apiToken, cosePayload) {
       Authorization: `Bearer ${apiToken}`,
     },
     redirects: 0, // Don't follow redirects, we want the 303
+    // Tag POST requests for metric filtering (distinct from poll_status)
+    tags: { operation: "post_entry" },
   });
 
   const latency = Date.now() - startTime;
@@ -90,6 +92,8 @@ export function pollUntilSequenced(
         Authorization: `Bearer ${apiToken}`,
       },
       redirects: 0,
+      // Tag polling requests so they can be excluded from http_req_failed threshold
+      tags: { operation: "poll_status" },
     });
 
     if (response.status === 303) {

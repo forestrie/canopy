@@ -95,10 +95,11 @@ export const options = {
     post_latency: ["p(99)<5000"],
     // Error rate should be under 1%
     post_errors: ["count<" + Math.ceil(RATE * parseDuration(DURATION) * 0.01)],
-    // HTTP request duration (built-in)
-    http_req_duration: ["p(95)<3000", "p(99)<5000"],
-    // HTTP failure rate
-    http_req_failed: ["rate<0.01"],
+    // HTTP request duration (built-in) - exclude poll_status from thresholds
+    // as e2e polling timeouts are expected at high load and don't indicate errors
+    "http_req_duration{operation:!poll_status}": ["p(95)<3000", "p(99)<5000"],
+    // HTTP failure rate (excluding e2e polling which times out by design at high load)
+    "http_req_failed{operation:!poll_status}": ["rate<0.01"],
   },
 
   // Summary output

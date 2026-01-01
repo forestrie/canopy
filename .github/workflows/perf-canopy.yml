@@ -37,17 +37,15 @@ on:
         required: false
         default: "30s"
         type: string
-      log_count:
-        description: "Number of distinct logs to distribute requests across"
+      logs_per_shard:
+        description: "Logs per shard (uses pre-balanced IDs: 1=4 logs, 2=8 logs, 3=12 logs)"
         required: false
         default: "1"
         type: choice
         options:
           - "1"
           - "2"
-          - "4"
-          - "8"
-          - "10"
+          - "3"
 
 permissions:
   contents: read
@@ -56,17 +54,40 @@ env:
   CANOPY_PERF_BASE_URL: https://canopy-api.robinbryce.workers.dev
   # forestrie-ingress URL for queue stats (same worker, different route)
   FORESTRIE_INGRESS_URL: https://forestrie-ingress.robinbryce.workers.dev
-  # Default log IDs (pre-generated UUIDs for reproducibility)
-  CANOPY_PERF_LOG_ID_0: 3062ea57-c184-41d8-bd61-296b02c680d8
-  CANOPY_PERF_LOG_ID_1: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
-  CANOPY_PERF_LOG_ID_2: b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e
-  CANOPY_PERF_LOG_ID_3: c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f
-  CANOPY_PERF_LOG_ID_4: d4e5f6a7-b8c9-4d0e-1f2a-3b4c5d6e7f8a
-  CANOPY_PERF_LOG_ID_5: e5f6a7b8-c9d0-4e1f-2a3b-4c5d6e7f8a9b
-  CANOPY_PERF_LOG_ID_6: f6a7b8c9-d0e1-4f2a-3b4c-5d6e7f8a9b0c
-  CANOPY_PERF_LOG_ID_7: a7b8c9d0-e1f2-4a3b-4c5d-6e7f8a9b0c1d
-  CANOPY_PERF_LOG_ID_8: b8c9d0e1-f2a3-4b4c-5d6e-7f8a9b0c1d2e
-  CANOPY_PERF_LOG_ID_9: c9d0e1f2-a3b4-4c5d-6e7f-8a9b0c1d2e3f
+
+  # Pre-generated shard-balanced log IDs (4 shards)
+  # Generated with: node perf/scripts/generate-shard-balanced-ids.js
+  # Each set guarantees even distribution: N logs per shard
+  
+  # 1 log per shard (4 total) - one log per shard for baseline testing
+  CANOPY_PERF_1LPS_0: a41e74a8-d3e7-40c4-9a91-88a00e6dfbe1  # shard 0
+  CANOPY_PERF_1LPS_1: 833009ad-326e-4b36-8750-a526625b0efa  # shard 1
+  CANOPY_PERF_1LPS_2: ed221de6-d049-48ba-8b40-54afdf179bd1  # shard 2
+  CANOPY_PERF_1LPS_3: 042d3937-1899-4ae7-bd87-7d9a2bb62460  # shard 3
+  
+  # 2 logs per shard (8 total) - tests log contention within shards
+  CANOPY_PERF_2LPS_0: 16bbd973-775d-456b-bfed-683637a5cc07  # shard 0
+  CANOPY_PERF_2LPS_1: 09d46728-932f-4951-8e70-2f85bc52c695  # shard 0
+  CANOPY_PERF_2LPS_2: 30750f16-d15c-42a3-b259-c7b5eb3b64c9  # shard 1
+  CANOPY_PERF_2LPS_3: df3f10a2-386e-4128-8535-68cbd262e872  # shard 1
+  CANOPY_PERF_2LPS_4: 22439250-4ba2-4c7a-bfc6-2ddf3c9bac80  # shard 2
+  CANOPY_PERF_2LPS_5: 391a4f5c-9c9f-492f-9ba9-cc40ae1f1b33  # shard 2
+  CANOPY_PERF_2LPS_6: bbac98ad-f694-4a1e-a490-bb2da62d80a6  # shard 3
+  CANOPY_PERF_2LPS_7: ecea2cc9-ece9-436f-84f3-30547b20c731  # shard 3
+  
+  # 3 logs per shard (12 total) - higher log contention
+  CANOPY_PERF_3LPS_0: 2b00b049-c50f-485f-bb91-098fc1e06887   # shard 0
+  CANOPY_PERF_3LPS_1: 06a301f8-e4da-43b2-aa15-be05eb361866   # shard 0
+  CANOPY_PERF_3LPS_2: 70fca669-1e1d-4f20-900b-344618b618c1   # shard 0
+  CANOPY_PERF_3LPS_3: 53cc26ab-fb23-476d-9854-c26d8ff97fea   # shard 1
+  CANOPY_PERF_3LPS_4: 390730ef-30e9-493a-985e-f7782039a3bf   # shard 1
+  CANOPY_PERF_3LPS_5: cc0c14f6-19e3-4417-8fc4-7c737caede33   # shard 1
+  CANOPY_PERF_3LPS_6: 0c1b4d67-69b5-4acb-9139-7c602c3af64c   # shard 2
+  CANOPY_PERF_3LPS_7: de786797-ca07-47cd-b482-bb5c85b4e223   # shard 2
+  CANOPY_PERF_3LPS_8: 22607c4e-7b8b-4896-8762-a6ed2fe7b21b   # shard 2
+  CANOPY_PERF_3LPS_9: 1e223026-2e97-47c7-a357-604d77da39b6   # shard 3
+  CANOPY_PERF_3LPS_10: 15852f52-237f-4900-8155-2a55589c2d11  # shard 3
+  CANOPY_PERF_3LPS_11: 355b19c8-3774-4e48-b63f-6fa80f905bd4  # shard 3
 
 jobs:
   perf-test:
@@ -93,53 +114,36 @@ jobs:
       - name: Setup k6
         uses: grafana/setup-k6-action@v1
 
-      - name: Build log ID list and compute shard distribution
+      - name: Build log ID list from balanced sets
         id: log_ids
         run: |
-          LOG_COUNT=${{ github.event.inputs.log_count || '1' }}
+          LOGS_PER_SHARD=${{ github.event.inputs.logs_per_shard || '1' }}
+          SHARD_COUNT=4  # Fixed for now
+          LOG_COUNT=$((LOGS_PER_SHARD * SHARD_COUNT))
+          
+          echo "logs_per_shard=$LOGS_PER_SHARD" >> $GITHUB_OUTPUT
           echo "log_count=$LOG_COUNT" >> $GITHUB_OUTPUT
 
-          # djb2 hash function (matches @canopy/forestrie-sharding)
-          djb2_hash() {
-            local str="$1"
-            local hash=5381
-            for (( i=0; i<${#str}; i++ )); do
-              char=$(printf '%d' "'${str:$i:1}")
-              # hash = ((hash << 5) + hash) + char = hash * 33 + char
-              hash=$(( ((hash << 5) + hash + char) & 0xFFFFFFFF ))
-            done
-            # Convert to unsigned 32-bit
-            echo $(( hash & 0x7FFFFFFF ))
-          }
-
-          # Build comma-separated list of log IDs from defaults
+          # Build comma-separated list of log IDs from pre-balanced sets
           LOG_IDS=""
-          declare -a SHARD_LOGS  # Array to track logs per shard
-          for i in $(seq 0 $((LOG_COUNT - 1))); do
-            case $i in
-              0) ID="$CANOPY_PERF_LOG_ID_0" ;;
-              1) ID="$CANOPY_PERF_LOG_ID_1" ;;
-              2) ID="$CANOPY_PERF_LOG_ID_2" ;;
-              3) ID="$CANOPY_PERF_LOG_ID_3" ;;
-              4) ID="$CANOPY_PERF_LOG_ID_4" ;;
-              5) ID="$CANOPY_PERF_LOG_ID_5" ;;
-              6) ID="$CANOPY_PERF_LOG_ID_6" ;;
-              7) ID="$CANOPY_PERF_LOG_ID_7" ;;
-              8) ID="$CANOPY_PERF_LOG_ID_8" ;;
-              9) ID="$CANOPY_PERF_LOG_ID_9" ;;
-            esac
-
-            if [ -z "$LOG_IDS" ]; then
-              LOG_IDS="$ID"
-            else
-              LOG_IDS="$LOG_IDS,$ID"
-            fi
-          done
+          case $LOGS_PER_SHARD in
+            1)
+              LOG_IDS="$CANOPY_PERF_1LPS_0,$CANOPY_PERF_1LPS_1,$CANOPY_PERF_1LPS_2,$CANOPY_PERF_1LPS_3"
+              ;;
+            2)
+              LOG_IDS="$CANOPY_PERF_2LPS_0,$CANOPY_PERF_2LPS_1,$CANOPY_PERF_2LPS_2,$CANOPY_PERF_2LPS_3"
+              LOG_IDS="$LOG_IDS,$CANOPY_PERF_2LPS_4,$CANOPY_PERF_2LPS_5,$CANOPY_PERF_2LPS_6,$CANOPY_PERF_2LPS_7"
+              ;;
+            3)
+              LOG_IDS="$CANOPY_PERF_3LPS_0,$CANOPY_PERF_3LPS_1,$CANOPY_PERF_3LPS_2,$CANOPY_PERF_3LPS_3"
+              LOG_IDS="$LOG_IDS,$CANOPY_PERF_3LPS_4,$CANOPY_PERF_3LPS_5,$CANOPY_PERF_3LPS_6,$CANOPY_PERF_3LPS_7"
+              LOG_IDS="$LOG_IDS,$CANOPY_PERF_3LPS_8,$CANOPY_PERF_3LPS_9,$CANOPY_PERF_3LPS_10,$CANOPY_PERF_3LPS_11"
+              ;;
+          esac
 
           echo "log_ids=$LOG_IDS" >> $GITHUB_OUTPUT
-          echo "Using $LOG_COUNT log(s): $LOG_IDS"
+          echo "Using $LOGS_PER_SHARD log(s) per shard ($LOG_COUNT total): $LOG_IDS"
 
-          # Compute shard distribution (will be updated after we know shard count)
           # Save log IDs to file for later processing
           echo "$LOG_IDS" > /tmp/log_ids.txt
 
@@ -259,12 +263,15 @@ jobs:
             DURATION=$(jq -r '.config.duration' summary.json)
             WARMUP=$(jq -r '.config.warmup' summary.json)
 
+            LOGS_PER_SHARD=${{ steps.log_ids.outputs.logs_per_shard }}
+            
             echo "### Configuration" >> $GITHUB_STEP_SUMMARY
             echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
             echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
             echo "| Target URL | \`${BASE_URL}/logs/.../entries\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Logs per shard | ${LOGS_PER_SHARD:-1} |" >> $GITHUB_STEP_SUMMARY
             echo "| Log count | ${LOG_COUNT} |" >> $GITHUB_STEP_SUMMARY
-            echo "| Shard count | ${SHARD_COUNT:-1} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Shard count | ${SHARD_COUNT:-4} |" >> $GITHUB_STEP_SUMMARY
             echo "| Target Rate | ${RATE} req/s |" >> $GITHUB_STEP_SUMMARY
             echo "| Duration | ${WARMUP} warmup + ${DURATION} sustained |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
@@ -365,42 +372,66 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
 
             # Extract e2e latency (sampled)
-            E2E_COUNT=$(jq -r '.metrics.e2e_latency.count // 0' summary.json)
-            if [ "$E2E_COUNT" != "0" ] && [ "$E2E_COUNT" != "null" ]; then
-              E2E_AVG=$(jq -r '.metrics.e2e_latency.avg // "N/A"' summary.json)
-              E2E_MED=$(jq -r '.metrics.e2e_latency.med // "N/A"' summary.json)
-              E2E_P95=$(jq -r '.metrics.e2e_latency.p95 // "N/A"' summary.json)
-              E2E_P99=$(jq -r '.metrics.e2e_latency.p99 // "N/A"' summary.json)
-              E2E_MAX=$(jq -r '.metrics.e2e_latency.max // "N/A"' summary.json)
-              E2E_TIMEOUTS=$(jq -r '.metrics.e2e_timeout_count // 0' summary.json)
-
-              echo "### E2E Latency (POST to sequenced, ${E2E_COUNT} samples)" >> $GITHUB_STEP_SUMMARY
-              echo "| Percentile | Value |" >> $GITHUB_STEP_SUMMARY
-              echo "|------------|-------|" >> $GITHUB_STEP_SUMMARY
-              if [ "$E2E_AVG" != "N/A" ]; then
-                E2E_AVG_FMT=$(printf "%.0f" "$E2E_AVG")
-                echo "| avg | ${E2E_AVG_FMT} ms |" >> $GITHUB_STEP_SUMMARY
+            E2E_SUCCESS=$(jq -r '.metrics.e2e_success_count // 0' summary.json)
+            E2E_TIMEOUTS=$(jq -r '.metrics.e2e_timeout_count // 0' summary.json)
+            E2E_TOTAL=$((E2E_SUCCESS + E2E_TIMEOUTS))
+            
+            if [ "$E2E_TOTAL" -gt 0 ]; then
+              # Calculate sample success rate
+              if [ "$E2E_SUCCESS" -gt 0 ]; then
+                E2E_SUCCESS_RATE=$(echo "scale=1; $E2E_SUCCESS * 100 / $E2E_TOTAL" | bc)
+              else
+                E2E_SUCCESS_RATE="0"
               fi
-              if [ "$E2E_MED" != "N/A" ]; then
-                E2E_MED_FMT=$(printf "%.0f" "$E2E_MED")
-                echo "| p50 (median) | ${E2E_MED_FMT} ms |" >> $GITHUB_STEP_SUMMARY
-              fi
-              if [ "$E2E_P95" != "N/A" ]; then
-                E2E_P95_FMT=$(printf "%.0f" "$E2E_P95")
-                echo "| p95 | ${E2E_P95_FMT} ms |" >> $GITHUB_STEP_SUMMARY
-              fi
-              if [ "$E2E_P99" != "N/A" ]; then
-                E2E_P99_FMT=$(printf "%.0f" "$E2E_P99")
-                echo "| p99 | ${E2E_P99_FMT} ms |" >> $GITHUB_STEP_SUMMARY
-              fi
-              if [ "$E2E_MAX" != "N/A" ]; then
-                E2E_MAX_FMT=$(printf "%.0f" "$E2E_MAX")
-                echo "| max | ${E2E_MAX_FMT} ms |" >> $GITHUB_STEP_SUMMARY
-              fi
-              if [ "$E2E_TIMEOUTS" != "0" ] && [ "$E2E_TIMEOUTS" != "null" ]; then
-                echo "| ⚠️ timeouts | ${E2E_TIMEOUTS} |" >> $GITHUB_STEP_SUMMARY
+              
+              echo "### E2E Latency (POST to sequenced)" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              
+              # Sample representativeness indicator
+              if [ "$E2E_SUCCESS" -gt 10 ] && [ "$E2E_SUCCESS_RATE" != "0" ]; then
+                if [ $(echo "$E2E_SUCCESS_RATE >= 50" | bc) -eq 1 ]; then
+                  echo "> ✅ **${E2E_SUCCESS}/${E2E_TOTAL} samples** completed (${E2E_SUCCESS_RATE}%) - data is representative" >> $GITHUB_STEP_SUMMARY
+                else
+                  echo "> ⚠️ **${E2E_SUCCESS}/${E2E_TOTAL} samples** completed (${E2E_SUCCESS_RATE}%) - many timeouts, data may be skewed" >> $GITHUB_STEP_SUMMARY
+                fi
+              elif [ "$E2E_SUCCESS" -gt 0 ]; then
+                echo "> ⚠️ **${E2E_SUCCESS}/${E2E_TOTAL} samples** completed (${E2E_SUCCESS_RATE}%) - limited sample size" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "> ❌ **0/${E2E_TOTAL} samples** completed - all timed out, no latency data" >> $GITHUB_STEP_SUMMARY
               fi
               echo "" >> $GITHUB_STEP_SUMMARY
+              
+              if [ "$E2E_SUCCESS" -gt 0 ]; then
+                E2E_AVG=$(jq -r '.metrics.e2e_latency.avg // "N/A"' summary.json)
+                E2E_MED=$(jq -r '.metrics.e2e_latency.med // "N/A"' summary.json)
+                E2E_P95=$(jq -r '.metrics.e2e_latency.p95 // "N/A"' summary.json)
+                E2E_P99=$(jq -r '.metrics.e2e_latency.p99 // "N/A"' summary.json)
+                E2E_MAX=$(jq -r '.metrics.e2e_latency.max // "N/A"' summary.json)
+
+                echo "| Percentile | Value |" >> $GITHUB_STEP_SUMMARY
+                echo "|------------|-------|" >> $GITHUB_STEP_SUMMARY
+                if [ "$E2E_AVG" != "N/A" ]; then
+                  E2E_AVG_FMT=$(printf "%.0f" "$E2E_AVG")
+                  echo "| avg | ${E2E_AVG_FMT} ms |" >> $GITHUB_STEP_SUMMARY
+                fi
+                if [ "$E2E_MED" != "N/A" ]; then
+                  E2E_MED_FMT=$(printf "%.0f" "$E2E_MED")
+                  echo "| p50 (median) | ${E2E_MED_FMT} ms |" >> $GITHUB_STEP_SUMMARY
+                fi
+                if [ "$E2E_P95" != "N/A" ]; then
+                  E2E_P95_FMT=$(printf "%.0f" "$E2E_P95")
+                  echo "| p95 | ${E2E_P95_FMT} ms |" >> $GITHUB_STEP_SUMMARY
+                fi
+                if [ "$E2E_P99" != "N/A" ]; then
+                  E2E_P99_FMT=$(printf "%.0f" "$E2E_P99")
+                  echo "| p99 | ${E2E_P99_FMT} ms |" >> $GITHUB_STEP_SUMMARY
+                fi
+                if [ "$E2E_MAX" != "N/A" ]; then
+                  E2E_MAX_FMT=$(printf "%.0f" "$E2E_MAX")
+                  echo "| max | ${E2E_MAX_FMT} ms |" >> $GITHUB_STEP_SUMMARY
+                fi
+                echo "" >> $GITHUB_STEP_SUMMARY
+              fi
             fi
 
             # Sequencing throughput (calculated from queue stats)
@@ -465,11 +496,12 @@ jobs:
             echo "### Thresholds" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
 
-            # Check each threshold
+            # Check each threshold (note: thresholds exclude poll_status operations)
             POST_LATENCY_OK=$(jq -r '.thresholds.post_latency["p(99)<5000"] // false' summary.json)
-            HTTP_DURATION_P95_OK=$(jq -r '.thresholds.http_req_duration["p(95)<3000"] // false' summary.json)
-            HTTP_DURATION_P99_OK=$(jq -r '.thresholds.http_req_duration["p(99)<5000"] // false' summary.json)
-            HTTP_FAILED_OK=$(jq -r '.thresholds.http_req_failed["rate<0.01"] // false' summary.json)
+            # Try new key format first, fall back to old format for compatibility
+            HTTP_DURATION_P95_OK=$(jq -r '.thresholds["http_req_duration{operation:!poll_status}"]["p(95)<3000"] // .thresholds.http_req_duration["p(95)<3000"] // false' summary.json)
+            HTTP_DURATION_P99_OK=$(jq -r '.thresholds["http_req_duration{operation:!poll_status}"]["p(99)<5000"] // .thresholds.http_req_duration["p(99)<5000"] // false' summary.json)
+            HTTP_FAILED_OK=$(jq -r '.thresholds["http_req_failed{operation:!poll_status}"]["rate<0.01"] // .thresholds.http_req_failed["rate<0.01"] // false' summary.json)
 
             if [ "$POST_LATENCY_OK" = "true" ]; then
               echo "- ✅ POST latency p99 < 5000ms" >> $GITHUB_STEP_SUMMARY
@@ -478,21 +510,21 @@ jobs:
             fi
 
             if [ "$HTTP_DURATION_P95_OK" = "true" ]; then
-              echo "- ✅ HTTP duration p95 < 3000ms" >> $GITHUB_STEP_SUMMARY
+              echo "- ✅ HTTP duration p95 < 3000ms (excl. polling)" >> $GITHUB_STEP_SUMMARY
             else
-              echo "- ❌ HTTP duration p95 < 3000ms" >> $GITHUB_STEP_SUMMARY
+              echo "- ❌ HTTP duration p95 < 3000ms (excl. polling)" >> $GITHUB_STEP_SUMMARY
             fi
 
             if [ "$HTTP_DURATION_P99_OK" = "true" ]; then
-              echo "- ✅ HTTP duration p99 < 5000ms" >> $GITHUB_STEP_SUMMARY
+              echo "- ✅ HTTP duration p99 < 5000ms (excl. polling)" >> $GITHUB_STEP_SUMMARY
             else
-              echo "- ❌ HTTP duration p99 < 5000ms" >> $GITHUB_STEP_SUMMARY
+              echo "- ❌ HTTP duration p99 < 5000ms (excl. polling)" >> $GITHUB_STEP_SUMMARY
             fi
 
             if [ "$HTTP_FAILED_OK" = "true" ]; then
-              echo "- ✅ HTTP failure rate < 1%" >> $GITHUB_STEP_SUMMARY
+              echo "- ✅ HTTP failure rate < 1% (excl. polling)" >> $GITHUB_STEP_SUMMARY
             else
-              echo "- ❌ HTTP failure rate < 1%" >> $GITHUB_STEP_SUMMARY
+              echo "- ❌ HTTP failure rate < 1% (excl. polling)" >> $GITHUB_STEP_SUMMARY
             fi
 
             echo "" >> $GITHUB_STEP_SUMMARY
