@@ -93,14 +93,28 @@ jobs:
       - name: Setup k6
         uses: grafana/setup-k6-action@v1
 
-      - name: Build log ID list
+      - name: Build log ID list and compute shard distribution
         id: log_ids
         run: |
           LOG_COUNT=${{ github.event.inputs.log_count || '1' }}
           echo "log_count=$LOG_COUNT" >> $GITHUB_OUTPUT
 
+          # djb2 hash function (matches @canopy/forestrie-sharding)
+          djb2_hash() {
+            local str="$1"
+            local hash=5381
+            for (( i=0; i<${#str}; i++ )); do
+              char=$(printf '%d' "'${str:$i:1}")
+              # hash = ((hash << 5) + hash) + char = hash * 33 + char
+              hash=$(( ((hash << 5) + hash + char) & 0xFFFFFFFF ))
+            done
+            # Convert to unsigned 32-bit
+            echo $(( hash & 0x7FFFFFFF ))
+          }
+
           # Build comma-separated list of log IDs from defaults
           LOG_IDS=""
+          declare -a SHARD_LOGS  # Array to track logs per shard
           for i in $(seq 0 $((LOG_COUNT - 1))); do
             case $i in
               0) ID="$CANOPY_PERF_LOG_ID_0" ;;
@@ -125,6 +139,10 @@ jobs:
           echo "log_ids=$LOG_IDS" >> $GITHUB_OUTPUT
           echo "Using $LOG_COUNT log(s): $LOG_IDS"
 
+          # Compute shard distribution (will be updated after we know shard count)
+          # Save log IDs to file for later processing
+          echo "$LOG_IDS" > /tmp/log_ids.txt
+
       - name: Capture queue stats (before)
         id: stats_before
         run: |
@@ -139,6 +157,51 @@ jobs:
           echo "Queue pending before: $PENDING (across $SHARD_COUNT shards)"
           echo "$STATS" | jq -c '.perShard[]? | {shard: .index, pending: .pending, pollers: .activePollers}' 2>/dev/null || true
           date +%s > /tmp/test_start_time
+
+          # Compute and display log-to-shard distribution
+          if [ -f /tmp/log_ids.txt ] && [ "$SHARD_COUNT" -gt 0 ]; then
+            echo ""
+            echo "Log-to-shard distribution (djb2 hash % $SHARD_COUNT):"
+
+            # djb2 hash function (matches @canopy/forestrie-sharding)
+            djb2_hash() {
+              local str="$1"
+              local hash=5381
+              for (( i=0; i<${#str}; i++ )); do
+                char=$(printf '%d' "'${str:$i:1}")
+                hash=$(( ((hash << 5) + hash + char) & 0xFFFFFFFF ))
+              done
+              echo $(( hash & 0x7FFFFFFF ))
+            }
+
+            # Initialize shard counts
+            declare -a SHARD_COUNTS
+            for (( s=0; s<SHARD_COUNT; s++ )); do
+              SHARD_COUNTS[$s]=0
+            done
+
+            # Process each log ID
+            LOG_IDS=$(cat /tmp/log_ids.txt)
+            IFS=',' read -ra IDS <<< "$LOG_IDS"
+            DISTRIBUTION=""
+            for log_id in "${IDS[@]}"; do
+              hash=$(djb2_hash "$log_id")
+              shard=$((hash % SHARD_COUNT))
+              SHARD_COUNTS[$shard]=$((SHARD_COUNTS[$shard] + 1))
+              echo "  $log_id -> shard $shard (hash=$hash)"
+              DISTRIBUTION="$DISTRIBUTION$log_id:$shard,"
+            done
+
+            # Show summary
+            echo ""
+            echo "Logs per shard:"
+            for (( s=0; s<SHARD_COUNT; s++ )); do
+              echo "  shard $s: ${SHARD_COUNTS[$s]} log(s)"
+            done
+
+            # Save distribution for summary
+            echo "$DISTRIBUTION" > /tmp/log_shard_distribution.txt
+          fi
 
       - name: Run k6 performance test
         id: k6
@@ -205,6 +268,48 @@ jobs:
             echo "| Target Rate | ${RATE} req/s |" >> $GITHUB_STEP_SUMMARY
             echo "| Duration | ${WARMUP} warmup + ${DURATION} sustained |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Log-to-shard distribution (if multiple shards)
+            if [ -f /tmp/log_shard_distribution.txt ] && [ "${SHARD_COUNT:-1}" -gt 1 ]; then
+              echo "### Log-to-Shard Distribution" >> $GITHUB_STEP_SUMMARY
+              echo "| Log ID | Shard |" >> $GITHUB_STEP_SUMMARY
+              echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+
+              # Parse distribution file (format: logid:shard,logid:shard,...)
+              DIST=$(cat /tmp/log_shard_distribution.txt)
+              IFS=',' read -ra PAIRS <<< "$DIST"
+              declare -A SHARD_LOG_COUNTS
+              for pair in "${PAIRS[@]}"; do
+                if [ -n "$pair" ]; then
+                  log_id=$(echo "$pair" | cut -d: -f1)
+                  shard=$(echo "$pair" | cut -d: -f2)
+                  echo "| \`$log_id\` | $shard |" >> $GITHUB_STEP_SUMMARY
+                  SHARD_LOG_COUNTS[$shard]=$((${SHARD_LOG_COUNTS[$shard]:-0} + 1))
+                fi
+              done
+              echo "" >> $GITHUB_STEP_SUMMARY
+
+              # Show distribution summary
+              echo "**Logs per shard:**" >> $GITHUB_STEP_SUMMARY
+              for shard in $(echo "${!SHARD_LOG_COUNTS[@]}" | tr ' ' '\n' | sort -n); do
+                echo "- Shard $shard: ${SHARD_LOG_COUNTS[$shard]} log(s)" >> $GITHUB_STEP_SUMMARY
+              done
+
+              # Check for imbalance
+              TOTAL_LOGS=${LOG_COUNT}
+              IDEAL_PER_SHARD=$((TOTAL_LOGS / SHARD_COUNT))
+              MAX_LOGS=0
+              MIN_LOGS=${TOTAL_LOGS}
+              for count in "${SHARD_LOG_COUNTS[@]}"; do
+                [ "$count" -gt "$MAX_LOGS" ] && MAX_LOGS=$count
+                [ "$count" -lt "$MIN_LOGS" ] && MIN_LOGS=$count
+              done
+              if [ "$MAX_LOGS" -gt $((IDEAL_PER_SHARD + 1)) ] || [ "$MIN_LOGS" -lt $((IDEAL_PER_SHARD - 1)) ]; then
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "> ⚠️ **Uneven distribution**: Some shards have more logs than others. Consider using different log IDs for better balance." >> $GITHUB_STEP_SUMMARY
+              fi
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
 
             # Extract metrics
             HTTP_COUNT=$(jq -r '.metrics.http_reqs.count // "N/A"' summary.json)
