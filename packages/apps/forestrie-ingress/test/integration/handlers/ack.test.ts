@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import worker from "../../../src/index";
 import type { ProblemDetails } from "@canopy/forestrie-ingress-types";
 import { decodeAckResponse } from "../../../src/encoding";
-import { testEnv, createRequest, createCborRequest, getStub, DEFAULT_SHARD } from "./fixture";
+import {
+  testEnv,
+  createRequest,
+  createCborRequest,
+  getStub,
+  DEFAULT_SHARD,
+} from "./fixture";
 
 describe("/queue/ack", () => {
   it("POST with CBOR returns CBOR response", async () => {

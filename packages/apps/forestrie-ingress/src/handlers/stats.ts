@@ -47,7 +47,10 @@ export async function handleStats(
       anyPollerLimitReached = anyPollerLimitReached || stats.pollerLimitReached;
 
       if (stats.oldestEntryAgeMs !== null) {
-        if (oldestEntryAgeMs === null || stats.oldestEntryAgeMs > oldestEntryAgeMs) {
+        if (
+          oldestEntryAgeMs === null ||
+          stats.oldestEntryAgeMs > oldestEntryAgeMs
+        ) {
           oldestEntryAgeMs = stats.oldestEntryAgeMs;
         }
       }
