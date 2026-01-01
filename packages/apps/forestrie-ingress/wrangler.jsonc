@@ -6,6 +6,7 @@
   "vars": {
     "NODE_ENV": "dev",
     "CANOPY_ID": "canopy-dev-1",
+    "QUEUE_SHARD_COUNT": "4",
   },
   "dev": {
     "port": 8791,
@@ -34,6 +35,7 @@
       "vars": {
         "NODE_ENV": "prod",
         "CANOPY_ID": "canopy-prod-1",
+        "QUEUE_SHARD_COUNT": "4",
       },
     },
   },

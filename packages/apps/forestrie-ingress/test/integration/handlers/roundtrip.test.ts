@@ -6,11 +6,11 @@
 import { describe, expect, it } from "vitest";
 import worker from "../../../src/index";
 import { decodePullResponse, decodeAckResponse } from "../../../src/encoding";
-import { testEnv, getStub, createCborRequest } from "./fixture";
+import { testEnv, getStub, createCborRequest, DEFAULT_SHARD } from "./fixture";
 
 describe("HTTP round-trip integration", () => {
   it("full cycle: enqueue → pull → ack → stats", async () => {
-    const stub = getStub("global");
+    const stub = getStub(DEFAULT_SHARD);
     const logId = new Uint8Array(16).fill(0xf1);
     const contentHash = new Uint8Array(32).fill(0xf2);
 
@@ -70,7 +70,7 @@ describe("HTTP round-trip integration", () => {
   });
 
   it("visibility timeout redelivery via HTTP", async () => {
-    const stub = getStub("global");
+    const stub = getStub(DEFAULT_SHARD);
     const logId = new Uint8Array(16).fill(0xf3);
     const contentHash = new Uint8Array(32).fill(0xf4);
 
@@ -134,7 +134,7 @@ describe("HTTP round-trip integration", () => {
   });
 
   it("multiple pollers with log assignment via HTTP", async () => {
-    const stub = getStub("global");
+    const stub = getStub(DEFAULT_SHARD);
     const contentHash = new Uint8Array(32).fill(0xf5);
 
     // Enqueue entries for many logs

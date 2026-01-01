@@ -12,6 +12,7 @@
  */
 
 import type { SequencingQueueStub } from "@canopy/forestrie-ingress-types";
+import { shardNameForLog } from "@canopy/forestrie-sharding";
 import {
   urkleLeafTableStartByteOffset,
   leafCountForMassifHeight,
@@ -128,12 +129,25 @@ async function readIdtimestampFromMassif(
   return view.getBigUint64(0, false);
 }
 
+/**
+ * Parse shard count from environment string.
+ */
+function getShardCount(shardCountStr: string): number {
+  const count = parseInt(shardCountStr, 10);
+  if (isNaN(count) || count < 1) {
+    console.error(`Invalid QUEUE_SHARD_COUNT: ${shardCountStr}, using 1`);
+    return 1;
+  }
+  return count;
+}
+
 export async function queryRegistrationStatus(
   request: Request,
   entrySegments: string[],
   sequencingQueueNs: SequencingQueueNamespace,
   r2Mmrs: R2Bucket,
   massifHeight: number,
+  shardCountStr: string,
 ): Promise<Response> {
   const [logID, _, contentHashRaw] = entrySegments;
 
@@ -153,8 +167,10 @@ export async function queryRegistrationStatus(
   });
 
   try {
-    // Get the global SequencingQueue DO stub
-    const doId = sequencingQueueNs.idFromName("global");
+    // Get the SequencingQueue DO stub for this log's shard
+    const shardCount = getShardCount(shardCountStr);
+    const shardName = shardNameForLog(logID, shardCount);
+    const doId = sequencingQueueNs.idFromName(shardName);
     const stub = sequencingQueueNs.get(doId);
 
     // Convert content hash hex to ArrayBuffer for DO query

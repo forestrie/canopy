@@ -38,6 +38,9 @@ importers:
       '@canopy/forestrie-ingress-types':
         specifier: workspace:*
         version: link:../../shared/forestrie-ingress
+      '@canopy/forestrie-sharding':
+        specifier: workspace:*
+        version: link:../../shared/forestrie-sharding
       '@canopy/merklelog':
         specifier: workspace:*
         version: link:../../merklelog
@@ -91,6 +94,9 @@ importers:
       '@canopy/forestrie-ingress-types':
         specifier: workspace:*
         version: link:../../shared/forestrie-ingress
+      '@canopy/forestrie-sharding':
+        specifier: workspace:*
+        version: link:../../shared/forestrie-sharding
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.9.13
@@ -125,6 +131,15 @@ importers:
       typescript:
         specifier: ^5.9.2
         version: 5.9.3
+
+  packages/shared/forestrie-sharding:
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@24.8.1)
 
   packages/tests/canopy-api:
     dependencies:

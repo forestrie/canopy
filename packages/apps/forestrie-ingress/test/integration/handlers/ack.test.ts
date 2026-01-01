@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import worker from "../../../src/index";
 import type { ProblemDetails } from "@canopy/forestrie-ingress-types";
 import { decodeAckResponse } from "../../../src/encoding";
-import { testEnv, createRequest, createCborRequest, getStub } from "./fixture";
+import { testEnv, createRequest, createCborRequest, getStub, DEFAULT_SHARD } from "./fixture";
 
 describe("/queue/ack", () => {
   it("POST with CBOR returns CBOR response", async () => {
     // First enqueue an entry via DO RPC
-    const stub = getStub("global");
+    const stub = getStub(DEFAULT_SHARD);
     const logId = new Uint8Array(16).fill(0xaa);
     const contentHash = new Uint8Array(32).fill(0xbb);
     const { seq } = await stub.enqueue(logId.buffer, contentHash.buffer);
@@ -35,7 +35,7 @@ describe("/queue/ack", () => {
   });
 
   it("returns 415 for JSON content type", async () => {
-    const request = createRequest("/queue/ack", {
+    const request = createRequest("/queue/ack?shard=0", {
       method: "POST",
       body: {
         logId: "some-base64",

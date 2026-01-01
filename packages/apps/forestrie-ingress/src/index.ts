@@ -12,6 +12,7 @@ import {
   handleAck,
   handleStats,
   handleDebugRecent,
+  handleShards,
 } from "./handlers/index.js";
 
 // Export Durable Objects for Cloudflare runtime
@@ -36,13 +37,16 @@ export default {
 
     // Queue endpoints (for ranger HTTP access)
     if (url.pathname === "/queue/pull" && method === "POST") {
-      return handlePull(request, env);
+      return handlePull(request, url, env);
     }
     if (url.pathname === "/queue/ack" && method === "POST") {
-      return handleAck(request, env);
+      return handleAck(request, url, env);
     }
     if (url.pathname === "/queue/stats" && method === "GET") {
       return handleStats(request, env);
+    }
+    if (url.pathname === "/queue/shards" && method === "GET") {
+      return handleShards(env);
     }
     if (url.pathname === "/queue/debug/recent" && method === "GET") {
       return handleDebugRecent(request, env);

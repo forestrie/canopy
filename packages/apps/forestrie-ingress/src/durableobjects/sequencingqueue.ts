@@ -710,6 +710,15 @@ export class SequencingQueue extends DurableObject<Env> {
   }
 
   /**
+   * Get the current pending count.
+   * Used by shard discovery endpoint to report per-shard depth.
+   */
+  async getPendingCount(): Promise<number> {
+    this.ensureSchema();
+    return this.pendingCount;
+  }
+
+  /**
    * Get queue statistics.
    */
   async stats(): Promise<QueueStats> {

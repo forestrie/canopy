@@ -14,7 +14,8 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
-    "@canopy/forestrie-ingress-types": "workspace:*"
+    "@canopy/forestrie-ingress-types": "workspace:*",
+    "@canopy/forestrie-sharding": "workspace:*"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.9.13",

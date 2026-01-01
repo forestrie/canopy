@@ -11,6 +11,7 @@ import {
   PROBLEM_TYPES,
   PROBLEM_CONTENT_TYPE,
 } from "@canopy/forestrie-ingress-types";
+import { shardNameForIndex } from "@canopy/forestrie-sharding";
 
 const CBOR_CONTENT_TYPE = "application/cbor";
 
@@ -51,10 +52,25 @@ export function internalError(error: unknown): Response {
 }
 
 /**
- * Get the global DO stub.
+ * Parse shard count from environment string.
  */
-export function getQueueStub(env: Env) {
-  const id = env.SEQUENCING_QUEUE.idFromName("global");
+export function getShardCount(env: Env): number {
+  const count = parseInt(env.QUEUE_SHARD_COUNT, 10);
+  if (isNaN(count) || count < 1) {
+    console.error(
+      `Invalid QUEUE_SHARD_COUNT: ${env.QUEUE_SHARD_COUNT}, using 1`,
+    );
+    return 1;
+  }
+  return count;
+}
+
+/**
+ * Get the DO stub for a specific shard.
+ */
+export function getQueueStub(env: Env, shardIndex: number) {
+  const shardName = shardNameForIndex(shardIndex);
+  const id = env.SEQUENCING_QUEUE.idFromName(shardName);
   return env.SEQUENCING_QUEUE.get(id);
 }
 

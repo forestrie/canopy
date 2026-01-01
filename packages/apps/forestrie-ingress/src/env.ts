@@ -10,4 +10,6 @@ export interface Env {
   CANOPY_ID: string;
   /** Environment: dev or prod */
   NODE_ENV: string;
+  /** Number of DO shards for the sequencing queue (typically 4) */
+  QUEUE_SHARD_COUNT: string;
 }

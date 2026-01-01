@@ -20,11 +20,37 @@ import {
   problemResponse,
   internalError,
   getQueueStub,
+  getShardCount,
   parseCborBody,
 } from "./handler.js";
 
-export async function handleAck(request: Request, env: Env): Promise<Response> {
+export async function handleAck(
+  request: Request,
+  url: URL,
+  env: Env,
+): Promise<Response> {
   try {
+    // Parse and validate shard parameter (required)
+    const shardParam = url.searchParams.get("shard");
+    if (shardParam === null) {
+      return problemResponse(
+        400,
+        PROBLEM_TYPES.INVALID_REQUEST,
+        "Invalid request",
+        "shard query parameter is required",
+      );
+    }
+    const shardIndex = parseInt(shardParam, 10);
+    const shardCount = getShardCount(env);
+    if (isNaN(shardIndex) || shardIndex < 0 || shardIndex >= shardCount) {
+      return problemResponse(
+        400,
+        PROBLEM_TYPES.INVALID_REQUEST,
+        "Invalid request",
+        `shard must be an integer in range [0, ${shardCount - 1}]`,
+      );
+    }
+
     const body = await parseCborBody<AckRequest>(request);
     if (body instanceof Response) return body;
 
@@ -80,7 +106,7 @@ export async function handleAck(request: Request, env: Env): Promise<Response> {
             (body.logId as Uint8Array).byteLength,
           ).slice().buffer;
 
-    const stub = getQueueStub(env);
+    const stub = getQueueStub(env, shardIndex);
     const result = await stub.ackFirst(
       logIdBuffer,
       body.seqLo,

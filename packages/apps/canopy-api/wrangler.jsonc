@@ -8,6 +8,7 @@
     "FOREST_PROJECT_ID": "forest-dev-1",
     "API_VERSION": "v1",
     "NODE_ENV": "development",
+    "QUEUE_SHARD_COUNT": "4",
   },
   "r2_buckets": [
     {
@@ -39,6 +40,7 @@
         "FOREST_PROJECT_ID": "forest-prod-1",
         "API_VERSION": "v1",
         "NODE_ENV": "production",
+        "QUEUE_SHARD_COUNT": "4",
       },
       "r2_buckets": [
         {

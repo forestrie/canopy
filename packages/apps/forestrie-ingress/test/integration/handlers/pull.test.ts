@@ -36,7 +36,7 @@ describe("/queue/pull", () => {
   });
 
   it("returns 415 for JSON content type", async () => {
-    const request = createRequest("/queue/pull", {
+    const request = createRequest("/queue/pull?shard=0", {
       method: "POST",
       body: {
         pollerId: "test-poller",

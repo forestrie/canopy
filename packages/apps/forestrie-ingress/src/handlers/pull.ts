@@ -13,14 +13,37 @@ import {
   problemResponse,
   internalError,
   getQueueStub,
+  getShardCount,
   parseCborBody,
 } from "./handler.js";
 
 export async function handlePull(
   request: Request,
+  url: URL,
   env: Env,
 ): Promise<Response> {
   try {
+    // Parse and validate shard parameter (required)
+    const shardParam = url.searchParams.get("shard");
+    if (shardParam === null) {
+      return problemResponse(
+        400,
+        PROBLEM_TYPES.INVALID_REQUEST,
+        "Invalid request",
+        "shard query parameter is required",
+      );
+    }
+    const shardIndex = parseInt(shardParam, 10);
+    const shardCount = getShardCount(env);
+    if (isNaN(shardIndex) || shardIndex < 0 || shardIndex >= shardCount) {
+      return problemResponse(
+        400,
+        PROBLEM_TYPES.INVALID_REQUEST,
+        "Invalid request",
+        `shard must be an integer in range [0, ${shardCount - 1}]`,
+      );
+    }
+
     const body = await parseCborBody<PullRequest>(request);
     if (body instanceof Response) return body;
 
@@ -58,7 +81,7 @@ export async function handlePull(
       );
     }
 
-    const stub = getQueueStub(env);
+    const stub = getQueueStub(env, shardIndex);
     const response = await stub.pull(body);
 
     // Encode as CBOR

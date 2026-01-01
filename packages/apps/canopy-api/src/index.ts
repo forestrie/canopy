@@ -17,7 +17,7 @@ export interface Env {
   // - v2/merklelog/checkpoints/{massifHeight}/{logId}/{massifIndex}.sth
   R2_MMRS: R2Bucket;
   // Durable Object namespace for the ingress sequencing queue.
-  // Single global instance keyed by "global". Owned by forestrie-ingress worker.
+  // Sharded by logId hash. Owned by forestrie-ingress worker.
   // Used for both enqueue (register-signed-statement) and resolveContent (query-registration-status).
   SEQUENCING_QUEUE: DurableObjectNamespace;
   CANOPY_ID: string;
@@ -26,6 +26,8 @@ export interface Env {
   NODE_ENV: string;
   // Massif height for this transparency log (1-based, typically 14)
   MASSIF_HEIGHT: string;
+  // Number of DO shards for the sequencing queue (typically 4)
+  QUEUE_SHARD_COUNT: string;
 }
 
 export default {
@@ -102,6 +104,7 @@ export default {
             request,
             segments[1],
             env.SEQUENCING_QUEUE,
+            env.QUEUE_SHARD_COUNT,
           );
 
           const headers = new Headers(response.headers);
@@ -135,6 +138,7 @@ export default {
             >[2],
             env.R2_MMRS,
             massifHeight,
+            env.QUEUE_SHARD_COUNT,
           );
 
           const headers = new Headers(response.headers);

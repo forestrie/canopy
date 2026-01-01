@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import worker from "../../src/index";
-import { testEnv, getStub, createRequest } from "./handlers/fixture";
+import { testEnv, getStubByName, createRequest } from "./handlers/fixture";
 
 describe("forestrie-ingress worker", () => {
   it("health endpoint returns 200", async () => {
@@ -43,7 +43,7 @@ describe("forestrie-ingress worker", () => {
 
 describe("forestrie-ingress DO integration", () => {
   it("enqueue → stats → ack round-trip", async () => {
-    const stub = getStub("integration-roundtrip-test");
+    const stub = getStubByName("integration-roundtrip-test");
     const logId = new Uint8Array(16).fill(0xa1).buffer;
     const contentHash = new Uint8Array(32).fill(0xb2).buffer;
 
@@ -85,7 +85,7 @@ describe("forestrie-ingress DO integration", () => {
   });
 
   it("multiple logIds are isolated", async () => {
-    const stub = getStub("integration-isolation-test");
+    const stub = getStubByName("integration-isolation-test");
     const logId1 = new Uint8Array(16).fill(0xc1).buffer;
     const logId2 = new Uint8Array(16).fill(0xc2).buffer;
     const contentHash = new Uint8Array(32).fill(0xd3).buffer;
@@ -118,7 +118,7 @@ describe("forestrie-ingress DO integration", () => {
 
   // Phase 3: pull with grouped response integration test
   it("enqueue → pull returns grouped response with correct structure", async () => {
-    const stub = getStub("integration-pull-grouped-test");
+    const stub = getStubByName("integration-pull-grouped-test");
     const logId1 = new Uint8Array(16).fill(0xe1).buffer;
     const logId2 = new Uint8Array(16).fill(0xe2).buffer;
     const contentHash1 = new Uint8Array(32).fill(0xf1).buffer;

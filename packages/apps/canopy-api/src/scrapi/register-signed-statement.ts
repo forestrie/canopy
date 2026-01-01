@@ -6,6 +6,7 @@ import {
   QueueFullError,
   type SequencingQueueStub,
 } from "@canopy/forestrie-ingress-types";
+import { shardNameForLog } from "@canopy/forestrie-sharding";
 import { getContentSize, parseCborBody } from "./cbor-request";
 import { seeOtherResponse } from "./cbor-response";
 
@@ -31,12 +32,25 @@ export interface RegisterStatementResponse {
 }
 
 /**
+ * Parse shard count from environment string.
+ */
+function getShardCount(shardCountStr: string): number {
+  const count = parseInt(shardCountStr, 10);
+  if (isNaN(count) || count < 1) {
+    console.error(`Invalid QUEUE_SHARD_COUNT: ${shardCountStr}, using 1`);
+    return 1;
+  }
+  return count;
+}
+
+/**
  * Process a statement registration request
  */
 export async function registerSignedStatement(
   request: Request,
   logId: string,
   sequencingQueue: DurableObjectNamespace,
+  shardCountStr: string,
 ): Promise<Response> {
   try {
     const maxSize = getMaxStatementSize();
@@ -80,8 +94,10 @@ export async function registerSignedStatement(
     // Convert logId (UUID string) to 16-byte ArrayBuffer
     const logIdBytes = uuidToBytes(logId);
 
-    // Enqueue to SequencingQueue DO
-    const queueId = sequencingQueue.idFromName("global");
+    // Enqueue to SequencingQueue DO shard for this log
+    const shardCount = getShardCount(shardCountStr);
+    const shardName = shardNameForLog(logId, shardCount);
+    const queueId = sequencingQueue.idFromName(shardName);
     const queue = sequencingQueue.get(
       queueId,
     ) as unknown as SequencingQueueStub;

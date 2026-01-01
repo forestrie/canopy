@@ -83,6 +83,14 @@ export interface SequencingQueueStub {
   ): Promise<{ leafIndex: number; massifIndex: number } | null>;
 
   /**
+   * Get the current pending count.
+   * Used by shard discovery endpoint to report per-shard depth.
+   *
+   * @returns Number of pending entries
+   */
+  getPendingCount(): Promise<number>;
+
+  /**
    * Get queue statistics.
    *
    * @returns Current queue stats
