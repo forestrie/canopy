@@ -21,3 +21,4 @@ export type {
 
 export type { ProblemDetails } from "./problemdetails.js";
 export { PROBLEM_TYPES, PROBLEM_CONTENT_TYPE } from "./problemdetails.js";
+export { QueueFullError } from "./errors.js";

@@ -40,6 +40,21 @@ export const ServerErrors = {
   internal: (detail?: string) => pd(500, "Internal Server Error", detail),
   serviceUnavailable: (detail?: string) =>
     pd(503, "Service Unavailable", detail),
+  /**
+   * Return 503 with Retry-After header for backpressure.
+   * This signals to clients they should back off and retry later.
+   */
+  serviceUnavailableWithRetry: (detail: string, retryAfterSeconds: number) =>
+    cborResponse(
+      {
+        type: "about:blank",
+        title: "Service Unavailable",
+        status: 503,
+        detail,
+      },
+      503,
+      { "Retry-After": String(retryAfterSeconds) },
+    ),
   storageError: (detail?: string, operation?: string) =>
     pd(500, "Storage Error", operation ? `${operation}: ${detail}` : detail),
 };

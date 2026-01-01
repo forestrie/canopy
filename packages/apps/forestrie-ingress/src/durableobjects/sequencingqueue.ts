@@ -9,13 +9,14 @@
  */
 
 import { DurableObject } from "cloudflare:workers";
-import type {
-  PullRequest,
-  PullResponse,
-  LogGroup,
-  Entry,
-  QueueStats,
-  EnqueueExtras,
+import {
+  QueueFullError,
+  type PullRequest,
+  type PullResponse,
+  type LogGroup,
+  type Entry,
+  type QueueStats,
+  type EnqueueExtras,
 } from "@canopy/forestrie-ingress-types";
 import type { Env } from "../env.js";
 
@@ -312,11 +313,9 @@ export class SequencingQueue extends DurableObject<Env> {
       this.validateExtraSize(extras.extra3, "extra3");
     }
 
-    // Check backpressure
+    // Check backpressure - throw QueueFullError for proper 503 handling
     if (this.pendingCount >= MAX_PENDING) {
-      throw new Error(
-        `Queue full: pending count ${this.pendingCount} >= ${MAX_PENDING}`,
-      );
+      throw new QueueFullError(this.pendingCount, MAX_PENDING);
     }
 
     const seq = this.nextSeq++;

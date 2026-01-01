@@ -2,7 +2,10 @@
  * Register Signed Statement operation for SCRAPI
  */
 
-import type { SequencingQueueStub } from "@canopy/forestrie-ingress-types";
+import {
+  QueueFullError,
+  type SequencingQueueStub,
+} from "@canopy/forestrie-ingress-types";
 import { getContentSize, parseCborBody } from "./cbor-request";
 import { seeOtherResponse } from "./cbor-response";
 
@@ -95,6 +98,21 @@ export async function registerSignedStatement(
     // This is always async for this implementation
     return seeOtherResponse(location, 5); // Suggest retry after 5 seconds
   } catch (error) {
+    // Handle queue backpressure with 503 Service Unavailable
+    // This follows Cloudflare DO best practices: signal saturation early
+    // with 503 to allow clients to back off gracefully.
+    if (error instanceof QueueFullError) {
+      console.warn("Queue full, returning 503:", {
+        pendingCount: error.pendingCount,
+        maxPending: error.maxPending,
+        retryAfter: error.retryAfterSeconds,
+      });
+      return ServerErrors.serviceUnavailableWithRetry(
+        `Queue capacity exceeded (${error.pendingCount}/${error.maxPending} pending)`,
+        error.retryAfterSeconds,
+      );
+    }
+
     console.error("Error registering statement:", error);
     return ServerErrors.internal(
       error instanceof Error ? error.message : "Failed to register statement",

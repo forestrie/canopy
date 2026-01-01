@@ -66,4 +66,9 @@ describe("SequencingQueue enqueue", () => {
     expect(error).toBeDefined();
     expect(error?.message).toContain("exceeds maximum size");
   });
+
+  // Note: Testing QueueFullError at MAX_PENDING (100,000) is impractical in unit tests.
+  // The QueueFullError class itself is tested via types and the error is thrown
+  // in the enqueue() method when pendingCount >= MAX_PENDING.
+  // Integration/load tests should verify the 503 response behavior.
 });
