@@ -4,19 +4,39 @@
 version: "3"
 
 vars:
-  CANOPY_ID: '{{.CANOPY_ID | default "canopy-dev-1"}}'
-  R2_BUCKET_NAME_MERKLELOGS: '{{.R2_BUCKET_NAME_MERKLELOGS | default "arbor-dev-1-logs"}}'
+  # Environment: dev (default) or prod
+  ENV: '{{.ENV | default "dev"}}'
+  # Derived IDs based on environment
+  CANOPY_ID: '{{.CANOPY_ID | default (print "canopy-" .ENV "-1")}}'
+  R2_BUCKET_NAME_MERKLELOGS: '{{.R2_BUCKET_NAME_MERKLELOGS | default (print "arbor-" .ENV "-1-logs")}}'
   BUCKET_PREFIX_MASSIFS: "v2/merklelog/massifs/"
   BUCKET_PREFIX_CHECKPOINTS: "v2/merklelog/checkpoints/"
 
 tasks:
   bootstrap:
-    desc: Alias for bootstrap
+    desc: Bootstrap dev Cloudflare resources
     cmds:
       - task: validate
       - task: create
       - task: sync
       - task: status
+
+  bootstrap:prod:
+    desc: Bootstrap prod Cloudflare resources
+    cmds:
+      - task: validate
+      - task: create
+        vars:
+          ENV: prod
+          CANOPY_ID: canopy-prod-1
+          R2_BUCKET_NAME_MERKLELOGS: arbor-prod-1-logs
+      - task: sync
+        vars:
+          ENV: prod
+      - task: status
+        vars:
+          ENV: prod
+          R2_BUCKET_NAME_MERKLELOGS: arbor-prod-1-logs
 
   create:
     desc: Create all Cloudflare resources (R2 buckets, queues, and event notifications)
@@ -38,10 +58,14 @@ tasks:
 
   sync:
     desc: Deploy workers and configure queue consumers
+    vars:
+      WRANGLER_ENV: '{{if eq .ENV "prod"}}production{{else}}{{end}}'
     deps:
       - validate
     cmds:
       - task: :wrangler:deploy:canopy-api
+        vars:
+          ENV: "{{.WRANGLER_ENV}}"
       - task: queue:http-enable:sealer
       - task: queue:http-enable:forester
 

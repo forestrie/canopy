@@ -5,6 +5,34 @@ version: "3"
 
 tasks:
   bootstrap:
-    desc: Initial deployment of workers in correct order
+    desc: Initial deployment of workers (dev)
     cmds:
       - task: :wrangler:deploy:forestrie-ingress
+      - task: :wrangler:deploy:canopy-api
+      - task: :wrangler:deploy:delegation-signer
+
+  bootstrap:prod:
+    desc: Initial deployment of workers (prod)
+    cmds:
+      - task: :wrangler:deploy:forestrie-ingress
+        vars:
+          ENV: production
+      - task: :wrangler:deploy:canopy-api
+        vars:
+          ENV: production
+      - task: :wrangler:deploy:delegation-signer
+        vars:
+          ENV: production
+
+  prod:
+    desc: Deploy all workers to production
+    cmds:
+      - task: :wrangler:deploy:forestrie-ingress
+        vars:
+          ENV: production
+      - task: :wrangler:deploy:canopy-api
+        vars:
+          ENV: production
+      - task: :wrangler:deploy:delegation-signer
+        vars:
+          ENV: production

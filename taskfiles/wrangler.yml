@@ -2,14 +2,17 @@ version: "3"
 
 tasks:
   deploy:*:
-    desc: Deploy a worker app to dev (e.g., task wrangler:deploy:canopy-api)
+    desc: Deploy a worker app (e.g., task wrangler:deploy:canopy-api ENV=production)
     vars:
       APP: "{{index .MATCH 0}}"
+      ENV: '{{.ENV | default ""}}'
+      ENV_FLAG: '{{if .ENV}}--env={{.ENV}}{{else}}--env=""{{end}}'
+      ENV_LABEL: '{{if .ENV}}{{.ENV}}{{else}}dev{{end}}'
     dir: "packages/apps/{{.APP}}"
     cmds:
       - cmd: |
-          echo "Deploying {{.APP}} (dev)..."
-          wrangler deploy --env=""
+          echo "Deploying {{.APP}} ({{.ENV_LABEL}})..."
+          wrangler deploy {{.ENV_FLAG}}
 
   workerd:status:
     desc: Check status of workerd and wrangler processes
