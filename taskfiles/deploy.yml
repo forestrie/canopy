@@ -16,23 +16,23 @@ tasks:
     cmds:
       - task: :wrangler:deploy:forestrie-ingress
         vars:
-          ENV: production
+          ENV: prod
       - task: :wrangler:deploy:canopy-api
         vars:
-          ENV: production
+          ENV: prod
       - task: :wrangler:deploy:delegation-signer
         vars:
-          ENV: production
+          ENV: prod
 
   prod:
     desc: Deploy all workers to production
     cmds:
       - task: :wrangler:deploy:forestrie-ingress
         vars:
-          ENV: production
+          ENV: prod
       - task: :wrangler:deploy:canopy-api
         vars:
-          ENV: production
+          ENV: prod
       - task: :wrangler:deploy:delegation-signer
         vars:
-          ENV: production
+          ENV: prod
