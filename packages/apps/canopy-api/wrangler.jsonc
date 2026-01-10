@@ -3,28 +3,6 @@
   "main": "./src/index.ts",
   "compatibility_date": "2024-10-01",
   "compatibility_flags": ["nodejs_compat_v2"],
-  "vars": {
-    "CANOPY_ID": "canopy-dev-1",
-    "FOREST_PROJECT_ID": "forest-dev-1",
-    "API_VERSION": "v1",
-    "NODE_ENV": "development",
-    "QUEUE_SHARD_COUNT": "4",
-  },
-  "r2_buckets": [
-    {
-      "binding": "R2_MMRS",
-      "bucket_name": "arbor-dev-1-logs",
-    },
-  ],
-  "durable_objects": {
-    "bindings": [
-      {
-        "name": "SEQUENCING_QUEUE",
-        "class_name": "SequencingQueue",
-        "script_name": "forestrie-ingress",
-      },
-    ],
-  },
   "dev": {
     "port": 8789,
     "local_protocol": "http",
@@ -33,13 +11,38 @@
     "enabled": true,
   },
   "env": {
+    "dev": {
+      "name": "canopy-api-dev",
+      "vars": {
+        "CANOPY_ID": "canopy-dev-1",
+        "FOREST_PROJECT_ID": "forest-dev-1",
+        "API_VERSION": "v1",
+        "NODE_ENV": "dev",
+        "QUEUE_SHARD_COUNT": "4",
+      },
+      "r2_buckets": [
+        {
+          "binding": "R2_MMRS",
+          "bucket_name": "arbor-dev-1-logs",
+        },
+      ],
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "SEQUENCING_QUEUE",
+            "class_name": "SequencingQueue",
+            "script_name": "forestrie-ingress-dev",
+          },
+        ],
+      },
+    },
     "prod": {
       "name": "canopy-api-prod",
       "vars": {
         "CANOPY_ID": "canopy-prod-1",
         "FOREST_PROJECT_ID": "forest-prod-1",
         "API_VERSION": "v1",
-        "NODE_ENV": "production",
+        "NODE_ENV": "prod",
         "QUEUE_SHARD_COUNT": "4",
       },
       "r2_buckets": [
