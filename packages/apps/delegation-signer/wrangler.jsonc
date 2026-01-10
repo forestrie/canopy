@@ -39,11 +39,14 @@
     "prod": {
       "name": "delegation-signer-prod",
       "vars": {
-        "FOREST_PROJECT_ID": "forest-prod-1",
+        // NOTE: Using forest-dev-1 KMS keys since we're running in a single GCP project
+        // with namespace-based environment separation. For true production, create
+        // separate KMS keys in a production GCP project.
+        "FOREST_PROJECT_ID": "forest-dev-1",
         "GCP_LOCATION": "europe-west2",
-        "KMS_KEY_RING": "forestrie-root-forest-prod-1",
-        "KMS_KEY_SECP256K1": "log-root-signing-secp256k1-forest-prod-1",
-        "KMS_KEY_SECP256R1": "log-root-signing-secp256r1-forest-prod-1",
+        "KMS_KEY_RING": "forestrie-root-forest-dev-1",
+        "KMS_KEY_SECP256K1": "log-root-signing-secp256k1-forest-dev-1",
+        "KMS_KEY_SECP256R1": "log-root-signing-secp256r1-forest-dev-1",
         "KMS_KEY_VERSION": "1",
         "MASSIF_HEIGHT": 14,
         "NODE_ENV": "prod",
