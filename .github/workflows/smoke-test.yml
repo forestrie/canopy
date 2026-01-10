@@ -1,0 +1,79 @@
+name: Smoke Test
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Environment to test (dev or prod)'
+        required: true
+        type: string
+      test_count:
+        description: 'Number of statements for smoke test'
+        required: false
+        type: number
+        default: 3
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: false
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to test'
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+        default: dev
+      test_count:
+        description: 'Number of statements for smoke test'
+        required: false
+        type: number
+        default: 3
+
+jobs:
+  smoke-test:
+    name: Smoke test (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.6.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install go-task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run smoke test
+        env:
+          ENV: ${{ inputs.environment }}
+        run: |
+          echo "Running smoke:${{ inputs.test_count }} against ${{ inputs.environment }}..."
+          task scrapi:smoke:${{ inputs.test_count }}
+
+      - name: Report result
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✅ Smoke test passed for ${{ inputs.environment }}"
+          else
+            echo "❌ Smoke test failed for ${{ inputs.environment }}"
+          fi

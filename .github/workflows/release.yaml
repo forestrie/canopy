@@ -58,3 +58,11 @@ jobs:
 
       - name: Deploy to Cloudflare (production)
         run: task deploy:prod
+
+  smoke-test:
+    name: Smoke test (prod)
+    needs: deploy-prod
+    uses: ./.github/workflows/smoke-test.yml
+    with:
+      environment: prod
+      test_count: 3

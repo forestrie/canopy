@@ -122,3 +122,12 @@ jobs:
 
       - name: Deploy ${{ matrix.target.app }}
         run: task wrangler:deploy:${{ matrix.target.app }}
+
+  smoke-test:
+    name: Smoke test (dev)
+    needs: deploy
+    if: always() && needs.deploy.result == 'success'
+    uses: ./.github/workflows/smoke-test.yml
+    with:
+      environment: dev
+      test_count: 3
