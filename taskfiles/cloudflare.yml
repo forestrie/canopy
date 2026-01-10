@@ -40,16 +40,14 @@ tasks:
 
   create:
     desc: Create all Cloudflare resources (R2 buckets, queues, and event notifications)
-    deps:
-      - bucket:create
-      - queue:create:sealer
-      - queue:create:forester
     cmds:
+      - task: bucket:create
+      - task: queue:create:sealer
+      - task: queue:create:forester
       - task: r2notification:create:sealer
         vars:
           R2_BUCKET_NAME: "{{ .R2_BUCKET_NAME_MERKLELOGS }}"
           PREFIX: "{{.BUCKET_PREFIX_MASSIFS}}"
-
       - task: r2notification:create:forester
         vars:
           R2_BUCKET_NAME: "{{ .R2_BUCKET_NAME_MERKLELOGS }}"
@@ -58,14 +56,11 @@ tasks:
 
   sync:
     desc: Deploy workers and configure queue consumers
-    vars:
-      WRANGLER_ENV: '{{if eq .ENV "prod"}}production{{else}}{{end}}'
-    deps:
-      - validate
     cmds:
+      - task: validate
       - task: :wrangler:deploy:canopy-api
         vars:
-          ENV: "{{.WRANGLER_ENV}}"
+          ENV: "{{.ENV}}"
       - task: queue:http-enable:sealer
       - task: queue:http-enable:forester
 
