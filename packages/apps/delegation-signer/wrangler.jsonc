@@ -2,9 +2,7 @@
   "name": "delegation-signer",
   "main": "./src/index.ts",
   "compatibility_date": "2024-10-01",
-  "compatibility_flags": [
-    "nodejs_compat_v2"
-  ],
+  "compatibility_flags": ["nodejs_compat_v2"],
   "account_id": "68f25af297c4235c3f1c47b2f73925b0",
   "vars": {
     "FOREST_PROJECT_ID": "forest-dev-1",
