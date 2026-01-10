@@ -10,6 +10,29 @@
   "observability": {
     "enabled": true,
   },
+  // Top-level bindings needed for vitest (@cloudflare/vitest-pool-workers)
+  "vars": {
+    "CANOPY_ID": "canopy-dev-1",
+    "FOREST_PROJECT_ID": "forest-dev-1",
+    "API_VERSION": "v1",
+    "NODE_ENV": "dev",
+    "QUEUE_SHARD_COUNT": "4",
+  },
+  "r2_buckets": [
+    {
+      "binding": "R2_MMRS",
+      "bucket_name": "arbor-dev-1-logs",
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SEQUENCING_QUEUE",
+        "class_name": "SequencingQueue",
+        "script_name": "forestrie-ingress",
+      },
+    ],
+  },
   "env": {
     "dev": {
       "name": "canopy-api-dev",

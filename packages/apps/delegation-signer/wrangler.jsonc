@@ -11,6 +11,17 @@
   "observability": {
     "enabled": true,
   },
+  // Top-level vars needed for vitest (@cloudflare/vitest-pool-workers)
+  "vars": {
+    "FOREST_PROJECT_ID": "forest-dev-1",
+    "GCP_LOCATION": "europe-west2",
+    "KMS_KEY_RING": "forestrie-root-forest-dev-1",
+    "KMS_KEY_SECP256K1": "log-root-signing-secp256k1-forest-dev-1",
+    "KMS_KEY_SECP256R1": "log-root-signing-secp256r1-forest-dev-1",
+    "KMS_KEY_VERSION": "1",
+    "MASSIF_HEIGHT": 14,
+    "NODE_ENV": "dev",
+  },
   "env": {
     "dev": {
       "name": "delegation-signer-dev",
