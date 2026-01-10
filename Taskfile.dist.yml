@@ -1,27 +1,32 @@
 version: "3"
 
-dotenv: [".env", ".env.secrets"]
+# Environment selection: ENV=dev (default) or ENV=prod
+# Load order: .env (shared) -> .env.{ENV} (environment-specific) -> .env.secrets
+dotenv: [".env", ".env.{{.ENV}}", ".env.secrets"]
+
+vars:
+  # Default to dev environment
+  ENV: '{{.ENV | default "dev"}}'
+  CANOPY_ID: '{{.CANOPY_ID | default "canopy-dev-1"}}'
+  FOREST_PROJECT_ID: '{{.FOREST_PROJECT_ID | default "forest-dev-1"}}'
+  CLOUDFLARE_ACCOUNT_ID: "{{.CLOUDFLARE_ACCOUNT_ID}}"
 
 includes:
   scrapi:
     taskfile: ./taskfiles/scrapi.yml
     vars:
-      BASE_URL: https://canopy-api.robinbryce.workers.dev/logs/3062ea57-c184-41d8-bd61-296b02c680d8
+      BASE_URL: "{{.SCRAPI_BASE_URL}}"
+      API_KEY: "{{.SCRAPI_API_KEY}}"
   scout:
     taskfile: ./taskfiles/scout.yml
     vars:
-      BASE_URL: https://scout.dev-1.forestrie.dev
+      BASE_URL: "{{.SCOUT_BASE_URL}}"
   cf: ./taskfiles/cloudflare.yml
   deploy: ./taskfiles/deploy.yml
   minio: ./taskfiles/minio.yml
   wrangler: ./taskfiles/wrangler.yml
   merklelog: ./taskfiles/merklelog.yml
   perf: ./taskfiles/perf.yml
-
-vars:
-  CANOPY_ID: '{{.CANOPY_ID | default "canopy-dev-1"}}'
-  FOREST_PROJECT_ID: '{{.FOREST_PROJECT_ID | default "forest-dev-1"}}'
-  CLOUDFLARE_ACCOUNT_ID: "{{.CLOUDFLARE_ACCOUNT_ID}}"
 
 tasks:
   default:

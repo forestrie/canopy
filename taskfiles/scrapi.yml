@@ -4,8 +4,8 @@
 version: "3"
 
 vars:
-  BASE_URL: "{{.BASE_URL}}" # wrangler
-  API_KEY: "test-api-key"
+  BASE_URL: "{{.BASE_URL}}"
+  API_KEY: "{{.API_KEY}}"
 
 tasks:
   create-statement:hello:
