@@ -2,7 +2,9 @@
   "name": "delegation-signer",
   "main": "./src/index.ts",
   "compatibility_date": "2024-10-01",
-  "compatibility_flags": ["nodejs_compat_v2"],
+  "compatibility_flags": [
+    "nodejs_compat_v2"
+  ],
   "account_id": "68f25af297c4235c3f1c47b2f73925b0",
   "vars": {
     "FOREST_PROJECT_ID": "forest-dev-1",
@@ -12,7 +14,7 @@
     "KMS_KEY_SECP256R1": "log-root-signing-secp256r1-forest-dev-1",
     "KMS_KEY_VERSION": "1",
     "MASSIF_HEIGHT": 14,
-    "NODE_ENV": "development",
+    "NODE_ENV": "dev",
   },
   "dev": {
     "port": 8791,
@@ -22,8 +24,8 @@
     "enabled": true,
   },
   "env": {
-    "production": {
-      "name": "delegation-signer-production",
+    "prod": {
+      "name": "delegation-signer-prod",
       "vars": {
         "FOREST_PROJECT_ID": "forest-prod-1",
         "GCP_LOCATION": "europe-west2",
@@ -32,7 +34,7 @@
         "KMS_KEY_SECP256R1": "log-root-signing-secp256r1-forest-prod-1",
         "KMS_KEY_VERSION": "1",
         "MASSIF_HEIGHT": 14,
-        "NODE_ENV": "production",
+        "NODE_ENV": "prod",
       },
     },
   },
