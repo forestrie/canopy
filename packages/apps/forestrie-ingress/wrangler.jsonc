@@ -10,6 +10,15 @@
   "observability": {
     "enabled": true,
   },
+  // Top-level durable_objects needed for vitest (@cloudflare/vitest-pool-workers)
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SEQUENCING_QUEUE",
+        "class_name": "SequencingQueue",
+      },
+    ],
+  },
   "migrations": [
     {
       "tag": "v1",
