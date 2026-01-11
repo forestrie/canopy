@@ -497,7 +497,14 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
-    if (url.pathname === "/api/health" && request.method === "GET") {
+    // Normalize optional external prefix: /canopy/delegation-signer
+    let pathname = url.pathname;
+    const prefix = "/canopy/delegation-signer";
+    if (pathname === prefix || pathname.startsWith(prefix + "/")) {
+      pathname = pathname.slice(prefix.length) || "/";
+    }
+
+    if (pathname === "/api/health" && request.method === "GET") {
       return cborResponse(
         {
           status: "healthy",
@@ -508,7 +515,7 @@ export default {
       );
     }
 
-    if (url.pathname === "/api/delegations") {
+    if (pathname === "/api/delegations") {
       if (request.method !== "POST") {
         return ClientErrors.methodNotAllowed(`Use POST for ${url.pathname}`);
       }
@@ -516,7 +523,7 @@ export default {
     }
 
     return ClientErrors.notFound(
-      `The requested resource ${url.pathname} was not found`,
+      `The requested resource ${pathname} was not found`,
     );
   },
 };

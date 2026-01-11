@@ -27,8 +27,15 @@ export default {
     const url = new URL(request.url);
     const method = request.method;
 
+    // Normalize optional external prefix: /canopy/ingress-queue
+    let pathname = url.pathname;
+    const prefix = "/canopy/ingress-queue";
+    if (pathname === prefix || pathname.startsWith(prefix + "/")) {
+      pathname = pathname.slice(prefix.length) || "/";
+    }
+
     // Health check
-    if (url.pathname === "/_forestrie-ingress/health") {
+    if (pathname === "/_forestrie-ingress/health") {
       return Response.json({
         status: "ok",
         canopyId: env.CANOPY_ID,
@@ -36,24 +43,24 @@ export default {
     }
 
     // Queue endpoints (for ranger HTTP access)
-    if (url.pathname === "/queue/pull" && method === "POST") {
+    if (pathname === "/queue/pull" && method === "POST") {
       return handlePull(request, url, env);
     }
-    if (url.pathname === "/queue/ack" && method === "POST") {
+    if (pathname === "/queue/ack" && method === "POST") {
       return handleAck(request, url, env);
     }
-    if (url.pathname === "/queue/stats" && method === "GET") {
+    if (pathname === "/queue/stats" && method === "GET") {
       return handleStats(request, env);
     }
-    if (url.pathname === "/queue/shards" && method === "GET") {
+    if (pathname === "/queue/shards" && method === "GET") {
       return handleShards(env);
     }
-    if (url.pathname === "/queue/debug/recent" && method === "GET") {
+    if (pathname === "/queue/debug/recent" && method === "GET") {
       return handleDebugRecent(request, env);
     }
 
     // Method not allowed for queue endpoints
-    if (url.pathname.startsWith("/queue/")) {
+    if (pathname.startsWith("/queue/")) {
       return new Response("Method Not Allowed", { status: 405 });
     }
 
