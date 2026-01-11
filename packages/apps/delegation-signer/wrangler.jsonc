@@ -25,6 +25,9 @@
   "env": {
     "dev": {
       "name": "delegation-signer-dev",
+      "routes": [
+        { "pattern": "api-dev.forestrie.dev/signer/*", "zone_name": "forestrie.dev" }
+      ],
       "vars": {
         "FOREST_PROJECT_ID": "forest-dev-1",
         "GCP_LOCATION": "europe-west2",
@@ -38,6 +41,9 @@
     },
     "prod": {
       "name": "delegation-signer-prod",
+      "routes": [
+        { "pattern": "api.forestrie.dev/signer/*", "zone_name": "forestrie.dev" }
+      ],
       "vars": {
         // Prod uses separate KMS keyring/keys for cryptographic separation
         "FOREST_PROJECT_ID": "forest-dev-1",

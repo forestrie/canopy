@@ -28,6 +28,9 @@
   "env": {
     "dev": {
       "name": "forestrie-ingress-dev",
+      "routes": [
+        { "pattern": "api-dev.forestrie.dev/queue/*", "zone_name": "forestrie.dev" }
+      ],
       "vars": {
         "NODE_ENV": "dev",
         "CANOPY_ID": "canopy-dev-1",
@@ -44,6 +47,9 @@
     },
     "prod": {
       "name": "forestrie-ingress-prod",
+      "routes": [
+        { "pattern": "api.forestrie.dev/queue/*", "zone_name": "forestrie.dev" }
+      ],
       "vars": {
         "NODE_ENV": "prod",
         "CANOPY_ID": "canopy-prod-1",
