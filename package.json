@@ -19,6 +19,7 @@
     "install:task": "sh -c 'curl -sSfL https://taskfile.dev/install.sh | sh -s -- -d -b /usr/local/bin'"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.966.0",
     "@playwright/test": "^1.48.0",
     "@types/node": "^24.8.1",
     "cbor": "^10.0.11",

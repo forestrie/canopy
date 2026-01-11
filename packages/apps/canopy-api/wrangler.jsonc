@@ -37,7 +37,7 @@
     "dev": {
       "name": "canopy-api-dev",
       "routes": [
-        { "pattern": "api-dev.forestrie.dev/*", "zone_name": "forestrie.dev" }
+        { "pattern": "api-dev.forestrie.dev/*", "zone_name": "forestrie.dev" },
       ],
       "vars": {
         "CANOPY_ID": "canopy-dev-1",
@@ -65,7 +65,7 @@
     "prod": {
       "name": "canopy-api-prod",
       "routes": [
-        { "pattern": "api.forestrie.dev/*", "zone_name": "forestrie.dev" }
+        { "pattern": "api.forestrie.dev/*", "zone_name": "forestrie.dev" },
       ],
       "vars": {
         "CANOPY_ID": "canopy-prod-1",

@@ -106,6 +106,29 @@ tasks:
     cmds:
       - cmd: yes n | wrangler r2 bucket create "{{.R2_BUCKET_NAME_MERKLELOGS}}" --location weur 2>/dev/null || echo "Bucket {{.R2_BUCKET_NAME_MERKLELOGS}} may already exist"
 
+  bucket:empty:
+    desc: Delete all objects in the R2 bucket (DESTRUCTIVE!)
+    cmds:
+      - cmd: |
+          BUCKET="{{.R2_BUCKET_NAME_MERKLELOGS}}"
+          while true; do
+            OBJECTS=$(yes n | wrangler r2 object list "$BUCKET" 2>/dev/null)
+            if [ $? -ne 0 ]; then
+              echo "ERROR: Failed to list objects in bucket $BUCKET" >&2
+              exit 1
+            fi
+            KEYS=$(echo "$OBJECTS" | jq -r '.[].key // empty' 2>/dev/null)
+            if [ -z "$KEYS" ]; then
+              break
+            fi
+            echo "$KEYS" | while IFS= read -r key; do
+              [ -z "$key" ] && continue
+              if ! yes n | wrangler r2 object delete "$BUCKET" "$key" >/dev/null 2>&1; then
+                echo "ERROR: Failed to delete object $key" >&2
+              fi
+            done
+          done
+
   bucket:delete:
     desc: Delete R2 bucket for merklelog massifs/checkpoints (DESTRUCTIVE! Bucket must be empty)
     cmds:
