@@ -127,9 +127,7 @@ export default {
             );
 
             const headers = new Headers(base.headers);
-            Object.entries(corsHeaders).forEach(([k, v]) =>
-              headers.set(k, v),
-            );
+            Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
             headers.set(
               X402_HEADERS.paymentRequired,
               buildPaymentRequiredForRegister(segments[1]),
@@ -144,19 +142,12 @@ export default {
 
           const parsed = parsePaymentSignatureHeader(paymentHeader);
           if (!parsed.ok) {
-            const base = problemResponse(
-              400,
-              "Bad Request",
-              "about:blank",
-              {
-                detail: `Invalid x402 payment header: ${parsed.error}`,
-              },
-            );
+            const base = problemResponse(400, "Bad Request", "about:blank", {
+              detail: `Invalid x402 payment header: ${parsed.error}`,
+            });
 
             const headers = new Headers(base.headers);
-            Object.entries(corsHeaders).forEach(([k, v]) =>
-              headers.set(k, v),
-            );
+            Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
 
             return new Response(base.body, {
               status: 400,
