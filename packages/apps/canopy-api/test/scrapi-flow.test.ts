@@ -43,6 +43,71 @@ describe("SCRAPI flow", () => {
     );
   });
 
+  it("POST /logs/{logId}/entries without payment returns 402 and Payment-Required", async () => {
+    const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
+
+    const request = new Request(
+      `http://localhost/logs/${logId}/entries`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": 'application/cose; cose-type="cose-sign1"',
+        },
+        body: new Uint8Array([0x80]), // minimal body; never parsed in 402 path
+      },
+    );
+
+    const response = await worker.fetch(
+      request,
+      testEnv,
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(402);
+    // Payment-Required header should be present and contain JSON
+    const paymentRequired = response.headers.get("Payment-Required");
+    expect(paymentRequired).not.toBeNull();
+
+    const bodyBytes = new Uint8Array(await response.arrayBuffer());
+    const decoded = decodeCbor(bodyBytes) as any;
+    expect(decoded).toMatchObject({
+      title: "Payment Required",
+      status: 402,
+    });
+  });
+
+  it("POST /logs/{logId}/entries with invalid Payment-Signature returns 400", async () => {
+    const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
+
+    const request = new Request(
+      `http://localhost/logs/${logId}/entries`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": 'application/cose; cose-type="cose-sign1"',
+          "Payment-Signature": "not-json",
+        },
+        body: new Uint8Array([0x80]),
+      },
+    );
+
+    const response = await worker.fetch(
+      request,
+      testEnv,
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(400);
+
+    const bodyBytes = new Uint8Array(await response.arrayBuffer());
+    const decoded = decodeCbor(bodyBytes) as any;
+    expect(decoded).toMatchObject({
+      title: "Bad Request",
+      status: 400,
+    });
+    expect(String(decoded.detail || "")).toContain("Invalid x402 payment header");
+  });
+
   it("resolve-receipt returns a COSE_Sign1 receipt with an attached proof", async () => {
     const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
     const massifHeight = 3;

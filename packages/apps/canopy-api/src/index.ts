@@ -9,6 +9,11 @@ import { registerSignedStatement } from "./scrapi/register-signed-statement";
 import { queryRegistrationStatus } from "./scrapi/query-registration-status";
 import { resolveReceipt } from "./scrapi/resolve-receipt";
 import { getTransparencyConfiguration } from "./scrapi/transparency-configuration";
+import {
+  X402_HEADERS,
+  buildPaymentRequiredForRegister,
+  parsePaymentSignatureHeader,
+} from "./scrapi/x402";
 
 export interface Env {
   // Merklelog storage bucket (massifs + checkpoints) written by Arbor services.
@@ -100,6 +105,66 @@ export default {
       if (segments.length >= 3 && segments[2] === "entries") {
         if (request.method === "POST") {
           // POST /logs/{logId}/entries - Register new statement
+          //
+          // Yolo x402 phase:
+          // - If no Payment-Signature header, return 402 with Payment-Required
+          //   describing exact/upto options.
+          // - If present, syntactically validate the header and, if valid,
+          //   proceed to registerSignedStatement.
+          const paymentHeader = request.headers.get(
+            X402_HEADERS.paymentSignature,
+          );
+
+          if (!paymentHeader) {
+            const base = problemResponse(
+              402,
+              "Payment Required",
+              "about:blank",
+              {
+                detail:
+                  "x402 payment required for statement registration at this endpoint",
+              },
+            );
+
+            const headers = new Headers(base.headers);
+            Object.entries(corsHeaders).forEach(([k, v]) =>
+              headers.set(k, v),
+            );
+            headers.set(
+              X402_HEADERS.paymentRequired,
+              buildPaymentRequiredForRegister(segments[1]),
+            );
+
+            return new Response(base.body, {
+              status: 402,
+              statusText: "Payment Required",
+              headers,
+            });
+          }
+
+          const parsed = parsePaymentSignatureHeader(paymentHeader);
+          if (!parsed.ok) {
+            const base = problemResponse(
+              400,
+              "Bad Request",
+              "about:blank",
+              {
+                detail: `Invalid x402 payment header: ${parsed.error}`,
+              },
+            );
+
+            const headers = new Headers(base.headers);
+            Object.entries(corsHeaders).forEach(([k, v]) =>
+              headers.set(k, v),
+            );
+
+            return new Response(base.body, {
+              status: 400,
+              statusText: "Bad Request",
+              headers,
+            });
+          }
+
           const response = await registerSignedStatement(
             request,
             segments[1],
