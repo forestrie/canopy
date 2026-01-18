@@ -27,6 +27,7 @@
 import { check } from "k6";
 import { encodeCoseSign1, generateUniquePayload } from "../lib/cose.js";
 import {
+  initPaymentSignatureUpto,
   postAndMaybeWait,
   postLatency,
   postErrors,
@@ -135,6 +136,15 @@ export function setup() {
   console.log(`  Payload: ${MSG_BYTES} bytes`);
   console.log(`  Sample rate: ${SAMPLE_RATE * 100}%`);
 
+  // One-time x402 handshake: obtain a reusable Payment-Signature header
+  // using the `upto` scheme so that the main test can attach it to every
+  // POST without incurring 402 round-trips per request.
+  const paymentSignature = initPaymentSignatureUpto(
+    BASE_URL,
+    LOG_IDS[0],
+    API_TOKEN,
+  );
+
   return {
     baseUrl: BASE_URL,
     apiToken: API_TOKEN,
@@ -142,6 +152,7 @@ export function setup() {
     logCount: LOG_IDS.length,
     msgBytes: MSG_BYTES,
     sampleRate: SAMPLE_RATE,
+    paymentSignature,
   };
 }
 
@@ -167,7 +178,8 @@ export default function (data) {
     coseSign1,
     measureE2E,
     60, // maxPolls
-    250 // pollIntervalMs
+    250, // pollIntervalMs
+    data.paymentSignature,
   );
 
   // Check the result
@@ -312,10 +324,10 @@ function textSummary(data, options) {
 
   if (data.metrics.http_reqs) {
     lines.push(
-      `Total requests: ${data.metrics.http_reqs.values.count.toFixed(0)}`
+      `Total requests: ${data.metrics.http_reqs.values.count.toFixed(0)}`,
     );
     lines.push(
-      `Achieved rate: ${data.metrics.http_reqs.values.rate.toFixed(2)} req/s`
+      `Achieved rate: ${data.metrics.http_reqs.values.rate.toFixed(2)} req/s`,
     );
   }
 
@@ -346,7 +358,10 @@ function textSummary(data, options) {
     lines.push(`\nErrors: ${data.metrics.post_errors.values.count}`);
   }
 
-  if (data.metrics.e2e_timeout_count && data.metrics.e2e_timeout_count.values.count > 0) {
+  if (
+    data.metrics.e2e_timeout_count &&
+    data.metrics.e2e_timeout_count.values.count > 0
+  ) {
     lines.push(`E2E timeouts: ${data.metrics.e2e_timeout_count.values.count}`);
   }
 
