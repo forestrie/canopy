@@ -127,9 +127,8 @@ export function verifyPaymentSignature(
 
   const hash = hashPayment(payload);
 
-  const signature = secp256k1.Signature.fromCompact(compact).addRecoveryBit(
-    recovery,
-  );
+  const signature =
+    secp256k1.Signature.fromCompact(compact).addRecoveryBit(recovery);
 
   let publicKey: Uint8Array;
   try {

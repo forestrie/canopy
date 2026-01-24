@@ -50,20 +50,23 @@ export async function verifyAuthorizationForRegister(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const res = await fetch(`${config.facilitatorUrl.replace(/\/$/, "")}/verify`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        payment: verified,
-        requirements: {
-          network: config.network,
-          payTo: config.payTo,
+    const res = await fetch(
+      `${config.facilitatorUrl.replace(/\/$/, "")}/verify`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
         },
-      }),
-      signal: controller.signal,
-    });
+        body: JSON.stringify({
+          payment: verified,
+          requirements: {
+            network: config.network,
+            payTo: config.payTo,
+          },
+        }),
+        signal: controller.signal,
+      },
+    );
 
     if (!res.ok) {
       let message = `facilitator verify failed with status ${res.status}`;
@@ -88,7 +91,9 @@ export async function verifyAuthorizationForRegister(
             ? data.authorizationId
             : undefined;
       const remainingAmount: string | undefined =
-        typeof data?.remainingAmount === "string" ? data.remainingAmount : undefined;
+        typeof data?.remainingAmount === "string"
+          ? data.remainingAmount
+          : undefined;
 
       return {
         ok: true,

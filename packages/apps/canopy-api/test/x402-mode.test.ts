@@ -6,9 +6,10 @@ import { describe, expect, it, vi } from "vitest";
 // HTTP-level behaviour of the worker without depending on real
 // signatures or network calls.
 vi.mock("../src/scrapi/x402", async () => {
-  const actual = await vi.importActual<typeof import("../src/scrapi/x402")>(
-    "../src/scrapi/x402",
-  );
+  const actual =
+    await vi.importActual<typeof import("../src/scrapi/x402")>(
+      "../src/scrapi/x402",
+    );
 
   return {
     ...actual,
@@ -27,10 +28,9 @@ vi.mock("../src/scrapi/x402", async () => {
 });
 
 vi.mock("../src/scrapi/x402-facilitator", async () => {
-  const actual =
-    await vi.importActual<typeof import("../src/scrapi/x402-facilitator")>(
-      "../src/scrapi/x402-facilitator",
-    );
+  const actual = await vi.importActual<
+    typeof import("../src/scrapi/x402-facilitator")
+  >("../src/scrapi/x402-facilitator");
 
   return {
     ...actual,
@@ -42,15 +42,16 @@ vi.mock("../src/scrapi/x402-facilitator", async () => {
 });
 
 vi.mock("../src/scrapi/register-signed-statement", () => ({
-  registerSignedStatement: vi.fn(async () =>
-    new Response(null, {
-      status: 303,
-      headers: {
-        Location:
-          "http://localhost/logs/de305d54-75b4-431b-adb2-eb6b9e546014/entries/" +
-          "0123456789abcdef".repeat(4),
-      },
-    }),
+  registerSignedStatement: vi.fn(
+    async () =>
+      new Response(null, {
+        status: 303,
+        headers: {
+          Location:
+            "http://localhost/logs/de305d54-75b4-431b-adb2-eb6b9e546014/entries/" +
+            "0123456789abcdef".repeat(4),
+        },
+      }),
   ),
 }));
 
@@ -89,7 +90,10 @@ describe("x402 verify-and-settle mode", () => {
 
     const bodyBytes = new Uint8Array(await response.arrayBuffer());
     const decoded = decodeCbor(bodyBytes) as any;
-    expect(decoded).toMatchObject({ status: 500, title: "Internal Server Error" });
+    expect(decoded).toMatchObject({
+      status: 500,
+      title: "Internal Server Error",
+    });
     expect(String(decoded.detail || "")).toContain(
       "requires X402_FACILITATOR_URL to be configured",
     );
@@ -116,7 +120,11 @@ describe("x402 verify-and-settle mode", () => {
       body: new Uint8Array([0x80]),
     });
 
-    const response = await worker.fetch(request, settleEnv, {} as ExecutionContext);
+    const response = await worker.fetch(
+      request,
+      settleEnv,
+      {} as ExecutionContext,
+    );
 
     expect(response.status).toBe(402);
 
@@ -156,7 +164,11 @@ describe("x402 verify-and-settle mode", () => {
       body: new Uint8Array([0x80]),
     });
 
-    const response = await worker.fetch(request, settleEnv, {} as ExecutionContext);
+    const response = await worker.fetch(
+      request,
+      settleEnv,
+      {} as ExecutionContext,
+    );
 
     // We mocked registerSignedStatement to return 303 with a Location
     // header, so a successful facilitator check should allow that

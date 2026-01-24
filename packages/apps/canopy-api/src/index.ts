@@ -85,16 +85,11 @@ export default {
       // URL. Treat this as a hard 500 rather than silently falling back to
       // verify-only semantics.
       if (x402Mode === "verify-and-settle" && !x402FacilitatorUrl) {
-        return problemResponse(
-          500,
-          "Internal Server Error",
-          "about:blank",
-          {
-            detail:
-              "x402 verify-and-settle mode requires X402_FACILITATOR_URL to be configured",
-            headers: corsHeaders,
-          },
-        );
+        return problemResponse(500, "Internal Server Error", "about:blank", {
+          detail:
+            "x402 verify-and-settle mode requires X402_FACILITATOR_URL to be configured",
+          headers: corsHeaders,
+        });
       }
 
       // Health check
@@ -225,7 +220,9 @@ export default {
               );
 
               const headers = new Headers(base.headers);
-              Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
+              Object.entries(corsHeaders).forEach(([k, v]) =>
+                headers.set(k, v),
+              );
               headers.set(
                 X402_HEADERS.paymentRequired,
                 buildPaymentRequiredForRegister(segments[1]),

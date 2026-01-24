@@ -18,8 +18,6 @@ export type { PaymentSignatureHeader } from "./paymentsignatureheader";
 
 export { buildAndSignUptoPayment } from "./uptopayment";
 
-export {
-  verifyPaymentSignature,
-} from "./verifypaymentsignature";
+export { verifyPaymentSignature } from "./verifypaymentsignature";
 
 export type { VerifyOptions, VerifyResult } from "./verifypaymentsignature";

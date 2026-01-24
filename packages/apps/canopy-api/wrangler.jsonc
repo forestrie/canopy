@@ -2,9 +2,7 @@
   "name": "canopy-api",
   "main": "./src/index.ts",
   "compatibility_date": "2024-10-01",
-  "compatibility_flags": [
-    "nodejs_compat_v2"
-  ],
+  "compatibility_flags": ["nodejs_compat_v2"],
   "dev": {
     "port": 8789,
     "local_protocol": "http",
@@ -47,7 +45,7 @@
       "routes": [
         {
           "pattern": "api-dev.forestrie.dev/*",
-          "zone_name": "forestrie.dev"
+          "zone_name": "forestrie.dev",
         },
       ],
       "vars": {
@@ -84,7 +82,7 @@
       "routes": [
         {
           "pattern": "api.forestrie.dev/*",
-          "zone_name": "forestrie.dev"
+          "zone_name": "forestrie.dev",
         },
       ],
       "vars": {
