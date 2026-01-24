@@ -1,7 +1,9 @@
-// x402 helper functions for the yolo (no-facilitator) phase.
+import { verifyPaymentSignature } from "@canopy/x402-signing";
+
+// x402 helper functions for the yolo/Phase 2a (no-facilitator) phase.
 //
-// This module centralizes header names, nominal pricing, and light-weight
-// JSON validation for the Payment-Required and Payment-Signature headers
+// This module centralizes header names, nominal pricing, and JSON
+// validation for the Payment-Required and Payment-Signature headers
 // used to protect POST /logs/{logId}/entries.
 
 export const X402_HEADERS = {
@@ -25,19 +27,20 @@ export interface PaymentRequiredPayload {
   options: X402Option[];
 }
 
-export interface PaymentSignaturePayload {
+/**
+ * Minimal view of a verified payment we expose to the worker routing
+ * layer. Detailed x402 semantics stay in the shared signing library.
+ */
+export interface VerifiedPaymentSignature {
   scheme: X402Scheme;
   network: string;
-  price?: string;
-  maxAmount?: string;
-  minPrice?: string;
   payTo: string;
-  nonce: string;
-  proof: string;
-  expiresAt?: string;
+  /** Recovered payer wallet address (20-byte hex, 0x-prefixed). */
+  payerAddress: `0x${string}`;
 }
 
 const NETWORK_SEPOLIA = "eip155:84532";
+const PAYMENT_RESOURCE = "POST /logs/{logId}/entries";
 
 // For the yolo phase we do not contact a facilitator, so this value is
 // effectively informational. We still record the intended payTo target so
@@ -55,7 +58,7 @@ const PRICE_UPTO_MAX = "$1.00";
  */
 export function buildPaymentRequiredForRegister(logId: string): string {
   const payload: PaymentRequiredPayload = {
-    resource: "POST /logs/{logId}/entries",
+    resource: PAYMENT_RESOURCE,
     options: [
       {
         scheme: "exact",
@@ -80,17 +83,17 @@ export function buildPaymentRequiredForRegister(logId: string): string {
 }
 
 export type ParsePaymentSignatureResult =
-  | { ok: true; value: PaymentSignaturePayload }
+  | { ok: true; value: VerifiedPaymentSignature }
   | { ok: false; error: string };
 
 /**
- * Parse and syntactically validate the Payment-Signature header.
+ * Parse and validate the Payment-Signature header.
  *
- * Yolo semantics:
+ * Phase 2a semantics:
  * - Ensures the header is present and parses as JSON.
- * - Ensures `scheme` is "exact" or "upto".
- * - Ensures `network`, `payTo`, `nonce`, and `proof` are non-empty strings.
- * - Does not contact any facilitator or verify balances.
+ * - Delegates to @canopy/x402-signing to verify the ECDSA signature over a
+ *   canonical payment payload, checking network/resource/payTo policy.
+ * - Returns a recovered payer address on success.
  */
 export function parsePaymentSignatureHeader(
   raw: string | null,
@@ -110,44 +113,34 @@ export function parsePaymentSignatureHeader(
     return { ok: false, error: "Payment-Signature must be a JSON object" };
   }
 
-  const obj = parsed as Record<string, unknown>;
+  const verification = verifyPaymentSignature(parsed, {
+    expectedNetwork: NETWORK_SEPOLIA,
+    expectedResource: PAYMENT_RESOURCE,
+    expectedPayTo: PAY_TO_TESTNET as `0x${string}`,
+  });
 
+  if (!verification.ok) {
+    return { ok: false, error: verification.error };
+  }
+
+  const obj = parsed as Record<string, unknown>;
   const scheme = obj.scheme;
   if (scheme !== "exact" && scheme !== "upto") {
     return { ok: false, error: 'scheme must be "exact" or "upto"' };
   }
 
-  const network = stringField(obj.network);
-  const payTo = stringField(obj.payTo);
-  const nonce = stringField(obj.nonce);
-  const proof = stringField(obj.proof);
+  const network = stringField(obj.network) ?? NETWORK_SEPOLIA;
+  const payTo = stringField(obj.payTo) ?? PAY_TO_TESTNET;
 
-  if (!network || !payTo || !nonce || !proof) {
-    return {
-      ok: false,
-      error: "network, payTo, nonce, and proof must be non-empty strings",
-    };
-  }
-
-  const price = stringField(obj.price);
-  const maxAmount = stringField(obj.maxAmount);
-  const minPrice = stringField(obj.minPrice);
-  const expiresAt = stringField(obj.expiresAt);
-
-  const value: PaymentSignaturePayload = {
-    scheme,
-    network,
-    payTo,
-    nonce,
-    proof,
+  return {
+    ok: true,
+    value: {
+      scheme,
+      network,
+      payTo,
+      payerAddress: verification.payerAddress,
+    },
   };
-
-  if (price) value.price = price;
-  if (maxAmount) value.maxAmount = maxAmount;
-  if (minPrice) value.minPrice = minPrice;
-  if (expiresAt) value.expiresAt = expiresAt;
-
-  return { ok: true, value };
 }
 
 function stringField(v: unknown): string | undefined {

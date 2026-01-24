@@ -77,6 +77,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Bundle k6 scenario with x402 signing
+        run: pnpm perf:k6:bundle-canopy-api
+
       - name: Setup k6
         uses: grafana/setup-k6-action@v1
 
@@ -228,7 +245,7 @@ jobs:
           echo "  Log count: ${CANOPY_PERF_LOG_COUNT}"
           echo "  Log IDs: ${CANOPY_PERF_LOG_IDS}"
           echo "  Target: ${CANOPY_PERF_BASE_URL}/logs/.../entries"
-          k6 run --no-usage-report perf/k6/canopy-api/scenarios/write-constant-arrival.js
+          k6 run --no-usage-report perf/k6/canopy-api/dist/write-constant-arrival.bundle.js
 
       - name: Capture queue stats (after)
         if: always()

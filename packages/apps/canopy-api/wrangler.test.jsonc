@@ -9,6 +9,7 @@
     "FOREST_PROJECT_ID": "forest-dev-1",
     "API_VERSION": "v1",
     "NODE_ENV": "test",
+    "X402_MODE": "verify-only",
   },
   "r2_buckets": [
     {

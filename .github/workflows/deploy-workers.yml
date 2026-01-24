@@ -84,6 +84,8 @@ jobs:
 
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CDP_API_KEY_ID: ${{ secrets.CDP_API_KEY_ID }}
+      CDP_API_KEY_SECRET: ${{ secrets.CDP_API_KEY_SECRET }}
 
     steps:
       - name: Checkout
@@ -119,6 +121,17 @@ jobs:
 
       - name: Unit tests
         run: pnpm --filter ${{ matrix.target.pkg }} run test
+
+      - name: Configure CDP secrets for canopy-api (prod)
+        if: matrix.target.app == 'canopy-api'
+        run: |
+          if [ -n "${CDP_API_KEY_ID:-}" ] && [ -n "${CDP_API_KEY_SECRET:-}" ]; then
+            echo "Configuring CDP API secrets in Cloudflare (prod env)..."
+            printf '%s' "$CDP_API_KEY_ID" | wrangler secret put CDP_API_KEY_ID --env prod --quiet || true
+            printf '%s' "$CDP_API_KEY_SECRET" | wrangler secret put CDP_API_KEY_SECRET --env prod --quiet || true
+          else
+            echo "CDP_API_KEY_ID or CDP_API_KEY_SECRET not set; skipping CDP secret configuration."
+          fi
 
       - name: Deploy ${{ matrix.target.app }}
         run: task wrangler:deploy:${{ matrix.target.app }}

@@ -17,6 +17,7 @@
     "@canopy/forestrie-ingress-types": "workspace:*",
     "@canopy/forestrie-sharding": "workspace:*",
     "@canopy/merklelog": "workspace:*",
+    "@canopy/x402-signing": "workspace:*",
     "cbor-x": "^1.5.9",
     "cose-js": "^0.9.0",
     "uuid": "^10.0.0"

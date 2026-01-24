@@ -8,6 +8,29 @@ vars:
   API_KEY: "{{.API_KEY}}"
 
 tasks:
+  # ---------------------------------------------------------------------------
+  # x402 wallet management
+  # ---------------------------------------------------------------------------
+
+  x402:check-balance:
+    desc: Check dev wallet USDC balance on Base Sepolia
+    cmds:
+      - node scripts/x402-faucet.mjs --check
+
+  x402:refill:
+    desc: Request USDC from CDP faucet (requires CDP_API_KEY_ID and CDP_API_KEY_SECRET)
+    cmds:
+      - node scripts/x402-faucet.mjs --refill
+
+  x402:refill-if-low:
+    desc: Request USDC from CDP faucet only if balance is below 50% of daily claim
+    cmds:
+      - node scripts/x402-faucet.mjs --refill-if-low
+
+  # ---------------------------------------------------------------------------
+  # Statement generation and registration
+  # ---------------------------------------------------------------------------
+
   create-statement:hello:
     desc: Generate a hello world COSE Sign1 statement
     cmds:
@@ -57,9 +80,22 @@ tasks:
               --data-binary @-)
 
           if [ "$post_code" = "402" ]; then
-            # Build a minimal syntactically valid Payment-Signature header.
-            nonce=$(date +%s%N)
-            pay_sig=$(printf '{"scheme":"exact","network":"eip155:84532","price":"$0.001","payTo":"0x75be7950F26fe7F15336a10b33A8D8134faDb787","nonce":"%s","proof":"yolo"}' "$nonce")
+            # Extract Payment-Required header and generate a real signed Payment-Signature.
+            payment_required=$(grep -i '^Payment-Required:' "$post_headers" | sed 's/^[^:]*: //' | tr -d '\r')
+            if [ -z "$payment_required" ]; then
+              echo "402 response missing Payment-Required header" >&2
+              exit 1
+            fi
+
+            # Extract logId from BASE_URL (last path segment before /entries)
+            log_id=$(echo "{{.BASE_URL}}" | sed 's|.*/logs/||' | sed 's|/entries.*||')
+            if [ -z "$log_id" ]; then
+              log_id="unknown"
+            fi
+
+            pay_sig=$(node scripts/gen-x402-payment-signature.mjs \
+              --log-id "$log_id" \
+              --payment-required "$payment_required")
 
             post_code=$(printf '%s' "$STATEMENT" \
               | curl -sS -D "$post_headers" -w "%{http_code}" -X POST "{{.BASE_URL}}/entries" \
@@ -163,8 +199,21 @@ tasks:
               --data-binary @-)
 
           if [ "$post_code" = "402" ]; then
-            nonce=$(date +%s%N)
-            pay_sig=$(printf '{"scheme":"exact","network":"eip155:84532","price":"$0.001","payTo":"0x75be7950F26fe7F15336a10b33A8D8134faDb787","nonce":"%s","proof":"yolo"}' "$nonce")
+            # Extract Payment-Required header and generate a real signed Payment-Signature.
+            payment_required=$(grep -i '^Payment-Required:' "$post_headers" | sed 's/^[^:]*: //' | tr -d '\r')
+            if [ -z "$payment_required" ]; then
+              echo "402 response missing Payment-Required header" >&2
+              exit 1
+            fi
+
+            log_id=$(echo "{{.BASE_URL}}" | sed 's|.*/logs/||' | sed 's|/entries.*||')
+            if [ -z "$log_id" ]; then
+              log_id="unknown"
+            fi
+
+            pay_sig=$(node scripts/gen-x402-payment-signature.mjs \
+              --log-id "$log_id" \
+              --payment-required "$payment_required")
 
             post_code=$(printf '%s' "$STATEMENT" \
               | curl -sS -D "$post_headers" -w "%{http_code}" -X POST "{{.BASE_URL}}/entries" \
@@ -252,8 +301,21 @@ tasks:
             --output /dev/null --data-binary @-)
 
           if [ "$code" = "402" ]; then
-            nonce=$(date +%s%N)
-            pay_sig=$(printf '{"scheme":"exact","network":"eip155:84532","price":"$0.001","payTo":"0x75be7950F26fe7F15336a10b33A8D8134faDb787","nonce":"%s","proof":"yolo"}' "$nonce")
+            # Extract Payment-Required header and generate a real signed Payment-Signature.
+            payment_required=$(grep -i '^Payment-Required:' "$headers" | sed 's/^[^:]*: //' | tr -d '\r')
+            if [ -z "$payment_required" ]; then
+              echo "402 response missing Payment-Required header" >&2
+              exit 1
+            fi
+
+            log_id=$(echo "{{.BASE_URL}}" | sed 's|.*/logs/||' | sed 's|/entries.*||')
+            if [ -z "$log_id" ]; then
+              log_id="unknown"
+            fi
+
+            pay_sig=$(node scripts/gen-x402-payment-signature.mjs \
+              --log-id "$log_id" \
+              --payment-required "$payment_required" 2>/dev/null)
 
             code=$(printf '%s' "$statement" | curl -sS -D "$headers" -w "%{http_code}" \
               -X POST "{{.BASE_URL}}/entries" \
@@ -623,8 +685,21 @@ tasks:
           --data-binary @-)
 
           if [ "$http_code" = "402" ]; then
-            nonce=$(date +%s%N)
-            pay_sig=$(printf '{"scheme":"exact","network":"eip155:84532","price":"$0.001","payTo":"0x75be7950F26fe7F15336a10b33A8D8134faDb787","nonce":"%s","proof":"yolo"}' "$nonce")
+            # Extract Payment-Required header and generate a real signed Payment-Signature.
+            payment_required=$(grep -i '^Payment-Required:' /tmp/post-entry-headers | sed 's/^[^:]*: //' | tr -d '\r')
+            if [ -z "$payment_required" ]; then
+              echo "402 response missing Payment-Required header"
+              exit 1
+            fi
+
+            log_id=$(echo "{{.BASE_URL}}" | sed 's|.*/logs/||' | sed 's|/entries.*||')
+            if [ -z "$log_id" ]; then
+              log_id="unknown"
+            fi
+
+            pay_sig=$(node scripts/gen-x402-payment-signature.mjs \
+              --log-id "$log_id" \
+              --payment-required "$payment_required")
 
             http_code=$(node scripts/gen-cose-sign1.mjs \
             | curl -v -w "%{http_code}" -X POST "{{.BASE_URL}}/entries" \

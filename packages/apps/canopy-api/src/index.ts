@@ -9,11 +9,15 @@ import { registerSignedStatement } from "./scrapi/register-signed-statement";
 import { queryRegistrationStatus } from "./scrapi/query-registration-status";
 import { resolveReceipt } from "./scrapi/resolve-receipt";
 import { getTransparencyConfiguration } from "./scrapi/transparency-configuration";
+import { encodePayerAddressToExtra1 } from "./scrapi/payer-address";
+import { verifyAuthorizationForRegister } from "./scrapi/x402-facilitator";
 import {
   X402_HEADERS,
   buildPaymentRequiredForRegister,
   parsePaymentSignatureHeader,
 } from "./scrapi/x402";
+
+export type X402Mode = "verify-only" | "verify-and-settle";
 
 export interface Env {
   // Merklelog storage bucket (massifs + checkpoints) written by Arbor services.
@@ -29,6 +33,18 @@ export interface Env {
   FOREST_PROJECT_ID: string;
   API_VERSION: string;
   NODE_ENV: string;
+  // x402 operation mode. "verify-only" performs cryptographic verification
+  // without contacting a facilitator or settling funds. "verify-and-settle"
+  // (Phase 2b) will verify and charge via an x402 facilitator.
+  X402_MODE?: X402Mode;
+  // x402 facilitator configuration. In dev this typically points to
+  // https://x402.org/facilitator on Base Sepolia; in prod it points to
+  // the CDP facilitator on Base mainnet.
+  X402_FACILITATOR_URL?: string;
+  X402_NETWORK?: string;
+  X402_PAYTO_ADDRESS?: string;
+  X402_PRICE_EXACT?: string;
+  X402_PRICE_UPTO_MAX?: string;
   // Massif height for this transparency log (1-based, typically 14)
   MASSIF_HEIGHT: string;
   // Number of DO shards for the sequencing queue (typically 4)
@@ -60,6 +76,27 @@ export default {
     }
 
     try {
+      const x402Mode: X402Mode = env.X402_MODE ?? "verify-only";
+      const x402FacilitatorUrl = env.X402_FACILITATOR_URL;
+      const x402Network = env.X402_NETWORK;
+      const x402PayTo = env.X402_PAYTO_ADDRESS;
+
+      // Misconfiguration guard: verify-and-settle mode requires a facilitator
+      // URL. Treat this as a hard 500 rather than silently falling back to
+      // verify-only semantics.
+      if (x402Mode === "verify-and-settle" && !x402FacilitatorUrl) {
+        return problemResponse(
+          500,
+          "Internal Server Error",
+          "about:blank",
+          {
+            detail:
+              "x402 verify-and-settle mode requires X402_FACILITATOR_URL to be configured",
+            headers: corsHeaders,
+          },
+        );
+      }
+
       // Health check
       if (pathname === "/api/health" && request.method === "GET") {
         return Response.json(
@@ -115,6 +152,10 @@ export default {
             X402_HEADERS.paymentSignature,
           );
 
+          // For now, both modes share the same verification behaviour.
+          // In Phase 2b, "verify-and-settle" will additionally contact a
+          // facilitator to settle funds after successful verification.
+
           if (!paymentHeader) {
             const base = problemResponse(
               402,
@@ -156,11 +197,72 @@ export default {
             });
           }
 
+          // In verify-and-settle mode, perform an additional synchronous
+          // authorization check via the facilitator client. For now this is
+          // a stub that always succeeds, but the wiring ensures that
+          // failures in a future Phase 2b cut can return 402 before we
+          // enqueue.
+          if (x402Mode === "verify-and-settle" && parsed.ok) {
+            const auth = await verifyAuthorizationForRegister(
+              parsed.value,
+              x402Mode,
+              {
+                facilitatorUrl: x402FacilitatorUrl,
+                network: x402Network,
+                payTo: x402PayTo,
+                verifyTimeoutMs: 2000,
+              },
+            );
+
+            if (!auth.ok) {
+              const base = problemResponse(
+                402,
+                "Payment Required",
+                "about:blank",
+                {
+                  detail: `x402 authorization failed: ${auth.error}`,
+                },
+              );
+
+              const headers = new Headers(base.headers);
+              Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
+              headers.set(
+                X402_HEADERS.paymentRequired,
+                buildPaymentRequiredForRegister(segments[1]),
+              );
+
+              return new Response(base.body, {
+                status: 402,
+                statusText: "Payment Required",
+                headers,
+              });
+            }
+          }
+
+          let enqueueExtras: Parameters<
+            import("@canopy/forestrie-ingress-types").SequencingQueueStub["enqueue"]
+          >[2];
+
+          if (parsed.ok && "payerAddress" in parsed.value) {
+            try {
+              const encoded = encodePayerAddressToExtra1(
+                (parsed.value as any).payerAddress as string,
+              );
+              enqueueExtras = { extra1: encoded.slice().buffer };
+            } catch (e) {
+              console.warn(
+                "Failed to encode payer address into extra1, continuing without extras:",
+                e instanceof Error ? e.message : e,
+              );
+            }
+          }
+
           const response = await registerSignedStatement(
             request,
             segments[1],
             env.SEQUENCING_QUEUE,
             env.QUEUE_SHARD_COUNT,
+            enqueueExtras,
           );
 
           const headers = new Headers(response.headers);

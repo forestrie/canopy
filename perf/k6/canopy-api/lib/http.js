@@ -10,6 +10,7 @@
 import http from "k6/http";
 import { sleep } from "k6";
 import { Trend, Counter } from "k6/metrics";
+import { buildAndSignUptoPayment } from "@canopy/x402-signing";
 
 // Custom metrics
 export const postLatency = new Trend("post_latency", true);
@@ -27,6 +28,13 @@ export const e2eTimeoutCount = new Counter("e2e_timeout_count");
  * This is intended to be called from k6 `setup()` so that the main
  * performance test can attach the returned header to every POST without
  * incurring a 402 round-trip per request.
+ *
+ * The returned header is constructed using the shared @canopy/x402-signing
+ * library so that the signing cost and payload structure match what the
+ * worker verifies in Phase 2a.
+ *
+ * The signing key is taken from CANOPY_PERF_X402_PRIVATE_KEY if set, or a
+ * deterministic built-in test key otherwise (Phase 2a has no real funds).
  *
  * @param {string} baseUrl - Base URL of canopy-api
  * @param {string} logId - Any valid log ID (first from the list is fine)
@@ -83,18 +91,28 @@ export function initPaymentSignatureUpto(baseUrl, logId, apiToken) {
 
   const minPrice = chosen.minPrice || chosen.price;
 
-  const paymentSignature = {
-    scheme: "upto",
-    network: chosen.network,
-    // Authorize up to the advertised price for the test run.
-    maxAmount: chosen.price,
-    minPrice,
-    payTo: chosen.payTo,
-    nonce: String(Date.now()),
-    proof: "k6-perf",
-  };
+  // Build a real x402 `upto` payment payload and sign it.
+  // Use the shared dev payer key CANOPY_X402_DEV_PRIVATE_KEY by default,
+  // with CANOPY_PERF_X402_PRIVATE_KEY as an optional override.
+  // Fall back to a deterministic test key only if neither is set (Phase 2a).
+  const privateKey =
+    __ENV.CANOPY_PERF_X402_PRIVATE_KEY ||
+    __ENV.CANOPY_X402_DEV_PRIVATE_KEY ||
+    // 0x + 64 hex chars; arbitrary but stable dev-only key for Phase 2a testing.
+    "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-  return JSON.stringify(paymentSignature);
+  const payment = buildAndSignUptoPayment(
+    {
+      network: chosen.network,
+      payTo: chosen.payTo,
+      resource: "POST /logs/{logId}/entries",
+      maxAmount: chosen.price,
+      minPrice,
+    },
+    { privateKey },
+  );
+
+  return JSON.stringify(payment);
 }
 
 /**

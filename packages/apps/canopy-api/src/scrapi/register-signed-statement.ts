@@ -12,6 +12,7 @@ import { seeOtherResponse } from "./cbor-response";
 
 import { ClientErrors, ServerErrors } from "./problem-details";
 import { getMaxStatementSize } from "./transparency-configuration";
+import { encodePayerAddressToExtra1 } from "./payer-address";
 
 /**
  * Statement Registration Request
@@ -51,6 +52,7 @@ export async function registerSignedStatement(
   logId: string,
   sequencingQueue: DurableObjectNamespace,
   shardCountStr: string,
+  enqueueExtras?: Parameters<SequencingQueueStub["enqueue"]>[2],
 ): Promise<Response> {
   try {
     const maxSize = getMaxStatementSize();
@@ -101,7 +103,7 @@ export async function registerSignedStatement(
     const queue = sequencingQueue.get(
       queueId,
     ) as unknown as SequencingQueueStub;
-    await queue.enqueue(logIdBytes, hexToBytes(contentHash));
+    await queue.enqueue(logIdBytes, hexToBytes(contentHash), enqueueExtras);
 
     // The SCRAPI pre-sequence identifier is the content hash.
     // This is used as the operation ID until sequencing completes.
