@@ -10,6 +10,7 @@ tasks:
       - task: :wrangler:deploy:forestrie-ingress
       - task: :wrangler:deploy:canopy-api
       - task: :wrangler:deploy:delegation-signer
+      - task: :wrangler:deploy:x402-settlement
 
   bootstrap:prod:
     desc: Initial deployment of workers (prod)
@@ -23,6 +24,9 @@ tasks:
       - task: :wrangler:deploy:delegation-signer
         vars:
           ENV: prod
+      - task: :wrangler:deploy:x402-settlement
+        vars:
+          ENV: prod
 
   prod:
     desc: Deploy all workers to production
@@ -34,5 +38,8 @@ tasks:
         vars:
           ENV: prod
       - task: :wrangler:deploy:delegation-signer
+        vars:
+          ENV: prod
+      - task: :wrangler:deploy:x402-settlement
         vars:
           ENV: prod

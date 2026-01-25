@@ -1,0 +1,98 @@
+{
+  "name": "x402-settlement",
+  "main": "./src/index.ts",
+  "compatibility_date": "2024-10-01",
+  "compatibility_flags": ["nodejs_compat_v2"],
+  "dev": {
+    "port": 8792,
+    "local_protocol": "http",
+  },
+  "observability": {
+    "enabled": true,
+  },
+  // Top-level bindings needed for vitest (@cloudflare/vitest-pool-workers)
+  "vars": {
+    "CANOPY_ID": "canopy-dev-1",
+    "NODE_ENV": "dev",
+    "DO_SHARD_COUNT": "4",
+    "X402_FACILITATOR_URL": "https://x402.org/facilitator",
+    "X402_NETWORK": "eip155:84532",
+    "SETTLE_TIMEOUT_MS": "5000",
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "X402_SETTLEMENT_DO",
+        "class_name": "X402SettlementDO",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["X402SettlementDO"],
+    },
+  ],
+  "env": {
+    "dev": {
+      "name": "x402-settlement-dev",
+      "vars": {
+        "CANOPY_ID": "canopy-dev-1",
+        "NODE_ENV": "dev",
+        "DO_SHARD_COUNT": "4",
+        "X402_FACILITATOR_URL": "https://x402.org/facilitator",
+        "X402_NETWORK": "eip155:84532",
+        "SETTLE_TIMEOUT_MS": "5000",
+      },
+      "queues": {
+        "consumers": [
+          {
+            "queue": "canopy-dev-1-x402-settlement",
+            "max_batch_size": 10,
+            "max_batch_timeout": 30,
+            "max_retries": 5,
+            "dead_letter_queue": "canopy-dev-1-x402-settlement-dlq",
+          },
+        ],
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "X402_SETTLEMENT_DO",
+            "class_name": "X402SettlementDO",
+          },
+        ],
+      },
+    },
+    "prod": {
+      "name": "x402-settlement-prod",
+      "vars": {
+        "CANOPY_ID": "canopy-prod-1",
+        "NODE_ENV": "prod",
+        "DO_SHARD_COUNT": "4",
+        "X402_FACILITATOR_URL": "https://api.cdp.coinbase.com/platform/v2/x402",
+        "X402_NETWORK": "eip155:8453",
+        "SETTLE_TIMEOUT_MS": "5000",
+      },
+      "queues": {
+        "consumers": [
+          {
+            "queue": "canopy-prod-1-x402-settlement",
+            "max_batch_size": 10,
+            "max_batch_timeout": 30,
+            "max_retries": 5,
+            "dead_letter_queue": "canopy-prod-1-x402-settlement-dlq",
+          },
+        ],
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "X402_SETTLEMENT_DO",
+            "class_name": "X402SettlementDO",
+          },
+        ],
+      },
+    },
+  },
+}

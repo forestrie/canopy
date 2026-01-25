@@ -39,6 +39,15 @@
       },
     ],
   },
+  // Queue producer for x402 settlement jobs (Phase 2b)
+  "queues": {
+    "producers": [
+      {
+        "binding": "X402_SETTLEMENT_QUEUE",
+        "queue": "canopy-dev-1-x402-settlement",
+      },
+    ],
+  },
   "env": {
     "dev": {
       "name": "canopy-api-dev",
@@ -76,6 +85,14 @@
           },
         ],
       },
+      "queues": {
+        "producers": [
+          {
+            "binding": "X402_SETTLEMENT_QUEUE",
+            "queue": "canopy-dev-1-x402-settlement",
+          },
+        ],
+      },
     },
     "prod": {
       "name": "canopy-api-prod",
@@ -110,6 +127,14 @@
             "name": "SEQUENCING_QUEUE",
             "class_name": "SequencingQueue",
             "script_name": "forestrie-ingress-prod",
+          },
+        ],
+      },
+      "queues": {
+        "producers": [
+          {
+            "binding": "X402_SETTLEMENT_QUEUE",
+            "queue": "canopy-prod-1-x402-settlement",
           },
         ],
       },

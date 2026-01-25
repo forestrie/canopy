@@ -16,6 +16,7 @@ import {
   buildPaymentRequiredForRegister,
   parsePaymentSignatureHeader,
 } from "./scrapi/x402";
+import type { SettlementJob } from "@canopy/x402-settlement-types";
 
 export type X402Mode = "verify-only" | "verify-and-settle";
 
@@ -49,6 +50,9 @@ export interface Env {
   MASSIF_HEIGHT: string;
   // Number of DO shards for the sequencing queue (typically 4)
   QUEUE_SHARD_COUNT: string;
+  // Queue producer for x402 settlement jobs (Phase 2b)
+  // Optional binding - only present when queue is provisioned
+  X402_SETTLEMENT_QUEUE?: Queue<SettlementJob>;
 }
 
 export default {
@@ -197,6 +201,7 @@ export default {
           // a stub that always succeeds, but the wiring ensures that
           // failures in a future Phase 2b cut can return 402 before we
           // enqueue.
+          let authResult: { authId: string } | undefined;
           if (x402Mode === "verify-and-settle" && parsed.ok) {
             const auth = await verifyAuthorizationForRegister(
               parsed.value,
@@ -234,6 +239,8 @@ export default {
                 headers,
               });
             }
+
+            authResult = { authId: auth.authId };
           }
 
           let enqueueExtras: Parameters<
@@ -261,6 +268,41 @@ export default {
             env.QUEUE_SHARD_COUNT,
             enqueueExtras,
           );
+
+          // Emit settlement job after successful registration (303 response)
+          // Extract content hash from Location header for idempotency key
+          if (
+            response.status === 303 &&
+            x402Mode === "verify-and-settle" &&
+            authResult &&
+            parsed.ok &&
+            env.X402_SETTLEMENT_QUEUE
+          ) {
+            const location = response.headers.get("Location");
+            const contentHash = location?.split("/").pop();
+            const x402PriceExact = env.X402_PRICE_EXACT ?? "$0.001";
+
+            if (contentHash) {
+              const job: SettlementJob = {
+                jobId: crypto.randomUUID(),
+                authId: authResult.authId,
+                scheme: parsed.value.scheme,
+                payer: parsed.value.payerAddress as `0x${string}`,
+                amount: x402PriceExact,
+                logId: segments[1],
+                contentHash,
+                idempotencyKey: `${authResult.authId}:${contentHash}:${segments[1]}`,
+                createdAt: Date.now(),
+              };
+
+              // Fire-and-forget: don't block the response on queue send
+              ctx.waitUntil(
+                env.X402_SETTLEMENT_QUEUE.send(job).catch((err) => {
+                  console.error("Failed to send settlement job:", err);
+                }),
+              );
+            }
+          }
 
           const headers = new Headers(response.headers);
           Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));

@@ -7,12 +7,33 @@ on:
       - "packages/apps/canopy-api/**"
       - "packages/apps/delegation-signer/**"
       - "packages/apps/forestrie-ingress/**"
+      - "packages/apps/x402-settlement/**"
       - "packages/shared/**"
       - "packages/merklelog/**"
       - "Taskfile.dist.yml"
       - "taskfiles/wrangler.yml"
       - ".github/workflows/deploy-workers.yml"
   workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deployment environment"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - prod
+      app:
+        description: "Worker to deploy (leave empty for all)"
+        required: false
+        default: ""
+        type: choice
+        options:
+          - ""
+          - canopy-api
+          - delegation-signer
+          - forestrie-ingress
+          - x402-settlement
 
 permissions:
   contents: read
@@ -23,6 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.matrix.outputs.apps }}
+      environment: ${{ steps.env.outputs.environment }}
 
     steps:
       - name: Checkout
@@ -30,8 +52,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Determine environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "environment=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=dev" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Detect changes
         id: changes
+        if: github.event_name == 'push'
         uses: dorny/paths-filter@v3
         with:
           filters: |
@@ -47,19 +79,56 @@ jobs:
               - 'packages/apps/forestrie-ingress/**'
               - 'packages/shared/**'
               - 'packages/merklelog/**'
+            x402_settlement:
+              - 'packages/apps/x402-settlement/**'
+              - 'packages/shared/**'
+              - 'packages/merklelog/**'
 
       - name: Build matrix
         id: matrix
         run: |
           apps=()
-          if [ "${{ steps.changes.outputs.canopy_api }}" = "true" ]; then
-            apps+=("{\"app\":\"canopy-api\",\"pkg\":\"@canopy/api\"}")
-          fi
-          if [ "${{ steps.changes.outputs.delegation_signer }}" = "true" ]; then
-            apps+=("{\"app\":\"delegation-signer\",\"pkg\":\"@canopy/delegation-signer\"}")
-          fi
-          if [ "${{ steps.changes.outputs.forestrie_ingress }}" = "true" ]; then
-            apps+=("{\"app\":\"forestrie-ingress\",\"pkg\":\"@canopy/forestrie-ingress\"}")
+
+          # For workflow_dispatch, use the selected app or all apps
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            selected_app="${{ inputs.app }}"
+            if [ -n "$selected_app" ]; then
+              # Single app selected
+              case "$selected_app" in
+                canopy-api)
+                  apps+=("{\"app\":\"canopy-api\",\"pkg\":\"@canopy/api\"}")
+                  ;;
+                delegation-signer)
+                  apps+=("{\"app\":\"delegation-signer\",\"pkg\":\"@canopy/delegation-signer\"}")
+                  ;;
+                forestrie-ingress)
+                  apps+=("{\"app\":\"forestrie-ingress\",\"pkg\":\"@canopy/forestrie-ingress\"}")
+                  ;;
+                x402-settlement)
+                  apps+=("{\"app\":\"x402-settlement\",\"pkg\":\"@canopy/x402-settlement\"}")
+                  ;;
+              esac
+            else
+              # No app selected - deploy all
+              apps+=("{\"app\":\"canopy-api\",\"pkg\":\"@canopy/api\"}")
+              apps+=("{\"app\":\"delegation-signer\",\"pkg\":\"@canopy/delegation-signer\"}")
+              apps+=("{\"app\":\"forestrie-ingress\",\"pkg\":\"@canopy/forestrie-ingress\"}")
+              apps+=("{\"app\":\"x402-settlement\",\"pkg\":\"@canopy/x402-settlement\"}")
+            fi
+          else
+            # For push events, use change detection
+            if [ "${{ steps.changes.outputs.canopy_api }}" = "true" ]; then
+              apps+=("{\"app\":\"canopy-api\",\"pkg\":\"@canopy/api\"}")
+            fi
+            if [ "${{ steps.changes.outputs.delegation_signer }}" = "true" ]; then
+              apps+=("{\"app\":\"delegation-signer\",\"pkg\":\"@canopy/delegation-signer\"}")
+            fi
+            if [ "${{ steps.changes.outputs.forestrie_ingress }}" = "true" ]; then
+              apps+=("{\"app\":\"forestrie-ingress\",\"pkg\":\"@canopy/forestrie-ingress\"}")
+            fi
+            if [ "${{ steps.changes.outputs.x402_settlement }}" = "true" ]; then
+              apps+=("{\"app\":\"x402-settlement\",\"pkg\":\"@canopy/x402-settlement\"}")
+            fi
           fi
 
           if [ "${#apps[@]}" -eq 0 ]; then
@@ -70,12 +139,12 @@ jobs:
           fi
 
   deploy:
-    name: Deploy worker
+    name: Deploy worker (${{ needs.changes.outputs.environment }})
     needs: changes
     if: needs.changes.outputs.matrix != '[]'
     runs-on: ubuntu-latest
     concurrency:
-      group: worker-deploy-${{ matrix.target.app }}
+      group: worker-deploy-${{ matrix.target.app }}-${{ needs.changes.outputs.environment }}
       cancel-in-progress: true
     strategy:
       fail-fast: false
@@ -86,6 +155,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CDP_API_KEY_ID: ${{ secrets.CDP_API_KEY_ID }}
       CDP_API_KEY_SECRET: ${{ secrets.CDP_API_KEY_SECRET }}
+      DEPLOY_ENV: ${{ needs.changes.outputs.environment }}
 
     steps:
       - name: Checkout
@@ -123,7 +193,7 @@ jobs:
         run: pnpm --filter ${{ matrix.target.pkg }} run test
 
       - name: Configure CDP secrets for canopy-api (prod)
-        if: matrix.target.app == 'canopy-api'
+        if: matrix.target.app == 'canopy-api' && env.DEPLOY_ENV == 'prod'
         run: |
           if [ -n "${CDP_API_KEY_ID:-}" ] && [ -n "${CDP_API_KEY_SECRET:-}" ]; then
             echo "Configuring CDP API secrets in Cloudflare (prod env)..."
@@ -133,14 +203,14 @@ jobs:
             echo "CDP_API_KEY_ID or CDP_API_KEY_SECRET not set; skipping CDP secret configuration."
           fi
 
-      - name: Deploy ${{ matrix.target.app }}
-        run: task wrangler:deploy:${{ matrix.target.app }}
+      - name: Deploy ${{ matrix.target.app }} (${{ env.DEPLOY_ENV }})
+        run: task wrangler:deploy:${{ matrix.target.app }} ENV=${{ env.DEPLOY_ENV }}
 
   smoke-test:
-    name: Smoke test (dev)
-    needs: deploy
+    name: Smoke test (${{ needs.changes.outputs.environment }})
+    needs: [changes, deploy]
     if: always() && needs.deploy.result == 'success'
     uses: ./.github/workflows/smoke-test.yml
     with:
-      environment: dev
+      environment: ${{ needs.changes.outputs.environment }}
       test_count: 3

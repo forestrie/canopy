@@ -44,6 +44,7 @@ tasks:
       - task: bucket:create
       - task: queue:create:sealer
       - task: queue:create:forester
+      - task: queue:create:x402-settlement
       - task: r2notification:create:sealer
         vars:
           R2_BUCKET_NAME: "{{ .R2_BUCKET_NAME_MERKLELOGS }}"
