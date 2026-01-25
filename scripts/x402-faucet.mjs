@@ -161,9 +161,11 @@ function generateCdpJwt(keyId, keySecret, uri) {
   const payloadB64 = encode(payload);
   const message = `${headerB64}.${payloadB64}`;
 
-  // Parse the PEM-encoded private key
+  // Parse the PEM-encoded private key.
+  // CDP key secrets may have literal "\n" instead of actual newlines.
+  const normalizedKey = keySecret.replace(/\\n/g, "\n");
   const key = crypto.createPrivateKey({
-    key: keySecret,
+    key: normalizedKey,
     format: "pem",
   });
 
