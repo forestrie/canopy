@@ -84,7 +84,9 @@ export class X402SettlementDO extends DurableObject<Env> {
 
     // Check idempotency - if we've already processed this job, return cached result
     const existing = this.ctx.storage.sql
-      .exec<{ tx_hash: string | null }>(
+      .exec<{
+        tx_hash: string | null;
+      }>(
         `SELECT tx_hash FROM settled_jobs WHERE idempotency_key = ?`,
         job.idempotencyKey,
       )
@@ -163,10 +165,9 @@ export class X402SettlementDO extends DurableObject<Env> {
    */
   private getAuthState(authId: string): AuthState {
     const rows = this.ctx.storage.sql
-      .exec<{ state: string }>(
-        `SELECT state FROM auth_state WHERE auth_id = ?`,
-        authId,
-      )
+      .exec<{
+        state: string;
+      }>(`SELECT state FROM auth_state WHERE auth_id = ?`, authId)
       .toArray();
 
     if (rows.length === 0) {
@@ -230,10 +231,9 @@ export class X402SettlementDO extends DurableObject<Env> {
 
     // Check if we need to update state based on failure count
     const rows = this.ctx.storage.sql
-      .exec<{ failure_count: number }>(
-        `SELECT failure_count FROM auth_state WHERE auth_id = ?`,
-        authId,
-      )
+      .exec<{
+        failure_count: number;
+      }>(`SELECT failure_count FROM auth_state WHERE auth_id = ?`, authId)
       .toArray();
 
     if (rows.length > 0) {
@@ -268,7 +268,10 @@ export class X402SettlementDO extends DurableObject<Env> {
     this.ensureSchema();
 
     const rows = this.ctx.storage.sql
-      .exec<{ state: string; failure_count: number }>(
+      .exec<{
+        state: string;
+        failure_count: number;
+      }>(
         `SELECT state, failure_count FROM auth_state WHERE auth_id = ?`,
         authId,
       )
