@@ -18,10 +18,12 @@
     "@canopy/forestrie-sharding": "workspace:*",
     "@canopy/merklelog": "workspace:*",
     "@canopy/x402-settlement-types": "workspace:*",
-    "@canopy/x402-signing": "workspace:*",
+    "@x402/core": "^2.1.0",
+    "@x402/evm": "^2.1.0",
     "cbor-x": "^1.5.9",
     "cose-js": "^0.9.0",
-    "uuid": "^10.0.0"
+    "uuid": "^10.0.0",
+    "viem": "^2.21.0"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.9.13",

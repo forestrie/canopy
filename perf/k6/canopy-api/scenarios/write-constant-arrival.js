@@ -27,7 +27,7 @@
 import { check } from "k6";
 import { encodeCoseSign1, generateUniquePayload } from "../lib/cose.js";
 import {
-  initPaymentSignatureUpto,
+  getPaymentRequirements,
   postAndMaybeWait,
   postLatency,
   postErrors,
@@ -136,14 +136,30 @@ export function setup() {
   console.log(`  Payload: ${MSG_BYTES} bytes`);
   console.log(`  Sample rate: ${SAMPLE_RATE * 100}%`);
 
-  // One-time x402 handshake: obtain a reusable Payment-Signature header
-  // using the `upto` scheme so that the main test can attach it to every
-  // POST without incurring 402 round-trips per request.
-  const paymentSignature = initPaymentSignatureUpto(
-    BASE_URL,
-    LOG_IDS[0],
-    API_TOKEN,
-  );
+  // x402 payment header: must be pre-generated and provided via env var.
+  // Use scripts/gen-x402-payment-signature.mjs to generate:
+  //
+  //   # First, get payment requirements:
+  //   curl -X POST "$CANOPY_PERF_BASE_URL/logs/$LOG_ID/entries" \
+  //     -H "Content-Type: application/cose; cose-type=\"cose-sign1\"" \
+  //     -H "Authorization: Bearer $CANOPY_PERF_API_TOKEN" \
+  //     -d '' -i 2>/dev/null | grep -i 'x-payment-required' | cut -d' ' -f2
+  //
+  //   # Then generate X-PAYMENT header:
+  //   node scripts/gen-x402-payment-signature.mjs --payment-required "$X_PAYMENT_REQUIRED"
+  const xPayment = __ENV.CANOPY_PERF_X402_PAYMENT;
+  if (!xPayment) {
+    // If not provided, try to fetch requirements and log instructions
+    const paymentReq = getPaymentRequirements(BASE_URL, LOG_IDS[0], API_TOKEN);
+    console.error(
+      `X-PAYMENT header required. Generate using:\n` +
+        `  node scripts/gen-x402-payment-signature.mjs --payment-required "${paymentReq}"\n` +
+        `Then set CANOPY_PERF_X402_PAYMENT to the output.`,
+    );
+    throw new Error(
+      "CANOPY_PERF_X402_PAYMENT is required. See console output for generation instructions.",
+    );
+  }
 
   return {
     baseUrl: BASE_URL,
@@ -152,7 +168,7 @@ export function setup() {
     logCount: LOG_IDS.length,
     msgBytes: MSG_BYTES,
     sampleRate: SAMPLE_RATE,
-    paymentSignature,
+    xPayment,
   };
 }
 
@@ -179,7 +195,7 @@ export default function (data) {
     measureE2E,
     60, // maxPolls
     250, // pollIntervalMs
-    data.paymentSignature,
+    data.xPayment,
   );
 
   // Check the result

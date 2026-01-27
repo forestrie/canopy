@@ -61,8 +61,8 @@ describe("SCRAPI flow", () => {
     );
 
     expect(response.status).toBe(402);
-    // Payment-Required header should be present and contain JSON
-    const paymentRequired = response.headers.get("Payment-Required");
+    // X-PAYMENT-REQUIRED header should be present and contain base64-encoded JSON
+    const paymentRequired = response.headers.get("X-PAYMENT-REQUIRED");
     expect(paymentRequired).not.toBeNull();
 
     const bodyBytes = new Uint8Array(await response.arrayBuffer());
@@ -73,14 +73,16 @@ describe("SCRAPI flow", () => {
     });
   });
 
-  it("POST /logs/{logId}/entries with invalid Payment-Signature returns 400", async () => {
+  it("POST /logs/{logId}/entries with invalid X-PAYMENT returns 402", async () => {
     const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
 
+    // The X-PAYMENT header must be valid base64 containing a valid JSON payload.
+    // Invalid base64 or malformed JSON will cause parsePaymentHeader to fail.
     const request = new Request(`http://localhost/logs/${logId}/entries`, {
       method: "POST",
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',
-        "Payment-Signature": "not-json",
+        "X-PAYMENT": "bm90LWpzb24=", // base64 of "not-json"
       },
       body: new Uint8Array([0x80]),
     });
@@ -91,6 +93,7 @@ describe("SCRAPI flow", () => {
       {} as ExecutionContext,
     );
 
+    // Invalid payment payloads result in 400 Bad Request
     expect(response.status).toBe(400);
 
     const bodyBytes = new Uint8Array(await response.arrayBuffer());

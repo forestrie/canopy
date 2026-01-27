@@ -1,28 +1,25 @@
 #!/usr/bin/env node
 
 /**
- * Generate a real x402 Payment-Signature header for POST /logs/{logId}/entries.
+ * Generate a standard x402 X-PAYMENT header for POST /logs/{logId}/entries.
+ *
+ * This script generates EIP-3009 transferWithAuthorization signatures
+ * compatible with the official x402 protocol and facilitators.
  *
  * Usage examples:
- *   # Payment-Required via CLI arg
+ *   # X-PAYMENT-REQUIRED via CLI arg (base64-encoded)
  *   node scripts/gen-x402-payment-signature.mjs \
- *     --payment-required "$PAYMENT_REQUIRED" \
- *     --log-id "$LOG_ID"
+ *     --payment-required "$X_PAYMENT_REQUIRED_BASE64"
  *
- *   # Payment-Required via stdin
- *   printf '%s' "$PAYMENT_REQUIRED" | \
- *     node scripts/gen-x402-payment-signature.mjs --log-id "$LOG_ID"
+ *   # X-PAYMENT-REQUIRED via stdin (base64-encoded)
+ *   printf '%s' "$X_PAYMENT_REQUIRED_BASE64" | \
+ *     node scripts/gen-x402-payment-signature.mjs
  *
- *   # Force exact scheme instead of default upto
- *   node scripts/gen-x402-payment-signature.mjs \
- *     --payment-required "$PAYMENT_REQUIRED" \
- *     --log-id "$LOG_ID" \
- *     --scheme exact
+ * The script uses the shared dev payer key CANOPY_X402_DEV_PRIVATE_KEY by
+ * default, with optional per-tool overrides such as SCRAPI_X402_PRIVATE_KEY
+ * or CANOPY_PERF_X402_PRIVATE_KEY.
  *
- * The script prefers the `upto` scheme when available, but allows forcing
- * `exact` via --scheme or an env var. It uses the shared dev payer key
- * CANOPY_X402_DEV_PRIVATE_KEY by default, with optional per-tool overrides
- * such as SCRAPI_X402_PRIVATE_KEY or CANOPY_PERF_X402_PRIVATE_KEY.
+ * Output: base64-encoded JSON payload suitable for the X-PAYMENT header.
  *
  * Optional balance guardrail:
  *   Set CANOPY_X402_DEV_DAILY_CLAIM_USDC (e.g. "100") and CANOPY_X402_DEV_RPC_URL
@@ -31,16 +28,17 @@
  */
 
 import process from "node:process";
+import crypto from "node:crypto";
 
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
 
 function usage(code = 1) {
   console.error(
-    "Usage: gen-x402-payment-signature.mjs --log-id <logId> [--payment-required <json>] [--scheme upto|exact]",
+    "Usage: gen-x402-payment-signature.mjs [--payment-required <base64-json>]",
   );
   console.error(
-    "  If --payment-required is omitted, the script reads Payment-Required JSON from stdin.",
+    "  If --payment-required is omitted, the script reads X-PAYMENT-REQUIRED from stdin.",
   );
   process.exit(code);
 }
@@ -49,8 +47,6 @@ function parseArgs(argv) {
   const args = argv.slice(2);
   const result = {
     paymentRequired: null,
-    logId: null,
-    scheme: null,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -63,23 +59,9 @@ function parseArgs(argv) {
         usage(1);
       }
       result.paymentRequired = args[++i];
-    } else if (arg === "--log-id") {
-      if (i + 1 >= args.length) {
-        console.error("--log-id requires a value");
-        usage(1);
-      }
-      result.logId = args[++i];
-    } else if (arg === "--scheme") {
-      if (i + 1 >= args.length) {
-        console.error("--scheme requires a value");
-        usage(1);
-      }
-      const scheme = args[++i];
-      if (scheme !== "upto" && scheme !== "exact") {
-        console.error("--scheme must be 'upto' or 'exact'");
-        usage(1);
-      }
-      result.scheme = scheme;
+    } else if (arg === "--log-id" || arg === "--scheme") {
+      // Silently skip deprecated arguments for backwards compatibility.
+      i++;
     } else {
       console.error(`Unknown argument: ${arg}`);
       usage(1);
@@ -102,14 +84,7 @@ async function readStdin() {
 }
 
 async function main() {
-  const { paymentRequired: prArg, logId, scheme: schemeArg } = parseArgs(
-    process.argv,
-  );
-
-  if (!logId) {
-    console.error("--log-id is required");
-    usage(1);
-  }
+  const { paymentRequired: prArg } = parseArgs(process.argv);
 
   let paymentRequiredRaw = prArg;
   if (!paymentRequiredRaw) {
@@ -117,49 +92,54 @@ async function main() {
   }
 
   if (!paymentRequiredRaw) {
-    console.error("Payment-Required JSON must be provided via --payment-required or stdin");
+    console.error(
+      "X-PAYMENT-REQUIRED must be provided via --payment-required or stdin",
+    );
     usage(1);
+  }
+
+  // Decode base64 X-PAYMENT-REQUIRED header.
+  let paymentRequiredJson;
+  try {
+    paymentRequiredJson = Buffer.from(paymentRequiredRaw, "base64").toString(
+      "utf8",
+    );
+  } catch {
+    console.error("X-PAYMENT-REQUIRED is not valid base64");
+    process.exit(1);
   }
 
   let paymentRequired;
   try {
-    paymentRequired = JSON.parse(paymentRequiredRaw);
+    paymentRequired = JSON.parse(paymentRequiredJson);
   } catch {
-    console.error("Payment-Required is not valid JSON");
+    console.error("X-PAYMENT-REQUIRED is not valid JSON after base64 decode");
     process.exit(1);
   }
 
-  const options = (paymentRequired && paymentRequired.options) || [];
-  if (!Array.isArray(options) || options.length === 0) {
-    console.error("Payment-Required.options is empty or invalid");
+  // Support both v1 (single object) and v2 (array) formats.
+  const options = Array.isArray(paymentRequired)
+    ? paymentRequired
+    : [paymentRequired];
+
+  if (options.length === 0) {
+    console.error("X-PAYMENT-REQUIRED contains no payment options");
     process.exit(1);
   }
 
-  // Resolve scheme preference: CLI flag > env > default (upto-first).
-  const envScheme = process.env.SCRAPI_X402_SCHEME || process.env.CANOPY_X402_DEV_SCHEME;
-  const requestedScheme = schemeArg || envScheme || "upto";
-
-  function chooseOption() {
-    if (requestedScheme === "upto") {
-      const upto = options.find((o) => o.scheme === "upto");
-      if (upto) return upto;
-      // Fall back to exact if upto not available.
-      return options[0];
-    }
-    // requestedScheme === "exact"
-    const exact = options.find((o) => o.scheme === "exact");
-    if (exact) return exact;
-    // Fall back to first option if exact not available.
-    return options[0];
-  }
-
-  const chosen = chooseOption();
-  if (!chosen || !chosen.network || !chosen.payTo) {
-    console.error("Chosen x402 option is missing network or payTo");
+  // Find exact scheme option.
+  const chosen = options.find((o) => o.scheme === "exact");
+  if (!chosen) {
+    console.error("No 'exact' scheme found in X-PAYMENT-REQUIRED options");
     process.exit(1);
   }
 
-  const resource = "POST /logs/{logId}/entries";
+  if (!chosen.network || !chosen.payTo || !chosen.asset || !chosen.amount) {
+    console.error(
+      "Chosen x402 option is missing required fields (network, payTo, asset, amount)",
+    );
+    process.exit(1);
+  }
 
   // Determine dev private key: shared default with optional per-tool overrides.
   const privateKey =
@@ -174,72 +154,136 @@ async function main() {
     process.exit(1);
   }
 
-  // Optional balance guardrail: check USDC balance against 50% of daily claim.
+  // Optional balance guardrail.
   await checkBalanceGuardrail(privateKey, chosen.network);
 
-  const schemeUsed = chosen.scheme === "exact" || requestedScheme === "exact"
-    ? "exact"
-    : "upto";
+  // Build and sign EIP-3009 authorization.
+  const payload = await buildAndSignExactPayment({
+    network: chosen.network,
+    payTo: chosen.payTo,
+    asset: chosen.asset,
+    amount: chosen.amount,
+    maxTimeoutSeconds: chosen.maxTimeoutSeconds || 300,
+    extra: chosen.extra,
+    privateKey,
+  });
 
-  let header;
-  if (schemeUsed === "upto") {
-    const minPrice = chosen.minPrice || chosen.price;
-    if (!chosen.price || !minPrice) {
-      console.error("upto option missing price or minPrice");
-      process.exit(1);
-    }
-
-    header = buildAndSignUptoPaymentLocal({
-      network: chosen.network,
-      payTo: chosen.payTo,
-      resource,
-      maxAmount: chosen.price,
-      minPrice,
-      privateKey,
-    });
-  } else {
-    // exact scheme: reuse the same underlying payload shape but with
-    // maxAmount = amount = chosen.price and minPrice = chosen.price.
-    const amount = chosen.price;
-    if (!amount) {
-      console.error("exact option missing price/amount");
-      process.exit(1);
-    }
-
-    header = buildAndSignUptoPaymentLocal({
-      network: chosen.network,
-      payTo: chosen.payTo,
-      resource,
-      maxAmount: amount,
-      minPrice: amount,
-      privateKey,
-    });
-  }
-
-  process.stdout.write(JSON.stringify(header));
+  // Output base64-encoded JSON for X-PAYMENT header.
+  const jsonPayload = JSON.stringify(payload);
+  const base64Payload = Buffer.from(jsonPayload).toString("base64");
+  process.stdout.write(base64Payload);
 }
 
 /**
- * Local implementation of the upto-payment signing logic, mirroring the
- * @canopy/x402-signing implementation but in pure JS for Node CLI use.
+ * Build and sign an EIP-3009 transferWithAuthorization payload.
  */
-function buildAndSignUptoPaymentLocal(cfg) {
-  const { network, payTo, resource, maxAmount, minPrice, privateKey } = cfg;
-  const nonce = String(Date.now());
-
-  const payload = {
-    scheme: "upto",
+async function buildAndSignExactPayment(cfg) {
+  const {
     network,
     payTo,
-    resource,
-    maxAmount,
-    minPrice,
+    asset,
+    amount,
+    maxTimeoutSeconds,
+    extra,
+    privateKey,
+  } = cfg;
+
+  // Derive payer address from private key.
+  const payerAddress = deriveAddress(privateKey);
+
+  // Create random bytes32 nonce.
+  const nonceBytes = crypto.randomBytes(32);
+  const nonce = bytesToHex(nonceBytes);
+
+  // Time bounds.
+  const now = Math.floor(Date.now() / 1000);
+  const validAfter = now - 600; // 10 minutes before
+  const validBefore = now + maxTimeoutSeconds;
+
+  const authorization = {
+    from: payerAddress,
+    to: payTo,
+    value: amount,
+    validAfter: validAfter.toString(),
+    validBefore: validBefore.toString(),
     nonce,
   };
 
-  const message = serializePaymentForSigning(payload);
-  const hash = keccak_256(message);
+  // Sign using EIP-712.
+  const chainId = parseInt(network.split(":")[1]);
+  if (!extra?.name || !extra?.version) {
+    throw new Error(
+      `EIP-712 domain parameters (name, version) are required in payment requirements for asset ${asset}`,
+    );
+  }
 
+  const signature = signTypedData({
+    privateKey,
+    domain: {
+      name: extra.name,
+      version: extra.version,
+      chainId,
+      verifyingContract: asset,
+    },
+    types: {
+      TransferWithAuthorization: [
+        { name: "from", type: "address" },
+        { name: "to", type: "address" },
+        { name: "value", type: "uint256" },
+        { name: "validAfter", type: "uint256" },
+        { name: "validBefore", type: "uint256" },
+        { name: "nonce", type: "bytes32" },
+      ],
+    },
+    primaryType: "TransferWithAuthorization",
+    message: {
+      from: payerAddress,
+      to: payTo,
+      value: BigInt(amount),
+      validAfter: BigInt(validAfter),
+      validBefore: BigInt(validBefore),
+      nonce,
+    },
+  });
+
+  return {
+    x402Version: 2,
+    scheme: "exact",
+    network,
+    payload: {
+      authorization,
+      signature,
+    },
+  };
+}
+
+/**
+ * Sign EIP-712 typed data using secp256k1.
+ * This is a minimal implementation matching viem's signTypedData.
+ */
+function signTypedData({ privateKey, domain, types, primaryType, message }) {
+  // Build EIP-712 struct hash.
+  const domainSeparator = hashStruct("EIP712Domain", domain, {
+    EIP712Domain: [
+      { name: "name", type: "string" },
+      { name: "version", type: "string" },
+      { name: "chainId", type: "uint256" },
+      { name: "verifyingContract", type: "address" },
+    ],
+  });
+
+  const structHash = hashStruct(primaryType, message, types);
+
+  // EIP-712 signing hash: keccak256("\x19\x01" || domainSeparator || structHash)
+  const prefix = new Uint8Array([0x19, 0x01]);
+  const combined = new Uint8Array(2 + 32 + 32);
+  combined.set(prefix, 0);
+  combined.set(domainSeparator, 2);
+  combined.set(structHash, 34);
+
+  const hash = keccak_256(combined);
+
+  // Sign with secp256k1.
   const privBytes = hexToBytes(privateKey);
   const sig = secp256k1.sign(hash, privBytes, { prehash: false });
   const compact = sig.toCompactRawBytes();
@@ -248,32 +292,102 @@ function buildAndSignUptoPaymentLocal(cfg) {
     throw new Error("secp256k1 signature missing recovery bit");
   }
 
+  // Standard Ethereum signature format: r (32) || s (32) || v (1)
   const sigBytes = new Uint8Array(65);
   sigBytes.set(compact, 0);
-  sigBytes[64] = sig.recovery & 0xff;
+  sigBytes[64] = sig.recovery + 27;
 
-  const sigHex = bytesToHex(sigBytes);
-
-  return {
-    ...payload,
-    sig: sigHex,
-  };
+  return bytesToHex(sigBytes);
 }
 
-function serializePaymentForSigning(payload) {
-  const parts = [
-    "x402-canopy-payment",
-    `scheme:${payload.scheme}`,
-    `network:${payload.network}`,
-    `payTo:${payload.payTo}`,
-    `resource:${payload.resource}`,
-    `nonce:${payload.nonce}`,
-    `maxAmount:${payload.maxAmount}`,
-    `minPrice:${payload.minPrice}`,
-  ];
+/**
+ * Hash a struct according to EIP-712.
+ */
+function hashStruct(typeName, data, types) {
+  const encoded = encodeData(typeName, data, types);
+  return keccak_256(encoded);
+}
 
-  const encoder = new TextEncoder();
-  return encoder.encode(parts.join("|"));
+/**
+ * Encode data according to EIP-712.
+ */
+function encodeData(typeName, data, types) {
+  const typeHash = hashType(typeName, types);
+  const encodedValues = [typeHash];
+
+  for (const field of types[typeName]) {
+    const value = data[field.name];
+    encodedValues.push(encodeValue(field.type, value, types));
+  }
+
+  // Concatenate all 32-byte values.
+  const result = new Uint8Array(encodedValues.length * 32);
+  for (let i = 0; i < encodedValues.length; i++) {
+    result.set(encodedValues[i], i * 32);
+  }
+  return result;
+}
+
+/**
+ * Encode a single value according to EIP-712.
+ */
+function encodeValue(type, value, types) {
+  if (type === "string") {
+    return keccak_256(new TextEncoder().encode(value));
+  }
+  if (type === "bytes") {
+    return keccak_256(hexToBytes(value));
+  }
+  if (type === "bytes32") {
+    const bytes = hexToBytes(value);
+    if (bytes.length !== 32) {
+      throw new Error(`bytes32 value must be 32 bytes, got ${bytes.length}`);
+    }
+    return bytes;
+  }
+  if (type === "address") {
+    // Address is left-padded to 32 bytes.
+    const bytes = hexToBytes(value);
+    const padded = new Uint8Array(32);
+    padded.set(bytes, 32 - bytes.length);
+    return padded;
+  }
+  if (type === "uint256") {
+    // uint256 is big-endian, left-padded to 32 bytes.
+    const bigValue = typeof value === "bigint" ? value : BigInt(value);
+    const hex = bigValue.toString(16).padStart(64, "0");
+    return hexToBytes("0x" + hex);
+  }
+  if (type === "bool") {
+    const bytes = new Uint8Array(32);
+    bytes[31] = value ? 1 : 0;
+    return bytes;
+  }
+  if (types[type]) {
+    // Nested struct.
+    return hashStruct(type, value, types);
+  }
+  throw new Error(`Unsupported type: ${type}`);
+}
+
+/**
+ * Hash type according to EIP-712.
+ */
+function hashType(typeName, types) {
+  const typeString = encodeType(typeName, types);
+  return keccak_256(new TextEncoder().encode(typeString));
+}
+
+/**
+ * Encode type string according to EIP-712.
+ */
+function encodeType(typeName, types) {
+  const fields = types[typeName];
+  if (!fields) {
+    throw new Error(`Unknown type: ${typeName}`);
+  }
+  const fieldStrings = fields.map((f) => `${f.type} ${f.name}`).join(",");
+  return `${typeName}(${fieldStrings})`;
 }
 
 function hexToBytes(hex) {
@@ -418,7 +532,9 @@ async function getUsdcBalance(rpcUrl, tokenAddress, walletAddress) {
 
   const json = await res.json();
   if (json.error) {
-    throw new Error(`RPC error: ${json.error.message || JSON.stringify(json.error)}`);
+    throw new Error(
+      `RPC error: ${json.error.message || JSON.stringify(json.error)}`,
+    );
   }
 
   // Result is hex-encoded uint256.
@@ -430,8 +546,9 @@ async function getUsdcBalance(rpcUrl, tokenAddress, walletAddress) {
 }
 
 main().catch((err) => {
-  console.error("Error generating x402 Payment-Signature:", err && err.message
-    ? err.message
-    : err);
+  console.error(
+    "Error generating x402 Payment:",
+    err && err.message ? err.message : err,
+  );
   process.exit(1);
 });

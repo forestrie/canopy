@@ -2,8 +2,38 @@
  * @canopy/x402-settlement-types
  *
  * Shared types for x402 settlement pipeline.
- * Used by canopy-api (producer) and x402-settlement (consumer).
+ * Uses standard x402 exact scheme with EIP-3009 authorization.
  */
+
+/**
+ * EIP-3009 transferWithAuthorization parameters.
+ */
+export interface ExactEvmAuthorization {
+  from: string;
+  to: string;
+  value: string;
+  validAfter: string;
+  validBefore: string;
+  nonce: string;
+}
+
+/**
+ * x402 exact scheme EVM payload.
+ */
+export interface ExactEvmPayload {
+  signature: string;
+  authorization: ExactEvmAuthorization;
+}
+
+/**
+ * x402 payment payload structure.
+ */
+export interface PaymentPayload {
+  x402Version: 1 | 2;
+  scheme: "exact";
+  network: string;
+  payload: ExactEvmPayload;
+}
 
 /**
  * Settlement job emitted by canopy-api and consumed by x402-settlement worker.
@@ -13,11 +43,11 @@ export interface SettlementJob {
   jobId: string;
   /** Authorization ID from x402 header verification */
   authId: string;
-  /** Payment scheme: "exact" or "upto" */
-  scheme: "exact" | "upto";
+  /** Payment scheme (currently only "exact" is supported) */
+  scheme: "exact";
   /** Payer's Ethereum address */
   payer: `0x${string}`;
-  /** Amount to charge (USD string, e.g. "$0.001") */
+  /** Amount in atomic units (e.g. "1000" for $0.001 USDC) */
   amount: string;
   /** Log ID the entry was registered to */
   logId: string;
@@ -27,6 +57,8 @@ export interface SettlementJob {
   idempotencyKey: string;
   /** Timestamp when job was created */
   createdAt: number;
+  /** Full x402 payment payload for settlement */
+  payload: PaymentPayload;
 }
 
 /**

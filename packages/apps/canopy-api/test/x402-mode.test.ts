@@ -13,15 +13,31 @@ vi.mock("../src/scrapi/x402", async () => {
 
   return {
     ...actual,
-    parsePaymentSignatureHeader: vi.fn(() => ({
+    parsePaymentHeader: vi.fn(() => ({
       ok: true as const,
       value: {
-        // Minimal shape required by verifyAuthorizationForRegister and
-        // payer-address encoding.
-        payerAddress: "0x1111111111111111111111111111111111111111",
-        scheme: "upto",
+        // Standard x402 exact scheme payload shape
+        payerAddress: "0x1111111111111111111111111111111111111111" as `0x${string}`,
+        scheme: "exact" as const,
         network: "eip155:84532",
         payTo: "0x75be7950F26fe7F15336a10b33A8D8134faDb787",
+        amount: "1000",
+        payload: {
+          x402Version: 2,
+          scheme: "exact",
+          network: "eip155:84532",
+          payload: {
+            signature: "0x" + "ab".repeat(65),
+            authorization: {
+              from: "0x1111111111111111111111111111111111111111",
+              to: "0x75be7950F26fe7F15336a10b33A8D8134faDb787",
+              value: "1000",
+              validAfter: "0",
+              validBefore: String(Math.floor(Date.now() / 1000) + 300),
+              nonce: "0x" + "00".repeat(32),
+            },
+          },
+        },
       },
     })),
   };
@@ -34,7 +50,7 @@ vi.mock("../src/scrapi/x402-facilitator", async () => {
 
   return {
     ...actual,
-    verifyAuthorizationForRegister: vi.fn(async () => ({
+    verifyPayment: vi.fn(async () => ({
       ok: false as const,
       error: "forced facilitator failure",
     })),
@@ -57,7 +73,7 @@ vi.mock("../src/scrapi/register-signed-statement", () => ({
 
 import worker from "../src/index";
 import type { Env } from "../src/index";
-import { verifyAuthorizationForRegister } from "../src/scrapi/x402-facilitator";
+import { verifyPayment } from "../src/scrapi/x402-facilitator";
 
 const baseEnv = env as unknown as Env;
 
@@ -75,7 +91,7 @@ describe("x402 verify-and-settle mode", () => {
       method: "POST",
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',
-        "Payment-Signature": "dummy",
+        "X-PAYMENT": "ZHVtbXk=", // base64 "dummy"
       },
       body: new Uint8Array([0x80]),
     });
@@ -115,7 +131,7 @@ describe("x402 verify-and-settle mode", () => {
       method: "POST",
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',
-        "Payment-Signature": "dummy-valid-header",
+        "X-PAYMENT": "ZHVtbXktdmFsaWQtaGVhZGVy", // base64 "dummy-valid-header"
       },
       body: new Uint8Array([0x80]),
     });
@@ -135,7 +151,7 @@ describe("x402 verify-and-settle mode", () => {
       title: "Payment Required",
     });
     expect(String(decoded.detail || "")).toContain(
-      "x402 authorization failed: forced facilitator failure",
+      "x402 verification failed: forced facilitator failure",
     );
   });
 
@@ -150,16 +166,17 @@ describe("x402 verify-and-settle mode", () => {
 
     // For this test, override the default failing mock and force a
     // successful facilitator verification.
-    vi.mocked(verifyAuthorizationForRegister).mockResolvedValueOnce({
+    vi.mocked(verifyPayment).mockResolvedValueOnce({
       ok: true,
       authId: "auth:happy-path",
+      isValid: true,
     });
 
     const request = new Request(`http://localhost/logs/${logId}/entries`, {
       method: "POST",
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',
-        "Payment-Signature": "dummy-valid-header",
+        "X-PAYMENT": "ZHVtbXktdmFsaWQtaGVhZGVy", // base64 "dummy-valid-header"
       },
       body: new Uint8Array([0x80]),
     });

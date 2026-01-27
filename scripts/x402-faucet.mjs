@@ -145,13 +145,20 @@ function generateCdpJwt(keyId, keySecret, uri) {
   };
 
   const now = Math.floor(Date.now() / 1000);
+  // Payload format aligned with Coinbase CDP JWT docs:
+  // {
+  //   sub: keyId,
+  //   iss: "cdp",
+  //   nbf: now,
+  //   exp: now + 120,
+  //   uri: "POST api.cdp.coinbase.com/platform/v2/evm/faucet",
+  // }
   const payload = {
     sub: keyId,
     iss: "cdp",
-    aud: ["cdp_service"],
     nbf: now,
     exp: now + 120, // 2 minutes
-    uris: [uri],
+    uri,
   };
 
   const encode = (obj) =>
@@ -161,13 +168,14 @@ function generateCdpJwt(keyId, keySecret, uri) {
   const payloadB64 = encode(payload);
   const message = `${headerB64}.${payloadB64}`;
 
-  // Parse the PEM-encoded private key.
-  // CDP key secrets may have literal "\n" instead of actual newlines.
-  const normalizedKey = keySecret.replace(/\\n/g, "\n");
-  const key = crypto.createPrivateKey({
-    key: normalizedKey,
-    format: "pem",
-  });
+  let key;
+  try {
+    key = parseCdpPrivateKey(keySecret);
+  } catch (err) {
+    throw new Error(
+      `Failed to parse CDP_API_KEY_SECRET as an EC private key: ${err.message}`,
+    );
+  }
 
   const signature = crypto.sign("sha256", Buffer.from(message), {
     key,
@@ -178,8 +186,84 @@ function generateCdpJwt(keyId, keySecret, uri) {
   return `${message}.${sigB64}`;
 }
 
+/**
+ * Accept a variety of CDP key secret encodings and normalize them to a
+ * Node.js KeyObject.
+ *
+ * Supported inputs:
+ * - PEM string (with real newlines or literal "\n")
+ * - Base64-encoded PEM
+ * - Base64-encoded PKCS#8 / SEC1 DER EC private key
+ */
+function parseCdpPrivateKey(keySecret) {
+  // First, normalize common "\n" escaping patterns and trim whitespace.
+  const normalized = keySecret.replace(/\\n/g, "\n").trim();
+  const errors = [];
+
+  // Strategy 1: treat the value as a direct PEM blob.
+  try {
+    if (normalized.includes("BEGIN")) {
+      return crypto.createPrivateKey({
+        key: normalized,
+        format: "pem",
+      });
+    }
+  } catch (err) {
+    errors.push(`pem: ${err.message}`);
+  }
+
+  // Strategy 2: attempt base64 decode, then:
+  // - if it decodes to PEM text, parse as PEM
+  // - otherwise, try PKCS#8 / SEC1 DER encodings
+  try {
+    const der = Buffer.from(normalized, "base64");
+    if (der.length > 0) {
+      const asText = der.toString("ascii");
+      if (asText.includes("BEGIN")) {
+        // Looks like we were given base64-encoded PEM.
+        return crypto.createPrivateKey({
+          key: asText,
+          format: "pem",
+        });
+      }
+
+      // Try PKCS#8 first.
+      try {
+        return crypto.createPrivateKey({
+          key: der,
+          format: "der",
+          type: "pkcs8",
+        });
+      } catch (errPkcs8) {
+        errors.push(`pkcs8-der: ${errPkcs8.message}`);
+      }
+
+      // Fallback: EC private key in SEC1 ("EC PRIVATE KEY") form.
+      try {
+        return crypto.createPrivateKey({
+          key: der,
+          format: "der",
+          type: "sec1",
+        });
+      } catch (errSec1) {
+        errors.push(`sec1-der: ${errSec1.message}`);
+      }
+    }
+  } catch (err) {
+    errors.push(`base64-decode: ${err.message}`);
+  }
+
+  const detail = errors.length ? ` (${errors.join("; ")})` : "";
+  throw new Error(`unsupported CDP key encoding${detail}`);
+}
+
 async function requestFaucet(address, keyId, keySecret) {
-  const uri = `POST ${CDP_API_BASE}/platform/v2/evm/faucet`;
+  const faucetPath = "/platform/v2/evm/faucet";
+  const baseUrl = new URL(CDP_API_BASE);
+  const host = baseUrl.host; // e.g. "api.cdp.coinbase.com"
+  const uri = `POST ${host}${faucetPath}`;
+  const url = `${baseUrl.origin}${faucetPath}`;
+
   const jwt = generateCdpJwt(keyId, keySecret, uri);
 
   const body = JSON.stringify({
@@ -188,7 +272,7 @@ async function requestFaucet(address, keyId, keySecret) {
     token: "usdc",
   });
 
-  const res = await fetch(`${CDP_API_BASE}/platform/v2/evm/faucet`, {
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

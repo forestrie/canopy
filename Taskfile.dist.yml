@@ -21,6 +21,7 @@ includes:
     taskfile: ./taskfiles/scout.yml
     vars:
       BASE_URL: "{{.SCOUT_BASE_URL}}"
+  x402: ./taskfiles/x402.yml
   cf: ./taskfiles/cloudflare.yml
   deploy: ./taskfiles/deploy.yml
   minio: ./taskfiles/minio.yml

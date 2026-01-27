@@ -1,0 +1,25 @@
+---
+# x402 payment protocol tooling
+# Dev wallet management and faucet operations
+
+version: "3"
+
+tasks:
+  # ---------------------------------------------------------------------------
+  # Wallet management
+  # ---------------------------------------------------------------------------
+
+  check-balance:
+    desc: Check dev wallet USDC balance on Base Sepolia
+    cmds:
+      - node scripts/x402-faucet.mjs --check
+
+  refill:
+    desc: Request USDC from CDP faucet (requires CDP_API_KEY_ID and CDP_API_KEY_SECRET)
+    cmds:
+      - node scripts/x402-faucet.mjs --refill
+
+  refill-if-low:
+    desc: Request USDC from CDP faucet only if balance is below 50% of daily claim
+    cmds:
+      - node scripts/x402-faucet.mjs --refill-if-low

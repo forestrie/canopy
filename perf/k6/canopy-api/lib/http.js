@@ -10,7 +10,6 @@
 import http from "k6/http";
 import { sleep } from "k6";
 import { Trend, Counter } from "k6/metrics";
-import { buildAndSignUptoPayment } from "@canopy/x402-signing";
 
 // Custom metrics
 export const postLatency = new Trend("post_latency", true);
@@ -22,29 +21,20 @@ export const e2eSuccessCount = new Counter("e2e_success_count");
 export const e2eTimeoutCount = new Counter("e2e_timeout_count");
 
 /**
- * Perform a one-time x402 handshake to obtain a reusable Payment-Signature
- * header using the `upto` scheme.
+ * Get the X-PAYMENT-REQUIRED header from a 402 response.
  *
- * This is intended to be called from k6 `setup()` so that the main
- * performance test can attach the returned header to every POST without
- * incurring a 402 round-trip per request.
- *
- * The returned header is constructed using the shared @canopy/x402-signing
- * library so that the signing cost and payload structure match what the
- * worker verifies in Phase 2a.
- *
- * The signing key is taken from CANOPY_PERF_X402_PRIVATE_KEY if set, or a
- * deterministic built-in test key otherwise (Phase 2a has no real funds).
+ * This fetches the payment requirements from the server, which can then be
+ * passed to an external signing script to generate the X-PAYMENT header.
  *
  * @param {string} baseUrl - Base URL of canopy-api
  * @param {string} logId - Any valid log ID (first from the list is fine)
  * @param {string} apiToken - Bearer token for Authorization
- * @returns {string} - Serialized JSON Payment-Signature header value
+ * @returns {string} - Base64-encoded X-PAYMENT-REQUIRED header value
  */
-export function initPaymentSignatureUpto(baseUrl, logId, apiToken) {
+export function getPaymentRequirements(baseUrl, logId, apiToken) {
   const url = `${baseUrl}/logs/${logId}/entries`;
   // Minimal body; the server will reject before parsing due to missing
-  // Payment-Signature header and return 402 with Payment-Required.
+  // X-PAYMENT header and return 402 with X-PAYMENT-REQUIRED.
   const dummyBody = new Uint8Array([0x80]);
 
   const response = http.post(url, dummyBody.buffer, {
@@ -62,57 +52,12 @@ export function initPaymentSignatureUpto(baseUrl, logId, apiToken) {
     );
   }
 
-  const paymentRequired = response.headers["Payment-Required"];
+  const paymentRequired = response.headers["X-Payment-Required"];
   if (!paymentRequired) {
-    throw new Error("Missing Payment-Required header in 402 response");
+    throw new Error("Missing X-PAYMENT-REQUIRED header in 402 response");
   }
 
-  let payload;
-  try {
-    payload = JSON.parse(paymentRequired);
-  } catch (e) {
-    throw new Error("Payment-Required header is not valid JSON");
-  }
-
-  const options = (payload && payload.options) || [];
-  if (!Array.isArray(options) || options.length === 0) {
-    throw new Error("Payment-Required.options is empty or invalid");
-  }
-
-  // Prefer the `upto` option; fall back to the first option if needed.
-  let chosen = options.find((o) => o.scheme === "upto");
-  if (!chosen) {
-    chosen = options[0];
-  }
-
-  if (!chosen.network || !chosen.payTo || !chosen.price) {
-    throw new Error("Chosen x402 option is missing network, payTo, or price");
-  }
-
-  const minPrice = chosen.minPrice || chosen.price;
-
-  // Build a real x402 `upto` payment payload and sign it.
-  // Use the shared dev payer key CANOPY_X402_DEV_PRIVATE_KEY by default,
-  // with CANOPY_PERF_X402_PRIVATE_KEY as an optional override.
-  // Fall back to a deterministic test key only if neither is set (Phase 2a).
-  const privateKey =
-    __ENV.CANOPY_PERF_X402_PRIVATE_KEY ||
-    __ENV.CANOPY_X402_DEV_PRIVATE_KEY ||
-    // 0x + 64 hex chars; arbitrary but stable dev-only key for Phase 2a testing.
-    "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-
-  const payment = buildAndSignUptoPayment(
-    {
-      network: chosen.network,
-      payTo: chosen.payTo,
-      resource: "POST /logs/{logId}/entries",
-      maxAmount: chosen.price,
-      minPrice,
-    },
-    { privateKey },
-  );
-
-  return JSON.stringify(payment);
+  return paymentRequired;
 }
 
 /**
@@ -122,7 +67,7 @@ export function initPaymentSignatureUpto(baseUrl, logId, apiToken) {
  * @param {string} logId - Log ID for the target log
  * @param {string} apiToken - Bearer token for Authorization
  * @param {Uint8Array} cosePayload - CBOR-encoded COSE Sign1 message
- * @param {string} [paymentSignature] - Optional Payment-Signature header
+ * @param {string} [xPayment] - Optional base64-encoded X-PAYMENT header
  * @returns {Object} - { success, statusCode, statusUrl, error, startTime }
  */
 export function postEntry(
@@ -130,7 +75,7 @@ export function postEntry(
   logId,
   apiToken,
   cosePayload,
-  paymentSignature,
+  xPayment,
 ) {
   const url = `${baseUrl}/logs/${logId}/entries`;
   const startTime = Date.now();
@@ -140,8 +85,8 @@ export function postEntry(
     Authorization: `Bearer ${apiToken}`,
   };
 
-  if (paymentSignature) {
-    headers["Payment-Signature"] = paymentSignature;
+  if (xPayment) {
+    headers["X-Payment"] = xPayment;
   }
 
   const response = http.post(url, cosePayload.buffer, {

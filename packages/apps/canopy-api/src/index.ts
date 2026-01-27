@@ -10,11 +10,12 @@ import { queryRegistrationStatus } from "./scrapi/query-registration-status";
 import { resolveReceipt } from "./scrapi/resolve-receipt";
 import { getTransparencyConfiguration } from "./scrapi/transparency-configuration";
 import { encodePayerAddressToExtra1 } from "./scrapi/payer-address";
-import { verifyAuthorizationForRegister } from "./scrapi/x402-facilitator";
+import { verifyPayment } from "./scrapi/x402-facilitator";
 import {
   X402_HEADERS,
-  buildPaymentRequiredForRegister,
-  parsePaymentSignatureHeader,
+  buildPaymentRequiredHeader,
+  parsePaymentHeader,
+  getPaymentRequirementsForVerify,
 } from "./scrapi/x402";
 import type { SettlementJob } from "@canopy/x402-settlement-types";
 
@@ -44,8 +45,7 @@ export interface Env {
   X402_FACILITATOR_URL?: string;
   X402_NETWORK?: string;
   X402_PAYTO_ADDRESS?: string;
-  X402_PRICE_EXACT?: string;
-  X402_PRICE_UPTO_MAX?: string;
+  X402_PRICE_ATOMIC?: string;
   // Massif height for this transparency log (1-based, typically 14)
   MASSIF_HEIGHT: string;
   // Number of DO shards for the sequencing queue (typically 4)
@@ -142,18 +142,21 @@ export default {
         if (request.method === "POST") {
           // POST /logs/{logId}/entries - Register new statement
           //
-          // Yolo x402 phase:
-          // - If no Payment-Signature header, return 402 with Payment-Required
-          //   describing exact/upto options.
-          // - If present, syntactically validate the header and, if valid,
-          //   proceed to registerSignedStatement.
+          // x402 payment flow:
+          // - If no X-PAYMENT header, return 402 with X-PAYMENT-REQUIRED
+          //   describing the exact scheme payment option.
+          // - If present, parse and validate the EIP-3009 payment payload.
+          // - In verify-and-settle mode, call the facilitator to verify.
           const paymentHeader = request.headers.get(
             X402_HEADERS.paymentSignature,
           );
 
-          // For now, both modes share the same verification behaviour.
-          // In Phase 2b, "verify-and-settle" will additionally contact a
-          // facilitator to settle funds after successful verification.
+          const resourceUrl = `${url.origin}/logs/${segments[1]}/entries`;
+          const x402Config = {
+            network: x402Network,
+            payTo: x402PayTo,
+            priceAtomic: env.X402_PRICE_ATOMIC,
+          };
 
           if (!paymentHeader) {
             const base = problemResponse(
@@ -170,7 +173,7 @@ export default {
             Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
             headers.set(
               X402_HEADERS.paymentRequired,
-              buildPaymentRequiredForRegister(segments[1]),
+              buildPaymentRequiredHeader(resourceUrl, x402Config),
             );
 
             return new Response(base.body, {
@@ -180,7 +183,7 @@ export default {
             });
           }
 
-          const parsed = parsePaymentSignatureHeader(paymentHeader);
+          const parsed = parsePaymentHeader(paymentHeader, x402Config);
           if (!parsed.ok) {
             const base = problemResponse(400, "Bad Request", "about:blank", {
               detail: `Invalid x402 payment header: ${parsed.error}`,
@@ -196,31 +199,31 @@ export default {
             });
           }
 
-          // In verify-and-settle mode, perform an additional synchronous
-          // authorization check via the facilitator client. For now this is
-          // a stub that always succeeds, but the wiring ensures that
-          // failures in a future Phase 2b cut can return 402 before we
-          // enqueue.
+          // In verify-and-settle mode, call the facilitator to verify
+          // the payment before proceeding.
           let authResult: { authId: string } | undefined;
           if (x402Mode === "verify-and-settle" && parsed.ok) {
-            const auth = await verifyAuthorizationForRegister(
+            const requirements = getPaymentRequirementsForVerify(
+              resourceUrl,
+              x402Config,
+            );
+            const verifyResult = await verifyPayment(
               parsed.value,
+              requirements,
               x402Mode,
               {
                 facilitatorUrl: x402FacilitatorUrl,
-                network: x402Network,
-                payTo: x402PayTo,
-                verifyTimeoutMs: 2000,
+                verifyTimeoutMs: 5000,
               },
             );
 
-            if (!auth.ok) {
+            if (!verifyResult.ok) {
               const base = problemResponse(
                 402,
                 "Payment Required",
                 "about:blank",
                 {
-                  detail: `x402 authorization failed: ${auth.error}`,
+                  detail: `x402 verification failed: ${verifyResult.error}`,
                 },
               );
 
@@ -230,7 +233,7 @@ export default {
               );
               headers.set(
                 X402_HEADERS.paymentRequired,
-                buildPaymentRequiredForRegister(segments[1]),
+                buildPaymentRequiredHeader(resourceUrl, x402Config),
               );
 
               return new Response(base.body, {
@@ -240,7 +243,7 @@ export default {
               });
             }
 
-            authResult = { authId: auth.authId };
+            authResult = { authId: verifyResult.authId };
           }
 
           let enqueueExtras: Parameters<
@@ -271,6 +274,14 @@ export default {
 
           // Emit settlement job after successful registration (303 response)
           // Extract content hash from Location header for idempotency key
+          console.log("Settlement job emission check", {
+            responseStatus: response.status,
+            x402Mode,
+            hasAuthResult: !!authResult,
+            parsedOk: parsed.ok,
+            hasQueue: !!env.X402_SETTLEMENT_QUEUE,
+          });
+
           if (
             response.status === 303 &&
             x402Mode === "verify-and-settle" &&
@@ -280,26 +291,44 @@ export default {
           ) {
             const location = response.headers.get("Location");
             const contentHash = location?.split("/").pop();
-            const x402PriceExact = env.X402_PRICE_EXACT ?? "$0.001";
+
+            console.log("Creating settlement job", {
+              location,
+              contentHash,
+              authId: authResult.authId,
+            });
 
             if (contentHash) {
               const job: SettlementJob = {
                 jobId: crypto.randomUUID(),
                 authId: authResult.authId,
-                scheme: parsed.value.scheme,
-                payer: parsed.value.payerAddress as `0x${string}`,
-                amount: x402PriceExact,
+                scheme: "exact",
+                payer: parsed.value.payerAddress,
+                amount: parsed.value.amount,
                 logId: segments[1],
                 contentHash,
                 idempotencyKey: `${authResult.authId}:${contentHash}:${segments[1]}`,
                 createdAt: Date.now(),
+                // Store the full payload for settlement
+                payload: parsed.value.payload,
               };
+
+              console.log("Sending settlement job to queue", {
+                jobId: job.jobId,
+                idempotencyKey: job.idempotencyKey,
+              });
 
               // Fire-and-forget: don't block the response on queue send
               ctx.waitUntil(
-                env.X402_SETTLEMENT_QUEUE.send(job).catch((err) => {
-                  console.error("Failed to send settlement job:", err);
-                }),
+                env.X402_SETTLEMENT_QUEUE.send(job)
+                  .then(() => {
+                    console.log("Settlement job sent successfully", {
+                      jobId: job.jobId,
+                    });
+                  })
+                  .catch((err) => {
+                    console.error("Failed to send settlement job:", err);
+                  }),
               );
             }
           }
