@@ -148,9 +148,11 @@ async function handleVerify(request: Request, env: Env): Promise<Response> {
 
   const body = await request.text();
 
+  // Log the full body for debugging schema issues
   console.log("x402-settlement /verify proxy", {
     upstreamUrl: `${env.X402_FACILITATOR_URL}/verify`,
     bodyLength: body.length,
+    bodyPreview: body.slice(0, 1000),
   });
 
   try {
