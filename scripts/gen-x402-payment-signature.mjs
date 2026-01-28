@@ -117,10 +117,18 @@ async function main() {
     process.exit(1);
   }
 
-  // Support both v1 (single object) and v2 (array) formats.
-  const options = Array.isArray(paymentRequired)
-    ? paymentRequired
-    : [paymentRequired];
+  // Support both v1 (single object/array) and v2 ({ x402Version: 2, accepts: [...] }) formats.
+  let options;
+  if (paymentRequired.x402Version === 2 && Array.isArray(paymentRequired.accepts)) {
+    // v2 format: { x402Version: 2, accepts: [...] }
+    options = paymentRequired.accepts;
+  } else if (Array.isArray(paymentRequired)) {
+    // v1 format: array of options
+    options = paymentRequired;
+  } else {
+    // v1 format: single option object
+    options = [paymentRequired];
+  }
 
   if (options.length === 0) {
     console.error("X-PAYMENT-REQUIRED contains no payment options");
