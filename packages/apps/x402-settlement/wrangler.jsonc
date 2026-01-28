@@ -15,7 +15,8 @@
     "CANOPY_ID": "canopy-dev-1",
     "NODE_ENV": "dev",
     "DO_SHARD_COUNT": "4",
-    "X402_FACILITATOR_URL": "https://x402.org/facilitator",
+    // Upstream CDP x402 endpoint used by our internal facilitator worker
+    "X402_FACILITATOR_URL": "https://api.cdp.coinbase.com/platform/v2/x402",
     "X402_NETWORK": "eip155:84532",
     "SETTLE_TIMEOUT_MS": "5000",
   },
@@ -40,7 +41,9 @@
         "CANOPY_ID": "canopy-dev-1",
         "NODE_ENV": "dev",
         "DO_SHARD_COUNT": "4",
-        "X402_FACILITATOR_URL": "https://x402.org/facilitator",
+        // Dev settlement worker also talks directly to CDP x402 using dev
+        // credentials, so behaviour matches prod but on Base Sepolia.
+        "X402_FACILITATOR_URL": "https://api.cdp.coinbase.com/platform/v2/x402",
         "X402_NETWORK": "eip155:84532",
         "SETTLE_TIMEOUT_MS": "5000",
       },

@@ -158,6 +158,14 @@ export default {
             priceAtomic: env.X402_PRICE_ATOMIC,
           };
 
+          console.log("x402 dev config", {
+            mode: x402Mode,
+            facilitatorUrlDefined: !!x402FacilitatorUrl,
+            network: x402Config.network,
+            payTo: x402Config.payTo,
+            hasQueue: !!env.X402_SETTLEMENT_QUEUE,
+          });
+
           if (!paymentHeader) {
             const base = problemResponse(
               402,
@@ -217,7 +225,19 @@ export default {
               },
             );
 
+            console.log("x402 verify result", {
+              ok: verifyResult.ok,
+              // authId is an opaque identifier, safe to log for debugging
+              authId: verifyResult.ok ? verifyResult.authId : undefined,
+              mode: x402Mode,
+            });
+
             if (!verifyResult.ok) {
+              console.error("x402 verify failed", {
+                mode: x402Mode,
+                error: verifyResult.error,
+              });
+
               const base = problemResponse(
                 402,
                 "Payment Required",

@@ -82,6 +82,16 @@ export class X402SettlementDO extends DurableObject<Env> {
   async processJob(job: SettlementJob): Promise<SettlementResult> {
     this.ensureSchema();
 
+    console.log("X402SettlementDO processJob", {
+      jobId: job.jobId,
+      authId: job.authId,
+      payer: job.payer,
+      amount: job.amount,
+      idempotencyKey: job.idempotencyKey,
+      facilitatorUrl: this.env.X402_FACILITATOR_URL,
+      network: this.env.X402_NETWORK,
+    });
+
     // Check idempotency - if we've already processed this job, return cached result
     const existing = this.ctx.storage.sql
       .exec<{

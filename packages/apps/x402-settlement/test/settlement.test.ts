@@ -6,6 +6,9 @@ import {
 } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
 
+// Cast env to the proper type (cloudflare:test ProvidedEnv doesn't include all bindings)
+const typedEnv = env as Env;
+
 describe("x402-settlement worker", () => {
   it("responds to health check", async () => {
     const response = await SELF.fetch("http://localhost/health");
@@ -24,16 +27,16 @@ describe("x402-settlement worker", () => {
 
 describe("X402SettlementDO", () => {
   it("can be instantiated", async () => {
-    const doId = env.X402_SETTLEMENT_DO.idFromName("shard-0");
-    const stub = env.X402_SETTLEMENT_DO.get(doId);
+    const doId = typedEnv.X402_SETTLEMENT_DO.idFromName("shard-0");
+    const stub = typedEnv.X402_SETTLEMENT_DO.get(doId);
 
     // The DO should exist and be callable
     expect(stub).toBeDefined();
   });
 
   it("returns null for unknown auth", async () => {
-    const doId = env.X402_SETTLEMENT_DO.idFromName("shard-0");
-    const stub = env.X402_SETTLEMENT_DO.get(doId);
+    const doId = typedEnv.X402_SETTLEMENT_DO.idFromName("shard-0");
+    const stub = typedEnv.X402_SETTLEMENT_DO.get(doId);
 
     const result = await stub.getAuthInfo("nonexistent-auth-id");
     expect(result).toBeNull();
