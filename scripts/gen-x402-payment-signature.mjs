@@ -254,14 +254,35 @@ async function buildAndSignExactPayment(cfg) {
     },
   });
 
-  return {
-    x402Version: 2,
+  // Build the accepted requirements (what we're paying for).
+  const accepted = {
     scheme: "exact",
     network,
+    asset,
+    amount,
+    payTo,
+    maxTimeoutSeconds,
+    extra: extra || {},
+  };
+
+  // Build resource info (what we're paying to access).
+  // For statement registration, this is a placeholder - the resource URL
+  // would typically come from the PaymentRequired response.
+  const resource = {
+    url: "",
+    description: "SCRAPI statement registration",
+    mimeType: "application/cose",
+  };
+
+  // Return full x402 v2 PaymentPayload structure.
+  return {
+    x402Version: 2,
     payload: {
       authorization,
       signature,
     },
+    resource,
+    accepted,
   };
 }
 

@@ -130,6 +130,11 @@ export default {
       return handleSettle(request, env);
     }
 
+    // Admin: reset auth state (for recovery from blocked state)
+    if (url.pathname === "/admin/reset-auth" && request.method === "POST") {
+      return handleResetAuth(request, env);
+    }
+
     return new Response("Not Found", { status: 404 });
   },
 };
@@ -246,6 +251,37 @@ async function handleSettle(request: Request, env: Env): Promise<Response> {
         error: `upstream error: ${err instanceof Error ? err.message : String(err)}`,
       },
       { status: 502 },
+    );
+  }
+}
+
+/**
+ * Admin endpoint to reset auth state (for recovery from blocked state).
+ */
+async function handleResetAuth(request: Request, env: Env): Promise<Response> {
+  try {
+    const body = (await request.json()) as { authId?: string };
+    if (!body.authId) {
+      return Response.json({ error: "authId required" }, { status: 400 });
+    }
+
+    const shardCount = parseInt(env.DO_SHARD_COUNT, 10) || 4;
+    const shardId = resolveShardId(body.authId, shardCount);
+    const doId = env.X402_SETTLEMENT_DO.idFromName(shardId);
+    const stub = env.X402_SETTLEMENT_DO.get(doId);
+
+    const result = await stub.resetAuth(body.authId);
+
+    return Response.json({
+      success: true,
+      authId: body.authId,
+      previous: result.previous,
+    });
+  } catch (err) {
+    console.error("Reset auth error", err);
+    return Response.json(
+      { error: err instanceof Error ? err.message : String(err) },
+      { status: 500 },
     );
   }
 }

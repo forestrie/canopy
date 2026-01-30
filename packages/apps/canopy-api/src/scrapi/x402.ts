@@ -58,15 +58,33 @@ export interface PaymentRequirementsOption {
 }
 
 /**
+ * Resource information for what's being paid for.
+ */
+export interface ResourceInfo {
+  url: string;
+  description?: string;
+  mimeType?: string;
+}
+
+/**
  * x402 v2 PaymentPayload structure.
  *
  * This is received in the X-PAYMENT header (base64-encoded) from the client.
+ * The v2 structure includes resource info and accepted requirements.
  */
 export interface PaymentPayload {
   x402Version: 1 | 2;
-  scheme: "exact";
-  network: string;
+  /** The scheme-specific payload (authorization + signature for exact EVM) */
   payload: ExactEvmPayload;
+  /** Resource being paid for */
+  resource: ResourceInfo;
+  /** The accepted payment requirements */
+  accepted: PaymentRequirementsOption;
+  /** Protocol extensions (optional) */
+  extensions?: Record<string, unknown>;
+  // Legacy v1 fields (for backwards compatibility)
+  scheme?: "exact";
+  network?: string;
 }
 
 export interface ExactEvmPayload {
@@ -147,6 +165,10 @@ export function buildPaymentRequiredHeader(
  *
  * The header contains base64-encoded JSON with the payment payload.
  * For the exact EVM scheme, this includes an EIP-3009 signature.
+ *
+ * Supports both:
+ * - v2 format: { x402Version: 2, payload, resource, accepted }
+ * - Legacy format: { x402Version, scheme, network, payload } (for backwards compat)
  */
 export function parsePaymentHeader(
   raw: string | null,
@@ -187,21 +209,29 @@ export function parsePaymentHeader(
     return { ok: false, error: "x402Version must be 1 or 2" };
   }
 
-  // Validate scheme
-  if (obj.scheme !== "exact") {
+  // Determine format: v2 has `accepted` field, legacy has top-level `scheme`/`network`
+  const isV2Format = typeof obj.accepted === "object" && obj.accepted !== null;
+  const accepted = isV2Format
+    ? (obj.accepted as Record<string, unknown>)
+    : obj;
+
+  // Validate scheme (from accepted or top-level)
+  const scheme = accepted.scheme;
+  if (scheme !== "exact") {
     return { ok: false, error: 'only "exact" scheme is supported' };
   }
 
-  // Validate network
+  // Validate network (from accepted or top-level)
   const expectedNetwork = expectedConfig?.network ?? NETWORK;
-  if (obj.network !== expectedNetwork) {
+  const network = accepted.network;
+  if (network !== expectedNetwork) {
     return {
       ok: false,
-      error: `network must be ${expectedNetwork}, got ${obj.network}`,
+      error: `network must be ${expectedNetwork}, got ${network}`,
     };
   }
 
-  // Validate payload structure
+  // Validate payload structure (EIP-3009 authorization + signature)
   const innerPayload = obj.payload;
   if (typeof innerPayload !== "object" || innerPayload === null) {
     return { ok: false, error: "payload must be an object" };
@@ -235,7 +265,7 @@ export function parsePaymentHeader(
     }
   }
 
-  // Validate payTo matches expected
+  // Validate payTo matches expected (from authorization.to)
   const expectedPayTo = (expectedConfig?.payTo ?? PAY_TO).toLowerCase();
   const actualPayTo = (authObj.to as string).toLowerCase();
   if (actualPayTo !== expectedPayTo) {
@@ -252,7 +282,7 @@ export function parsePaymentHeader(
     ok: true,
     value: {
       scheme: "exact",
-      network: obj.network as string,
+      network: network as string,
       payTo: authObj.to as string,
       payerAddress,
       amount: authObj.value as string,

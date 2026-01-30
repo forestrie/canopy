@@ -26,13 +26,46 @@ export interface ExactEvmPayload {
 }
 
 /**
- * x402 payment payload structure.
+ * Resource information for what's being paid for.
+ */
+export interface ResourceInfo {
+  url: string;
+  description?: string;
+  mimeType?: string;
+}
+
+/**
+ * Payment requirements option (what was accepted for payment).
+ */
+export interface PaymentRequirementsOption {
+  scheme: "exact";
+  network: string;
+  amount: string;
+  asset: string;
+  payTo: string;
+  maxTimeoutSeconds?: number;
+  extra?: Record<string, unknown>;
+}
+
+/**
+ * x402 v2 payment payload structure.
+ *
+ * The v2 format includes resource and accepted requirements.
+ * Legacy v1 fields are kept optional for backwards compatibility.
  */
 export interface PaymentPayload {
   x402Version: 1 | 2;
-  scheme: "exact";
-  network: string;
+  /** The scheme-specific payload (authorization + signature for exact EVM) */
   payload: ExactEvmPayload;
+  /** Resource being paid for */
+  resource: ResourceInfo;
+  /** The accepted payment requirements */
+  accepted: PaymentRequirementsOption;
+  /** Protocol extensions (optional) */
+  extensions?: Record<string, unknown>;
+  // Legacy v1 fields (for backwards compatibility)
+  scheme?: "exact";
+  network?: string;
 }
 
 /**

@@ -121,23 +121,35 @@ export class X402SettlementDO extends DurableObject<Env> {
       };
     }
 
+    // Verify CDP credentials are configured
+    if (!this.env.CDP_API_KEY_ID || !this.env.CDP_API_KEY_SECRET) {
+      console.error("CDP credentials not configured");
+      return {
+        ok: false,
+        error: "CDP credentials not configured",
+        permanent: true,
+      };
+    }
+
     // Call facilitator to settle
     const timeoutMs = parseInt(this.env.SETTLE_TIMEOUT_MS, 10) || 5000;
     let response: SettleResponse;
 
     try {
+      // Build the request with full x402 payload and requirements
+      // The payment payload contains `accepted` which is the PaymentRequirementsOption
       response = await settleCharge(
         this.env.X402_FACILITATOR_URL,
         {
-          authId: job.authId,
-          amount: job.amount,
+          paymentPayload: job.payload,
+          paymentRequirements: job.payload.accepted,
           idempotencyKey: job.idempotencyKey,
-          metadata: {
-            logId: job.logId,
-            contentHash: job.contentHash,
-          },
         },
         timeoutMs,
+        {
+          keyId: this.env.CDP_API_KEY_ID,
+          keySecret: this.env.CDP_API_KEY_SECRET,
+        },
       );
     } catch (err) {
       // Network or timeout error - transient, should retry
@@ -294,6 +306,31 @@ export class X402SettlementDO extends DurableObject<Env> {
     return {
       state: rows[0].state as AuthState,
       failureCount: rows[0].failure_count,
+    };
+  }
+
+  /**
+   * Reset auth state to active (admin recovery).
+   * Called via RPC from the worker.
+   */
+  async resetAuth(authId: string): Promise<{ success: boolean; previous: AuthState | null }> {
+    this.ensureSchema();
+
+    const previous = await this.getAuthInfo(authId);
+    const now = Date.now();
+
+    this.ctx.storage.sql.exec(
+      `UPDATE auth_state SET state = 'active', failure_count = 0, updated_at = ?
+       WHERE auth_id = ?`,
+      now,
+      authId,
+    );
+
+    console.log(`Auth reset: ${authId} from ${previous?.state ?? "none"} to active`);
+
+    return {
+      success: true,
+      previous: previous?.state ?? null,
     };
   }
 }

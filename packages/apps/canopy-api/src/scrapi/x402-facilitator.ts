@@ -70,8 +70,10 @@ export async function verifyPayment(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    // Standard x402 facilitator /verify request body
+    // Standard x402 facilitator /verify request body.
+    // CDP expects: { x402Version, paymentPayload, paymentRequirements }
     const body = {
+      x402Version: payment.payload.x402Version,
       paymentPayload: payment.payload,
       paymentRequirements: requirements,
     };
@@ -146,8 +148,10 @@ export async function settlePayment(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    // Standard x402 facilitator /settle request body
+    // Standard x402 facilitator /settle request body.
+    // CDP expects: { x402Version, paymentPayload, paymentRequirements }
     const body = {
+      x402Version: payment.payload.x402Version,
       paymentPayload: payment.payload,
       paymentRequirements: requirements,
     };
