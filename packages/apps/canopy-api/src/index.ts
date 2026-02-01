@@ -53,6 +53,9 @@ export interface Env {
   // Queue producer for x402 settlement jobs (Phase 2b)
   // Optional binding - only present when queue is provisioned
   X402_SETTLEMENT_QUEUE?: Queue<SettlementJob>;
+  // CDP API credentials for direct x402 verification (Wrangler secrets)
+  CDP_API_KEY_ID?: string;
+  CDP_API_KEY_SECRET?: string;
 }
 
 export default {
@@ -222,6 +225,13 @@ export default {
               {
                 facilitatorUrl: x402FacilitatorUrl,
                 verifyTimeoutMs: 5000,
+                cdpCredentials:
+                  env.CDP_API_KEY_ID && env.CDP_API_KEY_SECRET
+                    ? {
+                        keyId: env.CDP_API_KEY_ID,
+                        keySecret: env.CDP_API_KEY_SECRET,
+                      }
+                    : undefined,
               },
             );
 

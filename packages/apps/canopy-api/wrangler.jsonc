@@ -18,9 +18,8 @@
     "NODE_ENV": "dev",
     "QUEUE_SHARD_COUNT": "4",
     "X402_MODE": "verify-and-settle",
-    // In dev, canopy-api talks to the internal x402-settlement worker,
-    // which in turn talks to CDP.
-    "X402_FACILITATOR_URL": "https://x402-settlement-dev.robinbryce.workers.dev",
+    // Direct CDP facilitator URL - canopy-api calls CDP directly with JWT auth
+    "X402_FACILITATOR_URL": "https://api.cdp.coinbase.com/platform/v2/x402",
     "X402_NETWORK": "eip155:84532",
     "X402_PAYTO_ADDRESS": "0x75be7950F26fe7F15336a10b33A8D8134faDb787",
     "X402_PRICE_EXACT": "$0.001",
@@ -66,8 +65,8 @@
         "NODE_ENV": "dev",
         "QUEUE_SHARD_COUNT": "4",
         "X402_MODE": "verify-and-settle",
-        // canopy-api-dev -> internal facilitator worker
-        "X402_FACILITATOR_URL": "https://x402-settlement-dev.robinbryce.workers.dev",
+        // Direct CDP facilitator URL for payment verification
+        "X402_FACILITATOR_URL": "https://api.cdp.coinbase.com/platform/v2/x402",
         "X402_NETWORK": "eip155:84532",
         "X402_PAYTO_ADDRESS": "0x75be7950F26fe7F15336a10b33A8D8134faDb787",
         "X402_PRICE_EXACT": "$0.001",
@@ -111,11 +110,9 @@
         "API_VERSION": "v1",
         "NODE_ENV": "prod",
         "QUEUE_SHARD_COUNT": "4",
-        // In prod, canopy-api should still be able to run in verify-only mode
-        // if desired, but the facilitator endpoint is our x402-settlement
-        // worker, which talks to CDP.
-        "X402_MODE": "verify-only",
-        "X402_FACILITATOR_URL": "https://x402-settlement-prod.robinbryce.workers.dev",
+        // In prod, use verify-and-settle with direct CDP facilitator
+        "X402_MODE": "verify-and-settle",
+        "X402_FACILITATOR_URL": "https://api.cdp.coinbase.com/platform/v2/x402",
         "X402_NETWORK": "eip155:8453",
         "X402_PAYTO_ADDRESS": "0x75be7950F26fe7F15336a10b33A8D8134faDb787",
         "X402_PRICE_EXACT": "$0.001",
