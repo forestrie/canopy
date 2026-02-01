@@ -17,9 +17,58 @@ import {
   parsePaymentHeader,
   getPaymentRequirementsForVerify,
 } from "./scrapi/x402";
-import type { SettlementJob } from "@canopy/x402-settlement-types";
+import type { SettlementJob, AuthState } from "@canopy/x402-settlement-types";
+import { hashLogId } from "@canopy/forestrie-sharding";
 
 export type X402Mode = "verify-only" | "verify-and-settle";
+
+/**
+ * Auth info response from X402SettlementDO.getAuthInfo().
+ */
+interface AuthInfo {
+  state: AuthState;
+  failureCount: number;
+}
+
+/**
+ * Generate a 403 Forbidden response for blocked payment authorizations.
+ *
+ * Uses RFC 9457 Problem Details format with actionable resolution info.
+ */
+function authBlockedResponse(
+  authId: string,
+  failureCount: number,
+  corsHeaders: Record<string, string>,
+): Response {
+  const problem = {
+    type: "https://forestrie.dev/problems/x402/auth-blocked",
+    title: "Payment Authorization Blocked",
+    status: 403,
+    detail:
+      "Your payment authorization has been blocked due to repeated settlement failures. " +
+      "This typically occurs when insufficient funds are available at settlement time.",
+    authId,
+    failureCount,
+    resolution: {
+      action: "top_up_and_request_reset",
+      description:
+        "Ensure your wallet has sufficient USDC balance to cover pending settlements, " +
+        "then contact support to reset your authorization.",
+      supportUrl: "https://forestrie.dev/support/payment-block",
+    },
+  };
+
+  const headers = new Headers({
+    "Content-Type": "application/problem+json",
+  });
+  Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
+
+  return new Response(JSON.stringify(problem), {
+    status: 403,
+    statusText: "Forbidden",
+    headers,
+  });
+}
 
 export interface Env {
   // Merklelog storage bucket (massifs + checkpoints) written by Arbor services.
@@ -56,6 +105,11 @@ export interface Env {
   // CDP API credentials for direct x402 verification (Wrangler secrets)
   CDP_API_KEY_ID?: string;
   CDP_API_KEY_SECRET?: string;
+  // X402 settlement DO for auth state lookups (cross-worker binding)
+  // Note: Uses untyped namespace since RPC types aren't exported across workers
+  X402_SETTLEMENT_DO?: DurableObjectNamespace;
+  // Number of DO shards for x402 settlement (typically 4)
+  X402_DO_SHARD_COUNT?: string;
 }
 
 export default {
@@ -208,6 +262,42 @@ export default {
               statusText: "Bad Request",
               headers,
             });
+          }
+
+          // Check if the payer's auth is blocked before calling CDP verify.
+          // This saves a CDP round-trip and provides immediate feedback.
+          if (x402Mode === "verify-and-settle" && env.X402_SETTLEMENT_DO) {
+            const authId = `local:${parsed.value.payerAddress}`;
+            const shardCount = parseInt(env.X402_DO_SHARD_COUNT ?? "4", 10);
+            const shardIndex = hashLogId(authId) % shardCount;
+            const shardName = `shard-${shardIndex}`;
+
+            try {
+              const doId = env.X402_SETTLEMENT_DO.idFromName(shardName);
+              const stub = env.X402_SETTLEMENT_DO.get(doId) as unknown as {
+                getAuthInfo(authId: string): Promise<AuthInfo | null>;
+              };
+              const authInfo = await stub.getAuthInfo(authId);
+
+              if (authInfo?.state === "blocked") {
+                console.log("Auth blocked, rejecting request", {
+                  authId,
+                  failureCount: authInfo.failureCount,
+                });
+
+                return authBlockedResponse(
+                  authId,
+                  authInfo.failureCount,
+                  corsHeaders,
+                );
+              }
+            } catch (err) {
+              // If DO lookup fails, log and continue - don't block the request
+              // The settlement worker will catch blocked auths anyway
+              console.warn("Auth state lookup failed, continuing", {
+                error: err instanceof Error ? err.message : String(err),
+              });
+            }
           }
 
           // In verify-and-settle mode, call the facilitator to verify

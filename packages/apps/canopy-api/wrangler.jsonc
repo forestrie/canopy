@@ -38,6 +38,11 @@
         "class_name": "SequencingQueue",
         "script_name": "forestrie-ingress",
       },
+      {
+        "name": "X402_SETTLEMENT_DO",
+        "class_name": "X402SettlementDO",
+        "script_name": "x402-settlement",
+      },
     ],
   },
   // Queue producer for x402 settlement jobs (Phase 2b)
@@ -85,6 +90,11 @@
             "class_name": "SequencingQueue",
             "script_name": "forestrie-ingress-dev",
           },
+          {
+            "name": "X402_SETTLEMENT_DO",
+            "class_name": "X402SettlementDO",
+            "script_name": "x402-settlement-dev",
+          },
         ],
       },
       "queues": {
@@ -130,6 +140,11 @@
             "name": "SEQUENCING_QUEUE",
             "class_name": "SequencingQueue",
             "script_name": "forestrie-ingress-prod",
+          },
+          {
+            "name": "X402_SETTLEMENT_DO",
+            "class_name": "X402SettlementDO",
+            "script_name": "x402-settlement-prod",
           },
         ],
       },
