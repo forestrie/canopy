@@ -53,8 +53,7 @@
             "queue": "canopy-dev-1-x402-settlement",
             "max_batch_size": 10,
             "max_batch_timeout": 30,
-            "max_retries": 5,
-            "dead_letter_queue": "canopy-dev-1-x402-settlement-dlq",
+            // No DLQ/retries - always ack, failures tracked in auth_state
           },
         ],
       },
@@ -83,8 +82,7 @@
             "queue": "canopy-prod-1-x402-settlement",
             "max_batch_size": 10,
             "max_batch_timeout": 30,
-            "max_retries": 5,
-            "dead_letter_queue": "canopy-prod-1-x402-settlement-dlq",
+            // No DLQ/retries - always ack, failures tracked in auth_state
           },
         ],
       },

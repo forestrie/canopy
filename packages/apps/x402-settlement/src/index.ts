@@ -65,29 +65,27 @@ export default {
             jobId: job.jobId,
             txHash: result.txHash,
           });
-          message.ack();
-        } else if (result.permanent) {
-          // Permanent error - don't retry, let it go to DLQ
-          console.error("Settlement failed permanently", {
-            jobId: job.jobId,
-            error: result.error,
-          });
-          message.ack();
         } else {
-          // Transient error - retry via queue
-          console.warn("Settlement failed transiently, will retry", {
+          // Settlement failed - DO has recorded the failure and updated auth state.
+          // We always ack to avoid DLQ; auth blocking provides visibility.
+          console.error("Settlement failed", {
             jobId: job.jobId,
             error: result.error,
+            permanent: result.permanent,
           });
-          message.retry();
         }
+        // Always ack - failure tracking is handled by DO's auth_state table
+        message.ack();
       } catch (err) {
-        // Unexpected error in DO - retry
-        console.error("Settlement DO error", {
+        // DO RPC error - log and ack to avoid DLQ buildup.
+        // This is rare and indicates infrastructure issues rather than
+        // payment problems. Auth state won't be updated but that's acceptable
+        // for transient DO failures.
+        console.error("Settlement DO RPC error", {
           jobId: job.jobId,
           error: err instanceof Error ? err.message : String(err),
         });
-        message.retry();
+        message.ack();
       }
     }
   },
