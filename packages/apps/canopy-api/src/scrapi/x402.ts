@@ -211,9 +211,7 @@ export function parsePaymentHeader(
 
   // Determine format: v2 has `accepted` field, legacy has top-level `scheme`/`network`
   const isV2Format = typeof obj.accepted === "object" && obj.accepted !== null;
-  const accepted = isV2Format
-    ? (obj.accepted as Record<string, unknown>)
-    : obj;
+  const accepted = isV2Format ? (obj.accepted as Record<string, unknown>) : obj;
 
   // Validate scheme (from accepted or top-level)
   const scheme = accepted.scheme;

@@ -17,7 +17,8 @@ vi.mock("../src/scrapi/x402", async () => {
       ok: true as const,
       value: {
         // Standard x402 exact scheme payload shape
-        payerAddress: "0x1111111111111111111111111111111111111111" as `0x${string}`,
+        payerAddress:
+          "0x1111111111111111111111111111111111111111" as `0x${string}`,
         scheme: "exact" as const,
         network: "eip155:84532",
         payTo: "0x75be7950F26fe7F15336a10b33A8D8134faDb787",

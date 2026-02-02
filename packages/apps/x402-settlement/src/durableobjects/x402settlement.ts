@@ -313,7 +313,9 @@ export class X402SettlementDO extends DurableObject<Env> {
    * Reset auth state to active (admin recovery).
    * Called via RPC from the worker.
    */
-  async resetAuth(authId: string): Promise<{ success: boolean; previous: AuthState | null }> {
+  async resetAuth(
+    authId: string,
+  ): Promise<{ success: boolean; previous: AuthState | null }> {
     this.ensureSchema();
 
     const previous = await this.getAuthInfo(authId);
@@ -326,7 +328,9 @@ export class X402SettlementDO extends DurableObject<Env> {
       authId,
     );
 
-    console.log(`Auth reset: ${authId} from ${previous?.state ?? "none"} to active`);
+    console.log(
+      `Auth reset: ${authId} from ${previous?.state ?? "none"} to active`,
+    );
 
     return {
       success: true,
