@@ -337,26 +337,65 @@ function bytesToHex(bytes) {
   );
 }
 
+// Base64 alphabet
+const B64_CHARS =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
 /**
- * Base64 decode (k6 compatible).
+ * Base64 decode (k6 compatible, no Buffer dependency).
  */
 function base64Decode(str) {
-  // k6's goja runtime has atob/btoa
+  // k6's goja runtime has atob
   if (typeof atob === "function") {
     return atob(str);
   }
-  // Fallback for Node.js testing
-  return Buffer.from(str, "base64").toString("utf8");
+
+  // Manual base64 decode for environments without atob/Buffer
+  let result = "";
+  const input = str.replace(/=+$/, "");
+
+  for (let i = 0; i < input.length; ) {
+    const a = B64_CHARS.indexOf(input[i++]);
+    const b = B64_CHARS.indexOf(input[i++]);
+    const c = B64_CHARS.indexOf(input[i++]);
+    const d = B64_CHARS.indexOf(input[i++]);
+
+    const triplet = (a << 18) | (b << 12) | (c << 6) | d;
+
+    result += String.fromCharCode((triplet >> 16) & 0xff);
+    if (c !== -1) result += String.fromCharCode((triplet >> 8) & 0xff);
+    if (d !== -1) result += String.fromCharCode(triplet & 0xff);
+  }
+
+  return result;
 }
 
 /**
- * Base64 encode (k6 compatible).
+ * Base64 encode (k6 compatible, no Buffer dependency).
  */
 function base64Encode(str) {
-  // k6's goja runtime has atob/btoa
+  // k6's goja runtime has btoa
   if (typeof btoa === "function") {
     return btoa(str);
   }
-  // Fallback for Node.js testing
-  return Buffer.from(str, "utf8").toString("base64");
+
+  // Manual base64 encode for environments without btoa/Buffer
+  let result = "";
+  const bytes = [];
+  for (let i = 0; i < str.length; i++) {
+    bytes.push(str.charCodeAt(i));
+  }
+
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i];
+    const b1 = bytes[i + 1];
+    const b2 = bytes[i + 2];
+
+    result += B64_CHARS[b0 >> 2];
+    result += B64_CHARS[((b0 & 3) << 4) | (b1 >> 4)];
+    result += b1 !== undefined ? B64_CHARS[((b1 & 15) << 2) | (b2 >> 6)] : "=";
+    result += b2 !== undefined ? B64_CHARS[b2 & 63] : "=";
+  }
+
+  return result;
 }
