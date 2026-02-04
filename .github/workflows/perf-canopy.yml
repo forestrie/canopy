@@ -234,11 +234,21 @@ jobs:
           # Fetch X-PAYMENT-REQUIRED from first log ID
           FIRST_LOG_ID=$(echo "${{ steps.log_ids.outputs.log_ids }}" | cut -d',' -f1)
           echo "Fetching X-PAYMENT-REQUIRED for log ${FIRST_LOG_ID}..."
-          X_PAYMENT_REQUIRED=$(curl -s -X POST \
+          
+          # Use -D to dump headers to file (avoids binary body interfering with grep)
+          curl -s -X POST \
             "${CANOPY_PERF_BASE_URL}/logs/${FIRST_LOG_ID}/entries" \
             -H 'Content-Type: application/cose; cose-type="cose-sign1"' \
             -H "Authorization: Bearer ${CANOPY_PERF_API_TOKEN}" \
-            -d '' -i 2>/dev/null | grep -i 'x-payment-required' | cut -d' ' -f2 | tr -d '\r')
+            -d '' \
+            -D /tmp/x402_headers.txt \
+            -o /dev/null
+          
+          # Debug: show response headers
+          echo "Response headers:"
+          cat /tmp/x402_headers.txt
+          
+          X_PAYMENT_REQUIRED=$(grep -i 'x-payment-required' /tmp/x402_headers.txt | cut -d' ' -f2 | tr -d '\r\n')
 
           if [ -z "$X_PAYMENT_REQUIRED" ]; then
             echo "Failed to get X-PAYMENT-REQUIRED from API"
