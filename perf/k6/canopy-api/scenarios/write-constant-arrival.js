@@ -36,6 +36,10 @@ import {
   e2eTimeoutCount,
   pollCount,
 } from "../lib/http.js";
+import {
+  parsePaymentRequirements,
+  generateX402Payment,
+} from "../lib/x402.js";
 
 // Read configuration from environment
 // Note: We use CANOPY_PERF_ prefix instead of K6_ to avoid k6's built-in
@@ -49,6 +53,7 @@ const DURATION = __ENV.CANOPY_PERF_DURATION || "3m";
 const WARMUP = __ENV.CANOPY_PERF_WARMUP || "30s";
 const MSG_BYTES = parseInt(__ENV.CANOPY_PERF_MSG_BYTES || "64", 10);
 const SAMPLE_RATE = parseFloat(__ENV.CANOPY_PERF_SAMPLE_RATE || "0.01");
+const X402_PRIVATE_KEY = __ENV.CANOPY_X402_DEV_PRIVATE_KEY;
 
 // Parse log IDs from comma-separated string
 const LOG_IDS = LOG_IDS_RAW ? LOG_IDS_RAW.split(",") : [];
@@ -62,6 +67,11 @@ if (!API_TOKEN) {
 }
 if (LOG_IDS.length === 0) {
   throw new Error("CANOPY_PERF_LOG_IDS is required (comma-separated list)");
+}
+if (!X402_PRIVATE_KEY) {
+  throw new Error(
+    "CANOPY_X402_DEV_PRIVATE_KEY is required for x402 payment signing",
+  );
 }
 
 // k6 options
@@ -135,31 +145,20 @@ export function setup() {
   console.log(`  Duration: ${WARMUP} warmup + ${DURATION} sustained`);
   console.log(`  Payload: ${MSG_BYTES} bytes`);
   console.log(`  Sample rate: ${SAMPLE_RATE * 100}%`);
+  console.log(`  x402: per-request signing enabled`);
 
-  // x402 payment header: must be pre-generated and provided via env var.
-  // Use scripts/gen-x402-payment-signature.mjs to generate:
-  //
-  //   # First, get payment requirements:
-  //   curl -X POST "$CANOPY_PERF_BASE_URL/logs/$LOG_ID/entries" \
-  //     -H "Content-Type: application/cose; cose-type=\"cose-sign1\"" \
-  //     -H "Authorization: Bearer $CANOPY_PERF_API_TOKEN" \
-  //     -d '' -i 2>/dev/null | grep -i 'x-payment-required' | cut -d' ' -f2
-  //
-  //   # Then generate X-PAYMENT header:
-  //   node scripts/gen-x402-payment-signature.mjs --payment-required "$X_PAYMENT_REQUIRED"
-  const xPayment = __ENV.CANOPY_PERF_X402_PAYMENT;
-  if (!xPayment) {
-    // If not provided, try to fetch requirements and log instructions
-    const paymentReq = getPaymentRequirements(BASE_URL, LOG_IDS[0], API_TOKEN);
-    console.error(
-      `X-PAYMENT header required. Generate using:\n` +
-        `  node scripts/gen-x402-payment-signature.mjs --payment-required "${paymentReq}"\n` +
-        `Then set CANOPY_PERF_X402_PAYMENT to the output.`,
-    );
-    throw new Error(
-      "CANOPY_PERF_X402_PAYMENT is required. See console output for generation instructions.",
-    );
-  }
+  // Fetch x402 payment requirements from the API.
+  // These define the payment terms (amount, asset, payTo address, etc.)
+  // and are reused for all requests (only the signature changes per-request).
+  const paymentRequiredBase64 = getPaymentRequirements(
+    BASE_URL,
+    LOG_IDS[0],
+    API_TOKEN,
+  );
+  const paymentOption = parsePaymentRequirements(paymentRequiredBase64);
+  console.log(
+    `  x402 payment: ${paymentOption.amount} to ${paymentOption.payTo}`,
+  );
 
   return {
     baseUrl: BASE_URL,
@@ -168,7 +167,8 @@ export function setup() {
     logCount: LOG_IDS.length,
     msgBytes: MSG_BYTES,
     sampleRate: SAMPLE_RATE,
-    xPayment,
+    paymentOption,
+    privateKey: X402_PRIVATE_KEY,
   };
 }
 
@@ -183,6 +183,10 @@ export default function (data) {
   const logId = data.logIds[logIndex];
   requestCounter++;
 
+  // Generate fresh x402 payment signature for this request.
+  // Each signature has a unique nonce and can only be used once.
+  const xPayment = generateX402Payment(data.paymentOption, data.privateKey);
+
   // Decide if this request should measure e2e latency (sampled)
   const measureE2E = data.sampleRate > 0 && Math.random() < data.sampleRate;
 
@@ -195,7 +199,7 @@ export default function (data) {
     measureE2E,
     60, // maxPolls
     250, // pollIntervalMs
-    data.xPayment,
+    xPayment,
   );
 
   // Check the result

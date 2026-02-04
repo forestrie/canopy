@@ -72,7 +72,6 @@ jobs:
 
     env:
       CANOPY_PERF_API_TOKEN: ${{ secrets.CANOPY_PERF_API_TOKEN }}
-      CANOPY_X402_DEV_PRIVATE_KEY: ${{ secrets.CANOPY_X402_DEV_PRIVATE_KEY }}
 
     steps:
       - name: Checkout
@@ -228,38 +227,6 @@ jobs:
             echo "$DISTRIBUTION" > /tmp/log_shard_distribution.txt
           fi
 
-      - name: Generate x402 payment signature
-        id: x402
-        run: |
-          # Fetch X-PAYMENT-REQUIRED from first log ID
-          FIRST_LOG_ID=$(echo "${{ steps.log_ids.outputs.log_ids }}" | cut -d',' -f1)
-          echo "Fetching X-PAYMENT-REQUIRED for log ${FIRST_LOG_ID}..."
-          
-          # Use -D to dump headers to file (avoids binary body interfering with grep)
-          curl -s -X POST \
-            "${CANOPY_PERF_BASE_URL}/logs/${FIRST_LOG_ID}/entries" \
-            -H 'Content-Type: application/cose; cose-type="cose-sign1"' \
-            -H "Authorization: Bearer ${CANOPY_PERF_API_TOKEN}" \
-            -d '' \
-            -D /tmp/x402_headers.txt \
-            -o /dev/null
-          
-          # Debug: show response headers
-          echo "Response headers:"
-          cat /tmp/x402_headers.txt
-          
-          X_PAYMENT_REQUIRED=$(grep -i 'x-payment-required' /tmp/x402_headers.txt | cut -d' ' -f2 | tr -d '\r\n')
-
-          if [ -z "$X_PAYMENT_REQUIRED" ]; then
-            echo "Failed to get X-PAYMENT-REQUIRED from API"
-            exit 1
-          fi
-
-          echo "Generating X-PAYMENT header..."
-          X_PAYMENT=$(node scripts/gen-x402-payment-signature.mjs --payment-required "$X_PAYMENT_REQUIRED")
-          echo "CANOPY_PERF_X402_PAYMENT=$X_PAYMENT" >> $GITHUB_ENV
-          echo "x402 payment signature generated successfully"
-
       - name: Run k6 performance test
         id: k6
         env:
@@ -269,6 +236,8 @@ jobs:
           CANOPY_PERF_SAMPLE_RATE: "0.05"
           CANOPY_PERF_LOG_IDS: ${{ steps.log_ids.outputs.log_ids }}
           CANOPY_PERF_LOG_COUNT: ${{ steps.log_ids.outputs.log_count }}
+          # x402 private key for per-request payment signing
+          CANOPY_X402_DEV_PRIVATE_KEY: ${{ secrets.CANOPY_X402_DEV_PRIVATE_KEY }}
         run: |
           echo "Running k6 performance test"
           echo "  Rate: ${CANOPY_PERF_RATE} req/s"

@@ -1,0 +1,362 @@
+/**
+ * x402 payment signature generation for k6.
+ *
+ * Generates EIP-3009 transferWithAuthorization signatures for x402 payments.
+ * This is a k6-compatible port of the signing logic from
+ * scripts/gen-x402-payment-signature.mjs.
+ *
+ * Dependencies (bundled via esbuild):
+ * - @noble/curves/secp256k1
+ * - @noble/hashes/sha3
+ */
+
+import { secp256k1 } from "@noble/curves/secp256k1";
+import { keccak_256 } from "@noble/hashes/sha3";
+import { stringToBytes } from "./cbor.js";
+
+/**
+ * Parse payment requirements from base64-encoded header value.
+ *
+ * @param {string} base64Value - Base64-encoded X-PAYMENT-REQUIRED header
+ * @returns {Object} - Parsed payment option with scheme "exact"
+ */
+export function parsePaymentRequirements(base64Value) {
+  // Decode base64 to JSON string
+  const jsonStr = base64Decode(base64Value);
+  const paymentRequired = JSON.parse(jsonStr);
+
+  // Support both v1 and v2 formats
+  let options;
+  if (
+    paymentRequired.x402Version === 2 &&
+    Array.isArray(paymentRequired.accepts)
+  ) {
+    options = paymentRequired.accepts;
+  } else if (Array.isArray(paymentRequired)) {
+    options = paymentRequired;
+  } else {
+    options = [paymentRequired];
+  }
+
+  // Find exact scheme option
+  const chosen = options.find((o) => o.scheme === "exact");
+  if (!chosen) {
+    throw new Error("No 'exact' scheme found in X-PAYMENT-REQUIRED options");
+  }
+
+  if (!chosen.network || !chosen.payTo || !chosen.asset || !chosen.amount) {
+    throw new Error(
+      "Chosen x402 option is missing required fields (network, payTo, asset, amount)",
+    );
+  }
+
+  return chosen;
+}
+
+/**
+ * Generate a fresh x402 payment signature.
+ *
+ * @param {Object} paymentOption - Parsed payment option from parsePaymentRequirements
+ * @param {string} privateKey - Hex-encoded private key (with or without 0x prefix)
+ * @returns {string} - Base64-encoded X-PAYMENT header value
+ */
+export function generateX402Payment(paymentOption, privateKey) {
+  const { network, payTo, asset, amount, maxTimeoutSeconds, extra } =
+    paymentOption;
+
+  // Derive payer address from private key
+  const payerAddress = deriveAddress(privateKey);
+
+  // Create random bytes32 nonce
+  const nonce = generateRandomNonce();
+
+  // Time bounds
+  const now = Math.floor(Date.now() / 1000);
+  const validAfter = now - 600; // 10 minutes before
+  const validBefore = now + (maxTimeoutSeconds || 300);
+
+  const authorization = {
+    from: payerAddress,
+    to: payTo,
+    value: amount,
+    validAfter: validAfter.toString(),
+    validBefore: validBefore.toString(),
+    nonce,
+  };
+
+  // Sign using EIP-712
+  const chainId = parseInt(network.split(":")[1]);
+  if (!extra?.name || !extra?.version) {
+    throw new Error(
+      `EIP-712 domain parameters (name, version) are required for asset ${asset}`,
+    );
+  }
+
+  const signature = signTypedData({
+    privateKey,
+    domain: {
+      name: extra.name,
+      version: extra.version,
+      chainId,
+      verifyingContract: asset,
+    },
+    types: {
+      TransferWithAuthorization: [
+        { name: "from", type: "address" },
+        { name: "to", type: "address" },
+        { name: "value", type: "uint256" },
+        { name: "validAfter", type: "uint256" },
+        { name: "validBefore", type: "uint256" },
+        { name: "nonce", type: "bytes32" },
+      ],
+    },
+    primaryType: "TransferWithAuthorization",
+    message: {
+      from: payerAddress,
+      to: payTo,
+      value: BigInt(amount),
+      validAfter: BigInt(validAfter),
+      validBefore: BigInt(validBefore),
+      nonce,
+    },
+  });
+
+  // Build accepted requirements
+  const accepted = {
+    scheme: "exact",
+    network,
+    asset,
+    amount,
+    payTo,
+    maxTimeoutSeconds: maxTimeoutSeconds || 300,
+    extra: extra || {},
+  };
+
+  // Build resource info
+  const resource = {
+    url: "",
+    description: "SCRAPI statement registration",
+    mimeType: "application/cose",
+  };
+
+  // Build full x402 v2 PaymentPayload
+  const payload = {
+    x402Version: 2,
+    payload: {
+      authorization,
+      signature,
+    },
+    resource,
+    accepted,
+  };
+
+  // Return base64-encoded JSON
+  return base64Encode(JSON.stringify(payload));
+}
+
+/**
+ * Derive Ethereum address from private key.
+ */
+function deriveAddress(privateKey) {
+  const privBytes = hexToBytes(privateKey);
+  const pubKey = secp256k1.getPublicKey(privBytes, false); // uncompressed
+  // Address = last 20 bytes of keccak256(pubKey[1..65])
+  const hash = keccak_256(pubKey.slice(1));
+  const addressBytes = hash.slice(-20);
+  return bytesToHex(addressBytes);
+}
+
+/**
+ * Generate a random 32-byte nonce as hex string.
+ */
+function generateRandomNonce() {
+  // k6 doesn't have crypto.randomBytes, use Math.random
+  const bytes = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) {
+    bytes[i] = Math.floor(Math.random() * 256);
+  }
+  return bytesToHex(bytes);
+}
+
+/**
+ * Sign EIP-712 typed data using secp256k1.
+ */
+function signTypedData({ privateKey, domain, types, primaryType, message }) {
+  // Build EIP-712 struct hash
+  const domainSeparator = hashStruct("EIP712Domain", domain, {
+    EIP712Domain: [
+      { name: "name", type: "string" },
+      { name: "version", type: "string" },
+      { name: "chainId", type: "uint256" },
+      { name: "verifyingContract", type: "address" },
+    ],
+  });
+
+  const structHash = hashStruct(primaryType, message, types);
+
+  // EIP-712 signing hash: keccak256("\x19\x01" || domainSeparator || structHash)
+  const prefix = new Uint8Array([0x19, 0x01]);
+  const combined = new Uint8Array(2 + 32 + 32);
+  combined.set(prefix, 0);
+  combined.set(domainSeparator, 2);
+  combined.set(structHash, 34);
+
+  const hash = keccak_256(combined);
+
+  // Sign with secp256k1
+  const privBytes = hexToBytes(privateKey);
+  const sig = secp256k1.sign(hash, privBytes, { prehash: false });
+  const compact = sig.toCompactRawBytes();
+
+  if (sig.recovery === undefined) {
+    throw new Error("secp256k1 signature missing recovery bit");
+  }
+
+  // Standard Ethereum signature format: r (32) || s (32) || v (1)
+  const sigBytes = new Uint8Array(65);
+  sigBytes.set(compact, 0);
+  sigBytes[64] = sig.recovery + 27;
+
+  return bytesToHex(sigBytes);
+}
+
+/**
+ * Hash a struct according to EIP-712.
+ */
+function hashStruct(typeName, data, types) {
+  const encoded = encodeData(typeName, data, types);
+  return keccak_256(encoded);
+}
+
+/**
+ * Encode data according to EIP-712.
+ */
+function encodeData(typeName, data, types) {
+  const typeHash = hashType(typeName, types);
+  const encodedValues = [typeHash];
+
+  for (const field of types[typeName]) {
+    const value = data[field.name];
+    encodedValues.push(encodeValue(field.type, value, types));
+  }
+
+  // Concatenate all 32-byte values
+  const result = new Uint8Array(encodedValues.length * 32);
+  for (let i = 0; i < encodedValues.length; i++) {
+    result.set(encodedValues[i], i * 32);
+  }
+  return result;
+}
+
+/**
+ * Encode a single value according to EIP-712.
+ */
+function encodeValue(type, value, types) {
+  if (type === "string") {
+    return keccak_256(stringToBytes(value));
+  }
+  if (type === "bytes") {
+    return keccak_256(hexToBytes(value));
+  }
+  if (type === "bytes32") {
+    const bytes = hexToBytes(value);
+    if (bytes.length !== 32) {
+      throw new Error(`bytes32 value must be 32 bytes, got ${bytes.length}`);
+    }
+    return bytes;
+  }
+  if (type === "address") {
+    // Address is left-padded to 32 bytes
+    const bytes = hexToBytes(value);
+    const padded = new Uint8Array(32);
+    padded.set(bytes, 32 - bytes.length);
+    return padded;
+  }
+  if (type === "uint256") {
+    // uint256 is big-endian, left-padded to 32 bytes
+    const bigValue = typeof value === "bigint" ? value : BigInt(value);
+    const hex = bigValue.toString(16).padStart(64, "0");
+    return hexToBytes("0x" + hex);
+  }
+  if (type === "bool") {
+    const bytes = new Uint8Array(32);
+    bytes[31] = value ? 1 : 0;
+    return bytes;
+  }
+  if (types[type]) {
+    // Nested struct
+    return hashStruct(type, value, types);
+  }
+  throw new Error(`Unsupported type: ${type}`);
+}
+
+/**
+ * Hash type according to EIP-712.
+ */
+function hashType(typeName, types) {
+  const typeString = encodeType(typeName, types);
+  return keccak_256(stringToBytes(typeString));
+}
+
+/**
+ * Encode type string according to EIP-712.
+ */
+function encodeType(typeName, types) {
+  const fields = types[typeName];
+  if (!fields) {
+    throw new Error(`Unknown type: ${typeName}`);
+  }
+  const fieldStrings = fields.map((f) => `${f.type} ${f.name}`).join(",");
+  return `${typeName}(${fieldStrings})`;
+}
+
+/**
+ * Convert hex string to bytes.
+ */
+function hexToBytes(hex) {
+  const normalized = hex.startsWith("0x") ? hex.slice(2) : hex;
+  if (normalized.length % 2 !== 0) {
+    throw new Error("Invalid hex string length");
+  }
+  const bytes = new Uint8Array(normalized.length / 2);
+  for (let i = 0; i < normalized.length; i += 2) {
+    bytes[i / 2] = parseInt(normalized.slice(i, i + 2), 16);
+  }
+  return bytes;
+}
+
+/**
+ * Convert bytes to hex string.
+ */
+function bytesToHex(bytes) {
+  return (
+    "0x" +
+    Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("")
+  );
+}
+
+/**
+ * Base64 decode (k6 compatible).
+ */
+function base64Decode(str) {
+  // k6's goja runtime has atob/btoa
+  if (typeof atob === "function") {
+    return atob(str);
+  }
+  // Fallback for Node.js testing
+  return Buffer.from(str, "base64").toString("utf8");
+}
+
+/**
+ * Base64 encode (k6 compatible).
+ */
+function base64Encode(str) {
+  // k6's goja runtime has atob/btoa
+  if (typeof btoa === "function") {
+    return btoa(str);
+  }
+  // Fallback for Node.js testing
+  return Buffer.from(str, "utf8").toString("base64");
+}
