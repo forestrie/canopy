@@ -72,6 +72,7 @@ jobs:
 
     env:
       CANOPY_PERF_API_TOKEN: ${{ secrets.CANOPY_PERF_API_TOKEN }}
+      CANOPY_X402_DEV_PRIVATE_KEY: ${{ secrets.CANOPY_X402_DEV_PRIVATE_KEY }}
 
     steps:
       - name: Checkout
@@ -226,6 +227,28 @@ jobs:
             # Save distribution for summary
             echo "$DISTRIBUTION" > /tmp/log_shard_distribution.txt
           fi
+
+      - name: Generate x402 payment signature
+        id: x402
+        run: |
+          # Fetch X-PAYMENT-REQUIRED from first log ID
+          FIRST_LOG_ID=$(echo "${{ steps.log_ids.outputs.log_ids }}" | cut -d',' -f1)
+          echo "Fetching X-PAYMENT-REQUIRED for log ${FIRST_LOG_ID}..."
+          X_PAYMENT_REQUIRED=$(curl -s -X POST \
+            "${CANOPY_PERF_BASE_URL}/logs/${FIRST_LOG_ID}/entries" \
+            -H 'Content-Type: application/cose; cose-type="cose-sign1"' \
+            -H "Authorization: Bearer ${CANOPY_PERF_API_TOKEN}" \
+            -d '' -i 2>/dev/null | grep -i 'x-payment-required' | cut -d' ' -f2 | tr -d '\r')
+
+          if [ -z "$X_PAYMENT_REQUIRED" ]; then
+            echo "Failed to get X-PAYMENT-REQUIRED from API"
+            exit 1
+          fi
+
+          echo "Generating X-PAYMENT header..."
+          X_PAYMENT=$(node scripts/gen-x402-payment-signature.mjs --payment-required "$X_PAYMENT_REQUIRED")
+          echo "CANOPY_PERF_X402_PAYMENT=$X_PAYMENT" >> $GITHUB_ENV
+          echo "x402 payment signature generated successfully"
 
       - name: Run k6 performance test
         id: k6
