@@ -342,48 +342,149 @@ const B64_CHARS =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /**
+ * Decode a "binary string" (where each char is a byte) to UTF-8 string.
+ * This is needed because atob() returns bytes as characters, but if the
+ * original data was UTF-8 encoded, we need to decode those bytes.
+ */
+function binaryStringToUtf8(binaryStr) {
+  // Convert binary string to byte array
+  const bytes = [];
+  for (let i = 0; i < binaryStr.length; i++) {
+    bytes.push(binaryStr.charCodeAt(i));
+  }
+
+  // Decode UTF-8 bytes to string
+  let result = "";
+  let i = 0;
+  while (i < bytes.length) {
+    const b0 = bytes[i++];
+    if (b0 < 0x80) {
+      // Single byte (ASCII)
+      result += String.fromCharCode(b0);
+    } else if ((b0 & 0xe0) === 0xc0) {
+      // Two bytes
+      const b1 = bytes[i++];
+      result += String.fromCharCode(((b0 & 0x1f) << 6) | (b1 & 0x3f));
+    } else if ((b0 & 0xf0) === 0xe0) {
+      // Three bytes
+      const b1 = bytes[i++];
+      const b2 = bytes[i++];
+      result += String.fromCharCode(
+        ((b0 & 0x0f) << 12) | ((b1 & 0x3f) << 6) | (b2 & 0x3f),
+      );
+    } else if ((b0 & 0xf8) === 0xf0) {
+      // Four bytes (surrogate pair)
+      const b1 = bytes[i++];
+      const b2 = bytes[i++];
+      const b3 = bytes[i++];
+      const codePoint =
+        ((b0 & 0x07) << 18) |
+        ((b1 & 0x3f) << 12) |
+        ((b2 & 0x3f) << 6) |
+        (b3 & 0x3f);
+      // Convert to surrogate pair
+      const adjusted = codePoint - 0x10000;
+      result += String.fromCharCode(
+        0xd800 + (adjusted >> 10),
+        0xdc00 + (adjusted & 0x3ff),
+      );
+    }
+  }
+  return result;
+}
+
+/**
  * Base64 decode (k6 compatible, no Buffer dependency).
+ * Returns UTF-8 decoded string.
  */
 function base64Decode(str) {
+  let binaryStr;
+
   // k6's goja runtime has atob
   if (typeof atob === "function") {
-    return atob(str);
+    binaryStr = atob(str);
+  } else {
+    // Manual base64 decode for environments without atob
+    binaryStr = "";
+    const input = str.replace(/=+$/, "");
+
+    for (let i = 0; i < input.length; ) {
+      const a = B64_CHARS.indexOf(input[i++]);
+      const b = i < input.length ? B64_CHARS.indexOf(input[i++]) : 0;
+      const c = i < input.length ? B64_CHARS.indexOf(input[i++]) : -1;
+      const d = i < input.length ? B64_CHARS.indexOf(input[i++]) : -1;
+
+      // Only use valid indices for the triplet
+      const triplet =
+        (a << 18) | (b << 12) | (c >= 0 ? c << 6 : 0) | (d >= 0 ? d : 0);
+
+      binaryStr += String.fromCharCode((triplet >> 16) & 0xff);
+      if (c >= 0) binaryStr += String.fromCharCode((triplet >> 8) & 0xff);
+      if (d >= 0) binaryStr += String.fromCharCode(triplet & 0xff);
+    }
   }
 
-  // Manual base64 decode for environments without atob/Buffer
+  // Decode UTF-8 bytes to string
+  return binaryStringToUtf8(binaryStr);
+}
+
+/**
+ * Encode a UTF-8 string to bytes, then to binary string for btoa.
+ */
+function utf8ToBinaryString(str) {
   let result = "";
-  const input = str.replace(/=+$/, "");
+  for (let i = 0; i < str.length; i++) {
+    let code = str.charCodeAt(i);
 
-  for (let i = 0; i < input.length; ) {
-    const a = B64_CHARS.indexOf(input[i++]);
-    const b = B64_CHARS.indexOf(input[i++]);
-    const c = B64_CHARS.indexOf(input[i++]);
-    const d = B64_CHARS.indexOf(input[i++]);
+    // Handle surrogate pairs
+    if (code >= 0xd800 && code < 0xdc00 && i + 1 < str.length) {
+      const low = str.charCodeAt(i + 1);
+      if (low >= 0xdc00 && low < 0xe000) {
+        code = 0x10000 + ((code - 0xd800) << 10) + (low - 0xdc00);
+        i++;
+      }
+    }
 
-    const triplet = (a << 18) | (b << 12) | (c << 6) | d;
-
-    result += String.fromCharCode((triplet >> 16) & 0xff);
-    if (c !== -1) result += String.fromCharCode((triplet >> 8) & 0xff);
-    if (d !== -1) result += String.fromCharCode(triplet & 0xff);
+    if (code < 0x80) {
+      result += String.fromCharCode(code);
+    } else if (code < 0x800) {
+      result += String.fromCharCode(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+    } else if (code < 0x10000) {
+      result += String.fromCharCode(
+        0xe0 | (code >> 12),
+        0x80 | ((code >> 6) & 0x3f),
+        0x80 | (code & 0x3f),
+      );
+    } else {
+      result += String.fromCharCode(
+        0xf0 | (code >> 18),
+        0x80 | ((code >> 12) & 0x3f),
+        0x80 | ((code >> 6) & 0x3f),
+        0x80 | (code & 0x3f),
+      );
+    }
   }
-
   return result;
 }
 
 /**
  * Base64 encode (k6 compatible, no Buffer dependency).
+ * Encodes UTF-8 string to base64.
  */
 function base64Encode(str) {
+  // First encode string to UTF-8 bytes as binary string
+  const binaryStr = utf8ToBinaryString(str);
+
   // k6's goja runtime has btoa
   if (typeof btoa === "function") {
-    return btoa(str);
+    return btoa(binaryStr);
   }
 
-  // Manual base64 encode for environments without btoa/Buffer
+  // Manual base64 encode for environments without btoa
   let result = "";
   const bytes = [];
-  for (let i = 0; i < str.length; i++) {
-    bytes.push(str.charCodeAt(i));
+  for (let i = 0; i < binaryStr.length; i++) {
+    bytes.push(binaryStr.charCodeAt(i));
   }
 
   for (let i = 0; i < bytes.length; i += 3) {
