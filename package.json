@@ -17,7 +17,7 @@
     "format": "prettier --write packages",
     "check": "prettier --check packages",
     "install:task": "sh -c 'curl -sSfL https://taskfile.dev/install.sh | sh -s -- -d -b /usr/local/bin'",
-"perf:k6:bundle-canopy-api": "esbuild perf/k6/canopy-api/scenarios/write-constant-arrival.js --bundle --platform=neutral --target=es2015 --external:k6 --external:k6/http --external:k6/metrics --external:k6/data --outfile=perf/k6/canopy-api/dist/write-constant-arrival.bundle.js"
+"perf:k6:bundle-canopy-api": "esbuild perf/k6/canopy-api/scenarios/write-constant-arrival.js --bundle --platform=neutral --target=es2015 --external:k6 --external:k6/http --external:k6/metrics --external:k6/data --external:k6/execution --outfile=perf/k6/canopy-api/dist/write-constant-arrival.bundle.js"
   },
   "devDependencies": {
     "@noble/curves": "^1.9.7",

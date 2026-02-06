@@ -26,6 +26,7 @@
 
 import { check } from "k6";
 import { SharedArray } from "k6/data";
+import exec from "k6/execution";
 import { encodeCoseSign1, generateUniquePayload } from "../lib/cose.js";
 import {
   postAndMaybeWait,
@@ -166,11 +167,16 @@ export default function (data) {
   const logId = data.logIds[logIndex];
   requestCounter++;
 
-  // Get pre-generated x402 payment from pool using global execution context.
-  // exec.scenario.iterationInTest gives a globally unique iteration number across all VUs.
-  // This ensures each request uses a unique payment from the pool.
-  const globalIter = __VU * 1000000 + __ITER; // Approximate global counter
-  const poolIndex = globalIter % paymentPool.length;
+  // Get pre-generated x402 payment from pool using execution context.
+  // exec.scenario.iterationInTest is unique within a scenario, but we have two scenarios
+  // (warmup and sustained) that both share the same pool. To avoid nonce reuse:
+  // - warmup iterations use indices [0, warmupSize)
+  // - sustained iterations use indices [warmupSize, poolSize)
+  // The pool should be sized to accommodate both scenarios' iterations.
+  const scenarioOffset = exec.scenario.name === "sustained"
+    ? parseDuration(WARMUP) * RATE  // Approximate number of warmup iterations
+    : 0;
+  const poolIndex = (scenarioOffset + exec.scenario.iterationInTest) % paymentPool.length;
   const xPayment = paymentPool[poolIndex];
 
   // Decide if this request should measure e2e latency (sampled)
