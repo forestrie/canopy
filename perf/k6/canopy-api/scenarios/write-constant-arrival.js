@@ -160,23 +160,41 @@ export function setup() {
 
   // Pre-generate a pool of x402 payments to avoid per-request signing overhead.
   // Each payment has a unique nonce and is valid for the test duration.
-  // Pool size: enough for warmup + sustained + 20% buffer
+  //
+  // Pool size is limited to keep setup time reasonable (~10-15s).
+  // At high rates, payments will be recycled (but this shouldn't affect
+  // the test since we're measuring server-side latency, not payment uniqueness).
+  // Note: Recycling x402 payments means the same nonce will be used multiple times,
+  // which will fail verification after first use. For accurate testing at high rates,
+  // consider pre-generating payments offline.
   const warmupSeconds = parseDuration(WARMUP);
   const durationSeconds = parseDuration(DURATION);
-  const totalRequests = Math.ceil(
+  const idealPoolSize = Math.ceil(
     RATE * (warmupSeconds + durationSeconds) * 1.2,
   );
+  // Cap pool size to keep setup time under ~15s (roughly 1000 sigs/sec in k6)
+  const MAX_POOL_SIZE = 15000;
+  const poolSize = Math.min(idealPoolSize, MAX_POOL_SIZE);
+  const willRecycle = idealPoolSize > MAX_POOL_SIZE;
   // Validity window: 10 min before + test duration + 5 min grace
   const validitySeconds = warmupSeconds + durationSeconds + 600;
 
+  if (willRecycle) {
+    console.log(
+      `  x402: WARNING - pool capped at ${poolSize} (need ${idealPoolSize}), payments will be recycled`,
+    );
+    console.log(
+      `  x402: This may cause verification failures after first use of each payment`,
+    );
+  }
   console.log(
-    `  x402: pre-generating ${totalRequests} payments (validity: ${validitySeconds}s)...`,
+    `  x402: pre-generating ${poolSize} payments (validity: ${validitySeconds}s)...`,
   );
   const startTime = Date.now();
   const paymentPool = generateX402PaymentPool(
     paymentOption,
     X402_PRIVATE_KEY,
-    totalRequests,
+    poolSize,
     validitySeconds,
   );
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
