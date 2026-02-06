@@ -76,6 +76,9 @@ if (!X402_PRIVATE_KEY) {
 
 // k6 options
 export const options = {
+  // Allow 5 minutes for setup (payment pool generation is slow in k6/goja)
+  setupTimeout: "5m",
+
   scenarios: {
     // Warmup: ramp from 0 to target rate
     warmup: {
