@@ -1,0 +1,5 @@
+# Generated data files
+data/*.json
+
+# But keep the directory
+!data/.gitkeep

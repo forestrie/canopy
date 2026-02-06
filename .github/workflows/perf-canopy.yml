@@ -91,7 +91,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Bundle k6 scenario with x402 signing
+      - name: Bundle k6 scenario
         run: pnpm perf:k6:bundle-canopy-api
 
       - name: Setup k6
@@ -175,6 +175,45 @@ jobs:
           echo "Resetting x402 auth block to ensure clean state..."
           node perf/scripts/reset-x402-auth.mjs
 
+      - name: Generate x402 payment pool
+        env:
+          CANOPY_X402_DEV_PRIVATE_KEY: ${{ secrets.CANOPY_X402_DEV_PRIVATE_KEY }}
+          CANOPY_PERF_LOG_ID: ${{ env.CANOPY_PERF_1LPS_0 }}
+          CANOPY_PERF_RATE: ${{ matrix.rate }}
+          CANOPY_PERF_DURATION: ${{ github.event.inputs.duration || '3m' }}
+          CANOPY_PERF_WARMUP: ${{ github.event.inputs.warmup || '30s' }}
+        run: |
+          # Calculate pool size: rate * (warmup + duration) * 1.2 buffer
+          # Parse duration strings (e.g. "3m" -> 180, "30s" -> 30)
+          parse_duration() {
+            local dur=$1
+            if [[ $dur =~ ^([0-9]+)s$ ]]; then
+              echo ${BASH_REMATCH[1]}
+            elif [[ $dur =~ ^([0-9]+)m$ ]]; then
+              echo $((${BASH_REMATCH[1]} * 60))
+            elif [[ $dur =~ ^([0-9]+)h$ ]]; then
+              echo $((${BASH_REMATCH[1]} * 3600))
+            else
+              echo 180  # default 3m
+            fi
+          }
+
+          WARMUP_SECS=$(parse_duration "${CANOPY_PERF_WARMUP}")
+          DURATION_SECS=$(parse_duration "${CANOPY_PERF_DURATION}")
+          TOTAL_SECS=$((WARMUP_SECS + DURATION_SECS))
+          POOL_SIZE=$(echo "scale=0; ${CANOPY_PERF_RATE} * ${TOTAL_SECS} * 1.2 / 1" | bc)
+          VALIDITY_SECS=$((TOTAL_SECS + 600))  # Add 10 min grace
+
+          echo "Generating x402 payment pool..."
+          echo "  Rate: ${CANOPY_PERF_RATE} req/s"
+          echo "  Duration: ${WARMUP_SECS}s warmup + ${DURATION_SECS}s sustained = ${TOTAL_SECS}s"
+          echo "  Pool size: ${POOL_SIZE}"
+          echo "  Validity: ${VALIDITY_SECS}s"
+
+          CANOPY_PERF_POOL_SIZE=${POOL_SIZE} \
+          CANOPY_PERF_VALIDITY_SECONDS=${VALIDITY_SECS} \
+          node perf/scripts/generate-x402-payment-pool.mjs
+
       - name: Capture queue stats (before)
         id: stats_before
         run: |
@@ -244,8 +283,6 @@ jobs:
           CANOPY_PERF_SAMPLE_RATE: "0.05"
           CANOPY_PERF_LOG_IDS: ${{ steps.log_ids.outputs.log_ids }}
           CANOPY_PERF_LOG_COUNT: ${{ steps.log_ids.outputs.log_count }}
-          # x402 private key for per-request payment signing
-          CANOPY_X402_DEV_PRIVATE_KEY: ${{ secrets.CANOPY_X402_DEV_PRIVATE_KEY }}
         run: |
           echo "Running k6 performance test"
           echo "  Rate: ${CANOPY_PERF_RATE} req/s"
