@@ -54,6 +54,120 @@ export function parsePaymentRequirements(base64Value) {
 }
 
 /**
+ * Generate a pool of x402 payment signatures for batch use.
+ *
+ * Pre-generates multiple payment signatures to avoid per-request signing overhead.
+ * Each signature has a unique nonce and shares the same validity window.
+ *
+ * @param {Object} paymentOption - Parsed payment option from parsePaymentRequirements
+ * @param {string} privateKey - Hex-encoded private key (with or without 0x prefix)
+ * @param {number} count - Number of payments to generate
+ * @param {number} validitySeconds - How long payments should be valid (from now)
+ * @returns {string[]} - Array of base64-encoded X-PAYMENT header values
+ */
+export function generateX402PaymentPool(
+  paymentOption,
+  privateKey,
+  count,
+  validitySeconds,
+) {
+  const { network, payTo, asset, amount, extra } = paymentOption;
+
+  // Derive payer address once
+  const payerAddress = deriveAddress(privateKey);
+  const chainId = parseInt(network.split(":")[1]);
+
+  if (!extra?.name || !extra?.version) {
+    throw new Error(
+      `EIP-712 domain parameters (name, version) are required for asset ${asset}`,
+    );
+  }
+
+  // Pre-compute domain and types (reused for all signatures)
+  const domain = {
+    name: extra.name,
+    version: extra.version,
+    chainId,
+    verifyingContract: asset,
+  };
+  const types = {
+    TransferWithAuthorization: [
+      { name: "from", type: "address" },
+      { name: "to", type: "address" },
+      { name: "value", type: "uint256" },
+      { name: "validAfter", type: "uint256" },
+      { name: "validBefore", type: "uint256" },
+      { name: "nonce", type: "bytes32" },
+    ],
+  };
+
+  // Shared time bounds for all payments in the pool
+  const now = Math.floor(Date.now() / 1000);
+  const validAfter = now - 600; // 10 minutes before
+  const validBefore = now + validitySeconds;
+
+  // Pre-compute accepted and resource (same for all)
+  const accepted = {
+    scheme: "exact",
+    network,
+    asset,
+    amount,
+    payTo,
+    maxTimeoutSeconds: validitySeconds,
+    extra: extra || {},
+  };
+  const resource = {
+    url: "",
+    description: "SCRAPI statement registration",
+    mimeType: "application/cose",
+  };
+
+  const pool = [];
+  for (let i = 0; i < count; i++) {
+    // Each payment needs a unique nonce
+    const nonce = generateRandomNonce();
+
+    const authorization = {
+      from: payerAddress,
+      to: payTo,
+      value: amount,
+      validAfter: validAfter.toString(),
+      validBefore: validBefore.toString(),
+      nonce,
+    };
+
+    const signature = signTypedData({
+      privateKey,
+      domain,
+      types,
+      primaryType: "TransferWithAuthorization",
+      message: {
+        from: payerAddress,
+        to: payTo,
+        value: BigInt(amount),
+        validAfter: BigInt(validAfter),
+        validBefore: BigInt(validBefore),
+        nonce,
+      },
+    });
+
+    const payload = {
+      x402Version: 2,
+      payload: {
+        authorization,
+        signature,
+      },
+      resource,
+      accepted,
+    };
+
+    pool.push(base64Encode(JSON.stringify(payload)));
+  }
+
+  return pool;
+}
+
+/**
  * Generate a fresh x402 payment signature.
  *
  * @param {Object} paymentOption - Parsed payment option from parsePaymentRequirements
