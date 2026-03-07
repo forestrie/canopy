@@ -4,9 +4,17 @@
  */
 
 import { encodeGrant } from "../grant/codec.js";
-import { GRANT_FLAGS_BYTES, KIND_BYTES, kindBytesToSegment } from "../grant/kinds.js";
+import {
+  GRANT_FLAGS_BYTES,
+  KIND_BYTES,
+  kindBytesToSegment,
+} from "../grant/kinds.js";
 import { grantStoragePath } from "../grant/storage-path.js";
-import { GRANT_VERSION, type Grant, type GrantRequest } from "../grant/types.js";
+import {
+  GRANT_VERSION,
+  type Grant,
+  type GrantRequest,
+} from "../grant/types.js";
 import { bytesToUuid, LOG_ID_BYTES } from "../grant/uuid-bytes.js";
 import { toBytes, toBytesLength, toNumber } from "../unknown-coercion.js";
 import { getContentSize, parseCborBody } from "./cbor-request";
@@ -19,7 +27,10 @@ const MAX_GRANT_BODY_SIZE = 4 * 1024; // 4 KiB
  * Parse and validate grant request body (CBOR map with string or int keys).
  * logId, ownerLogId are 16 bytes; grantFlags 8 bytes; kind 1 byte.
  */
-function parseGrantRequest(raw: unknown, urlLogId: string): GrantRequest | string {
+function parseGrantRequest(
+  raw: unknown,
+  urlLogId: string,
+): GrantRequest | string {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return "Grant request must be a CBOR map";
   }
@@ -38,7 +49,8 @@ function parseGrantRequest(raw: unknown, urlLogId: string): GrantRequest | strin
   if (!kind) return "Missing or invalid kind (must be 1 byte)";
 
   try {
-    if (bytesToUuid(logId) !== urlLogId) return "logId in body must match URL logId";
+    if (bytesToUuid(logId) !== urlLogId)
+      return "logId in body must match URL logId";
   } catch {
     return "Invalid logId bytes";
   }

@@ -25,8 +25,14 @@ describe("grantStoragePath", () => {
   });
 
   it("different bytes produce different path", async () => {
-    const path1 = await grantStoragePath(new Uint8Array([1]), KIND_ATTESTOR_BYTES);
-    const path2 = await grantStoragePath(new Uint8Array([2]), KIND_ATTESTOR_BYTES);
+    const path1 = await grantStoragePath(
+      new Uint8Array([1]),
+      KIND_ATTESTOR_BYTES,
+    );
+    const path2 = await grantStoragePath(
+      new Uint8Array([2]),
+      KIND_ATTESTOR_BYTES,
+    );
     expect(path1).not.toBe(path2);
   });
 

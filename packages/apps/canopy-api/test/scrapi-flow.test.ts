@@ -5,7 +5,12 @@ import { describe, expect, it } from "vitest";
 import { encodeEntryId } from "../src/scrapi/entry-id";
 import worker from "../src/index";
 import type { Env } from "../src/index";
-import { encodeGrant, grantStoragePath, KIND_ATTESTOR, uuidToBytes } from "../src/grant";
+import {
+  encodeGrant,
+  grantStoragePath,
+  KIND_ATTESTOR,
+  uuidToBytes,
+} from "../src/grant";
 import type { Grant } from "../src/grant";
 
 // Cast the test env to our Env type.

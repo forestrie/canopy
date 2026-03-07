@@ -83,17 +83,23 @@ export function decodeGrant(bytes: Uint8Array): Grant {
 
   const logId = toBytesLength(m[K.logId], LOG_ID_BYTES);
   if (!logId) {
-    throw new Error(`Grant missing or invalid logId (must be ${LOG_ID_BYTES} bytes)`);
+    throw new Error(
+      `Grant missing or invalid logId (must be ${LOG_ID_BYTES} bytes)`,
+    );
   }
 
   const ownerLogId = toBytesLength(m[K.ownerLogId], LOG_ID_BYTES);
   if (!ownerLogId) {
-    throw new Error(`Grant missing or invalid ownerLogId (must be ${LOG_ID_BYTES} bytes)`);
+    throw new Error(
+      `Grant missing or invalid ownerLogId (must be ${LOG_ID_BYTES} bytes)`,
+    );
   }
 
   const grantFlags = toBytesLength(m[K.grantFlags], GRANT_FLAGS_BYTES);
   if (!grantFlags) {
-    throw new Error(`Grant missing or invalid grantFlags (must be ${GRANT_FLAGS_BYTES} bytes)`);
+    throw new Error(
+      `Grant missing or invalid grantFlags (must be ${GRANT_FLAGS_BYTES} bytes)`,
+    );
   }
 
   const grantData = toBytes(m[K.grantData]);
@@ -108,7 +114,9 @@ export function decodeGrant(bytes: Uint8Array): Grant {
 
   const kind = toBytesLength(m[K.kind], KIND_BYTES);
   if (!kind) {
-    throw new Error(`Grant missing or invalid kind (must be ${KIND_BYTES} byte)`);
+    throw new Error(
+      `Grant missing or invalid kind (must be ${KIND_BYTES} byte)`,
+    );
   }
 
   const grant: Grant = {

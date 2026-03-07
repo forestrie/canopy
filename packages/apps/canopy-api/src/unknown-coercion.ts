@@ -25,7 +25,10 @@ export function toNumber(v: unknown): number | undefined {
 /**
  * Like toBytes but returns undefined if the byte length is not exactly the given length.
  */
-export function toBytesLength(v: unknown, length: number): Uint8Array | undefined {
+export function toBytesLength(
+  v: unknown,
+  length: number,
+): Uint8Array | undefined {
   const b = toBytes(v);
   return b && b.length === length ? b : undefined;
 }

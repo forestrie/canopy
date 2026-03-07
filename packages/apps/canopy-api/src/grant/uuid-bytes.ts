@@ -24,7 +24,9 @@ export function uuidToBytes(uuid: string): Uint8Array {
  */
 export function bytesToUuid(bytes: Uint8Array): string {
   if (bytes.length !== LOG_ID_BYTES) {
-    throw new Error(`Expected ${LOG_ID_BYTES} bytes for UUID, got ${bytes.length}`);
+    throw new Error(
+      `Expected ${LOG_ID_BYTES} bytes for UUID, got ${bytes.length}`,
+    );
   }
   const hex = Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))

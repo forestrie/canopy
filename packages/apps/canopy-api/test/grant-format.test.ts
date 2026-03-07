@@ -36,12 +36,22 @@ describe("Grant format (encode/decode)", () => {
     const decoded = decodeGrant(bytes);
     expect(decoded.version).toBe(grant.version);
     expect(new Uint8Array(decoded.logId)).toEqual(new Uint8Array(grant.logId));
-    expect(new Uint8Array(decoded.ownerLogId)).toEqual(new Uint8Array(grant.ownerLogId));
-    expect(new Uint8Array(decoded.grantFlags)).toEqual(new Uint8Array(grant.grantFlags));
+    expect(new Uint8Array(decoded.ownerLogId)).toEqual(
+      new Uint8Array(grant.ownerLogId),
+    );
+    expect(new Uint8Array(decoded.grantFlags)).toEqual(
+      new Uint8Array(grant.grantFlags),
+    );
     expect(new Uint8Array(decoded.kind)).toEqual(new Uint8Array(grant.kind));
-    expect(new Uint8Array(decoded.idtimestamp)).toEqual(new Uint8Array(grant.idtimestamp));
-    expect(new Uint8Array(decoded.grantData)).toEqual(new Uint8Array(grant.grantData));
-    expect(new Uint8Array(decoded.signer)).toEqual(new Uint8Array(grant.signer));
+    expect(new Uint8Array(decoded.idtimestamp)).toEqual(
+      new Uint8Array(grant.idtimestamp),
+    );
+    expect(new Uint8Array(decoded.grantData)).toEqual(
+      new Uint8Array(grant.grantData),
+    );
+    expect(new Uint8Array(decoded.signer)).toEqual(
+      new Uint8Array(grant.signer),
+    );
   });
 
   it("same grant produces same bytes (deterministic)", () => {
@@ -110,6 +120,8 @@ describe("Grant format (decode validation)", () => {
     const bytes = encodeGrant(grant);
     const raw = decodeCbor(bytes) as Record<number, unknown>;
     delete raw[9]; // signer
-    expect(() => decodeGrant(encodeCbor(raw))).toThrow("missing required field: signer");
+    expect(() => decodeGrant(encodeCbor(raw))).toThrow(
+      "missing required field: signer",
+    );
   });
 });

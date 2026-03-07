@@ -7,7 +7,12 @@ import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import worker from "../src/index";
 import type { Env } from "../src/index";
-import { decodeGrant, kindBytesToSegment, KIND_ATTESTOR, uuidToBytes } from "../src/grant";
+import {
+  decodeGrant,
+  kindBytesToSegment,
+  KIND_ATTESTOR,
+  uuidToBytes,
+} from "../src/grant";
 
 const testEnv = env as unknown as Env;
 

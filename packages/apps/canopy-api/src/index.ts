@@ -144,7 +144,11 @@ export default {
       }
 
       // POST /logs/{logId}/grants — create grant (Plan 0001 Step 6)
-      if (segments.length === 3 && segments[2] === "grants" && request.method === "POST") {
+      if (
+        segments.length === 3 &&
+        segments[2] === "grants" &&
+        request.method === "POST"
+      ) {
         const response = await registerGrant(
           request,
           segments[1],

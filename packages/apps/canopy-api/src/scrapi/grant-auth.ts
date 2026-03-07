@@ -64,7 +64,9 @@ const COSE_KID = 4;
 /**
  * Extract signer (kid) from COSE Sign1 bytes. Returns Uint8Array of kid if present, else null.
  */
-export function getSignerFromCoseSign1(coseSign1Bytes: Uint8Array): Uint8Array | null {
+export function getSignerFromCoseSign1(
+  coseSign1Bytes: Uint8Array,
+): Uint8Array | null {
   let arr: unknown[];
   try {
     arr = decodeCbor(coseSign1Bytes) as unknown[];
@@ -76,13 +78,16 @@ export function getSignerFromCoseSign1(coseSign1Bytes: Uint8Array): Uint8Array |
   if (!(protectedBstr instanceof Uint8Array)) return null;
   let protectedMap: Record<number, unknown> | Map<number, unknown>;
   try {
-    protectedMap = decodeCbor(protectedBstr) as Record<number, unknown> | Map<number, unknown>;
+    protectedMap = decodeCbor(protectedBstr) as
+      | Record<number, unknown>
+      | Map<number, unknown>;
   } catch {
     return null;
   }
-  const kid = protectedMap instanceof Map
-    ? protectedMap.get(COSE_KID)
-    : (protectedMap as Record<number, unknown>)[COSE_KID];
+  const kid =
+    protectedMap instanceof Map
+      ? protectedMap.get(COSE_KID)
+      : (protectedMap as Record<number, unknown>)[COSE_KID];
   if (kid instanceof Uint8Array) return kid;
   if (typeof kid === "string") return new TextEncoder().encode(kid);
   return null;
@@ -95,7 +100,8 @@ export function signerMatchesGrant(
   statementSigner: Uint8Array | null,
   grantSigner: Uint8Array,
 ): boolean {
-  if (!statementSigner || statementSigner.length !== grantSigner.length) return false;
+  if (!statementSigner || statementSigner.length !== grantSigner.length)
+    return false;
   for (let i = 0; i < grantSigner.length; i++) {
     if (statementSigner[i] !== grantSigner[i]) return false;
   }

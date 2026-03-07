@@ -56,7 +56,11 @@ describe("checkGrantSignerRate", () => {
     const state: RateLimitState = { timestamps: [] };
     const { newState } = checkGrantSignerRate(now, state, config);
     expect(newState.timestamps).toEqual([now]);
-    const { result: r2, newState: s2 } = checkGrantSignerRate(now + 1, newState, config);
+    const { result: r2, newState: s2 } = checkGrantSignerRate(
+      now + 1,
+      newState,
+      config,
+    );
     expect(r2.allowed).toBe(true);
     expect(s2.timestamps).toEqual([now, now + 1]);
   });

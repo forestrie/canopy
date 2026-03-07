@@ -13,5 +13,10 @@ export {
   segmentToKindByte,
 } from "./kinds.js";
 export { grantStoragePath } from "./storage-path.js";
-export { GRANT_VERSION, type Grant, type GrantRequest, type SignerBinding } from "./types.js";
+export {
+  GRANT_VERSION,
+  type Grant,
+  type GrantRequest,
+  type SignerBinding,
+} from "./types.js";
 export { bytesToUuid, LOG_ID_BYTES, uuidToBytes } from "./uuid-bytes.js";

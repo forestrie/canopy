@@ -57,10 +57,14 @@ export function checkGrantSignerRate(
   if (!allowed) {
     if (overSpike && inSpike.length > 0) {
       const oldestInSpike = Math.min(...inSpike);
-      retryAfterSeconds = Math.ceil((oldestInSpike + config.spikeWindowMs - nowMs) / 1000);
+      retryAfterSeconds = Math.ceil(
+        (oldestInSpike + config.spikeWindowMs - nowMs) / 1000,
+      );
     } else if (overWindow && inWindow.length > 0) {
       const oldestInWindow = Math.min(...inWindow);
-      retryAfterSeconds = Math.ceil((oldestInWindow + config.windowMs - nowMs) / 1000);
+      retryAfterSeconds = Math.ceil(
+        (oldestInWindow + config.windowMs - nowMs) / 1000,
+      );
     }
     retryAfterSeconds = Math.max(1, retryAfterSeconds ?? 1);
   }
@@ -77,7 +81,11 @@ export function checkGrantSignerRate(
 /**
  * Prune state to only timestamps within the rolling window (to avoid unbounded growth).
  */
-export function pruneState(state: RateLimitState, nowMs: number, windowMs: number): RateLimitState {
+export function pruneState(
+  state: RateLimitState,
+  nowMs: number,
+  windowMs: number,
+): RateLimitState {
   const windowStart = nowMs - windowMs;
   return {
     timestamps: state.timestamps.filter((t) => t >= windowStart),

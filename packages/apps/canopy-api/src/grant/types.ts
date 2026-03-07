@@ -37,4 +37,6 @@ export interface Grant {
 }
 
 /** Grant request (body of POST /logs/{logId}/grants). Same shape as Grant but idtimestamp may be omitted (server fills). */
-export type GrantRequest = Omit<Grant, "idtimestamp"> & { idtimestamp?: Uint8Array };
+export type GrantRequest = Omit<Grant, "idtimestamp"> & {
+  idtimestamp?: Uint8Array;
+};
