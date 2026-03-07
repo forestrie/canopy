@@ -12,6 +12,7 @@ export function toBytes(v: unknown): Uint8Array | undefined {
   return undefined;
 }
 
+/** For CBOR map fields that are strings (e.g. optional labels). Exported for use by callers. */
 export function toString(v: unknown): string | undefined {
   if (typeof v === "string") return v;
   return undefined;

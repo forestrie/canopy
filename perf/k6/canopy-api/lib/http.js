@@ -61,7 +61,65 @@ export function getPaymentRequirements(baseUrl, logId, apiToken) {
 }
 
 /**
- * POST a COSE Sign1 statement to /entries.
+ * POST a COSE Sign1 statement to /entries (grant-based auth).
+ *
+ * @param {string} baseUrl - Base URL (e.g., https://canopy-api.example.workers.dev)
+ * @param {string} logId - Log ID for the target log
+ * @param {string} apiToken - Bearer token for Authorization
+ * @param {Uint8Array} cosePayload - CBOR-encoded COSE Sign1 message (kid must match grant signer)
+ * @param {string} grantLocation - URL path from grant creation (e.g. /attestor/abc123.cbor)
+ * @returns {Object} - { success, statusCode, statusUrl, error, startTime }
+ */
+export function postEntryWithGrant(
+  baseUrl,
+  logId,
+  apiToken,
+  cosePayload,
+  grantLocation,
+) {
+  const url = `${baseUrl}/logs/${logId}/entries`;
+  const startTime = Date.now();
+
+  const headers = {
+    "Content-Type": 'application/cose; cose-type="cose-sign1"',
+    Authorization: `Bearer ${apiToken}`,
+    "X-Grant-Location": grantLocation,
+  };
+
+  const response = http.post(url, cosePayload.buffer, {
+    headers,
+    redirects: 0,
+    tags: { operation: "post_entry" },
+  });
+
+  const latency = Date.now() - startTime;
+  postLatency.add(latency);
+
+  if (response.status === 303) {
+    const statusUrl = response.headers["Location"];
+    if (statusUrl) {
+      return {
+        success: true,
+        statusCode: 303,
+        statusUrl,
+        error: null,
+        startTime,
+      };
+    }
+  }
+
+  postErrors.add(1);
+  return {
+    success: false,
+    statusCode: response.status,
+    statusUrl: null,
+    error: response.body ? response.body.toString() : `HTTP ${response.status}`,
+    startTime,
+  };
+}
+
+/**
+ * POST a COSE Sign1 statement to /entries (legacy x402 payment header).
  *
  * @param {string} baseUrl - Base URL (e.g., https://canopy-api.example.workers.dev)
  * @param {string} logId - Log ID for the target log
@@ -187,7 +245,73 @@ export function pollUntilSequenced(
 }
 
 /**
- * POST and optionally poll until sequenced (for sampled e2e latency).
+ * POST with grant location and optionally poll until sequenced (for sampled e2e latency).
+ *
+ * @param {string} baseUrl - Base URL
+ * @param {string} logId - Log ID
+ * @param {string} apiToken - Bearer token
+ * @param {Uint8Array} cosePayload - CBOR-encoded COSE Sign1 message (kid must match grant)
+ * @param {string} grantLocation - X-Grant-Location path
+ * @param {boolean} [measureE2E=false] - Whether to poll until sequenced
+ * @param {number} [maxPolls=60] - Maximum poll attempts for e2e
+ * @param {number} [pollIntervalMs=250] - Poll interval for e2e
+ * @returns {Object} - { success, statusCode, statusUrl, e2eLatencyMs, polls, error }
+ */
+export function postAndMaybeWaitWithGrant(
+  baseUrl,
+  logId,
+  apiToken,
+  cosePayload,
+  grantLocation,
+  measureE2E = false,
+  maxPolls = 60,
+  pollIntervalMs = 250,
+) {
+  const postResult = postEntryWithGrant(
+    baseUrl,
+    logId,
+    apiToken,
+    cosePayload,
+    grantLocation,
+  );
+
+  if (!postResult.success || !measureE2E) {
+    return {
+      ...postResult,
+      e2eLatencyMs: null,
+      polls: 0,
+    };
+  }
+
+  // Poll until sequenced
+  const pollResult = pollUntilSequenced(
+    postResult.statusUrl,
+    apiToken,
+    maxPolls,
+    pollIntervalMs,
+  );
+
+  const e2eLatencyMs = Date.now() - postResult.startTime;
+
+  if (pollResult.success) {
+    e2eLatency.add(e2eLatencyMs);
+    pollCount.add(pollResult.polls);
+    e2eSuccessCount.add(1);
+  } else {
+    e2eTimeoutCount.add(1);
+  }
+
+  return {
+    ...postResult,
+    e2eLatencyMs,
+    polls: pollResult.polls,
+    e2eSuccess: pollResult.success,
+    e2eError: pollResult.error,
+  };
+}
+
+/**
+ * POST and optionally poll until sequenced (legacy x402 payment).
  *
  * @param {string} baseUrl - Base URL
  * @param {string} logId - Log ID
@@ -196,6 +320,7 @@ export function pollUntilSequenced(
  * @param {boolean} [measureE2E=false] - Whether to poll until sequenced
  * @param {number} [maxPolls=60] - Maximum poll attempts for e2e
  * @param {number} [pollIntervalMs=250] - Poll interval for e2e
+ * @param {string} [paymentSignature] - Base64 X-PAYMENT header (x402)
  * @returns {Object} - { success, statusCode, statusUrl, e2eLatencyMs, polls, error }
  */
 export function postAndMaybeWait(
@@ -224,14 +349,12 @@ export function postAndMaybeWait(
     };
   }
 
-  // Poll until sequenced
   const pollResult = pollUntilSequenced(
     postResult.statusUrl,
     apiToken,
     maxPolls,
     pollIntervalMs,
   );
-
   const e2eLatencyMs = Date.now() - postResult.startTime;
 
   if (pollResult.success) {

@@ -4,6 +4,27 @@ Sustained load testing using [k6](https://k6.io) with constant-arrival-rate
 execution. These tests complement the burst-oriented smoke tests in
 `taskfiles/scrapi.yml`.
 
+**Auth model:** Tests use **grant-based auth** (Plan 0001): create grants via
+`POST /logs/{logId}/grants`, then send `X-Grant-Location` on
+`POST /logs/{logId}/entries`. The workflow (or local script) pre-creates a
+grant per log; k6 sends that header and signs COSE with a matching kid.
+
+## Rate limits and headers
+
+- **Rate limits:** Grant-signer rate limiting is implemented in the API but
+  **not** applied in the request path yet; perf tests are not throttled by it.
+- **Headers:** The API allows `X-Grant-Location` in CORS
+  (`Access-Control-Allow-Headers`). k6 sets `X-Grant-Location` on every POST
+  /entries request.
+
+## Object storage (R2_GRANTS)
+
+The API stores grants in the **R2_GRANTS** bucket. Creation of this bucket is
+**automatic** when you run the Cloudflare bootstrap: `task cloudflare:bootstrap`
+(or `task cloudflare:create`) creates both the merklelog bucket and the grants
+bucket (`canopy-{env}-1-grants`). Ensure bootstrap has been run before
+deploying canopy-api or running perf against an environment that uses it.
+
 ## Prerequisites
 
 Install k6:
@@ -32,17 +53,19 @@ task perf:check
 
 ## Quick Start
 
-Set environment variables:
+1. Generate the grant pool (one-time per set of log IDs):
 
 ```bash
 export CANOPY_PERF_BASE_URL="https://canopy-api.example.workers.dev"
 export CANOPY_PERF_API_TOKEN="your-api-token"
-export CANOPY_PERF_LOG_ID="your-log-id"
+export CANOPY_PERF_LOG_IDS="uuid-1,uuid-2"
+node perf/scripts/generate-grant-pool.mjs
 ```
 
-Run a quick smoke test (5 req/s for 30s):
+2. Run a quick smoke test (5 req/s for 30s):
 
 ```bash
+export CANOPY_PERF_LOG_IDS="uuid-1"  # or reuse same as above
 task perf:write:smoke
 ```
 
@@ -68,7 +91,8 @@ built-in environment variable handling which can override scenario config.
 | ------------------------ | -------- | ------------- | -------------------------------------- |
 | CANOPY_PERF_BASE_URL     | Yes      | -             | Base URL of canopy-api                 |
 | CANOPY_PERF_API_TOKEN    | Yes      | test-api-key  | Bearer token for Authorization         |
-| CANOPY_PERF_LOG_ID       | Yes      | -             | Target log ID                          |
+| CANOPY_PERF_LOG_IDS      | Yes      | -             | Comma-separated log IDs (for k6 + grant-pool script) |
+| CANOPY_PERF_LOG_ID       | No       | -             | Single log ID (taskfile convenience; use LOG_IDS for multi-log) |
 | CANOPY_PERF_RATE         | No       | 10            | Requests per second                    |
 | CANOPY_PERF_DURATION     | No       | 3m            | Sustained phase duration               |
 | CANOPY_PERF_WARMUP       | No       | 30s           | Warmup ramp duration                   |
@@ -191,8 +215,8 @@ k6 runs on a custom JavaScript runtime (goja) without Node.js APIs. The lib/
 directory contains pure-JavaScript implementations of:
 
 - **CBOR encoding**: Major types 0 (uint), 2 (bstr), 4 (array), 5 (map)
-- **COSE Sign1**: Minimal structure with empty signature (server validates
-  format only)
+- **COSE Sign1**: With optional kid in protected header for grant-based auth;
+  server matches kid to grant signer (signature can be placeholder for load testing)
 
 These use `Uint8Array` and `ArrayBuffer` instead of Node.js `Buffer`.
 

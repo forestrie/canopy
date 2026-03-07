@@ -109,8 +109,14 @@ export async function registerGrant(
     return ClientErrors.badRequest(parsed);
   }
 
-  const idtimestamp = new Uint8Array(8);
-  crypto.getRandomValues(idtimestamp);
+  // Deterministic idtimestamp from request content so same request → same path (content-addressable idempotency)
+  const canonicalGrant: Grant = {
+    ...parsed,
+    idtimestamp: new Uint8Array(8),
+  };
+  const canonicalBytes = encodeGrant(canonicalGrant);
+  const hash = await crypto.subtle.digest("SHA-256", canonicalBytes);
+  const idtimestamp = new Uint8Array(hash.slice(0, 8));
 
   const grant: Grant = {
     ...parsed,
