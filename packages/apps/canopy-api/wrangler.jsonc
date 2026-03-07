@@ -24,11 +24,16 @@
     "X402_PAYTO_ADDRESS": "0x75be7950F26fe7F15336a10b33A8D8134faDb787",
     "X402_PRICE_EXACT": "$0.001",
     "X402_PRICE_UPTO_MAX": "$1.00",
+    "GRANT_STORAGE_PUBLIC_BASE": "https://grants-dev.forestrie.dev",
   },
   "r2_buckets": [
     {
       "binding": "R2_MMRS",
       "bucket_name": "arbor-dev-1-logs",
+    },
+    {
+      "binding": "R2_GRANTS",
+      "bucket_name": "canopy-dev-1-grants",
     },
   ],
   "durable_objects": {
@@ -76,11 +81,16 @@
         "X402_PAYTO_ADDRESS": "0x75be7950F26fe7F15336a10b33A8D8134faDb787",
         "X402_PRICE_EXACT": "$0.001",
         "X402_PRICE_UPTO_MAX": "$1.00",
+        "GRANT_STORAGE_PUBLIC_BASE": "https://grants-dev.forestrie.dev",
       },
       "r2_buckets": [
         {
           "binding": "R2_MMRS",
           "bucket_name": "arbor-dev-1-logs",
+        },
+        {
+          "binding": "R2_GRANTS",
+          "bucket_name": "canopy-dev-1-grants",
         },
       ],
       "durable_objects": {
@@ -127,11 +137,16 @@
         "X402_PAYTO_ADDRESS": "0x75be7950F26fe7F15336a10b33A8D8134faDb787",
         "X402_PRICE_EXACT": "$0.001",
         "X402_PRICE_UPTO_MAX": "$1.00",
+        "GRANT_STORAGE_PUBLIC_BASE": "https://grants.forestrie.dev",
       },
       "r2_buckets": [
         {
           "binding": "R2_MMRS",
           "bucket_name": "arbor-prod-1-logs",
+        },
+        {
+          "binding": "R2_GRANTS",
+          "bucket_name": "canopy-prod-1-grants",
         },
       ],
       "durable_objects": {

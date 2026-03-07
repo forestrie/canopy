@@ -116,15 +116,12 @@ describe("x402 verify-and-settle mode", () => {
     );
   });
 
-  it("returns 402 when facilitator verification fails in verify-and-settle mode", async () => {
+  it("POST to entries does not use x402; request proceeds to handler (grant auth in Step 5)", async () => {
     const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
 
     const settleEnv: Env = {
       ...(baseEnv as any),
       X402_MODE: "verify-and-settle",
-      // Provide a dummy facilitator URL so we exercise the
-      // verifyAuthorizationForRegister path instead of the
-      // misconfiguration guard.
       X402_FACILITATOR_URL: "https://example.invalid/facilitator",
     };
 
@@ -132,7 +129,7 @@ describe("x402 verify-and-settle mode", () => {
       method: "POST",
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',
-        "X-PAYMENT": "ZHVtbXktdmFsaWQtaGVhZGVy", // base64 "dummy-valid-header"
+        "X-PAYMENT": "ZHVtbXktdmFsaWQtaGVhZGVy",
       },
       body: new Uint8Array([0x80]),
     });
@@ -143,17 +140,8 @@ describe("x402 verify-and-settle mode", () => {
       {} as ExecutionContext,
     );
 
-    expect(response.status).toBe(402);
-
-    const bodyBytes = new Uint8Array(await response.arrayBuffer());
-    const decoded = decodeCbor(bodyBytes) as any;
-    expect(decoded).toMatchObject({
-      status: 402,
-      title: "Payment Required",
-    });
-    expect(String(decoded.detail || "")).toContain(
-      "x402 verification failed: forced facilitator failure",
-    );
+    // x402 removed from entries path; request goes to registerSignedStatement (mocked → 303)
+    expect(response.status).toBe(303);
   });
 
   it("allows registration to proceed when facilitator verification succeeds", async () => {

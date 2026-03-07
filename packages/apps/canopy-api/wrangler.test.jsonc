@@ -10,11 +10,16 @@
     "API_VERSION": "v1",
     "NODE_ENV": "test",
     "X402_MODE": "verify-only",
+    "GRANT_STORAGE_PUBLIC_BASE": "https://grants-dev.forestrie.dev",
   },
   "r2_buckets": [
     {
       "binding": "R2_MMRS",
       "bucket_name": "arbor-dev-1-logs",
+    },
+    {
+      "binding": "R2_GRANTS",
+      "bucket_name": "canopy-dev-1-grants",
     },
   ],
   // Note: DO bindings are omitted for unit tests. Tests requiring DO interaction

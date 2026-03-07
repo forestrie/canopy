@@ -1,5 +1,6 @@
 /**
  * Register Signed Statement operation for SCRAPI
+ * Requires grant-based auth (Plan 0001 Step 5): locate grant → retrieve → verify signer.
  */
 
 import {
@@ -10,9 +11,15 @@ import { shardNameForLog } from "@canopy/forestrie-sharding";
 import { getContentSize, parseCborBody } from "./cbor-request";
 import { seeOtherResponse } from "./cbor-response";
 
+import {
+  getGrantLocationFromRequest,
+  fetchGrant,
+  getSignerFromCoseSign1,
+  signerMatchesGrant,
+  GrantAuthErrors,
+} from "./grant-auth";
 import { ClientErrors, ServerErrors } from "./problem-details";
 import { getMaxStatementSize } from "./transparency-configuration";
-import { encodePayerAddressToExtra1 } from "./payer-address";
 
 /**
  * Statement Registration Request
@@ -45,16 +52,30 @@ function getShardCount(shardCountStr: string): number {
 }
 
 /**
- * Process a statement registration request
+ * Process a statement registration request.
+ * Requires grant location (X-Grant-Location or Authorization: Bearer <path>); retrieves grant from R2 and verifies statement signer matches grant.
  */
 export async function registerSignedStatement(
   request: Request,
   logId: string,
   sequencingQueue: DurableObjectNamespace,
   shardCountStr: string,
-  enqueueExtras?: Parameters<SequencingQueueStub["enqueue"]>[2],
+  enqueueExtras: Parameters<SequencingQueueStub["enqueue"]>[2] | undefined,
+  r2Grants: R2Bucket,
 ): Promise<Response> {
   try {
+    // Grant auth (Plan 0001 Step 5): locate before parsing body
+    const grantLocation = getGrantLocationFromRequest(request);
+    if (!grantLocation) {
+      return GrantAuthErrors.grantRequired();
+    }
+
+    const grantResult = await fetchGrant(r2Grants, grantLocation);
+    if (!grantResult) {
+      return GrantAuthErrors.grantNotFound();
+    }
+    const { grant } = grantResult;
+
     const maxSize = getMaxStatementSize();
     const size = getContentSize(request);
     if (typeof size === "number" && size > maxSize) {
@@ -88,6 +109,21 @@ export async function registerSignedStatement(
       return ClientErrors.invalidStatement("Invalid COSE Sign1 structure");
     }
 
+    // Verify statement signer matches grant's signer binding
+    const statementSigner = getSignerFromCoseSign1(statementData);
+    if (!signerMatchesGrant(statementSigner, grant.signer)) {
+      return GrantAuthErrors.signerMismatch();
+    }
+
+    // Optional: reject if grant is expired or not yet valid
+    const now = Math.floor(Date.now() / 1000);
+    if (grant.exp !== undefined && now > grant.exp) {
+      return GrantAuthErrors.grantInvalid(); // or a dedicated grant_expired
+    }
+    if (grant.nbf !== undefined && now < grant.nbf) {
+      return GrantAuthErrors.grantInvalid();
+    }
+
     // Calculate content hash for the operation ID
     const contentHash = await calculateSHA256(
       statementData.buffer as ArrayBuffer,
@@ -114,6 +150,11 @@ export async function registerSignedStatement(
 
     // Return 303 See Other - registration is running (per SCRAPI 2.1.3.2)
     // This is always async for this implementation
+    console.log("Statement registration accepted", {
+      logId,
+      grantLocation,
+      contentHash,
+    });
     return seeOtherResponse(location, 5); // Suggest retry after 5 seconds
   } catch (error) {
     // Handle queue backpressure with 503 Service Unavailable
