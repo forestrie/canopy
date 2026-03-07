@@ -1,0 +1,11 @@
+---
+description: Git commit conventions for forestrie repositories
+alwaysApply: true
+---
+
+# Commit conventions
+
+- commit titles must be no more than 79 characters
+- commit body lines must be no more than 72 characters
+- never include "Co-Authored-By" lines in commit messages
+- use only the repository's configured git user as the commit author
