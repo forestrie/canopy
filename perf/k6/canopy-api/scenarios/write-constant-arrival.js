@@ -136,18 +136,24 @@ let vuCounter = 0;
 // Request counter for round-robin log distribution
 let requestCounter = 0;
 
-// Base64 decode (pure JS; k6 setup context may not have atob)
-const B64_ALPHABET =
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-function base64ToBytes(base64) {
-  const s = base64.replace(/=+$/, "");
-  const len = s.length;
+// Decode signer from grant pool (hex or base64 for backward compatibility)
+function signerToBytes(signerStr) {
+  if (typeof signerStr !== "string") throw new Error("signer must be a string");
+  const s = signerStr.trim();
+  if (s.length === 64 && /^[0-9a-fA-F]+$/.test(s)) {
+    const out = new Uint8Array(32);
+    for (let i = 0; i < 32; i++) out[i] = parseInt(s.slice(i * 2, i * 2 + 2), 16);
+    return out;
+  }
+  const B64 =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const s2 = s.replace(/=+$/, "");
   const out = [];
-  for (let i = 0; i < len; i += 4) {
-    const a = B64_ALPHABET.indexOf(s[i]);
-    const b = i + 1 < len ? B64_ALPHABET.indexOf(s[i + 1]) : -1;
-    const c = i + 2 < len ? B64_ALPHABET.indexOf(s[i + 2]) : -1;
-    const d = i + 3 < len ? B64_ALPHABET.indexOf(s[i + 3]) : -1;
+  for (let i = 0; i < s2.length; i += 4) {
+    const a = B64.indexOf(s2[i]);
+    const b = i + 1 < s2.length ? B64.indexOf(s2[i + 1]) : -1;
+    const c = i + 2 < s2.length ? B64.indexOf(s2[i + 2]) : -1;
+    const d = i + 3 < s2.length ? B64.indexOf(s2[i + 3]) : -1;
     if (a < 0) break;
     out.push((a << 2) | (b >= 0 ? (b >> 4) : 0));
     if (b >= 0 && c >= 0) out.push(((b & 15) << 4) | (c >> 2));
@@ -159,7 +165,7 @@ function base64ToBytes(base64) {
 // Setup function - runs once at start
 export function setup() {
   const pool = grantPool[0];
-  const signerBytes = base64ToBytes(pool.signer);
+  const signerBytes = signerToBytes(pool.signer);
   const logIdToGrant = {};
   const grants = pool.grants || [];
   for (const g of grants) {

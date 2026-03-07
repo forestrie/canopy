@@ -139,7 +139,7 @@ const outDir = join(__dirname, "..", "k6", "canopy-api", "data");
 mkdirSync(outDir, { recursive: true });
 const outPath = join(outDir, "grant-pool.json");
 const payload = {
-  signer: Buffer.from(signer).toString("base64"),
+  signer: Buffer.from(signer).toString("hex"),
   grants,
 };
 writeFileSync(outPath, JSON.stringify(payload, null, 2));
