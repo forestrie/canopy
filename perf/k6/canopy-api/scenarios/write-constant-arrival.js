@@ -136,14 +136,24 @@ let vuCounter = 0;
 // Request counter for round-robin log distribution
 let requestCounter = 0;
 
-// Base64 decode (k6/goja has atob; returns binary string, convert to Uint8Array)
+// Base64 decode (pure JS; k6 setup context may not have atob)
+const B64_ALPHABET =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 function base64ToBytes(base64) {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
+  const s = base64.replace(/=+$/, "");
+  const len = s.length;
+  const out = [];
+  for (let i = 0; i < len; i += 4) {
+    const a = B64_ALPHABET.indexOf(s[i]);
+    const b = i + 1 < len ? B64_ALPHABET.indexOf(s[i + 1]) : -1;
+    const c = i + 2 < len ? B64_ALPHABET.indexOf(s[i + 2]) : -1;
+    const d = i + 3 < len ? B64_ALPHABET.indexOf(s[i + 3]) : -1;
+    if (a < 0) break;
+    out.push((a << 2) | (b >= 0 ? (b >> 4) : 0));
+    if (b >= 0 && c >= 0) out.push(((b & 15) << 4) | (c >> 2));
+    if (c >= 0 && d >= 0) out.push(((c & 3) << 6) | d);
   }
-  return bytes;
+  return new Uint8Array(out);
 }
 
 // Setup function - runs once at start
