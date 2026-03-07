@@ -72,12 +72,13 @@ export function encodeCoseSign1WithKid(payload, kid) {
   const unprotectedHeaders = encodeEmptyMap();
   const payloadBstr = encodeBstr(payload);
   const signature = new Uint8Array(64); // placeholder 64 bytes
+  const signatureBstr = encodeBstr(signature);
   return concat(
     arrayHeader,
     protectedBstr,
     unprotectedHeaders,
     payloadBstr,
-    signature
+    signatureBstr
   );
 }
 
