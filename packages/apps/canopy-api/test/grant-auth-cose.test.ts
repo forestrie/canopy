@@ -57,13 +57,18 @@ describe("COSE Sign1 with kid (k6-compatible encode / API decode)", () => {
 
   it("getSignerFromCoseSign1 returns null for invalid COSE", () => {
     expect(getSignerFromCoseSign1(new Uint8Array(0))).toBeNull();
-    expect(getSignerFromCoseSign1(new Uint8Array([0x01, 0x02, 0x03]))).toBeNull();
+    expect(
+      getSignerFromCoseSign1(new Uint8Array([0x01, 0x02, 0x03])),
+    ).toBeNull();
   });
 
   it("getSignerFromCoseSign1 returns null for COSE with empty protected (no kid)", () => {
     // COSE Sign1: [ protected=0x40 (empty bstr), unprotected=0xa0, payload=0x40, signature=64 bytes ]
     const emptyProtected = new Uint8Array([
-      0x84, 0x40, 0xa0, 0x40,
+      0x84,
+      0x40,
+      0xa0,
+      0x40,
       ...new Array(64).fill(0),
     ]);
     expect(getSignerFromCoseSign1(emptyProtected)).toBeNull();
@@ -98,7 +103,10 @@ describe("COSE Sign1 encoding: k6 vs cbor-x byte layout", () => {
     expect(k6Cose[0]).toBe(0x84);
     const k6ProtectedLen = k6Cose[1] === 0x58 ? k6Cose[2] : k6Cose[1] & 0x1f;
     const k6ProtectedStart = k6Cose[1] === 0x58 ? 3 : 2;
-    const k6Protected = k6Cose.slice(k6ProtectedStart, k6ProtectedStart + k6ProtectedLen);
+    const k6Protected = k6Cose.slice(
+      k6ProtectedStart,
+      k6ProtectedStart + k6ProtectedLen,
+    );
     const decodedK6Protected = decodeCbor(k6Protected);
     expect(decodedK6Protected).toBeDefined();
     const kidFromK6 =
@@ -106,7 +114,9 @@ describe("COSE Sign1 encoding: k6 vs cbor-x byte layout", () => {
         ? decodedK6Protected.get(4)
         : (decodedK6Protected as Record<number, unknown>)[4];
     expect(kidFromK6).toBeDefined();
-    expect(kidFromK6 instanceof Uint8Array && kidFromK6.length === 32).toBe(true);
+    expect(kidFromK6 instanceof Uint8Array && kidFromK6.length === 32).toBe(
+      true,
+    );
     if (kidFromK6 instanceof Uint8Array) {
       expect(kidFromK6).toEqual(signer32);
     }

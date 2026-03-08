@@ -49,7 +49,10 @@ function encodeBstr(bytes: Uint8Array): Uint8Array {
  * Encode a CBOR map with one entry: key (uint) -> value (bstr).
  * Same as k6 encodeCborMapWithBstrValue: 0xa1 + key_byte + bstr(value).
  */
-function encodeCborMapWithBstrValue(key: number, valueBytes: Uint8Array): Uint8Array {
+function encodeCborMapWithBstrValue(
+  key: number,
+  valueBytes: Uint8Array,
+): Uint8Array {
   const mapHeader = new Uint8Array([0xa1]);
   const keyByte = new Uint8Array([key]);
   const valueBstr = encodeBstr(valueBytes);
@@ -61,7 +64,10 @@ function encodeCborMapWithBstrValue(key: number, valueBytes: Uint8Array): Uint8A
  * Server matches kid to grant signer; signature is 64 placeholder bytes.
  * All four elements must be CBOR-encoded; signature is bstr(64).
  */
-export function encodeCoseSign1WithKid(payload: Uint8Array, kid: Uint8Array): Uint8Array {
+export function encodeCoseSign1WithKid(
+  payload: Uint8Array,
+  kid: Uint8Array,
+): Uint8Array {
   const arrayHeader = new Uint8Array([0x84]); // array(4)
   const protectedMap = encodeCborMapWithBstrValue(COSE_KID, kid);
   const protectedBstr = encodeBstr(protectedMap);

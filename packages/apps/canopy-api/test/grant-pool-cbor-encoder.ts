@@ -72,7 +72,8 @@ export function hexToSignerBytes(hex: string): Uint8Array {
 
 /** 32 bytes -> 64-char hex, matching generate-grant-pool pool payload. */
 export function signerBytesToHex(bytes: Uint8Array): string {
-  if (bytes.length !== 32) throw new Error(`Expected 32 bytes, got ${bytes.length}`);
+  if (bytes.length !== 32)
+    throw new Error(`Expected 32 bytes, got ${bytes.length}`);
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
