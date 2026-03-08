@@ -54,10 +54,19 @@ function bytesToHexPrefix(bytes: Uint8Array | null, maxBytes = 16): string {
 function logSignerMismatch(
   statementSigner: Uint8Array | null,
   grantSigner: Uint8Array,
+  bodyForTriage: Uint8Array,
 ): void {
+  const bodyPrefix =
+    bodyForTriage.length >= 4
+      ? Array.from(bodyForTriage.slice(0, 4))
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("")
+      : "(len<4)";
   console.warn("[grant-auth] signer_mismatch: statement kid vs grant.signer", {
     statementKidHex: bytesToHexPrefix(statementSigner),
     grantSignerHex: bytesToHexPrefix(grantSigner),
+    bodyLen: bodyForTriage.length,
+    bodyFirst4Hex: bodyPrefix,
   });
 }
 
@@ -134,7 +143,7 @@ export async function registerSignedStatement(
     // Verify statement signer matches grant's signer binding
     const statementSigner = getSignerFromCoseSign1(statementData);
     if (!signerMatchesGrant(statementSigner, grant.signer)) {
-      logSignerMismatch(statementSigner, grant.signer);
+      logSignerMismatch(statementSigner, grant.signer, statementData);
       return GrantAuthErrors.signerMismatch();
     }
 
