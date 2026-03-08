@@ -49,8 +49,9 @@ describe("Canopy API", () => {
     expect(config).toHaveProperty("baseUrl");
   });
 
-  // Skip: requires SequencingQueue DO which isn't available in isolated test env.
-  // TODO: Add DO test fixtures or integration test coverage.
+  // Skip: (1) Requires SequencingQueue DO which isn't available in isolated test env.
+  // (2) Mock uses empty protected (no kid), so would fail grant-based auth anyway.
+  // TODO: Add DO fixtures or integration test; use canonical encoder with kid if re-enabled.
   it.skip("should register a COSE statement", async () => {
     // Mock COSE Sign1 structure
     const mockCoseSign1 = new Uint8Array([

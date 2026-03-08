@@ -2,7 +2,7 @@
 
 **Status**: DRAFT  
 **Date**: 2026-03-08  
-**Related**: [Plan 0001](plan-0001-register-grant-and-grant-auth-phase.md), [arc-statement-cose-encoding](../arc-statement-cose-encoding.md)
+**Related**: [Plan 0001](plan-0001-register-grant-and-grant-auth-phase.md), [arc-statement-cose-encoding](../arc-statement-cose-encoding.md), [ADR-0001](../adr-0001-encoding-one-per-artifact.md)
 
 ---
 

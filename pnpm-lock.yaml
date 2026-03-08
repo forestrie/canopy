@@ -47,6 +47,9 @@ importers:
 
   packages/apps/canopy-api:
     dependencies:
+      '@canopy/encoding':
+        specifier: workspace:*
+        version: link:../../shared/encoding
       '@canopy/forestrie-ingress-types':
         specifier: workspace:*
         version: link:../../shared/forestrie-ingress
@@ -174,6 +177,16 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@24.8.1)
+
+  packages/shared/encoding:
+    dependencies:
+      cbor-x:
+        specifier: ^1.5.9
+        version: 1.6.0
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
 
   packages/shared/forestrie-ingress:
     devDependencies:

@@ -4,15 +4,20 @@
  * Minimal reproduction of the sign/verify and encode/decode path used by
  * k6 (encodeCoseSign1WithKid) and the API (getSignerFromCoseSign1,
  * signerMatchesGrant). Ensures roundtrip and grant signer matching behave
- * as expected.
+ * as expected. Includes cryptographic verification (Plan 0003).
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
-import { describe, expect, it } from "vitest";
 import {
   getSignerFromCoseSign1,
   signerMatchesGrant,
 } from "../src/scrapi/grant-auth";
+import {
+  encodeCoseSign1Statement,
+  signCoseSign1Statement,
+  verifyCoseSign1,
+} from "@canopy/encoding";
+import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import { describe, expect, it } from "vitest";
 import { encodeCoseSign1WithKid } from "./cose-sign1-k6-encoder";
 
 describe("COSE Sign1 with kid (k6-compatible encode / API decode)", () => {
@@ -130,5 +135,43 @@ describe("COSE Sign1 encoding: k6 vs cbor-x byte layout", () => {
     const first = arr[0];
     expect(first).toBeDefined();
     expect(first instanceof Uint8Array).toBe(true);
+  });
+});
+
+describe("COSE Sign1 cryptographic verification", () => {
+  it("verifyCoseSign1 returns false for placeholder signature", async () => {
+    const keyPair = await crypto.subtle.generateKey(
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["sign", "verify"],
+    );
+    const kid = new Uint8Array(32).fill(1);
+    const payload = new TextEncoder().encode("test");
+    const cosePlaceholder = encodeCoseSign1Statement(
+      payload,
+      kid,
+      new Uint8Array(64),
+    );
+    const ok = await verifyCoseSign1(cosePlaceholder, keyPair.publicKey);
+    expect(ok).toBe(false);
+  });
+
+  it("sign then verify returns true (ES256)", async () => {
+    const keyPair = await crypto.subtle.generateKey(
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["sign", "verify"],
+    );
+    const kid = new Uint8Array(32).fill(2);
+    const payload = new TextEncoder().encode("statement payload");
+    const coseSigned = await signCoseSign1Statement(
+      payload,
+      kid,
+      keyPair.privateKey,
+    );
+    const ok = await verifyCoseSign1(coseSigned, keyPair.publicKey);
+    expect(ok).toBe(true);
+    const decodedKid = getSignerFromCoseSign1(coseSigned);
+    expect(decodedKid).toEqual(kid);
   });
 });

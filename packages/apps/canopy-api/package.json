@@ -14,6 +14,7 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
+    "@canopy/encoding": "workspace:*",
     "@canopy/forestrie-ingress-types": "workspace:*",
     "@canopy/forestrie-sharding": "workspace:*",
     "@canopy/merklelog": "workspace:*",

@@ -1,3 +1,4 @@
+import { encodeCoseSign1Statement } from "@canopy/encoding";
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
@@ -119,13 +120,12 @@ describe("SCRAPI flow", () => {
     const storagePath = await grantStoragePath(grantBytes, grant.kind);
     await testEnv.R2_GRANTS.put(storagePath, grantBytes);
 
-    const protectedHeader = encodeCbor(new Map([[4, signerKid]])) as Uint8Array;
-    const coseSign1 = encodeCbor([
-      protectedHeader,
-      new Map(),
-      new Uint8Array([0x48, 0x65, 0x6c, 0x6c, 0x6f]),
+    const payload = new Uint8Array([0x48, 0x65, 0x6c, 0x6c, 0x6f]); // "Hello"
+    const coseSign1 = encodeCoseSign1Statement(
+      payload,
+      signerKid,
       new Uint8Array(64),
-    ]) as Uint8Array;
+    );
 
     const request = new Request(`http://localhost/logs/${logId}/entries`, {
       method: "POST",

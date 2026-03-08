@@ -3,6 +3,10 @@
 /**
  * Generate a COSE Sign1 message and output to stdout.
  *
+ * LEGACY: This script outputs COSE Sign1 with **empty protected** (no kid).
+ * It does **not** satisfy the current statement contract for grant-based auth.
+ * For grant flow use the canonical encoder in @canopy/encoding (encodeCoseSign1Statement).
+ *
  * Usage:
  *   node gen-cose-sign1.mjs              # Random UUID message
  *   node gen-cose-sign1.mjs "text"       # Use provided text as message
