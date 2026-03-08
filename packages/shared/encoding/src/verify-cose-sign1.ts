@@ -83,4 +83,3 @@ export function decodeCoseSign1(
     signature: sig,
   };
 }
-

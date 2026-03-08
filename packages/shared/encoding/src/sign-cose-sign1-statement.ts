@@ -35,9 +35,5 @@ export async function signCoseSign1Statement(
     sigStructureBytes,
   );
 
-  return encodeCoseSign1Statement(
-    payload,
-    kid,
-    new Uint8Array(signature),
-  );
+  return encodeCoseSign1Statement(payload, kid, new Uint8Array(signature));
 }

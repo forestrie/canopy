@@ -21,11 +21,16 @@ export function encodeCoseProtectedWithKid(kid: Uint8Array): Uint8Array {
  * Encode a CBOR map with one entry: key (uint) -> value (bstr).
  * Returns the map bytes only (not wrapped in bstr).
  */
-function encodeCborMapIntToBstr(key: number, valueBytes: Uint8Array): Uint8Array {
+function encodeCborMapIntToBstr(
+  key: number,
+  valueBytes: Uint8Array,
+): Uint8Array {
   const mapHeader = new Uint8Array([0xa1]); // map(1)
   const keyByte = new Uint8Array([key]);
   const valueBstr = encodeCborBstr(valueBytes);
-  const out = new Uint8Array(mapHeader.length + keyByte.length + valueBstr.length);
+  const out = new Uint8Array(
+    mapHeader.length + keyByte.length + valueBstr.length,
+  );
   out.set(mapHeader, 0);
   out.set(keyByte, mapHeader.length);
   out.set(valueBstr, mapHeader.length + keyByte.length);
