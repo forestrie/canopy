@@ -94,6 +94,14 @@ jobs:
       - name: Bundle k6 scenario
         run: pnpm perf:k6:bundle-canopy-api
 
+      - name: Verify COSE signature bstr in bundle
+        run: |
+          BUNDLE=perf/k6/canopy-api/dist/write-constant-arrival.bundle.js
+          if ! grep -q 'signatureBstr' "$BUNDLE"; then
+            echo "::error::Bundle missing COSE fix (signature as CBOR bstr); check perf/k6/canopy-api/lib/cose.js"
+            exit 1
+          fi
+
       - name: Setup k6
         uses: grafana/setup-k6-action@v1
 
