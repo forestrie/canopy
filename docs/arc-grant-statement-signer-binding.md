@@ -265,7 +265,12 @@ To pin the fault to one leg, compare these in the same run:
 - If #1 = #4 but #3 ≠ #1 → Grant storage or fetch (register-grant or decodeGrant).
 - If #2 ≠ #1 → grant-pool.json not from same run, or signerToBytes/parsing issue.
 
-### 7.3 Optional: single-request local repro
+### 7.3 Where to find triage data after a run
+
+- **Grant-pool signer (#1 and #2):** In the Performance Tests workflow run, open the job and find the "Run k6 performance test" step. In the log, search for `[triage] grant-pool signer (64 hex):` — that is the signer used at creation and by k6. You can also download the **grant-pool-&lt;env&gt;** artifact (e.g. `grant-pool-dev`) and read the `signer` field from the JSON.
+- **Worker mismatch log (#4):** In Cloudflare Dashboard → Workers & Pages → select the canopy-api worker → Logs (Real-time or Logpush). Filter or search for `[grant-auth] signer_mismatch` to see `statementKidHex`, `grantSignerHex`, `statementLen`, `grantSignerLen` for each 403. Compare the first 32 hex chars of `statementKidHex` to the first 32 chars of the grant-pool signer; compare `grantSignerHex` to the grant-pool signer to see if the stored grant matches.
+
+### 7.4 Optional: single-request local repro
 
 1. Run `perf/scripts/generate-grant-pool.ts` against local/dev API; keep grant-pool.json and note one `grantLocation`.
 2. In k6 (or a small Node script), load that pool, build one COSE with `encodeCoseSign1WithKid(payload, signerBytes)`, POST to the same API with that grant location.
