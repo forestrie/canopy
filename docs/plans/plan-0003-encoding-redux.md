@@ -39,12 +39,12 @@ Principles:
 
 See [arc-statement-cose-encoding](../arc-statement-cose-encoding.md) for the full map. Summary:
 
-| Artifact | Decode / verify | Encode (locations) | Single source? |
-|----------|------------------|----------------------|----------------|
-| Statement COSE (kid + bstr sig) | `grant-auth.ts`: getSignerFromCoseSign1, signerMatchesGrant | k6 `cose.js`; test `cose-sign1-k6-encoder.ts`; scrapi-flow + api.spec with ad-hoc cbor/cbor-x | No (multiple encoders) |
-| Grant CBOR | `grant/codec.ts`: decodeGrant, encodeGrant | Same; grant request in generate-grant-pool.mjs (custom CBOR), tests (cbor-x) | Decode/encode grant: yes. Grant **request** CBOR: no |
-| Problem details CBOR | Various (consumers) | cbor-response, delegation-signer problem-details, scripts | No (multiple) |
-| Receipt / checkpoint COSE | resolve-receipt.ts, decode-receipt.mjs | N/A (read-only) | Decode only; not consolidated |
+| Artifact                        | Decode / verify                                             | Encode (locations)                                                                            | Single source?                                       |
+| ------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Statement COSE (kid + bstr sig) | `grant-auth.ts`: getSignerFromCoseSign1, signerMatchesGrant | k6 `cose.js`; test `cose-sign1-k6-encoder.ts`; scrapi-flow + api.spec with ad-hoc cbor/cbor-x | No (multiple encoders)                               |
+| Grant CBOR                      | `grant/codec.ts`: decodeGrant, encodeGrant                  | Same; grant request in generate-grant-pool.mjs (custom CBOR), tests (cbor-x)                  | Decode/encode grant: yes. Grant **request** CBOR: no |
+| Problem details CBOR            | Various (consumers)                                         | cbor-response, delegation-signer problem-details, scripts                                     | No (multiple)                                        |
+| Receipt / checkpoint COSE       | resolve-receipt.ts, decode-receipt.mjs                      | N/A (read-only)                                                                               | Decode only; not consolidated                        |
 
 ---
 

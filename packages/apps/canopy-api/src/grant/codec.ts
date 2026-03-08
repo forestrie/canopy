@@ -45,7 +45,12 @@ export function encodeGrant(grant: Grant): Uint8Array {
   if (grant.minGrowth !== undefined) map[K.minGrowth] = grant.minGrowth;
   if (grant.exp !== undefined) map[K.exp] = grant.exp;
   if (grant.nbf !== undefined) map[K.nbf] = grant.nbf;
-  return encodeCbor(map, { useFloat32: false });
+  return (
+    encodeCbor as (
+      value: unknown,
+      options?: { useFloat32?: boolean },
+    ) => Uint8Array
+  )(map, { useFloat32: false });
 }
 
 /**

@@ -15,11 +15,11 @@ The API is **CBOR end-to-end**: request and response bodies use CBOR where appli
 
 ## Endpoints
 
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /logs/{logId}/grants` | Create a grant; returns grant location (URL path). |
-| `POST /logs/{logId}/entries` | Register a signed statement; requires grant location in request. |
-| (existing) | Query registration status, resolve receipt, transparency configuration, etc. |
+| Endpoint                     | Purpose                                                                      |
+| ---------------------------- | ---------------------------------------------------------------------------- |
+| `POST /logs/{logId}/grants`  | Create a grant; returns grant location (URL path).                           |
+| `POST /logs/{logId}/entries` | Register a signed statement; requires grant location in request.             |
+| (existing)                   | Query registration status, resolve receipt, transparency configuration, etc. |
 
 ## Grant storage and location
 

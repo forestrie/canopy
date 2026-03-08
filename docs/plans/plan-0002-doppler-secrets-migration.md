@@ -26,22 +26,22 @@ cd canopy && gh secret list && gh variable list
 
 ### 2.1 Repository secrets (in scope)
 
-| Secret name | Last updated (from `gh`) | Purpose / used by |
-|-------------|--------------------------|-------------------|
-| `ANTHROPIC_API_KEY` | 2025-10-12 | Not referenced in workflows under `.github/workflows/`; likely agent/IDE or future use. Include in Doppler for consistency. |
-| `CANOPY_PERF_API_TOKEN` | 2025-12-29 | Performance tests: auth for queue stats and API in `perf-canopy.yml` and taskfiles `perf.yml`. |
-| `CANOPY_X402_DEV_PRIVATE_KEY` | 2026-02-04 | x402 dev wallet private key; used in `perf-canopy.yml` for reset-x402-auth and generate-x402-payment-pool. |
-| `CDP_API_KEY_ID` | 2026-01-22 | CDP (Cloudflare Developer Platform) API key ID; **pushed to Cloudflare** by `deploy-workers.yml` (`wrangler secret put` for canopy-api prod). Also used by taskfile `x402.yml` (faucet). → **canopy-cloudflare** (Cloudflare native sync). |
-| `CDP_API_KEY_SECRET` | 2026-01-22 | CDP API key secret; same as above. → **canopy-cloudflare**. |
-| `CLOUDFLARE_API_TOKEN` | 2025-10-13 | Wrangler/Cloudflare API auth; used in `deploy-workers.yml`, `release.yaml`, `cloudflare-bootstrap.yml`, and taskfile `cloudflare.yml` (validate, R2 CORS, status, destroy). |
-| `GITAPP_PRIVATE_KEY` | 2025-11-26 | GitHub App private key (forestrie-cd-gitapp); not referenced in canopy workflows; may be used by other repos or future CI. Include in Doppler. |
-| `R2_ADMIN` | 2025-11-29 | R2 admin token for direct R2 API (e.g. CORS config in `cloudflare-bootstrap.yml`). |
+| Secret name                   | Last updated (from `gh`) | Purpose / used by                                                                                                                                                                                                                          |
+| ----------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ANTHROPIC_API_KEY`           | 2025-10-12               | Not referenced in workflows under `.github/workflows/`; likely agent/IDE or future use. Include in Doppler for consistency.                                                                                                                |
+| `CANOPY_PERF_API_TOKEN`       | 2025-12-29               | Performance tests: auth for queue stats and API in `perf-canopy.yml` and taskfiles `perf.yml`.                                                                                                                                             |
+| `CANOPY_X402_DEV_PRIVATE_KEY` | 2026-02-04               | x402 dev wallet private key; used in `perf-canopy.yml` for reset-x402-auth and generate-x402-payment-pool.                                                                                                                                 |
+| `CDP_API_KEY_ID`              | 2026-01-22               | CDP (Cloudflare Developer Platform) API key ID; **pushed to Cloudflare** by `deploy-workers.yml` (`wrangler secret put` for canopy-api prod). Also used by taskfile `x402.yml` (faucet). → **canopy-cloudflare** (Cloudflare native sync). |
+| `CDP_API_KEY_SECRET`          | 2026-01-22               | CDP API key secret; same as above. → **canopy-cloudflare**.                                                                                                                                                                                |
+| `CLOUDFLARE_API_TOKEN`        | 2025-10-13               | Wrangler/Cloudflare API auth; used in `deploy-workers.yml`, `release.yaml`, `cloudflare-bootstrap.yml`, and taskfile `cloudflare.yml` (validate, R2 CORS, status, destroy).                                                                |
+| `GITAPP_PRIVATE_KEY`          | 2025-11-26               | GitHub App private key (forestrie-cd-gitapp); not referenced in canopy workflows; may be used by other repos or future CI. Include in Doppler.                                                                                             |
+| `R2_ADMIN`                    | 2025-11-29               | R2 admin token for direct R2 API (e.g. CORS config in `cloudflare-bootstrap.yml`).                                                                                                                                                         |
 
 ### 2.2 Repository variables (in scope)
 
-| Variable name | Value (from `gh`) | Purpose / used by |
-|---------------|--------------------|-------------------|
-| `GITAPP_ID` | `2329547` | GitHub App ID; not referenced in canopy workflows; likely used by other repos or future CI. Include in Doppler. |
+| Variable name | Value (from `gh`) | Purpose / used by                                                                                               |
+| ------------- | ----------------- | --------------------------------------------------------------------------------------------------------------- |
+| `GITAPP_ID`   | `2329547`         | GitHub App ID; not referenced in canopy workflows; likely used by other repos or future CI. Include in Doppler. |
 
 ### 2.3 Local / file-based config (also in scope for Doppler)
 
@@ -57,14 +57,14 @@ cd canopy && gh secret list && gh variable list
 
 With **canopy-ci** syncing to GitHub, workflows continue to use `secrets.*` and `vars.*` for CI-needed keys; no change to how they read secrets. **One optional workflow change** after **canopy-cloudflare** is syncing to Cloudflare:
 
-| Workflow file | Secrets / vars used today | Notes |
-|---------------|----------------------------|--------|
-| **.github/workflows/cloudflare-bootstrap.yml** | `secrets.CLOUDFLARE_API_TOKEN`, `secrets.R2_ADMIN` | Values from GitHub (synced from **canopy-ci**). No change. |
-| **.github/workflows/deploy-workers.yml** | `secrets.CLOUDFLARE_API_TOKEN`, `secrets.CDP_API_KEY_ID`, `secrets.CDP_API_KEY_SECRET`, `secrets.GITHUB_TOKEN` | **After Cloudflare sync**: Remove `secrets.CDP_API_KEY_ID` and `secrets.CDP_API_KEY_SECRET` from job env and **remove the step** “Configure CDP secrets for canopy-api (prod)” (the one that runs `wrangler secret put CDP_API_KEY_*`). CDP secrets will already be in Cloudflare via Doppler → Cloudflare sync. GITHUB_TOKEN stays GitHub-provided. |
-| **.github/workflows/perf-canopy.yml** | `secrets.CANOPY_PERF_API_TOKEN`, `secrets.CANOPY_X402_DEV_PRIVATE_KEY` | From GitHub (synced from **canopy-ci**). No change. |
-| **.github/workflows/release.yaml** | `secrets.CLOUDFLARE_API_TOKEN`, `secrets.GITHUB_TOKEN` | From GitHub (canopy-ci). No change. |
-| **.github/workflows/smoke-test.yml** | `secrets.GITHUB_TOKEN`; optionally `CLOUDFLARE_API_TOKEN` | No change. |
-| **.github/workflows/test.yml** | None | Unchanged. |
+| Workflow file                                  | Secrets / vars used today                                                                                      | Notes                                                                                                                                                                                                                                                                                                                                                |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **.github/workflows/cloudflare-bootstrap.yml** | `secrets.CLOUDFLARE_API_TOKEN`, `secrets.R2_ADMIN`                                                             | Values from GitHub (synced from **canopy-ci**). No change.                                                                                                                                                                                                                                                                                           |
+| **.github/workflows/deploy-workers.yml**       | `secrets.CLOUDFLARE_API_TOKEN`, `secrets.CDP_API_KEY_ID`, `secrets.CDP_API_KEY_SECRET`, `secrets.GITHUB_TOKEN` | **After Cloudflare sync**: Remove `secrets.CDP_API_KEY_ID` and `secrets.CDP_API_KEY_SECRET` from job env and **remove the step** “Configure CDP secrets for canopy-api (prod)” (the one that runs `wrangler secret put CDP_API_KEY_*`). CDP secrets will already be in Cloudflare via Doppler → Cloudflare sync. GITHUB_TOKEN stays GitHub-provided. |
+| **.github/workflows/perf-canopy.yml**          | `secrets.CANOPY_PERF_API_TOKEN`, `secrets.CANOPY_X402_DEV_PRIVATE_KEY`                                         | From GitHub (synced from **canopy-ci**). No change.                                                                                                                                                                                                                                                                                                  |
+| **.github/workflows/release.yaml**             | `secrets.CLOUDFLARE_API_TOKEN`, `secrets.GITHUB_TOKEN`                                                         | From GitHub (canopy-ci). No change.                                                                                                                                                                                                                                                                                                                  |
+| **.github/workflows/smoke-test.yml**           | `secrets.GITHUB_TOKEN`; optionally `CLOUDFLARE_API_TOKEN`                                                      | No change.                                                                                                                                                                                                                                                                                                                                           |
+| **.github/workflows/test.yml**                 | None                                                                                                           | Unchanged.                                                                                                                                                                                                                                                                                                                                           |
 
 **Note**: `GITHUB_TOKEN` is provided by GitHub. Keys in **canopy-ci** appear in the repo as secrets/variables via Doppler → GitHub sync. Keys in **canopy-cloudflare** are synced to Cloudflare only and are not needed in GitHub once the deploy-workers step above is removed.
 
@@ -79,15 +79,15 @@ For **local dev**, Taskfiles load `.env`, `.env.{{.ENV}}`, and `.env.secrets`. O
 - **Option A**: Document that developers can run `doppler run -- task ...` so env is supplied by Doppler CLI (same key names). No change to Taskfile.dist.yml.
 - **Option B**: Document a one-off or script that runs `doppler secrets download --no-file --format env > .env.secrets` so existing dotenv load order still works; secrets are then sourced from Doppler into the same file.
 
-| Taskfile | Env / vars used | Notes |
-|----------|-----------------|--------|
-| **Taskfile.dist.yml** | `dotenv: [".env", ".env.{{.ENV}}", ".env.secrets"]`; vars and includes. | No change for CI. For local dev, optional: use `doppler run` or generate `.env.secrets` from Doppler. |
-| **taskfiles/cloudflare.yml** | `CLOUDFLARE_API_TOKEN` (from .env/.env.secrets or job env in CI). | CI gets it from GitHub (synced). Local: `.env.secrets` or `doppler run`. |
-| **taskfiles/scrapi.yml** | `API_KEY` (→ `SCRAPI_API_KEY`). | Same. |
-| **taskfiles/perf.yml** | `CANOPY_PERF_API_TOKEN`. | Same. |
-| **taskfiles/x402.yml** | `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`. | Same. |
-| **taskfiles/minio.yml** | `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`. | Local-only; can stay in `.env` or in Doppler. |
-| **taskfiles/wrangler.yml**, **deploy.yml**, **merklelog.yml**, **scout.yml** | Inherit env. | No change. |
+| Taskfile                                                                     | Env / vars used                                                         | Notes                                                                                                 |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| **Taskfile.dist.yml**                                                        | `dotenv: [".env", ".env.{{.ENV}}", ".env.secrets"]`; vars and includes. | No change for CI. For local dev, optional: use `doppler run` or generate `.env.secrets` from Doppler. |
+| **taskfiles/cloudflare.yml**                                                 | `CLOUDFLARE_API_TOKEN` (from .env/.env.secrets or job env in CI).       | CI gets it from GitHub (synced). Local: `.env.secrets` or `doppler run`.                              |
+| **taskfiles/scrapi.yml**                                                     | `API_KEY` (→ `SCRAPI_API_KEY`).                                         | Same.                                                                                                 |
+| **taskfiles/perf.yml**                                                       | `CANOPY_PERF_API_TOKEN`.                                                | Same.                                                                                                 |
+| **taskfiles/x402.yml**                                                       | `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`.                                 | Same.                                                                                                 |
+| **taskfiles/minio.yml**                                                      | `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`.                               | Local-only; can stay in `.env` or in Doppler.                                                         |
+| **taskfiles/wrangler.yml**, **deploy.yml**, **merklelog.yml**, **scout.yml** | Inherit env.                                                            | No change.                                                                                            |
 
 **Summary**: No Taskfile edits required for the sync approach. Optionally document local dev (Doppler CLI or download-to-.env.secrets).
 
@@ -97,10 +97,10 @@ For **local dev**, Taskfiles load `.env`, `.env.{{.ENV}}`, and `.env.secrets`. O
 
 **Approach**: Two Doppler projects with different sync targets.
 
-| Doppler project | Purpose | Sync target | Used by |
-|-----------------|---------|-------------|---------|
-| **canopy-ci** | Secrets and variables needed **directly by GitHub Actions** (workflows, Taskfiles in CI). | **Doppler → GitHub** (Doppler GitHub App). | Workflows read from repo secrets/variables; no workflow code change except removing the CDP push step once Cloudflare sync is live. |
-| **canopy-cloudflare** | Secrets and variables needed **only by Cloudflare** (e.g. Worker secrets, Worker env). | **Doppler → Cloudflare** (Doppler Cloudflare integration, native sync). | Cloudflare Workers/services; not needed in GitHub after the deploy-workers “Configure CDP secrets” step is removed. |
+| Doppler project       | Purpose                                                                                   | Sync target                                                             | Used by                                                                                                                             |
+| --------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **canopy-ci**         | Secrets and variables needed **directly by GitHub Actions** (workflows, Taskfiles in CI). | **Doppler → GitHub** (Doppler GitHub App).                              | Workflows read from repo secrets/variables; no workflow code change except removing the CDP push step once Cloudflare sync is live. |
+| **canopy-cloudflare** | Secrets and variables needed **only by Cloudflare** (e.g. Worker secrets, Worker env).    | **Doppler → Cloudflare** (Doppler Cloudflare integration, native sync). | Cloudflare Workers/services; not needed in GitHub after the deploy-workers “Configure CDP secrets” step is removed.                 |
 
 Any key not in either Doppler project remains **only in GitHub** (hybrid) and is managed in repo Settings.
 
@@ -123,10 +123,10 @@ Any key not in either Doppler project remains **only in GitHub** (hybrid) and is
 
 ### 5.3 Summary: what goes where
 
-| In **canopy-ci** (→ GitHub) | In **canopy-cloudflare** (→ Cloudflare) | Only in GitHub (not in Doppler) |
-|-----------------------------|----------------------------------------|----------------------------------|
+| In **canopy-ci** (→ GitHub)                                                                                                                                    | In **canopy-cloudflare** (→ Cloudflare)                                       | Only in GitHub (not in Doppler)           |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ----------------------------------------- |
 | `CLOUDFLARE_API_TOKEN`, `R2_ADMIN`, `CANOPY_PERF_API_TOKEN`, `CANOPY_X402_DEV_PRIVATE_KEY`, `GITAPP_ID`, `GITAPP_PRIVATE_KEY`, optionally `ANTHROPIC_API_KEY`. | `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`; optionally other Worker-only secrets. | Any key you choose not to put in Doppler. |
-| Workflows read from GitHub. | Workers read from Cloudflare; no CI push step. | Workflows keep using them. |
+| Workflows read from GitHub.                                                                                                                                    | Workers read from Cloudflare; no CI push step.                                | Workflows keep using them.                |
 
 ### 5.4 Caveats
 
@@ -154,6 +154,7 @@ Any key not in either Doppler project remains **only in GitHub** (hybrid) and is
 4. Install the [Doppler GitHub App](https://github.com/apps/doppler-secretops-platform) and authorize it for `forestrie/canopy` (or the org). Grant it access to the canopy repository.
 5. In Doppler (canopy-ci project): Integrations → GitHub → create integration: Repository sync target, `forestrie/canopy`, Actions feature, select the canopy-ci config. Enable “Sync unmasked secrets as variables” if you want `GITAPP_ID` (or others) as variables.
 6. Verify: after “Set Up Integration”, the synced keys appear in the repo’s Settings → Secrets and variables → Actions. Optionally trigger a workflow run to confirm values are present and correct.
+
 ### Phase 2b: canopy-cloudflare → Cloudflare native sync
 
 7. In Doppler (canopy-cloudflare project): set up the **Cloudflare integration** (native sync). Connect the Cloudflare account used for Canopy, and select the target: Workers script and environment that should receive the secrets (e.g. canopy-api, environment prod). Map the Doppler config (e.g. `prod`) to that target so that its secrets are synced as Worker secrets (and/or env vars) in Cloudflare.
@@ -167,18 +168,18 @@ Any key not in either Doppler project remains **only in GitHub** (hybrid) and is
 ### Phase 4: Cutover and cleanup
 
 11. Run all relevant workflows (cloudflare-bootstrap, deploy-workers, perf-canopy, release, smoke-test) and confirm they succeed. Deploy canopy-api to prod and confirm the Worker has CDP secrets from Cloudflare (not from the removed step).
-12. Remove from GitHub any keys that are now synced from canopy-ci, if they were duplicated during testing. Keep keys that remain only in GitHub. Do not remove CDP_* from GitHub until the deploy-workers change (step 9) is in place and verified.
+12. Remove from GitHub any keys that are now synced from canopy-ci, if they were duplicated during testing. Keep keys that remain only in GitHub. Do not remove CDP\_\* from GitHub until the deploy-workers change (step 9) is in place and verified.
 13. Add a short doc listing which secrets/variables are in canopy-ci vs canopy-cloudflare vs only in GitHub, so contributors know where to request access or add values.
 
 ---
 
 ## 7. Files to touch (summary)
 
-| Area | Files | Change |
-|------|--------|--------|
+| Area          | Files                                  | Change                                                                                                                                                                                                                                                                   |
+| ------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Workflows** | `.github/workflows/deploy-workers.yml` | Optional: remove the "Configure CDP secrets for canopy-api (prod)" step and remove `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` from job `env` once Cloudflare sync is active. All other workflows unchanged; they keep using `secrets.*` / `vars.*` from GitHub (canopy-ci). |
-| **Taskfiles** | None | No code changes for CI; optional local dev docs only. |
-| **Docs** | `README.md` or `docs/` | Optional: document canopy-ci vs canopy-cloudflare, which keys live where, and local dev (`doppler run --project canopy-ci` / `canopy-cloudflare`, or download to `.env.secrets`). |
+| **Taskfiles** | None                                   | No code changes for CI; optional local dev docs only.                                                                                                                                                                                                                    |
+| **Docs**      | `README.md` or `docs/`                 | Optional: document canopy-ci vs canopy-cloudflare, which keys live where, and local dev (`doppler run --project canopy-ci` / `canopy-cloudflare`, or download to `.env.secrets`).                                                                                        |
 
 ---
 

@@ -3,7 +3,7 @@
  * COSE kid → getSignerFromCoseSign1 → signerMatchesGrant.
  *
  * Verifies that the signer is consistent across:
- * - generate-grant-pool.mjs (grant request CBOR, pool JSON hex)
+ * - generate-grant-pool script (grant request CBOR via @canopy/encoding, pool JSON hex)
  * - k6 (signerToBytes from pool, encodeCoseSign1WithKid)
  * - API (parseCborBody + parseGrantRequest signer, getSignerFromCoseSign1, signerMatchesGrant)
  */

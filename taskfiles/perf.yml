@@ -41,7 +41,7 @@ tasks:
   # write:rate - Main sustained write test at configurable rate
   # ---------------------------------------------------------------------------
   write:rate:
-    desc: "Run k6 write test at specified rate (CANOPY_PERF_RATE, default 10). Generate grant pool first: CANOPY_PERF_LOG_IDS=id1,id2 node perf/scripts/generate-grant-pool.mjs"
+    desc: "Run k6 write test at specified rate (CANOPY_PERF_RATE, default 10). Generate grant pool first: CANOPY_PERF_LOG_IDS=id1,id2 pnpm --filter @canopy/perf run generate-grant-pool"
     deps: [check]
     env:
       CANOPY_PERF_BASE_URL: "{{.CANOPY_PERF_BASE_URL}}"
@@ -65,7 +65,7 @@ tasks:
           exit 1
         fi
         if [ ! -f "{{.K6_DIR}}/data/grant-pool.json" ]; then
-          echo "Run first: CANOPY_PERF_LOG_IDS=$CANOPY_PERF_LOG_IDS node perf/scripts/generate-grant-pool.mjs" >&2
+          echo "Run first: CANOPY_PERF_LOG_IDS=$CANOPY_PERF_LOG_IDS pnpm --filter @canopy/perf run generate-grant-pool" >&2
           exit 1
         fi
         k6 run "{{.K6_DIR}}/scenarios/write-constant-arrival.js"
@@ -150,7 +150,7 @@ tasks:
           exit 1
         fi
         if [ ! -f "{{.K6_DIR}}/data/grant-pool.json" ]; then
-          echo "Run first: CANOPY_PERF_LOG_IDS=$CANOPY_PERF_LOG_IDS node perf/scripts/generate-grant-pool.mjs" >&2
+          echo "Run first: CANOPY_PERF_LOG_IDS=$CANOPY_PERF_LOG_IDS pnpm --filter @canopy/perf run generate-grant-pool" >&2
           exit 1
         fi
         k6 run "{{.K6_DIR}}/scenarios/write-constant-arrival.js"
@@ -174,7 +174,7 @@ tasks:
       - task: check
       - |
         if [ ! -f "{{.K6_DIR}}/data/grant-pool.json" ]; then
-          echo "Create grant pool first: CANOPY_PERF_BASE_URL=http://localhost:8789 CANOPY_PERF_API_TOKEN=test-api-key CANOPY_PERF_LOG_IDS=550e8400-e29b-41d4-a716-446655440000 node perf/scripts/generate-grant-pool.mjs"
+          echo "Create grant pool first: CANOPY_PERF_BASE_URL=http://localhost:8789 CANOPY_PERF_API_TOKEN=test-api-key CANOPY_PERF_LOG_IDS=550e8400-e29b-41d4-a716-446655440000 pnpm --filter @canopy/perf run generate-grant-pool"
           exit 1
         fi
         k6 run "{{.K6_DIR}}/scenarios/write-constant-arrival.js"

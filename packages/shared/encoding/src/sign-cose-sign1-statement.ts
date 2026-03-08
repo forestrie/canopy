@@ -29,10 +29,14 @@ export async function signCoseSign1Statement(
     payload,
   );
 
+  const sigBuffer = sigStructureBytes.buffer.slice(
+    sigStructureBytes.byteOffset,
+    sigStructureBytes.byteOffset + sigStructureBytes.byteLength,
+  ) as ArrayBuffer;
   const signature = await crypto.subtle.sign(
     { name: "ECDSA", hash: "SHA-256" },
     privateKey,
-    sigStructureBytes,
+    sigBuffer,
   );
 
   return encodeCoseSign1Statement(payload, kid, new Uint8Array(signature));

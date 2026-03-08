@@ -45,7 +45,7 @@ Both can share a single register-grant endpoint with a parameter or COSE claim t
 
 - **Protected headers**: Use COSE header parameters to bind grant parameters and auth. Private/experimental labels (e.g. in the 256–65535 or negative space per COSE) can carry: target log id, owner log id, grant flags (e.g. as a uint or bitmap), maxHeight, minGrowth. Standard `alg` (1) and `kid` (4) identify the signer; the signer can be taken as the root key when GF_CREATE is set (grantData then matches signer).
 - **Payload**: **grantData** (opaque bytes: signer key for first checkpoint). This keeps the same semantics as univocity’s PublishGrant.grantData and fits COSE’s bstr payload.
-- **Unprotected**: Optional; e.g. request code (GC_*) as a hint for the service, though request is not in the leaf commitment.
+- **Unprotected**: Optional; e.g. request code (GC\_\*) as a hint for the service, though request is not in the leaf commitment.
 
 The authority log operator signs the grant only after payment is verified/settled; the “signed statement” in this flow is the **issued grant** (or the request that leads to it). Issued grants are stored and published so submitters can build inclusion proofs. Canonical storage path aligned with univocity and public discovery could be:
 
@@ -87,13 +87,13 @@ These grants authorize **statement registration** on a log (register-statement),
 
 ### 7.4 IETF / SCITT references (maximum practical alignment)
 
-| Standard / draft | Use for register-grant and register-statement |
-|------------------|-----------------------------------------------|
-| **draft-ietf-scitt-scrapi** | Register Signed Statement: COSE Sign1 body; protected headers (alg, kid, 258/259/260 for hash envelope, 15 for CWT claims); 402 and payment are out of scope of SCRAPI but compatible. |
-| **draft-ietf-cose-merkle-tree-proofs** | COSE Receipts: protected (alg, vds 395), unprotected (vdp 396 with inclusion -1, consistency -2); detached payload; Receipt = COSE_Sign1. Use for **grant proof** when the grant is evidenced by an MMR inclusion receipt. |
-| **draft-bryce-cose-receipts-mmr-profile** | MMR-specific inclusion and consistency proof CBOR (index, path; tree_size_1, tree_size_2, paths, right_peaks); add_leaf_hash, hash_pospair64. Aligns with univocity’s MMR and leaf commitment. |
-| **RFC 9052** | COSE Sign1 structure; Sig_structure; protected/unprotected headers. |
-| **RFC 8392** | CWT (Claims 6 iat, 7 nbf, 8 exp) for time-based validity in headers or claim set. |
+| Standard / draft                          | Use for register-grant and register-statement                                                                                                                                                                              |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **draft-ietf-scitt-scrapi**               | Register Signed Statement: COSE Sign1 body; protected headers (alg, kid, 258/259/260 for hash envelope, 15 for CWT claims); 402 and payment are out of scope of SCRAPI but compatible.                                     |
+| **draft-ietf-cose-merkle-tree-proofs**    | COSE Receipts: protected (alg, vds 395), unprotected (vdp 396 with inclusion -1, consistency -2); detached payload; Receipt = COSE_Sign1. Use for **grant proof** when the grant is evidenced by an MMR inclusion receipt. |
+| **draft-bryce-cose-receipts-mmr-profile** | MMR-specific inclusion and consistency proof CBOR (index, path; tree_size_1, tree_size_2, paths, right_peaks); add_leaf_hash, hash_pospair64. Aligns with univocity’s MMR and leaf commitment.                             |
+| **RFC 9052**                              | COSE Sign1 structure; Sig_structure; protected/unprotected headers.                                                                                                                                                        |
+| **RFC 8392**                              | CWT (Claims 6 iat, 7 nbf, 8 exp) for time-based validity in headers or claim set.                                                                                                                                          |
 
 Grant **requests** and **issued grants** conveyed as COSE Sign1 with private labels for grant parameters give maximum alignment with SCITT “Signed Statement” and COSE without requiring changes to the univocity contract. Grant **proof** at register-statement can be a COSE Receipt of Inclusion (and optionally consistency) when the grant is stored in an MMR and checkpointed.
 
@@ -111,13 +111,13 @@ Canopy already has **experimental x402 support** for **statement registration**,
 
 ### 2.2 Reusable Building Blocks
 
-| Component | Location | Use for checkpoint grants |
-|-----------|----------|----------------------------|
-| **Header parsing / validation** | `packages/apps/canopy-api/src/scrapi/x402.ts` | Same x402 v2 payload format; can add a separate *resource URL* for “checkpoint grant” so requirements and payloads are bound to the grant resource. |
-| **Payment requirements builder** | `buildPaymentRequiredHeader()`, `getPaymentRequirementsForVerify()` | Can call with a grant-specific resource URL and (optionally) different price/amount for “N checkpoints” or “coverage”. |
-| **CDP verify** | `packages/apps/canopy-api/src/scrapi/x402-facilitator.ts` | Verify payment for grant creation the same way as for entries; JWT auth and verify/settle semantics unchanged. |
-| **Settlement pipeline** | `x402-settlement` worker + `X402SettlementDO` + queue | Today jobs are keyed by `logId` + `contentHash` + `authId` for *statement* registration. For grants we’d need a **different job type** (or separate queue) that results in **writing a grant/receipt** and publishing it, not just settling a charge for an entry. |
-| **Auth state (blocked payers)** | `X402SettlementDO.getAuthInfo()` | Reuse to reject blocked payers on any x402-protected endpoint (including a future “create grant” endpoint). |
+| Component                        | Location                                                            | Use for checkpoint grants                                                                                                                                                                                                                                          |
+| -------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Header parsing / validation**  | `packages/apps/canopy-api/src/scrapi/x402.ts`                       | Same x402 v2 payload format; can add a separate _resource URL_ for “checkpoint grant” so requirements and payloads are bound to the grant resource.                                                                                                                |
+| **Payment requirements builder** | `buildPaymentRequiredHeader()`, `getPaymentRequirementsForVerify()` | Can call with a grant-specific resource URL and (optionally) different price/amount for “N checkpoints” or “coverage”.                                                                                                                                             |
+| **CDP verify**                   | `packages/apps/canopy-api/src/scrapi/x402-facilitator.ts`           | Verify payment for grant creation the same way as for entries; JWT auth and verify/settle semantics unchanged.                                                                                                                                                     |
+| **Settlement pipeline**          | `x402-settlement` worker + `X402SettlementDO` + queue               | Today jobs are keyed by `logId` + `contentHash` + `authId` for _statement_ registration. For grants we’d need a **different job type** (or separate queue) that results in **writing a grant/receipt** and publishing it, not just settling a charge for an entry. |
+| **Auth state (blocked payers)**  | `X402SettlementDO.getAuthInfo()`                                    | Reuse to reject blocked payers on any x402-protected endpoint (including a future “create grant” endpoint).                                                                                                                                                        |
 
 ### 2.3 What Would Need to Change
 

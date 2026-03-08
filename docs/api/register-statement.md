@@ -42,14 +42,14 @@ All error responses are CBOR (Concise Problem Details) consistent with other API
 
 ## Errors (summary)
 
-| Status | Meaning |
-|--------|--------|
-| 400 | Bad Request (e.g. invalid statement body). |
-| 401 / 402 | Grant location missing, malformed, or grant not found. |
-| 403 | Statement signer does not match grant’s signer binding. |
-| 413 | Payload too large. |
-| 415 | Unsupported media type. |
-| 500 / 503 | Server / storage error. |
+| Status    | Meaning                                                 |
+| --------- | ------------------------------------------------------- |
+| 400       | Bad Request (e.g. invalid statement body).              |
+| 401 / 402 | Grant location missing, malformed, or grant not found.  |
+| 403       | Statement signer does not match grant’s signer binding. |
+| 413       | Payload too large.                                      |
+| 415       | Unsupported media type.                                 |
+| 500 / 503 | Server / storage error.                                 |
 
 ## Rate limiting
 

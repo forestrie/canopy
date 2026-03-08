@@ -184,7 +184,7 @@ jobs:
         run: |
           echo "Creating grants for each log (grant-based auth)..."
           echo "  Log IDs: ${CANOPY_PERF_LOG_IDS}"
-          node perf/scripts/generate-grant-pool.mjs
+          pnpm --filter @canopy/perf run generate-grant-pool
 
       - name: Capture queue stats (before)
         id: stats_before

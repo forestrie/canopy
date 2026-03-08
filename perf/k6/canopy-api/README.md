@@ -59,7 +59,7 @@ task perf:check
 export CANOPY_PERF_BASE_URL="https://canopy-api.example.workers.dev"
 export CANOPY_PERF_API_TOKEN="your-api-token"
 export CANOPY_PERF_LOG_IDS="uuid-1,uuid-2"
-node perf/scripts/generate-grant-pool.mjs
+pnpm --filter @canopy/perf run generate-grant-pool
 ```
 
 2. Run a quick smoke test (5 req/s for 30s):

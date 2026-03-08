@@ -140,11 +140,11 @@ describe("COSE Sign1 encoding: k6 vs cbor-x byte layout", () => {
 
 describe("COSE Sign1 cryptographic verification", () => {
   it("verifyCoseSign1 returns false for placeholder signature", async () => {
-    const keyPair = await crypto.subtle.generateKey(
+    const keyPair = (await crypto.subtle.generateKey(
       { name: "ECDSA", namedCurve: "P-256" },
       false,
       ["sign", "verify"],
-    );
+    )) as CryptoKeyPair;
     const kid = new Uint8Array(32).fill(1);
     const payload = new TextEncoder().encode("test");
     const cosePlaceholder = encodeCoseSign1Statement(
@@ -157,11 +157,11 @@ describe("COSE Sign1 cryptographic verification", () => {
   });
 
   it("sign then verify returns true (ES256)", async () => {
-    const keyPair = await crypto.subtle.generateKey(
+    const keyPair = (await crypto.subtle.generateKey(
       { name: "ECDSA", namedCurve: "P-256" },
       false,
       ["sign", "verify"],
-    );
+    )) as CryptoKeyPair;
     const kid = new Uint8Array(32).fill(2);
     const payload = new TextEncoder().encode("statement payload");
     const coseSigned = await signCoseSign1Statement(

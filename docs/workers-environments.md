@@ -2,11 +2,11 @@
 
 ## Worker names and routes
 
-| Wrangler config | Worker name in dashboard | Route | When it gets deployed |
-|-----------------|---------------------------|-------|------------------------|
-| Top-level (no `--env`) | **canopy-api** | No route in wrangler (may use workers.dev) | Only when someone runs `wrangler deploy` without `ENV` from the app directory |
-| `--env dev` | **canopy-api-dev** | `api-dev.forestrie.dev/*` | **Deploy Workers** workflow (push to main → dev, or workflow_dispatch with environment=dev) |
-| `--env prod` | **canopy-api-prod** | `api.forestrie.dev/*` | **Deploy Workers** workflow_dispatch with environment=prod |
+| Wrangler config        | Worker name in dashboard | Route                                      | When it gets deployed                                                                       |
+| ---------------------- | ------------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| Top-level (no `--env`) | **canopy-api**           | No route in wrangler (may use workers.dev) | Only when someone runs `wrangler deploy` without `ENV` from the app directory               |
+| `--env dev`            | **canopy-api-dev**       | `api-dev.forestrie.dev/*`                  | **Deploy Workers** workflow (push to main → dev, or workflow_dispatch with environment=dev) |
+| `--env prod`           | **canopy-api-prod**      | `api.forestrie.dev/*`                      | **Deploy Workers** workflow_dispatch with environment=prod                                  |
 
 All three configs include the **R2_GRANTS** binding (and R2_MMRS, DOs, etc.).
 

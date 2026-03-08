@@ -1,0 +1,19 @@
+{
+  "name": "@canopy/scripts",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "decode-receipt": "tsx decode-receipt.ts",
+    "gen-cose-sign1": "tsx gen-cose-sign1.ts"
+  },
+  "dependencies": {
+    "@canopy/encoding": "workspace:*",
+    "cbor-x": "^1.5.9"
+  },
+  "devDependencies": {
+    "tsx": "^4.8.1",
+    "typescript": "^5.6.3",
+    "uuid": "^10.0.0"
+  }
+}
