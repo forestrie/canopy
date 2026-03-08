@@ -88,8 +88,8 @@ export function getSignerFromCoseSign1(
     protectedMap instanceof Map
       ? protectedMap.get(COSE_KID)
       : (protectedMap as Record<number, unknown>)[COSE_KID];
+  // Grant binding requires raw bytes (bstr). String kid would be UTF-8 encoded and not match grant.signer.
   if (kid instanceof Uint8Array) return kid;
-  if (typeof kid === "string") return new TextEncoder().encode(kid);
   return null;
 }
 

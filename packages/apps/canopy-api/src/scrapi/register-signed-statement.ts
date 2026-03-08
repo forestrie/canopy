@@ -39,6 +39,28 @@ export interface RegisterStatementResponse {
   status: "accepted" | "pending";
 }
 
+/** Format up to 16 bytes as hex for diagnostic logging. */
+function bytesToHexPrefix(bytes: Uint8Array | null, maxBytes = 16): string {
+  if (!bytes || bytes.length === 0) return "(empty)";
+  const n = Math.min(bytes.length, maxBytes);
+  let hex = "";
+  for (let i = 0; i < n; i++) {
+    hex += bytes[i].toString(16).padStart(2, "0");
+  }
+  return `${hex}${bytes.length > maxBytes ? "…" : ""} (len=${bytes.length})`;
+}
+
+/** Log signer mismatch details for debugging grant/COSE kid binding. */
+function logSignerMismatch(
+  statementSigner: Uint8Array | null,
+  grantSigner: Uint8Array,
+): void {
+  console.warn("[grant-auth] signer_mismatch: statement kid vs grant.signer", {
+    statementKidHex: bytesToHexPrefix(statementSigner),
+    grantSignerHex: bytesToHexPrefix(grantSigner),
+  });
+}
+
 /**
  * Parse shard count from environment string.
  */
@@ -112,6 +134,7 @@ export async function registerSignedStatement(
     // Verify statement signer matches grant's signer binding
     const statementSigner = getSignerFromCoseSign1(statementData);
     if (!signerMatchesGrant(statementSigner, grant.signer)) {
+      logSignerMismatch(statementSigner, grant.signer);
       return GrantAuthErrors.signerMismatch();
     }
 

@@ -186,6 +186,14 @@ jobs:
           echo "  Log IDs: ${CANOPY_PERF_LOG_IDS}"
           pnpm --filter @canopy/perf run generate-grant-pool
 
+      - name: Upload grant-pool for triage
+        uses: actions/upload-artifact@v4
+        with:
+          name: grant-pool-${{ inputs.environment }}
+          path: perf/k6/canopy-api/data/grant-pool.json
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Capture queue stats (before)
         id: stats_before
         run: |

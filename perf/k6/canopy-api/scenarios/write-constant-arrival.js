@@ -54,8 +54,12 @@ const WARMUP = __ENV.CANOPY_PERF_WARMUP || "30s";
 const MSG_BYTES = parseInt(__ENV.CANOPY_PERF_MSG_BYTES || "64", 10);
 const SAMPLE_RATE = parseFloat(__ENV.CANOPY_PERF_SAMPLE_RATE || "0.01");
 
-// Parse log IDs from comma-separated string
-const LOG_IDS = LOG_IDS_RAW ? LOG_IDS_RAW.split(",") : [];
+// Parse log IDs from comma-separated string (trim to match generate-grant-pool script)
+const LOG_IDS = LOG_IDS_RAW
+  ? LOG_IDS_RAW.split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+  : [];
 
 // Validate required environment variables
 if (!BASE_URL) {
@@ -186,6 +190,8 @@ export function setup() {
   console.log(`  Payload: ${MSG_BYTES} bytes`);
   console.log(`  Sample rate: ${SAMPLE_RATE * 100}%`);
   console.log(`  Grant pool: ${grants.length} grants (X-Grant-Location)`);
+  // Triage: signer hex from pool (same as used in COSE kid)
+  console.log(`  [triage] grant-pool signer (64 hex): ${pool.signer}`);
 
   return {
     baseUrl: BASE_URL,
