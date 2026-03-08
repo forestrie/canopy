@@ -170,6 +170,12 @@ function signerToBytes(signerStr) {
 export function setup() {
   const pool = grantPool[0];
   const signerBytes = signerToBytes(pool.signer);
+  if (signerBytes.length !== 32) {
+    throw new Error(
+      `grant-pool signer must decode to 32 bytes (got ${signerBytes.length}); ` +
+        "check pool.signer is 64 hex chars",
+    );
+  }
   const logIdToGrant = {};
   const grants = pool.grants || [];
   for (const g of grants) {
@@ -190,8 +196,10 @@ export function setup() {
   console.log(`  Payload: ${MSG_BYTES} bytes`);
   console.log(`  Sample rate: ${SAMPLE_RATE * 100}%`);
   console.log(`  Grant pool: ${grants.length} grants (X-Grant-Location)`);
-  // Triage: signer hex from pool (same as used in COSE kid)
-  console.log(`  [triage] grant-pool signer (64 hex): ${pool.signer}`);
+  // Triage: signer hex and length (must be 32 for COSE kid)
+  console.log(
+    `  [triage] grant-pool signer (64 hex): ${pool.signer} → ${signerBytes.length} bytes`,
+  );
 
   return {
     baseUrl: BASE_URL,
