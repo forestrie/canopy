@@ -201,6 +201,8 @@ export function setup() {
     `  [triage] grant-pool signer (64 hex): ${pool.signer} → ${signerBytes.length} bytes`,
   );
 
+  // Do not pass signerBytes through setup return: k6 may serialize it and VUs can
+  // receive a corrupted/wrong-length copy. Each VU derives signer from pool instead.
   return {
     baseUrl: BASE_URL,
     apiToken: API_TOKEN,
@@ -208,8 +210,8 @@ export function setup() {
     logCount: LOG_IDS.length,
     msgBytes: MSG_BYTES,
     sampleRate: SAMPLE_RATE,
-    signerBytes,
     logIdToGrant,
+    poolSignerHex: pool.signer,
   };
 }
 
@@ -226,12 +228,14 @@ export default function (data) {
     return;
   }
 
-  // Generate unique payload and sign with kid matching grant signer
+  // Generate unique payload and sign with kid matching grant signer.
+  // Derive signer in VU from pool (avoid setup→VU serialization corrupting Uint8Array).
+  const signerBytes = signerToBytes(data.poolSignerHex);
   const payloadBytes = generateUniquePayloadBytes(
     requestCounter - 1,
     data.msgBytes,
   );
-  const coseSign1 = encodeCoseSign1WithKid(payloadBytes, data.signerBytes);
+  const coseSign1 = encodeCoseSign1WithKid(payloadBytes, signerBytes);
 
   // Decide if this request should measure e2e latency (sampled)
   const measureE2E = data.sampleRate > 0 && Math.random() < data.sampleRate;
