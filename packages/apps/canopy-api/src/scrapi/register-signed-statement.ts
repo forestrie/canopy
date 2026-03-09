@@ -39,34 +39,14 @@ export interface RegisterStatementResponse {
   status: "accepted" | "pending";
 }
 
-/** Format up to 16 bytes as hex for diagnostic logging. */
-function bytesToHexPrefix(bytes: Uint8Array | null, maxBytes = 16): string {
-  if (!bytes || bytes.length === 0) return "(empty)";
-  const n = Math.min(bytes.length, maxBytes);
-  let hex = "";
-  for (let i = 0; i < n; i++) {
-    hex += bytes[i].toString(16).padStart(2, "0");
-  }
-  return `${hex}${bytes.length > maxBytes ? "…" : ""} (len=${bytes.length})`;
-}
-
-/** Log signer mismatch details for debugging grant/COSE kid binding. */
+/** Log signer mismatch (grant auth). */
 function logSignerMismatch(
   statementSigner: Uint8Array | null,
   grantSigner: Uint8Array,
-  bodyForTriage: Uint8Array,
 ): void {
-  const bodyPrefix =
-    bodyForTriage.length >= 4
-      ? Array.from(bodyForTriage.slice(0, 4))
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("")
-      : "(len<4)";
-  console.warn("[grant-auth] signer_mismatch: statement kid vs grant.signer", {
-    statementKidHex: bytesToHexPrefix(statementSigner),
-    grantSignerHex: bytesToHexPrefix(grantSigner),
-    bodyLen: bodyForTriage.length,
-    bodyFirst4Hex: bodyPrefix,
+  console.warn("[grant-auth] signer_mismatch", {
+    statementKidLen: statementSigner?.length ?? 0,
+    grantSignerLen: grantSigner.length,
   });
 }
 
@@ -143,7 +123,7 @@ export async function registerSignedStatement(
     // Verify statement signer matches grant's signer binding
     const statementSigner = getSignerFromCoseSign1(statementData);
     if (!signerMatchesGrant(statementSigner, grant.signer)) {
-      logSignerMismatch(statementSigner, grant.signer, statementData);
+      logSignerMismatch(statementSigner, grant.signer);
       return GrantAuthErrors.signerMismatch();
     }
 

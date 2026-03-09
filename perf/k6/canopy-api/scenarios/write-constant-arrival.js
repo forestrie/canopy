@@ -196,10 +196,6 @@ export function setup() {
   console.log(`  Payload: ${MSG_BYTES} bytes`);
   console.log(`  Sample rate: ${SAMPLE_RATE * 100}%`);
   console.log(`  Grant pool: ${grants.length} grants (X-Grant-Location)`);
-  // Triage: signer hex and length (must be 32 for COSE kid)
-  console.log(
-    `  [triage] grant-pool signer (64 hex): ${pool.signer} → ${signerBytes.length} bytes`,
-  );
 
   // Do not pass signerBytes through setup return: k6 may serialize it and VUs can
   // receive a corrupted/wrong-length copy. Each VU derives signer from pool instead.
