@@ -1,0 +1,38 @@
+---
+description: Document naming, numbering, and cross-referencing conventions
+alwaysApply: true
+---
+
+# Document workflow
+
+This project uses numbered document categories in `docs/`:
+
+- `arc-NNNN-name.md` — architecture documents
+- `adr-NNNN-name.md` — architecture decision records
+- `plan-NNNN-name.md` — implementation plans
+
+## Numbering
+
+All document types are sequentially numbered with a zero-padded
+four-digit prefix (NNNN) starting from 0001. When creating a new
+document, find the highest existing number for that prefix in `docs/`
+and increment by one.
+
+## Purpose
+
+Documents are produced via agentic tools and form a prompt history
+and record of key decisions, designs, and implementation plans.
+They are version-controlled alongside the code they describe.
+
+## Structure
+
+Each document should include a YAML-style header with:
+- **Status**: DRAFT | ACCEPTED | SUPERSEDED
+- **Date**: creation date
+- **Related**: links to related arc/adr/plan docs
+
+## Cross-referencing
+
+Reference related documents rather than Reference related documents rather than Reference related documents rathemarkdown
+See [ADR-0003](adr-0003-credential-optimization.md) for rationale.
+```

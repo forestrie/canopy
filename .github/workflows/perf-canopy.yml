@@ -94,6 +94,14 @@ jobs:
       - name: Bundle k6 scenario
         run: pnpm perf:k6:bundle-canopy-api
 
+      - name: Verify COSE signature bstr in bundle
+        run: |
+          BUNDLE=perf/k6/canopy-api/dist/write-constant-arrival.bundle.js
+          if ! grep -q 'signatureBstr' "$BUNDLE"; then
+            echo "::error::Bundle missing COSE fix (signature as CBOR bstr); check perf/k6/canopy-api/lib/cose.js"
+            exit 1
+          fi
+
       - name: Setup k6
         uses: grafana/setup-k6-action@v1
 
@@ -168,61 +176,23 @@ jobs:
           # Save log IDs to file for later processing
           echo "$LOG_IDS" > /tmp/log_ids.txt
 
-      - name: Reset x402 auth block (preflight)
+      - name: Generate grant pool
         env:
-          CANOPY_X402_DEV_PRIVATE_KEY: ${{ secrets.CANOPY_X402_DEV_PRIVATE_KEY }}
+          CANOPY_PERF_BASE_URL: ${{ env.CANOPY_PERF_BASE_URL }}
+          CANOPY_PERF_API_TOKEN: ${{ env.CANOPY_PERF_API_TOKEN }}
+          CANOPY_PERF_LOG_IDS: ${{ steps.log_ids.outputs.log_ids }}
         run: |
-          echo "Resetting x402 auth block to ensure clean state..."
-          node perf/scripts/reset-x402-auth.mjs
-          
-          # Wait for any pending settlements from previous runs to drain.
-          # This gives time for the settlement queue to process and the
-          # failure count to stabilize before we reset again.
-          echo "Waiting 30s for pending settlements to drain..."
-          sleep 30
-          
-          # Reset again to clear any new failures from the drain period
-          echo "Second reset to clear any new failures..."
-          node perf/scripts/reset-x402-auth.mjs
+          echo "Creating grants for each log (grant-based auth)..."
+          echo "  Log IDs: ${CANOPY_PERF_LOG_IDS}"
+          pnpm --filter @canopy/perf run generate-grant-pool
 
-      - name: Generate x402 payment pool
-        env:
-          CANOPY_X402_DEV_PRIVATE_KEY: ${{ secrets.CANOPY_X402_DEV_PRIVATE_KEY }}
-          CANOPY_PERF_LOG_ID: ${{ env.CANOPY_PERF_1LPS_0 }}
-          CANOPY_PERF_RATE: ${{ matrix.rate }}
-          CANOPY_PERF_DURATION: ${{ github.event.inputs.duration || '3m' }}
-          CANOPY_PERF_WARMUP: ${{ github.event.inputs.warmup || '30s' }}
-        run: |
-          # Calculate pool size: rate * (warmup + duration) * 1.2 buffer
-          # Parse duration strings (e.g. "3m" -> 180, "30s" -> 30)
-          parse_duration() {
-            local dur=$1
-            if [[ $dur =~ ^([0-9]+)s$ ]]; then
-              echo ${BASH_REMATCH[1]}
-            elif [[ $dur =~ ^([0-9]+)m$ ]]; then
-              echo $((${BASH_REMATCH[1]} * 60))
-            elif [[ $dur =~ ^([0-9]+)h$ ]]; then
-              echo $((${BASH_REMATCH[1]} * 3600))
-            else
-              echo 180  # default 3m
-            fi
-          }
-
-          WARMUP_SECS=$(parse_duration "${CANOPY_PERF_WARMUP}")
-          DURATION_SECS=$(parse_duration "${CANOPY_PERF_DURATION}")
-          TOTAL_SECS=$((WARMUP_SECS + DURATION_SECS))
-          POOL_SIZE=$(echo "scale=0; ${CANOPY_PERF_RATE} * ${TOTAL_SECS} * 1.2 / 1" | bc)
-          VALIDITY_SECS=$((TOTAL_SECS + 600))  # Add 10 min grace
-
-          echo "Generating x402 payment pool..."
-          echo "  Rate: ${CANOPY_PERF_RATE} req/s"
-          echo "  Duration: ${WARMUP_SECS}s warmup + ${DURATION_SECS}s sustained = ${TOTAL_SECS}s"
-          echo "  Pool size: ${POOL_SIZE}"
-          echo "  Validity: ${VALIDITY_SECS}s"
-
-          CANOPY_PERF_POOL_SIZE=${POOL_SIZE} \
-          CANOPY_PERF_VALIDITY_SECONDS=${VALIDITY_SECS} \
-          node perf/scripts/generate-x402-payment-pool.mjs
+      - name: Upload grant-pool for triage
+        uses: actions/upload-artifact@v4
+        with:
+          name: grant-pool-${{ inputs.environment }}
+          path: perf/k6/canopy-api/data/grant-pool.json
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Capture queue stats (before)
         id: stats_before

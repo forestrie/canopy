@@ -5,70 +5,14 @@
  */
 
 import { problemResponse } from "./scrapi/cbor-response";
+import { registerGrant } from "./scrapi/register-grant";
 import { registerSignedStatement } from "./scrapi/register-signed-statement";
 import { queryRegistrationStatus } from "./scrapi/query-registration-status";
 import { resolveReceipt } from "./scrapi/resolve-receipt";
 import { getTransparencyConfiguration } from "./scrapi/transparency-configuration";
-import { encodePayerAddressToExtra1 } from "./scrapi/payer-address";
-import { verifyPayment } from "./scrapi/x402-facilitator";
-import {
-  X402_HEADERS,
-  buildPaymentRequiredHeader,
-  parsePaymentHeader,
-  getPaymentRequirementsForVerify,
-} from "./scrapi/x402";
-import type { SettlementJob, AuthState } from "@canopy/x402-settlement-types";
-import { hashLogId } from "@canopy/forestrie-sharding";
+import type { SettlementJob } from "@canopy/x402-settlement-types";
 
 export type X402Mode = "verify-only" | "verify-and-settle";
-
-/**
- * Auth info response from X402SettlementDO.getAuthInfo().
- */
-interface AuthInfo {
-  state: AuthState;
-  failureCount: number;
-}
-
-/**
- * Generate a 403 Forbidden response for blocked payment authorizations.
- *
- * Uses RFC 9457 Problem Details format with actionable resolution info.
- */
-function authBlockedResponse(
-  authId: string,
-  failureCount: number,
-  corsHeaders: Record<string, string>,
-): Response {
-  const problem = {
-    type: "https://forestrie.dev/problems/x402/auth-blocked",
-    title: "Payment Authorization Blocked",
-    status: 403,
-    detail:
-      "Your payment authorization has been blocked due to repeated settlement failures. " +
-      "This typically occurs when insufficient funds are available at settlement time.",
-    authId,
-    failureCount,
-    resolution: {
-      action: "top_up_and_request_reset",
-      description:
-        "Ensure your wallet has sufficient USDC balance to cover pending settlements, " +
-        "then contact support to reset your authorization.",
-      supportUrl: "https://forestrie.dev/support/payment-block",
-    },
-  };
-
-  const headers = new Headers({
-    "Content-Type": "application/problem+json",
-  });
-  Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
-
-  return new Response(JSON.stringify(problem), {
-    status: 403,
-    statusText: "Forbidden",
-    headers,
-  });
-}
 
 export interface Env {
   // Merklelog storage bucket (massifs + checkpoints) written by Arbor services.
@@ -76,6 +20,11 @@ export interface Env {
   // - v2/merklelog/massifs/{massifHeight}/{logId}/{massifIndex}.log
   // - v2/merklelog/checkpoints/{massifHeight}/{logId}/{massifIndex}.sth
   R2_MMRS: R2Bucket;
+  // Grants storage bucket (content-addressable grant objects).
+  // Path format: <kind>/<hash>.cbor. Location returned to clients is path-only, relative to GRANT_STORAGE_PUBLIC_BASE.
+  R2_GRANTS: R2Bucket;
+  // Public base URL for grant storage (path-only location is relative to this).
+  GRANT_STORAGE_PUBLIC_BASE?: string;
   // Durable Object namespace for the ingress sequencing queue.
   // Sharded by logId hash. Owned by forestrie-ingress worker.
   // Used for both enqueue (register-signed-statement) and resolveContent (query-registration-status).
@@ -125,7 +74,8 @@ export default {
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Allow-Headers":
+        "Content-Type, Authorization, X-Grant-Location",
     };
 
     // Handle OPTIONS preflight
@@ -194,264 +144,39 @@ export default {
         );
       }
 
+      // POST /logs/{logId}/grants — create grant (Plan 0001 Step 6)
+      if (
+        segments.length === 3 &&
+        segments[2] === "grants" &&
+        request.method === "POST"
+      ) {
+        const response = await registerGrant(
+          request,
+          segments[1],
+          env.R2_GRANTS,
+        );
+        const headers = new Headers(response.headers);
+        Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        });
+      }
+
       // Route group 1: /logs/{logId}/entries...
       if (segments.length >= 3 && segments[2] === "entries") {
         if (request.method === "POST") {
           // POST /logs/{logId}/entries - Register new statement
-          //
-          // x402 payment flow:
-          // - If no X-PAYMENT header, return 402 with X-PAYMENT-REQUIRED
-          //   describing the exact scheme payment option.
-          // - If present, parse and validate the EIP-3009 payment payload.
-          // - In verify-and-settle mode, call the facilitator to verify.
-          const paymentHeader = request.headers.get(
-            X402_HEADERS.paymentSignature,
-          );
-
-          const resourceUrl = `${url.origin}/logs/${segments[1]}/entries`;
-          const x402Config = {
-            network: x402Network,
-            payTo: x402PayTo,
-            priceAtomic: env.X402_PRICE_ATOMIC,
-          };
-
-          console.log("x402 dev config", {
-            mode: x402Mode,
-            facilitatorUrlDefined: !!x402FacilitatorUrl,
-            network: x402Config.network,
-            payTo: x402Config.payTo,
-            hasQueue: !!env.X402_SETTLEMENT_QUEUE,
-          });
-
-          if (!paymentHeader) {
-            const base = problemResponse(
-              402,
-              "Payment Required",
-              "about:blank",
-              {
-                detail:
-                  "x402 payment required for statement registration at this endpoint",
-              },
-            );
-
-            const headers = new Headers(base.headers);
-            Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
-            headers.set(
-              X402_HEADERS.paymentRequired,
-              buildPaymentRequiredHeader(resourceUrl, x402Config),
-            );
-
-            return new Response(base.body, {
-              status: 402,
-              statusText: "Payment Required",
-              headers,
-            });
-          }
-
-          const parsed = parsePaymentHeader(paymentHeader, x402Config);
-          if (!parsed.ok) {
-            const base = problemResponse(400, "Bad Request", "about:blank", {
-              detail: `Invalid x402 payment header: ${parsed.error}`,
-            });
-
-            const headers = new Headers(base.headers);
-            Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
-
-            return new Response(base.body, {
-              status: 400,
-              statusText: "Bad Request",
-              headers,
-            });
-          }
-
-          // Check if the payer's auth is blocked before calling CDP verify.
-          // This saves a CDP round-trip and provides immediate feedback.
-          if (x402Mode === "verify-and-settle" && env.X402_SETTLEMENT_DO) {
-            const authId = `local:${parsed.value.payerAddress}`;
-            const shardCount = parseInt(env.X402_DO_SHARD_COUNT ?? "4", 10);
-            const shardIndex = hashLogId(authId) % shardCount;
-            const shardName = `shard-${shardIndex}`;
-
-            try {
-              const doId = env.X402_SETTLEMENT_DO.idFromName(shardName);
-              const stub = env.X402_SETTLEMENT_DO.get(doId) as unknown as {
-                getAuthInfo(authId: string): Promise<AuthInfo | null>;
-              };
-              const authInfo = await stub.getAuthInfo(authId);
-
-              if (authInfo?.state === "blocked") {
-                console.log("Auth blocked, rejecting request", {
-                  authId,
-                  failureCount: authInfo.failureCount,
-                });
-
-                return authBlockedResponse(
-                  authId,
-                  authInfo.failureCount,
-                  corsHeaders,
-                );
-              }
-            } catch (err) {
-              // If DO lookup fails, log and continue - don't block the request
-              // The settlement worker will catch blocked auths anyway
-              console.warn("Auth state lookup failed, continuing", {
-                error: err instanceof Error ? err.message : String(err),
-              });
-            }
-          }
-
-          // In verify-and-settle mode, call the facilitator to verify
-          // the payment before proceeding.
-          let authResult: { authId: string } | undefined;
-          if (x402Mode === "verify-and-settle" && parsed.ok) {
-            const requirements = getPaymentRequirementsForVerify(
-              resourceUrl,
-              x402Config,
-            );
-            const verifyResult = await verifyPayment(
-              parsed.value,
-              requirements,
-              x402Mode,
-              {
-                facilitatorUrl: x402FacilitatorUrl,
-                verifyTimeoutMs: 5000,
-                cdpCredentials:
-                  env.CDP_API_KEY_ID && env.CDP_API_KEY_SECRET
-                    ? {
-                        keyId: env.CDP_API_KEY_ID,
-                        keySecret: env.CDP_API_KEY_SECRET,
-                      }
-                    : undefined,
-              },
-            );
-
-            console.log("x402 verify result", {
-              ok: verifyResult.ok,
-              // authId is an opaque identifier, safe to log for debugging
-              authId: verifyResult.ok ? verifyResult.authId : undefined,
-              mode: x402Mode,
-            });
-
-            if (!verifyResult.ok) {
-              console.error("x402 verify failed", {
-                mode: x402Mode,
-                error: verifyResult.error,
-              });
-
-              const base = problemResponse(
-                402,
-                "Payment Required",
-                "about:blank",
-                {
-                  detail: `x402 verification failed: ${verifyResult.error}`,
-                },
-              );
-
-              const headers = new Headers(base.headers);
-              Object.entries(corsHeaders).forEach(([k, v]) =>
-                headers.set(k, v),
-              );
-              headers.set(
-                X402_HEADERS.paymentRequired,
-                buildPaymentRequiredHeader(resourceUrl, x402Config),
-              );
-
-              return new Response(base.body, {
-                status: 402,
-                statusText: "Payment Required",
-                headers,
-              });
-            }
-
-            authResult = { authId: verifyResult.authId };
-          }
-
-          let enqueueExtras: Parameters<
-            import("@canopy/forestrie-ingress-types").SequencingQueueStub["enqueue"]
-          >[2];
-
-          if (parsed.ok && "payerAddress" in parsed.value) {
-            try {
-              const encoded = encodePayerAddressToExtra1(
-                (parsed.value as any).payerAddress as string,
-              );
-              enqueueExtras = { extra1: encoded.slice().buffer };
-            } catch (e) {
-              console.warn(
-                "Failed to encode payer address into extra1, continuing without extras:",
-                e instanceof Error ? e.message : e,
-              );
-            }
-          }
-
+          // Grant-based auth is required (Step 5); x402 payment removed (Plan 0001 Step 4).
           const response = await registerSignedStatement(
             request,
             segments[1],
             env.SEQUENCING_QUEUE,
             env.QUEUE_SHARD_COUNT,
-            enqueueExtras,
+            undefined,
+            env.R2_GRANTS,
           );
-
-          // Emit settlement job after successful registration (303 response)
-          // Extract content hash from Location header for idempotency key
-          console.log("Settlement job emission check", {
-            responseStatus: response.status,
-            x402Mode,
-            hasAuthResult: !!authResult,
-            parsedOk: parsed.ok,
-            hasQueue: !!env.X402_SETTLEMENT_QUEUE,
-          });
-
-          if (
-            response.status === 303 &&
-            x402Mode === "verify-and-settle" &&
-            authResult &&
-            parsed.ok &&
-            env.X402_SETTLEMENT_QUEUE
-          ) {
-            const location = response.headers.get("Location");
-            const contentHash = location?.split("/").pop();
-
-            console.log("Creating settlement job", {
-              location,
-              contentHash,
-              authId: authResult.authId,
-            });
-
-            if (contentHash) {
-              const job: SettlementJob = {
-                jobId: crypto.randomUUID(),
-                authId: authResult.authId,
-                scheme: "exact",
-                payer: parsed.value.payerAddress,
-                amount: parsed.value.amount,
-                logId: segments[1],
-                contentHash,
-                idempotencyKey: `${authResult.authId}:${contentHash}:${segments[1]}`,
-                createdAt: Date.now(),
-                // Store the full payload for settlement
-                payload: parsed.value.payload,
-              };
-
-              console.log("Sending settlement job to queue", {
-                jobId: job.jobId,
-                idempotencyKey: job.idempotencyKey,
-              });
-
-              // Fire-and-forget: don't block the response on queue send
-              ctx.waitUntil(
-                env.X402_SETTLEMENT_QUEUE.send(job)
-                  .then(() => {
-                    console.log("Settlement job sent successfully", {
-                      jobId: job.jobId,
-                    });
-                  })
-                  .catch((err) => {
-                    console.error("Failed to send settlement job:", err);
-                  }),
-              );
-            }
-          }
 
           const headers = new Headers(response.headers);
           Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));

@@ -9,6 +9,7 @@ vars:
   # Derived IDs based on environment
   CANOPY_ID: '{{.CANOPY_ID | default (print "canopy-" .ENV "-1")}}'
   R2_BUCKET_NAME_MERKLELOGS: '{{.R2_BUCKET_NAME_MERKLELOGS | default (print "arbor-" .ENV "-1-logs")}}'
+  R2_BUCKET_NAME_GRANTS: '{{.R2_BUCKET_NAME_GRANTS | default (print .CANOPY_ID "-grants")}}'
   BUCKET_PREFIX_MASSIFS: "v2/merklelog/massifs/"
   BUCKET_PREFIX_CHECKPOINTS: "v2/merklelog/checkpoints/"
 
@@ -42,6 +43,7 @@ tasks:
     desc: Create all Cloudflare resources (R2 buckets, queues, and event notifications)
     cmds:
       - task: bucket:create
+      - task: bucket:create:grants
       - task: queue:create:sealer
       - task: queue:create:forester
       - task: queue:create:x402-settlement
@@ -106,6 +108,11 @@ tasks:
     desc: Create R2 bucket for merklelog massifs/checkpoints
     cmds:
       - cmd: yes n | wrangler r2 bucket create "{{.R2_BUCKET_NAME_MERKLELOGS}}" --location weur 2>/dev/null || echo "Bucket {{.R2_BUCKET_NAME_MERKLELOGS}} may already exist"
+
+  bucket:create:grants:
+    desc: Create R2 bucket for grant storage (canopy-api R2_GRANTS binding)
+    cmds:
+      - cmd: yes n | wrangler r2 bucket create "{{.R2_BUCKET_NAME_GRANTS}}" --location weur 2>/dev/null || echo "Bucket {{.R2_BUCKET_NAME_GRANTS}} may already exist"
 
   bucket:empty:
     desc: Delete all objects in the R2 bucket (DESTRUCTIVE!)

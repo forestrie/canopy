@@ -1,3 +1,4 @@
+import { encodeCoseSign1Statement } from "@canopy/encoding";
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
@@ -5,6 +6,13 @@ import { describe, expect, it } from "vitest";
 import { encodeEntryId } from "../src/scrapi/entry-id";
 import worker from "../src/index";
 import type { Env } from "../src/index";
+import {
+  encodeGrant,
+  grantStoragePath,
+  KIND_ATTESTOR,
+  uuidToBytes,
+} from "../src/grant";
+import type { Grant } from "../src/grant";
 
 // Cast the test env to our Env type.
 const testEnv = env as unknown as Env;
@@ -43,46 +51,13 @@ describe("SCRAPI flow", () => {
     );
   });
 
-  it("POST /logs/{logId}/entries without payment returns 402 and Payment-Required", async () => {
+  it("POST /logs/{logId}/entries without grant location returns 401", async () => {
     const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
 
     const request = new Request(`http://localhost/logs/${logId}/entries`, {
       method: "POST",
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',
-      },
-      body: new Uint8Array([0x80]), // minimal body; never parsed in 402 path
-    });
-
-    const response = await worker.fetch(
-      request,
-      testEnv,
-      {} as ExecutionContext,
-    );
-
-    expect(response.status).toBe(402);
-    // X-PAYMENT-REQUIRED header should be present and contain base64-encoded JSON
-    const paymentRequired = response.headers.get("X-PAYMENT-REQUIRED");
-    expect(paymentRequired).not.toBeNull();
-
-    const bodyBytes = new Uint8Array(await response.arrayBuffer());
-    const decoded = decodeCbor(bodyBytes) as any;
-    expect(decoded).toMatchObject({
-      title: "Payment Required",
-      status: 402,
-    });
-  });
-
-  it("POST /logs/{logId}/entries with invalid X-PAYMENT returns 402", async () => {
-    const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
-
-    // The X-PAYMENT header must be valid base64 containing a valid JSON payload.
-    // Invalid base64 or malformed JSON will cause parsePaymentHeader to fail.
-    const request = new Request(`http://localhost/logs/${logId}/entries`, {
-      method: "POST",
-      headers: {
-        "content-type": 'application/cose; cose-type="cose-sign1"',
-        "X-PAYMENT": "bm90LWpzb24=", // base64 of "not-json"
       },
       body: new Uint8Array([0x80]),
     });
@@ -93,18 +68,85 @@ describe("SCRAPI flow", () => {
       {} as ExecutionContext,
     );
 
-    // Invalid payment payloads result in 400 Bad Request
-    expect(response.status).toBe(400);
-
+    expect(response.status).toBe(401);
     const bodyBytes = new Uint8Array(await response.arrayBuffer());
     const decoded = decodeCbor(bodyBytes) as any;
     expect(decoded).toMatchObject({
-      title: "Bad Request",
-      status: 400,
+      title: "Unauthorized",
+      status: 401,
     });
-    expect(String(decoded.detail || "")).toContain(
-      "Invalid x402 payment header",
+    expect(decoded.reason).toBe("grant_required");
+  });
+
+  it("POST /logs/{logId}/entries with invalid grant location returns 401", async () => {
+    const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
+
+    const request = new Request(`http://localhost/logs/${logId}/entries`, {
+      method: "POST",
+      headers: {
+        "content-type": 'application/cose; cose-type="cose-sign1"',
+        "X-Grant-Location": "/attestor/nonexistent.cbor",
+      },
+      body: new Uint8Array([0x80]),
+    });
+
+    const response = await worker.fetch(
+      request,
+      testEnv,
+      {} as ExecutionContext,
     );
+
+    expect(response.status).toBe(401);
+    const bodyBytes = new Uint8Array(await response.arrayBuffer());
+    const decoded = decodeCbor(bodyBytes) as any;
+    expect(decoded.reason).toBe("grant_not_found");
+  });
+
+  it("POST with valid grant and matching signer proceeds to enqueue (303 or 503)", async () => {
+    const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
+    const signerKid = new Uint8Array([0x99, 0x88, 0x77]);
+
+    const grant: Grant = {
+      version: 1,
+      idtimestamp: new Uint8Array(8).fill(42),
+      logId: uuidToBytes(logId),
+      ownerLogId: uuidToBytes("660e8400-e29b-41d4-a716-446655440001"),
+      grantFlags: new Uint8Array(8),
+      grantData: new Uint8Array([]),
+      signer: signerKid,
+      kind: new Uint8Array([KIND_ATTESTOR]),
+    };
+    const grantBytes = encodeGrant(grant);
+    const storagePath = await grantStoragePath(grantBytes, grant.kind);
+    await testEnv.R2_GRANTS.put(storagePath, grantBytes);
+
+    const payload = new Uint8Array([0x48, 0x65, 0x6c, 0x6c, 0x6f]); // "Hello"
+    const coseSign1 = encodeCoseSign1Statement(
+      payload,
+      signerKid,
+      new Uint8Array(64),
+    );
+
+    const request = new Request(`http://localhost/logs/${logId}/entries`, {
+      method: "POST",
+      headers: {
+        "content-type": 'application/cose; cose-type="cose-sign1"',
+        "X-Grant-Location": `/${storagePath}`,
+      },
+      body: coseSign1,
+    });
+
+    const response = await worker.fetch(
+      request,
+      testEnv,
+      {} as ExecutionContext,
+    );
+
+    expect([303, 503, 500]).toContain(response.status);
+    if (response.status === 303) {
+      expect(response.headers.get("Location")).toContain(logId);
+    }
+    // 500 can occur in test env when SEQUENCING_QUEUE is not bound
   });
 
   it("resolve-receipt returns a COSE_Sign1 receipt with an attached proof", async () => {

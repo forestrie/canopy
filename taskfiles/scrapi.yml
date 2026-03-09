@@ -15,21 +15,21 @@ tasks:
   create-statement:hello:
     desc: Generate a hello world COSE Sign1 statement
     cmds:
-      - node scripts/gen-cose-sign1.mjs
+      - pnpm -s --filter @canopy/scripts run gen-cose-sign1
 
   create-statement:*:
     desc: Generate a COSE Sign1 statement with custom message
     vars:
       MESSAGE: "{{index .MATCH 0}}"
     cmds:
-      - node scripts/gen-cose-sign1.mjs "{{.MESSAGE}}"
+      - pnpm -s --filter @canopy/scripts run gen-cose-sign1 -- "{{.MESSAGE}}"
 
   decode-receipt:*:
     desc: Decode a CBOR receipt file and display in CDDL notation
     vars:
       RECEIPT: "{{index .MATCH 0}}"
     cmds:
-      - node scripts/decode-receipt.mjs "{{.RECEIPT}}"
+      - pnpm -s --filter @canopy/scripts run decode-receipt -- "{{.RECEIPT}}"
 
   register-statement:*:
     desc: Create, register, and resolve a COSE Sign1 statement to receipt
@@ -258,7 +258,7 @@ tasks:
     cmds:
       - cmd: |
           set -euo pipefail
-          statement=$(node scripts/gen-cose-sign1.mjs "{{.MSG}}" 2>/dev/null)
+          statement=$(pnpm -s --filter @canopy/scripts run gen-cose-sign1 -- "{{.MSG}}")
           headers=$(mktemp)
           trap 'rm -f "$headers"' EXIT
 
@@ -639,7 +639,7 @@ tasks:
     desc: Post a COSE Sign1 message with random UUID to the /entries endpoint
     cmds:
       - cmd: |
-          http_code=$(node scripts/gen-cose-sign1.mjs \
+          http_code=$(pnpm -s --filter @canopy/scripts run gen-cose-sign1 -- \
           | curl -v -w "%{http_code}" -D /tmp/post-entry-headers -X POST "{{.BASE_URL}}/entries" \
           -H 'Content-Type: application/cose; cose-type="cose-sign1"' \
           -H "Authorization: Bearer {{.API_KEY}}" \
@@ -663,7 +663,7 @@ tasks:
               --log-id "$log_id" \
               --payment-required "$payment_required")
 
-            http_code=$(node scripts/gen-cose-sign1.mjs \
+            http_code=$(pnpm -s --filter @canopy/scripts run gen-cose-sign1 -- \
             | curl -v -w "%{http_code}" -X POST "{{.BASE_URL}}/entries" \
             -H 'Content-Type: application/cose; cose-type="cose-sign1"' \
             -H "Authorization: Bearer {{.API_KEY}}" \

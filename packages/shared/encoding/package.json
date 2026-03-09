@@ -1,0 +1,23 @@
+{
+  "name": "@canopy/encoding",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "cbor-x": "^1.5.9"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}

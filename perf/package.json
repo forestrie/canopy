@@ -1,0 +1,16 @@
+{
+  "name": "@canopy/perf",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "generate-grant-pool": "tsx scripts/generate-grant-pool.ts"
+  },
+  "dependencies": {
+    "@canopy/encoding": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.8.1",
+    "typescript": "^5.6.3"
+  }
+}

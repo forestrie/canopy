@@ -3,4 +3,6 @@ packages:
   - "packages/shared/*"
   - "packages/merklelog"
   - "packages/tests/*"
+  - "perf"
+  - "scripts"
   - "tests/*"

@@ -17,7 +17,7 @@ export default defineWorkersConfig({
         },
         miniflare: {
           // Enable local R2 bucket bindings for testing.
-          r2Buckets: ["R2_MMRS"],
+          r2Buckets: ["R2_MMRS", "R2_GRANTS"],
           // Persist data between test runs (optional)
           r2Persist: ".wrangler/state/v3/r2",
           durableObjectsPersist: ".wrangler/state/v3/do",
