@@ -1,0 +1,54 @@
+[
+  {
+    "description": "golden grant (all fields, fixed-length left-padded)",
+    "idtimestamp_hex": "0000000000000001",
+    "log_id_hex": "000102030405060708090a0b0c0d0e0f",
+    "owner_log_id_hex": "101112131415161718191a1b1c1d1e1f",
+    "grant_flags_hex": "0000000000000001",
+    "max_height": 1000,
+    "min_growth": 1,
+    "grant_data_hex": "abcd",
+    "signer_hex": "0102",
+    "kind": 1,
+    "expected_cbor_hex": "a90048000000000000000101582000000000000000000000000000000000000102030405060708090a0b0c0d0e0f02582000000000000000000000000000000000101112131415161718191a1b1c1d1e1f03480000000000000001041903e805010642abcd074201020801"
+  },
+  {
+    "description": "minimal grant (zero bounds, empty grantData, 1-byte signer)",
+    "idtimestamp_hex": "0000000000000000",
+    "log_id_hex": "0405060708090a0b0c0d0e0f10111213",
+    "owner_log_id_hex": "05060708090a0b0c0d0e0f1011121314",
+    "grant_flags_hex": "01",
+    "max_height": 0,
+    "min_growth": 0,
+    "grant_data_hex": "",
+    "signer_hex": "00",
+    "kind": 0,
+    "expected_cbor_hex": "a900480000000000000000015820000000000000000000000000000000000405060708090a0b0c0d0e0f101112130258200000000000000000000000000000000005060708090a0b0c0d0e0f1011121314034800000000000000010400050006400741000800"
+  },
+  {
+    "description": "fixed-length padding (16-byte logId/ownerLogId -> 32, 1-byte flags -> 8)",
+    "idtimestamp_hex": "0000000000000002",
+    "log_id_hex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "owner_log_id_hex": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "grant_flags_hex": "ff",
+    "max_height": 0,
+    "min_growth": 0,
+    "grant_data_hex": "01",
+    "signer_hex": "0203",
+    "kind": 1,
+    "expected_cbor_hex": "a90048000000000000000201582000000000000000000000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa02582000000000000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb034800000000000000ff04000500064101074202030801"
+  },
+  {
+    "description": "variable-length (empty grantData, 1-byte signer)",
+    "idtimestamp_hex": "0000000000000003",
+    "log_id_hex": "000102030405060708090a0b0c0d0e0f",
+    "owner_log_id_hex": "101112131415161718191a1b1c1d1e1f",
+    "grant_flags_hex": "0000000000000001",
+    "max_height": 99,
+    "min_growth": 10,
+    "grant_data_hex": "",
+    "signer_hex": "ee",
+    "kind": 0,
+    "expected_cbor_hex": "a90048000000000000000301582000000000000000000000000000000000000102030405060708090a0b0c0d0e0f02582000000000000000000000000000000000101112131415161718191a1b1c1d1e1f03480000000000000001041863050a06400741ee0800"
+  }
+]
