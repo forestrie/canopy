@@ -1,13 +1,16 @@
 /**
  * Register-grant endpoint tests (Plan 0001 Step 6).
+ * Request body must be grant wire format (go-univocity keys 0–8).
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import { encodeGrantRequest } from "@canopy/encoding";
+import { encode as encodeCbor } from "cbor-x";
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import worker from "../src/index";
 import type { Env } from "../src/index";
 import {
+  bytesToUuid,
   decodeGrant,
   kindBytesToSegment,
   KIND_ATTESTOR,
@@ -20,15 +23,15 @@ describe("POST /logs/{logId}/grants", () => {
   const logId = "550e8400-e29b-41d4-a716-446655440000";
 
   it("returns 201 and stores grant at content-addressable path", async () => {
-    const body = {
+    const bodyBytes = encodeGrantRequest({
+      idtimestamp: new Uint8Array(8),
       logId: uuidToBytes(logId),
       ownerLogId: uuidToBytes("660e8400-e29b-41d4-a716-446655440001"),
       grantFlags: new Uint8Array(8),
       grantData: new Uint8Array([]),
       signer: new Uint8Array([0x01, 0x02, 0x03]),
       kind: new Uint8Array([KIND_ATTESTOR]),
-    };
-    const bodyBytes = encodeCbor(body);
+    });
 
     const request = new Request(`http://localhost/logs/${logId}/grants`, {
       method: "POST",
@@ -52,9 +55,12 @@ describe("POST /logs/{logId}/grants", () => {
     expect(obj).not.toBeNull();
     const stored = new Uint8Array(await obj!.arrayBuffer());
     const decoded = decodeGrant(stored);
-    expect(new Uint8Array(decoded.logId)).toEqual(body.logId);
+    expect(decoded.logId.length).toBe(32);
+    expect(bytesToUuid(decoded.logId)).toBe(logId);
     expect(kindBytesToSegment(decoded.kind)).toBe("attestor");
-    expect(new Uint8Array(decoded.signer)).toEqual(new Uint8Array(body.signer));
+    expect(new Uint8Array(decoded.signer)).toEqual(
+      new Uint8Array([0x01, 0x02, 0x03]),
+    );
   });
 
   it("returns 401 without grant location for entries", async () => {

@@ -5,16 +5,15 @@
  * Verifies that the signer is consistent across:
  * - generate-grant-pool script (grant request CBOR via @canopy/encoding, pool JSON hex)
  * - k6 (signerToBytes from pool, encodeCoseSign1WithKid)
- * - API (parseCborBody + parseGrantRequest signer, getSignerFromCoseSign1, signerMatchesGrant)
+ * - API (decodeGrant wire format key 7 = signer, getSignerFromCoseSign1, signerMatchesGrant)
  */
 
-import { decode as decodeCbor } from "cbor-x";
 import { describe, expect, it } from "vitest";
+import { decodeGrant } from "../src/grant/codec.js";
 import {
   getSignerFromCoseSign1,
   signerMatchesGrant,
 } from "../src/scrapi/grant-auth";
-import { toBytes } from "../src/unknown-coercion";
 import { encodeCoseSign1WithKid } from "./cose-sign1-k6-encoder";
 import {
   encodeGrantRequestCbor,
@@ -41,7 +40,7 @@ describe("Grant pool signer consistency (script ↔ API ↔ k6)", () => {
   const grantData = new Uint8Array(0);
   const kind = new Uint8Array(KIND_BYTES);
 
-  it("grant request CBOR (script format) decodes so signer key 9 equals original", () => {
+  it("grant request CBOR (wire format) decodes so signer equals original", () => {
     const body = encodeGrantRequestCbor(
       logId,
       ownerLogId,
@@ -50,12 +49,10 @@ describe("Grant pool signer consistency (script ↔ API ↔ k6)", () => {
       signer,
       kind,
     );
-    const decoded = decodeCbor(body) as Record<number, unknown>;
-    expect(decoded).toBeDefined();
-    const decodedSigner = toBytes(decoded[9]);
-    expect(decodedSigner).toBeDefined();
-    expect(decodedSigner!.length).toBe(32);
-    expect(decodedSigner!).toEqual(signer);
+    const decoded = decodeGrant(body);
+    expect(decoded.signer).toBeDefined();
+    expect(decoded.signer.length).toBe(32);
+    expect(new Uint8Array(decoded.signer)).toEqual(signer);
   });
 
   it("pool hex round-trip: signerBytesToHex then hexToSignerBytes equals original", () => {
@@ -75,9 +72,9 @@ describe("Grant pool signer consistency (script ↔ API ↔ k6)", () => {
       signer,
       kind,
     );
-    const decoded = decodeCbor(body) as Record<number, unknown>;
-    const grantSigner = toBytes(decoded[9])!;
-    expect(grantSigner).toEqual(signer);
+    const decoded = decodeGrant(body);
+    const grantSigner = decoded.signer;
+    expect(new Uint8Array(grantSigner)).toEqual(signer);
 
     const payload = new Uint8Array(64);
     const coseSign1 = encodeCoseSign1WithKid(payload, grantSigner);
