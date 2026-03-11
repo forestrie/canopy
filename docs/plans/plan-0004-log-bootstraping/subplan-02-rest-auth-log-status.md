@@ -41,3 +41,31 @@
 
 - Univocity: `docs/arc/arc-0017-auth-overview.md`, `docs/arc/arc-0017-log-hierarchy-and-authority.md`, contract storage/interface for LogState and root.
 - Overview: §4 (REST auth log status), §4.3 (sealer key resolution); refinement §4.2.
+
+## 7. Implementation (arbor univocity service)
+
+Implemented in **arbor** repository: `services/univocity` — a dedicated service (sibling of scout, following the same structural pattern). Requires `UNIVOCITY_RPC_URL` and `UNIVOCITY_CONTRACT_ADDRESS`; the service exits at startup if either is missing.
+
+### 7.1 Endpoints and response shapes
+
+| Method | Path | Description | Response (JSON) |
+|--------|------|-------------|-----------------|
+| GET | `/api/root` | Root existence and root log id | `{ "exists": bool, "rootLogId": "0x..." }` (empty string when not bootstrapped) |
+| GET | `/api/logs` | List known auth logs | `{ "rootLogId": "0x..." \| null, "authLogs": ["0x..."] }`; currently at least root when bootstrapped |
+| GET | `/api/logs/{logId}/config` | Log kind and config for a logId | `{ "kind": "authority" \| "data" \| "undefined", "authLogId": "0x...", "initializedAt": number }`; 404 when log not initialized |
+| GET | `/api/logs/{logId}/signing-key` | Sealer key resolution | `{ "logId", "kind", "ownerLogId", "rootKeyX", "rootKeyY" }`; 404 when log not initialized |
+
+- `logId` in path: `0x`-prefixed hex, 32 or 64 hex chars (32-byte or 16-byte, right-padded to 32 bytes).
+
+### 7.2 Contract calls
+
+- `rootLogId()` → bytes32 (zero = not bootstrapped).
+- `isLogInitialized(bytes32 logId)` → bool.
+- `logConfig(bytes32 logId)` → (LogKind kind, bytes32 authLogId, bytes rootKey, uint256 initializedAt).
+- `logRootKey(bytes32 logId)` → (bytes32 rootKeyX, bytes32 rootKeyY).
+
+Contract interface: univocity `IUnivocity.sol` and `types.sol` (LogKind: Undefined=0, Authority=1, Data=2).
+
+### 7.3 Awareness of new logs
+
+Current implementation does not index created logs; `GET /api/logs` returns only the root when bootstrapped. A later enhancement may add event subscription or polling to populate a full list of known auth logs.

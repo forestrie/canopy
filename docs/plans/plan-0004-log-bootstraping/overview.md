@@ -61,10 +61,10 @@ The following should be clarified or specified before or during implementation s
 
 ### 4.2 REST auth log status (subplan 02)
 
-- **Exact endpoint list** and request/response shapes (e.g. `GET /root`, `GET /logs/{logId}/type`, `GET /logs`).
-- **Contract ABI** and RPC calls used (e.g. `rootLogId()`, `getLogState(logId)`); univocity interface and storage layout.
-- **Polling vs events**: refresh interval or event subscription; how “aware of logs as they are created” is implemented.
-- **Sealer key-resolution API**: exact query (e.g. “return key id or endpoint for signing logId L”) and response shape.
+- **Exact endpoint list** and request/response shapes: see [subplan 02 §7.1](subplan-02-rest-auth-log-status.md#71-endpoints-and-response-shapes): `GET /api/root`, `GET /api/logs`, `GET /api/logs/{logId}/config`, `GET /api/logs/{logId}/signing-key`; JSON responses as specified there.
+- **Contract ABI** and RPC calls: `rootLogId()`, `isLogInitialized(bytes32)`, `logConfig(bytes32)`, `logRootKey(bytes32)`; univocity `IUnivocity.sol` and `types.sol` (LogConfig, LogKind). See subplan 02 §7.2.
+- **Polling vs events**: not yet implemented; `GET /api/logs` currently returns only the root when bootstrapped. Full list may be added via event subscription or polling later (subplan 02 §7.3).
+- **Sealer key-resolution API**: `GET /api/logs/{logId}/signing-key` returns `logId`, `kind`, `ownerLogId`, `rootKeyX`, `rootKeyY` so the sealer can resolve which signing key to use for that log.
 
 ### 4.3 Ranger authority leaf append (subplan 03)
 
