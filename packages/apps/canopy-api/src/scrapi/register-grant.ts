@@ -1,28 +1,44 @@
 /**
- * Register-grant endpoint (Plan 0001 Step 6).
- * POST /logs/{logId}/grants — create grant, store in R2, return path-only location.
+ * Register-grant endpoint (Plan 0001 Step 6, Plan 0004 subplan 03).
+ * POST /logs/{logId}/grants — create grant, enqueue for sequencing, return 303 to status URL.
  * Body must be grant wire format (go-univocity: CBOR map keys 0–8).
+ * When sequencingEnv is provided, grant is stored by inner hash and 303 is returned (client polls query-registration-status).
  */
 
 import { decodeGrant, encodeGrant } from "../grant/codec.js";
+import { innerHashFromGrant, innerHashToHex } from "../grant/inner-hash.js";
 import { kindBytesToSegment } from "../grant/kinds.js";
 import { grantStoragePath } from "../grant/storage-path.js";
 import type { Grant } from "../grant/types.js";
 import { bytesToUuid } from "../grant/uuid-bytes.js";
+import { QueueFullError } from "@canopy/forestrie-ingress-types";
 import { getContentSize } from "./cbor-request";
-import { cborResponse } from "./cbor-response";
+import { cborResponse, seeOtherResponse } from "./cbor-response";
+import {
+  enqueueGrantForSequencing,
+  type GrantSequencingEnv,
+} from "./grant-sequencing.js";
 import { ClientErrors, ServerErrors } from "./problem-details";
 
 const MAX_GRANT_BODY_SIZE = 4 * 1024; // 4 KiB
 
+/** Storage path for sequenced grants: authority/{innerHex}.cbor so GET can complete by inner. */
+const SEQUENCED_GRANT_KIND_SEGMENT = "authority";
+
+export interface RegisterGrantEnv {
+  r2Grants: R2Bucket;
+  sequencingEnv?: GrantSequencingEnv;
+}
+
 /**
  * Handle POST /logs/{logId}/grants.
- * Request body must be full grant CBOR (wire format keys 0–8); idtimestamp is overwritten by server.
+ * Request body must be full grant CBOR (wire format keys 0–8).
+ * When sequencingEnv is set: store at authority/{innerHex}.cbor, enqueue, return 303 to status URL.
  */
 export async function registerGrant(
   request: Request,
   logId: string,
-  r2Grants: R2Bucket,
+  env: RegisterGrantEnv,
 ): Promise<Response> {
   const contentType = request.headers.get("content-type") || "";
   if (!contentType.includes("cbor")) {
@@ -61,7 +77,63 @@ export async function registerGrant(
     return ClientErrors.badRequest("Invalid logId bytes");
   }
 
-  // Deterministic idtimestamp from request content (content-addressable idempotency)
+  const useSequencing = env.sequencingEnv != null;
+
+  if (useSequencing) {
+    const inner = await innerHashFromGrant(grant);
+    const ownerLogId =
+      grant.ownerLogId.length >= 16
+        ? grant.ownerLogId.slice(-16)
+        : grant.ownerLogId;
+    let result;
+    try {
+      result = await enqueueGrantForSequencing(
+        ownerLogId,
+        inner,
+        env.sequencingEnv!,
+      );
+    } catch (error) {
+      if (error instanceof QueueFullError) {
+        return ServerErrors.serviceUnavailableWithRetry(
+          `Queue capacity exceeded (${error.pendingCount}/${error.maxPending} pending)`,
+          error.retryAfterSeconds,
+        );
+      }
+      throw error;
+    }
+
+    const grantWithPlaceholder: Grant = {
+      ...grant,
+      idtimestamp: new Uint8Array(8),
+    };
+    const encoded = encodeGrant(grantWithPlaceholder);
+    const storagePath = `${SEQUENCED_GRANT_KIND_SEGMENT}/${result.innerHex}.cbor`;
+
+    try {
+      await env.r2Grants.put(storagePath, encoded);
+    } catch (e) {
+      console.error("Grant storage put failed", e);
+      return ServerErrors.storageError(
+        e instanceof Error ? e.message : "R2 put failed",
+      );
+    }
+
+    const requestUrl = new URL(request.url);
+    const statusUrl = `${requestUrl.origin}${result.statusUrlPath}`;
+    const grantLocationPath = `/grants/${SEQUENCED_GRANT_KIND_SEGMENT}/${result.innerHex}`;
+
+    console.log("Grant enqueued for sequencing", {
+      statusUrlPath: result.statusUrlPath,
+      grantLocation: grantLocationPath,
+      alreadySequenced: result.alreadySequenced,
+      logId,
+    });
+
+    const res = seeOtherResponse(statusUrl, 5);
+    res.headers.set("X-Grant-Location", grantLocationPath);
+    return res;
+  }
+
   const canonicalGrant: Grant = {
     ...grant,
     idtimestamp: new Uint8Array(8),
@@ -79,7 +151,7 @@ export async function registerGrant(
   const storagePath = await grantStoragePath(encoded, grantWithId.kind);
 
   try {
-    await r2Grants.put(storagePath, encoded);
+    await env.r2Grants.put(storagePath, encoded);
   } catch (e) {
     console.error("Grant storage put failed", e);
     return ServerErrors.storageError(
@@ -94,12 +166,12 @@ export async function registerGrant(
     logId,
   });
 
-  const body = {
-    location: locationPath,
-    kind: kindBytesToSegment(grantWithId.kind),
-  };
-  return cborResponse(body, 201, {
-    Location: locationPath,
-    "Content-Type": "application/cbor",
-  });
+  return cborResponse(
+    { location: locationPath, kind: kindBytesToSegment(grantWithId.kind) },
+    201,
+    {
+      Location: locationPath,
+      "Content-Type": "application/cbor",
+    },
+  );
 }

@@ -59,9 +59,10 @@ Design updates baked into overview and subplans.
 **Recommended next steps (build order)**
 
 1. **Subplan 01** — **Complete.** go-univocity at `arbor/services/_deps/go-univocity`: spec (ContentHash = inner hash in §1), InnerHash/InnerHashFromGrant, leaf_vectors.json with expected_inner_hex, canopy codec aligned. Subplan 03 step 8.1 can use go-univocity or spec and fixtures for inner.
-2. **Subplans 02, 03, 04** — In parallel: REST auth log status (02), grant-sequencing in canopy (03; follow subplan 03 §8; compute inner via InnerHashFromGrant or spec/fixtures), signer delegation (04).
+2. **Subplan 02** — **Complete.** REST auth log status service in arbor `services/univocity`; all steps 8.1–8.7 done; optional gaps in §8.9 (contract test, integration test, rootLogId null).
+3. **Subplans 03, 04** — In parallel: grant-sequencing in canopy (03; follow subplan 03 §8; compute inner via InnerHashFromGrant or spec/fixtures), signer delegation (04).
 3. **Canopy return-path hardening** — Optional early step: query-registration-status (and any resolveContent callers) treat idTimestamp as optional and use R2 fallback when missing.
-4. **Subplan 06** — Canopy settlement → grant creation and sequencing (after 01 remaining items, 02, 03, 04).
+4. **Subplan 06** — Canopy settlement → grant creation and sequencing (after 01, 02, 03, 04).
 5. **DO and ranger (optional idtimestamps)** — When desired: forestrie-ingress DO two-path ack, resolveContent returning idTimestamp; ranger config for idtimestamps in ack. Subplan 05 (queue consumer) only if needed.
 
 ---

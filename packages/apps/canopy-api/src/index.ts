@@ -9,6 +9,7 @@ import { registerGrant } from "./scrapi/register-grant";
 import { registerSignedStatement } from "./scrapi/register-signed-statement";
 import { queryRegistrationStatus } from "./scrapi/query-registration-status";
 import { resolveReceipt } from "./scrapi/resolve-receipt";
+import { serveGrant } from "./scrapi/serve-grant";
 import { getTransparencyConfiguration } from "./scrapi/transparency-configuration";
 import type { SettlementJob } from "@canopy/x402-settlement-types";
 
@@ -135,6 +136,30 @@ export default {
       // note the first segment is the empty string due to leading '/'
       const segments = pathname.split("/").slice(1);
 
+      // GET /grants/authority/{innerHex} — serve grant with lazy completion (subplan 03)
+      if (
+        segments.length === 3 &&
+        segments[0] === "grants" &&
+        segments[1] === "authority" &&
+        request.method === "GET"
+      ) {
+        const massifHeight = parseInt(env.MASSIF_HEIGHT || "14", 10);
+        const response = await serveGrant(segments[2]!, {
+          r2Grants: env.R2_GRANTS,
+          r2Mmrs: env.R2_MMRS,
+          sequencingQueue: env.SEQUENCING_QUEUE,
+          shardCountStr: env.QUEUE_SHARD_COUNT,
+          massifHeight,
+        });
+        const headers = new Headers(response.headers);
+        Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        });
+      }
+
       if (segments[0] !== "logs") {
         return problemResponse(
           404,
@@ -144,17 +169,21 @@ export default {
         );
       }
 
-      // POST /logs/{logId}/grants — create grant (Plan 0001 Step 6)
+      // POST /logs/{logId}/grants — create grant (Plan 0001 Step 6, subplan 03: sequencing)
       if (
         segments.length === 3 &&
         segments[2] === "grants" &&
         request.method === "POST"
       ) {
-        const response = await registerGrant(
-          request,
-          segments[1],
-          env.R2_GRANTS,
-        );
+        const response = await registerGrant(request, segments[1], {
+          r2Grants: env.R2_GRANTS,
+          sequencingEnv: env.SEQUENCING_QUEUE
+            ? {
+                sequencingQueue: env.SEQUENCING_QUEUE,
+                shardCountStr: env.QUEUE_SHARD_COUNT,
+              }
+            : undefined,
+        });
         const headers = new Headers(response.headers);
         Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
         return new Response(response.body, {
@@ -169,6 +198,7 @@ export default {
         if (request.method === "POST") {
           // POST /logs/{logId}/entries - Register new statement
           // Grant-based auth is required (Step 5); x402 payment removed (Plan 0001 Step 4).
+          const massifHeight = parseInt(env.MASSIF_HEIGHT || "14", 10);
           const response = await registerSignedStatement(
             request,
             segments[1],
@@ -176,6 +206,12 @@ export default {
             env.QUEUE_SHARD_COUNT,
             undefined,
             env.R2_GRANTS,
+            {
+              r2Mmrs: env.R2_MMRS,
+              sequencingQueue: env.SEQUENCING_QUEUE,
+              shardCountStr: env.QUEUE_SHARD_COUNT,
+              massifHeight,
+            },
           );
 
           const headers = new Headers(response.headers);
