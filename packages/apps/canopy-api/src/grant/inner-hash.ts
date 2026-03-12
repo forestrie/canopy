@@ -44,10 +44,7 @@ function grantFlags32(flags: Uint8Array): Uint8Array {
  * Build the inner preimage (no idtimestamp). Used to compute inner hash for grant-sequencing.
  */
 function innerPreimage(grant: Grant): Uint8Array {
-  const logId = leftPad(
-    grant.logId as Uint8Array,
-    INNER_LOG_ID_BYTES,
-  );
+  const logId = leftPad(grant.logId as Uint8Array, INNER_LOG_ID_BYTES);
   const flags32 = grantFlags32(grant.grantFlags as Uint8Array);
   const maxHeight = grant.maxHeight ?? 0;
   const minGrowth = grant.minGrowth ?? 0;

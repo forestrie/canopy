@@ -91,7 +91,10 @@ export async function registerSignedStatement(
       return GrantAuthErrors.grantRequired();
     }
 
-    let grantResult: { grant: import("../grant/types.js").Grant; bytes: Uint8Array } | null;
+    let grantResult: {
+      grant: import("../grant/types.js").Grant;
+      bytes: Uint8Array;
+    } | null;
     if (grantLocation.startsWith("/grants/") && grantCompletionEnv) {
       grantResult = await getCompletedGrant(grantLocation, {
         r2Grants,

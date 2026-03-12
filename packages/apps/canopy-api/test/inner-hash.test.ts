@@ -5,10 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { decodeGrant } from "../src/grant/codec.js";
-import {
-  innerHashFromGrant,
-  innerHashToHex,
-} from "../src/grant/inner-hash.js";
+import { innerHashFromGrant, innerHashToHex } from "../src/grant/inner-hash.js";
 import grantVectors from "./fixtures/grant_vectors.json";
 
 function hexToBytesStatic(hex: string): Uint8Array {

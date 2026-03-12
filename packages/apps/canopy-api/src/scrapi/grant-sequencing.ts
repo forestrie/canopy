@@ -53,7 +53,9 @@ export async function enqueueGrantForSequencing(
   const shardCount = getShardCount(env.shardCountStr);
   const shardName = shardNameForLog(ownerLogIdUuid, shardCount);
   const queueId = env.sequencingQueue.idFromName(shardName);
-  const queue = env.sequencingQueue.get(queueId) as unknown as SequencingQueueStub;
+  const queue = env.sequencingQueue.get(
+    queueId,
+  ) as unknown as SequencingQueueStub;
 
   const contentHashBytes = hexToBytes(innerHex);
 
@@ -68,7 +70,8 @@ export async function enqueueGrantForSequencing(
   }
 
   const logId16 = new Uint8Array(16);
-  const src = ownerLogIdBytes.length >= 16 ? ownerLogIdBytes.slice(-16) : ownerLogIdBytes;
+  const src =
+    ownerLogIdBytes.length >= 16 ? ownerLogIdBytes.slice(-16) : ownerLogIdBytes;
   logId16.set(src, 16 - src.length);
   await queue.enqueue(logId16.buffer, contentHashBytes, undefined);
 

@@ -3,7 +3,10 @@
  * Used by query-registration-status and serve-grant (Plan 0004 subplan 03).
  */
 
-import { leafCountForMassifHeight, urkleLeafTableStartByteOffset } from "@canopy/merklelog";
+import {
+  leafCountForMassifHeight,
+  urkleLeafTableStartByteOffset,
+} from "@canopy/merklelog";
 
 /** Leaf record size in bytes (from Urkle.LeafRecordBytes). */
 const LEAF_RECORD_BYTES = 128;
