@@ -3,6 +3,7 @@
  */
 
 export { decodeGrant, encodeGrant } from "./codec.js";
+export { innerHashFromGrant, innerHashToHex } from "./inner-hash.js";
 export {
   GRANT_FLAGS_BYTES,
   KIND_ATTESTOR,

@@ -18,6 +18,7 @@ import {
   signerMatchesGrant,
   GrantAuthErrors,
 } from "./grant-auth";
+import { getCompletedGrant } from "./serve-grant";
 import { ClientErrors, ServerErrors } from "./problem-details";
 import { getMaxStatementSize } from "./transparency-configuration";
 
@@ -62,9 +63,18 @@ function getShardCount(shardCountStr: string): number {
   return count;
 }
 
+/** Optional env for completing sequenced grants (/grants/authority/{innerHex}) when used as X-Grant-Location. */
+export interface GrantCompletionEnv {
+  r2Mmrs: R2Bucket;
+  sequencingQueue: DurableObjectNamespace;
+  shardCountStr: string;
+  massifHeight: number;
+}
+
 /**
  * Process a statement registration request.
  * Requires grant location (X-Grant-Location or Authorization: Bearer <path>); retrieves grant from R2 and verifies statement signer matches grant.
+ * When path is /grants/authority/{innerHex}, grantCompletionEnv is used to complete the grant (subplan 03).
  */
 export async function registerSignedStatement(
   request: Request,
@@ -73,15 +83,29 @@ export async function registerSignedStatement(
   shardCountStr: string,
   enqueueExtras: Parameters<SequencingQueueStub["enqueue"]>[2] | undefined,
   r2Grants: R2Bucket,
+  grantCompletionEnv?: GrantCompletionEnv,
 ): Promise<Response> {
   try {
-    // Grant auth (Plan 0001 Step 5): locate before parsing body
     const grantLocation = getGrantLocationFromRequest(request);
     if (!grantLocation) {
       return GrantAuthErrors.grantRequired();
     }
 
-    const grantResult = await fetchGrant(r2Grants, grantLocation);
+    let grantResult: {
+      grant: import("../grant/types.js").Grant;
+      bytes: Uint8Array;
+    } | null;
+    if (grantLocation.startsWith("/grants/") && grantCompletionEnv) {
+      grantResult = await getCompletedGrant(grantLocation, {
+        r2Grants,
+        r2Mmrs: grantCompletionEnv.r2Mmrs,
+        sequencingQueue: grantCompletionEnv.sequencingQueue,
+        shardCountStr: grantCompletionEnv.shardCountStr,
+        massifHeight: grantCompletionEnv.massifHeight,
+      });
+    } else {
+      grantResult = await fetchGrant(r2Grants, grantLocation);
+    }
     if (!grantResult) {
       return GrantAuthErrors.grantNotFound();
     }

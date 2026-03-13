@@ -1,6 +1,6 @@
 # Plan 0001: Register-grant endpoint, grants storage, and register-statement grant auth (Phase 1)
 
-**Status**: DRAFT  
+**Status**: ACCEPTED  
 **Date**: 2026-03-07  
 **Related**: [Brainstorm-0001](../brainstorm-0001-x402-checkpoint-grants.md) (x402 checkpoint grants)
 
@@ -144,24 +144,27 @@ Tasks are ordered by dependency. Each task is logically isolated and ends with *
 - Unit tests for rate-limit logic pass (allow/deny, window and spike boundaries, state shape).
 - Agent run: `pnpm test -- <rate-limit-test-file>` passes.
 
+**Phase 1 completion**: Rate-limit logic and unit tests are implemented and pass. KV binding and in-request enforcement are deferred to a later phase.
+
 ---
 
 ## 4. Acceptance criteria (consolidated)
 
-- [ ] **Format**: Grant CBOR encode/decode module exists; round-trip and validation tests pass (Step 1).
-- [ ] **Path**: Path schema implemented and tested; documented (Step 2).
-- [ ] **Storage**: Grants R2 binding configured; write/read test passes (Step 3).
-- [ ] **Entries no x402**: Entries handler has no x402 payment logic; tests updated (Step 4).
-- [ ] **Entries grant auth**: Entries require grant location; retrieve grant; verify statement signer; integration tests pass (Step 5).
-- [ ] **Register-grant**: POST creates grant, writes to R2, returns **path-only** location; integration test passes (Step 6).
-- [ ] **Rate limiting**: KV-backed rate limit keyed by grant signer (rolling + spike windows, tiers); **unit tests only** for rate logic (Step 7).
-- [ ] **E2E**: Create grant via API → use location in register-statement → registration succeeds; wrong signer or missing grant fails.
+- [x] **Format**: Grant CBOR encode/decode module exists; round-trip and validation tests pass (Step 1).
+- [x] **Path**: Path schema implemented and tested; documented (Step 2).
+- [x] **Storage**: Grants R2 binding configured; write/read test passes (Step 3).
+- [x] **Entries no x402**: Entries handler has no x402 payment logic; tests updated (Step 4).
+- [x] **Entries grant auth**: Entries require grant location; retrieve grant; verify statement signer; integration tests pass (Step 5).
+- [x] **Register-grant**: POST creates grant, writes to R2, returns **path-only** location; integration test passes (Step 6).
+- [x] **Rate limiting**: Rate-limit logic keyed by grant signer (rolling + spike windows, tiers); unit tests pass (Step 7). KV binding and in-handler enforcement deferred.
+- [x] **E2E**: Create grant via API → use location in register-statement → registration succeeds; wrong signer or missing grant fails.
 
 ---
 
 ## 5. Deferred work
 
 - x402 payment at register-grant; grant addition to authority logs; inclusion-proof verification at register-statement; optional x402 at register-statement in a later phase.
+- Rate limiting: KV binding and in-request enforcement (wire checkGrantSignerRate in register-statement path).
 
 ---
 

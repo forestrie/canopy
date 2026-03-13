@@ -13,13 +13,13 @@
 
 import type { SequencingQueueStub } from "@canopy/forestrie-ingress-types";
 import { shardNameForLog } from "@canopy/forestrie-sharding";
-import {
-  urkleLeafTableStartByteOffset,
-  leafCountForMassifHeight,
-} from "@canopy/merklelog";
 import { seeOtherResponse } from "./cbor-response";
 import { ClientErrors, ServerErrors } from "./problem-details";
 import { encodeEntryId } from "./entry-id";
+import {
+  mmrIndexFromLeafIndex,
+  readIdtimestampFromMassif,
+} from "./sequencing-result.js";
 
 function isUuid(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -48,85 +48,6 @@ function hexToBuffer(hex: string): ArrayBuffer {
 interface SequencingQueueNamespace {
   idFromName(name: string): DurableObjectId;
   get(id: DurableObjectId): SequencingQueueStub;
-}
-
-/** Leaf record size in bytes (from Urkle.LeafRecordBytes) */
-const LEAF_RECORD_BYTES = 128;
-
-/** ID timestamp size in bytes (first 8 bytes of leaf record) */
-const IDTIMESTAMP_BYTES = 8;
-
-/**
- * Compute MMR index from leaf index.
- *
- * Translated from go-merklelog/mmr/mmrindex.go MMRIndex
- */
-function mmrIndexFromLeafIndex(leafIndex: number): bigint {
-  let sum = 0n;
-  let current = BigInt(leafIndex);
-
-  while (current > 0n) {
-    const h = BigInt(current.toString(2).length);
-    sum += (1n << h) - 1n;
-    const half = 1n << (h - 1n);
-    current -= half;
-  }
-
-  return sum;
-}
-
-/**
- * Read the idtimestamp for a leaf entry using an efficient byte-range request.
- *
- * This reads only the 8-byte idtimestamp field from the massif, avoiding
- * downloading the entire massif blob (which can be several MB).
- *
- * @param r2 - R2 bucket binding
- * @param logId - Log UUID
- * @param massifHeight - Massif height (1-based)
- * @param massifIndex - Massif index
- * @param leafIndex - Global leaf index
- * @returns The idtimestamp as bigint
- */
-async function readIdtimestampFromMassif(
-  r2: R2Bucket,
-  logId: string,
-  massifHeight: number,
-  massifIndex: number,
-  leafIndex: number,
-): Promise<bigint> {
-  // Compute the leaf ordinal within the massif
-  const leavesPerMassif = Number(leafCountForMassifHeight(massifHeight));
-  const leafOrdinal = leafIndex % leavesPerMassif;
-
-  // Compute byte offset of the idtimestamp within the massif
-  const leafTableStart = urkleLeafTableStartByteOffset(massifHeight);
-  const leafRecordOffset = leafTableStart + leafOrdinal * LEAF_RECORD_BYTES;
-  // idtimestamp is at offset 0 within the leaf record
-
-  // Format massif index as 16-digit zero-padded decimal
-  const objectIndex = massifIndex.toString().padStart(16, "0");
-  const objectKey = `v2/merklelog/massifs/${massifHeight}/${logId}/${objectIndex}.log`;
-
-  // Use byte-range request to read only the 8-byte idtimestamp
-  const object = await r2.get(objectKey, {
-    range: { offset: leafRecordOffset, length: IDTIMESTAMP_BYTES },
-  });
-
-  if (!object) {
-    throw new Error(`Massif not found: ${objectKey}`);
-  }
-
-  const data = await object.arrayBuffer();
-  if (data.byteLength < IDTIMESTAMP_BYTES) {
-    throw new Error(
-      `Massif range read returned insufficient bytes: ${data.byteLength}`,
-    );
-  }
-
-  // Read big-endian uint64
-  const view = new DataView(data);
-  return view.getBigUint64(0, false);
 }
 
 /**

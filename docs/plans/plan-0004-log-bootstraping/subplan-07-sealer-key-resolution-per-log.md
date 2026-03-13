@@ -35,7 +35,25 @@
 - Sealer signing a checkpoint for log L uses the key resolved via the REST service for L (e.g. root key for root log, correct parent/key for derived log).
 - If REST returns “unknown logId” or errors, sealer behaviour is consistent (e.g. no signature, or retry with backoff); no silent wrong-key use.
 
-## 6. References
+## 6. Implementation plan (agent-optimised)
+
+Sealer uses subplan 02 REST service to resolve “which signing key for this logId?” then requests that key (or delegation) from the signer. Find-grant is unchanged; this adds key resolution only.
+
+| Step | Action | Input | Output | Location / hint | Verification |
+|------|--------|-------|--------|------------------|--------------|
+| **6.1** | Determine logIds to sign | Checkpoint or batch; per-log decision | List of logIds for which the sealer must produce a signature | Arbor: sealer. For each checkpoint/log, decide which logId(s) need signing (root, child auth, data log). | Each log that requires a signature is included. |
+| **6.2** | Call REST for key resolution | logId; subplan 02 base URL | GET /api/logs/{logId}/signing-key → { logId, kind, ownerLogId, rootKeyX, rootKeyY } or 404/error | HTTP client to auth log status service. Parse response. | Sealer gets key identity for known logId. |
+| **6.3** | Map response to signer request | kind, ownerLogId, rootKeyX/Y | “Bootstrap key”, “parent log X”, or “log’s own key” for signer | Mapping: root / authority → bootstrap or parent key id; data log → log’s key. Use ownerLogId and kind from REST. | Correct key id passed to signer for each log type. |
+| **6.4** | Request delegation/key from signer | Key id (from 6.3) | Delegation or key handle for signing | Existing signer API: request delegation for that key. | Signature produced with correct key. |
+| **6.5** | Sign checkpoint using resolved key | Delegation; checkpoint payload | Signature for that log | Use delegation to sign; attach to checkpoint. No private key in sealer. | Checkpoint signed with key for that logId. |
+| **6.6** | Failure and retry behaviour | REST errors, 404, timeouts | Defined behaviour: retry with backoff, or fail checkpoint; never use wrong key | Document and implement: REST unavailable or unknown logId → retry (with limit) or mark checkpoint failed; do not fall back to another key. | No silent wrong-key use; behaviour consistent and documented. |
+| **6.7** | Caching (optional) | Resolution per logId | Cache key resolution per logId with TTL or invalidation to avoid repeated REST calls | Per refinement §4.7: resolve per checkpoint vs cache. Implement chosen strategy. | Cached resolution matches fresh call when log unchanged. |
+
+**Data flow (concise).** For each log to sign (6.1) → GET signing-key from REST (6.2) → map to signer key id (6.3) → request delegation (6.4) → sign checkpoint (6.5). Handle failures explicitly (6.6); optional cache (6.7).
+
+**Files to add or touch (arbor).** Sealer service: module or package that takes logId → calls subplan 02 REST → maps to signer request → returns delegation or key handle; integration in checkpoint signing path (6.1–6.5); config: auth log status service URL; failure and retry logic (6.6); optional cache (6.7). Repo: sealer (e.g. `services/sealer/` or equivalent). Find-grant code unchanged.
+
+## 7. References
 
 - Overview: §4.3 (sealer key resolution), §8 (sealer finds grant, requests key per log); refinement §4.7.
 - Subplan 02: REST auth log status service.
