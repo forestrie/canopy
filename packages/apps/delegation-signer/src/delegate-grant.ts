@@ -87,15 +87,23 @@ function normalizeLogIdHex(s: string): string {
 
 type ParentKeyRef = { cryptoKey: string; cryptoKeyVersion: string };
 
-function parseParentKeysJson(raw: string | undefined): Map<string, ParentKeyRef> {
+function parseParentKeysJson(
+  raw: string | undefined,
+): Map<string, ParentKeyRef> {
   const m = new Map<string, ParentKeyRef>();
   if (!raw?.trim()) return m;
   try {
-    const o = JSON.parse(raw) as Record<string, { cryptoKey?: string; cryptoKeyVersion?: string }>;
+    const o = JSON.parse(raw) as Record<
+      string,
+      { cryptoKey?: string; cryptoKeyVersion?: string }
+    >;
     for (const [k, v] of Object.entries(o)) {
       const normalized = normalizeLogIdHex(k);
       if (normalized && v?.cryptoKey && v?.cryptoKeyVersion) {
-        m.set(normalized, { cryptoKey: v.cryptoKey, cryptoKeyVersion: v.cryptoKeyVersion });
+        m.set(normalized, {
+          cryptoKey: v.cryptoKey,
+          cryptoKeyVersion: v.cryptoKeyVersion,
+        });
       }
     }
   } catch {
@@ -139,7 +147,9 @@ async function resolveParentKeyRef(
     }
   }
 
-  const parentKeys = parseParentKeysJson(env.DELEGATION_SIGNER_PARENT_KEYS_JSON);
+  const parentKeys = parseParentKeysJson(
+    env.DELEGATION_SIGNER_PARENT_KEYS_JSON,
+  );
   const ref = parentKeys.get(normalized);
   if (ref) {
     return {
@@ -174,12 +184,20 @@ export async function handleDelegateBootstrap(
 ): Promise<Response> {
   const token = extractBearerToken(request.headers.get("authorization"));
   if (!token) {
-    return ClientErrors.unauthorized("Missing or invalid Authorization header", {
-      "WWW-Authenticate": "Bearer",
-    });
+    return ClientErrors.unauthorized(
+      "Missing or invalid Authorization header",
+      {
+        "WWW-Authenticate": "Bearer",
+      },
+    );
   }
 
-  if (request.headers.get("content-type")?.toLowerCase().includes("application/json") !== true) {
+  if (
+    request.headers
+      .get("content-type")
+      ?.toLowerCase()
+      .includes("application/json") !== true
+  ) {
     return ClientErrors.unsupportedMediaType("Use application/json");
   }
 
@@ -199,7 +217,9 @@ export async function handleDelegateBootstrap(
   try {
     digest = hexToBytes(payloadHash);
   } catch (e) {
-    return ClientErrors.badRequest(e instanceof Error ? e.message : "invalid payload_hash");
+    return ClientErrors.badRequest(
+      e instanceof Error ? e.message : "invalid payload_hash",
+    );
   }
 
   const ref = bootstrapKeyRef(env);
@@ -223,25 +243,38 @@ export async function handleDelegateParent(
 ): Promise<Response> {
   const token = extractBearerToken(request.headers.get("authorization"));
   if (!token) {
-    return ClientErrors.unauthorized("Missing or invalid Authorization header", {
-      "WWW-Authenticate": "Bearer",
-    });
+    return ClientErrors.unauthorized(
+      "Missing or invalid Authorization header",
+      {
+        "WWW-Authenticate": "Bearer",
+      },
+    );
   }
 
-  if (request.headers.get("content-type")?.toLowerCase().includes("application/json") !== true) {
+  if (
+    request.headers
+      .get("content-type")
+      ?.toLowerCase()
+      .includes("application/json") !== true
+  ) {
     return ClientErrors.unsupportedMediaType("Use application/json");
   }
 
   let body: { parent_log_id?: string; payload_hash?: string };
   try {
-    body = (await request.json()) as { parent_log_id?: string; payload_hash?: string };
+    body = (await request.json()) as {
+      parent_log_id?: string;
+      payload_hash?: string;
+    };
   } catch {
     return ClientErrors.badRequest("Invalid JSON body");
   }
 
   const parentLogId = body.parent_log_id?.trim();
   if (!parentLogId) {
-    return ClientErrors.badRequest("parent_log_id is required (0x-prefixed 32-byte hex)");
+    return ClientErrors.badRequest(
+      "parent_log_id is required (0x-prefixed 32-byte hex)",
+    );
   }
 
   const payloadHash = body.payload_hash?.trim();
@@ -253,7 +286,9 @@ export async function handleDelegateParent(
   try {
     digest = hexToBytes(payloadHash);
   } catch (e) {
-    return ClientErrors.badRequest(e instanceof Error ? e.message : "invalid payload_hash");
+    return ClientErrors.badRequest(
+      e instanceof Error ? e.message : "invalid payload_hash",
+    );
   }
 
   const ref = await resolveParentKeyRef(env, parentLogId);

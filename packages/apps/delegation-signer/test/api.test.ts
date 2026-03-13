@@ -310,10 +310,10 @@ describe("grant-delegate (Plan 0004 subplan 04)", () => {
     const fetchStub = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : (input as Request).url;
       if (String(url).includes(":asymmetricSign")) {
-        return new Response(
-          JSON.stringify({ signature: encodeB64(derSig) }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
+        return new Response(JSON.stringify({ signature: encodeB64(derSig) }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
       }
       throw new Error(`unexpected fetch: ${url}`);
     });
@@ -379,10 +379,10 @@ describe("grant-delegate (Plan 0004 subplan 04)", () => {
     const fetchStub = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : (input as Request).url;
       if (String(url).includes(":asymmetricSign")) {
-        return new Response(
-          JSON.stringify({ signature: encodeB64(derSig) }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
+        return new Response(JSON.stringify({ signature: encodeB64(derSig) }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
       }
       throw new Error(`unexpected fetch: ${url}`);
     });
