@@ -6,6 +6,10 @@ import {
   cborResponse,
 } from "./http/problem-details";
 import {
+  handleDelegateBootstrap,
+  handleDelegateParent,
+} from "./delegate-grant";
+import {
   KmsError,
   kmsAsymmetricSignSha256,
   kmsGetPublicKeyDer,
@@ -36,6 +40,20 @@ export interface Env {
    * Optional override: 16-byte kid for the secp256r1 root key, base64 encoded.
    */
   KMS_KID_SECP256R1_B64?: string;
+  /**
+   * Optional: auth-log status base URL (subplan 02) for resolving root log id.
+   * Used by /api/delegate/parent to treat parent_log_id === root as bootstrap key.
+   */
+  DELEGATION_SIGNER_UNIVOCITY_URL?: string;
+  /**
+   * Optional: root log id (0x-prefixed hex) when not fetching from univocity.
+   */
+  DELEGATION_SIGNER_ROOT_LOG_ID?: string;
+  /**
+   * Optional: JSON map parent_log_id (64 hex chars, no 0x) -> { cryptoKey, cryptoKeyVersion }.
+   * Reuses FOREST_PROJECT_ID, GCP_LOCATION, KMS_KEY_RING. For auth logs other than root.
+   */
+  DELEGATION_SIGNER_PARENT_KEYS_JSON?: string;
 }
 
 type LogSpecificDelegationRequest = {
@@ -520,6 +538,20 @@ export default {
         return ClientErrors.methodNotAllowed(`Use POST for ${url.pathname}`);
       }
       return handleDelegation(request, env);
+    }
+
+    if (pathname === "/api/delegate/bootstrap") {
+      if (request.method !== "POST") {
+        return ClientErrors.methodNotAllowed(`Use POST for ${url.pathname}`);
+      }
+      return handleDelegateBootstrap(request, env);
+    }
+
+    if (pathname === "/api/delegate/parent") {
+      if (request.method !== "POST") {
+        return ClientErrors.methodNotAllowed(`Use POST for ${url.pathname}`);
+      }
+      return handleDelegateParent(request, env);
     }
 
     return ClientErrors.notFound(

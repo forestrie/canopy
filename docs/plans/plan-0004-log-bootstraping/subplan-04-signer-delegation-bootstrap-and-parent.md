@@ -54,7 +54,7 @@ Ordered steps so the queue consumer (subplan 05) or canopy (subplan 06) can requ
 
 **Data flow (concise).** Client sends “delegation for local key” (6.1–6.2) or “delegation for parent log” with logId (6.3–6.4); signer returns delegation; client uses it to sign grant. Documentation (6.5) closes the contract for subplan 05/06.
 
-**Files to add or touch (arbor).** Signer service: new endpoints or handlers for bootstrap and parent-log delegation; config for bootstrap key id and (optional) parent-log key mapping or auth-log-status URL; docs (request/response, usage for grant signing). Exact path follows existing signer layout (e.g. `services/signer/` or equivalent).
+**Implementation location:** **Canopy** delegation-signer (not arbor). KMS is not allowed from the arbor cluster; the sealer already obtains delegations from the Canopy delegation-signer. Subplan 04 is implemented by **extending** that same service. See [Subplan 04 — delegation-signer in Canopy](subplan-04-delegation-signer-in-canopy.md) for architecture and [agent-optimised instructions](subplan-04-delegation-signer-in-canopy.md#4-agent-optimised-instructions-plan-0004-subplan-04-in-canopy) (how the log is communicated, why it is secure, implementation steps). **Files to add or touch (Canopy):** `packages/apps/delegation-signer`: new handlers for POST /api/delegate/bootstrap and POST /api/delegate/parent; optional env DELEGATION_SIGNER_UNIVOCITY_URL, DELEGATION_SIGNER_ROOT_LOG_ID, DELEGATION_SIGNER_PARENT_KEYS_JSON.
 
 ## 7. References
 

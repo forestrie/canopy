@@ -259,3 +259,153 @@ describe("delegation-signer worker", () => {
     expect(pd).toHaveProperty("title", "Forbidden");
   });
 });
+
+describe("grant-delegate (Plan 0004 subplan 04)", () => {
+  const payloadHashHex =
+    "0000000000000000000000000000000000000000000000000000000000000001";
+
+  it("POST /api/delegate/bootstrap returns 401 without Authorization", async () => {
+    const request = new Request("http://localhost/api/delegate/bootstrap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ payload_hash: payloadHashHex }),
+    });
+    const response = await worker.fetch(request, env);
+    expect(response.status).toBe(401);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const pd = decodeCbor(bytes) as { title?: string };
+    expect(pd.title).toBe("Unauthorized");
+  });
+
+  it("POST /api/delegate/bootstrap returns 415 without application/json", async () => {
+    const request = new Request("http://localhost/api/delegate/bootstrap", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "text/plain",
+      },
+      body: JSON.stringify({ payload_hash: payloadHashHex }),
+    });
+    const response = await worker.fetch(request, env);
+    expect(response.status).toBe(415);
+  });
+
+  it("POST /api/delegate/bootstrap returns 400 when payload_hash missing", async () => {
+    const request = new Request("http://localhost/api/delegate/bootstrap", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    const response = await worker.fetch(request, env);
+    expect(response.status).toBe(400);
+  });
+
+  it("POST /api/delegate/bootstrap returns 200 and signature hex when KMS succeeds", async () => {
+    const derSig = new Uint8Array([
+      0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02,
+    ]);
+    const fetchStub = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (String(url).includes(":asymmetricSign")) {
+        return new Response(
+          JSON.stringify({ signature: encodeB64(derSig) }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchStub);
+
+    const request = new Request("http://localhost/api/delegate/bootstrap", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ payload_hash: payloadHashHex }),
+    });
+    const response = await worker.fetch(request, env);
+    vi.unstubAllGlobals();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    const data = (await response.json()) as { signature?: string };
+    expect(data).toHaveProperty("signature");
+    expect(typeof data.signature).toBe("string");
+    expect(data.signature!.length).toBe(64 * 2); // 64 bytes as hex
+  });
+
+  it("POST /api/delegate/parent returns 400 when parent_log_id missing", async () => {
+    const request = new Request("http://localhost/api/delegate/parent", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ payload_hash: payloadHashHex }),
+    });
+    const response = await worker.fetch(request, env);
+    expect(response.status).toBe(400);
+  });
+
+  it("POST /api/delegate/parent returns 404 for unknown parent when no root/parent keys", async () => {
+    const request = new Request("http://localhost/api/delegate/parent", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        parent_log_id:
+          "0x0000000000000000000000000000000000000000000000000000000000000099",
+        payload_hash: payloadHashHex,
+      }),
+    });
+    const response = await worker.fetch(request, env);
+    expect(response.status).toBe(404);
+  });
+
+  it("POST /api/delegate/parent returns 200 when parent is root (ROOT_LOG_ID set)", async () => {
+    const rootLogId =
+      "0x0000000000000000000000000000000000000000000000000000000000000001";
+    (env as any).DELEGATION_SIGNER_ROOT_LOG_ID = rootLogId;
+
+    const derSig = new Uint8Array([
+      0x30, 0x06, 0x02, 0x01, 0x01, 0x02, 0x01, 0x02,
+    ]);
+    const fetchStub = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      if (String(url).includes(":asymmetricSign")) {
+        return new Response(
+          JSON.stringify({ signature: encodeB64(derSig) }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchStub);
+
+    const request = new Request("http://localhost/api/delegate/parent", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        parent_log_id: rootLogId,
+        payload_hash: payloadHashHex,
+      }),
+    });
+    const response = await worker.fetch(request, env);
+    vi.unstubAllGlobals();
+    delete (env as any).DELEGATION_SIGNER_ROOT_LOG_ID;
+
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as { signature?: string };
+    expect(data).toHaveProperty("signature");
+    expect(data.signature!.length).toBe(128);
+  });
+});
