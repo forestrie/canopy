@@ -10,8 +10,10 @@
   - **Delegation for a local key** (used for root bootstrap): the key that will act as the root signer and that matches the configured bootstrap public key.
   - **Delegation for the parent log** (used for derived logs): given a parent logId (or owner), return a delegation that can sign grants for creating a child authority or data log under that parent.
 - The **queue consumer** (subplan 05) will request these delegations to **sign grants**; it must not hold any private key material.
+- **Signing model**: Only **auth logs** have their own log signing key (in KMS). **Data log** checkpoints are signed by their **parent auth log**’s key. So “delegation for parent log” is used both to sign grants (create child logs) and, for the sealer, to sign checkpoints for data logs under that auth log.
+- **Bootstrap key (operational)**: The bootstrap key must **exist in KMS before** the univocity contracts are deployed or initialized — the contract is configured with that key’s public key at bootstrap. The signer is configured with that pre-existing KMS key for “delegation for local key”. In a **simple deployment** where the bootstrap root auth log is the only auth log, “parent signs” works cleanly: the same bootstrap key is the parent for that root auth log, so one key serves both bootstrap and parent-signing for data logs under the root.
 
-**Out of scope**: Queue consumer logic; ranger; chain submission; sealer key resolution (subplan 07).
+**Out of scope**: Queue consumer logic; ranger; chain submission; sealer key resolution (subplan 07). **Key creation** (creating a KMS key upon verified **GC_AUTH_LOG** grant only; rate limiting via high pricing of GC_AUTH_LOG grants) is a proposed extension; viability and security are assessed in [Subplan 04 assessment — key creation via delegation](subplan-04-assessment-key-creation-via-delegation.md). Design questions there should be resolved before updating this subplan to include key creation.
 
 ## 2. Dependencies
 
@@ -21,8 +23,8 @@
 ## 3. Inputs
 
 - Existing signer API: how delegation is requested today (overview refinement §4.4).
-- Bootstrap public key (or id) configuration: how the operator configures the key that the contract expects for root.
-- For “delegation for parent log”: how parent is identified (logId) and how signer resolves the parent’s key (internal state vs call to REST log-type service).
+- **Bootstrap key**: Pre-existing KMS key (created before contract deploy/init); operator configures the signer with that key’s id or public key so the contract’s root key matches. Signer uses it for “delegation for local key” and, in a single-auth-log deployment, for “delegation for parent log” (root auth log).
+- For “delegation for parent log”: how parent is identified (auth logId) and how signer resolves the parent’s key (internal state vs call to auth log status service subplan 02). Parent is always an auth log; data logs do not have their own key.
 
 ## 4. Deliverables
 
@@ -58,3 +60,4 @@ Ordered steps so the queue consumer (subplan 05) or canopy (subplan 06) can requ
 
 - Overview: §5 (queue consumer requests delegation), §8 (same pattern as sealer); refinement §4.4.
 - Univocity: ADR-0005 (grantData = signer), plan-0027 (bootstrap).
+- Key creation extension: [Subplan 04 assessment — key creation via delegation](subplan-04-assessment-key-creation-via-delegation.md).

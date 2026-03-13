@@ -56,14 +56,37 @@ Design updates baked into overview and subplans.
 
 ---
 
-**Recommended next steps (build order)**
+**Recommended next steps (build order)** — see § “Where we are and next steps” below.
 
-1. **Subplan 01** — **Complete.** go-univocity at `arbor/services/_deps/go-univocity`: spec (ContentHash = inner hash in §1), InnerHash/InnerHashFromGrant, leaf_vectors.json with expected_inner_hex, canopy codec aligned. Subplan 03 step 8.1 can use go-univocity or spec and fixtures for inner.
-2. **Subplan 02** — **Complete.** REST auth log status service in arbor `services/univocity`; all steps 8.1–8.7 done; optional gaps in §8.9 (contract test, integration test, rootLogId null).
-3. **Subplans 03, 04** — In parallel: grant-sequencing in canopy (03; follow subplan 03 §8; compute inner via InnerHashFromGrant or spec/fixtures), signer delegation (04).
-3. **Canopy return-path hardening** — Optional early step: query-registration-status (and any resolveContent callers) treat idTimestamp as optional and use R2 fallback when missing.
-4. **Subplan 06** — Canopy settlement → grant creation and sequencing (after 01, 02, 03, 04).
-5. **DO and ranger (optional idtimestamps)** — When desired: forestrie-ingress DO two-path ack, resolveContent returning idTimestamp; ranger config for idtimestamps in ack. Subplan 05 (queue consumer) only if needed.
+---
+
+## Where we are and next steps
+
+**Completed**
+
+| Item | State |
+|------|--------|
+| **Subplan 01** | ACCEPTED. go-univocity (spec, InnerHash, fixtures), canopy grant codec aligned; inner = ContentHash. |
+| **Subplan 02** | Complete. REST auth log status in arbor `services/univocity`; endpoints 8.1–8.7; optional §8.9 (contract test, integration test, `rootLogId` null) done. |
+| **Subplan 03** | Implemented in **canopy-api**. Async register-grant (303 + status URL), grant-sequencing (dedupe by inner, enqueue to same DO), serve-grant (GET completes grant), inner-hash, sequencing-result, register-signed-statement with grantCompletionEnv for `/grants/` path. PR #5 (branch `robin/univocity-grants-03`). |
+| **Subplan 04 (design)** | Assessment doc complete: key creation for **GC_AUTH_LOG** only; bootstrap key pre-existing in KMS; data logs use parent auth log key; rate limiting via grant pricing; BYOK sketch (§5) and design questions. Mermaid sequence diagrams in §2.2. Key-creation implementation not yet in subplan 04 (design questions to resolve first). |
+
+**Not yet implemented (code)**
+
+| Item | Blocker / dependency |
+|------|----------------------|
+| **Subplan 04 (signer)** | Delegation API for “local key” (bootstrap) and “parent log” in **arbor** signer service. Required so canopy (subplan 06) can request delegation to sign grants. Key-creation (GCP KMS on verified GC_AUTH_LOG grant) can be added after design questions in the assessment are resolved. |
+| **Subplan 06** | Canopy settlement → grant creation and sequencing. Depends on **04** (signer delegation). Canopy already has grant-sequencing (03); needs settlement completion hook, signer client, build/sign grant (subplan 01 encoding), publish, return grant location. |
+| **Subplan 07** | Sealer key resolution (REST from 02). Can proceed in parallel with 06 once 02 is deployed. |
+| **DO + ranger (optional)** | Idtimestamps in batch ack (subplan 03 §7.1). Reduces latency for resolveContent; canopy already has R2 fallback. |
+
+**Recommended next steps (in order)**
+
+1. **Merge subplan 03** — Merge PR #5 (canopy-api async grant-sequencing) so main has register-grant 303 flow and grant-sequencing.
+2. **Implement subplan 04 (signer delegation only)** — In arbor: extend signer with “delegation for local key” (bootstrap) and “delegation for parent log” (by auth logId). No key-creation yet; bootstrap key and any additional auth log keys are pre-created in KMS and configured. Enables subplan 06.
+3. **Implement subplan 06** — Canopy: on x402 settlement success, request delegation (04), build and sign grant (01), run grant-sequencing (03), resolve idtimestamp (DO or R2 fallback), publish grant, return location to client.
+4. **Optional** — Resolve subplan 04 assessment design questions; update subplan 04 with key-creation steps; implement “create key on verified GC_AUTH_LOG grant” in delegation service.
+5. **Optional** — Subplan 07 (sealer key resolution); DO/ranger idtimestamps in ack. Subplan 05 (queue consumer) only if a non-canopy path is needed.
 
 ---
 
