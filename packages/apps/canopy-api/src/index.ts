@@ -5,6 +5,10 @@
  */
 
 import { problemResponse } from "./scrapi/cbor-response";
+import {
+  handlePostBootstrapGrant,
+  serveBootstrapGrant,
+} from "./scrapi/bootstrap-grant.js";
 import { registerGrant } from "./scrapi/register-grant";
 import { registerSignedStatement } from "./scrapi/register-signed-statement";
 import { queryRegistrationStatus } from "./scrapi/query-registration-status";
@@ -60,6 +64,16 @@ export interface Env {
   X402_SETTLEMENT_DO?: DurableObjectNamespace;
   // Number of DO shards for x402 settlement (typically 4)
   X402_DO_SHARD_COUNT?: string;
+  // Subplan 08: grant-first bootstrap
+  ROOT_LOG_ID?: string;
+  DELEGATION_SIGNER_URL?: string;
+  DELEGATION_SIGNER_BEARER_TOKEN?: string;
+  DELEGATION_SIGNER_PUBLIC_KEY_TOKEN?: string;
+  UNIVOCITY_SERVICE_URL?: string;
+  UNIVOCITY_CONTRACT_RPC_URL?: string;
+  UNIVOCITY_CONTRACT_ADDRESS?: string;
+  /** Optional: base URL for checkpoint fetch (storage source when R2 not used). */
+  OBJECT_STORAGE_ROOT_URL?: string;
 }
 
 export default {
@@ -70,6 +84,7 @@ export default {
   ): Promise<Response> {
     const url = new URL(request.url);
     const { pathname } = url;
+    const segments = pathname.split("/").slice(1);
 
     // CORS headers for development
     const corsHeaders = {
@@ -104,6 +119,69 @@ export default {
         });
       }
 
+      // Subplan 08: POST /api/grants/bootstrap (no auth)
+      if (
+        pathname === "/api/grants/bootstrap" &&
+        request.method === "POST"
+      ) {
+        const rootLogId = env.ROOT_LOG_ID;
+        const delegationSignerUrl = env.DELEGATION_SIGNER_URL;
+        const token = env.DELEGATION_SIGNER_BEARER_TOKEN;
+        if (!rootLogId || !delegationSignerUrl || !token) {
+          return problemResponse(
+            503,
+            "Service Unavailable",
+            "about:blank",
+            {
+              detail:
+                "Bootstrap grant mint not configured (ROOT_LOG_ID, DELEGATION_SIGNER_URL, DELEGATION_SIGNER_BEARER_TOKEN required)",
+              headers: corsHeaders,
+            },
+          );
+        }
+        const response = await handlePostBootstrapGrant(request, {
+          r2Grants: env.R2_GRANTS,
+          rootLogId,
+          delegationSignerUrl,
+          delegationSignerBearerToken: token,
+        });
+        const headers = new Headers(response.headers);
+        Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        });
+      }
+
+      // GET /grants/bootstrap or /grants/bootstrap/:rootLogId — well-known bootstrap grant
+      if (
+        segments[0] === "grants" &&
+        segments[1] === "bootstrap" &&
+        request.method === "GET"
+      ) {
+        const rootLogId =
+          segments[2] ?? env.ROOT_LOG_ID ?? "";
+        if (!rootLogId) {
+          return problemResponse(
+            400,
+            "Bad Request",
+            "about:blank",
+            { detail: "rootLogId required (path or ROOT_LOG_ID)", headers: corsHeaders },
+          );
+        }
+        const response = await serveBootstrapGrant(rootLogId, {
+          r2Grants: env.R2_GRANTS,
+        });
+        const headers = new Headers(response.headers);
+        Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        });
+      }
+
       // Health check
       if (pathname === "/api/health" && request.method === "GET") {
         return Response.json(
@@ -132,9 +210,6 @@ export default {
           headers: corsHeaders,
         });
       }
-
-      // note the first segment is the empty string due to leading '/'
-      const segments = pathname.split("/").slice(1);
 
       // GET /grants/authority/{innerHex} — serve grant with lazy completion (subplan 03)
       if (
@@ -169,12 +244,55 @@ export default {
         );
       }
 
-      // POST /logs/{logId}/grants — create grant (Plan 0001 Step 6, subplan 03: sequencing)
+      // POST /logs/{logId}/grants — create grant (Plan 0001 Step 6, subplan 03/08)
       if (
         segments.length === 3 &&
         segments[2] === "grants" &&
         request.method === "POST"
       ) {
+        const bootstrapEnv =
+          env.ROOT_LOG_ID &&
+          env.DELEGATION_SIGNER_URL &&
+          env.DELEGATION_SIGNER_BEARER_TOKEN &&
+          env.UNIVOCITY_SERVICE_URL
+            ? {
+                rootLogId: env.ROOT_LOG_ID,
+                delegationSignerUrl: env.DELEGATION_SIGNER_URL,
+                delegationSignerBearerToken: env.DELEGATION_SIGNER_BEARER_TOKEN,
+                delegationSignerPublicKeyToken:
+                  env.DELEGATION_SIGNER_PUBLIC_KEY_TOKEN,
+                univocityServiceUrl: env.UNIVOCITY_SERVICE_URL,
+              }
+            : undefined;
+        const hasChain =
+          !!env.UNIVOCITY_CONTRACT_RPC_URL?.trim() &&
+          !!env.UNIVOCITY_CONTRACT_ADDRESS?.trim();
+        const massifHeight = parseInt(env.MASSIF_HEIGHT || "14", 10);
+        const hasStorageR2 = !!env.R2_MMRS;
+        const hasStorageUrl =
+          !!env.OBJECT_STORAGE_ROOT_URL?.trim();
+        const hasStorage = (hasStorageR2 || hasStorageUrl) && massifHeight > 0;
+        const inclusionEnv =
+          env.SEQUENCING_QUEUE && (hasChain || hasStorage)
+            ? {
+                sequencingQueue: env.SEQUENCING_QUEUE,
+                shardCountStr: env.QUEUE_SHARD_COUNT,
+                ...(hasChain && {
+                  chain: {
+                    univocityContractRpcUrl: env.UNIVOCITY_CONTRACT_RPC_URL!,
+                    univocityContractAddress: env.UNIVOCITY_CONTRACT_ADDRESS!,
+                  },
+                }),
+                ...(hasStorage && {
+                  storage: hasStorageR2
+                    ? { r2Mmrs: env.R2_MMRS, massifHeight }
+                    : {
+                        objectStorageRootUrl: env.OBJECT_STORAGE_ROOT_URL!,
+                        massifHeight,
+                      },
+                }),
+              }
+            : undefined;
         const response = await registerGrant(request, segments[1], {
           r2Grants: env.R2_GRANTS,
           sequencingEnv: env.SEQUENCING_QUEUE
@@ -183,6 +301,8 @@ export default {
                 shardCountStr: env.QUEUE_SHARD_COUNT,
               }
             : undefined,
+          bootstrapEnv,
+          inclusionEnv,
         });
         const headers = new Headers(response.headers);
         Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
@@ -199,6 +319,36 @@ export default {
           // POST /logs/{logId}/entries - Register new statement
           // Grant-based auth is required (Step 5); x402 payment removed (Plan 0001 Step 4).
           const massifHeight = parseInt(env.MASSIF_HEIGHT || "14", 10);
+          const hasChain =
+            !!env.UNIVOCITY_CONTRACT_RPC_URL?.trim() &&
+            !!env.UNIVOCITY_CONTRACT_ADDRESS?.trim();
+          const massifHeightEntries = parseInt(env.MASSIF_HEIGHT || "14", 10);
+          const hasStorageR2 = !!env.R2_MMRS;
+          const hasStorageUrl = !!env.OBJECT_STORAGE_ROOT_URL?.trim();
+          const hasStorage =
+            (hasStorageR2 || hasStorageUrl) && massifHeightEntries > 0;
+          const inclusionEnv =
+            env.SEQUENCING_QUEUE && (hasChain || hasStorage)
+              ? {
+                  sequencingQueue: env.SEQUENCING_QUEUE,
+                  shardCountStr: env.QUEUE_SHARD_COUNT,
+                  ...(hasChain && {
+                    chain: {
+                      univocityContractRpcUrl: env.UNIVOCITY_CONTRACT_RPC_URL!,
+                      univocityContractAddress:
+                        env.UNIVOCITY_CONTRACT_ADDRESS!,
+                    },
+                  }),
+                  ...(hasStorage && {
+                    storage: hasStorageR2
+                      ? { r2Mmrs: env.R2_MMRS, massifHeight: massifHeightEntries }
+                      : {
+                          objectStorageRootUrl: env.OBJECT_STORAGE_ROOT_URL!,
+                          massifHeight: massifHeightEntries,
+                        },
+                  }),
+                }
+              : undefined;
           const response = await registerSignedStatement(
             request,
             segments[1],
@@ -212,6 +362,7 @@ export default {
               shardCountStr: env.QUEUE_SHARD_COUNT,
               massifHeight,
             },
+            inclusionEnv,
           );
 
           const headers = new Headers(response.headers);

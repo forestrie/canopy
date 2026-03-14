@@ -12,7 +12,7 @@
  */
 
 import type { SequencingQueueStub } from "@canopy/forestrie-ingress-types";
-import { shardNameForLog } from "@canopy/forestrie-sharding";
+import { getQueueForLog } from "../sequeue/logshard.js";
 import { seeOtherResponse } from "./cbor-response";
 import { ClientErrors, ServerErrors } from "./problem-details";
 import { encodeEntryId } from "./entry-id";
@@ -50,18 +50,6 @@ interface SequencingQueueNamespace {
   get(id: DurableObjectId): SequencingQueueStub;
 }
 
-/**
- * Parse shard count from environment string.
- */
-function getShardCount(shardCountStr: string): number {
-  const count = parseInt(shardCountStr, 10);
-  if (isNaN(count) || count < 1) {
-    console.error(`Invalid QUEUE_SHARD_COUNT: ${shardCountStr}, using 1`);
-    return 1;
-  }
-  return count;
-}
-
 export async function queryRegistrationStatus(
   request: Request,
   entrySegments: string[],
@@ -88,11 +76,10 @@ export async function queryRegistrationStatus(
   });
 
   try {
-    // Get the SequencingQueue DO stub for this log's shard
-    const shardCount = getShardCount(shardCountStr);
-    const shardName = shardNameForLog(logID, shardCount);
-    const doId = sequencingQueueNs.idFromName(shardName);
-    const stub = sequencingQueueNs.get(doId);
+    const stub = getQueueForLog(
+      { sequencingQueue: sequencingQueueNs, shardCountStr },
+      logID,
+    );
 
     // Convert content hash hex to ArrayBuffer for DO query
     const contentHashBytes = hexToBuffer(contentHash);

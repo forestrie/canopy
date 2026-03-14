@@ -4,17 +4,9 @@
  */
 
 import type { SequencingQueueStub } from "@canopy/forestrie-ingress-types";
-import { shardNameForLog } from "@canopy/forestrie-sharding";
+import { getQueueForLog } from "../sequeue/logshard.js";
 import { bytesToUuid } from "../grant/uuid-bytes.js";
 import { innerHashToHex } from "../grant/inner-hash.js";
-
-function getShardCount(shardCountStr: string): number {
-  const count = parseInt(shardCountStr, 10);
-  if (Number.isNaN(count) || count < 1) {
-    return 1;
-  }
-  return count;
-}
 
 function hexToBytes(hex: string): ArrayBuffer {
   const bytes = new Uint8Array(hex.length / 2);
@@ -50,12 +42,7 @@ export async function enqueueGrantForSequencing(
 ): Promise<GrantSequencingResult> {
   const ownerLogIdUuid = bytesToUuid(ownerLogIdBytes);
   const innerHex = innerHashToHex(inner);
-  const shardCount = getShardCount(env.shardCountStr);
-  const shardName = shardNameForLog(ownerLogIdUuid, shardCount);
-  const queueId = env.sequencingQueue.idFromName(shardName);
-  const queue = env.sequencingQueue.get(
-    queueId,
-  ) as unknown as SequencingQueueStub;
+  const queue = getQueueForLog(env, ownerLogIdUuid);
 
   const contentHashBytes = hexToBytes(innerHex);
 

@@ -4,20 +4,21 @@
  */
 
 import {
-  QueueFullError,
-  type SequencingQueueStub,
+    QueueFullError,
+    type SequencingQueueStub,
 } from "@canopy/forestrie-ingress-types";
-import { shardNameForLog } from "@canopy/forestrie-sharding";
+import { getQueueForLog } from "../sequeue/logshard.js";
 import { getContentSize, parseCborBody } from "./cbor-request";
 import { seeOtherResponse } from "./cbor-response";
 
 import {
-  getGrantLocationFromRequest,
-  fetchGrant,
-  getSignerFromCoseSign1,
-  signerMatchesGrant,
-  GrantAuthErrors,
+    getGrantLocationFromRequest,
+    fetchGrant,
+    getSignerFromCoseSign1,
+    signerMatchesGrant,
+    GrantAuthErrors,
 } from "./grant-auth";
+import type { Grant } from "../grant/types.js";
 import { getCompletedGrant } from "./serve-grant";
 import { ClientErrors, ServerErrors } from "./problem-details";
 import { getMaxStatementSize } from "./transparency-configuration";
@@ -26,50 +27,45 @@ import { getMaxStatementSize } from "./transparency-configuration";
  * Statement Registration Request
  */
 export interface RegisterStatementRequest {
-  /** The signed statement to register (COSE Sign1) */
-  signedStatement: Uint8Array;
+    /** The signed statement to register (COSE Sign1) */
+    signedStatement: Uint8Array;
 }
 
 /**
  * Statement Registration Response
  */
 export interface RegisterStatementResponse {
-  /** Operation ID for tracking the registration */
-  operationId: string;
-  /** Status of the registration */
-  status: "accepted" | "pending";
+    /** Operation ID for tracking the registration */
+    operationId: string;
+    /** Status of the registration */
+    status: "accepted" | "pending";
 }
 
 /** Log signer mismatch (grant auth). */
 function logSignerMismatch(
-  statementSigner: Uint8Array | null,
-  grantSigner: Uint8Array,
+    statementSigner: Uint8Array | null,
+    grantSigner: Uint8Array,
 ): void {
-  console.warn("[grant-auth] signer_mismatch", {
-    statementKidLen: statementSigner?.length ?? 0,
-    grantSignerLen: grantSigner.length,
-  });
-}
-
-/**
- * Parse shard count from environment string.
- */
-function getShardCount(shardCountStr: string): number {
-  const count = parseInt(shardCountStr, 10);
-  if (isNaN(count) || count < 1) {
-    console.error(`Invalid QUEUE_SHARD_COUNT: ${shardCountStr}, using 1`);
-    return 1;
-  }
-  return count;
+    console.warn("[grant-auth] signer_mismatch", {
+        statementKidLen: statementSigner?.length ?? 0,
+        grantSignerLen: grantSigner.length,
+    });
 }
 
 /** Optional env for completing sequenced grants (/grants/authority/{innerHex}) when used as X-Grant-Location. */
 export interface GrantCompletionEnv {
-  r2Mmrs: R2Bucket;
-  sequencingQueue: DurableObjectNamespace;
-  shardCountStr: string;
-  massifHeight: number;
+    r2Mmrs: R2Bucket;
+    sequencingQueue: DurableObjectNamespace;
+    shardCountStr: string;
+    massifHeight: number;
 }
+
+/** Subplan 08: inclusion verification; chain and/or storage (optional). */
+import {
+    type InclusionEnv,
+    verifyGrantIncluded,
+} from "./verify-grant-inclusion.js";
+export type InclusionVerificationEnv = InclusionEnv;
 
 /**
  * Process a statement registration request.
@@ -77,191 +73,194 @@ export interface GrantCompletionEnv {
  * When path is /grants/authority/{innerHex}, grantCompletionEnv is used to complete the grant (subplan 03).
  */
 export async function registerSignedStatement(
-  request: Request,
-  logId: string,
-  sequencingQueue: DurableObjectNamespace,
-  shardCountStr: string,
-  enqueueExtras: Parameters<SequencingQueueStub["enqueue"]>[2] | undefined,
-  r2Grants: R2Bucket,
-  grantCompletionEnv?: GrantCompletionEnv,
+    request: Request,
+    logId: string,
+    sequencingQueue: DurableObjectNamespace,
+    shardCountStr: string,
+    enqueueExtras: Parameters<SequencingQueueStub["enqueue"]>[2] | undefined,
+    r2Grants: R2Bucket,
+    grantCompletionEnv?: GrantCompletionEnv,
+    inclusionEnv?: InclusionEnv,
 ): Promise<Response> {
-  try {
-    const grantLocation = getGrantLocationFromRequest(request);
-    if (!grantLocation) {
-      return GrantAuthErrors.grantRequired();
-    }
+    try {
+        const grantLocation = getGrantLocationFromRequest(request);
+        if (!grantLocation) {
+            return GrantAuthErrors.grantRequired();
+        }
 
-    let grantResult: {
-      grant: import("../grant/types.js").Grant;
-      bytes: Uint8Array;
-    } | null;
-    if (grantLocation.startsWith("/grants/") && grantCompletionEnv) {
-      grantResult = await getCompletedGrant(grantLocation, {
-        r2Grants,
-        r2Mmrs: grantCompletionEnv.r2Mmrs,
-        sequencingQueue: grantCompletionEnv.sequencingQueue,
-        shardCountStr: grantCompletionEnv.shardCountStr,
-        massifHeight: grantCompletionEnv.massifHeight,
-      });
-    } else {
-      grantResult = await fetchGrant(r2Grants, grantLocation);
-    }
-    if (!grantResult) {
-      return GrantAuthErrors.grantNotFound();
-    }
-    const { grant } = grantResult;
+        let grantResult: { grant: Grant; bytes: Uint8Array } | null;
+        if (grantLocation.startsWith("/grants/") && grantCompletionEnv) {
+            grantResult = await getCompletedGrant(grantLocation, {
+                r2Grants,
+                r2Mmrs: grantCompletionEnv.r2Mmrs,
+                sequencingQueue: grantCompletionEnv.sequencingQueue,
+                shardCountStr: grantCompletionEnv.shardCountStr,
+                massifHeight: grantCompletionEnv.massifHeight,
+            });
+        } else {
+            grantResult = await fetchGrant(r2Grants, grantLocation);
+        }
+        if (!grantResult) {
+            return GrantAuthErrors.grantNotFound();
+        }
+        const { grant } = grantResult;
 
-    const maxSize = getMaxStatementSize();
-    const size = getContentSize(request);
-    if (typeof size === "number" && size > maxSize) {
-      return ClientErrors.payloadTooLarge(size, maxSize);
-    }
+        if (inclusionEnv) {
+            const included = await verifyGrantIncluded(grant, inclusionEnv);
+            if (!included) {
+                return GrantAuthErrors.grantInvalid();
+            }
+        }
 
-    // Parse the body dealing with either COSE or CBOR
-    let statementData: Uint8Array;
-    const contentType = request.headers.get("content-type") || "";
+        const maxSize = getMaxStatementSize();
+        const size = getContentSize(request);
+        if (typeof size === "number" && size > maxSize) {
+            return ClientErrors.payloadTooLarge(size, maxSize);
+        }
 
-    if (contentType.includes("cose")) {
-      // Direct COSE Sign1 data
-      const buffer = await request.arrayBuffer();
-      statementData = new Uint8Array(buffer);
-    } else if (contentType.includes("cbor")) {
-      // CBOR-encoded request
-      try {
-        const body = await parseCborBody<RegisterStatementRequest>(request);
-        statementData = body.signedStatement;
-      } catch (error) {
-        return ClientErrors.invalidStatement(
-          `Failed to parse CBOR body: ${error instanceof Error ? error.message : "Unknown error"}`,
+        // Parse the body dealing with either COSE or CBOR
+        let statementData: Uint8Array;
+        const contentType = request.headers.get("content-type") || "";
+
+        if (contentType.includes("cose")) {
+            // Direct COSE Sign1 data
+            const buffer = await request.arrayBuffer();
+            statementData = new Uint8Array(buffer);
+        } else if (contentType.includes("cbor")) {
+            // CBOR-encoded request
+            try {
+                const body = await parseCborBody<RegisterStatementRequest>(request);
+                statementData = body.signedStatement;
+            } catch (error) {
+                return ClientErrors.invalidStatement(
+                    `Failed to parse CBOR body: ${error instanceof Error ? error.message : "Unknown error"}`,
+                );
+            }
+        } else {
+            return ClientErrors.unsupportedMediaType(contentType);
+        }
+
+        // Validate COSE Sign1 structure (basic validation)
+        if (!validateCoseSign1Structure(statementData)) {
+            return ClientErrors.invalidStatement("Invalid COSE Sign1 structure");
+        }
+
+        // Verify statement signer matches grant's signer binding
+        const statementSigner = getSignerFromCoseSign1(statementData);
+        if (!signerMatchesGrant(statementSigner, grant.signer)) {
+            logSignerMismatch(statementSigner, grant.signer);
+            return GrantAuthErrors.signerMismatch();
+        }
+
+        // Optional: reject if grant is expired or not yet valid
+        const now = Math.floor(Date.now() / 1000);
+        if (grant.exp !== undefined && now > grant.exp) {
+            return GrantAuthErrors.grantInvalid(); // or a dedicated grant_expired
+        }
+        if (grant.nbf !== undefined && now < grant.nbf) {
+            return GrantAuthErrors.grantInvalid();
+        }
+
+        // Calculate content hash for the operation ID
+        const contentHash = await calculateSHA256(
+            statementData.buffer as ArrayBuffer,
         );
-      }
-    } else {
-      return ClientErrors.unsupportedMediaType(contentType);
+
+        // Convert logId (UUID string) to 16-byte ArrayBuffer
+        const logIdBytes = uuidToBytes(logId);
+
+        // Enqueue to SequencingQueue DO shard for this log
+        const queue = getQueueForLog(
+            { sequencingQueue, shardCountStr },
+            logId,
+        );
+        await queue.enqueue(logIdBytes, hexToBytes(contentHash), enqueueExtras);
+
+        // The SCRAPI pre-sequence identifier is the content hash.
+        // This is used as the operation ID until sequencing completes.
+
+        // Derive Location header from request URL
+        const requestUrl = new URL(request.url);
+        const location = `${requestUrl.origin}${requestUrl.pathname}/${contentHash}`;
+
+        // Return 303 See Other - registration is running (per SCRAPI 2.1.3.2)
+        // This is always async for this implementation
+        console.log("Statement registration accepted", {
+            logId,
+            grantLocation,
+            contentHash,
+        });
+        return seeOtherResponse(location, 5); // Suggest retry after 5 seconds
+    } catch (error) {
+        // Handle queue backpressure with 503 Service Unavailable
+        // This follows Cloudflare DO best practices: signal saturation early
+        // with 503 to allow clients to back off gracefully.
+        if (error instanceof QueueFullError) {
+            console.warn("Queue full, returning 503:", {
+                pendingCount: error.pendingCount,
+                maxPending: error.maxPending,
+                retryAfter: error.retryAfterSeconds,
+            });
+            return ServerErrors.serviceUnavailableWithRetry(
+                `Queue capacity exceeded (${error.pendingCount}/${error.maxPending} pending)`,
+                error.retryAfterSeconds,
+            );
+        }
+
+        console.error("Error registering statement:", error);
+        return ServerErrors.internal(
+            error instanceof Error ? error.message : "Failed to register statement",
+        );
     }
-
-    // Validate COSE Sign1 structure (basic validation)
-    if (!validateCoseSign1Structure(statementData)) {
-      return ClientErrors.invalidStatement("Invalid COSE Sign1 structure");
-    }
-
-    // Verify statement signer matches grant's signer binding
-    const statementSigner = getSignerFromCoseSign1(statementData);
-    if (!signerMatchesGrant(statementSigner, grant.signer)) {
-      logSignerMismatch(statementSigner, grant.signer);
-      return GrantAuthErrors.signerMismatch();
-    }
-
-    // Optional: reject if grant is expired or not yet valid
-    const now = Math.floor(Date.now() / 1000);
-    if (grant.exp !== undefined && now > grant.exp) {
-      return GrantAuthErrors.grantInvalid(); // or a dedicated grant_expired
-    }
-    if (grant.nbf !== undefined && now < grant.nbf) {
-      return GrantAuthErrors.grantInvalid();
-    }
-
-    // Calculate content hash for the operation ID
-    const contentHash = await calculateSHA256(
-      statementData.buffer as ArrayBuffer,
-    );
-
-    // Convert logId (UUID string) to 16-byte ArrayBuffer
-    const logIdBytes = uuidToBytes(logId);
-
-    // Enqueue to SequencingQueue DO shard for this log
-    const shardCount = getShardCount(shardCountStr);
-    const shardName = shardNameForLog(logId, shardCount);
-    const queueId = sequencingQueue.idFromName(shardName);
-    const queue = sequencingQueue.get(
-      queueId,
-    ) as unknown as SequencingQueueStub;
-    await queue.enqueue(logIdBytes, hexToBytes(contentHash), enqueueExtras);
-
-    // The SCRAPI pre-sequence identifier is the content hash.
-    // This is used as the operation ID until sequencing completes.
-
-    // Derive Location header from request URL
-    const requestUrl = new URL(request.url);
-    const location = `${requestUrl.origin}${requestUrl.pathname}/${contentHash}`;
-
-    // Return 303 See Other - registration is running (per SCRAPI 2.1.3.2)
-    // This is always async for this implementation
-    console.log("Statement registration accepted", {
-      logId,
-      grantLocation,
-      contentHash,
-    });
-    return seeOtherResponse(location, 5); // Suggest retry after 5 seconds
-  } catch (error) {
-    // Handle queue backpressure with 503 Service Unavailable
-    // This follows Cloudflare DO best practices: signal saturation early
-    // with 503 to allow clients to back off gracefully.
-    if (error instanceof QueueFullError) {
-      console.warn("Queue full, returning 503:", {
-        pendingCount: error.pendingCount,
-        maxPending: error.maxPending,
-        retryAfter: error.retryAfterSeconds,
-      });
-      return ServerErrors.serviceUnavailableWithRetry(
-        `Queue capacity exceeded (${error.pendingCount}/${error.maxPending} pending)`,
-        error.retryAfterSeconds,
-      );
-    }
-
-    console.error("Error registering statement:", error);
-    return ServerErrors.internal(
-      error instanceof Error ? error.message : "Failed to register statement",
-    );
-  }
 }
 
 /**
  * Basic validation of COSE Sign1 structure
  */
 function validateCoseSign1Structure(data: Uint8Array): boolean {
-  // COSE Sign1 is a CBOR array with 4 elements
-  // This is a basic check - full validation would decode and verify
+    // COSE Sign1 is a CBOR array with 4 elements
+    // This is a basic check - full validation would decode and verify
 
-  if (data.length < 10) return false; // Too small to be valid
+    if (data.length < 10) return false; // Too small to be valid
 
-  // Check for CBOR array marker (0x84 = array of 4 elements)
-  // or 0x98 followed by 0x04 for indefinite-length array
-  const firstByte = data[0];
-  if (firstByte !== 0x84 && firstByte !== 0x98) {
-    return false;
-  }
+    // Check for CBOR array marker (0x84 = array of 4 elements)
+    // or 0x98 followed by 0x04 for indefinite-length array
+    const firstByte = data[0];
+    if (firstByte !== 0x84 && firstByte !== 0x98) {
+        return false;
+    }
 
-  return true;
+    return true;
 }
 
 /**
  * Calculate SHA256 hash of content
  */
 async function calculateSHA256(content: ArrayBuffer): Promise<string> {
-  const hashBuffer = await crypto.subtle.digest("SHA-256", content);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+    const hashBuffer = await crypto.subtle.digest("SHA-256", content);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
  * Convert UUID string to 16-byte ArrayBuffer
  */
 function uuidToBytes(uuid: string): ArrayBuffer {
-  const hex = uuid.replace(/-/g, "");
-  const bytes = new Uint8Array(16);
-  for (let i = 0; i < 16; i++) {
-    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
-  }
-  return bytes.buffer;
+    const hex = uuid.replace(/-/g, "");
+    const bytes = new Uint8Array(16);
+    for (let i = 0; i < 16; i++) {
+        bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+    }
+    return bytes.buffer;
 }
 
 /**
  * Convert hex string to ArrayBuffer
  */
 function hexToBytes(hex: string): ArrayBuffer {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
-  }
-  return bytes.buffer;
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < bytes.length; i++) {
+        bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+    }
+    return bytes.buffer;
 }

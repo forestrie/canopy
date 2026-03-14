@@ -3,8 +3,7 @@
  * GET /grants/authority/{innerHex} — load grant from R2, resolveContent(inner); if sequenced, merge idtimestamp and return full grant CBOR.
  */
 
-import type { SequencingQueueStub } from "@canopy/forestrie-ingress-types";
-import { shardNameForLog } from "@canopy/forestrie-sharding";
+import { getQueueForLog } from "../sequeue/logshard.js";
 import { decodeGrant, encodeGrant } from "../grant/codec.js";
 import type { Grant } from "../grant/types.js";
 import { bytesToUuid } from "../grant/uuid-bytes.js";
@@ -15,12 +14,6 @@ import {
 } from "./sequencing-result.js";
 
 const SEQUENCED_GRANT_KIND_SEGMENT = "authority";
-
-function getShardCount(shardCountStr: string): number {
-  const count = parseInt(shardCountStr, 10);
-  if (Number.isNaN(count) || count < 1) return 1;
-  return count;
-}
 
 function hexToBuffer(hex: string): ArrayBuffer {
   const bytes = new Uint8Array(hex.length / 2);
@@ -72,10 +65,7 @@ export async function serveGrant(
   }
 
   const ownerLogIdUuid = bytesToUuid(grant.ownerLogId);
-  const shardCount = getShardCount(env.shardCountStr);
-  const shardName = shardNameForLog(ownerLogIdUuid, shardCount);
-  const doId = env.sequencingQueue.idFromName(shardName);
-  const queue = env.sequencingQueue.get(doId) as unknown as SequencingQueueStub;
+  const queue = getQueueForLog(env, ownerLogIdUuid);
 
   const contentHashBytes = hexToBuffer(innerHex.toLowerCase());
   const result = await queue.resolveContent(contentHashBytes);
@@ -119,9 +109,23 @@ export async function serveGrant(
 }
 
 /**
- * Fetch a completed grant by path (for register-statement X-Grant-Location).
- * When path is /grants/authority/{innerHex}, loads from R2 and completes with resolveContent + idtimestamp.
- * Returns null if grant not found or not yet sequenced.
+ * Fetch a completed grant by path (for register-signed-statement X-Grant-Location).
+ *
+ * **Context:** When the client sends X-Grant-Location: /grants/authority/{innerHex}, we must return
+ * the grant with idtimestamp filled in so that the statement can be validated against the sequenced
+ * authority log entry. The grant was stored at enqueue time with a placeholder idtimestamp;
+ * sequencing (ranger appending the leaf to the MMR) happens asynchronously.
+ *
+ * **Transformation:** We load the grant from R2, then (1) resolve sequencing state for this inner
+ * hash on the correct queue, (2) read idtimestamp from the massif in R2, and (3) merge idtimestamp
+ * into the grant. If the entry is not yet sequenced, resolveContent returns null and we return null.
+ *
+ * **Shard name → DoId:** The SequencingQueue is sharded by authority log; we use getQueueForLog(env, ownerLogId)
+ * so we hit the same DO that enqueue(ownerLogId, inner) used at register-grant time. See src/sequeue/logshard.ts.
+ *
+ * Design: docs/plans/plan-0004-log-bootstraping/subplan-03-grant-sequencing-component.md
+ * (grant-sequencing, same DO as register-signed-statement; resolveContent return path; R2 fallback
+ * for idtimestamp when DO does not store it — §7.1).
  */
 export async function getCompletedGrant(
   path: string,
@@ -144,10 +148,7 @@ export async function getCompletedGrant(
   }
 
   const ownerLogIdUuid = bytesToUuid(grant.ownerLogId);
-  const shardCount = getShardCount(env.shardCountStr);
-  const shardName = shardNameForLog(ownerLogIdUuid, shardCount);
-  const doId = env.sequencingQueue.idFromName(shardName);
-  const queue = env.sequencingQueue.get(doId) as unknown as SequencingQueueStub;
+  const queue = getQueueForLog(env, ownerLogIdUuid);
 
   const contentHashBytes = hexToBuffer(innerHex);
   const result = await queue.resolveContent(contentHashBytes);
