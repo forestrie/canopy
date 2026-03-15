@@ -231,6 +231,9 @@ importers:
         specifier: workspace:*
         version: link:../packages/shared/encoding
     devDependencies:
+      cbor-x:
+        specifier: ^1.5.9
+        version: 1.6.0
       tsx:
         specifier: ^4.8.1
         version: 4.21.0

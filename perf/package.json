@@ -4,12 +4,15 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "generate-grant-pool": "tsx scripts/generate-grant-pool.ts"
+    "generate-grant-pool": "tsx scripts/generate-grant-pool.ts",
+    "poll-status": "tsx scripts/poll-status.ts",
+    "resolve-receipt-to-grant": "tsx scripts/resolve-receipt-to-grant.ts"
   },
   "dependencies": {
     "@canopy/encoding": "workspace:*"
   },
   "devDependencies": {
+    "cbor-x": "^1.5.9",
     "tsx": "^4.8.1",
     "typescript": "^5.6.3"
   }
