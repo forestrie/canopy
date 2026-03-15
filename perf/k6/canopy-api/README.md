@@ -4,26 +4,18 @@ Sustained load testing using [k6](https://k6.io) with constant-arrival-rate
 execution. These tests complement the burst-oriented smoke tests in
 `taskfiles/scrapi.yml`.
 
-**Auth model:** Tests use **grant-based auth** (Plan 0001): create grants via
-`POST /logs/{logId}/grants`, then send `X-Grant-Location` on
-`POST /logs/{logId}/entries`. The workflow (or local script) pre-creates a
-grant per log; k6 sends that header and signs COSE with a matching kid.
+**Auth model:** Tests use **grant-based auth** (Plan 0010): the grant-pool
+script mints grants via `POST /api/grants/bootstrap` (per log), registers each
+with `POST /logs/{logId}/grants` (Forestrie-Grant), then resolves receipts to
+completed grants. k6 sends `Authorization: Forestrie-Grant <base64>` on
+`POST /logs/{logId}/entries` and signs COSE with the grant signer (kid).
 
 ## Rate limits and headers
 
 - **Rate limits:** Grant-signer rate limiting is implemented in the API but
   **not** applied in the request path yet; perf tests are not throttled by it.
-- **Headers:** The API allows `X-Grant-Location` in CORS
-  (`Access-Control-Allow-Headers`). k6 sets `X-Grant-Location` on every POST
-  /entries request.
-
-## Object storage (R2_GRANTS)
-
-The API stores grants in the **R2_GRANTS** bucket. Creation of this bucket is
-**automatic** when you run the Cloudflare bootstrap: `task cloudflare:bootstrap`
-(or `task cloudflare:create`) creates both the merklelog bucket and the grants
-bucket (`canopy-{env}-1-grants`). Ensure bootstrap has been run before
-deploying canopy-api or running perf against an environment that uses it.
+- **Headers:** k6 sets `Authorization: Forestrie-Grant <grantBase64>` on every
+  POST /entries request (no Bearer or X-Grant-Location).
 
 ## Prerequisites
 

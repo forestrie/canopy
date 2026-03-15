@@ -176,10 +176,10 @@ export function setup() {
         "check pool.signer is 64 hex chars",
     );
   }
-  const logIdToGrant = {};
+  const logIdToGrantBase64 = {};
   const grants = pool.grants || [];
   for (const g of grants) {
-    logIdToGrant[g.logId] = g.grantLocation;
+    logIdToGrantBase64[g.logId] = g.grantBase64;
   }
   if (grants.length === 0) {
     throw new Error(
@@ -195,7 +195,7 @@ export function setup() {
   console.log(`  Duration: ${WARMUP} warmup + ${DURATION} sustained`);
   console.log(`  Payload: ${MSG_BYTES} bytes`);
   console.log(`  Sample rate: ${SAMPLE_RATE * 100}%`);
-  console.log(`  Grant pool: ${grants.length} grants (X-Grant-Location)`);
+  console.log(`  Grant pool: ${grants.length} grants (Forestrie-Grant)`);
 
   // Do not pass signerBytes through setup return: k6 may serialize it and VUs can
   // receive a corrupted/wrong-length copy. Each VU derives signer from pool instead.
@@ -206,7 +206,7 @@ export function setup() {
     logCount: LOG_IDS.length,
     msgBytes: MSG_BYTES,
     sampleRate: SAMPLE_RATE,
-    logIdToGrant,
+    logIdToGrantBase64,
     poolSignerHex: pool.signer,
   };
 }
@@ -218,8 +218,8 @@ export default function (data) {
   const logId = data.logIds[logIndex];
   requestCounter++;
 
-  const grantLocation = data.logIdToGrant[logId];
-  if (!grantLocation) {
+  const grantBase64 = data.logIdToGrantBase64[logId];
+  if (!grantBase64) {
     console.error(`No grant for logId ${logId}; ensure grant-pool.json includes this log`);
     return;
   }
@@ -236,13 +236,13 @@ export default function (data) {
   // Decide if this request should measure e2e latency (sampled)
   const measureE2E = data.sampleRate > 0 && Math.random() < data.sampleRate;
 
-  // POST with X-Grant-Location (grant-based auth)
+  // POST with Forestrie-Grant (grant-based auth)
   const result = postAndMaybeWaitWithGrant(
     data.baseUrl,
     logId,
     data.apiToken,
     coseSign1,
-    grantLocation,
+    grantBase64,
     measureE2E,
     60, // maxPolls
     250, // pollIntervalMs
