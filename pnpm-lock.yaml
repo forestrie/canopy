@@ -102,6 +102,9 @@ importers:
 
   packages/apps/delegation-signer:
     dependencies:
+      '@noble/curves':
+        specifier: ^1.9.7
+        version: 1.9.7
       cbor-x:
         specifier: ^1.5.9
         version: 1.6.0
