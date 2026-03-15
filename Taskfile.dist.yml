@@ -28,6 +28,9 @@ includes:
   wrangler: ./taskfiles/wrangler.yml
   merklelog: ./taskfiles/merklelog.yml
   perf: ./taskfiles/perf.yml
+  grant-shared: ./taskfiles/grant-shared.yml
+  grant-bootstrap: ./taskfiles/grant-bootstrap.yml
+  grant: ./taskfiles/grant.yml
 
 tasks:
   default:
