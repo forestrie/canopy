@@ -14,6 +14,7 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
+    "@noble/curves": "^1.9.7",
     "cbor-x": "^1.5.9"
   },
   "devDependencies": {

@@ -114,6 +114,8 @@ For the **grant flow** e2e to pass (not skip), the dev deployment must have:
 - [ ] **Smoke:** After deploy, the Smoke test job runs automatically; it uses `.env.dev` (from the branch you deployed). If smoke fails, check `SCRAPI_BASE_URL` and `SCRAPI_API_KEY` in `.env.dev` and that the deployed workers are healthy.
 - [ ] **E2E (optional):** Run e2e remote with `CANOPY_E2E_BASE_URL` set to your dev canopy-api URL; for grant flow, ensure delegation-signer and queue (and consumer) are configured in that environment.
 
+**Local bootstrap without GCP KMS:** You can run the full bootstrap flow locally using a test-only key. See [ADR-0002](../adr-0002-delegation-signer-local-test-key.md): start delegation-signer with `task wrangler:dev:delegation-signer` (test-key mode), set canopy-api `DELEGATION_SIGNER_URL=http://localhost:8791`, `DELEGATION_SIGNER_BEARER_TOKEN=test`, `ROOT_LOG_ID=…`, then run `task wrangler:dev` and `pnpm run verify:grant-flow` or e2e local.
+
 ---
 
 ## 4. Branch vs main

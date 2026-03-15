@@ -1,12 +1,17 @@
 import { defineConfig } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 process.env.CANOPY_E2E_API_TOKEN ??= "test-api";
 
 const LOCAL_PORT = Number(
   process.env.CANOPY_E2E_LOCAL_PORT ?? detectWranglerPort() ?? 8789,
 );
+
+const repoRoot = resolve(__dirname, "../../..");
 
 export default defineConfig({
   testDir: "./tests",
@@ -17,12 +22,21 @@ export default defineConfig({
   reporter: process.env.CI
     ? [["html", { outputFolder: "playwright-report" }]]
     : "list",
-  webServer: {
-    command: "pnpm --filter @canopy/api dev -- --test-scheduled",
-    port: LOCAL_PORT,
-    reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
-  },
+  webServer:
+    process.env.CI === "true"
+      ? {
+          cwd: repoRoot,
+          command: `node ${resolve(repoRoot, "scripts/start-e2e-local-stack.mjs")}`,
+          port: LOCAL_PORT,
+          reuseExistingServer: false,
+          timeout: 90_000,
+        }
+      : {
+          command: "pnpm --filter @canopy/api dev -- --test-scheduled",
+          port: LOCAL_PORT,
+          reuseExistingServer: true,
+          timeout: 60_000,
+        },
   projects: [
     {
       name: "local",

@@ -7,6 +7,7 @@
     "generate-grant-pool": "tsx scripts/generate-grant-pool.ts",
     "poll-status": "tsx scripts/poll-status.ts",
     "resolve-receipt-to-grant": "tsx scripts/resolve-receipt-to-grant.ts",
+    "verify-grant-flow": "tsx ../scripts/verify-grant-flow.ts",
     "test": "vitest run"
   },
   "dependencies": {

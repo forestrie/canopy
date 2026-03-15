@@ -65,6 +65,8 @@ export interface Env {
   DELEGATION_SIGNER_URL?: string;
   DELEGATION_SIGNER_BEARER_TOKEN?: string;
   DELEGATION_SIGNER_PUBLIC_KEY_TOKEN?: string;
+  /** Bootstrap signing alg: ES256 (default) or KS256. */
+  BOOTSTRAP_ALG?: string;
   UNIVOCITY_SERVICE_URL?: string;
   UNIVOCITY_CONTRACT_RPC_URL?: string;
   UNIVOCITY_CONTRACT_ADDRESS?: string;
@@ -138,6 +140,7 @@ export default {
           rootLogId: env.ROOT_LOG_ID,
           delegationSignerUrl,
           delegationSignerBearerToken: token,
+          bootstrapAlg: env.BOOTSTRAP_ALG as "ES256" | "KS256" | undefined,
         });
         const headers = new Headers(response.headers);
         Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
@@ -220,6 +223,7 @@ export default {
                 delegationSignerBearerToken: env.DELEGATION_SIGNER_BEARER_TOKEN,
                 delegationSignerPublicKeyToken:
                   env.DELEGATION_SIGNER_PUBLIC_KEY_TOKEN,
+                bootstrapAlg: env.BOOTSTRAP_ALG as "ES256" | "KS256" | undefined,
                 univocityServiceUrl: env.UNIVOCITY_SERVICE_URL,
               }
             : undefined;

@@ -37,6 +37,7 @@ export interface RegisterGrantEnv {
     delegationSignerUrl: string;
     delegationSignerBearerToken: string;
     delegationSignerPublicKeyToken?: string;
+    bootstrapAlg?: "ES256" | "KS256";
     univocityServiceUrl: string;
   };
 }
@@ -113,10 +114,12 @@ export async function registerGrant(
         const bootstrapKey = await getBootstrapPublicKey({
           delegationSignerUrl: env.bootstrapEnv.delegationSignerUrl,
           delegationSignerPublicKeyToken: env.bootstrapEnv.delegationSignerPublicKeyToken,
+          bootstrapAlg: env.bootstrapEnv.bootstrapAlg,
         });
         const ok = await verifyBootstrapCoseSign1(
           grantResult.bytes,
           bootstrapKey.publicKeyBytes,
+          bootstrapKey.alg,
         );
         if (ok) {
           return await enqueueAndStoreGrant(request, grant, env);

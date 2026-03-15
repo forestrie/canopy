@@ -41,6 +41,52 @@ test.describe("Canopy API", () => {
     expect(config.baseUrl).toBeTruthy();
   });
 
+  test("bootstrap mint returns 201 (default ES256) when delegation-signer and ROOT_LOG_ID are configured", async ({
+    unauthorizedRequest,
+  }, testInfo) => {
+    const logId = "123e4567-e89b-12d3-a456-426614174000";
+    const mintRes = await unauthorizedRequest.post(
+      "/api/grants/bootstrap",
+      {
+        data: JSON.stringify({ rootLogId: logId }),
+        headers: { "content-type": "application/json" },
+      },
+    );
+    if (mintRes.status() >= 500) {
+      test.skip(
+        true,
+        "Bootstrap not configured (delegation-signer or ROOT_LOG_ID missing)",
+      );
+    }
+    const problemMint = await reportProblemDetails(mintRes, test.info());
+    expect(mintRes.status(), formatProblemDetailsMessage(problemMint)).toBe(201);
+    const body = await mintRes.text();
+    expect(body.length).toBeGreaterThan(0);
+  });
+
+  test("bootstrap mint with alg=KS256 returns 201 when both algs supported", async ({
+    unauthorizedRequest,
+  }) => {
+    const logId = "123e4567-e89b-12d3-a456-426614174001";
+    const mintRes = await unauthorizedRequest.post(
+      "/api/grants/bootstrap",
+      {
+        data: JSON.stringify({ rootLogId: logId, alg: "KS256" }),
+        headers: { "content-type": "application/json" },
+      },
+    );
+    if (mintRes.status() >= 500) {
+      test.skip(
+        true,
+        "Bootstrap not configured or KS256 not supported",
+      );
+    }
+    const problemMint = await reportProblemDetails(mintRes, test.info());
+    expect(mintRes.status(), formatProblemDetailsMessage(problemMint)).toBe(201);
+    const body = await mintRes.text();
+    expect(body.length).toBeGreaterThan(0);
+  });
+
   test("grant flow: mint, register, poll, resolve, POST entry (Forestrie-Grant)", async ({
     unauthorizedRequest,
   }, testInfo) => {
@@ -77,6 +123,12 @@ test.describe("Canopy API", () => {
       test.skip(
         true,
         "Grant sequencing not configured (queue/DO missing)",
+      );
+    }
+    if (registerRes.status() === 500 && baseURL.includes("127.0.0.1")) {
+      test.skip(
+        true,
+        "Register failed (local DO RPC not supported between dev sessions)",
       );
     }
     const problemReg = await reportProblemDetails(registerRes, test.info());

@@ -16,6 +16,10 @@ import {
   derToPem,
 } from "./kms/client";
 import {
+  getTestKeyPublicKeyDer,
+  getTestKeyPublicKeyDerEs256,
+} from "./kms/test-key-signer";
+import {
   assembleCoseSign1,
   buildDelegationToBeSigned,
   kmsDerSignatureToCoseRaw,
@@ -61,6 +65,15 @@ export interface Env {
    * the client sends a Bearer token.
    */
   DELEGATION_SIGNER_PUBLIC_KEY_ACCESS_TOKEN?: string;
+  /**
+   * Optional: use in-process test key for bootstrap (no KMS). "1" or "true" to enable.
+   * For local testing only. See ADR-0002.
+   */
+  DELEGATION_SIGNER_USE_TEST_KEY?: string;
+  /**
+   * Optional: 64 hex chars (32-byte private key) for test key. If unset, well-known default.
+   */
+  DELEGATION_SIGNER_TEST_KEY_PRIVATE_HEX?: string;
 }
 
 type LogSpecificDelegationRequest = {
@@ -346,6 +359,28 @@ async function handlePublicKey(
     );
   }
 
+  const useTestKey =
+    env.DELEGATION_SIGNER_USE_TEST_KEY?.trim().toLowerCase() === "1" ||
+    env.DELEGATION_SIGNER_USE_TEST_KEY?.trim().toLowerCase() === "true";
+  if (useTestKey) {
+    const der =
+      alg === "KS256"
+        ? getTestKeyPublicKeyDer(
+            env.DELEGATION_SIGNER_TEST_KEY_PRIVATE_HEX?.trim() || undefined,
+          )
+        : getTestKeyPublicKeyDerEs256();
+    const pem = derToPem(der);
+    const algHeader = alg === "KS256" ? "KS256" : "ES256";
+    return new Response(pem, {
+      status: 200,
+      headers: {
+        "content-type": "application/x-pem-file",
+        "cache-control": "public, max-age=3600",
+        "x-key-algorithm": algHeader,
+      },
+    });
+  }
+
   const token =
     extractBearerToken(request.headers.get("authorization")) ??
     env.DELEGATION_SIGNER_PUBLIC_KEY_ACCESS_TOKEN;
@@ -613,14 +648,24 @@ export default {
     }
 
     if (pathname === "/api/health" && request.method === "GET") {
-      return cborResponse(
-        {
-          status: "healthy",
-          forestProjectId: env.FOREST_PROJECT_ID,
-          env: env.NODE_ENV,
-        },
-        200,
-      );
+      try {
+        return cborResponse(
+          {
+            status: "healthy",
+            forestProjectId: env.FOREST_PROJECT_ID ?? "unknown",
+            env: env.NODE_ENV ?? "unknown",
+          },
+          200,
+        );
+      } catch (e) {
+        return cborResponse(
+          {
+            status: "unhealthy",
+            error: e instanceof Error ? e.message : "health check failed",
+          },
+          503,
+        );
+      }
     }
 
     if (pathname.startsWith("/api/public-key/") && request.method === "GET") {

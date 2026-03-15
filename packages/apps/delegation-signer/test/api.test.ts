@@ -354,6 +354,88 @@ describe("grant-delegate (Plan 0004 subplan 04)", () => {
     expect(data.signature!.length).toBe(64 * 2); // 64 bytes as hex
   });
 
+  it("POST /api/delegate/bootstrap returns 200 with test key when DELEGATION_SIGNER_USE_TEST_KEY=1 (no KMS)", async () => {
+    (env as any).DELEGATION_SIGNER_USE_TEST_KEY = "1";
+    const fetchCalls: string[] = [];
+    const fetchStub = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : (input as Request).url;
+      fetchCalls.push(String(url));
+      return new Response("{}", { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchStub);
+
+    const request = new Request("http://localhost/api/delegate/bootstrap", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer any-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ cose_tbs_hash: payloadHashHex }),
+    });
+    const response = await worker.fetch(request, env);
+    vi.unstubAllGlobals();
+    delete (env as any).DELEGATION_SIGNER_USE_TEST_KEY;
+
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as { signature?: string };
+    expect(data.signature).toBeDefined();
+    expect(data.signature!.length).toBe(128); // 64 bytes hex
+    expect(fetchCalls).toHaveLength(0); // no KMS call
+  });
+
+  it("GET /api/public-key/:bootstrap returns 200 and PEM with test key (default ES256)", async () => {
+    (env as any).DELEGATION_SIGNER_USE_TEST_KEY = "1";
+    const request = new Request("http://localhost/api/public-key/:bootstrap");
+    const response = await worker.fetch(request, env);
+    delete (env as any).DELEGATION_SIGNER_USE_TEST_KEY;
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/x-pem-file");
+    expect(response.headers.get("x-key-algorithm")).toBe("ES256");
+    const pem = await response.text();
+    expect(pem).toContain("-----BEGIN PUBLIC KEY-----");
+    expect(pem).toContain("-----END PUBLIC KEY-----");
+  });
+
+  it("GET /api/public-key/:bootstrap?alg=KS256 returns 200 and PEM with test key (no token)", async () => {
+    (env as any).DELEGATION_SIGNER_USE_TEST_KEY = "1";
+    const request = new Request(
+      "http://localhost/api/public-key/:bootstrap?alg=KS256",
+    );
+    const response = await worker.fetch(request, env);
+    delete (env as any).DELEGATION_SIGNER_USE_TEST_KEY;
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/x-pem-file");
+    expect(response.headers.get("x-key-algorithm")).toBe("KS256");
+    const pem = await response.text();
+    expect(pem).toContain("-----BEGIN PUBLIC KEY-----");
+    expect(pem).toContain("-----END PUBLIC KEY-----");
+  });
+
+  it("POST /api/delegate/bootstrap with alg=KS256 uses test key (secp256k1)", async () => {
+    (env as any).DELEGATION_SIGNER_USE_TEST_KEY = "1";
+    const fetchStub = vi.fn(() => new Response("{}", { status: 500 }));
+    vi.stubGlobal("fetch", fetchStub);
+
+    const request = new Request("http://localhost/api/delegate/bootstrap", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer any",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ cose_tbs_hash: payloadHashHex, alg: "KS256" }),
+    });
+    const response = await worker.fetch(request, env);
+    vi.unstubAllGlobals();
+    delete (env as any).DELEGATION_SIGNER_USE_TEST_KEY;
+
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as { signature?: string };
+    expect(data.signature!.length).toBe(128);
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
   it("POST /api/delegate/bootstrap returns 200 and signature hex when cose_tbs_hash provided", async () => {
     const coseTbsHashHex =
       "0000000000000000000000000000000000000000000000000000000000000002";

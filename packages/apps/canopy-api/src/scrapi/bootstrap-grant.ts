@@ -63,12 +63,16 @@ export interface BootstrapMintEnv {
   rootLogId?: string;
   delegationSignerUrl: string;
   delegationSignerBearerToken: string;
+  /** Alg for bootstrap signing; default ES256. */
+  bootstrapAlg?: "ES256" | "KS256";
 }
 
 /** Request body for POST /api/grants/bootstrap (optional). */
 export interface BootstrapMintBody {
   rootLogId?: string;
   logId?: string;
+  /** Override alg (ES256 | KS256); default ES256. */
+  alg?: string;
 }
 
 /**
@@ -83,8 +87,13 @@ async function parseBootstrapBody(request: Request): Promise<BootstrapMintBody |
     const body = (await request.json()) as Record<string, unknown>;
     const rootLogId = typeof body?.rootLogId === "string" ? body.rootLogId : undefined;
     const logId = typeof body?.logId === "string" ? body.logId : undefined;
-    if (!rootLogId && !logId) return undefined;
-    return { rootLogId: rootLogId ?? logId, logId: logId ?? rootLogId };
+    const alg = typeof body?.alg === "string" ? body.alg.trim().toUpperCase() : undefined;
+    if (!rootLogId && !logId && alg === undefined) return undefined;
+    return {
+      rootLogId: rootLogId ?? logId,
+      logId: logId ?? rootLogId,
+      alg: alg === "KS256" || alg === "ES256" ? alg : undefined,
+    };
   } catch {
     return undefined;
   }
@@ -96,12 +105,18 @@ async function parseBootstrapBody(request: Request): Promise<BootstrapMintBody |
  * Optional body: { "rootLogId": "<logId>" } or { "logId": "<logId>" } to mint for that log
  * instead of env ROOT_LOG_ID. logId may be 64 hex (32 bytes) or UUID (32 hex).
  */
+function normalizeBootstrapAlg(raw: string | undefined): "ES256" | "KS256" {
+  const s = raw?.trim().toUpperCase();
+  return s === "KS256" ? "KS256" : "ES256";
+}
+
 export async function handlePostBootstrapGrant(
   request: Request,
   env: BootstrapMintEnv,
 ): Promise<Response> {
   const body = await parseBootstrapBody(request);
   const rootLogIdRaw = body?.rootLogId ?? body?.logId ?? env.rootLogId?.trim();
+  const alg = normalizeBootstrapAlg(body?.alg ?? env.bootstrapAlg);
   if (!rootLogIdRaw) {
     return ServerErrors.internal(
       "ROOT_LOG_ID not configured and request body has no rootLogId/logId",
@@ -154,7 +169,7 @@ export async function handlePostBootstrapGrant(
         "Content-Type": "application/json",
         Authorization: `Bearer ${env.delegationSignerBearerToken}`,
       },
-      body: JSON.stringify({ cose_tbs_hash: coseTbsHash }),
+      body: JSON.stringify({ cose_tbs_hash: coseTbsHash, alg }),
     });
     if (!res.ok) {
       const text = await res.text();

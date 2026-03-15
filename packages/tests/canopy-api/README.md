@@ -20,6 +20,12 @@ The grant-flow test is **skipped** when the API does not have bootstrap or queue
 
 - **Local with bootstrap + queue:** Start the local API with bootstrap and queue env set (e.g. in `packages/apps/canopy-api/wrangler.jsonc` vars: `ROOT_LOG_ID`, `DELEGATION_SIGNER_URL`, `DELEGATION_SIGNER_BEARER_TOKEN`). The queue (DO) is already bound in wrangler. Then run `pnpm run test:e2e:local`. Mint and register can succeed; **poll** may still skip with "Poll timeout" unless a queue consumer (e.g. ranger) is running to produce the receipt.
 
+- **Local with test-key delegation-signer (no GCP KMS):** Start the delegation-signer in test-key mode, then point canopy-api at it. No GCP credentials needed. From repo root:
+  1. Start delegation-signer: `task wrangler:dev:delegation-signer` (runs on port 8791; copies `.dev.vars.example` to `.dev.vars` if missing).
+  2. Configure canopy-api with e.g. `DELEGATION_SIGNER_URL=http://localhost:8791`, `DELEGATION_SIGNER_BEARER_TOKEN=test`, `ROOT_LOG_ID=<64 hex or UUID>` (via wrangler vars or `.dev.vars` in canopy-api).
+  3. Start canopy-api: `task wrangler:dev`.
+  4. Run `pnpm run test:e2e:local` or `BASE_URL=http://localhost:8788 pnpm run verify:grant-flow`. Poll will still time out unless a queue consumer is running; mint and register will succeed.
+
 ## Environment Variables
 
 - `CANOPY_E2E_API_TOKEN`: Optional bearer token used for authorized scenarios. Defaults to `test-api` if not provided; adjust when pointing at real deployments—authorized specs skip while the placeholder is in use.
