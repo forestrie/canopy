@@ -10,6 +10,7 @@
     "deploy": "pnpm --filter @canopy/api deploy",
     "deploy:production": "pnpm --filter @canopy/api deploy:production",
     "test": "pnpm -r test",
+    "test:bootstrap-grant": "pnpm --filter @canopy/api test:bootstrap-grant",
     "test:e2e": "pnpm --filter @canopy/api-e2e test:e2e",
     "test:e2e:local": "pnpm --filter @canopy/api-e2e test:e2e:local",
     "test:e2e:remote": "pnpm --filter @canopy/api-e2e test:e2e:remote",

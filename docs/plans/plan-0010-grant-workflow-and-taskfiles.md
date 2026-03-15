@@ -126,6 +126,33 @@ Each step is independently verifiable. Implement in order; run verification befo
 ## 7. Summary
 
 - **Bootstrap:** No server-side storage; POST returns the grant, workflow saves it. GET /grants/bootstrap/:rootLogId removed or 404.
+
+## 8. Testing (local first, then CI)
+
+Run everything that does not require a Cloudflare deployment first; add or adjust CI so e2e can pass without deploy.
+
+| Layer | What | Testable locally? | In CI today? | Notes |
+|-------|------|-------------------|---------------|--------|
+| **Unit** | canopy-api handlers (bootstrap, register, etc.) | Yes: `pnpm --filter @canopy/api test` (vitest + miniflare) | Yes: `pnpm -r test` | No deploy. Bootstrap tests mock delegation-signer. |
+| **Unit** | Perf grant-completion helpers (entryId→idtimestamp, buildCompletedGrant, signerHexFromGrantPayload) | Yes: add vitest in perf, test with fixtures | Add: run `pnpm --filter @canopy/perf test` in test job | No network; pure logic. |
+| **Script** | poll-status, resolve-receipt-to-grant (full script) | Partially: resolve with fixture files; poll needs live status URL or mock server | Optional: script smoke with fixture | Full resolve-receipt test: fixture grant + receipt URL path + mock GET receipt. |
+| **Task** | grant-bootstrap:mint, grant:pool | Yes: start `wrangler dev` (or point at dev), then run task | Optional: job that starts dev then runs mint | Requires running API (local or dev). |
+| **E2E** | Playwright: health, config, grant flow (mint→register→poll→resolve→POST entries) | Yes: `pnpm run test:e2e:local` (webServer starts API) | Yes but default is remote: `pnpm run test:e2e` → project=remote | Switch CI to e2e:local so no deploy; grant test skips when bootstrap/queue not configured. |
+| **Smoke** | task scrapi:smoke (burst statements) | Only if running against local/dev | Yes: workflow_call against dev/prod | Needs deployed Workers (or local stack). |
+
+**Incremental local testing (before deploy):**
+
+1. **Unit:** Run `pnpm -r test` (canopy-api bootstrap tests pass).
+2. **Unit (perf):** Add `perf/lib/grant-completion.ts` (extract from scripts) + `perf/lib/grant-completion.test.ts`; run `pnpm --filter @canopy/perf test`.
+3. **E2E local:** Run `pnpm run test:e2e:local`; grant test skips gracefully when delegation-signer or queue missing.
+4. **Integration (optional):** Start `pnpm --filter @canopy/api dev`, then `task grant-bootstrap:mint` with `CANOPY_PERF_BASE_URL=http://localhost:8789`; assert bootstrap-grant.b64 exists.
+
+**CI without deploy:** Run unit tests + perf unit tests + e2e with project=local (webServer starts API). Grant e2e skips if bootstrap or register returns 5xx. No smoke against remote until after deploy.
+
+### 8.1 Arbor and univocity
+
+- **Arbor:** Plan 0010 does not require any **service changes** in arbor. Grant-sequencing uses the same DO and wire format that ranger (or the existing pipeline) already consumes. R2 bucket names (e.g. arbor-dev-1-logs) are config for merklelog storage; no new arbor APIs or behaviour are required.
+- **Univocity / checkpoint publishing:** We do **not** need checkpoint publishing to univocity to test the canopy side. When `UNIVOCITY_SERVICE_URL` is **not** set, `bootstrapEnv` is undefined and register-grant uses the “queue only” path: every valid Forestrie-Grant is enqueued without calling univocity or checking “log initialized”. Receipts appear when the queue consumer (e.g. ranger) processes the grant. Checkpoint publishing and univocity’s “log initialized” are only needed when using the full bootstrap/receipt branching (Subplan 08) in production; they are not required for local or CI testing of mint → register → poll → resolve → POST entry.
 - **Option A:** POST /api/grants/bootstrap accepts optional body `{ "rootLogId": "<logId>" }` for per-log mint.
 - **generate-grant-pool:** Uses register-grant per log (GF_CREATE|GF_EXTEND, target log), collects completed grants via query-registration-status (poll) and resolve-receipt, writes grant-pool.json.
 - **Taskfiles:** grant-shared.yml (poll-status, resolve-receipt, vars), grant-bootstrap.yml (mint, register, poll, resolve, bootstrap), grant.yml (single, pool) with re-use of shared tasks.

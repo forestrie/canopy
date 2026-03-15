@@ -9,7 +9,8 @@
     "test:e2e:remote": "pnpm exec playwright test --project=remote"
   },
   "dependencies": {
-    "@canopy/api": "workspace:*"
+    "@canopy/api": "workspace:*",
+    "cbor-x": "^1.5.9"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",

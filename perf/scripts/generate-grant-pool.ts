@@ -14,7 +14,12 @@
 import { mkdirSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import { decode as decodeCbor } from "cbor-x";
+import {
+  buildCompletedGrant,
+  extractEntryIdFromReceiptUrl,
+  signerHexFromGrantPayload,
+} from "../lib/grant-completion.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -41,10 +46,6 @@ if (LOG_IDS.length === 0) {
   process.exit(1);
 }
 
-const HEADER_IDTIMESTAMP = -65537;
-const HEADER_RECEIPT = 396;
-const IDTIMESTAMP_BYTES = 8;
-
 const headers: Record<string, string> = {
   Authorization: `Bearer ${API_TOKEN}`,
 };
@@ -66,72 +67,6 @@ async function pollUntilReceipt(statusUrl: string): Promise<string> {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
   throw new Error("Timeout waiting for receipt URL");
-}
-
-function entryIdToIdtimestamp(entryIdHex: string): Uint8Array {
-  if (!/^[0-9a-f]{32}$/i.test(entryIdHex)) {
-    throw new Error("entryId must be 32 hex chars");
-  }
-  const bytes = new Uint8Array(16);
-  for (let i = 0; i < 16; i++) {
-    bytes[i] = parseInt(entryIdHex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes.slice(0, IDTIMESTAMP_BYTES);
-}
-
-function extractEntryIdFromReceiptUrl(url: string): string {
-  const path = url.includes("?") ? url.slice(0, url.indexOf("?")) : url;
-  const segments = path.split("/");
-  const receiptIndex = segments.indexOf("receipt");
-  if (receiptIndex < 1) {
-    throw new Error("receipt URL must contain .../entries/{entryId}/receipt");
-  }
-  const entryId = segments[receiptIndex - 1];
-  if (!entryId || entryId.length !== 32) {
-    throw new Error("entryId segment must be 32 hex chars");
-  }
-  return entryId;
-}
-
-function buildCompletedGrant(
-  originalGrantBase64: string,
-  receiptUrl: string,
-  receiptBytes: Uint8Array,
-): string {
-  const entryIdHex = extractEntryIdFromReceiptUrl(receiptUrl);
-  const idtimestamp = entryIdToIdtimestamp(entryIdHex);
-  const grantBytes = Uint8Array.from(
-    atob(originalGrantBase64.replace(/-/g, "+").replace(/_/g, "/")),
-    (c) => c.charCodeAt(0),
-  );
-  const cose = decodeCbor(grantBytes) as unknown[];
-  if (!Array.isArray(cose) || cose.length !== 4) {
-    throw new Error("Original grant must be COSE Sign1 (array of 4)");
-  }
-  const [protectedHeader, , payload, signature] = cose as [
-    Uint8Array,
-    unknown,
-    Uint8Array,
-    Uint8Array,
-  ];
-  const unprotected = new Map<number, unknown>([
-    [HEADER_IDTIMESTAMP, idtimestamp],
-    [HEADER_RECEIPT, receiptBytes],
-  ]);
-  const completed = [protectedHeader, unprotected, payload, signature];
-  const completedBytes = new Uint8Array(encodeCbor(completed));
-  return btoa(String.fromCharCode(...completedBytes));
-}
-
-function signerHexFromGrantPayload(payload: Uint8Array): string {
-  const map = decodeCbor(payload) as Map<number, Uint8Array> | Record<number, Uint8Array>;
-  const signer = map.get?.(7) ?? (map as Record<number, Uint8Array>)[7];
-  if (!signer || signer.length < 32) {
-    throw new Error("Grant payload missing signer (key 7)");
-  }
-  return Array.from(signer.slice(0, 32))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 const grants: { logId: string; grantBase64: string }[] = [];

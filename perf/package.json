@@ -6,7 +6,8 @@
   "scripts": {
     "generate-grant-pool": "tsx scripts/generate-grant-pool.ts",
     "poll-status": "tsx scripts/poll-status.ts",
-    "resolve-receipt-to-grant": "tsx scripts/resolve-receipt-to-grant.ts"
+    "resolve-receipt-to-grant": "tsx scripts/resolve-receipt-to-grant.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@canopy/encoding": "workspace:*"
@@ -14,6 +15,7 @@
   "devDependencies": {
     "cbor-x": "^1.5.9",
     "tsx": "^4.8.1",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.4"
   }
 }

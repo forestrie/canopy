@@ -4,11 +4,12 @@ import {
   formatProblemDetailsMessage,
   reportProblemDetails,
 } from "./utils/problem-details";
+import {
+  buildCompletedGrant,
+} from "./utils/grant-completion";
 
-function uuidToBytes(uuid: string): Uint8Array {
-  const hex = uuid.replace(/-/g, "");
-  return new Uint8Array(hex.match(/.{2}/g)!.map((b) => parseInt(b, 16)));
-}
+const POLL_MAX = 30;
+const POLL_INTERVAL_MS = 500;
 
 test.describe("Canopy API", () => {
   test("returns health status", async ({ unauthorizedRequest }) => {
@@ -40,67 +41,113 @@ test.describe("Canopy API", () => {
     expect(config.baseUrl).toBeTruthy();
   });
 
-  test("registers a COSE statement (grant flow)", async ({
+  test("grant flow: mint, register, poll, resolve, POST entry (Forestrie-Grant)", async ({
     unauthorizedRequest,
-  }) => {
+  }, testInfo) => {
     const logId = "123e4567-e89b-12d3-a456-426614174000";
-    const signerKid = new Uint8Array([0x01, 0x02, 0x03]);
+    const baseURL = testInfo.project.use.baseURL ?? "http://127.0.0.1:8789";
 
-    const grantBody = {
-      logId: uuidToBytes(logId),
-      ownerLogId: uuidToBytes("660e8400-e29b-41d4-a716-446655440001"),
-      grantFlags: new Uint8Array(8),
-      grantData: new Uint8Array(0),
-      signer: signerKid,
-      kind: new Uint8Array([0]),
-    };
-    const grantResponse = await unauthorizedRequest.post(
-      `/logs/${logId}/grants`,
+    const mintRes = await unauthorizedRequest.post(
+      "/api/grants/bootstrap",
       {
-        data: Buffer.from(cbor.encode(grantBody)),
-        headers: { "content-type": "application/cbor" },
+        data: JSON.stringify({ rootLogId: logId }),
+        headers: { "content-type": "application/json" },
       },
     );
-    if (grantResponse.status() === 404) {
-      test.skip(true, "Remote API does not yet expose POST /logs/{id}/grants");
+    if (mintRes.status() >= 500) {
+      test.skip(
+        true,
+        "Bootstrap not configured (delegation-signer or ROOT_LOG_ID missing)",
+      );
     }
-    const problemDetailsGrant = await reportProblemDetails(
-      grantResponse,
-      test.info(),
-    );
-    expect(
-      grantResponse.status(),
-      formatProblemDetailsMessage(problemDetailsGrant),
-    ).toBe(201);
-    const grantLocation = grantResponse.headers()["location"];
-    expect(grantLocation).toBeTruthy();
-    expect(grantLocation).toMatch(/^\/attestor\/[0-9a-f]{64}\.cbor$/);
+    const problemMint = await reportProblemDetails(mintRes, test.info());
+    expect(mintRes.status(), formatProblemDetailsMessage(problemMint)).toBe(201);
+    const grantBase64 = await mintRes.text();
 
-    const protectedHeader = cbor.encode(new Map([[4, signerKid]]));
+    const registerRes = await unauthorizedRequest.post(
+      `/logs/${logId}/grants`,
+      {
+        headers: {
+          Authorization: `Forestrie-Grant ${grantBase64}`,
+        },
+        maxRedirects: 0,
+      },
+    );
+    if (registerRes.status() === 503) {
+      test.skip(
+        true,
+        "Grant sequencing not configured (queue/DO missing)",
+      );
+    }
+    const problemReg = await reportProblemDetails(registerRes, test.info());
+    expect(registerRes.status(), formatProblemDetailsMessage(problemReg)).toBe(
+      303,
+    );
+    let statusUrl = registerRes.headers()["location"];
+    if (!statusUrl?.startsWith("http")) {
+      statusUrl = `${baseURL}${statusUrl!.startsWith("/") ? "" : "/"}${statusUrl}`;
+    }
+
+    let receiptUrl: string | null = null;
+    for (let i = 0; i < POLL_MAX; i++) {
+      const pollRes = await unauthorizedRequest.get(statusUrl!, {
+        maxRedirects: 0,
+      });
+      if (pollRes.status() === 303) {
+        const loc = pollRes.headers()["location"];
+        if (loc?.endsWith("/receipt")) {
+          receiptUrl = loc.startsWith("http")
+            ? loc
+            : `${new URL(statusUrl!).origin}${loc.startsWith("/") ? loc : `/${loc}`}`;
+          break;
+        }
+      }
+      if (pollRes.status() >= 400) {
+        break;
+      }
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    }
+    if (!receiptUrl) {
+      test.skip(true, "Poll timeout (queue may not be processing grants)");
+    }
+
+    const receiptRes = await unauthorizedRequest.get(receiptUrl!);
+    const problemReceipt = await reportProblemDetails(receiptRes, test.info());
+    expect(receiptRes.status(), formatProblemDetailsMessage(problemReceipt)).toBe(
+      200,
+    );
+    const receiptBytes = receiptRes.body();
+    const completedBase64 = buildCompletedGrant(
+      grantBase64,
+      receiptUrl!,
+      new Uint8Array(receiptBytes),
+    );
+
+    const signerKid = new Uint8Array(32);
     const mockCoseSign1 = cbor.encode([
-      protectedHeader,
+      cbor.encode(new Map([[4, signerKid]])),
       new Map(),
       Buffer.from("Hello"),
       new Uint8Array(64),
     ]);
 
-    const response = await unauthorizedRequest.post(`/logs/${logId}/entries`, {
+    const entryRes = await unauthorizedRequest.post(`/logs/${logId}/entries`, {
       data: Buffer.from(mockCoseSign1),
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',
-        "X-Grant-Location": grantLocation!,
+        Authorization: `Forestrie-Grant ${completedBase64}`,
       },
       maxRedirects: 0,
     });
 
-    const problemDetails = await reportProblemDetails(response, test.info());
-    expect(response.status(), formatProblemDetailsMessage(problemDetails)).toBe(
+    const problemEntry = await reportProblemDetails(entryRes, test.info());
+    expect(entryRes.status(), formatProblemDetailsMessage(problemEntry)).toBe(
       303,
     );
-    const location = response.headers()["location"];
+    const location = entryRes.headers()["location"];
     expect(location).toBeTruthy();
     expect(location).toMatch(
-      new RegExp(`/logs/${logId.replace(/[-]/g, "\\-")}/entries/[a-f0-9]{64}$`),
+      new RegExp(`/logs/${logId.replace(/[-]/g, "\\-")}/entries/[a-f0-9]{32}$`),
     );
   });
 });

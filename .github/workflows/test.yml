@@ -35,5 +35,8 @@ jobs:
       - name: Unit tests
         run: pnpm -r test
 
-      - name: API e2e tests
-        run: pnpm run test:e2e
+      - name: Perf lib unit tests
+        run: pnpm --filter @canopy/perf test
+
+      - name: API e2e tests (local)
+        run: pnpm run test:e2e:local

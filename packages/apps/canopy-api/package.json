@@ -10,6 +10,7 @@
     "deploy:production": "wrangler deploy --env production",
     "typecheck": "tsc --noEmit",
     "test": "vitest --run",
+    "test:bootstrap-grant": "vitest run test/bootstrap-grant.test.ts",
     "test:debug": "vitest --inspect --no-file-parallelism",
     "cf-typegen": "wrangler types"
   },
