@@ -1,7 +1,7 @@
 /**
- * Univocity leaf commitment for grants (Plan 0004 subplan 01/03).
- * Ranger computes leafHash = H(idTimestampBE || ContentHash); ContentHash = inner (grant).
- * So leafHash = SHA-256(idTimestampBE || inner).
+ * Univocity leaf commitment for grants (Plan 0004 subplan 01/03, Plan 0007).
+ * Ranger computes leafHash = H(idTimestampBE || ContentHash); ContentHash =
+ * grant commitment hash. So leafHash = SHA-256(idTimestampBE || grantCommitmentHash).
  */
 
 const IDTIMESTAMP_BYTES = 8;
@@ -16,15 +16,15 @@ function writeU64BE(out: Uint8Array, offset: number, value: bigint): void {
 
 /**
  * Compute the univocity leaf hash for a grant entry.
- * leafHash = SHA-256(idTimestampBE || inner).
+ * leafHash = SHA-256(idTimestampBE || grantCommitmentHash).
  *
  * @param idtimestamp - 8-byte idtimestamp (big-endian) or bigint
- * @param inner - 32-byte inner hash (ContentHash)
+ * @param grantCommitmentHash - 32-byte grant commitment hash (ContentHash)
  * @returns 32-byte leaf hash
  */
 export async function univocityLeafHash(
   idtimestamp: bigint | Uint8Array,
-  inner: Uint8Array,
+  grantCommitmentHash: Uint8Array,
 ): Promise<Uint8Array> {
   const idtimestampBytes = new Uint8Array(IDTIMESTAMP_BYTES);
   if (typeof idtimestamp === "bigint") {
@@ -39,9 +39,11 @@ export async function univocityLeafHash(
         : idtimestamp,
     );
   }
-  const preimage = new Uint8Array(idtimestampBytes.length + inner.length);
+  const preimage = new Uint8Array(
+    idtimestampBytes.length + grantCommitmentHash.length,
+  );
   preimage.set(idtimestampBytes);
-  preimage.set(inner, idtimestampBytes.length);
+  preimage.set(grantCommitmentHash, idtimestampBytes.length);
   const hash = await crypto.subtle.digest("SHA-256", preimage);
   return new Uint8Array(hash);
 }

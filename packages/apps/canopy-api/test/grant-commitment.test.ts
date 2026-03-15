@@ -1,11 +1,14 @@
 /**
- * Inner hash for grant-sequencing (Plan 0004 subplan 01/03).
- * Matches go-univocity inner preimage and sha256(inner).
+ * Grant commitment for grant-sequencing (Plan 0004 subplan 01/03, Plan 0007).
+ * Matches contract formula: preimage then SHA-256.
  */
 
 import { describe, expect, it } from "vitest";
 import { decodeGrantResponse } from "../src/grant/codec.js";
-import { innerHashFromGrant, innerHashToHex } from "../src/grant/inner-hash.js";
+import {
+  grantCommitmentHashFromGrant,
+  grantCommitmentHashToHex,
+} from "../src/grant/grant-commitment.js";
 import grantVectors from "./fixtures/grant_vectors.json";
 
 function hexToBytesStatic(hex: string): Uint8Array {
@@ -17,7 +20,7 @@ function hexToBytesStatic(hex: string): Uint8Array {
   return out;
 }
 
-describe("innerHashFromGrant", () => {
+describe("grantCommitmentHashFromGrant", () => {
   it("returns 32 bytes", async () => {
     const v = grantVectors[0] as {
       idtimestamp_hex: string;
@@ -33,25 +36,25 @@ describe("innerHashFromGrant", () => {
     };
     const bytes = hexToBytesStatic(v.expected_cbor_hex);
     const { grant } = decodeGrantResponse(bytes);
-    const inner = await innerHashFromGrant(grant);
-    expect(inner.length).toBe(32);
+    const hash = await grantCommitmentHashFromGrant(grant);
+    expect(hash.length).toBe(32);
   });
 
   it("is deterministic for the same grant", async () => {
     const v = grantVectors[0] as { expected_cbor_hex: string };
     const bytes = hexToBytesStatic(v.expected_cbor_hex);
     const { grant } = decodeGrantResponse(bytes);
-    const a = await innerHashFromGrant(grant);
-    const b = await innerHashFromGrant(grant);
+    const a = await grantCommitmentHashFromGrant(grant);
+    const b = await grantCommitmentHashFromGrant(grant);
     expect(a).toEqual(b);
   });
 
-  it("innerHashToHex produces 64-char lowercase hex", async () => {
+  it("grantCommitmentHashToHex produces 64-char lowercase hex", async () => {
     const v = grantVectors[0] as { expected_cbor_hex: string };
     const bytes = hexToBytesStatic(v.expected_cbor_hex);
     const { grant } = decodeGrantResponse(bytes);
-    const inner = await innerHashFromGrant(grant);
-    const hex = innerHashToHex(inner);
+    const hash = await grantCommitmentHashFromGrant(grant);
+    const hex = grantCommitmentHashToHex(hash);
     expect(hex).toMatch(/^[0-9a-f]{64}$/);
   });
 });

@@ -1,6 +1,14 @@
 /**
- * Grant format type (Plan 0001 Step 1, Plan 0006).
- * Aligns with univocity PublishGrant: content only; idtimestamp is always a separate parameter.
+ * Grant format type (Plan 0001 Step 1, Plan 0006, Plan 0007).
+ *
+ * Aligns with univocity PublishGrant: content only; idtimestamp is always
+ * a separate parameter. grantData is the contract field for encoding
+ * extra off-chain data committed by the hash; version, signer, kind, exp,
+ * nbf are appropriate for that purpose. A future contract update may
+ * promote signer to the formal PublishGrant type.
+ *
+ * Alignment: Grant (wire shape) ↔ PublishGrant + grantData role; signer
+ * kept first-class for future contract alignment.
  */
 
 export const GRANT_VERSION = 1;
@@ -8,7 +16,11 @@ export const GRANT_VERSION = 1;
 /** Signer binding: key id or public key bytes; identifies who may use this grant at register-statement. */
 export type SignerBinding = Uint8Array;
 
-/** Grant (publish-grant content only). Idtimestamp is supplied separately where needed (e.g. header -65537, massif). */
+/**
+ * Grant (publish-grant content only). Idtimestamp is supplied separately
+ * where needed (e.g. header -65537, massif). grantData commits off-chain
+ * data; signer may be promoted to contract type in a future update.
+ */
 export interface Grant {
   /** Protocol version; must be 1 in this phase. */
   version: number;
@@ -22,9 +34,17 @@ export interface Grant {
   maxHeight?: number;
   /** Optional min growth (bounds). */
   minGrowth?: number;
-  /** Opaque grant data (e.g. signer key for first checkpoint). */
+  /**
+   * Opaque grant data. Contract field for encoding extra off-chain data
+   * that is committed by the hash; version, signer, kind, exp, nbf are
+   * appropriate to encode or represent in this context.
+   */
   grantData: Uint8Array;
-  /** Signer binding: key id or public key bytes; must match statement signer at register-statement. */
+  /**
+   * Signer binding: key id or public key bytes; must match statement
+   * signer at register-statement. May be promoted to formal contract
+   * type in a future update.
+   */
   signer: SignerBinding;
   /** Grant kind: 1 byte (uint8, Solidity-aligned). */
   kind: Uint8Array;

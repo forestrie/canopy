@@ -1,25 +1,21 @@
 /**
  * Grant receipt verification: parse COSE receipt, verify MMR inclusion, optionally verify signature.
- * Uses @canopy/merklelog verifyInclusionAsync and grant leaf commitment.
+ * Uses @canopy/merklelog verifyInclusion and grant leaf commitment.
  *
  * Receipt format: COSE Sign1 with payload = peak hash (root, 32 bytes); header 396 = inclusion proof.
  * Proof structure (MMRIVER): { -1: [ { 1: mmrIndex, 2: path (array of 32-byte hashes) } ] }.
  */
 
 import { decode as decodeCbor } from "cbor-x";
-import {
-  verifyInclusionAsync,
-  type AsyncHasher,
-  type Proof,
-} from "@canopy/merklelog";
+import { verifyInclusion, type Hasher, type Proof } from "@canopy/merklelog";
 import type { Grant } from "./grant.js";
-import { innerHashFromGrant } from "./inner-hash.js";
+import { grantCommitmentHashFromGrant } from "./grant-commitment.js";
 import { univocityLeafHash } from "./leaf-commitment.js";
 
 /**
- * AsyncHasher for Workers: uses crypto.subtle.digest (no sync crypto in Workers).
+ * Hasher for Workers: uses crypto.subtle.digest (no sync crypto in Workers).
  */
-class SubtleAsyncHasher implements AsyncHasher {
+class SubtleHasher implements Hasher {
   private chunks: Uint8Array[] = [];
 
   reset(): void {
@@ -154,14 +150,14 @@ export function parseReceipt(receiptBytes: Uint8Array): {
 
 /**
  * Verify the inclusion proof in the receipt: leaf (grant) is in the MMR with the signed root.
- * Uses @canopy/merklelog verifyInclusionAsync (single tested implementation).
+ * Uses @canopy/merklelog verifyInclusion (single async implementation).
  */
 export async function verifyReceiptInclusion(
   grant: Grant,
   idtimestampBytes: Uint8Array,
   receiptBytes: Uint8Array,
 ): Promise<boolean> {
-  const inner = await innerHashFromGrant(grant);
+  const inner = await grantCommitmentHashFromGrant(grant);
   if (!idtimestampBytes || idtimestampBytes.length < 8) {
     throw new Error("idtimestamp required for receipt verification (8 bytes)");
   }
@@ -172,8 +168,8 @@ export async function verifyReceiptInclusion(
   const leafHash = await univocityLeafHash(idtimestamp, inner);
 
   const { root, proof } = parseReceipt(receiptBytes);
-  const hasher = new SubtleAsyncHasher();
-  return verifyInclusionAsync(hasher, leafHash, proof, root);
+  const hasher = new SubtleHasher();
+  return verifyInclusion(hasher, leafHash, proof, root);
 }
 
 /**
@@ -185,7 +181,7 @@ export async function verifyReceiptInclusionFromParsed(
   root: Uint8Array,
   proof: Proof,
 ): Promise<boolean> {
-  const inner = await innerHashFromGrant(grant);
+  const inner = await grantCommitmentHashFromGrant(grant);
   if (!idtimestampBytes || idtimestampBytes.length < 8) {
     throw new Error("idtimestamp required for receipt verification (8 bytes)");
   }
@@ -194,8 +190,8 @@ export async function verifyReceiptInclusionFromParsed(
       ? new DataView(idtimestampBytes.buffer, idtimestampBytes.byteOffset, 8).getBigUint64(0, false)
       : new DataView(idtimestampBytes.buffer, idtimestampBytes.byteOffset + idtimestampBytes.length - 8, 8).getBigUint64(0, false);
   const leafHash = await univocityLeafHash(idtimestamp, inner);
-  const hasher = new SubtleAsyncHasher();
-  return verifyInclusionAsync(hasher, leafHash, proof, root);
+  const hasher = new SubtleHasher();
+  return verifyInclusion(hasher, leafHash, proof, root);
 }
 
 /**

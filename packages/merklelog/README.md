@@ -55,11 +55,11 @@ const field = massif.fieldref(0); // Returns 32-byte field at index 0
 ```typescript
 import { bagPeaks, verifyInclusion, Hasher } from "@canopy/merklelog";
 
-// Bag peaks to compute root
-const root = bagPeaks(hasher, peakHashes);
+// Bag peaks to compute root (hasher.digest() is async)
+const root = await bagPeaks(hasher, peakHashes);
 
 // Verify inclusion proof
-const isValid = verifyInclusion(hasher, leafHash, proof, root);
+const isValid = await verifyInclusion(hasher, leafHash, proof, root);
 ```
 
 ## Terminology

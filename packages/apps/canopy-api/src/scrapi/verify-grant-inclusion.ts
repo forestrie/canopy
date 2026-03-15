@@ -21,7 +21,7 @@
 
 import { getQueueForLog } from "../sequeue/logshard.js";
 import type { Grant } from "../grant/types.js";
-import { innerHashFromGrant } from "../grant/inner-hash.js";
+import { grantCommitmentHashFromGrant } from "../grant/grant-commitment.js";
 import { bytesToUuid } from "../grant/uuid-bytes.js";
 
 /** Env needed to resolve the queue and call resolveContent(inner). */
@@ -53,7 +53,7 @@ export async function verifyGrantIncluded(
   const ownerLogIdBytes = grant.ownerLogId as Uint8Array;
   const ownerLogIdUuid = bytesToUuid(ownerLogIdBytes);
 
-  const inner = await innerHashFromGrant(grant);
+  const inner = await grantCommitmentHashFromGrant(grant);
   const innerHex = Array.from(inner)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");

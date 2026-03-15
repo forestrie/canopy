@@ -1,6 +1,6 @@
 /**
- * Register Signed Statement operation for SCRAPI
- * Requires grant-based auth (Plan 0001 Step 5): locate grant → retrieve → authorize (inclusion) → verify signer.
+ * Statement registration (POST /logs/{logId}/entries). Registers a signed statement in the
+ * transparency log for the given logId. Grant-based auth and optional receipt-based inclusion.
  */
 
 import {
@@ -47,11 +47,34 @@ export interface RegisterStatementResponse {
 }
 
 /**
- * Process a statement registration request.
+ * Handles POST /logs/{logId}/entries. Registers the submitted signed statement (COSE Sign1)
+ * so it will be appended as a leaf to the log. The statement is identified by the hash of
+ * its bytes until sequencing completes; the client polls the returned status URL then
+ * obtains the permanent entry ID and receipt from query-registration-status and resolve-receipt.
  *
- * Architecture: Plan 0001 Step 5 (grant-based auth); Subplan 08 (receipt-based inclusion when
- * inclusionEnv set); ARC-0001 (grant verification and signer binding). Flow: resolve grant →
- * authorize (inclusion/receipt) → validate request and statement → enforce signer binding → enqueue.
+ * Auth: the grant is taken from the request only (Authorization: Forestrie-Grant <base64>
+ * transparent statement). No fetch by URL. The grant’s receipt, when present in the
+ * statement, is used for inclusion verification when inclusionEnv is set.
+ *
+ * Parameters:
+ * - request: body is the statement (application/cose raw COSE Sign1 or application/cbor
+ *   with { signedStatement }) and must include Authorization: Forestrie-Grant.
+ * - logId: target log from the URL.
+ * - sequencingQueue, shardCountStr: DO namespace and shard count for the sequencing queue
+ *   (same sharding as grant-sequencing; getQueueForLog by logId).
+ * - enqueueExtras: optional extra payload for the DO enqueue call.
+ * - inclusionEnv: when set, grantAuthorize requires the grant to have a valid receipt
+ *   proving inclusion in the authority log; otherwise registration is rejected (403).
+ *
+ * Validation: grant must be present and valid; if inclusionEnv set, inclusion is checked.
+ * Statement must be valid COSE Sign1; the statement signer (e.g. kid in protected header)
+ * must match the grant’s signer binding. Optional exp/nbf on the grant are enforced.
+ * On success, enqueues (logId, contentHash) and returns 303 to the status URL for polling.
+ * On queue backpressure returns 503 with Retry-After.
+ *
+ * Agent References: Plan 0001 Step 5 (grant-based auth); Plan 0004 Subplan 08 (receipt-based
+ * inclusion when inclusionEnv set); ARC-0001 (grant verification, signer binding);
+ * Plan 0005 (grant from Forestrie-Grant only, receipt from artifact).
  */
 export async function registerSignedStatement(
     request: Request,
@@ -59,7 +82,6 @@ export async function registerSignedStatement(
     sequencingQueue: DurableObjectNamespace,
     shardCountStr: string,
     enqueueExtras: Parameters<SequencingQueueStub["enqueue"]>[2] | undefined,
-    r2Grants: R2Bucket,
     inclusionEnv?: InclusionEnv,
 ): Promise<Response> {
     try {

@@ -8,7 +8,10 @@ export {
   encodeGrantForResponse,
   encodeGrantPayload,
 } from "./codec.js";
-export { innerHashFromGrant, innerHashToHex } from "./inner-hash.js";
+export {
+  grantCommitmentHashFromGrant,
+  grantCommitmentHashToHex,
+} from "./grant-commitment.js";
 export {
   GRANT_FLAGS_BYTES,
   KIND_ATTESTOR,

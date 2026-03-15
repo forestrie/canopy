@@ -6,7 +6,7 @@
 import type { SequencingQueueStub } from "@canopy/forestrie-ingress-types";
 import { getQueueForLog } from "../sequeue/logshard.js";
 import { bytesToUuid } from "../grant/uuid-bytes.js";
-import { innerHashToHex } from "../grant/inner-hash.js";
+import { grantCommitmentHashToHex } from "../grant/grant-commitment.js";
 
 function hexToBytes(hex: string): ArrayBuffer {
   const bytes = new Uint8Array(hex.length / 2);
@@ -41,7 +41,7 @@ export async function enqueueGrantForSequencing(
   env: GrantSequencingEnv,
 ): Promise<GrantSequencingResult> {
   const ownerLogIdUuid = bytesToUuid(ownerLogIdBytes);
-  const innerHex = innerHashToHex(inner);
+  const innerHex = grantCommitmentHashToHex(inner);
   const queue = getQueueForLog(env, ownerLogIdUuid);
 
   const contentHashBytes = hexToBytes(innerHex);

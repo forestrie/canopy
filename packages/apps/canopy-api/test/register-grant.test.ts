@@ -48,7 +48,6 @@ describe("POST /logs/{logId}/grants", () => {
     // testEnv omits SEQUENCING_QUEUE (see test/env.d.ts); register-grant requires it.
     const authGrant: Grant = {
       version: 1,
-      idtimestamp: new Uint8Array(8),
       logId: uuidToBytes(logId),
       ownerLogId: uuidToBytes("660e8400-e29b-41d4-a716-446655440001"),
       grantFlags: new Uint8Array(8),

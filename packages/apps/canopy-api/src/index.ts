@@ -13,7 +13,6 @@ import { registerGrant } from "./scrapi/register-grant";
 import { registerSignedStatement } from "./scrapi/register-signed-statement";
 import { queryRegistrationStatus } from "./scrapi/query-registration-status";
 import { resolveReceipt } from "./scrapi/resolve-receipt";
-import { serveGrant } from "./scrapi/serve-grant";
 import { getTransparencyConfiguration } from "./scrapi/transparency-configuration";
 import type { SettlementJob } from "@canopy/x402-settlement-types";
 
@@ -211,30 +210,6 @@ export default {
         });
       }
 
-      // GET /grants/authority/{innerHex} — serve grant with lazy completion (subplan 03)
-      if (
-        segments.length === 3 &&
-        segments[0] === "grants" &&
-        segments[1] === "authority" &&
-        request.method === "GET"
-      ) {
-        const massifHeight = parseInt(env.MASSIF_HEIGHT || "14", 10);
-        const response = await serveGrant(segments[2]!, {
-          r2Grants: env.R2_GRANTS,
-          r2Mmrs: env.R2_MMRS,
-          sequencingQueue: env.SEQUENCING_QUEUE,
-          shardCountStr: env.QUEUE_SHARD_COUNT,
-          massifHeight,
-        });
-        const headers = new Headers(response.headers);
-        Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
-        return new Response(response.body, {
-          status: response.status,
-          statusText: response.statusText,
-          headers,
-        });
-      }
-
       if (segments[0] !== "logs") {
         return problemResponse(
           404,
@@ -272,7 +247,6 @@ export default {
               }
             : undefined;
         const response = await registerGrant(request, segments[1], {
-          r2Grants: env.R2_GRANTS,
           queueEnv,
           bootstrapEnv,
         });
@@ -303,7 +277,6 @@ export default {
             env.SEQUENCING_QUEUE,
             env.QUEUE_SHARD_COUNT,
             undefined,
-            env.R2_GRANTS,
             inclusionEnv,
           );
 

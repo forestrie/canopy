@@ -1,13 +1,17 @@
 /**
- * Inner hash for grant-sequencing (Plan 0004 subplan 01/03).
- * Matches go-univocity: inner = sha256(innerPreimage), innerPreimage = logId(32) || grant(32) || maxHeight_be(8) || minGrowth_be(8) || ownerLogId(32) || grantData.
- * ContentHash enqueued to the DO = inner (ranger then computes leafHash = H(idTimestampBE || ContentHash)).
+ * Grant commitment (Plan 0004 subplan 01/03, Plan 0007).
+ * Implements the grant commitment formula specified by the Univocity smart
+ * contracts: preimage = logId(32) || grant(32) || maxHeight_be(8) ||
+ * minGrowth_be(8) || ownerLogId(32) || grantData; hash = SHA-256(preimage).
+ * Idtimestamp is not part of the grant commitment; it is combined only at
+ * leaf level (see leaf-commitment.ts). ContentHash enqueued for
+ * grant-sequencing = grant commitment hash.
  */
 
 import type { Grant } from "./grant.js";
 
-const INNER_LOG_ID_BYTES = 32;
-const INNER_GRANT_FLAGS_BYTES = 32;
+const LOG_ID_BYTES = 32;
+const GRANT_FLAGS_32_BYTES = 32;
 const U64_BYTES = 8;
 
 function leftPad(b: Uint8Array, length: number): Uint8Array {
@@ -29,9 +33,9 @@ function u64Be(n: number): Uint8Array {
   return out;
 }
 
-/** Grant flags in inner preimage: 32 bytes, low 8 bytes from grantFlags (go-univocity padGrant32). */
+/** Grant flags in commitment preimage: 32 bytes, low 8 bytes from grantFlags (go-univocity padGrant32). */
 function grantFlags32(flags: Uint8Array): Uint8Array {
-  const out = new Uint8Array(INNER_GRANT_FLAGS_BYTES);
+  const out = new Uint8Array(GRANT_FLAGS_32_BYTES);
   if (flags.length >= 8) {
     out.set(flags.slice(-8), 24);
   } else if (flags.length > 0) {
@@ -41,16 +45,17 @@ function grantFlags32(flags: Uint8Array): Uint8Array {
 }
 
 /**
- * Build the inner preimage (no idtimestamp). Used to compute inner hash for grant-sequencing.
+ * Build the grant commitment preimage (no idtimestamp). Used to compute
+ * grant commitment hash for grant-sequencing. Matches contract formula.
  */
-function innerPreimage(grant: Grant): Uint8Array {
-  const logId = leftPad(grant.logId as Uint8Array, INNER_LOG_ID_BYTES);
+function grantCommitmentPreimage(grant: Grant): Uint8Array {
+  const logId = leftPad(grant.logId as Uint8Array, LOG_ID_BYTES);
   const flags32 = grantFlags32(grant.grantFlags as Uint8Array);
   const maxHeight = grant.maxHeight ?? 0;
   const minGrowth = grant.minGrowth ?? 0;
   const ownerLogId = leftPad(
     grant.ownerLogId as Uint8Array,
-    INNER_LOG_ID_BYTES,
+    LOG_ID_BYTES,
   );
   const grantData = grant.grantData ?? new Uint8Array(0);
 
@@ -77,19 +82,23 @@ function innerPreimage(grant: Grant): Uint8Array {
 }
 
 /**
- * Compute inner hash (32 bytes) for a grant. This is the value used as ContentHash when enqueueing for grant-sequencing.
+ * Compute grant commitment hash (32 bytes) for a grant. This is the value
+ * used as ContentHash when enqueueing for grant-sequencing. Matches
+ * contract inner = sha256(preimage).
  */
-export async function innerHashFromGrant(grant: Grant): Promise<Uint8Array> {
-  const preimage = innerPreimage(grant);
+export async function grantCommitmentHashFromGrant(
+  grant: Grant,
+): Promise<Uint8Array> {
+  const preimage = grantCommitmentPreimage(grant);
   const hash = await crypto.subtle.digest("SHA-256", preimage);
   return new Uint8Array(hash);
 }
 
 /**
- * Encode inner hash bytes as lowercase hex (for status URL path).
+ * Encode grant commitment hash bytes as lowercase hex (for status URL path).
  */
-export function innerHashToHex(inner: Uint8Array): string {
-  return Array.from(inner)
+export function grantCommitmentHashToHex(grantCommitmentHash: Uint8Array): string {
+  return Array.from(grantCommitmentHash)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }

@@ -1,13 +1,10 @@
 /**
- * Register-grant endpoint (Plan 0001 Step 6, Plan 0004 subplan 03, 08).
- * POST /logs/{logId}/grants — create grant, enqueue for sequencing, return 303 to status URL.
- * Auth: body (grant CBOR) or X-Grant-Location (path to grant). Subplan 08: bootstrap branch when
- * logId not initialized and auth is bootstrap-signed; non-bootstrap requires inclusion (contracts).
+ * Grant registration (POST /logs/{logId}/grants). Enqueues a caller-supplied grant for
+ * sequencing; no server-side grant storage.
  */
 
-import { encodeGrantPayload } from "../grant/codec.js";
 import { hasCreateAndExtend } from "../grant/grant-flags.js";
-import { innerHashFromGrant } from "../grant/inner-hash.js";
+import { grantCommitmentHashFromGrant } from "../grant/grant-commitment.js";
 import type { Grant, GrantResult } from "../grant/types.js";
 import { bytesToUuid } from "../grant/uuid-bytes.js";
 import { getGrantFromRequest, grantAuthorize } from "./auth-grant.js";
@@ -28,11 +25,7 @@ import type { InclusionEnv } from "./verify-grant-inclusion.js";
 
 const MAX_GRANT_BODY_SIZE = 4 * 1024; // 4 KiB
 
-/** Storage path for sequenced grants: authority/{innerHex}.cbor so GET can complete by inner. */
-const SEQUENCED_GRANT_KIND_SEGMENT = "authority";
-
 export interface RegisterGrantEnv {
-  r2Grants: R2Bucket;
   /**
    * When set: enqueue grants for sequencing (Subplan 03) and, when bootstrapEnv is also set,
    * require receipt-based inclusion for non-bootstrap auth (Subplan 08). Same queue for both.
@@ -49,12 +42,37 @@ export interface RegisterGrantEnv {
 }
 
 /**
- * Handle POST /logs/{logId}/grants.
+ * Handles POST /logs/{logId}/grants. Enqueues the caller-supplied grant for sequencing so it
+ * becomes a leaf in the authority log identified by grant.ownerLogId. The grant is always
+ * supplied in the request via Authorization: Forestrie-Grant <base64> (a SCITT transparent
+ * statement; payload is grant content, idtimestamp and receipt in headers). No server-side
+ * grant storage: the caller obtains idtimestamp and receipt after sequencing via
+ * query-registration-status (303 to …/entries/{entryId}/receipt) and resolve-receipt.
  *
- * Architecture: Plan 0001 Step 6 (create grant, enqueue); Plan 0004 Subplan 03 (grant-sequencing,
- * same DO as register-signed-statement); Subplan 08 (grant-first bootstrap, receipt-based
- * inclusion for non-bootstrap). Flow: resolve auth → validate grant vs URL → branch by env
- * (bootstrap vs inclusion vs sequencing-only) → enqueue and store or legacy store.
+ * Parameters:
+ * - request: must include Authorization: Forestrie-Grant with a valid transparent statement.
+ * - logId: log ID from the URL; grant.logId must match (target log of the grant).
+ * - env.queueEnv: when set, enqueue is performed (same DO namespace as register-signed-statement).
+ * - env.bootstrapEnv: when set together with queueEnv, enables bootstrap vs receipt-based branching.
+ *
+ * Bootstrapping (when both queueEnv and bootstrapEnv are set):
+ * 1. Ask univocity whether the log is initialized (isLogInitialized(logId)).
+ * 2. If the log is not initialized and the supplied grant is the bootstrap grant (ownerLogId
+ *    equals logId, grant has GF_CREATE|GF_EXTEND, and the transparent statement’s signature
+ *    verifies with the bootstrap public key from the delegation signer), accept it without
+ *    inclusion check and enqueue. This is the first grant for the root log.
+ * 3. If the log is not initialized but the grant is not the bootstrap grant, return 403
+ *    (log not initialized; use bootstrap grant to bootstrap).
+ * 4. If the log is initialized, require receipt-based inclusion (grantAuthorize): the grant’s
+ *    receipt (in the transparent statement header) must verify against the authority log;
+ *    then enqueue.
+ *
+ * When only queueEnv is set (no bootstrapEnv), every valid grant is enqueued without
+ * inclusion check. When queueEnv is unset, returns 503 (grant sequencing not configured).
+ *
+ * Agent References: Plan 0001 Step 6; Plan 0004 Subplan 03 (grant-sequencing), Subplan 08
+ * (grant-first bootstrap, receipt-based inclusion); Plan 0005 (Forestrie-Grant only);
+ * Plan 0008 (no grant storage, no X-Grant-Location).
  */
 export async function registerGrant(
   request: Request,
@@ -124,10 +142,10 @@ export async function registerGrant(
   }
 
   // --- Path when only queue is configured (no bootstrap env) ---
-  // Enqueue to grant-sequencing DO (Subplan 03); store grant at authority/{innerHex}.cbor;
-  // return 303 to status URL with X-Grant-Location. No inclusion/receipt check on auth grant.
+  // Enqueue to grant-sequencing DO (Subplan 03); return 303 to status URL. No grant storage
+  // (Plan 0008); caller gets idtimestamp and receipt via query-registration-status and resolve-receipt.
   if (useQueue) {
-    const inner = await innerHashFromGrant(grant);
+    const inner = await grantCommitmentHashFromGrant(grant);
     const ownerLogId =
       grant.ownerLogId.length >= 16
         ? grant.ownerLogId.slice(-16)
@@ -149,33 +167,16 @@ export async function registerGrant(
       throw error;
     }
 
-    // Plan 0006: store grant content only (1–8); idtimestamp comes from massif when serving.
-    const contentBytes = encodeGrantPayload(grant);
-    const storagePath = `${SEQUENCED_GRANT_KIND_SEGMENT}/${result.innerHex}.cbor`;
-
-    try {
-      await env.r2Grants.put(storagePath, contentBytes);
-    } catch (e) {
-      console.error("Grant storage put failed", e);
-      return ServerErrors.storageError(
-        e instanceof Error ? e.message : "R2 put failed",
-      );
-    }
-
     const requestUrl = new URL(request.url);
     const statusUrl = `${requestUrl.origin}${result.statusUrlPath}`;
-    const grantLocationPath = `/grants/${SEQUENCED_GRANT_KIND_SEGMENT}/${result.innerHex}`;
 
     console.log("Grant enqueued for sequencing", {
       statusUrlPath: result.statusUrlPath,
-      grantLocation: grantLocationPath,
       alreadySequenced: result.alreadySequenced,
       logId,
     });
 
-    const res = seeOtherResponse(statusUrl, 5);
-    res.headers.set("X-Grant-Location", grantLocationPath);
-    return res;
+    return seeOtherResponse(statusUrl, 5);
   }
 
   // No queue configured: grant sequencing is required for this endpoint.
@@ -185,7 +186,7 @@ export async function registerGrant(
 }
 
 /**
- * Enqueue grant to sequencing DO and store at authority/{innerHex}.cbor (Subplan 03).
+ * Enqueue grant to sequencing DO (Subplan 03, Plan 0008). No grant storage; return 303 to status URL.
  * Used by bootstrap and non-bootstrap paths when queue env is set.
  */
 async function enqueueAndStoreGrant(
@@ -193,7 +194,7 @@ async function enqueueAndStoreGrant(
   grant: Grant,
   env: RegisterGrantEnv,
 ): Promise<Response> {
-  const inner = await innerHashFromGrant(grant);
+  const inner = await grantCommitmentHashFromGrant(grant);
   const ownerLogId =
     grant.ownerLogId.length >= 16
       ? grant.ownerLogId.slice(-16)
@@ -203,16 +204,9 @@ async function enqueueAndStoreGrant(
     inner,
     env.queueEnv! as GrantSequencingEnv,
   );
-  // Plan 0006: store grant content only (1–8); idtimestamp comes from massif when serving.
-  const contentBytes = encodeGrantPayload(grant);
-  const storagePath = `${SEQUENCED_GRANT_KIND_SEGMENT}/${result.innerHex}.cbor`;
-  await env.r2Grants.put(storagePath, contentBytes);
   const requestUrl = new URL(request.url);
   const statusUrl = `${requestUrl.origin}${result.statusUrlPath}`;
-  const grantLocationPath = `/grants/${SEQUENCED_GRANT_KIND_SEGMENT}/${result.innerHex}`;
-  const res = seeOtherResponse(statusUrl, 5);
-  res.headers.set("X-Grant-Location", grantLocationPath);
-  return res;
+  return seeOtherResponse(statusUrl, 5);
 }
 
 /** Plan 0005: grant from Authorization: Forestrie-Grant only. */
