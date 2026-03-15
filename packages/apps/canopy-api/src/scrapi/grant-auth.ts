@@ -4,7 +4,7 @@
  */
 
 import { decode as decodeCbor } from "cbor-x";
-import { decodeGrant } from "../grant/codec.js";
+import { decodeGrantPayload } from "../grant/codec.js";
 import type { Grant } from "../grant/types.js";
 import { cborResponse } from "./cbor-response";
 import { CBOR_CONTENT_TYPES } from "./cbor-content-types";
@@ -51,7 +51,7 @@ export async function fetchGrant(
   if (!obj) return null;
   const bytes = new Uint8Array(await obj.arrayBuffer());
   try {
-    const grant = decodeGrant(bytes);
+    const grant = decodeGrantPayload(bytes);
     return { grant, bytes };
   } catch {
     return null;

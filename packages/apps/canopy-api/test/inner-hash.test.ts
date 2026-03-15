@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { decodeGrant } from "../src/grant/codec.js";
+import { decodeGrantResponse } from "../src/grant/codec.js";
 import { innerHashFromGrant, innerHashToHex } from "../src/grant/inner-hash.js";
 import grantVectors from "./fixtures/grant_vectors.json";
 
@@ -32,7 +32,7 @@ describe("innerHashFromGrant", () => {
       expected_cbor_hex: string;
     };
     const bytes = hexToBytesStatic(v.expected_cbor_hex);
-    const grant = decodeGrant(bytes);
+    const { grant } = decodeGrantResponse(bytes);
     const inner = await innerHashFromGrant(grant);
     expect(inner.length).toBe(32);
   });
@@ -40,7 +40,7 @@ describe("innerHashFromGrant", () => {
   it("is deterministic for the same grant", async () => {
     const v = grantVectors[0] as { expected_cbor_hex: string };
     const bytes = hexToBytesStatic(v.expected_cbor_hex);
-    const grant = decodeGrant(bytes);
+    const { grant } = decodeGrantResponse(bytes);
     const a = await innerHashFromGrant(grant);
     const b = await innerHashFromGrant(grant);
     expect(a).toEqual(b);
@@ -49,7 +49,7 @@ describe("innerHashFromGrant", () => {
   it("innerHashToHex produces 64-char lowercase hex", async () => {
     const v = grantVectors[0] as { expected_cbor_hex: string };
     const bytes = hexToBytesStatic(v.expected_cbor_hex);
-    const grant = decodeGrant(bytes);
+    const { grant } = decodeGrantResponse(bytes);
     const inner = await innerHashFromGrant(grant);
     const hex = innerHashToHex(inner);
     expect(hex).toMatch(/^[0-9a-f]{64}$/);

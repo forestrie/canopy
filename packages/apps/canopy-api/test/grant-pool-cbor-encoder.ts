@@ -8,8 +8,7 @@ import { encodeGrantRequest } from "@canopy/encoding";
 export { encodeGrantRequest };
 
 /**
- * Encode grant request as CBOR wire format (go-univocity keys 0–8).
- * idtimestamp defaults to zeros (server fills on register-grant).
+ * Encode grant content as CBOR (Plan 0006: keys 1–8 only).
  */
 export function encodeGrantRequestCbor(
   logId: Uint8Array,
@@ -19,13 +18,11 @@ export function encodeGrantRequestCbor(
   signer: Uint8Array,
   kind: Uint8Array,
   options?: {
-    idtimestamp?: Uint8Array;
     maxHeight?: number;
     minGrowth?: number;
   },
 ): Uint8Array {
   return encodeGrantRequest({
-    idtimestamp: options?.idtimestamp ?? new Uint8Array(8),
     logId,
     ownerLogId,
     grantFlags,

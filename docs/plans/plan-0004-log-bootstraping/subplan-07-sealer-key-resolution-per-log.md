@@ -10,7 +10,7 @@
 - Implement this by having the sealer call the **REST auth log status service** (subplan 02) to resolve “which signing key (or key id) for this logId?” using log type and owner.
 - **Find-grant process** is unchanged: sealer continues to find grants in storage; this subplan only adds **key resolution** so the sealer knows which key to use when signing a checkpoint for a given log.
 
-**Out of scope**: REST service implementation (subplan 02); queue consumer; ranger; signer delegation API (subplan 04).
+**Out of scope**: REST service implementation (subplan 02); queue consumer; ranger; signer delegation API (subplan 04). Root bootstrap (subplan 08) — sealer does not trigger bootstrap; grant-first model applies.
 
 ## 2. Dependencies
 

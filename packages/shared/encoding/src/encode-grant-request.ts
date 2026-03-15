@@ -1,12 +1,11 @@
 /**
- * Grant request CBOR encoder (go-univocity wire format).
- * Emits CBOR map keys 0–8; logId/ownerLogId 32 bytes (left-pad), grantFlags 8 bytes.
- * Same format as canopy-api encodeGrant and go-univocity MarshalGrant.
+ * Grant request CBOR encoder (Plan 0006: grant content only).
+ * Emits CBOR map keys 1–8 only (grant content; no idtimestamp). Idtimestamp is supplied
+ * separately by the server. Use for POST /logs/{logId}/grants body.
  */
 
 const WIRE_LOG_ID_OWNER_LOG_ID_BYTES = 32;
 const WIRE_GRANT_FLAGS_BYTES = 8;
-const IDTIMESTAMP_BYTES = 8;
 const CBOR_BSTR_LEN_8 = 0x48;
 const CBOR_BSTR_LEN32_LEAD = 0x58;
 
@@ -55,9 +54,8 @@ function appendCborBstr(b: number[], s: Uint8Array): void {
   for (let i = 0; i < n; i++) b.push(s[i]!);
 }
 
-/** Wire format key labels (go-univocity grant/cborcodec.go). */
+/** Wire format key labels (grant content keys 1–8 only). */
 export const GRANT_REQUEST_KEYS = {
-  idtimestamp: 0,
   logId: 1,
   ownerLogId: 2,
   grantFlags: 3,
@@ -69,8 +67,6 @@ export const GRANT_REQUEST_KEYS = {
 } as const;
 
 export interface GrantRequestInput {
-  /** 8 bytes; default zeros if omitted. */
-  idtimestamp?: Uint8Array;
   logId: Uint8Array;
   ownerLogId: Uint8Array;
   grantFlags: Uint8Array;
@@ -83,14 +79,10 @@ export interface GrantRequestInput {
 }
 
 /**
- * Encode grant as CBOR wire format (keys 0–8). Left-pads logId/ownerLogId to 32,
- * grantFlags to 8. Use for POST /logs/{logId}/grants body (server fills idtimestamp).
+ * Encode grant content as CBOR (keys 1–8 only). Left-pads logId/ownerLogId to 32,
+ * grantFlags to 8. Use for POST /logs/{logId}/grants body; server supplies idtimestamp separately.
  */
 export function encodeGrantRequest(input: GrantRequestInput): Uint8Array {
-  const idtimestamp =
-    input.idtimestamp?.length === IDTIMESTAMP_BYTES
-      ? input.idtimestamp
-      : leftPad(input.idtimestamp ?? new Uint8Array(0), IDTIMESTAMP_BYTES);
   const logId32 = leftPad(input.logId, WIRE_LOG_ID_OWNER_LOG_ID_BYTES);
   const ownerLogId32 = leftPad(
     input.ownerLogId,
@@ -104,9 +96,7 @@ export function encodeGrantRequest(input: GrantRequestInput): Uint8Array {
   const kindByte = input.kind?.length > 0 ? input.kind[0]! : 0;
 
   const b: number[] = [];
-  b.push(0xa9);
-  b.push(0x00, CBOR_BSTR_LEN_8);
-  for (let i = 0; i < IDTIMESTAMP_BYTES; i++) b.push(idtimestamp[i]!);
+  b.push(0xa8); // map(8) — grant content only, no idtimestamp
   b.push(0x01, CBOR_BSTR_LEN32_LEAD, WIRE_LOG_ID_OWNER_LOG_ID_BYTES);
   for (let i = 0; i < WIRE_LOG_ID_OWNER_LOG_ID_BYTES; i++) b.push(logId32[i]!);
   b.push(0x02, CBOR_BSTR_LEN32_LEAD, WIRE_LOG_ID_OWNER_LOG_ID_BYTES);

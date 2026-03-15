@@ -4,16 +4,21 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { decodeGrant, encodeGrant } from "../src/grant/codec.js";
+import {
+  decodeGrantPayload,
+  decodeGrantResponse,
+  encodeGrantForResponse,
+} from "../src/grant/codec.js";
 import { KIND_ATTESTOR } from "../src/grant/kinds.js";
 import { GRANT_VERSION, type Grant } from "../src/grant/types.js";
 import { uuidToBytes } from "../src/grant/uuid-bytes.js";
 import grantVectors from "./fixtures/grant_vectors.json";
 
+const DEFAULT_IDTIMESTAMP = new Uint8Array(8).fill(1);
+
 function minimalGrant(overrides: Partial<Grant> = {}): Grant {
   return {
     version: GRANT_VERSION,
-    idtimestamp: new Uint8Array(8).fill(1),
     logId: uuidToBytes("550e8400-e29b-41d4-a716-446655440000"),
     ownerLogId: uuidToBytes("660e8400-e29b-41d4-a716-446655440001"),
     grantFlags: (() => {
@@ -40,17 +45,17 @@ function hexToBytes(hex: string): Uint8Array {
 describe("Grant format (encode/decode)", () => {
   it("round-trips encode and decode", () => {
     const grant = minimalGrant();
-    const bytes = encodeGrant(grant);
+    const idtimestamp = DEFAULT_IDTIMESTAMP;
+    const bytes = encodeGrantForResponse(grant, idtimestamp);
     expect(bytes).toBeInstanceOf(Uint8Array);
     expect(bytes.length).toBeGreaterThan(0);
-    const decoded = decodeGrant(bytes);
+    const { grant: decoded, idtimestamp: decodedIdts } =
+      decodeGrantResponse(bytes);
     expect(decoded.version).toBe(grant.version);
     expect(decoded.logId.length).toBe(32);
     expect(decoded.ownerLogId.length).toBe(32);
     expect(decoded.grantFlags.length).toBe(8);
-    expect(new Uint8Array(decoded.idtimestamp)).toEqual(
-      new Uint8Array(grant.idtimestamp),
-    );
+    expect(new Uint8Array(decodedIdts)).toEqual(new Uint8Array(idtimestamp));
     expect(decoded.maxHeight).toBe(0);
     expect(decoded.minGrowth).toBe(0);
     expect(new Uint8Array(decoded.grantData)).toEqual(
@@ -64,8 +69,9 @@ describe("Grant format (encode/decode)", () => {
 
   it("same grant produces same bytes (deterministic)", () => {
     const grant = minimalGrant();
-    const a = encodeGrant(grant);
-    const b = encodeGrant(grant);
+    const idtimestamp = DEFAULT_IDTIMESTAMP;
+    const a = encodeGrantForResponse(grant, idtimestamp);
+    const b = encodeGrantForResponse(grant, idtimestamp);
     expect(a).toEqual(b);
   });
 
@@ -74,8 +80,8 @@ describe("Grant format (encode/decode)", () => {
       maxHeight: 100,
       minGrowth: 10,
     });
-    const bytes = encodeGrant(grant);
-    const decoded = decodeGrant(bytes);
+    const bytes = encodeGrantForResponse(grant, DEFAULT_IDTIMESTAMP);
+    const { grant: decoded } = decodeGrantResponse(bytes);
     expect(decoded.maxHeight).toBe(100);
     expect(decoded.minGrowth).toBe(10);
   });
@@ -83,43 +89,45 @@ describe("Grant format (encode/decode)", () => {
 
 describe("Grant format (decode validation)", () => {
   it("rejects empty payload", () => {
-    expect(() => decodeGrant(new Uint8Array(0))).toThrow("empty");
+    expect(() => decodeGrantPayload(new Uint8Array(0))).toThrow("empty");
   });
 
   it("rejects truncated/invalid CBOR", () => {
-    expect(() => decodeGrant(new Uint8Array([0xa0]))).toThrow();
-    expect(() => decodeGrant(new Uint8Array([0x01, 0x02]))).toThrow();
+    expect(() => decodeGrantPayload(new Uint8Array([0xa0]))).toThrow();
+    expect(() => decodeGrantPayload(new Uint8Array([0x01, 0x02]))).toThrow();
   });
 
   it("rejects non-map payload", () => {
     const array = new Uint8Array([0x81, 0x01]);
-    expect(() => decodeGrant(array)).toThrow("must be a CBOR map");
+    expect(() => decodeGrantPayload(array)).toThrow("must be a CBOR map");
   });
 
   it("rejects truncated CBOR", () => {
     const golden = hexToBytes(
       (grantVectors as { expected_cbor_hex: string }[])[0]!.expected_cbor_hex,
     );
-    expect(() => decodeGrant(golden.subarray(0, golden.length - 4))).toThrow();
+    expect(() =>
+      decodeGrantResponse(golden.subarray(0, golden.length - 4)),
+    ).toThrow();
   });
 
   it("decoded grant has non-empty signer from minimal vector", () => {
     const minimalCbor = hexToBytes(
       (grantVectors as { expected_cbor_hex: string }[])[1]!.expected_cbor_hex,
     );
-    const decoded = decodeGrant(minimalCbor);
+    const { grant: decoded } = decodeGrantResponse(minimalCbor);
     expect(decoded.signer.length).toBeGreaterThan(0);
   });
 });
 
 describe("Grant format (known-answer from grant_vectors.json)", () => {
-  for (const [i, v] of (
+  for (const [, v] of (
     grantVectors as Array<{ description: string; expected_cbor_hex: string }>
   ).entries()) {
     it(v.description, () => {
       const cborBytes = hexToBytes(v.expected_cbor_hex);
-      const decoded = decodeGrant(cborBytes);
-      const reencoded = encodeGrant(decoded);
+      const { grant, idtimestamp } = decodeGrantResponse(cborBytes);
+      const reencoded = encodeGrantForResponse(grant, idtimestamp);
       expect(Array.from(reencoded)).toEqual(Array.from(cborBytes));
     });
   }

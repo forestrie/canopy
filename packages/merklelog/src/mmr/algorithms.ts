@@ -11,7 +11,7 @@
  * https://raw.githubusercontent.com/robinbryce/draft-bryce-cose-receipts-mmr-profile/refs/heads/main/draft-bryce-cose-receipts-mmr-profile.md
  */
 
-import type { Proof, Hasher } from "./types.js";
+import type { Proof, Hasher, AsyncHasher } from "./types.js";
 import { Uint64 } from "../uint64/index.js";
 import { heightIndex } from "./math.js";
 import { arraysEqual } from "../utils/arrays.js";
@@ -101,6 +101,50 @@ export function calculateRoot(
 }
 
 /**
+ * Calculates the root hash from a leaf hash and inclusion proof (async digest).
+ * For use in environments where hashing is async (e.g. Workers crypto.subtle).
+ *
+ * @param hasher - Async cryptographic hasher instance
+ * @param leafHash - Hash of the leaf being proven
+ * @param proof - Inclusion proof path
+ * @param leafIndex - Zero-based leaf index (or MMR index when proof has mmrIndex only)
+ * @returns The calculated root hash
+ */
+export async function calculateRootAsync(
+  hasher: AsyncHasher,
+  leafHash: Uint8Array,
+  proof: Proof,
+  leafIndex: bigint,
+): Promise<Uint8Array> {
+  let currentHash = leafHash;
+  const mmrIndex = new Uint64(leafIndex);
+  let currentHeight = heightIndex(mmrIndex);
+  let currentPos = mmrIndex.add(new Uint64(1)); // Convert to position
+
+  for (const siblingHash of proof.path) {
+    hasher.reset();
+
+    const nextHeight = heightIndex(new Uint64(currentPos.toBigInt()));
+    const isRightChild = nextHeight > currentHeight;
+
+    if (isRightChild) {
+      hasher.update(siblingHash);
+      hasher.update(currentHash);
+      currentPos = currentPos.add(new Uint64(1));
+    } else {
+      hasher.update(currentHash);
+      hasher.update(siblingHash);
+      currentPos = currentPos.add(new Uint64(2).shl(currentHeight));
+    }
+
+    currentHash = await hasher.digest();
+    currentHeight += 1;
+  }
+
+  return currentHash;
+}
+
+/**
  * Verifies an inclusion proof
  *
  * @param hasher - Cryptographic hasher instance
@@ -123,6 +167,38 @@ export function verifyInclusion(
   const leafIdx =
     proof.leafIndex !== undefined ? proof.leafIndex : proof.mmrIndex!;
   const calculatedRoot = calculateRoot(hasher, leafHash, proof, leafIdx);
+
+  return arraysEqual(calculatedRoot, root);
+}
+
+/**
+ * Verifies an inclusion proof (async digest).
+ * For use in environments where hashing is async (e.g. Workers crypto.subtle).
+ *
+ * @param hasher - Async cryptographic hasher instance
+ * @param leafHash - Hash of the leaf being proven
+ * @param proof - Inclusion proof
+ * @param root - Expected root hash
+ * @returns True if the proof is valid
+ */
+export async function verifyInclusionAsync(
+  hasher: AsyncHasher,
+  leafHash: Uint8Array,
+  proof: Proof,
+  root: Uint8Array,
+): Promise<boolean> {
+  if (proof.leafIndex === undefined && proof.mmrIndex === undefined) {
+    throw new Error("Proof must have either leafIndex or mmrIndex");
+  }
+
+  const leafIdx =
+    proof.leafIndex !== undefined ? proof.leafIndex : proof.mmrIndex!;
+  const calculatedRoot = await calculateRootAsync(
+    hasher,
+    leafHash,
+    proof,
+    leafIdx,
+  );
 
   return arraysEqual(calculatedRoot, root);
 }

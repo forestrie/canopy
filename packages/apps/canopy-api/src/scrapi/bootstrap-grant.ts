@@ -1,28 +1,21 @@
 /**
  * Subplan 08: Bootstrap grant mint and well-known GET.
- * POST /api/grants/bootstrap — build grant, sign via delegation-signer, store at well-known path.
- * GET /grants/bootstrap or /grants/authority/:rootLogId/bootstrap — serve bootstrap grant.
+ * POST /api/grants/bootstrap — build grant, sign via delegation-signer (COSE ToBeSigned),
+ * return transparent statement; store as .cose.
+ * GET /grants/bootstrap/:rootLogId — serve bootstrap transparent statement.
  */
 
-import { encodeGrant } from "../grant/codec.js";
-import { innerHashFromGrant } from "../grant/inner-hash.js";
-import type { Grant } from "../grant/types.js";
+import { encodeSigStructure } from "@canopy/encoding";
+import { encode as encodeCbor } from "cbor-x";
+import type { Grant } from "../grant/grant.js";
+import { encodeGrantPayload } from "../grant/codec.js";
 import { ClientErrors, ServerErrors } from "./problem-details.js";
 
 const BOOTSTRAP_STORAGE_PREFIX = "bootstrap";
-
-/** Stored bootstrap doc: grant bytes (as array) + signature hex for verification. */
-export interface BootstrapGrantDoc {
-  grant: number[];
-  signature: string;
-}
-
-export interface BootstrapMintEnv {
-  r2Grants: R2Bucket;
-  rootLogId: string;
-  delegationSignerUrl: string;
-  delegationSignerBearerToken: string;
-}
+/** COSE Sign1 protected = empty map (0xa0). */
+const PROTECTED_EMPTY = new Uint8Array([0xa0]);
+const IDTIMESTAMP_ZEROS = new Uint8Array(8);
+const HEADER_IDTIMESTAMP = -65537;
 
 function hexToBytes32(hex: string): Uint8Array {
   const s = hex.replace(/^0x/i, "").trim().toLowerCase();
@@ -36,8 +29,22 @@ function hexToBytes32(hex: string): Uint8Array {
   return out;
 }
 
+function bytesToHex(b: Uint8Array): string {
+  return Array.from(b)
+    .map((x) => x.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+export interface BootstrapMintEnv {
+  r2Grants: R2Bucket;
+  rootLogId: string;
+  delegationSignerUrl: string;
+  delegationSignerBearerToken: string;
+}
+
 /**
- * POST /api/grants/bootstrap — no auth required. Build grant, call delegation-signer, store, return 201.
+ * POST /api/grants/bootstrap — no auth required. Build bootstrap grant, build COSE ToBeSigned,
+ * call delegation-signer with cose_tbs_hash, assemble transparent statement, store and return it.
  */
 export async function handlePostBootstrapGrant(
   _request: Request,
@@ -54,7 +61,6 @@ export async function handlePostBootstrapGrant(
   grantFlags[4] = 0x03; // GF_CREATE | GF_EXTEND
   const grant: Grant = {
     version: 1,
-    idtimestamp: new Uint8Array(8),
     logId: logIdBytes,
     ownerLogId: ownerLogIdBytes,
     grantFlags,
@@ -65,17 +71,21 @@ export async function handlePostBootstrapGrant(
     kind: new Uint8Array([1]),
   };
 
-  const inner = await innerHashFromGrant(grant);
-  const payloadHash = Array.from(inner)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  const payloadBytes = encodeGrantPayload(grant);
+  const sigStructure = encodeSigStructure(
+    PROTECTED_EMPTY,
+    new Uint8Array(0),
+    payloadBytes,
+  );
+  const digest = await crypto.subtle.digest("SHA-256", sigStructure);
+  const coseTbsHash = bytesToHex(new Uint8Array(digest));
 
   const signerUrl = env.delegationSignerUrl?.trim().replace(/\/$/, "");
   if (!signerUrl) {
     return ServerErrors.internal("DELEGATION_SIGNER_URL not configured");
   }
 
-  let signature: string;
+  let signatureHex: string;
   try {
     const res = await fetch(`${signerUrl}/api/delegate/bootstrap`, {
       method: "POST",
@@ -83,7 +93,7 @@ export async function handlePostBootstrapGrant(
         "Content-Type": "application/json",
         Authorization: `Bearer ${env.delegationSignerBearerToken}`,
       },
-      body: JSON.stringify({ payload_hash: payloadHash }),
+      body: JSON.stringify({ cose_tbs_hash: coseTbsHash }),
     });
     if (!res.ok) {
       const text = await res.text();
@@ -95,40 +105,55 @@ export async function handlePostBootstrapGrant(
     if (!data.signature?.trim()) {
       return ServerErrors.badGateway("Delegation-signer returned no signature");
     }
-    signature = data.signature.trim();
+    signatureHex = data.signature.trim();
   } catch (e) {
     return ServerErrors.badGateway(
       e instanceof Error ? e.message : "Delegation-signer request failed",
     );
   }
 
-  const storagePath = `${BOOTSTRAP_STORAGE_PREFIX}/${rootLogId.replace(/^0x/i, "").toLowerCase()}.cbor`;
+  const sigHex = signatureHex.replace(/^0x/i, "").trim();
+  if (sigHex.length !== 128 || !/^[0-9a-fA-F]+$/.test(sigHex)) {
+    return ServerErrors.badGateway("Delegation-signer signature must be 64 bytes (128 hex)");
+  }
+  const signatureBytes = new Uint8Array(64);
+  for (let i = 0; i < 64; i++) {
+    signatureBytes[i] = parseInt(sigHex.slice(i * 2, i * 2 + 2), 16);
+  }
+
+  const unprotected = new Map<number, unknown>([
+    [HEADER_IDTIMESTAMP, IDTIMESTAMP_ZEROS],
+  ]);
+  const coseSign1 = [PROTECTED_EMPTY, unprotected, payloadBytes, signatureBytes];
+  const transparentStatement = new Uint8Array(encodeCbor(coseSign1));
+
+  const key = rootLogId.replace(/^0x/i, "").toLowerCase();
+  const storagePath = `${BOOTSTRAP_STORAGE_PREFIX}/${key}.cose`;
   const existing = await env.r2Grants.get(storagePath);
   if (existing) {
-    const location = `/grants/${BOOTSTRAP_STORAGE_PREFIX}/${rootLogId.replace(/^0x/i, "").toLowerCase()}`;
+    const location = `/grants/${BOOTSTRAP_STORAGE_PREFIX}/${key}`;
     return new Response(null, {
       status: 200,
       headers: {
         Location: location,
-        "Content-Type": "application/cbor",
+        "Content-Type": "application/cose",
       },
     });
   }
 
-  const grantWithPlaceholder: Grant = { ...grant, idtimestamp: new Uint8Array(8) };
-  const encoded = encodeGrant(grantWithPlaceholder);
-  const doc: BootstrapGrantDoc = { grant: Array.from(encoded), signature };
-  const docBytes = new TextEncoder().encode(JSON.stringify(doc));
-  await env.r2Grants.put(storagePath, docBytes, {
-    httpMetadata: { contentType: "application/cbor" },
+  await env.r2Grants.put(storagePath, transparentStatement, {
+    httpMetadata: { contentType: "application/cose" },
   });
 
-  const location = `/grants/${BOOTSTRAP_STORAGE_PREFIX}/${rootLogId.replace(/^0x/i, "").toLowerCase()}`;
-  return new Response(null, {
+  const location = `/grants/${BOOTSTRAP_STORAGE_PREFIX}/${key}`;
+  const base64 = btoa(
+    String.fromCharCode(...transparentStatement),
+  );
+  return new Response(base64, {
     status: 201,
     headers: {
       Location: location,
-      "Content-Type": "application/cbor",
+      "Content-Type": "text/plain; charset=us-ascii",
     },
   });
 }
@@ -138,7 +163,7 @@ export interface ServeBootstrapEnv {
 }
 
 /**
- * GET well-known bootstrap grant. Returns 200 with grant CBOR (grant part only) or 404.
+ * GET well-known bootstrap grant. Returns 200 with transparent statement (COSE) body or 404.
  */
 export async function serveBootstrapGrant(
   rootLogId: string,
@@ -148,58 +173,14 @@ export async function serveBootstrapGrant(
   if (key.length !== 64 || !/^[0-9a-f]+$/.test(key)) {
     return ClientErrors.badRequest("rootLogId must be 64 hex characters");
   }
-  const storagePath = `${BOOTSTRAP_STORAGE_PREFIX}/${key}.cbor`;
+  const storagePath = `${BOOTSTRAP_STORAGE_PREFIX}/${key}.cose`;
   const obj = await env.r2Grants.get(storagePath);
   if (!obj) {
     return new Response(null, { status: 404 });
   }
   const bytes = new Uint8Array(await obj.arrayBuffer());
-  let doc: BootstrapGrantDoc;
-  try {
-    doc = JSON.parse(new TextDecoder().decode(bytes)) as BootstrapGrantDoc;
-  } catch {
-    return ServerErrors.internal("Bootstrap grant document invalid");
-  }
-  if (!doc.grant?.length) {
-    return ServerErrors.internal("Bootstrap grant document missing grant");
-  }
-  const grantBytes = new Uint8Array(doc.grant);
-  return new Response(grantBytes, {
+  return new Response(bytes, {
     status: 200,
-    headers: { "Content-Type": "application/cbor" },
+    headers: { "Content-Type": "application/cose" },
   });
-}
-
-/**
- * Fetch bootstrap grant document (grant + signature) for auth verification.
- * Path must be /grants/bootstrap or /grants/bootstrap/{rootLogId}.
- */
-export async function fetchBootstrapGrantWithSignature(
-  r2Grants: R2Bucket,
-  path: string,
-  rootLogId: string,
-): Promise<{ grant: import("../grant/types.js").Grant; signature: string } | null> {
-  const normalized = path.replace(/^\/+/, "").split("/");
-  if (
-    normalized[0] !== "grants" ||
-    normalized[1] !== BOOTSTRAP_STORAGE_PREFIX
-  ) {
-    return null;
-  }
-  const keyParam = normalized[2];
-  const key = keyParam
-    ? `${BOOTSTRAP_STORAGE_PREFIX}/${keyParam.replace(/^0x/i, "").toLowerCase()}.cbor`
-    : `${BOOTSTRAP_STORAGE_PREFIX}/${rootLogId.replace(/^0x/i, "").toLowerCase()}.cbor`;
-  const obj = await r2Grants.get(key);
-  if (!obj) return null;
-  const bytes = new Uint8Array(await obj.arrayBuffer());
-  try {
-    const doc = JSON.parse(new TextDecoder().decode(bytes)) as BootstrapGrantDoc;
-    if (!doc.grant?.length || !doc.signature?.trim()) return null;
-    const { decodeGrant } = await import("../grant/codec.js");
-    const grant = decodeGrant(new Uint8Array(doc.grant));
-    return { grant, signature: doc.signature.trim() };
-  } catch {
-    return null;
-  }
 }

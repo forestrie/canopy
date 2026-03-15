@@ -4,6 +4,7 @@
  */
 
 export { encodeCborBstr } from "./encode-cbor-bstr.js";
+export { encodeSigStructure } from "./encode-sig-structure.js";
 export {
   encodeGrantRequest,
   GRANT_REQUEST_KEYS,

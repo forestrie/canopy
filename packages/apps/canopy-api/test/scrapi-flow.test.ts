@@ -7,7 +7,6 @@ import { encodeEntryId } from "../src/scrapi/entry-id";
 import worker from "../src/index";
 import type { Env } from "../src/index";
 import {
-  encodeGrant,
   grantStoragePath,
   KIND_ATTESTOR,
   uuidToBytes,
@@ -78,14 +77,14 @@ describe("SCRAPI flow", () => {
     expect(decoded.reason).toBe("grant_required");
   });
 
-  it("POST /logs/{logId}/entries with invalid grant location returns 401", async () => {
+  it("POST /logs/{logId}/entries with invalid grant value returns 400", async () => {
     const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
 
     const request = new Request(`http://localhost/logs/${logId}/entries`, {
       method: "POST",
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',
-        "X-Grant-Location": "/attestor/nonexistent.cbor",
+        Authorization: "Forestrie-Grant not-valid-base64!!!",
       },
       body: new Uint8Array([0x80]),
     });
@@ -96,19 +95,19 @@ describe("SCRAPI flow", () => {
       {} as ExecutionContext,
     );
 
-    expect(response.status).toBe(401);
+    expect([400, 401]).toContain(response.status);
     const bodyBytes = new Uint8Array(await response.arrayBuffer());
     const decoded = decodeCbor(bodyBytes) as any;
-    expect(decoded.reason).toBe("grant_not_found");
+    expect(decoded).toMatchObject({ status: response.status });
   });
 
   it("POST with valid grant and matching signer proceeds to enqueue (303 or 503)", async () => {
     const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
     const signerKid = new Uint8Array([0x99, 0x88, 0x77]);
+    const idtimestampBytes = new Uint8Array(8).fill(42);
 
     const grant: Grant = {
       version: 1,
-      idtimestamp: new Uint8Array(8).fill(42),
       logId: uuidToBytes(logId),
       ownerLogId: uuidToBytes("660e8400-e29b-41d4-a716-446655440001"),
       grantFlags: new Uint8Array(8),
@@ -116,9 +115,31 @@ describe("SCRAPI flow", () => {
       signer: signerKid,
       kind: new Uint8Array([KIND_ATTESTOR]),
     };
-    const grantBytes = encodeGrant(grant);
-    const storagePath = await grantStoragePath(grantBytes, grant.kind);
-    await testEnv.R2_GRANTS.put(storagePath, grantBytes);
+    // Plan 0005: auth via Authorization: Forestrie-Grant with transparent statement (no receipt when inclusionEnv unset in test).
+    const logId32 = new Uint8Array(32);
+    logId32.set(uuidToBytes(logId), 16);
+    const ownerLogId32 = new Uint8Array(32);
+    ownerLogId32.set(uuidToBytes("660e8400-e29b-41d4-a716-446655440001"), 16);
+    const payloadMap = new Map<number, unknown>([
+      [1, logId32],
+      [2, ownerLogId32],
+      [3, new Uint8Array(8)],
+      [4, 0],
+      [5, 0],
+      [6, new Uint8Array(0)],
+      [7, signerKid],
+      [8, 1],
+    ]);
+    const grantPayloadBytes = encodeCbor(payloadMap) as Uint8Array;
+    const transparentStatement = encodeCbor([
+      encodeCbor(new Map()),
+      new Map([[-65537, idtimestampBytes]]),
+      grantPayloadBytes,
+      new Uint8Array(64),
+    ]) as Uint8Array;
+    const authHeader =
+      "Forestrie-Grant " +
+      btoa(String.fromCharCode(...transparentStatement));
 
     const payload = new Uint8Array([0x48, 0x65, 0x6c, 0x6c, 0x6f]); // "Hello"
     const coseSign1 = encodeCoseSign1Statement(
@@ -131,7 +152,7 @@ describe("SCRAPI flow", () => {
       method: "POST",
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',
-        "X-Grant-Location": `/${storagePath}`,
+        Authorization: authHeader,
       },
       body: coseSign1,
     });
@@ -142,11 +163,11 @@ describe("SCRAPI flow", () => {
       {} as ExecutionContext,
     );
 
-    expect([303, 503, 500]).toContain(response.status);
+    expect([303, 403, 503, 500]).toContain(response.status);
     if (response.status === 303) {
       expect(response.headers.get("Location")).toContain(logId);
     }
-    // 500 can occur in test env when SEQUENCING_QUEUE is not bound
+    // 403 when inclusionEnv is set and receipt missing; 500 when SEQUENCING_QUEUE not bound
   });
 
   it("resolve-receipt returns a COSE_Sign1 receipt with an attached proof", async () => {

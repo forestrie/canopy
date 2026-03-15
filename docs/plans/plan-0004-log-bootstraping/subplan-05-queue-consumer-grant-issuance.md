@@ -2,11 +2,12 @@
 
 **Status**: DRAFT  
 **Date**: 2026-03-09  
-**Parent**: [Plan 0004 overview](overview.md)
+**Parent**: [Plan 0004 overview](overview.md)  
+**Related**: [Subplan 08 grant-first bootstrap](subplan-08-grant-first-bootstrap.md) (root bootstrap is **not** via queue consumer)
 
 ## 1. Scope
 
-**Primary path is canopy** (subplan 06): canopy creates the grant after x402 settlement and runs grant-sequencing (push to same DO as register-signed-statement). This subplan is **optional/legacy** — implement only if an arbor queue consumer for "issue grant" is needed.
+**Primary path is canopy** (subplan 06 for paid grants; subplan 08 for root bootstrap). This subplan is **optional/legacy** — implement only if an arbor queue consumer for **paid** grant issuance is needed.
 
 - If implemented, the **queue consumer** in arbor/services would:
   - Is **configured with** bootstrap public key (or id) and univocity contract address.
@@ -15,7 +16,7 @@
   - For **derived logs** (child authority or data log): requests delegation for parent log, creates and signs grant; hands off to grant-sequencing path (subplan 03) so the leaf is appended to the parent MMR; publishes grant to storage.
 - Does **not** hold bootstrap or any log private key; uses signer delegations only. Does **not** maintain the MMR; the grant-sequencing component (subplan 03) feeds ranger’s existing pipeline; ranger: optional idtimestamps in ack when configured (subplan 03 §7.1).
 
-**Out of scope**: Canopy primary path (subplan 06); sealer find-grant (existing); chain submission of first checkpoint (sealer/existing flow).
+**Out of scope**: Canopy primary path (subplan 06); root bootstrap (subplan 08); sealer find-grant (existing); chain submission.
 
 ## 2. Dependencies
 

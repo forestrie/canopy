@@ -175,7 +175,9 @@ async function signDigestWithKey(
 
 /**
  * POST /api/delegate/bootstrap
- * Body: JSON { payload_hash: string } (64 hex chars).
+ * Body: JSON { payload_hash?: string, cose_tbs_hash?: string } (either, 64 hex chars).
+ * - payload_hash: SHA-256 of grant inner preimage (legacy).
+ * - cose_tbs_hash: SHA-256 of COSE Sig_structure (ToBeSigned) for bootstrap transparent statement.
  * Returns: JSON { signature: string } (hex, raw r||s).
  */
 export async function handleDelegateBootstrap(
@@ -201,24 +203,34 @@ export async function handleDelegateBootstrap(
     return ClientErrors.unsupportedMediaType("Use application/json");
   }
 
-  let body: { payload_hash?: string };
+  let body: { payload_hash?: string; cose_tbs_hash?: string };
   try {
-    body = (await request.json()) as { payload_hash?: string };
+    body = (await request.json()) as { payload_hash?: string; cose_tbs_hash?: string };
   } catch {
     return ClientErrors.badRequest("Invalid JSON body");
   }
 
   const payloadHash = body.payload_hash?.trim();
-  if (!payloadHash) {
-    return ClientErrors.badRequest("payload_hash is required (64 hex chars)");
+  const coseTbsHash = body.cose_tbs_hash?.trim();
+  if (coseTbsHash) {
+    if (payloadHash) {
+      return ClientErrors.badRequest(
+        "Send either payload_hash or cose_tbs_hash, not both",
+      );
+    }
+  } else if (!payloadHash) {
+    return ClientErrors.badRequest(
+      "payload_hash or cose_tbs_hash is required (64 hex chars)",
+    );
   }
 
+  const hashHex = coseTbsHash ?? payloadHash;
   let digest: Uint8Array;
   try {
-    digest = hexToBytes(payloadHash);
+    digest = hexToBytes(hashHex!);
   } catch (e) {
     return ClientErrors.badRequest(
-      e instanceof Error ? e.message : "invalid payload_hash",
+      e instanceof Error ? e.message : "invalid hash (64 hex chars)",
     );
   }
 

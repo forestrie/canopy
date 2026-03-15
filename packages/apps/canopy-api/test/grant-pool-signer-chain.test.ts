@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { decodeGrant } from "../src/grant/codec.js";
+import { decodeGrantPayload } from "../src/grant/codec.js";
 import {
   getSignerFromCoseSign1,
   signerMatchesGrant,
@@ -40,7 +40,7 @@ describe("Grant pool signer consistency (script ↔ API ↔ k6)", () => {
   const grantData = new Uint8Array(0);
   const kind = new Uint8Array(KIND_BYTES);
 
-  it("grant request CBOR (wire format) decodes so signer equals original", () => {
+  it("grant request CBOR (grant content 1–8) decodes so signer equals original", () => {
     const body = encodeGrantRequestCbor(
       logId,
       ownerLogId,
@@ -49,7 +49,7 @@ describe("Grant pool signer consistency (script ↔ API ↔ k6)", () => {
       signer,
       kind,
     );
-    const decoded = decodeGrant(body);
+    const decoded = decodeGrantPayload(body);
     expect(decoded.signer).toBeDefined();
     expect(decoded.signer.length).toBe(32);
     expect(new Uint8Array(decoded.signer)).toEqual(signer);
@@ -72,7 +72,7 @@ describe("Grant pool signer consistency (script ↔ API ↔ k6)", () => {
       signer,
       kind,
     );
-    const decoded = decodeGrant(body);
+    const decoded = decodeGrantPayload(body);
     const grantSigner = decoded.signer;
     expect(new Uint8Array(grantSigner)).toEqual(signer);
 

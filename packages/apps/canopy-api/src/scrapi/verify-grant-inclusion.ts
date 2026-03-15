@@ -1,44 +1,33 @@
 /**
- * Subplan 08 §3.3.1: Verify grant included in owner log.
- * Checkpoint source: chain (univocal contracts) and/or storage (R2 or object storage root URL).
- * At least one source required; when both are configured, prefer chain. Caching may be added later.
- * 1) resolveContent(inner) → if null, not sequenced → false.
- * 2) Obtain checkpoint from chain (preferred) or storage; if none, false.
- * Full MMR verification (leaf in tree, root matches checkpoint) can be added later.
+ * Subplan 08 §3.3.1: Verify grant included in owner log (initial scope).
+ *
+ * For now we verify inclusion only by checking that the grant has been sequenced:
+ * resolveContent(inner) on the SequencingQueue DO for the grant's ownerLogId returns
+ * a result. If it does, we treat the grant as included. We know from bootstraping
+ * and log hierarchy that the pipeline (arbor log builder) that wrote to the DO
+ * included the leaf in the log and signed; that is enough for this initial work.
+ *
+ * Stronger defence (out of scope here, to be added later):
+ * - Evaluate the grant's receipt (proof): use @canopy/merklelog verifyInclusion to
+ *   verify the leaf is in the MMR, and verify the receipt's signed statement (COSE
+ *   signature from the log builder). Then check grant signer vs new statement
+ *   signer in register-signed-statement.
+ * - Checkpoint-from-chain or checkpoint-from-storage to prove against a fresh
+ *   accumulator; MMR accumulators allow efficient old-receipt vs fresh-checkpoint
+ *   proofs but that is deferred.
+ *
+ * See docs/plans/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md
  */
 
 import { getQueueForLog } from "../sequeue/logshard.js";
 import type { Grant } from "../grant/types.js";
 import { innerHashFromGrant } from "../grant/inner-hash.js";
 import { bytesToUuid } from "../grant/uuid-bytes.js";
-import {
-  getUnivocalCheckpointFromContracts,
-  type UnivocalCheckpointEnv,
-} from "./univocal-checkpoint.js";
-import {
-  getCheckpointFromStorage,
-  type StorageCheckpointEnv,
-} from "./checkpoint-from-storage.js";
 
-/** Shared env for resolveContent (DO). */
-export interface InclusionBaseEnv {
+/** Env needed to resolve the queue and call resolveContent(inner). */
+export interface InclusionEnv {
   sequencingQueue: DurableObjectNamespace;
   shardCountStr: string;
-}
-
-/**
- * Unified inclusion env: at least one of chain or storage must be set.
- * When both are set, verification prefers chain.
- */
-export interface InclusionEnv extends InclusionBaseEnv {
-  chain?: UnivocalCheckpointEnv;
-  storage?: StorageCheckpointEnv;
-}
-
-/** @deprecated Use InclusionEnv with chain only; kept for compatibility. */
-export interface VerifyInclusionEnv extends InclusionBaseEnv {
-  univocityContractRpcUrl: string;
-  univocityContractAddress: string;
 }
 
 function hexToBytes(hex: string): ArrayBuffer {
@@ -50,23 +39,12 @@ function hexToBytes(hex: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-function ownerLogIdToHex(ownerLogIdBytes: Uint8Array): string {
-  const bytes =
-    ownerLogIdBytes.length >= 32
-      ? ownerLogIdBytes.slice(-32)
-      : ownerLogIdBytes;
-  return (
-    "0x" +
-    Array.from(bytes)
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("")
-      .padStart(64, "0")
-  );
-}
-
 /**
  * Verify grant is included in its owner log.
- * Uses chain and/or storage for checkpoint; requires at least one; prefers chain when both present.
+ * Uses only resolveContent(inner): if the DO returns a result, the grant was
+ * sequenced by the pipeline (arbor log builder) and we accept it as included.
+ * Receipt-based MMR verification and checkpoint-from-chain/storage are planned
+ * for later as stronger defence.
  */
 export async function verifyGrantIncluded(
   grant: Grant,
@@ -82,59 +60,7 @@ export async function verifyGrantIncluded(
   const contentHashBytes = hexToBytes(innerHex);
 
   const queue = getQueueForLog(env, ownerLogIdUuid);
-
   const result = await queue.resolveContent(contentHashBytes);
-  if (result === null) return false;
 
-  const hasChain = !!(
-    env.chain?.univocityContractRpcUrl?.trim() &&
-    env.chain?.univocityContractAddress?.trim()
-  );
-  const hasStorage = !!env.storage;
-
-  if (!hasChain && !hasStorage) {
-    return false;
-  }
-
-  if (hasChain) {
-    const ownerLogIdHex = ownerLogIdToHex(ownerLogIdBytes).replace(/^0x/, "");
-    try {
-      const checkpoint = await getUnivocalCheckpointFromContracts(
-        ownerLogIdHex,
-        env.chain!,
-      );
-      if (checkpoint) return true;
-    } catch {
-      // Fall through to storage if chain fails
-    }
-  }
-
-  if (hasStorage) {
-    const checkpoint = await getCheckpointFromStorage(
-      ownerLogIdUuid,
-      result.massifIndex,
-      env.storage!,
-    );
-    if (checkpoint !== null) return true;
-  }
-
-  return false;
-}
-
-/**
- * Verify grant included using only chain checkpoint (legacy / backward compat).
- * Prefer verifyGrantIncluded with unified InclusionEnv.
- */
-export async function verifyGrantIncludedAgainstCheckpoint(
-  grant: Grant,
-  env: VerifyInclusionEnv,
-): Promise<boolean> {
-  return verifyGrantIncluded(grant, {
-    sequencingQueue: env.sequencingQueue,
-    shardCountStr: env.shardCountStr,
-    chain: {
-      univocityContractRpcUrl: env.univocityContractRpcUrl,
-      univocityContractAddress: env.univocityContractAddress,
-    },
-  });
+  return result !== null;
 }

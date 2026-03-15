@@ -13,6 +13,7 @@ import {
   KmsError,
   kmsAsymmetricSignSha256,
   kmsGetPublicKeyDer,
+  derToPem,
 } from "./kms/client";
 import {
   assembleCoseSign1,
@@ -54,6 +55,12 @@ export interface Env {
    * Reuses FOREST_PROJECT_ID, GCP_LOCATION, KMS_KEY_RING. For auth logs other than root.
    */
   DELEGATION_SIGNER_PARENT_KEYS_JSON?: string;
+  /**
+   * Optional: GCP access token for server-side KMS calls when GET /api/public-key/* is
+   * called without a Bearer token. Required for unauthenticated public-key fetches unless
+   * the client sends a Bearer token.
+   */
+  DELEGATION_SIGNER_PUBLIC_KEY_ACCESS_TOKEN?: string;
 }
 
 type LogSpecificDelegationRequest = {
@@ -294,6 +301,89 @@ function mapKmsError(err: unknown): Response {
   return ServerErrors.badGateway(detail ?? `KMS error (${status})`);
 }
 
+/** alg: ES256 (P-256, default) or KS256 (secp256k1). */
+type PublicKeyAlg = "ES256" | "KS256";
+
+function parsePublicKeyAlg(raw: string | null): PublicKeyAlg {
+  if (!raw || raw.trim() === "") return "ES256";
+  const n = raw.trim().toUpperCase();
+  if (n === "ES256") return "ES256";
+  if (n === "KS256") return "KS256";
+  throw new Error("alg must be ES256 or KS256");
+}
+
+/**
+ * GET /api/public-key/:well-known or /api/public-key/<key-id>.
+ * Well-known aliases use a colon-prefixed segment (e.g. :bootstrap). Key-id is for
+ * future direct key lookup. Returns root signing public key (no auth required).
+ * Query param alg: ES256 (P-256, default) or KS256 (secp256k1).
+ * Response: PEM body, Content-Type application/x-pem-file.
+ */
+async function handlePublicKey(
+  request: Request,
+  env: Env,
+  segment: string,
+): Promise<Response> {
+  if (segment === ":bootstrap") {
+    // use root key below
+  } else if (segment.startsWith(":")) {
+    return ClientErrors.notFound(
+      `Unknown well-known public key: ${segment}. Supported: :bootstrap.`,
+    );
+  } else {
+    return ClientErrors.notFound(
+      `Unknown public key: ${segment || "(empty)"}. Use well-known :bootstrap or key-id.`,
+    );
+  }
+
+  const url = new URL(request.url);
+  let alg: PublicKeyAlg;
+  try {
+    alg = parsePublicKeyAlg(url.searchParams.get("alg"));
+  } catch (e) {
+    return ClientErrors.badRequest(
+      e instanceof Error ? e.message : "invalid alg",
+    );
+  }
+
+  const token =
+    extractBearerToken(request.headers.get("authorization")) ??
+    env.DELEGATION_SIGNER_PUBLIC_KEY_ACCESS_TOKEN;
+  if (!token) {
+    return ServerErrors.serviceUnavailable(
+      "Public key endpoint requires a Bearer token or DELEGATION_SIGNER_PUBLIC_KEY_ACCESS_TOKEN",
+    );
+  }
+
+  const cryptoKey =
+    alg === "KS256" ? env.KMS_KEY_SECP256K1 : env.KMS_KEY_SECP256R1;
+  const ref = {
+    projectId: env.FOREST_PROJECT_ID,
+    location: env.GCP_LOCATION,
+    keyRing: env.KMS_KEY_RING,
+    cryptoKey,
+    cryptoKeyVersion: env.KMS_KEY_VERSION,
+  };
+
+  let der: Uint8Array;
+  try {
+    der = await kmsGetPublicKeyDer(token, ref);
+  } catch (e) {
+    return mapKmsError(e);
+  }
+
+  const pem = derToPem(der);
+  const algHeader = alg === "KS256" ? "KS256" : "ES256";
+  return new Response(pem, {
+    status: 200,
+    headers: {
+      "content-type": "application/x-pem-file",
+      "cache-control": "public, max-age=3600",
+      "x-key-algorithm": algHeader,
+    },
+  });
+}
+
 async function handleDelegation(request: Request, env: Env): Promise<Response> {
   const token = extractBearerToken(request.headers.get("authorization"));
   if (!token) {
@@ -531,6 +621,11 @@ export default {
         },
         200,
       );
+    }
+
+    if (pathname.startsWith("/api/public-key/") && request.method === "GET") {
+      const segment = pathname.slice("/api/public-key/".length).split("/")[0];
+      return handlePublicKey(request, env, segment || "");
     }
 
     if (pathname === "/api/delegations") {

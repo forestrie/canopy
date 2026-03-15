@@ -25,7 +25,7 @@ export interface Peak {
 }
 
 /**
- * Hasher interface for cryptographic hashing operations
+ * Hasher interface for cryptographic hashing operations (synchronous).
  */
 export interface Hasher {
   /** Reset the hasher state */
@@ -34,4 +34,17 @@ export interface Hasher {
   update(data: Uint8Array): void;
   /** Finalize and return the hash */
   digest(): Uint8Array;
+}
+
+/**
+ * Async hasher for environments where digest is async (e.g. Workers crypto.subtle).
+ * Same reset/update pattern; digest returns a Promise.
+ */
+export interface AsyncHasher {
+  /** Reset the hasher state */
+  reset(): void;
+  /** Update the hasher with data */
+  update(data: Uint8Array): void;
+  /** Finalize and return the hash */
+  digest(): Promise<Uint8Array>;
 }

@@ -1,7 +1,14 @@
 /**
  * Subplan 08 step 8.3: Bootstrap public key for verification.
  * Fetches from delegation-signer GET /api/public-key/:bootstrap (or config override).
+ * Verifies bootstrap transparent statement (COSE Sign1) signed with secp256k1.
  */
+
+import {
+  decodeCoseSign1,
+  encodeCborBstr,
+  encodeSigStructure,
+} from "@canopy/encoding";
 
 export interface BootstrapPublicKeyEnv {
   delegationSignerUrl: string;
@@ -120,4 +127,30 @@ export async function verifyBootstrapSignature(
     }
   }
   return false;
+}
+
+/**
+ * Verify bootstrap transparent statement (COSE Sign1) with secp256k1 public key.
+ * Builds Sig_structure (ToBeSigned), hashes it, verifies signature.
+ */
+export async function verifyBootstrapCoseSign1(
+  coseSign1Bytes: Uint8Array,
+  publicKeyBytes: Uint8Array,
+): Promise<boolean> {
+  const decoded = decodeCoseSign1(coseSign1Bytes);
+  if (!decoded) return false;
+  const { protectedBstr, payloadBstr, signature } = decoded;
+  const protectedBstrForSig = encodeCborBstr(protectedBstr);
+  const externalAad = new Uint8Array(0);
+  const sigStructure = encodeSigStructure(
+    protectedBstrForSig,
+    externalAad,
+    payloadBstr,
+  );
+  const digest = await crypto.subtle.digest("SHA-256", sigStructure);
+  return verifyBootstrapSignature(
+    new Uint8Array(digest),
+    signature,
+    publicKeyBytes,
+  );
 }

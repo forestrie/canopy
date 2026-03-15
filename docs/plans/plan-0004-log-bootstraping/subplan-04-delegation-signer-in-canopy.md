@@ -56,7 +56,11 @@ So in all cases the **caller** sends the **log or key scope** in the request (bo
 - **Digest semantics:** For grant signing, the caller sends a **digest** (e.g. SHA-256 of the grant inner or commitment). The delegation-signer does **not** validate the semantic content of the grant (target log, owner, kind). It only attests: “this signature was produced by the key for this scope (bootstrap or parent_log_id).” Trust in **what** is being signed is enforced by (1) the univocity contract (which verifies grant structure and inclusion) and (2) the caller’s identity and authorization. So it is secure for the delegation-signer to sign the digest without interpreting it.
 - **Delegation certs:** When issuing a delegation cert, the payload is a **fixed structure** (log_id, mmr range, delegated_pubkey, constraints, expiry). The signer signs that structure with the key for the requested scope. So the cert means “key X attests that this delegated_pubkey can sign for scope Y.” Verifiers check the cert against the known public key for that scope (e.g. from the contract). The signer is not signing arbitrary or attacker-controlled content; it is signing a bounded delegation claim.
 
-### 4.3 Implementation location and steps
+### 4.3 Root bootstrap (grant-first)
+
+**Chosen design:** Root bootstrap uses a **grant-first** model. The bootstrap grant is created and signed once (one-time API or ops), published at a well-known URL. register-grant and register-signed-statement **require auth** (a signed grant) on every call; the first call that creates the root uses the bootstrap grant as auth (no inclusion check when logId not initialized and auth is bootstrap-signed). No checkpoint-publisher or runtime trigger. Full design and agent-optimised implementation are in **[Subplan 08: Grant-first root bootstrap](subplan-08-grant-first-bootstrap.md)**. This document (subplan 04) only specifies the **delegation-signer** API used to sign the bootstrap grant (POST /api/delegate/bootstrap, GET /api/public-key/:bootstrap).
+
+### 4.4 Implementation location and steps (delegation-signer)
 
 | Step | Action | Input | Output | Location | Verification |
 |------|--------|-------|--------|----------|--------------|
@@ -67,7 +71,7 @@ So in all cases the **caller** sends the **log or key scope** in the request (bo
 
 **Data flow.** Caller (canopy or queue consumer) builds grant, computes digest (e.g. inner hash or commitment hash). For bootstrap grant: POST /api/delegate/bootstrap with `payload_hash`. For derived grant: POST /api/delegate/parent with `parent_log_id` and `payload_hash`. Delegation-signer resolves key, signs digest with KMS, returns `signature`. Caller attaches signature to grant. No private key material leaves the delegation-signer.
 
-### 4.4 Implementation status (Canopy delegation-signer)
+### 4.5 Implementation status (Canopy delegation-signer)
 
 | Step | Status | Notes |
 |------|--------|--------|

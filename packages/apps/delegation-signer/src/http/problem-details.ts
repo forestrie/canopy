@@ -64,4 +64,6 @@ export const ClientErrors = {
 export const ServerErrors = {
   internal: (detail?: string) => pd(500, "Internal Server Error", detail),
   badGateway: (detail?: string) => pd(502, "Bad Gateway", detail),
+  serviceUnavailable: (detail?: string) =>
+    pd(503, "Service Unavailable", detail),
 };

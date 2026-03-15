@@ -2,10 +2,11 @@ import { describe, it, expect } from "vitest";
 import {
   bagPeaks,
   calculateRoot,
+  calculateRootAsync,
   verifyInclusion,
-  Hasher,
+  verifyInclusionAsync,
 } from "../../src/mmr/algorithms.js";
-import type { Proof } from "../../src/mmr/types.js";
+import type { Proof, Hasher, AsyncHasher } from "../../src/mmr/types.js";
 
 // Simple SHA-256 hasher implementation for testing
 class TestHasher implements Hasher {
@@ -35,6 +36,23 @@ class TestHasher implements Hasher {
       result[i] = (result[i] + hash + i) & 0xff;
     }
     return result;
+  }
+}
+
+// Async hasher that wraps TestHasher (same algorithm, digest returns Promise)
+class AsyncTestHasher implements AsyncHasher {
+  private sync = new TestHasher();
+
+  reset(): void {
+    this.sync.reset();
+  }
+
+  update(data: Uint8Array): void {
+    this.sync.update(data);
+  }
+
+  digest(): Promise<Uint8Array> {
+    return Promise.resolve(this.sync.digest());
   }
 }
 
@@ -145,6 +163,63 @@ describe("MMR Algorithms", () => {
 
       const root = new Uint8Array(32);
       expect(() => verifyInclusion(hasher, leafHash, proof, root)).toThrow();
+    });
+  });
+
+  describe("calculateRootAsync", () => {
+    it("should match calculateRoot result", async () => {
+      const leafHash = new Uint8Array(32);
+      leafHash[0] = 0x01;
+      const siblingHash = new Uint8Array(32);
+      siblingHash[0] = 0x02;
+      const proof: Proof = { path: [siblingHash], leafIndex: 0n };
+
+      const syncHasher = new TestHasher();
+      const asyncHasher = new AsyncTestHasher();
+      const syncRoot = calculateRoot(syncHasher, leafHash, proof, 0n);
+      const asyncRoot = await calculateRootAsync(
+        asyncHasher,
+        leafHash,
+        proof,
+        0n,
+      );
+      expect(asyncRoot).toEqual(syncRoot);
+    });
+  });
+
+  describe("verifyInclusionAsync", () => {
+    it("should verify when root matches", async () => {
+      const hasher = new AsyncTestHasher();
+      const leafHash = new Uint8Array(32);
+      leafHash[0] = 0x01;
+      const proof: Proof = { path: [], leafIndex: 0n };
+      const syncHasher = new TestHasher();
+      const expectedRoot = calculateRoot(syncHasher, leafHash, proof, 0n);
+
+      const isValid = await verifyInclusionAsync(
+        hasher,
+        leafHash,
+        proof,
+        expectedRoot,
+      );
+      expect(isValid).toBe(true);
+    });
+
+    it("should reject when root does not match", async () => {
+      const hasher = new AsyncTestHasher();
+      const leafHash = new Uint8Array(32);
+      leafHash[0] = 0x01;
+      const proof: Proof = { path: [], leafIndex: 0n };
+      const wrongRoot = new Uint8Array(32);
+      wrongRoot[0] = 0xff;
+
+      const isValid = await verifyInclusionAsync(
+        hasher,
+        leafHash,
+        proof,
+        wrongRoot,
+      );
+      expect(isValid).toBe(false);
     });
   });
 });

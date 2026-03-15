@@ -2,7 +2,7 @@
 
 **Status**: DRAFT  
 **Date**: 2026-03-09  
-**Related**: [Plan 0001](../plan-0001-register-grant-and-grant-auth-phase.md), [Brainstorm-0001](../../brainstorm-0001-x402-checkpoint-grants.md); univocity contracts and docs (see References below)
+**Related**: [ARC-0001 grant verification](../arc-0001-grant-verification.md) (receipt-based inclusion), [Plan 0001](../plan-0001-register-grant-and-grant-auth-phase.md), [Brainstorm-0001](../../brainstorm-0001-x402-checkpoint-grants.md); univocity contracts and docs (see References below)
 
 ## 1. Key outcomes and deliverables
 
@@ -10,7 +10,8 @@
 |--------|-------------|
 | **Authority logs bootstrapped from chain** | Root and derived (child auth, data) logs created via univocity contract; first checkpoint and grants follow contract semantics. |
 | **Grants issued as authority log leaves** | Grant payload (PublishGrant + idtimestamp) produced; grant-sequencing component (subplan 03) feeds ranger’s existing pipeline so leaf is appended to owner MMR (ranger: optional idtimestamps in ack when configured, see subplan 03 §7.1); grant published to storage; sealer finds grant and signs checkpoints. |
-| **Grant creation triggered by x402 settlement** | After payment settle, **canopy** creates the grant (delegation + sign), runs grant-sequencing (push to same DO as register-signed-statement), publishes grant; ranger extends log (unchanged except optional idtimestamps in ack per config); client gets grant location via poll/callback. Primary path: no arbor queue consumer. Canopy must not assume idtimestamp is in the DO — fallback to R2 when resolveContent does not return it. |
+| **Root bootstrap (grant-first)** | Bootstrap grant is created and signed **once** (one-time API or ops), published at a well-known URL. register-grant and register-signed-statement **always** require **auth** (a signed grant). First call: caller supplies the bootstrap grant as auth; API allows when logId not initialized and auth is bootstrap-signed (no inclusion check). All other calls require **receipt-based inclusion** ([ARC-0001](../arc-0001-grant-verification.md)). See [Subplan 08](subplan-08-grant-first-bootstrap.md). |
+| **Grant creation triggered by x402 settlement (paid grants)** | After payment settle, **canopy** creates the grant (delegation + sign), runs grant-sequencing (push to same DO as register-signed-statement), publishes grant; client gets grant location via poll/callback. **Bootstrap is not via settlement** — see subplan 08. Primary path: no arbor queue consumer. Canopy must not assume idtimestamp is in the DO — fallback to R2 when resolveContent does not return it. |
 | **Auth log status and log type queryable** | REST service exposes root existence and log type (authority vs data) from chain; external implementations and sealer can gate or resolve keys. |
 | **No private keys in grant path** | Canopy (and any optional queue consumer) uses signer **delegation** only; bootstrap **public** key (or id) and contract address in config; no key material in queue consumer if that path is used. |
 
@@ -29,10 +30,11 @@ Subplans are in **dependency order**. Each is independently buildable once its d
 | **03** | [Grant-sequencing component](subplan-03-grant-sequencing-component.md) | **Canopy** completes register-grant / post-settlement: produces entry (ownerLogId, ContentHash = inner) and pushes to the **same DO** as register-signed-statement (forestrie-ingress). Ranger: one optional, config-driven change (idtimestamps in ack). DO: optional idtimestamps in ack, two-path update; canopy must use R2 fallback when idtimestamp not in DO. | 01 |
 | **04** | [Signer: delegation for bootstrap and parent log](subplan-04-signer-delegation-bootstrap-and-parent.md) | Extend signer to support delegation for a **local key** (bootstrap) and delegation for **parent log** (derived logs). Queue consumer requests these to sign grants; no key material in queue consumer. | — |
 | **05** | [Queue consumer: grant-issuance (optional)](subplan-05-queue-consumer-grant-issuance.md) | **Optional/legacy**: Arbor queue consumer for “issue grant” if needed; primary path is canopy (subplan 06). Config, bootstrap/derived flows, hand off to grant-sequencing (subplan 03). | 01, 02, 03, 04 |
-| **06** | [Canopy: settlement → grant creation and sequencing](subplan-06-canopy-settlement-to-issue-grant-queue.md) | After x402 settlement, **canopy** creates the grant (delegation + sign), runs grant-sequencing (push to same DO as register-signed-statement), publishes grant; client gets grant location via poll or callback. No arbor queue in primary path. | 01, 02, 03, 04 |
-| **07** | [Sealer: key resolution per log](subplan-07-sealer-key-resolution-per-log.md) | Sealer uses REST auth log status service to resolve “which signing key for this logId?”. Find-grant process unchanged (picks up grants from storage). | 02 |
+| **06** | [Canopy: settlement → grant creation and sequencing](subplan-06-canopy-settlement-to-issue-grant-queue.md) | After x402 settlement (**paid grants only**), **canopy** creates the grant (delegation + sign), runs grant-sequencing, publishes grant; client gets grant location. Bootstrap is **not** via settlement — see subplan 08. | 01, 02, 03, 04 |
+| **07** | [Sealer: key resolution per log](subplan-07-sealer-key-resolution-per-log.md) | Sealer uses REST auth log status service to resolve “which signing key for this logId?”. Find-grant process unchanged (picks up grants from storage). No bootstrap trigger; root bootstrap is grant-first (subplan 08). | 02 |
+| **08** | [Grant-first root bootstrap](subplan-08-grant-first-bootstrap.md) | Bootstrap grant created once (one-time API or ops), published at well-known URL. register-grant and register-signed-statement require **auth** on every call; bootstrap branch when logId not initialized and auth is bootstrap-signed. No checkpoint-publisher or runtime trigger. | 01, 02, 03, 04 |
 
-**Suggested build order**: 01 first (go-univocity, spec, test vectors). Then **update canopy** to the shared format (subplan 01 step 7: canopy-api grant codec and tests aligned with go-univocity and fixtures). Then 02, 03, 04 in parallel (no cross-deps). Then 06 (canopy settlement → grant creation and sequencing); 05 is optional. 07 in parallel with 06 (07 needs REST from 02).
+**Suggested build order**: 01 first (go-univocity, spec, test vectors). Then **update canopy** to the shared format (subplan 01 step 7: canopy-api grant codec and tests aligned with go-univocity and fixtures). Then 02, 03, 04 in parallel (no cross-deps). Then **08** (grant-first bootstrap) and **06** (settlement → paid grant creation) in either order (08 does not depend on 06; 06 does not handle bootstrap). 05 is optional. 07 in parallel with 06/08 (07 needs REST from 02).
 
 **Why subplan 02 is not next after 01**: Subplan 02 (REST auth log status) has no dependency on the grant wire format; it reads root and log config from chain and exposes endpoints. So by dependency alone, 02 could follow 01. The reason to do **canopy format alignment** (01 step 7) before 02 is that until canopy uses the same grant encoding as go-univocity, two formats are in play: arbor/queue consumer will produce grants in go-univocity format, while canopy’s register-grant API may still use a different codec (e.g. different CBOR keys or lengths). Aligning canopy first gives a single source of truth for the format everywhere (canopy, arbor, storage, content-addressable paths) before building 02, 03, 04, 05.
 
@@ -88,9 +90,13 @@ The following should be clarified or specified before or during implementation s
 
 ### 4.6 Canopy settlement → grant creation and sequencing (subplan 06)
 
-- **Primary path**: After x402 settlement, **canopy** (canopy-api or settlement worker) creates the grant (delegation + sign), runs grant-sequencing (push to same DO as register-signed-statement), publishes grant. No enqueue to arbor queue.
+- **Paid grants only**: After x402 settlement, **canopy** creates the grant (delegation + sign), runs grant-sequencing, publishes grant. **Bootstrap is not via settlement** — see subplan 08 (grant-first bootstrap).
 - **Settlement detection**: where settlement completes (canopy-api vs x402-settlement worker) and how it triggers grant creation.
 - **Client grant location**: how grant location is returned (settlement callback payload, status endpoint URL, or existing receipt field).
+
+### 4.9 Grant-first root bootstrap (subplan 08)
+
+- **Chosen design**: Root bootstrap uses a **grant-first** model (subplan 08). Bootstrap grant is minted once (one-time API or ops), published at well-known URL. register-grant and register-signed-statement **require auth** (signed grant) on every call; first call that creates the root uses the bootstrap grant as auth; API allows when logId not initialized and auth is bootstrap-signed. No checkpoint-publisher or runtime trigger. See [subplan 08](subplan-08-grant-first-bootstrap.md) for full design and agent-optimised steps.
 
 ### 4.7 Sealer key resolution (subplan 07)
 

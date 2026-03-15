@@ -4,14 +4,11 @@
  */
 
 import { getQueueForLog } from "../sequeue/logshard.js";
-import { decodeGrant, encodeGrant } from "../grant/codec.js";
+import { decodeGrantPayload, encodeGrantForResponse } from "../grant/codec.js";
 import type { Grant } from "../grant/types.js";
 import { bytesToUuid } from "../grant/uuid-bytes.js";
 import { ClientErrors, ServerErrors } from "./problem-details";
-import {
-  mmrIndexFromLeafIndex,
-  readIdtimestampFromMassif,
-} from "./sequencing-result.js";
+import { readIdtimestampFromMassif } from "./sequencing-result.js";
 
 const SEQUENCED_GRANT_KIND_SEGMENT = "authority";
 
@@ -59,7 +56,7 @@ export async function serveGrant(
   const bytes = new Uint8Array(await obj.arrayBuffer());
   let grant: Grant;
   try {
-    grant = decodeGrant(bytes);
+    grant = decodeGrantPayload(bytes);
   } catch {
     return ServerErrors.internal("Grant decode failed");
   }
@@ -87,17 +84,10 @@ export async function serveGrant(
     result.massifIndex,
     result.leafIndex,
   );
-  const mmrIndex = mmrIndexFromLeafIndex(result.leafIndex);
-
   const idtimestampBytes = new Uint8Array(8);
   writeU64BE(idtimestampBytes, 0, idtimestamp);
 
-  const completedGrant: Grant = {
-    ...grant,
-    idtimestamp: idtimestampBytes,
-  };
-
-  const encoded = encodeGrant(completedGrant);
+  const encoded = encodeGrantForResponse(grant, idtimestampBytes);
   return new Response(encoded, {
     status: 200,
     headers: {
@@ -142,7 +132,7 @@ export async function getCompletedGrant(
   const bytes = new Uint8Array(await obj.arrayBuffer());
   let grant: Grant;
   try {
-    grant = decodeGrant(bytes);
+    grant = decodeGrantPayload(bytes);
   } catch {
     return null;
   }
@@ -165,13 +155,8 @@ export async function getCompletedGrant(
   const idtimestampBytes = new Uint8Array(8);
   writeU64BE(idtimestampBytes, 0, idtimestamp);
 
-  const completedGrant: Grant = {
-    ...grant,
-    idtimestamp: idtimestampBytes,
-  };
-
   return {
-    grant: completedGrant,
-    bytes: encodeGrant(completedGrant),
+    grant,
+    bytes: encodeGrantForResponse(grant, idtimestampBytes),
   };
 }

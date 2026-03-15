@@ -84,9 +84,9 @@ Design updates baked into overview and subplans.
 
 1. **Merge subplan 03** — Merge PR #5 (canopy-api async grant-sequencing) so main has register-grant 303 flow and grant-sequencing.
 2. **Implement subplan 04 (signer delegation only)** — In arbor: extend signer with “delegation for local key” (bootstrap) and “delegation for parent log” (by auth logId). No key-creation yet; bootstrap key and any additional auth log keys are pre-created in KMS and configured. Enables subplan 06.
-3. **Implement subplan 06** — Canopy: on x402 settlement success, request delegation (04), build and sign grant (01), run grant-sequencing (03), resolve idtimestamp (DO or R2 fallback), publish grant, return location to client.
-4. **Optional** — Resolve subplan 04 assessment design questions; update subplan 04 with key-creation steps; implement “create key on verified GC_AUTH_LOG grant” in delegation service.
-5. **Optional** — Subplan 07 (sealer key resolution); DO/ranger idtimestamps in ack. Subplan 05 (queue consumer) only if a non-canopy path is needed.
+3. **Implement subplan 08** — Grant-first root bootstrap: one-time bootstrap grant mint, register-grant auth + bootstrap branch, register-signed-statement auth required (see subplan 08).
+4. **Implement subplan 06** — Canopy: on x402 settlement success (paid grants only), request delegation for parent (04), build and sign grant (01), run grant-sequencing (03), publish grant, return location to client.
+5. **Optional** — Subplan 07 (sealer key resolution); DO/ranger idtimestamps in ack. Subplan 05 (queue consumer) only if a non-canopy path for paid grants is needed. Subplan 04 assessment (key-creation for GC_AUTH_LOG) when design questions are resolved.
 
 ---
 
@@ -103,5 +103,6 @@ This directory contains the **overview** and **agent-optimised subplans** for au
 | 03 | [Grant-sequencing component](subplan-03-grant-sequencing-component.md) *(canopy, same DO; ranger: optional idtimestamps in ack per config)* |
 | 04 | [Signer: delegation for bootstrap and parent log](subplan-04-signer-delegation-bootstrap-and-parent.md) |
 | 05 | [Queue consumer: grant-issuance (optional)](subplan-05-queue-consumer-grant-issuance.md) |
-| 06 | [Canopy: settlement → grant creation and sequencing](subplan-06-canopy-settlement-to-issue-grant-queue.md) |
+| 06 | [Canopy: settlement → grant creation and sequencing](subplan-06-canopy-settlement-to-issue-grant-queue.md) *(paid grants only)* |
 | 07 | [Sealer: key resolution per log](subplan-07-sealer-key-resolution-per-log.md) |
+| 08 | [Grant-first root bootstrap](subplan-08-grant-first-bootstrap.md) |

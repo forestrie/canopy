@@ -264,45 +264,17 @@ export default {
                 univocityServiceUrl: env.UNIVOCITY_SERVICE_URL,
               }
             : undefined;
-        const hasChain =
-          !!env.UNIVOCITY_CONTRACT_RPC_URL?.trim() &&
-          !!env.UNIVOCITY_CONTRACT_ADDRESS?.trim();
-        const massifHeight = parseInt(env.MASSIF_HEIGHT || "14", 10);
-        const hasStorageR2 = !!env.R2_MMRS;
-        const hasStorageUrl =
-          !!env.OBJECT_STORAGE_ROOT_URL?.trim();
-        const hasStorage = (hasStorageR2 || hasStorageUrl) && massifHeight > 0;
-        const inclusionEnv =
-          env.SEQUENCING_QUEUE && (hasChain || hasStorage)
+        const queueEnv =
+          env.SEQUENCING_QUEUE
             ? {
                 sequencingQueue: env.SEQUENCING_QUEUE,
                 shardCountStr: env.QUEUE_SHARD_COUNT,
-                ...(hasChain && {
-                  chain: {
-                    univocityContractRpcUrl: env.UNIVOCITY_CONTRACT_RPC_URL!,
-                    univocityContractAddress: env.UNIVOCITY_CONTRACT_ADDRESS!,
-                  },
-                }),
-                ...(hasStorage && {
-                  storage: hasStorageR2
-                    ? { r2Mmrs: env.R2_MMRS, massifHeight }
-                    : {
-                        objectStorageRootUrl: env.OBJECT_STORAGE_ROOT_URL!,
-                        massifHeight,
-                      },
-                }),
               }
             : undefined;
         const response = await registerGrant(request, segments[1], {
           r2Grants: env.R2_GRANTS,
-          sequencingEnv: env.SEQUENCING_QUEUE
-            ? {
-                sequencingQueue: env.SEQUENCING_QUEUE,
-                shardCountStr: env.QUEUE_SHARD_COUNT,
-              }
-            : undefined,
+          queueEnv,
           bootstrapEnv,
-          inclusionEnv,
         });
         const headers = new Headers(response.headers);
         Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
@@ -318,35 +290,11 @@ export default {
         if (request.method === "POST") {
           // POST /logs/{logId}/entries - Register new statement
           // Grant-based auth is required (Step 5); x402 payment removed (Plan 0001 Step 4).
-          const massifHeight = parseInt(env.MASSIF_HEIGHT || "14", 10);
-          const hasChain =
-            !!env.UNIVOCITY_CONTRACT_RPC_URL?.trim() &&
-            !!env.UNIVOCITY_CONTRACT_ADDRESS?.trim();
-          const massifHeightEntries = parseInt(env.MASSIF_HEIGHT || "14", 10);
-          const hasStorageR2 = !!env.R2_MMRS;
-          const hasStorageUrl = !!env.OBJECT_STORAGE_ROOT_URL?.trim();
-          const hasStorage =
-            (hasStorageR2 || hasStorageUrl) && massifHeightEntries > 0;
           const inclusionEnv =
-            env.SEQUENCING_QUEUE && (hasChain || hasStorage)
+            env.SEQUENCING_QUEUE
               ? {
                   sequencingQueue: env.SEQUENCING_QUEUE,
                   shardCountStr: env.QUEUE_SHARD_COUNT,
-                  ...(hasChain && {
-                    chain: {
-                      univocityContractRpcUrl: env.UNIVOCITY_CONTRACT_RPC_URL!,
-                      univocityContractAddress:
-                        env.UNIVOCITY_CONTRACT_ADDRESS!,
-                    },
-                  }),
-                  ...(hasStorage && {
-                    storage: hasStorageR2
-                      ? { r2Mmrs: env.R2_MMRS, massifHeight: massifHeightEntries }
-                      : {
-                          objectStorageRootUrl: env.OBJECT_STORAGE_ROOT_URL!,
-                          massifHeight: massifHeightEntries,
-                        },
-                  }),
                 }
               : undefined;
           const response = await registerSignedStatement(
@@ -356,12 +304,6 @@ export default {
             env.QUEUE_SHARD_COUNT,
             undefined,
             env.R2_GRANTS,
-            {
-              r2Mmrs: env.R2_MMRS,
-              sequencingQueue: env.SEQUENCING_QUEUE,
-              shardCountStr: env.QUEUE_SHARD_COUNT,
-              massifHeight,
-            },
             inclusionEnv,
           );
 

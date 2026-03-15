@@ -4,7 +4,7 @@
  * ContentHash enqueued to the DO = inner (ranger then computes leafHash = H(idTimestampBE || ContentHash)).
  */
 
-import type { Grant } from "./types.js";
+import type { Grant } from "./grant.js";
 
 const INNER_LOG_ID_BYTES = 32;
 const INNER_GRANT_FLAGS_BYTES = 32;

@@ -2,21 +2,19 @@
 
 **Status**: DRAFT  
 **Date**: 2026-03-07  
-**Related**: [Plan 0001](../plans/plan-0001-register-grant-and-grant-auth-phase.md), [canopy-api](canopy-api.md), [register-grant](register-grant.md)
+**Related**: [Plan 0005 grant and receipt as single artifact](../plans/plan-0005-grant-receipt-unified-resolve.md), [ARC-0001 grant verification](../arc-0001-grant-verification.md) (receipt-based inclusion and signer binding), [Plan 0001](../plans/plan-0001-register-grant-and-grant-auth-phase.md), [canopy-api](canopy-api.md), [register-grant](register-grant.md)
 
 ## Endpoint
 
 `POST /logs/{logId}/entries`
 
-Registers a signed statement (COSE Sign1) into the log. **Requires** a valid grant: the client supplies the grant location, the API retrieves the grant from object storage, verifies that the statement being registered is signed by the grant’s signer, then enqueues the statement. No fallback; no x402 payment in this phase.
+Registers a signed statement (COSE Sign1) into the log. **Requires** a valid grant: the client **supplies the grant in the Authorization header** as `Authorization: Forestrie-Grant <base64>` (base64-encoded SCITT transparent statement). The API decodes it, verifies receipt-based inclusion when required, verifies that the statement signer matches the grant signer, then enqueues the statement. No grant fetch by the API in this phase. See [Plan 0005](../plans/plan-0005-grant-receipt-unified-resolve.md).
 
-## Grant location (required)
+## Grant supply (required)
 
-- **Mechanism**: One of (to be chosen in implementation):
-  - **`Authorization: Bearer <path>`** — The token is the grant location (URL path only).
-  - **`X-Grant-Location: <path>`** — Header value is the grant location (URL path only).
-- **Format**: **URL path only** (e.g. `/<kind>/<hash>.cbor`). It is interpreted **relative to the public grant storage hostname** configured for the API. The API resolves this to a storage key (path with optional prefix) and fetches the grant from object storage. Full URLs are not accepted in this phase; clients must use the path form.
-- If the grant location is missing, malformed, or not a path relative to the configured grant storage base → **401 Unauthorized** or **402 Payment Required** (CBOR problem details), and the request body is not processed.
+- **Mechanism**: The grant **must** be provided in the **Authorization** header: `Authorization: Forestrie-Grant <base64>`, where `<base64>` is the base64-encoded raw bytes of the SCITT transparent statement (COSE Sign1 with grant as payload and receipt in unprotected headers). There is no body or alternate-header option.
+- The API **does not fetch** the grant from a URL. Where the client obtains the grant is out of scope.
+- If the header is missing, not Forestrie-Grant, or the value is malformed or not a valid transparent statement with receipt when inclusion is required → **401 Unauthorized** (missing/wrong grant) or **400** / **403** (invalid artifact). The request body is not processed in that case.
 
 ## Request body
 
@@ -25,12 +23,11 @@ Registers a signed statement (COSE Sign1) into the log. **Requires** a valid gra
 
 ## Verification
 
-1. **Locate** — Parse grant location from header; must be URL path only.
-2. **Retrieve** — Resolve path to storage key; fetch grant from object storage (R2). If not found or error → **401** or **402** with problem detail (e.g. `grant_location_invalid` or `grant_not_found`).
-3. **Decode** — Decode grant bytes to grant structure. If invalid → **401** or **402**.
-4. **Verify signer** — From the request body (COSE Sign1), obtain the signer (e.g. kid or public key). Compare with the grant’s signer binding. If they do not match → **401 Unauthorized** or **403 Forbidden** with problem detail (e.g. `signer_mismatch`).
-5. (Optional) If the grant has validity fields (exp, nbf), reject if expired or not yet valid.
-6. On success, proceed to existing enqueue logic (303 See Other with Location to the entry).
+1. **Get grant from request** — Read **Authorization: Forestrie-Grant** header; base64-decode the token → COSE-decode; yield GrantResult (grant from payload, receipt from unprotected headers). If missing, wrong scheme, or invalid → **401**, **400**, or **403**.
+2. **Receipt-based inclusion** — When inclusion is required, the grant must be completed (idtimestamp) and the **receipt is part of the artifact** (unprotected headers). The API verifies the receipt (MMR inclusion). See [ARC-0001](../arc-0001-grant-verification.md) and [Plan 0005](../plans/plan-0005-grant-receipt-unified-resolve.md). Missing or invalid receipt → **403 Forbidden**.
+3. **Verify signer** — From the request body (COSE Sign1 statement), obtain the signer (e.g. kid). Compare with the grant signer binding. If they do not match → **403 Forbidden** (e.g. `signer_mismatch`).
+4. (Optional) If the grant has validity fields (exp, nbf), reject if expired or not yet valid.
+5. On success, proceed to existing enqueue logic (303 See Other with Location to the entry).
 
 ## Response
 

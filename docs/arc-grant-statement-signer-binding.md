@@ -2,7 +2,7 @@
 
 **Status:** DRAFT  
 **Date:** 2026-03-08  
-**Related:** [arc-statement-cose-encoding.md](arc-statement-cose-encoding.md), [adr-0001-encoding-one-per-artifact.md](adr-0001-encoding-one-per-artifact.md)
+**Related:** [ARC-0001 grant verification](arc-0001-grant-verification.md) (receipt-based inclusion and §3 signer binding), [arc-statement-cose-encoding.md](arc-statement-cose-encoding.md), [adr-0001-encoding-one-per-artifact.md](adr-0001-encoding-one-per-artifact.md)
 
 ## Purpose
 

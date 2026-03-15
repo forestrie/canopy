@@ -60,8 +60,10 @@ export {
 export {
   bagPeaks,
   calculateRoot,
+  calculateRootAsync,
   verifyInclusion,
+  verifyInclusionAsync,
   verifyConsistency,
 } from "./mmr/algorithms.js";
 export type { Proof, Peak } from "./mmr/types.js";
-export type { Hasher } from "./mmr/types.js";
+export type { Hasher, AsyncHasher } from "./mmr/types.js";

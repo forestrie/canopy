@@ -2,13 +2,13 @@
 
 **Status**: DRAFT  
 **Date**: 2026-03-07  
-**Related**: [Plan 0001](../plans/plan-0001-register-grant-and-grant-auth-phase.md), [canopy-api](canopy-api.md)
+**Related**: [Plan 0005 grant and receipt as single artifact](../plans/plan-0005-grant-receipt-unified-resolve.md), [ARC-0001 grant verification](../arc-0001-grant-verification.md) (receipt-based inclusion), [Plan 0001](../plans/plan-0001-register-grant-and-grant-auth-phase.md), [canopy-api](canopy-api.md), [Subplan 08](../plans/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md)
 
 ## Endpoint
 
 `POST /logs/{logId}/grants`
 
-Creates a grant and stores it in object storage. Returns the grant location (URL path) so the client can use it at register-statement. No payment in this phase.
+Creates a grant (enqueues for sequencing). Per [Plan 0005](../plans/plan-0005-grant-receipt-unified-resolve.md), **grant storage and location are the caller's responsibility** in the current phase; the API may return the grant in the response for the caller to persist. No payment in this phase.
 
 ## Request
 
@@ -37,6 +37,10 @@ Schema and CDDL in the grant format module (Plan 0001 Step 1).
 - **`kind`**: Grant kind as path segment (e.g. `attestor`, `publish-checkpoint`); stored as 1 byte in grant.
 - **`hash`**: Hash of the **encoded grant content** (e.g. SHA-256 of the grant CBOR bytes). Same grant content → same path; idempotent. Idtimestamp is not part of the path in this phase.
 - Storage key is this path (possibly with a prefix such as `grants/`). The **location** returned to the client is the path (or path with prefix) so that it can be interpreted relative to the public grant storage hostname.
+
+## Auth and inclusion (non-bootstrap)
+
+When the log is already initialized, the **auth grant must be supplied in the Authorization header**: `Authorization: Forestrie-Grant <base64>` (base64-encoded SCITT transparent statement: grant + receipt in one artifact). The grant must be **completed** (idtimestamp) and the **receipt is part of the artifact** (unprotected headers). The API verifies the receipt (MMR inclusion). See [ARC-0001](../arc-0001-grant-verification.md) and [Plan 0005](../plans/plan-0005-grant-receipt-unified-resolve.md). No X-Grant-Receipt-Location or server-built receipt in this phase. Missing or wrong header → **401**; invalid receipt → **403 Forbidden**.
 
 ## Errors
 

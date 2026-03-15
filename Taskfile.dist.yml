@@ -44,6 +44,11 @@ tasks:
     cmds:
       - pnpm -r build
 
+  check:md:
+    desc: "Validate Mermaid diagram syntax in a markdown file (task check:md -- path/to/file.md)"
+    cmds:
+      - node scripts/validate-mermaid.mjs {{.CLI_ARGS}}
+
   tools:check:
     desc: Check for required tools (Node, pnpm, Wrangler)
     cmds:
