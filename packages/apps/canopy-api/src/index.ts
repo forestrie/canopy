@@ -5,10 +5,7 @@
  */
 
 import { problemResponse } from "./scrapi/cbor-response";
-import {
-  handlePostBootstrapGrant,
-  serveBootstrapGrant,
-} from "./scrapi/bootstrap-grant.js";
+import { handlePostBootstrapGrant } from "./scrapi/bootstrap-grant.js";
 import { registerGrant } from "./scrapi/register-grant";
 import { registerSignedStatement } from "./scrapi/register-signed-statement";
 import { queryRegistrationStatus } from "./scrapi/query-registration-status";
@@ -118,29 +115,27 @@ export default {
         });
       }
 
-      // Subplan 08: POST /api/grants/bootstrap (no auth)
+      // Subplan 08 / Plan 0010: POST /api/grants/bootstrap (no auth, no storage)
       if (
         pathname === "/api/grants/bootstrap" &&
         request.method === "POST"
       ) {
-        const rootLogId = env.ROOT_LOG_ID;
         const delegationSignerUrl = env.DELEGATION_SIGNER_URL;
         const token = env.DELEGATION_SIGNER_BEARER_TOKEN;
-        if (!rootLogId || !delegationSignerUrl || !token) {
+        if (!delegationSignerUrl || !token) {
           return problemResponse(
             503,
             "Service Unavailable",
             "about:blank",
             {
               detail:
-                "Bootstrap grant mint not configured (ROOT_LOG_ID, DELEGATION_SIGNER_URL, DELEGATION_SIGNER_BEARER_TOKEN required)",
+                "Bootstrap grant mint not configured (DELEGATION_SIGNER_URL, DELEGATION_SIGNER_BEARER_TOKEN required)",
               headers: corsHeaders,
             },
           );
         }
         const response = await handlePostBootstrapGrant(request, {
-          r2Grants: env.R2_GRANTS,
-          rootLogId,
+          rootLogId: env.ROOT_LOG_ID,
           delegationSignerUrl,
           delegationSignerBearerToken: token,
         });
@@ -153,32 +148,21 @@ export default {
         });
       }
 
-      // GET /grants/bootstrap or /grants/bootstrap/:rootLogId — well-known bootstrap grant
+      // GET /grants/bootstrap/:rootLogId — not stored; return 404 (Plan 0010)
       if (
         segments[0] === "grants" &&
         segments[1] === "bootstrap" &&
         request.method === "GET"
       ) {
-        const rootLogId =
-          segments[2] ?? env.ROOT_LOG_ID ?? "";
-        if (!rootLogId) {
-          return problemResponse(
-            400,
-            "Bad Request",
-            "about:blank",
-            { detail: "rootLogId required (path or ROOT_LOG_ID)", headers: corsHeaders },
-          );
-        }
-        const response = await serveBootstrapGrant(rootLogId, {
-          r2Grants: env.R2_GRANTS,
-        });
-        const headers = new Headers(response.headers);
-        Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
-        return new Response(response.body, {
-          status: response.status,
-          statusText: response.statusText,
-          headers,
-        });
+        return problemResponse(
+          404,
+          "Not Found",
+          "about:blank",
+          {
+            detail: "Bootstrap grants are not stored; use POST /api/grants/bootstrap and save the response",
+            headers: corsHeaders,
+          },
+        );
       }
 
       // Health check

@@ -25,21 +25,19 @@
 3. **Poll:** GET status URL repeatedly until 303 to a receipt URL (`.../entries/{entryId}/receipt`).
 4. **Resolve:** GET receipt URL; decode entryId to get idtimestamp; build completed transparent statement (grant payload + header -65537 = idtimestamp, header 396 = receipt); save to file (e.g. `perf/data/completed-root-grant.cose` or `.b64`) for use as auth in later steps (e.g. data log creation or as the single pool entry if only one log is used).
 
-### 3.2 Grant pool (one grant per log)
+### 3.2 Grant pool (one grant per log) — Option A
+
+**Chosen: extend POST /api/grants/bootstrap** to accept an optional **`rootLogId`** (or **`logId`**) in the request body. When provided, mint for that log instead of env ROOT_LOG_ID; no server-side storage; response body only. The script calls POST /api/grants/bootstrap once per log and then register-grant + poll + resolve for each.
 
 For each log ID in the pool (e.g. CANOPY_PERF_LOG_IDS):
 
-1. **Obtain signed grant for that log:** Each grant has GF_CREATE|GF_EXTEND and target logId = that log. So we need a signed transparent statement per log. Options:
-   - **Option A:** Extend POST /api/grants/bootstrap to accept an optional `rootLogId` (or `logId`) in the request body; when provided, mint for that log instead of env ROOT_LOG_ID. Then the script can call POST /api/grants/bootstrap once per log (or in batch) and save each. No server-side storage; response body only.
-   - **Option B:** Single root only for now: one bootstrap grant (for ROOT_LOG_ID), register it, get one completed grant; grant-pool has one entry (that log). Multi-log is a later step.
-   - **Option C:** A separate “mint” script that calls the delegation-signer directly (or a canopy endpoint) with a TBS per log and builds the COSE; then register-grant for each. Prefer Option A for consistency with existing bootstrap API.
-
-2. **Register:** POST /logs/{logId}/grants with `Authorization: Forestrie-Grant <grant_for_this_log_base64>`. 303 to status URL.
-3. **Poll:** GET status URL until 303 to receipt URL.
+1. **Mint:** POST /api/grants/bootstrap with body `{ "rootLogId": "<logId>" }` (or omit to use env ROOT_LOG_ID). Save response body (base64) as the grant for this log.
+2. **Register:** POST /logs/{logId}/grants with `Authorization: Forestrie-Grant <grant_base64>`. 303 to status URL.
+3. **Poll:** GET status URL repeatedly until 303 to receipt URL.
 4. **Resolve:** GET receipt URL; build completed transparent statement; add to pool (logId → base64 completed grant).
-5. **Output:** grant-pool.json with structure suitable for k6, e.g. `{ "grants": [ { "logId": "...", "grantBase64": "..." }, ... ], "signer": "..." }` (signer from the grant payload for COSE kid).
+5. **Output:** grant-pool.json: `{ "grants": [ { "logId": "...", "grantBase64": "..." } ], "signer": "<hex>" }` (signer from grant payload for COSE kid).
 
-Re-use: “poll status URL until 303 to receipt” and “resolve receipt URL and build completed grant” are shared between bootstrap and grant-pool.
+Re-use: poll status and resolve receipt are shared between bootstrap and grant-pool.
 
 ## 4. Taskfile split
 
@@ -62,7 +60,7 @@ Scripts can live under `perf/scripts/` (e.g. `poll-status.ts`, `resolve-receipt-
   - **register** – POST /logs/{{.ROOT_LOG_ID}}/grants with Forestrie-Grant from the file saved by mint. Parse 303 Location and save status URL to a file (e.g. `status-url.txt`). Depends on mint (or a pre-existing bootstrap grant file).
   - **poll** – Call poll-status task (from grant-shared) with the status URL from register. Save receipt URL to a file. Depends on register.
   - **resolve** – Call resolve-receipt task (from grant-shared) with the receipt URL from poll and the original bootstrap grant file; write completed grant base64 to e.g. `{{.GRANT_DATA_DIR}}/completed-root-grant.b64`. Depends on poll.
-  - **bootstrap** – Single task that runs mint → register → poll → resolve in order (depends on grant-shared). Use when you want to “bootstrap the root and have a completed grant file ready for data log creation”.
+  - **bootstrap** – Single task that runs mint → register → poll → resolve in order (depends on grant-shared). Use when you want to bootstrap the root and have a completed grant file ready for data log creation.
 
 Include grant-shared so these tasks can call poll-status and resolve-receipt.
 
@@ -106,23 +104,29 @@ includes:
 - **Invocation:** Either called by taskfiles (e.g. `grant:pool` runs `pnpm --filter @canopy/perf run generate-grant-pool` with env set by the task) or run standalone with env vars (CANOPY_PERF_BASE_URL, CANOPY_PERF_API_TOKEN, CANOPY_PERF_LOG_IDS, etc.).
 - **Inputs:** Base URL, API token, list of log IDs; optionally path to existing bootstrap/completed grant file (for root) to avoid re-minting.
 - **Outputs:** `perf/k6/canopy-api/data/grant-pool.json` with structure k6 expects: e.g. `{ "signer": "<hex>", "grants": [ { "logId": "...", "grantBase64": "..." } ] }`.
-- **Per-log grant:** If the API is extended so POST /api/grants/bootstrap can mint for a given logId (optional body param), the script calls it once per log and then register-grant + poll + resolve for each. If not, the script supports “single root” mode: one bootstrap, one completed grant, one pool entry.
+- **Per-log grant (Option A):** POST /api/grants/bootstrap accepts optional body `{ "rootLogId": "<logId>" }`. The script calls it once per log, then register-grant + poll + resolve for each, and writes grant-pool.json.
 
-## 6. Implementation order
+## 6. Agent-optimised implementation plan (incremental, testable)
 
-| Step | Action | Notes |
-|------|--------|--------|
-| 1 | **API: stop storing bootstrap grant** | In handlePostBootstrapGrant, remove R2 put; always return 201 with body (base64 or COSE). Remove or stub GET /grants/bootstrap/:rootLogId (404). |
-| 2 | **grant-shared.yml** | Add taskfile with vars and tasks: poll-status, resolve-receipt (both can call perf/scripts). Add scripts: e.g. poll-status.ts, resolve-receipt-to-grant.ts. |
-| 3 | **grant-bootstrap.yml** | Tasks: mint, register, poll, resolve, bootstrap. Use grant-shared for poll and resolve. Mint = curl POST and save body; register = curl POST with Forestrie-Grant from file. |
-| 4 | **grant.yml** | Tasks: single (register one + poll + resolve), pool (loop over log IDs, call single or equivalent, write grant-pool.json). Use grant-shared. |
-| 5 | **generate-grant-pool script** | Rewrite to use Forestrie-Grant; obtain grants via POST /api/grants/bootstrap (and optionally per-log if API supports it); for each log: register-grant, poll status, resolve receipt, build completed grant; output grant-pool.json. Optionally delegate “poll” and “resolve” to the same logic as in scripts used by taskfiles. |
-| 6 | **Wire taskfiles** | Include grant-shared, grant-bootstrap, grant in root Taskfile; document in README or runbook. |
-| 7 | **Per-log mint (optional)** | If desired for multi-log pool: extend POST /api/grants/bootstrap to accept optional logId/rootLogId in body; when present, use it instead of env ROOT_LOG_ID and do not store. |
+Each step is independently verifiable. Implement in order; run verification before proceeding.
+
+| Step | Action | Files to add/change | Verification |
+|------|--------|---------------------|--------------|
+| **6.1** | **API: optional rootLogId in POST body** | `bootstrap-grant.ts`: parse JSON body for optional `rootLogId` or `logId`; when present and valid (UUID or 64 hex), use it for grant.logId/ownerLogId instead of env ROOT_LOG_ID. Keep R2 write for now. | Unit test: POST with body `{ "rootLogId": "<uuid>" }` returns 201 and grant payload has that logId. POST with no body uses env ROOT_LOG_ID. |
+| **6.2** | **API: stop storing; remove GET** | `bootstrap-grant.ts`: remove R2 get/put; always return 201 with body (base64). `index.ts`: remove GET /grants/bootstrap/... or return 404. | handlePostBootstrapGrant does not call r2Grants. GET /grants/bootstrap/:id returns 404. |
+| **6.3** | **perf/scripts: poll-status** | Add `perf/scripts/poll-status.ts`: args = baseUrl, apiToken, statusUrl, maxPolls, pollIntervalMs; GET until 303 to URL ending `/receipt`; print receipt URL. | Run against known status URL or mock; exits 0 with receipt URL or non-zero on timeout. |
+| **6.4** | **perf/scripts: resolve-receipt-to-grant** | Add `perf/scripts/resolve-receipt-to-grant.ts`: GET receipt, decode entryId to idtimestamp, build COSE with headers -65537 and 396, write base64 to output. | Run with real receipt URL and grant file; output is valid COSE with both headers. |
+| **6.5** | **grant-shared.yml** | Add `taskfiles/grant-shared.yml`: vars (BASE_URL, API_TOKEN, GRANT_DATA_DIR, MASSIF_HEIGHT, POLL_*); tasks poll-status, resolve-receipt invoking scripts. | `task grant-shared:poll-status` and resolve-receipt run with required vars. |
+| **6.6** | **grant-bootstrap.yml** | Add `taskfiles/grant-bootstrap.yml`: includes grant-shared; tasks mint, register, poll, resolve, bootstrap. | `task grant-bootstrap:mint` saves file; `task grant-bootstrap:bootstrap` e2e when server is up. |
+| **6.7** | **grant.yml** | Add `taskfiles/grant.yml`: includes grant-shared; tasks single, pool (per log: mint with body rootLogId, register, poll, resolve; write grant-pool.json). | `task grant:single` with one log; `task grant:pool` produces grant-pool.json. |
+| **6.8** | **Wire taskfiles** | `Taskfile.dist.yml`: add includes for grant-shared, grant-bootstrap, grant. | `task --list` shows grant and grant-bootstrap tasks. |
+| **6.9** | **generate-grant-pool script** | Rewrite `perf/scripts/generate-grant-pool.ts`: per log POST bootstrap with `{ "rootLogId": logId }`, register-grant, poll, resolve, push to pool; write grant-pool.json. | `pnpm --filter @canopy/perf run generate-grant-pool` produces grant-pool.json; k6 can consume. |
+| **6.10** | **k6: Forestrie-Grant** | Update k6 scenario and http.js: POST /entries with `Authorization: Forestrie-Grant <grantBase64>` from pool. | k6 run with grant-pool; POST returns 303. |
 
 ## 7. Summary
 
 - **Bootstrap:** No server-side storage; POST returns the grant, workflow saves it. GET /grants/bootstrap/:rootLogId removed or 404.
+- **Option A:** POST /api/grants/bootstrap accepts optional body `{ "rootLogId": "<logId>" }` for per-log mint.
 - **generate-grant-pool:** Uses register-grant per log (GF_CREATE|GF_EXTEND, target log), collects completed grants via query-registration-status (poll) and resolve-receipt, writes grant-pool.json.
 - **Taskfiles:** grant-shared.yml (poll-status, resolve-receipt, vars), grant-bootstrap.yml (mint, register, poll, resolve, bootstrap), grant.yml (single, pool) with re-use of shared tasks.
 - **Scripts:** Shared logic for poll and resolve can live in perf/scripts and be used by both the taskfile tasks and the generate-grant-pool script for consistency.
