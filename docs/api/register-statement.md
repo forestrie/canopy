@@ -25,9 +25,8 @@ Registers a signed statement (COSE Sign1) into the log. **Requires** a valid gra
 
 1. **Get grant from request** — Read **Authorization: Forestrie-Grant** header; base64-decode the token → COSE-decode; yield GrantResult (grant from payload, receipt from unprotected headers). If missing, wrong scheme, or invalid → **401**, **400**, or **403**.
 2. **Receipt-based inclusion** — When inclusion is required, the grant must be completed (idtimestamp) and the **receipt is part of the artifact** (unprotected headers). The API verifies the receipt (MMR inclusion). See [ARC-0001](../arc-0001-grant-verification.md) and [Plan 0005](../plans/plan-0005-grant-receipt-unified-resolve.md). Missing or invalid receipt → **403 Forbidden**.
-3. **Verify signer** — From the request body (COSE Sign1 statement), obtain the signer (e.g. kid). Compare with the grant signer binding. If they do not match → **403 Forbidden** (e.g. `signer_mismatch`).
-4. (Optional) If the grant has validity fields (exp, nbf), reject if expired or not yet valid.
-5. On success, proceed to existing enqueue logic (303 See Other with Location to the entry).
+3. **Verify grant shape and signer** — Forestrie-Grant wire **v0**: payload map keys **1–6** only ([ARC-0001 §6](arc-0001-grant-verification.md)). The **`grant`** bitmap must satisfy **`isStatementRegistrationGrant`** (data-log checkpoint **or** root auth bootstrap). From the request body (COSE Sign1 statement), obtain the signer (e.g. kid). Compare with **`statementSignerBindingBytes(grant)`** = committed **`grantData`** only (64-byte ES256 **x||y** → first 32 bytes). If they do not match → **403 Forbidden** (e.g. `signer_mismatch`).
+4. On success, proceed to existing enqueue logic (303 See Other with Location to the entry).
 
 ## Response
 

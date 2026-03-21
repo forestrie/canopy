@@ -61,7 +61,7 @@ type GrantResult = {
   - Caller sends grant in **Authorization: Forestrie-Grant &lt;base64&gt;** (transparent statement).  
   - `grantResult = getGrantFromRequest(request)` (read header, base64 decode + COSE decode); if error, return 401/400/403.  
   - `err = await grantAuthorize(grantResult, env)`; if err, return err.  
-  - Check request path logId matches `grantResult.grant.logId`; parse statement, check statement signer matches `grantResult.grant.signer`.  
+  - Check request path logId matches `grantResult.grant.logId`; parse statement; **`isStatementRegistrationGrant(grantResult.grant)`**; check statement signer matches `statementSignerBindingBytes(grantResult.grant)` (**`grantData`** only; ARC-0001 §6).  
   - Enqueue, etc.
 
 - **registerGrant**:  

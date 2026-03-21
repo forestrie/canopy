@@ -1,8 +1,8 @@
 # Plan 0001: Register-grant endpoint, grants storage, and register-statement grant auth (Phase 1)
 
-**Status**: ACCEPTED  
+**Status**: ACCEPTED (archived — completed)  
 **Date**: 2026-03-07  
-**Related**: [Brainstorm-0001](../brainstorm-0001-x402-checkpoint-grants.md) (x402 checkpoint grants)
+**Related**: [Brainstorm-0001](../../brainstorm-0001-x402-checkpoint-grants.md) (x402 checkpoint grants)
 
 ## 1. Purpose and scope
 
@@ -46,7 +46,7 @@ Tasks are ordered by dependency. Each task is logically isolated and ends with *
 
 - **Content-addressable path**: `<kind>/<hash>.cbor` where `hash` is derived from the **encoded grant content** (e.g. SHA-256 of the grant CBOR bytes). Same grant content → same path; idempotent. Idtimestamp is **not** in the path in this phase.
 - `grantStoragePath(encodedGrantBytes, kind): string` — deterministic path from hash(encodedGrantBytes) and kind. Encoding of hash (hex or base64url) and character set safe for R2.
-- Document path schema in plan and in [docs/api/register-grant.md](../api/register-grant.md).
+- Document path schema in plan and in [docs/api/register-grant.md](../../api/register-grant.md).
 
 **Depends on**: Step 1 (grant shape, encodeGrant) for types.
 
@@ -180,7 +180,7 @@ Tasks are ordered by dependency. Each task is logically isolated and ends with *
 
 **Gaps and weaknesses** (addressed in this phase):
 
-1. **Discovery and docs for agents**: **Addressed** — [docs/api/](../api/) added: [canopy-api.md](../api/canopy-api.md) (overview), [register-grant.md](../api/register-grant.md), [register-statement.md](../api/register-statement.md) define request/response, path schema, location format, and errors for both endpoints.
+1. **Discovery and docs for agents**: **Addressed** — [docs/api/](../../api/) added: [canopy-api.md](../../api/canopy-api.md) (overview), [register-grant.md](../../api/register-grant.md), [register-statement.md](../../api/register-statement.md) define request/response, path schema, location format, and errors for both endpoints.
 
 2. **Error shape**: **Addressed** — CBOR end-to-end; errors use **Concise Problem Details** (CBOR, consistent with RFC 9290 and existing `problemResponse` / `application/problem+cbor`). Auth failures include optional extension members (e.g. `grant_not_found`, `signer_mismatch`) so agents can branch on error type.
 
@@ -200,7 +200,7 @@ Tasks are ordered by dependency. Each task is logically isolated and ends with *
 
 ## 7. References
 
-- [Brainstorm-0001](../brainstorm-0001-x402-checkpoint-grants.md) — register-grant, grant kinds, storage path, register-statement flow.
-- [docs/api/](../api/) — [canopy-api.md](../api/canopy-api.md), [register-grant.md](../api/register-grant.md), [register-statement.md](../api/register-statement.md).
+- [Brainstorm-0001](../../brainstorm-0001-x402-checkpoint-grants.md) — register-grant, grant kinds, storage path, register-statement flow.
+- [docs/api/](../../api/) — [canopy-api.md](../../api/canopy-api.md), [register-grant.md](../../api/register-grant.md), [register-statement.md](../../api/register-statement.md).
 - Canopy API: `packages/apps/canopy-api/src/` — index, register-signed-statement, scrapi.
 - Univocity grant shape: Brainstorm-0001 §3.4 (PublishGrant + idtimestamp, leaf commitment).

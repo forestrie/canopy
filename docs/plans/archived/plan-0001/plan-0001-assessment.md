@@ -2,7 +2,7 @@
 
 **Status**: DRAFT  
 **Date**: 2026-03-09  
-**Related**: [plan-0001-register-grant-and-grant-auth-phase.md](plan-0001-register-grant-and-grant-auth-phase.md)
+**Related**: [plan-0001-register-grant-and-grant-auth-phase.md](plan-0001-register-grant-and-grant-auth-phase.md) (archived together)
 
 ## 1. Scope of assessment
 

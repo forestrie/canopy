@@ -2,7 +2,7 @@
 
 **Status**: DRAFT  
 **Date**: 2026-03-07  
-**Related**: [Plan 0005 grant and receipt as single artifact](../plans/plan-0005-grant-receipt-unified-resolve.md), [ARC-0001 grant verification](../arc-0001-grant-verification.md) (receipt-based inclusion), [Plan 0001](../plans/plan-0001-register-grant-and-grant-auth-phase.md), [canopy-api](canopy-api.md), [Subplan 08](../plans/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md)
+**Related**: [Plan 0005 grant and receipt as single artifact](../plans/plan-0005-grant-receipt-unified-resolve.md), [ARC-0001 grant verification](../arc-0001-grant-verification.md) (**§4** grant transparent-statement signature; **§5** receipt inclusion; **§9** implementation gaps), [Plan 0001](../plans/plan-0001-register-grant-and-grant-auth-phase.md), [canopy-api](canopy-api.md), [Subplan 08](../plans/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md)
 
 ## Endpoint
 
@@ -13,34 +13,32 @@ Creates a grant (enqueues for sequencing). Per [Plan 0005](../plans/plan-0005-gr
 ## Request
 
 - **Content-Type**: `application/cbor` (CBOR end-to-end).
-- **Body**: CBOR-encoded grant request. Required fields (all bytes for Solidity/on-chain safety):
+- **Body**: CBOR-encoded grant request (**Forestrie-Grant v0** — map keys **1–6** only):
   - **logId** — 16 bytes (UUID of target log). Must match URL `{logId}`.
   - **ownerLogId** — 16 bytes (UUID of authority log that owns this grant).
-  - **grantFlags** — 8 bytes (bitmap).
-  - **kind** — 1 byte (uint8; e.g. 0 = attestor, 1 = publish-checkpoint).
-  - **signer** — bytes (key id or public key; must match statement signer at register-statement).
-  - **grantData** — bytes (optional; can be empty).
-  - Optional numeric: maxHeight, minGrowth, exp, nbf.
+  - **grant** (CBOR key 3) — 8 bytes (flags bitmap; `PublishGrant.grant` on-chain).
+  - **grantData** — bytes (issuer attestation; for register-statement, binds allowed statement signer via **`statementSignerBindingBytes`**).
+  - Optional numeric: **maxHeight**, **minGrowth** (CBOR keys 4–5).
+  - **No** CBOR **signer** (key 7), **kind** (key 8), **version**, **exp**, or **nbf** on the wire map.
 
 Schema and CDDL in the grant format module (Plan 0001 Step 1).
 
 ## Response
 
 - **201 Created**
-  - **Location**: Grant location as a **URL path only** (e.g. `/<kind>/<hash>.cbor`), relative to the public grant storage hostname. Client must combine with the configured public base URL for grant storage to form a full URL if needed.
+  - **Location**: Grant location as a **URL path only** (e.g. **`/grant/<sha256>.cbor`**), relative to the public grant storage hostname. Client must combine with the configured public base URL for grant storage to form a full URL if needed.
   - **Content-Type**: `application/cbor`
-  - **Body** (optional): CBOR map with e.g. `location` (path), `hash`, `kind` for convenience.
+  - **Body** (optional): CBOR map with e.g. `location` (path), `hash` for convenience.
 
 ## Storage path (content-addressable)
 
-- Path schema: **`<kind>/<hash>.cbor`**
-- **`kind`**: Grant kind as path segment (e.g. `attestor`, `publish-checkpoint`); stored as 1 byte in grant.
-- **`hash`**: Hash of the **encoded grant content** (e.g. SHA-256 of the grant CBOR bytes). Same grant content → same path; idempotent. Idtimestamp is not part of the path in this phase.
+- Path schema: **`grant/<hash>.cbor`** (v0; content-addressed, no kind segment).
+- **`hash`**: SHA-256 of the **encoded grant** CBOR (keys **1–6**). Same grant content → same path; idempotent. Idtimestamp is not part of the path in this phase.
 - Storage key is this path (possibly with a prefix such as `grants/`). The **location** returned to the client is the path (or path with prefix) so that it can be interpreted relative to the public grant storage hostname.
 
-## Auth and inclusion (non-bootstrap)
+## Auth, signature, and inclusion
 
-When the log is already initialized, the **auth grant must be supplied in the Authorization header**: `Authorization: Forestrie-Grant <base64>` (base64-encoded SCITT transparent statement: grant + receipt in one artifact). The grant must be **completed** (idtimestamp) and the **receipt is part of the artifact** (unprotected headers). The API verifies the receipt (MMR inclusion). See [ARC-0001](../arc-0001-grant-verification.md) and [Plan 0005](../plans/plan-0005-grant-receipt-unified-resolve.md). No X-Grant-Receipt-Location or server-built receipt in this phase. Missing or wrong header → **401**; invalid receipt → **403 Forbidden**.
+When the log is already initialized, the **auth grant must be supplied in the Authorization header**: `Authorization: Forestrie-Grant <base64>` (base64-encoded SCITT transparent statement: grant + receipt in one artifact). **Normative (ARC-0001 §4):** the transparent statement MUST be a **valid COSE Sign1** whose signing key is the **checkpoint signer** for the **authority log** identified by inner **`ownerLogId`**, or an **authorised delegate** — so only that identity can issue grants whose leaves append under that log. **§5:** the grant must be **completed** (idtimestamp) and the **receipt** (unprotected headers) must verify (MMR inclusion). **Current Canopy:** §4 is **not** fully implemented on the non-bootstrap path; see [ARC-0001 §9](../arc-0001-grant-verification.md). [Plan 0005](../plans/plan-0005-grant-receipt-unified-resolve.md). No `X-Grant-Receipt-Location` in this phase. Missing or wrong header → **401**; invalid signature or receipt → **403 Forbidden** (once §4 is enforced).
 
 ## Errors
 
@@ -66,10 +64,10 @@ Response:
 
 ```
 201 Created
-Location: /attestor/a1b2c3....cbor
+Location: /grant/a1b2c3....cbor
 Content-Type: application/cbor
 
-{ "location": "/attestor/a1b2c3....cbor", "kind": "attestor" }
+{ "location": "/grant/a1b2c3....cbor" }
 ```
 
-The client uses the path `/attestor/a1b2c3....cbor` when calling register-statement (as the grant location). The full URL is `https://<grant-storage-host>/attestor/a1b2c3....cbor` if the client needs to fetch the grant directly.
+The client may persist the grant at the content-addressable path. Register-statement uses **Authorization: Forestrie-Grant** with the transparent statement (Plan 0005); grant path fetch is not used in that phase.

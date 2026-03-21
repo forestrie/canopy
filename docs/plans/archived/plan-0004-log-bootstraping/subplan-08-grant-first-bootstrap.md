@@ -118,7 +118,7 @@ sequenceDiagram
 
 - Per [Plan 0005](../plan-0005-grant-receipt-unified-resolve.md), the **caller supplies the grant** in the **Authorization** header: `Authorization: Forestrie-Grant <base64>` (base64-encoded SCITT transparent statement: one COSE Sign1 with grant as payload and receipt in unprotected headers, label 396). No X-Grant-Location fetch; no X-Grant-Receipt-Location; no server-built receipt in this phase.
 - The grant must be **completed** (have an 8-byte idtimestamp). Where the caller obtains it is out of scope.
-- **Verification:** Decode the supplied artifact to GrantResult (grant + receipt); `verify_grant_receipt(grant, receipt)` verifies MMR inclusion. See ARC-0001 §2 for full pseudo code and implementation locations.
+- **Verification:** Decode the supplied artifact to GrantResult (grant + receipt); `verify_grant_receipt(grant, receipt)` verifies MMR inclusion. See ARC-0001 §5 for receipt pseudo code and §8–§9 for implementation locations.
 
 **Env:** An **inclusion env** (sequencing queue + shard count) is used when inclusion verification is required. Grant-completion env (R2, receipt-building) is **deferred** per Plan 0005; receipt comes from the supplied artifact only.
 
@@ -185,7 +185,7 @@ sequenceDiagram
 ### 3.4 register-signed-statement(logId, auth, statement)
 
 - **Shape:** Every call must supply auth (grant location, e.g. X-Grant-Location, or inline). No unauthenticated path.
-- **Validation:** Auth must be a completed grant and in the authority log (receipt-based verification per §3.3.1 and [ARC-0001](../arc-0001-grant-verification.md)). Statement signer must match auth.signer (ARC-0001 §3). Root must already exist (bootstrap grant already sequenced) before any statement is registered.
+- **Validation:** Auth must be a completed grant and in the authority log (receipt-based verification per §3.3.1 and [ARC-0001](../arc-0001-grant-verification.md)). Statement signer must match `statementSignerBindingBytes` (ARC-0001 §6). Root must already exist (bootstrap grant already sequenced) before any statement is registered.
 
 **Authorization (3.4) — pseudo code:**
 
@@ -199,7 +199,7 @@ FUNCTION register_signed_statement_authorized(logId, request, statement):
     // Receipt-based inclusion (§3.3.1, ARC-0001, Plan 0005 — receipt from artifact)
     IF NOT grant.idtimestamp OR length(grant.idtimestamp) < 8 THEN RETURN 403
     IF NOT verify_grant_receipt(grant, grant_result.receipt) THEN RETURN 403
-    IF statement.signer != grant.signer THEN RETURN 403   // signer binding (ARC-0001 §3)
+    IF statement.signer != statementSignerBindingBytes(grant) THEN RETURN 403   // ARC-0001 §6
 
     IF NOT univocity_root_exists() THEN RETURN 409 or 503
     enqueue_statement(logId, statement)
@@ -289,7 +289,7 @@ sequenceDiagram
 | **8.5a** | Univocal checkpoint from chain (optional future) | ownerLogId; config UNIVOCITY_CONTRACT_RPC_URL, UNIVOCITY_CONTRACT_ADDRESS | get_univocal_checkpoint_from_contracts(ownerLogId): RPC to Univocity contract. Used when chain-based verification is added. Current implementation uses receipt-based verification (ARC-0001). | Canopy: shared client or service. | Optional; receipt-based path does not require chain. |
 | **8.5b** | Checkpoint from storage (receipt building) | **Deferred** (Plan 0005). | Receipt comes from supplied artifact only in this phase. buildReceiptForEntry (R2) remains for future use when server-built receipt is reintroduced. | — | — |
 | **8.6** | register-grant: non-bootstrap branch | grant_result (from 8.4), inclusion_env | Require **completed** grant (idtimestamp). Receipt from grant_result.receipt (artifact). **verify_grant_receipt(auth, grant_result.receipt)** per [ARC-0001](../arc-0001-grant-verification.md). If valid, enqueue grantPayload or auth; return 303. | Canopy: register-grant. Subplan 03 dedupe by inner. | Non-bootstrap requires valid receipt in artifact; 403 when missing or invalid. |
-| **8.7** | register-signed-statement: require auth | **Authorization: Forestrie-Grant &lt;base64&gt;** (transparent statement), inclusion_env | get_grant_from_request(request); reject 401 if header missing or not Forestrie-Grant. **verify_grant_receipt(grant, grant_result.receipt)**; verify statement signer matches grant.signer (ARC-0001 §3). | Canopy: register-signed-statement handler. | No unauthenticated path; receipt from artifact then signer match. |
+| **8.7** | register-signed-statement: require auth | **Authorization: Forestrie-Grant &lt;base64&gt;** (transparent statement), inclusion_env | get_grant_from_request(request); reject 401 if header missing or not Forestrie-Grant. **verify_grant_receipt(grant, grant_result.receipt)**; verify statement signer matches `statementSignerBindingBytes(grant)` (ARC-0001 §6). | Canopy: register-signed-statement handler. | No unauthenticated path; receipt from artifact then signer match. |
 | **8.8** | Config and wiring | ROOT_LOG_ID, delegation-signer URL, univocity service URL (for 8.5). Inclusion: sequencing queue + shard count. | Env loaded at startup. Bootstrap key (8.3); inclusion_env passed to register-grant and register-signed-statement. grant_completion_env not used in this phase (Plan 0005). | Canopy. | Receipt-based verification using receipt from artifact only. |
 
 **Data flow (concise).** Caller (or ops) calls POST /api/grants/bootstrap (8.1); canopy builds and signs grant, **returns grant in response**. Caller uses that grant (or from ops), supplies it at register-grant in **Authorization: Forestrie-Grant &lt;base64&gt;** (8.4). Bootstrap branch (8.5) → enqueue auth's inner → 303 → grant-sequencing runs. Subsequent calls: grant in Authorization header (8.4); receipt from artifact; **verify_grant_receipt(grant, grant_result.receipt)** (ARC-0001, Plan 0005); then enqueue or signer check + enqueue.

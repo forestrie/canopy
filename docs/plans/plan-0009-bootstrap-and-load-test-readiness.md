@@ -26,19 +26,15 @@
 ### 1.3 Perf and CI today
 
 - **Perf workflow** (`.github/workflows/perf-canopy.yml`): Loads env from `perf/.env.{dev|prod}`, builds log ID list from CANOPY_PERF_*LPS_* (UUIDs), runs **Generate grant pool** (`pnpm --filter @canopy/perf run generate-grant-pool`), then k6 with the bundle. Grant pool is uploaded as an artifact.
-- **generate-grant-pool** (`perf/scripts/generate-grant-pool.ts`): For each CANOPY_PERF_LOG_IDS, POSTs to `/logs/{logId}/grants` with **Authorization: Bearer CANOPY_PERF_API_TOKEN** and **Content-Type: application/cbor** body = `encodeGrantRequest(...)`. Expects a Location header and writes `grant-pool.json` with `signer` (hex) and `grants: [{ logId, grantLocation }]`.
-- **k6 scenario** (`perf/k6/canopy-api/scenarios/write-constant-arrival.js`): Loads grant-pool.json; for each POST to `/logs/{logId}/entries` sends **Authorization: Bearer API_TOKEN** and **X-Grant-Location: grantLocation**. Signs statement COSE with kid = pool signer.
+- **generate-grant-pool** (`perf/scripts/generate-grant-pool.ts`): For each log ID: **POST /api/grants/bootstrap** (`{ rootLogId }`), **POST /logs/{logId}/grants** with **Authorization: Forestrie-Grant** (bootstrap transparent statement), poll status → GET receipt → **`buildCompletedGrant`** → writes **`grant-pool.json`** with **`signer`** (hex, derived from **`grantData`** / key 6) and **`grants: [{ logId, grantBase64 }]`** (completed transparent statements).
+- **k6 scenario** (`perf/k6/canopy-api/scenarios/write-constant-arrival.js`): Loads **`grant-pool.json`**; POST **/logs/{logId}/entries** with **Authorization: Forestrie-Grant &lt;grantBase64&gt;**; statement COSE **`kid`** = **`signerToBytes(pool.signer)`** (must match **`statementSignerBindingBytes`**). **Bearer** is only used where the scenario polls status (not for grant auth on `/entries`).
 
 ## 2. Gaps
 
-### 2.1 Auth mismatch
+### 2.1 Auth mismatch (resolved in repo)
 
-- The API **does not** accept Bearer + X-Grant-Location for POST /entries or Bearer + CBOR body for POST /grants. It only accepts **Forestrie-Grant** with a base64 transparent statement.
-- Therefore:
-  - **generate-grant-pool** would receive **401** (grant required) when calling POST /logs/{logId}/grants, and would not produce a valid pool for the current API.
-  - **k6** would receive **401** on every POST /entries because it sends Bearer + X-Grant-Location instead of Forestrie-Grant.
-
-So the current perf pipeline is **incompatible** with the implemented auth model until both the grant-pool script and the k6 scenario are updated to use Forestrie-Grant with transparent statements.
+- The API accepts **Forestrie-Grant** only for register-grant and POST /entries grant auth (Plan 0005). **generate-grant-pool** and k6 have been updated accordingly.
+- **Remaining:** perf/CI env must supply bootstrap + queue + univocity vars when exercising bootstrap branch; single-log vs multi-log coverage (see §3).
 
 ### 2.2 First grant for perf / CI
 
@@ -72,7 +68,7 @@ To run load tests we need at least one **completed** grant per log (transparent 
    - **generate-grant-pool** (or a new script): Should output a **grant pool** that contains **base64 transparent statements** (and optionally signer hex for COSE kid). To do that it must either:
      - **Bootstrap path:** Call POST /api/grants/bootstrap (or GET /grants/bootstrap/:rootLogId), then POST /logs/{rootLogId}/grants with Forestrie-Grant &lt;bootstrap&gt;, poll until sequenced, resolve receipt, then store the completed grant (base64) as the pool entry for that log; or
      - **Pre-seeded:** Accept a pre-obtained completed grant (e.g. from a prior bootstrap run) and write it into grant-pool.json.
-   - **k6:** Change POST /entries to send **Authorization: Forestrie-Grant &lt;base64&gt;** using the transparent statement from the pool (and keep statement’s kid matching grant.signer). Remove reliance on X-Grant-Location and Bearer for grant auth.
+   - **k6:** Change POST /entries to send **Authorization: Forestrie-Grant &lt;base64&gt;** using the transparent statement from the pool (and keep statement’s kid matching **`statementSignerBindingBytes(grant)`** — i.e. committed **`grantData`**; grant must satisfy **`isStatementRegistrationGrant`**; see ARC-0001 §6). Remove reliance on X-Grant-Location and Bearer for grant auth.
 
 2. **First-grant bootstrap for perf/CI**
    - Add a **bootstrap step** that: (a) ensures bootstrap grant exists (POST /api/grants/bootstrap or GET), (b) registers it with Forestrie-Grant, (c) polls until sequenced and resolves the completed grant, (d) writes that grant (and any metadata) for the next step. This can be the same script as “generate-grant-pool” when there is only one root log, or a dedicated “bootstrap-and-export-grant” script used before generate-grant-pool.
@@ -91,9 +87,9 @@ To run load tests we need at least one **completed** grant per log (transparent 
 |------|--------|--------|
 | Bootstrap API (POST/GET bootstrap, register-grant branch) | Implemented | None |
 | Auth (Forestrie-Grant only) | Implemented | None |
-| generate-grant-pool | **Uses Bearer + CBOR** | Rewrite to use Forestrie-Grant; obtain completed grant via bootstrap + poll + resolve |
-| k6 POST /entries | **Uses Bearer + X-Grant-Location** | Switch to Forestrie-Grant with pool of base64 transparent statements |
+| generate-grant-pool | **Forestrie-Grant** (bootstrap + register + poll + resolve) | Keep env/bootstrap docs in sync with deployment |
+| k6 POST /entries | **Forestrie-Grant** + **`grantBase64`** from pool | Ensure pool artifact matches target API logs |
 | First grant in perf/CI | **Not automated** | Add bootstrap step (or fold into grant-pool script) before k6 |
 | Perf env | Has log IDs and base URL; no bootstrap vars | Add ROOT_LOG_ID and delegation-signer (and univocity if using bootstrap branch) for bootstrap-capable runs |
 
-Once the grant-pool script and k6 use Forestrie-Grant and the first-grant bootstrap is automated (or documented and run before perf), the system can be fully bootstrapped and load-tested in CI and locally.
+Grant-pool and k6 use **Forestrie-Grant**; remaining work is env automation and multi-log follow-ups as above.
