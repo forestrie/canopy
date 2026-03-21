@@ -13,6 +13,42 @@ const LOCAL_PORT = Number(
 
 const repoRoot = resolve(__dirname, "../../..");
 
+/** Remote project hits an existing deployment; do not start wrangler (avoids port/inspector clashes). */
+function shouldStartLocalWebServer(): boolean {
+  if (process.env.CANOPY_E2E_DISABLE_WEBSERVER === "true") {
+    return false;
+  }
+  const a = process.argv;
+  for (let i = 0; i < a.length; i++) {
+    const arg = a[i];
+    if (arg === "--project" && a[i + 1] === "remote") {
+      return false;
+    }
+    if (arg.startsWith("--project=") && arg.slice("--project=".length) === "remote") {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Fast iteration: only canopy-api (no signer / univocity stub); bootstrap tests skip or fail soft. */
+const useLightLocalStack = process.env.CANOPY_E2E_LIGHT_STACK === "true";
+
+const localWebServer = useLightLocalStack
+  ? {
+      command: "pnpm --filter @canopy/api dev -- --test-scheduled",
+      port: LOCAL_PORT,
+      reuseExistingServer: true,
+      timeout: 60_000,
+    }
+  : {
+      cwd: repoRoot,
+      command: `node ${resolve(repoRoot, "scripts/start-e2e-local-stack.mjs")}`,
+      port: LOCAL_PORT,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    };
+
 export default defineConfig({
   testDir: "./tests",
   timeout: 30_000,
@@ -22,21 +58,7 @@ export default defineConfig({
   reporter: process.env.CI
     ? [["html", { outputFolder: "playwright-report" }]]
     : "list",
-  webServer:
-    process.env.CI === "true"
-      ? {
-          cwd: repoRoot,
-          command: `node ${resolve(repoRoot, "scripts/start-e2e-local-stack.mjs")}`,
-          port: LOCAL_PORT,
-          reuseExistingServer: false,
-          timeout: 90_000,
-        }
-      : {
-          command: "pnpm --filter @canopy/api dev -- --test-scheduled",
-          port: LOCAL_PORT,
-          reuseExistingServer: true,
-          timeout: 60_000,
-        },
+  ...(shouldStartLocalWebServer() ? { webServer: localWebServer } : {}),
   projects: [
     {
       name: "local",

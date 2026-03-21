@@ -4,9 +4,10 @@ This package houses the Playwright API-mode tests for the Canopy Worker. It depe
 
 ## Scripts
 
-- `pnpm --filter @canopy/api-e2e test:e2e`: Run all projects (local + remote).
-- `pnpm --filter @canopy/api-e2e test:e2e:local`: Boot `wrangler dev` and exercise the local worker.
-- `pnpm --filter @canopy/api-e2e test:e2e:remote`: Target a remote deployment defined by `CANOPY_E2E_BASE_URL`.
+- `pnpm --filter @canopy/api-e2e exec playwright test`: All projects (**local** + **remote**) — same as **`task test:e2e`** at repo root.
+- `pnpm --filter @canopy/api-e2e test:e2e`: **Remote** project only (`--project=remote`).
+- `pnpm --filter @canopy/api-e2e test:e2e:local`: **Local** project only.
+- `pnpm --filter @canopy/api-e2e test:e2e:remote`: Alias for `test:e2e`.
 
 ### Running the grant-flow test (mint → register → poll → resolve → POST entry)
 
@@ -16,7 +17,7 @@ The grant-flow test is **skipped** when the API does not have bootstrap or queue
   ```bash
   CANOPY_E2E_BASE_URL=https://your-canopy-api.example.com pnpm run test:e2e:remote
   ```
-  Or run only the grant-flow spec: `pnpm exec playwright test --project=remote -g "grant flow"`.
+  Or run only the grant flow spec: `pnpm exec playwright test --project=remote -g "Forestrie-Grant flow"`.
 
 - **Local with bootstrap + queue:** Start the local API with bootstrap and queue env set (e.g. in `packages/apps/canopy-api/wrangler.jsonc` vars: `ROOT_LOG_ID`, `DELEGATION_SIGNER_URL`, `DELEGATION_SIGNER_BEARER_TOKEN`). The queue (DO) is already bound in wrangler. Then run `pnpm run test:e2e:local`. Mint and register can succeed; **poll** may still skip with "Poll timeout" unless a queue consumer (e.g. ranger) is running to produce the receipt.
 
@@ -31,9 +32,17 @@ The grant-flow test is **skipped** when the API does not have bootstrap or queue
 - `CANOPY_E2E_API_TOKEN`: Optional bearer token used for authorized scenarios. Defaults to `test-api` if not provided; adjust when pointing at real deployments—authorized specs skip while the placeholder is in use.
 - `CANOPY_E2E_BASE_URL`: Remote base URL override (defaults to the dev worker URL).
 - `CANOPY_E2E_LOCAL_PORT`: Overrides the port used when spawning `wrangler dev` (defaults to the port declared in `packages/apps/canopy-api/wrangler.jsonc`, currently `8789`).
+- `CANOPY_E2E_DISABLE_WEBSERVER`: Set to `true` to skip starting canopy-api for runs that only hit a remote base URL (normally auto when `--project=remote`).
 
-## Test Layout
+## Test layout
 
-- Fixtures live in `tests/fixtures`.
-- Specs live under `tests/` and focus on HTTP-level coverage.
-- Worker-level unit and integration tests remain in `packages/apps/canopy-api/test`.
+| File | Area |
+|------|------|
+| `api.spec.ts` | Cross-cutting HTTP (e.g. CORS OPTIONS). |
+| `observability.spec.ts` | `/api/health`, `/.well-known/scitt-configuration` (metrics endpoint TBD). |
+| `grants-bootstrap.spec.ts` | `POST /api/grants/bootstrap` (ES256 / KS256). |
+| `grants.spec.ts` | Register-grant, receipt poll, `POST /logs/.../entries` (Forestrie-Grant). |
+
+- Fixtures: `tests/fixtures`.
+- Shared e2e utils: `tests/utils/` (`bootstrap-availability.ts`, `grant-flow-poll.ts`, `grant-completion.ts`, `problem-details.ts`).
+- Worker unit/integration tests: `packages/apps/canopy-api/test`.

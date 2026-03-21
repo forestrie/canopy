@@ -64,3 +64,34 @@ export function buildCompletedGrant(
   const completedBytes = new Uint8Array(encodeCbor(completed));
   return btoa(String.fromCharCode(...completedBytes));
 }
+
+/**
+ * COSE `kid` bytes that match {@link statementSignerBindingBytes} for this Forestrie-Grant
+ * (transparent statement base64). Same rule as API: 64-byte grantData → first 32 bytes; else full grantData.
+ */
+export function statementKidBytesFromForestrieGrantBase64(
+  forestrieGrantBase64: string,
+): Uint8Array {
+  const normalized = forestrieGrantBase64.replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(normalized);
+  const grantBytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) {
+    grantBytes[i] = raw.charCodeAt(i);
+  }
+  const cose = decodeCbor(grantBytes) as unknown[];
+  if (!Array.isArray(cose) || cose.length < 3) {
+    throw new Error("Forestrie-Grant must be COSE Sign1 (array of at least 3)");
+  }
+  const payload = cose[2];
+  if (!(payload instanceof Uint8Array)) {
+    throw new Error("Forestrie-Grant COSE payload must be bstr");
+  }
+  const map = decodeCbor(payload) as Map<number, Uint8Array> | Record<number, unknown>;
+  const gd =
+    map instanceof Map ? map.get(6) : (map as Record<number, unknown>)[6];
+  if (!(gd instanceof Uint8Array) || gd.length === 0) {
+    throw new Error("Grant payload missing grantData (CBOR key 6)");
+  }
+  if (gd.length === 64) return gd.subarray(0, 32);
+  return gd;
+}

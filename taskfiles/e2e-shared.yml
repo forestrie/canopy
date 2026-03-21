@@ -1,0 +1,51 @@
+---
+# Shared tasks for Playwright e2e (@canopy/api-e2e). Included from Taskfile.dist.yml as e2e-shared.
+# Setup and env: see taskfiles/e2e-setup.md
+#
+# Run tasks from the repository root (same directory as Taskfile.dist.yml).
+
+version: "3"
+
+tasks:
+  preflight:
+    desc: |
+      Tooling only: workspace install, Playwright CLI, Chromium for @canopy/api-e2e.
+      Does not verify a running API — use preflight:verify:local or :remote after the stack is up.
+    cmds:
+      - task: preflight:deps
+
+  preflight:deps:
+    desc: Same as e2e-shared:preflight (explicit name for CI/docs).
+    cmds:
+      - pnpm install
+      - pnpm --filter @canopy/api-e2e exec playwright --version
+      - pnpm --filter @canopy/api-e2e exec playwright install chromium
+
+  preflight:verify:local:
+    desc: |
+      Fail fast if local full stack is not healthy (run while Playwright webServer is up, or after
+      `node scripts/start-e2e-local-stack.mjs`). Checks canopy /api/health, delegation-signer,
+      univocity stub 404 on …/config, and POST /api/grants/bootstrap → 201.
+      Override URLs with E2E_CANOPY_BASE_URL, E2E_DELEGATION_SIGNER_URL, E2E_UNIVOCITY_STUB_URL.
+    cmds:
+      - node scripts/e2e-preflight-verify.mjs local
+
+  preflight:verify:remote:
+    desc: |
+      Fail fast for remote-only e2e: requires CANOPY_E2E_BASE_URL; checks /api/health and bootstrap mint 201.
+    cmds:
+      - node scripts/e2e-preflight-verify.mjs remote
+
+  preflight:infra:
+    desc: |
+      Legacy optional curl check when E2E_DELEGATION_SIGNER_HEALTH_URL is set.
+      Prefer preflight:verify:local for full local probes (Node fetch, no curl).
+    cmds:
+      - |
+        if [ -z "$E2E_DELEGATION_SIGNER_HEALTH_URL" ]; then
+          echo "e2e-shared:preflight:infra skipped (set E2E_DELEGATION_SIGNER_HEALTH_URL, e.g. http://127.0.0.1:8791)"
+          exit 0
+        fi
+        curl -fsS "$E2E_DELEGATION_SIGNER_HEALTH_URL/api/health" | head -c 200
+        echo ""
+        echo "Delegation signer health OK: $E2E_DELEGATION_SIGNER_HEALTH_URL/api/health"
