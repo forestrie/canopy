@@ -65,6 +65,9 @@ importers:
       '@canopy/x402-settlement-types':
         specifier: workspace:*
         version: link:../../shared/x402-settlement-types
+      '@noble/curves':
+        specifier: ^1.9.7
+        version: 1.9.7
       '@x402/core':
         specifier: ^2.1.0
         version: 2.2.0

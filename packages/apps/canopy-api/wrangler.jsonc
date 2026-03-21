@@ -25,9 +25,11 @@
     "X402_PRICE_EXACT": "$0.001",
     "X402_PRICE_UPTO_MAX": "$1.00",
     "GRANT_STORAGE_PUBLIC_BASE": "https://grants-dev.forestrie.dev",
-    // Subplan 08: grant-first bootstrap (optional; omit to disable)
-    // "ROOT_LOG_ID": "",
-    // "DELEGATION_SIGNER_URL": "",
+    // Subplan 08: grant-first bootstrap (optional; omit to disable). For dev, set
+    // DELEGATION_SIGNER_URL and ROOT_LOG_ID here or via Cloudflare vars; set
+    // DELEGATION_SIGNER_BEARER_TOKEN as a secret (see docs/plans/plan-0010-bootstrap-env.md).
+    "DELEGATION_SIGNER_URL": "https://api-dev.forestrie.dev/canopy/delegation-signer",
+    "ROOT_LOG_ID": "123e4567e89b12d3a456426614174000",
     // "UNIVOCITY_SERVICE_URL": "",
     // "UNIVOCITY_CONTRACT_RPC_URL": "",
     // "UNIVOCITY_CONTRACT_ADDRESS": "",
@@ -88,10 +90,10 @@
         "X402_PRICE_EXACT": "$0.001",
         "X402_PRICE_UPTO_MAX": "$1.00",
         "GRANT_STORAGE_PUBLIC_BASE": "https://grants-dev.forestrie.dev",
-        // Subplan 08: set via secrets if using bootstrap
-        // ROOT_LOG_ID, DELEGATION_SIGNER_URL, DELEGATION_SIGNER_BEARER_TOKEN,
-        // DELEGATION_SIGNER_PUBLIC_KEY_TOKEN, UNIVOCITY_SERVICE_URL,
-        // UNIVOCITY_CONTRACT_RPC_URL, UNIVOCITY_CONTRACT_ADDRESS
+        // Subplan 08: DELEGATION_SIGNER_URL and ROOT_LOG_ID set above; set
+        // DELEGATION_SIGNER_BEARER_TOKEN as a secret (see plan-0010-bootstrap-env.md).
+        "DELEGATION_SIGNER_URL": "https://api-dev.forestrie.dev/canopy/delegation-signer",
+        "ROOT_LOG_ID": "123e4567e89b12d3a456426614174000",
       },
       "r2_buckets": [
         {

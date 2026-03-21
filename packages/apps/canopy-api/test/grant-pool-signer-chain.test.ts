@@ -1,15 +1,14 @@
 /**
- * Isolated reproduction: grant-pool signer → grant request CBOR → API decode →
- * COSE kid → getSignerFromCoseSign1 → signerMatchesGrant.
+ * Grant pool → grant request CBOR → API decode → COSE kid vs grantData binding.
  *
- * Verifies that the signer is consistent across:
- * - generate-grant-pool script (grant request CBOR via @canopy/encoding, pool JSON hex)
- * - k6 (signerToBytes from pool, encodeCoseSign1WithKid)
- * - API (decodeGrant wire format key 7 = signer, getSignerFromCoseSign1, signerMatchesGrant)
+ * Register-statement auth: **GF_DATA_LOG** + **extend** flags and **`statementSignerBindingBytes`**
+ * (= **grantData** only; v0 wire has no key 7).
  */
 
 import { describe, expect, it } from "vitest";
 import { decodeGrantPayload } from "../src/grant/codec.js";
+import { grantDataToBytes } from "../src/grant/grant-data.js";
+import { statementSignerBindingBytes } from "../src/grant/statement-signer-binding.js";
 import {
   getSignerFromCoseSign1,
   signerMatchesGrant,
@@ -23,11 +22,17 @@ import {
 
 const LOG_ID_BYTES = 16;
 const GRANT_FLAGS_BYTES = 8;
-const KIND_BYTES = 1;
+
+function dataLogExtendFlags(): Uint8Array {
+  const f = new Uint8Array(GRANT_FLAGS_BYTES);
+  f[4] = 0x03; // GF_CREATE | GF_EXTEND
+  f[7] = 0x02; // GF_DATA_LOG
+  return f;
+}
 
 describe("Grant pool signer consistency (script ↔ API ↔ k6)", () => {
-  const signer = new Uint8Array(32);
-  for (let i = 0; i < 32; i++) signer[i] = i + 1;
+  const statementSigner = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) statementSigner[i] = i + 1;
 
   const logId = new Uint8Array(LOG_ID_BYTES);
   logId.set([
@@ -36,63 +41,58 @@ describe("Grant pool signer consistency (script ↔ API ↔ k6)", () => {
   ]);
   const ownerLogId = new Uint8Array(LOG_ID_BYTES);
   ownerLogId.set(logId);
-  const grantFlags = new Uint8Array(GRANT_FLAGS_BYTES);
-  const grantData = new Uint8Array(0);
-  const kind = new Uint8Array(KIND_BYTES);
+  const grantBitmap = dataLogExtendFlags();
+  const grantData = statementSigner;
 
-  it("grant request CBOR (grant content 1–8) decodes so signer equals original", () => {
+  it("grant request CBOR decodes to v0 map with grantData = statement signer", () => {
     const body = encodeGrantRequestCbor(
       logId,
       ownerLogId,
-      grantFlags,
+      grantBitmap,
       grantData,
-      signer,
-      kind,
     );
     const decoded = decodeGrantPayload(body);
-    expect(decoded.signer).toBeDefined();
-    expect(decoded.signer.length).toBe(32);
-    expect(new Uint8Array(decoded.signer)).toEqual(signer);
+    expect(grantDataToBytes(decoded.grantData)).toEqual(statementSigner);
+    expect(statementSignerBindingBytes(decoded)).toEqual(statementSigner);
   });
 
   it("pool hex round-trip: signerBytesToHex then hexToSignerBytes equals original", () => {
-    const hex = signerBytesToHex(signer);
+    const hex = signerBytesToHex(statementSigner);
     expect(hex.length).toBe(64);
     expect(/^[0-9a-f]+$/.test(hex)).toBe(true);
     const back = hexToSignerBytes(hex);
-    expect(back).toEqual(signer);
+    expect(back).toEqual(statementSigner);
   });
 
-  it("full chain: grant request signer → COSE kid → getSignerFromCoseSign1 → signerMatchesGrant", () => {
+  it("full chain: grantData → statementSignerBindingBytes → COSE kid → match", () => {
     const body = encodeGrantRequestCbor(
       logId,
       ownerLogId,
-      grantFlags,
+      grantBitmap,
       grantData,
-      signer,
-      kind,
     );
     const decoded = decodeGrantPayload(body);
-    const grantSigner = decoded.signer;
-    expect(new Uint8Array(grantSigner)).toEqual(signer);
+    const binding = statementSignerBindingBytes(decoded);
+    expect(binding).toEqual(statementSigner);
 
     const payload = new Uint8Array(64);
-    const coseSign1 = encodeCoseSign1WithKid(payload, grantSigner);
-    const statementSigner = getSignerFromCoseSign1(coseSign1);
-    expect(statementSigner).not.toBeNull();
-    expect(statementSigner!).toEqual(signer);
-    expect(signerMatchesGrant(statementSigner, grantSigner)).toBe(true);
+    const coseSign1 = encodeCoseSign1WithKid(payload, statementSigner);
+    const kid = getSignerFromCoseSign1(coseSign1);
+    expect(kid).not.toBeNull();
+    expect(kid!).toEqual(statementSigner);
+    expect(signerMatchesGrant(kid, binding)).toBe(true);
   });
 
-  it("full chain via pool hex (k6 path): hex → signerToBytes → COSE → API decode → match", () => {
-    const hex = signerBytesToHex(signer);
+  it("full chain via pool hex (k6 path)", () => {
+    const hex = signerBytesToHex(statementSigner);
     const signerBytes = hexToSignerBytes(hex);
-    expect(signerBytes).toEqual(signer);
+    expect(signerBytes).toEqual(statementSigner);
 
     const payload = new Uint8Array(64);
     const coseSign1 = encodeCoseSign1WithKid(payload, signerBytes);
-    const statementSigner = getSignerFromCoseSign1(coseSign1);
-    expect(statementSigner).not.toBeNull();
-    expect(signerMatchesGrant(statementSigner, signer)).toBe(true);
+    const statementSignerFromCose = getSignerFromCoseSign1(coseSign1);
+    expect(signerMatchesGrant(statementSignerFromCose, statementSigner)).toBe(
+      true,
+    );
   });
 });

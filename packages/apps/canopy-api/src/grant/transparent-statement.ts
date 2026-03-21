@@ -1,6 +1,6 @@
 /**
  * Decode SCITT transparent statement (Plan 0005).
- * COSE Sign1: payload = grant (keys 1–8, no idtimestamp); unprotected 396 = receipt (full COSE Sign1 bytes); -65537 = idtimestamp (8-byte bstr).
+ * COSE Sign1: payload = grant v0 (keys 1–6, no idtimestamp); unprotected 396 = receipt (full COSE Sign1 bytes); -65537 = idtimestamp (8-byte bstr).
  */
 
 import { decode as decodeCbor } from "cbor-x";
@@ -30,7 +30,7 @@ function toHeaderMap(
 
 /**
  * Decode raw bytes of a SCITT transparent statement into GrantResult.
- * Payload = grant content (CBOR map keys 1–8); idtimestamp from header -65537 only; receipt from header 396 (full receipt COSE Sign1 bytes).
+ * Payload = grant content (CBOR map keys 1–6); idtimestamp from header -65537 only; receipt from header 396 (full receipt COSE Sign1 bytes).
  */
 export function decodeTransparentStatement(bytes: Uint8Array): GrantResult {
   const raw = decodeCbor(bytes) as unknown;

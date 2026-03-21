@@ -6,11 +6,7 @@ import { describe, expect, it } from "vitest";
 import { encodeEntryId } from "../src/scrapi/entry-id";
 import worker from "../src/index";
 import type { Env } from "../src/index";
-import {
-  grantStoragePath,
-  KIND_ATTESTOR,
-  uuidToBytes,
-} from "../src/grant";
+import { uuidToBytes } from "../src/grant";
 import type { Grant } from "../src/grant";
 
 // Cast the test env to our Env type.
@@ -50,7 +46,7 @@ describe("SCRAPI flow", () => {
     );
   });
 
-  it("POST /logs/{logId}/entries without grant location returns 401", async () => {
+  it("POST /logs/{logId}/entries without Forestrie-Grant returns 401", async () => {
     const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
 
     const request = new Request(`http://localhost/logs/${logId}/entries`, {
@@ -106,14 +102,16 @@ describe("SCRAPI flow", () => {
     const signerKid = new Uint8Array([0x99, 0x88, 0x77]);
     const idtimestampBytes = new Uint8Array(8).fill(42);
 
+    const flags = new Uint8Array(8);
+    flags[4] = 0x03; // GF_CREATE | GF_EXTEND
+    flags[7] = 0x02; // GF_DATA_LOG
     const grant: Grant = {
-      version: 1,
       logId: uuidToBytes(logId),
       ownerLogId: uuidToBytes("660e8400-e29b-41d4-a716-446655440001"),
-      grantFlags: new Uint8Array(8),
-      grantData: new Uint8Array([]),
-      signer: signerKid,
-      kind: new Uint8Array([KIND_ATTESTOR]),
+      grant: flags,
+      maxHeight: 0,
+      minGrowth: 0,
+      grantData: new Uint8Array(signerKid),
     };
     // Plan 0005: auth via Authorization: Forestrie-Grant with transparent statement (no receipt when inclusionEnv unset in test).
     const logId32 = new Uint8Array(32);
@@ -123,12 +121,10 @@ describe("SCRAPI flow", () => {
     const payloadMap = new Map<number, unknown>([
       [1, logId32],
       [2, ownerLogId32],
-      [3, new Uint8Array(8)],
+      [3, flags],
       [4, 0],
       [5, 0],
-      [6, new Uint8Array(0)],
-      [7, signerKid],
-      [8, 1],
+      [6, new Uint8Array(signerKid)],
     ]);
     const grantPayloadBytes = encodeCbor(payloadMap) as Uint8Array;
     const transparentStatement = encodeCbor([
@@ -163,11 +159,16 @@ describe("SCRAPI flow", () => {
       {} as ExecutionContext,
     );
 
-    expect([303, 403, 503, 500]).toContain(response.status);
+    expect([303, 503]).toContain(response.status);
     if (response.status === 303) {
       expect(response.headers.get("Location")).toContain(logId);
+    } else {
+      const problem = decodeCbor(
+        new Uint8Array(await response.arrayBuffer()),
+      ) as { detail?: string };
+      expect(String(problem.detail ?? "")).toContain("SEQUENCING_QUEUE");
     }
-    // 403 when inclusionEnv is set and receipt missing; 500 when SEQUENCING_QUEUE not bound
+    // 503 when wrangler.test omits SEQUENCING_QUEUE; 303 when queue is bound (e.g. wrangler dev)
   });
 
   it("resolve-receipt returns a COSE_Sign1 receipt with an attached proof", async () => {

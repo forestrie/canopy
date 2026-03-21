@@ -2,11 +2,16 @@
  * Consumer convenience: re-export grant types from single-responsibility modules.
  */
 
+export { type Grant } from "./grant.js";
 export {
-  GRANT_VERSION,
-  type Grant,
+  type GrantAssembly,
   type GrantRequest,
-  type SignerBinding,
-} from "./grant.js";
+} from "./grant-assembly.js";
+export { type GrantData, grantDataToBytes } from "./grant-data.js";
 export type { ParsedReceipt } from "./parsed-receipt.js";
 export type { GrantResult } from "./grant-result.js";
+export {
+  isPublishCheckpointStatementAuthGrant,
+  isStatementRegistrationGrant,
+  statementSignerBindingBytes,
+} from "./statement-signer-binding.js";

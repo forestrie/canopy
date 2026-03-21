@@ -8,6 +8,7 @@
  * grant-sequencing = grant commitment hash.
  */
 
+import { grantDataToBytes } from "./grant-data.js";
 import type { Grant } from "./grant.js";
 
 const LOG_ID_BYTES = 32;
@@ -33,7 +34,7 @@ function u64Be(n: number): Uint8Array {
   return out;
 }
 
-/** Grant flags in commitment preimage: 32 bytes, low 8 bytes from grantFlags (go-univocity padGrant32). */
+/** Grant flags in commitment preimage: 32 bytes, low 8 bytes from wire `grant` (go-univocity padGrant32). */
 function grantFlags32(flags: Uint8Array): Uint8Array {
   const out = new Uint8Array(GRANT_FLAGS_32_BYTES);
   if (flags.length >= 8) {
@@ -50,14 +51,14 @@ function grantFlags32(flags: Uint8Array): Uint8Array {
  */
 function grantCommitmentPreimage(grant: Grant): Uint8Array {
   const logId = leftPad(grant.logId as Uint8Array, LOG_ID_BYTES);
-  const flags32 = grantFlags32(grant.grantFlags as Uint8Array);
+  const flags32 = grantFlags32(grant.grant as Uint8Array);
   const maxHeight = grant.maxHeight ?? 0;
   const minGrowth = grant.minGrowth ?? 0;
   const ownerLogId = leftPad(
     grant.ownerLogId as Uint8Array,
     LOG_ID_BYTES,
   );
-  const grantData = grant.grantData ?? new Uint8Array(0);
+  const grantData = grantDataToBytes(grant.grantData ?? new Uint8Array(0));
 
   const total =
     logId.length +

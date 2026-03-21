@@ -23,15 +23,6 @@ function hexToBytesStatic(hex: string): Uint8Array {
 describe("grantCommitmentHashFromGrant", () => {
   it("returns 32 bytes", async () => {
     const v = grantVectors[0] as {
-      idtimestamp_hex: string;
-      log_id_hex: string;
-      owner_log_id_hex: string;
-      grant_flags_hex: string;
-      max_height: number;
-      min_growth: number;
-      grant_data_hex: string;
-      signer_hex: string;
-      kind: number;
       expected_cbor_hex: string;
     };
     const bytes = hexToBytesStatic(v.expected_cbor_hex);

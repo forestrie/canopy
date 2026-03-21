@@ -13,22 +13,20 @@ export {
   grantCommitmentHashToHex,
 } from "./grant-commitment.js";
 export {
-  GRANT_FLAGS_BYTES,
-  KIND_ATTESTOR,
-  KIND_BYTES,
-  KIND_PUBLISH_CHECKPOINT,
-  kindBytesToSegment,
-  kindByteToSegment,
-  segmentToKindByte,
-} from "./kinds.js";
+  hasCreateAndExtend,
+  hasDataLogClass,
+  hasExtendCapability,
+  isDataLogStatementGrantFlags,
+} from "./grant-flags.js";
 export { grantStoragePath } from "./storage-path.js";
 export {
-  GRANT_VERSION,
+  grantDataToBytes,
   type Grant,
+  type GrantAssembly,
+  type GrantData,
   type GrantRequest,
   type GrantResult,
   type ParsedReceipt,
-  type SignerBinding,
 } from "./types.js";
 export { decodeTransparentStatement } from "./transparent-statement.js";
 export { bytesToUuid, LOG_ID_BYTES, uuidToBytes } from "./uuid-bytes.js";
@@ -38,3 +36,8 @@ export {
   verifyReceiptInclusion,
   verifyReceiptInclusionFromParsed,
 } from "./receipt-verify.js";
+export {
+  isPublishCheckpointStatementAuthGrant,
+  isStatementRegistrationGrant,
+  statementSignerBindingBytes,
+} from "./statement-signer-binding.js";

@@ -16,7 +16,10 @@ import {
     signerMatchesGrant,
     GrantAuthErrors,
 } from "./grant-auth";
-import type { Grant } from "../grant/types.js";
+import {
+  isStatementRegistrationGrant,
+  statementSignerBindingBytes,
+} from "../grant/statement-signer-binding.js";
 import {
     getGrantFromRequest,
     grantAuthorize,
@@ -67,8 +70,10 @@ export interface RegisterStatementResponse {
  *   proving inclusion in the authority log; otherwise registration is rejected (403).
  *
  * Validation: grant must be present and valid; if inclusionEnv set, inclusion is checked.
- * Statement must be valid COSE Sign1; the statement signer (e.g. kid in protected header)
- * must match the grant’s signer binding. Optional exp/nbf on the grant are enforced.
+ * Statement must be valid COSE Sign1; the grant must be a **data-log** statement grant
+ * (bitmap: GF_DATA_LOG + GF_EXTEND per `isStatementRegistrationGrant`) and **`kid`** must match
+ * **`statementSignerBindingBytes(grant)`** = **`grantData`** only (ARC-0001 §6). Wire v0 has no
+ * separate signer/kind CBOR keys.
  * On success, enqueues (logId, contentHash) and returns 303 to the status URL for polling.
  * On queue backpressure returns 503 with Retry-After.
  *
@@ -124,28 +129,33 @@ export async function registerSignedStatement(
             return ClientErrors.unsupportedMediaType(contentType);
         }
 
-        // --- Statement structure and signer binding (ARC-0001 §3) ---
-        // COSE Sign1 must have valid shape. Statement signer (e.g. kid in protected header) must
-        // match the grant's signer binding; this ties the registered statement to the same key
-        // that the grant authorizes. See arc-grant-statement-signer-binding.
+        // --- Statement structure and signer binding (ARC-0001 §6) ---
+        if (!isStatementRegistrationGrant(grant)) {
+            return ClientErrors.forbidden(
+                "Grant must authorize statement registration (data-log flags + extend, or auth-log bootstrap with create|extend).",
+            );
+        }
+
         if (!validateCoseSign1Structure(statementData)) {
             return ClientErrors.invalidStatement("Invalid COSE Sign1 structure");
         }
 
         const statementSigner = getSignerFromCoseSign1(statementData);
-        if (!signerMatchesGrant(statementSigner, grant.signer)) {
-            logSignerMismatch(statementSigner, grant.signer);
+        const grantSignerBinding = statementSignerBindingBytes(grant);
+        if (grantSignerBinding.length === 0) {
+            return ClientErrors.forbidden(
+                "Grant grantData must carry the statement signer binding (non-empty).",
+            );
+        }
+        if (!signerMatchesGrant(statementSigner, grantSignerBinding)) {
+            logSignerMismatch(statementSigner, grantSignerBinding);
             return GrantAuthErrors.signerMismatch();
         }
 
-        // --- Grant validity window (exp/nbf) ---
-        // Optional: reject if grant is expired or not yet valid.
-        const now = Math.floor(Date.now() / 1000);
-        if (grant.exp !== undefined && now > grant.exp) {
-            return GrantAuthErrors.grantInvalid();
-        }
-        if (grant.nbf !== undefined && now < grant.nbf) {
-            return GrantAuthErrors.grantInvalid();
+        if (!sequencingQueue) {
+            return ServerErrors.serviceUnavailable(
+                "Statement sequencing not configured (SEQUENCING_QUEUE required)",
+            );
         }
 
         // --- Enqueue for sequencing (Subplan 03; SCRAPI 2.1.3.2) ---

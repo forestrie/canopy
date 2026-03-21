@@ -8,15 +8,13 @@ import { encodeGrantRequest } from "@canopy/encoding";
 export { encodeGrantRequest };
 
 /**
- * Encode grant content as CBOR (Plan 0006: keys 1–8 only).
+ * Encode grant content as CBOR (v0: keys 1–6 only).
  */
 export function encodeGrantRequestCbor(
   logId: Uint8Array,
   ownerLogId: Uint8Array,
-  grantFlags: Uint8Array,
+  grant: Uint8Array,
   grantData: Uint8Array,
-  signer: Uint8Array,
-  kind: Uint8Array,
   options?: {
     maxHeight?: number;
     minGrowth?: number;
@@ -25,12 +23,10 @@ export function encodeGrantRequestCbor(
   return encodeGrantRequest({
     logId,
     ownerLogId,
-    grantFlags,
+    grant,
     maxHeight: options?.maxHeight,
     minGrowth: options?.minGrowth,
     grantData,
-    signer,
-    kind,
   });
 }
 

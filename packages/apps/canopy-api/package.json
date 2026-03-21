@@ -20,6 +20,7 @@
     "@canopy/forestrie-sharding": "workspace:*",
     "@canopy/merklelog": "workspace:*",
     "@canopy/x402-settlement-types": "workspace:*",
+    "@noble/curves": "^1.9.7",
     "@x402/core": "^2.1.0",
     "@x402/evm": "^2.1.0",
     "cbor-x": "^1.5.9",

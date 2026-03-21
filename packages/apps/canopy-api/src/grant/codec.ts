@@ -1,23 +1,16 @@
 /**
- * Grant CBOR encode/decode aligned with go-univocity wire format (Plan 0004 subplan 01, Plan 0006).
+ * Grant CBOR encode/decode (Forestrie-Grant **v0**): map keys **1–6** only — `logId`, `ownerLogId`,
+ * `grant` (flags), `maxHeight`, `minGrowth`, `grantData`. No `signer` (7), `kind` (8), `version`,
+ * `exp`, or `nbf` on the wire; idtimestamp is never in this map.
  *
- * **Grant content (canonical):** CBOR map with integer keys 1–8 only (logId, ownerLogId, grantFlags,
- * maxHeight, minGrowth, grantData, signer, kind). Idtimestamp is never part of the canonical
- * content encoding; it is supplied separately where needed (e.g. header -65537, massif, leaf hash).
- *
- * **Response format (keys 0–8):** Used when encoding a completed grant for GET response only.
- * Storage uses content only (1–8).
+ * **Response format (keys 0–6):** key 0 = idtimestamp; keys 1–6 = grant fields. Used for GET
+ * response encoding only.
  */
 
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 import type { Grant } from "./grant.js";
-import { GRANT_VERSION } from "./grant.js";
+import { grantDataToBytes } from "./grant-data.js";
 
-/**
- * Wire format constants (go-univocity aligned).
- * - CBOR_KEY_*: map key numbers (semantics). Keys 0–8 for response; 1–8 only for content.
- * - CBOR_BSTR_*: CBOR encoding bytes for our fixed-length bstrs (0x48 = bstr len 8, 0x58 = bstr with 1-byte length).
- */
 const CBOR_KEY_IDTIMESTAMP = 0;
 const CBOR_KEY_LOG_ID = 1;
 const CBOR_KEY_OWNER_LOG_ID = 2;
@@ -25,21 +18,36 @@ const CBOR_KEY_GRANT_FLAGS = 3;
 const CBOR_KEY_MAX_HEIGHT = 4;
 const CBOR_KEY_MIN_GROWTH = 5;
 const CBOR_KEY_GRANT_DATA = 6;
-const CBOR_KEY_SIGNER = 7;
-const CBOR_KEY_KIND = 8;
 
 const WIRE_LOG_ID_OWNER_LOG_ID_BYTES = 32;
 const WIRE_GRANT_FLAGS_BYTES = 8;
 const IDTIMESTAMP_BYTES = 8;
 
-const CBOR_BSTR_LEN_8 = 0x48;   // bstr, length 8
-const CBOR_BSTR_LEN32_LEAD = 0x58; // bstr, length in next byte
+const CBOR_BSTR_LEN_8 = 0x48;
+const CBOR_BSTR_LEN32_LEAD = 0x58;
+
+function assertNoObsoleteWireKeys(
+  m: Map<number, unknown> | Record<number, unknown>,
+): void {
+  const keys =
+    m instanceof Map
+      ? [...m.keys()]
+      : Object.keys(m as Record<string, unknown>)
+          .map(Number)
+          .filter((n) => Number.isFinite(n));
+  for (const k of keys) {
+    if (k === 7 || k === 8) {
+      throw new Error(
+        "Grant wire v0: obsolete CBOR keys 7 (signer) and 8 (kind) must not be present; use grantData in the commitment only.",
+      );
+    }
+  }
+}
 
 // --- Public API (entry points) ---
 
 /**
- * Encode grant content + idtimestamp as CBOR (keys 0–8) for response only (e.g. GET /grants/authority/{innerHex}).
- * Grant has no idtimestamp; it is passed separately.
+ * Encode grant content + idtimestamp as CBOR (keys 0–6) for response only.
  */
 export function encodeGrantForResponse(
   grant: Grant,
@@ -57,21 +65,13 @@ export function encodeGrantForResponse(
     grant.ownerLogId as Uint8Array,
     WIRE_LOG_ID_OWNER_LOG_ID_BYTES,
   );
-  const flags8 = leftPad(
-    grant.grantFlags as Uint8Array,
-    WIRE_GRANT_FLAGS_BYTES,
-  );
+  const flags8 = leftPad(grant.grant as Uint8Array, WIRE_GRANT_FLAGS_BYTES);
   const maxHeight = grant.maxHeight ?? 0;
   const minGrowth = grant.minGrowth ?? 0;
-  const grantData = grant.grantData ?? new Uint8Array(0);
-  const signer = grant.signer ?? new Uint8Array(0);
-  const kindByte =
-    grant.kind instanceof Uint8Array && grant.kind.length > 0
-      ? grant.kind[0]!
-      : 0;
+  const grantData = grantDataToBytes(grant.grantData ?? new Uint8Array(0));
 
   const b: number[] = [];
-  b.push(0xa9); // map(9) — keys 0–8
+  b.push(0xa7); // map(7) — keys 0–6
   b.push(CBOR_KEY_IDTIMESTAMP, CBOR_BSTR_LEN_8);
   for (let i = 0; i < IDTIMESTAMP_BYTES; i++) b.push(idts[i]!);
   b.push(CBOR_KEY_LOG_ID, CBOR_BSTR_LEN32_LEAD, WIRE_LOG_ID_OWNER_LOG_ID_BYTES);
@@ -87,17 +87,10 @@ export function encodeGrantForResponse(
   appendCborUint(b, minGrowth);
   b.push(CBOR_KEY_GRANT_DATA);
   appendCborBstr(b, grantData);
-  b.push(CBOR_KEY_SIGNER);
-  appendCborBstr(b, signer);
-  b.push(CBOR_KEY_KIND);
-  appendCborUint(b, kindByte);
   return new Uint8Array(b);
 }
 
-/**
- * Decode CBOR response bytes (keys 0–8) into grant and idtimestamp.
- * Use when reading a GET grant response or any 0–8 blob.
- */
+/** Decode CBOR response bytes (keys 0–6). */
 export function decodeGrantResponse(bytes: Uint8Array): {
   grant: Grant;
   idtimestamp: Uint8Array;
@@ -107,6 +100,8 @@ export function decodeGrantResponse(bytes: Uint8Array): {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw))
     throw new Error("Grant payload must be a CBOR map");
   const m = raw as Map<number, unknown> | Record<number, unknown>;
+  assertNoObsoleteWireKeys(m);
+
   const get = (k: number): unknown =>
     m instanceof Map ? m.get(k) : (m as Record<number, unknown>)[k];
 
@@ -128,8 +123,7 @@ export function decodeGrantResponse(bytes: Uint8Array): {
 }
 
 /**
- * Encode grant as payload only (CBOR map keys 1–8, no idtimestamp).
- * Used when building a transparent statement (e.g. bootstrap) where idtimestamp is in header -65537.
+ * Encode grant as payload only (CBOR map keys 1–6, no idtimestamp).
  */
 export function encodeGrantPayload(grant: Grant): Uint8Array {
   const logId32 = leftPad(
@@ -140,41 +134,29 @@ export function encodeGrantPayload(grant: Grant): Uint8Array {
     grant.ownerLogId as Uint8Array,
     WIRE_LOG_ID_OWNER_LOG_ID_BYTES,
   );
-  const flags8 = leftPad(
-    grant.grantFlags as Uint8Array,
-    WIRE_GRANT_FLAGS_BYTES,
-  );
-  const grantData = grant.grantData ?? new Uint8Array(0);
-  const signer = grant.signer ?? new Uint8Array(0);
-  const kindByte =
-    grant.kind instanceof Uint8Array && grant.kind.length > 0
-      ? grant.kind[0]!
-      : 0;
-  const m = new Map<number, unknown>([
+  const flags8 = leftPad(grant.grant as Uint8Array, WIRE_GRANT_FLAGS_BYTES);
+  const grantData = grantDataToBytes(grant.grantData ?? new Uint8Array(0));
+  const map = new Map<number, unknown>([
     [CBOR_KEY_LOG_ID, logId32],
     [CBOR_KEY_OWNER_LOG_ID, ownerLogId32],
     [CBOR_KEY_GRANT_FLAGS, flags8],
     [CBOR_KEY_MAX_HEIGHT, grant.maxHeight ?? 0],
     [CBOR_KEY_MIN_GROWTH, grant.minGrowth ?? 0],
     [CBOR_KEY_GRANT_DATA, grantData],
-    [CBOR_KEY_SIGNER, signer],
-    [CBOR_KEY_KIND, kindByte],
   ]);
-  return new Uint8Array(encodeCbor(m));
+  return new Uint8Array(encodeCbor(map));
 }
 
-/**
- * Decode grant payload (CBOR map keys 1–8 only). Returns Grant (content only); idtimestamp from header -65537.
- */
+/** Decode grant payload (CBOR map keys 1–6 only). */
 export function decodeGrantPayload(bytes: Uint8Array): Grant {
   if (!bytes?.length) throw new Error("Grant payload is empty");
   const raw = decodeCbor(bytes) as unknown;
   if (typeof raw !== "object" || raw === null || Array.isArray(raw))
     throw new Error("Grant payload must be a CBOR map");
-  return mapToGrant(raw as Map<number, unknown> | Record<number, unknown>);
+  const m = raw as Map<number, unknown> | Record<number, unknown>;
+  assertNoObsoleteWireKeys(m);
+  return mapToGrant(m);
 }
-
-// --- Internal helpers ---
 
 function mapToGrant(m: Map<number, unknown> | Record<number, unknown>): Grant {
   const get = (k: number): unknown =>
@@ -200,7 +182,7 @@ function mapToGrant(m: Map<number, unknown> | Record<number, unknown>): Grant {
     requireBstr(get(CBOR_KEY_OWNER_LOG_ID)),
     WIRE_LOG_ID_OWNER_LOG_ID_BYTES,
   );
-  const grantFlags = leftPad(
+  const grant = leftPad(
     requireBstr(get(CBOR_KEY_GRANT_FLAGS)),
     WIRE_GRANT_FLAGS_BYTES,
   );
@@ -211,21 +193,14 @@ function mapToGrant(m: Map<number, unknown> | Record<number, unknown>): Grant {
     grantDataRaw instanceof Uint8Array
       ? grantDataRaw
       : new Uint8Array(0);
-  const signer = requireBstr(get(CBOR_KEY_SIGNER), 1);
-  const kindNum = requireUint(get(CBOR_KEY_KIND));
-  if (kindNum > 255) throw new Error("Grant: kind exceeds 255");
-  const kind = new Uint8Array([kindNum]);
 
   return {
-    version: GRANT_VERSION,
     logId,
     ownerLogId,
-    grantFlags,
+    grant,
     maxHeight,
     minGrowth,
     grantData,
-    signer,
-    kind,
   };
 }
 

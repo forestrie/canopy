@@ -21,10 +21,10 @@ export interface Env {
   // - v2/merklelog/massifs/{massifHeight}/{logId}/{massifIndex}.log
   // - v2/merklelog/checkpoints/{massifHeight}/{logId}/{massifIndex}.sth
   R2_MMRS: R2Bucket;
-  // Grants storage bucket (content-addressable grant objects).
-  // Path format: <kind>/<hash>.cbor. Location returned to clients is path-only, relative to GRANT_STORAGE_PUBLIC_BASE.
+  // Grants storage bucket (optional legacy / other uses). Forestrie-Grant v0 path when used:
+  // grant/<sha256>.cbor (content-addressed). Register-grant does not require R2 (Plan 0008).
   R2_GRANTS: R2Bucket;
-  // Public base URL for grant storage (path-only location is relative to this).
+  // Public base URL if clients resolve grant paths under this bucket.
   GRANT_STORAGE_PUBLIC_BASE?: string;
   // Durable Object namespace for the ingress sequencing queue.
   // Sharded by logId hash. Owned by forestrie-ingress worker.
@@ -88,8 +88,7 @@ export default {
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers":
-        "Content-Type, Authorization, X-Grant-Location",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
     };
 
     // Handle OPTIONS preflight
@@ -212,11 +211,12 @@ export default {
         segments[2] === "grants" &&
         request.method === "POST"
       ) {
+        const univocityUrl = env.UNIVOCITY_SERVICE_URL?.trim();
         const bootstrapEnv =
           env.ROOT_LOG_ID &&
           env.DELEGATION_SIGNER_URL &&
           env.DELEGATION_SIGNER_BEARER_TOKEN &&
-          env.UNIVOCITY_SERVICE_URL
+          univocityUrl
             ? {
                 rootLogId: env.ROOT_LOG_ID,
                 delegationSignerUrl: env.DELEGATION_SIGNER_URL,
@@ -224,7 +224,7 @@ export default {
                 delegationSignerPublicKeyToken:
                   env.DELEGATION_SIGNER_PUBLIC_KEY_TOKEN,
                 bootstrapAlg: env.BOOTSTRAP_ALG as "ES256" | "KS256" | undefined,
-                univocityServiceUrl: env.UNIVOCITY_SERVICE_URL,
+                univocityServiceUrl: univocityUrl,
               }
             : undefined;
         const queueEnv =

@@ -64,16 +64,23 @@ export function buildCompletedGrant(
   return btoa(String.fromCharCode(...completedBytes));
 }
 
-/** Grant payload (COSE index 2) CBOR map key 7 → first 32 bytes as hex. */
+/**
+ * Grant payload (COSE index 2) CBOR map key 6 **grantData** → hex for k6 **kid**,
+ * matching `statementSignerBindingBytes` (first 32 bytes if grantData is 64-byte ES256 x||y).
+ */
 export function signerHexFromGrantPayload(payload: Uint8Array): string {
   const map = decodeCbor(payload) as
     | Map<number, Uint8Array>
     | Record<number, Uint8Array>;
-  const signer = map.get?.(7) ?? (map as Record<number, Uint8Array>)[7];
-  if (!signer || signer.length < 32) {
-    throw new Error("Grant payload missing signer (key 7)");
+  const gd = map.get?.(6) ?? (map as Record<number, Uint8Array>)[6];
+  if (!(gd instanceof Uint8Array) || gd.length === 0) {
+    throw new Error("Grant payload missing grantData (key 6) for statement signer");
   }
-  return Array.from(signer.slice(0, 32))
+  const bind = gd.length === 64 ? gd.subarray(0, 32) : gd.subarray(0, Math.min(32, gd.length));
+  if (bind.length < 1) {
+    throw new Error("Grant grantData too short for statement signer binding");
+  }
+  return Array.from(bind)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }

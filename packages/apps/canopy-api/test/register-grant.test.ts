@@ -1,7 +1,7 @@
 /**
  * Register-grant endpoint tests (Plan 0001 Step 6, Plan 0005).
  * Auth: Authorization: Forestrie-Grant <base64> (transparent statement only).
- * Request body: grant wire format (go-univocity keys 0–8) for the grant being created.
+ * Request body: grant wire format v0 (CBOR keys 1–6).
  */
 
 import { encodeGrantRequest } from "@canopy/encoding";
@@ -10,11 +10,7 @@ import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import worker from "../src/index";
 import type { Env } from "../src/index";
-import {
-  encodeGrantPayload,
-  KIND_ATTESTOR,
-  uuidToBytes,
-} from "../src/grant";
+import { encodeGrantPayload, uuidToBytes } from "../src/grant";
 import type { Grant } from "../src/grant";
 
 const testEnv = env as unknown as Env;
@@ -45,26 +41,20 @@ describe("POST /logs/{logId}/grants", () => {
   const logId = "550e8400-e29b-41d4-a716-446655440000";
 
   it("returns 503 when grant sequencing not configured (no SEQUENCING_QUEUE)", async () => {
-    // testEnv omits SEQUENCING_QUEUE (see test/env.d.ts); register-grant requires it.
     const authGrant: Grant = {
-      version: 1,
       logId: uuidToBytes(logId),
       ownerLogId: uuidToBytes("660e8400-e29b-41d4-a716-446655440001"),
-      grantFlags: new Uint8Array(8),
+      grant: new Uint8Array(8),
       maxHeight: 0,
       minGrowth: 0,
       grantData: new Uint8Array([]),
-      signer: new Uint8Array([0x01, 0x02, 0x03]),
-      kind: new Uint8Array([KIND_ATTESTOR]),
     };
 
     const bodyBytes = encodeGrantRequest({
       logId: uuidToBytes(logId),
       ownerLogId: uuidToBytes("660e8400-e29b-41d4-a716-446655440001"),
-      grantFlags: new Uint8Array(8),
+      grant: new Uint8Array(8),
       grantData: new Uint8Array([]),
-      signer: new Uint8Array([0x01, 0x02, 0x03]),
-      kind: new Uint8Array([KIND_ATTESTOR]),
     });
 
     const request = new Request(`http://localhost/logs/${logId}/grants`, {
@@ -88,7 +78,7 @@ describe("POST /logs/{logId}/grants", () => {
     expect(decoded.detail).toContain("Grant sequencing not configured");
   });
 
-  it("returns 401 without grant location for entries", async () => {
+  it("returns 401 without Authorization: Forestrie-Grant for POST /entries", async () => {
     const request = new Request(`http://localhost/logs/${logId}/entries`, {
       method: "POST",
       headers: { "Content-Type": "application/cbor" },
@@ -106,10 +96,8 @@ describe("POST /logs/{logId}/grants", () => {
     const bodyBytes = encodeGrantRequest({
       logId: uuidToBytes(logId),
       ownerLogId: uuidToBytes("660e8400-e29b-41d4-a716-446655440001"),
-      grantFlags: new Uint8Array(8),
+      grant: new Uint8Array(8),
       grantData: new Uint8Array([]),
-      signer: new Uint8Array(32),
-      kind: new Uint8Array([KIND_ATTESTOR]),
     });
     const request = new Request(`http://localhost/logs/${logId}/grants`, {
       method: "POST",

@@ -27,8 +27,9 @@ const MAX_GRANT_BODY_SIZE = 4 * 1024; // 4 KiB
 
 export interface RegisterGrantEnv {
   /**
-   * When set: enqueue grants for sequencing (Subplan 03) and, when bootstrapEnv is also set,
-   * require receipt-based inclusion for non-bootstrap auth (Subplan 08). Same queue for both.
+   * When set: enqueue grants for sequencing (Subplan 03). With queue alone or initialized log,
+   * {@link grantAuthorize} always runs (receipt + MMR inclusion) except the one-time bootstrap
+   * success path (Subplan 08). Same DO namespace as register-signed-statement.
    */
   queueEnv?: LogShardEnv;
   /** Subplan 08: root log id (hex), delegation-signer URL and token, univocity REST URL. */
@@ -64,12 +65,14 @@ export interface RegisterGrantEnv {
  *    inclusion check and enqueue. This is the first grant for the root log.
  * 3. If the log is not initialized but the grant is not the bootstrap grant, return 403
  *    (log not initialized; use bootstrap grant to bootstrap).
- * 4. If the log is initialized, require receipt-based inclusion (grantAuthorize): the grant’s
- *    receipt (in the transparent statement header) must verify against the authority log;
- *    then enqueue.
+ * 4. If the log is initialized (or bootstrapEnv is unset), require receipt-based inclusion
+ *    ({@link grantAuthorize}): idtimestamp, receipt in the transparent statement, and MMR proof
+ *    must verify for `ownerLogId`’s authority log; then enqueue.
  *
- * When only queueEnv is set (no bootstrapEnv), every valid grant is enqueued without
- * inclusion check. When queueEnv is unset, returns 503 (grant sequencing not configured).
+ * **Queue without bootstrapEnv:** Same as (4): always {@link grantAuthorize} before enqueue.
+ * There is no separate “queue-only, no inclusion” mode.
+ *
+ * When queueEnv is unset, returns 503 (grant sequencing not configured).
  *
  * Agent References: Plan 0001 Step 6; Plan 0004 Subplan 03 (grant-sequencing), Subplan 08
  * (grant-first bootstrap, receipt-based inclusion); Plan 0005 (Forestrie-Grant only);
@@ -91,29 +94,31 @@ export async function registerGrant(
     return ClientErrors.badRequest("logId in grant must match URL logId");
   }
 
-  const useQueue = env.queueEnv != null;
+  if (!env.queueEnv) {
+    return ServerErrors.serviceUnavailable(
+      "Grant sequencing not configured (SEQUENCING_QUEUE required)",
+    );
+  }
 
-  // --- Path when bootstrap env and queue are configured (Subplan 08) ---
-  // Determines log-initialized vs bootstrap branch; then either bootstrap enqueue or
-  // receipt-based authorization (shared grantAuthorize) + enqueue.
-  if (env.bootstrapEnv && env.queueEnv && useQueue) {
+  // --- Subplan 08: optional bootstrap branch (requires bootstrapEnv + univocity) ---
+  if (env.bootstrapEnv) {
     const logInitialized = await isLogInitialized(logId, {
       univocityServiceUrl: env.bootstrapEnv.univocityServiceUrl,
     }).catch(() => true);
 
-    // Bootstrap branch (Subplan 08 §3.3): log not yet initialized, auth is bootstrap grant
-    // (ownerLogId = logId, GF_CREATE|GF_EXTEND, signature from bootstrap key). No inclusion
-    // check; enqueue and store, then 303 to status URL.
+    // Bootstrap (§3.3): uninitialized root log, first grant — not in MMR yet, so no receipt.
     if (
       !logInitialized &&
       ownerLogIdEqualsLogId(grant, logId) &&
-      hasCreateAndExtend(grant.grantFlags as Uint8Array) &&
+      hasCreateAndExtend(grant.grant as Uint8Array) &&
       grantResult.bytes
     ) {
       try {
         const bootstrapKey = await getBootstrapPublicKey({
           delegationSignerUrl: env.bootstrapEnv.delegationSignerUrl,
-          delegationSignerPublicKeyToken: env.bootstrapEnv.delegationSignerPublicKeyToken,
+          delegationSignerPublicKeyToken:
+            env.bootstrapEnv.delegationSignerPublicKeyToken ??
+            env.bootstrapEnv.delegationSignerBearerToken,
           bootstrapAlg: env.bootstrapEnv.bootstrapAlg,
         });
         const ok = await verifyBootstrapCoseSign1(
@@ -121,11 +126,19 @@ export async function registerGrant(
           bootstrapKey.publicKeyBytes,
           bootstrapKey.alg,
         );
-        if (ok) {
-          return await enqueueAndStoreGrant(request, grant, env);
+        if (!ok) {
+          return ClientErrors.forbidden(
+            "Log not initialized; use bootstrap grant as auth to bootstrap",
+          );
         }
+        return await enqueueAndStoreGrant(request, grant, env, logId);
       } catch (e) {
-        console.warn("Bootstrap branch verification failed", e);
+        console.warn("Bootstrap branch (verify ok, enqueue or key fetch failed)", e);
+        return ServerErrors.serviceUnavailable(
+          e instanceof Error
+            ? e.message
+            : "Grant sequencing failed after bootstrap verification",
+        );
       }
     }
 
@@ -134,58 +147,14 @@ export async function registerGrant(
         "Log not initialized; use bootstrap grant as auth to bootstrap",
       );
     }
-
-    // Non-bootstrap: receipt-based inclusion (Subplan 08 §3.3.1, ARC-0001). grantAuthorize uses
-    // receipt from artifact only (Plan 0005).
-    const authError = await grantAuthorize(grantResult, {
-      inclusionEnv: env.queueEnv as InclusionEnv | undefined,
-    });
-    if (authError) return authError;
-    return await enqueueAndStoreGrant(request, grant, env);
   }
 
-  // --- Path when only queue is configured (no bootstrap env) ---
-  // Enqueue to grant-sequencing DO (Subplan 03); return 303 to status URL. No grant storage
-  // (Plan 0008); caller gets idtimestamp and receipt via query-registration-status and resolve-receipt.
-  if (useQueue) {
-    const inner = await grantCommitmentHashFromGrant(grant);
-    const ownerLogId =
-      grant.ownerLogId.length >= 16
-        ? grant.ownerLogId.slice(-16)
-        : grant.ownerLogId;
-    let result;
-    try {
-      result = await enqueueGrantForSequencing(
-        ownerLogId,
-        inner,
-        env.queueEnv! as GrantSequencingEnv,
-      );
-    } catch (error) {
-      if (error instanceof QueueFullError) {
-        return ServerErrors.serviceUnavailableWithRetry(
-          `Queue capacity exceeded (${error.pendingCount}/${error.maxPending} pending)`,
-          error.retryAfterSeconds,
-        );
-      }
-      throw error;
-    }
-
-    const requestUrl = new URL(request.url);
-    const statusUrl = `${requestUrl.origin}${result.statusUrlPath}`;
-
-    console.log("Grant enqueued for sequencing", {
-      statusUrlPath: result.statusUrlPath,
-      alreadySequenced: result.alreadySequenced,
-      logId,
-    });
-
-    return seeOtherResponse(statusUrl, 5);
-  }
-
-  // No queue configured: grant sequencing is required for this endpoint.
-  return ServerErrors.serviceUnavailable(
-    "Grant sequencing not configured (SEQUENCING_QUEUE required)",
-  );
+  // --- Receipt-based inclusion for every other case (initialized log, or no bootstrapEnv) ---
+  const authError = await grantAuthorize(grantResult, {
+    inclusionEnv: env.queueEnv as InclusionEnv,
+  });
+  if (authError) return authError;
+  return await enqueueAndStoreGrant(request, grant, env, logId);
 }
 
 /**
@@ -196,19 +165,38 @@ async function enqueueAndStoreGrant(
   request: Request,
   grant: Grant,
   env: RegisterGrantEnv,
+  logId: string,
 ): Promise<Response> {
   const inner = await grantCommitmentHashFromGrant(grant);
   const ownerLogId =
     grant.ownerLogId.length >= 16
       ? grant.ownerLogId.slice(-16)
       : grant.ownerLogId;
-  const result = await enqueueGrantForSequencing(
-    ownerLogId,
-    inner,
-    env.queueEnv! as GrantSequencingEnv,
-  );
+  let result;
+  try {
+    result = await enqueueGrantForSequencing(
+      ownerLogId,
+      inner,
+      env.queueEnv! as GrantSequencingEnv,
+    );
+  } catch (error) {
+    if (error instanceof QueueFullError) {
+      return ServerErrors.serviceUnavailableWithRetry(
+        `Queue capacity exceeded (${error.pendingCount}/${error.maxPending} pending)`,
+        error.retryAfterSeconds,
+      );
+    }
+    throw error;
+  }
   const requestUrl = new URL(request.url);
   const statusUrl = `${requestUrl.origin}${result.statusUrlPath}`;
+
+  console.log("Grant enqueued for sequencing", {
+    statusUrlPath: result.statusUrlPath,
+    alreadySequenced: result.alreadySequenced,
+    logId,
+  });
+
   return seeOtherResponse(statusUrl, 5);
 }
 

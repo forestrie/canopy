@@ -3,12 +3,17 @@
  * POST /api/grants/bootstrap — build grant, sign via delegation-signer (COSE ToBeSigned),
  * return transparent statement in response body. Optional body { rootLogId } for per-log mint.
  * Caller is responsible for persisting the grant.
+ *
+ * Plan 0011 §0: grantData must equal the bootstrap public key (64 bytes for ES256) so the
+ * Univocity contract accepts the root's first checkpoint. We fetch the bootstrap public
+ * key before building the grant and set grant.grantData to the normalized key.
  */
 
 import { encodeSigStructure } from "@canopy/encoding";
 import { encode as encodeCbor } from "cbor-x";
 import type { Grant } from "../grant/grant.js";
 import { encodeGrantPayload } from "../grant/codec.js";
+import { getBootstrapPublicKey } from "./bootstrap-public-key.js";
 import { ClientErrors, ServerErrors } from "./problem-details.js";
 
 /** COSE Sign1 protected = empty map (0xa0). */
@@ -63,8 +68,22 @@ export interface BootstrapMintEnv {
   rootLogId?: string;
   delegationSignerUrl: string;
   delegationSignerBearerToken: string;
+  /** Optional: token for GET /api/public-key (default: same as bearer token). */
+  delegationSignerPublicKeyToken?: string;
   /** Alg for bootstrap signing; default ES256. */
   bootstrapAlg?: "ES256" | "KS256";
+}
+
+/**
+ * Normalize public key to 64 bytes (x || y) for ES256 grantData (Univocity contract).
+ * Contract expects 64 bytes; delegation-signer often returns 65 (04||x||y).
+ */
+function publicKeyToGrantData64(keyBytes: Uint8Array): Uint8Array {
+  if (keyBytes.length === 64) return keyBytes;
+  if (keyBytes.length === 65 && keyBytes[0] === 0x04) return keyBytes.slice(1, 65);
+  throw new Error(
+    `Bootstrap public key must be 64 bytes (x||y) or 65 bytes (04||x||y) for ES256 grantData; got ${keyBytes.length}`,
+  );
 }
 
 /** Request body for POST /api/grants/bootstrap (optional). */
@@ -133,18 +152,38 @@ export async function handlePostBootstrapGrant(
   }
   const ownerLogIdBytes = logIdBytes.slice(0, 32);
 
-  const grantFlags = new Uint8Array(8);
-  grantFlags[4] = 0x03; // GF_CREATE | GF_EXTEND
+  // Plan 0011 §0: grantData must equal bootstrap public key (64 bytes ES256) for Univocity contract.
+  let grantData: Uint8Array;
+  if (alg === "KS256") {
+    // KS256 bootstrap grantData (20-byte address) not yet implemented.
+    return ServerErrors.internal(
+      "KS256 bootstrap grantData not yet implemented; use ES256 for bootstrap grant",
+    );
+  }
+  try {
+    const publicKeyEnv = {
+      delegationSignerUrl: env.delegationSignerUrl,
+      delegationSignerPublicKeyToken: env.delegationSignerPublicKeyToken ?? env.delegationSignerBearerToken,
+      bootstrapAlg: alg,
+    };
+    const { publicKeyBytes } = await getBootstrapPublicKey(publicKeyEnv);
+    grantData = publicKeyToGrantData64(publicKeyBytes);
+  } catch (e) {
+    return ServerErrors.badGateway(
+      e instanceof Error ? e.message : "Bootstrap public key fetch failed",
+    );
+  }
+
+  const grantBitmap = new Uint8Array(8);
+  grantBitmap[4] = 0x03; // GF_CREATE | GF_EXTEND
+  grantBitmap[7] = 0x01; // GF_AUTH_LOG (root auth checkpoint grant; not data-log /entries)
   const grant: Grant = {
-    version: 1,
     logId: logIdBytes,
     ownerLogId: ownerLogIdBytes,
-    grantFlags,
+    grant: grantBitmap,
     maxHeight: 0,
     minGrowth: 0,
-    grantData: new Uint8Array(0),
-    signer: new Uint8Array(32),
-    kind: new Uint8Array([1]),
+    grantData,
   };
 
   const payloadBytes = encodeGrantPayload(grant);

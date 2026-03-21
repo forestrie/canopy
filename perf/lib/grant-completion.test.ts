@@ -49,20 +49,30 @@ describe("extractEntryIdFromReceiptUrl", () => {
 });
 
 describe("signerHexFromGrantPayload", () => {
-  it("returns first 32 bytes of key 7 as hex", () => {
-    const signer = new Uint8Array(40);
-    for (let i = 0; i < 32; i++) signer[i] = i;
-    const payload = new Uint8Array(encodeCbor(new Map([[7, signer]])));
+  it("returns first 32 bytes of key 6 grantData as hex", () => {
+    const gd = new Uint8Array(40);
+    for (let i = 0; i < 32; i++) gd[i] = i;
+    const payload = new Uint8Array(encodeCbor(new Map([[6, gd]])));
     expect(signerHexFromGrantPayload(payload)).toBe(
       "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
     );
   });
 
-  it("throws when key 7 missing or too short", () => {
+  it("uses first 32 bytes when grantData is 64 bytes (ES256 x||y)", () => {
+    const gd = new Uint8Array(64);
+    gd.fill(0xab);
+    gd[0] = 0;
+    gd[31] = 0xff;
+    const payload = new Uint8Array(encodeCbor(new Map([[6, gd]])));
+    const hex = signerHexFromGrantPayload(payload);
+    expect(hex.length).toBe(64);
+    expect(hex.slice(0, 2)).toBe("00");
+    expect(hex.slice(-2)).toBe("ff");
+  });
+
+  it("throws when key 6 missing or empty", () => {
     const empty = new Uint8Array(encodeCbor(new Map()));
-    expect(() => signerHexFromGrantPayload(empty)).toThrow("Grant payload missing signer");
-    const short = new Uint8Array(encodeCbor(new Map([[7, new Uint8Array(16)]])));
-    expect(() => signerHexFromGrantPayload(short)).toThrow("Grant payload missing signer");
+    expect(() => signerHexFromGrantPayload(empty)).toThrow("grantData (key 6)");
   });
 });
 
@@ -72,7 +82,7 @@ describe("buildCompletedGrant", () => {
     const idtimestamp = entryIdToIdtimestamp(entryId);
     const receiptBytes = new Uint8Array([0xca, 0xfe]);
     const protectedHeader = new Uint8Array(encodeCbor(new Map([[1, -7]])));
-    const payload = new Uint8Array(encodeCbor(new Map([[7, new Uint8Array(32)]])));
+    const payload = new Uint8Array(encodeCbor(new Map([[6, new Uint8Array(32)]])));
     const signature = new Uint8Array(64);
     const originalCose = [protectedHeader, new Map(), payload, signature];
     const originalBytes = new Uint8Array(encodeCbor(originalCose));

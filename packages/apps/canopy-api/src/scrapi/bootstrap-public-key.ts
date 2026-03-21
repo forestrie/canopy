@@ -6,9 +6,9 @@
 
 import {
   decodeCoseSign1,
-  encodeCborBstr,
   encodeSigStructure,
 } from "@canopy/encoding";
+import { p256 } from "@noble/curves/p256.js";
 
 export type BootstrapAlg = "ES256" | "KS256";
 
@@ -26,28 +26,27 @@ export interface BootstrapPublicKeyResult {
   alg: BootstrapAlg;
 }
 
-let cachedResult: { result: BootstrapPublicKeyResult; alg: BootstrapAlg } | null = null;
+/** Per-alg cache: parallel ES256/KS256 fetches must not clobber each other (e.g. Playwright workers). */
+const bootstrapPublicKeyByAlg = new Map<BootstrapAlg, BootstrapPublicKeyResult>();
 
 /**
- * Extract 65-byte uncompressed secp256k1 public key (04||x||y) from SPKI DER.
- * SPKI BIT STRING content is 0x00 (unused bits) + 65-byte key.
+ * Extract 65-byte uncompressed EC public key (04||x||y) from SPKI DER.
+ * Matches common SPKI for P-256 and secp256k1: BIT STRING tag 0x03, length 66,
+ * content 0x00 (unused bits) + 65-byte uncompressed point.
  */
-function extractSecp256k1FromSpkiDer(der: Uint8Array): Uint8Array {
-  // Find BIT STRING (0x03) with length 66 (0x00 + 65-byte key)
-  for (let i = 0; i < der.length - 68; i++) {
+function extractUncompressed65FromEcSpkiDer(der: Uint8Array): Uint8Array {
+  // Need index i where subarray(i+3, i+68) fits: i + 68 <= der.length → i <= der.length - 68
+  for (let i = 0; i <= der.length - 68; i++) {
     if (der[i] === 0x03 && der[i + 1] === 66 && der[i + 2] === 0x00 && der[i + 3] === 0x04) {
       const key = new Uint8Array(65);
       key.set(der.subarray(i + 3, i + 68));
       return key;
     }
   }
-  throw new Error("SPKI DER missing secp256k1 BIT STRING (66 bytes)");
+  throw new Error("SPKI DER missing uncompressed EC BIT STRING (66 bytes)");
 }
 
-/**
- * Decode PEM to raw 65-byte uncompressed key (04||x||y). Works for both P-256 and secp256k1 SPKI.
- */
-function pemToUncompressed65(pem: string): Uint8Array {
+function pemBodyToDer(pem: string): Uint8Array {
   const base64 = pem
     .replace(/-----BEGIN [^-]+-----/g, "")
     .replace(/-----END [^-]+-----/g, "")
@@ -55,7 +54,16 @@ function pemToUncompressed65(pem: string): Uint8Array {
   const bin = atob(base64);
   const der = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) der[i] = bin.charCodeAt(i);
-  return extractSecp256k1FromSpkiDer(der);
+  return der;
+}
+
+/**
+ * Decode PEM SPKI to raw uncompressed public key (65 bytes: 04||x||y).
+ * Uses DER walk (not Web Crypto SPKI import) so Workers accept the same PEM as
+ * delegation-signer (P-256 and secp256k1 share this BIT STRING layout).
+ */
+function publicKeyBytesFromPem(pem: string): Uint8Array {
+  return extractUncompressed65FromEcSpkiDer(pemBodyToDer(pem));
 }
 
 /**
@@ -66,7 +74,8 @@ export async function getBootstrapPublicKey(
   env: BootstrapPublicKeyEnv,
 ): Promise<BootstrapPublicKeyResult> {
   const alg = env.bootstrapAlg ?? "ES256";
-  if (cachedResult && cachedResult.alg === alg) return cachedResult.result;
+  const cached = bootstrapPublicKeyByAlg.get(alg);
+  if (cached) return cached;
 
   const base = env.delegationSignerUrl?.trim().replace(/\/$/, "");
   if (!base) {
@@ -93,11 +102,9 @@ export async function getBootstrapPublicKey(
     contentType.includes("application/x-pem-file") ||
     body.trim().startsWith("-----BEGIN ")
   ) {
-    const result: BootstrapPublicKeyResult = {
-      publicKeyBytes: pemToUncompressed65(body),
-      alg,
-    };
-    cachedResult = { result, alg };
+    const publicKeyBytes = publicKeyBytesFromPem(body);
+    const result: BootstrapPublicKeyResult = { publicKeyBytes, alg };
+    bootstrapPublicKeyByAlg.set(alg, result);
     return result;
   }
 
@@ -114,7 +121,7 @@ export async function getBootstrapPublicKey(
       bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
     }
     const result = { publicKeyBytes: bytes, alg } as BootstrapPublicKeyResult;
-    cachedResult = { result, alg };
+    bootstrapPublicKeyByAlg.set(alg, result);
     return result;
   }
   if (typeof data.x === "string" && typeof data.y === "string") {
@@ -130,7 +137,7 @@ export async function getBootstrapPublicKey(
       bytes[33 + i] = parseInt(yHex.slice(i * 2, i * 2 + 2), 16);
     }
     const result = { publicKeyBytes: bytes, alg } as BootstrapPublicKeyResult;
-    cachedResult = { result, alg };
+    bootstrapPublicKeyByAlg.set(alg, result);
     return result;
   }
   throw new Error("Bootstrap public key response missing publicKey or x,y");
@@ -150,19 +157,16 @@ export async function verifyBootstrapSignature(
     return false;
   }
   if (alg === "ES256") {
-    const key = await crypto.subtle.importKey(
-      "raw",
-      publicKeyBytes,
-      { name: "ECDSA", namedCurve: "P-256" },
-      false,
-      ["verify"],
-    );
-    return crypto.subtle.verify(
-      { name: "ECDSA", hash: "SHA-256" },
-      key,
-      signatureRaw,
-      digestSha256,
-    );
+    // Match delegation-signer (p256.sign with prehash: true). After fixing
+    // Sig_structure, Web Crypto can still reject some valid signatures (high-S);
+    // noble verify matches the signer.
+    try {
+      return p256.verify(signatureRaw, digestSha256, publicKeyBytes, {
+        prehash: true,
+      });
+    } catch {
+      return false;
+    }
   }
   const hashHex =
     "0x" +
@@ -210,10 +214,11 @@ export async function verifyBootstrapCoseSign1(
   const decoded = decodeCoseSign1(coseSign1Bytes);
   if (!decoded) return false;
   const { protectedBstr, payloadBstr, signature } = decoded;
-  const protectedBstrForSig = encodeCborBstr(protectedBstr);
   const externalAad = new Uint8Array(0);
+  // Same as bootstrap-grant: encodeSigStructure wraps protected (raw map bytes, e.g. 0xa0).
+  // Do not pre-encode protected with encodeCborBstr — that would double-wrap vs mint.
   const sigStructure = encodeSigStructure(
-    protectedBstrForSig,
+    protectedBstr,
     externalAad,
     payloadBstr,
   );
