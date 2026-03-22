@@ -8,8 +8,8 @@ vars:
   ROOT_DIR: "{{.ROOT_DIR | default .}}"
   PERF_SCRIPTS: "{{.ROOT_DIR}}/perf/scripts"
   GRANT_DATA_DIR: '{{.GRANT_DATA_DIR | default "perf/data"}}'
-  CANOPY_PERF_BASE_URL: '{{.CANOPY_PERF_BASE_URL | default .BASE_URL}}'
-  CANOPY_PERF_API_TOKEN: '{{.CANOPY_PERF_API_TOKEN | default .API_TOKEN}}'
+  CANOPY_BASE_URL: "{{.CANOPY_BASE_URL}}"
+  SCRAPI_API_KEY: "{{.SCRAPI_API_KEY}}"
   POLL_MAX: '{{.POLL_MAX | default "120"}}'
   POLL_INTERVAL_MS: '{{.POLL_INTERVAL_MS | default "500"}}'
   MASSIF_HEIGHT: '{{.MASSIF_HEIGHT | default "14"}}'
@@ -18,10 +18,8 @@ tasks:
   poll-status:
     desc: "Poll status URL until 303 to receipt; output receipt URL (STATUS_URL=... GRANT_DATA_DIR optional)"
     env:
-      CANOPY_PERF_BASE_URL: "{{.CANOPY_PERF_BASE_URL}}"
-      CANOPY_PERF_API_TOKEN: "{{.CANOPY_PERF_API_TOKEN}}"
-      BASE_URL: "{{.CANOPY_PERF_BASE_URL}}"
-      API_TOKEN: "{{.CANOPY_PERF_API_TOKEN}}"
+      CANOPY_BASE_URL: "{{.CANOPY_BASE_URL}}"
+      SCRAPI_API_KEY: "{{.SCRAPI_API_KEY}}"
       POLL_MAX: "{{.POLL_MAX}}"
       POLL_INTERVAL_MS: "{{.POLL_INTERVAL_MS}}"
     cmds:
@@ -36,8 +34,7 @@ tasks:
   resolve-receipt:
     desc: "GET receipt URL, build completed grant, write base64 to OUTPUT_PATH (RECEIPT_URL=... ORIGINAL_GRANT_PATH=... OUTPUT_PATH=...)"
     env:
-      CANOPY_PERF_BASE_URL: "{{.CANOPY_PERF_BASE_URL}}"
-      CANOPY_PERF_API_TOKEN: "{{.CANOPY_PERF_API_TOKEN}}"
+      SCRAPI_API_KEY: "{{.SCRAPI_API_KEY}}"
     cmds:
       - |
         RECEIPT_URL="${RECEIPT_URL:-{{.RECEIPT_URL}}}"

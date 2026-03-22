@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "generate-grant-pool": "tsx scripts/generate-grant-pool.ts",
+    "generate-shard-balanced-ids": "node scripts/generate-shard-balanced-ids.js",
     "poll-status": "tsx scripts/poll-status.ts",
     "resolve-receipt-to-grant": "tsx scripts/resolve-receipt-to-grant.ts",
     "verify-grant-flow": "tsx ../scripts/verify-grant-flow.ts",

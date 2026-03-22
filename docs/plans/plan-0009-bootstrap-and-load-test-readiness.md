@@ -25,7 +25,7 @@
 
 ### 1.3 Perf and CI today
 
-- **Perf workflow** (`.github/workflows/perf-canopy.yml`): Loads env from `perf/.env.{dev|prod}`, builds log ID list from CANOPY_PERF_*LPS_* (UUIDs), runs **Generate grant pool** (`pnpm --filter @canopy/perf run generate-grant-pool`), then k6 with the bundle. Grant pool is uploaded as an artifact.
+- **Perf workflow** (`.github/workflows/perf-canopy.yml`): Uses GitHub Environment **`dev`** / **`stage`** / **`prod`** (Doppler-synced vars/secrets). **Log IDs** are **synthesized each run** (shard-balanced UUIDs via `perf/scripts/generate-shard-balanced-ids.js`); no **`CANOPY_PERF_*LPS_*`** GitHub variables. Then **Generate grant pool** (`pnpm --filter @canopy/perf run generate-grant-pool`) and k6 run as before. Grant pool is uploaded as an artifact.
 - **generate-grant-pool** (`perf/scripts/generate-grant-pool.ts`): For each log ID: **POST /api/grants/bootstrap** (`{ rootLogId }`), **POST /logs/{logId}/grants** with **Authorization: Forestrie-Grant** (bootstrap transparent statement), poll status → GET receipt → **`buildCompletedGrant`** → writes **`grant-pool.json`** with **`signer`** (hex, derived from **`grantData`** / key 6) and **`grants: [{ logId, grantBase64 }]`** (completed transparent statements).
 - **k6 scenario** (`perf/k6/canopy-api/scenarios/write-constant-arrival.js`): Loads **`grant-pool.json`**; POST **/logs/{logId}/entries** with **Authorization: Forestrie-Grant &lt;grantBase64&gt;**; statement COSE **`kid`** = **`signerToBytes(pool.signer)`** (must match **`statementSignerBindingBytes`**). **Bearer** is only used where the scenario polls status (not for grant auth on `/entries`).
 
@@ -60,7 +60,7 @@ To run load tests we need at least one **completed** grant per log (transparent 
 
 ### 2.4 Environment and config
 
-- Bootstrap requires: ROOT_LOG_ID (64 hex), DELEGATION_SIGNER_URL, DELEGATION_SIGNER_BEARER_TOKEN, UNIVOCITY_SERVICE_URL (for “log initialized” check). Perf env files have CANOPY_PERF_* log IDs (UUIDs) and CANOPY_PERF_BASE_URL but do not define ROOT_LOG_ID or delegation-signer/univocity. So **perf env** (and any CI that runs bootstrap) must be extended with bootstrap-related vars, or we document that “no bootstrap” mode (queue only, no bootstrapEnv) is used for perf and then we must not require receipt-based inclusion for that environment (see register-grant: when only queueEnv is set, every valid grant is enqueued without inclusion check; but getGrantFromRequest still requires Forestrie-Grant, so we still need valid transparent statements).
+- Bootstrap requires: ROOT_LOG_ID (64 hex), DELEGATION_SIGNER_URL, DELEGATION_SIGNER_BEARER_TOKEN, UNIVOCITY_SERVICE_URL (for “log initialized” check). Perf env files have CANOPY_PERF_* log IDs (UUIDs) and CANOPY_BASE_URL but do not define ROOT_LOG_ID or delegation-signer/univocity. So **perf env** (and any CI that runs bootstrap) must be extended with bootstrap-related vars, or we document that “no bootstrap” mode (queue only, no bootstrapEnv) is used for perf and then we must not require receipt-based inclusion for that environment (see register-grant: when only queueEnv is set, every valid grant is enqueued without inclusion check; but getGrantFromRequest still requires Forestrie-Grant, so we still need valid transparent statements).
 
 ## 3. Recommendations
 

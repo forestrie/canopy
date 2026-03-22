@@ -1,8 +1,8 @@
 version: "3"
 
-# Environment selection: ENV=dev (default) or ENV=prod
-# Load order: .env (shared) -> .env.{ENV} (environment-specific) -> .env.secrets
-dotenv: [".env", ".env.{{.ENV}}", ".env.secrets"]
+# Environment selection: ENV=dev (default) or ENV=prod (for Doppler config name only).
+# Single repo-root `.env` (gitignored); hydrate with `task vars:doppler:dev` etc.
+dotenv: [".env"]
 
 vars:
   # Default to dev environment
@@ -15,7 +15,8 @@ includes:
   scrapi:
     taskfile: ./taskfiles/scrapi.yml
     vars:
-      BASE_URL: "{{.SCRAPI_BASE_URL}}"
+      CANOPY_FQDN: "{{.CANOPY_FQDN}}"
+      TEST_SCRAPI_LOG_PATH: "{{.TEST_SCRAPI_LOG_PATH}}"
       API_KEY: "{{.SCRAPI_API_KEY}}"
   scout:
     taskfile: ./taskfiles/scout.yml
@@ -32,6 +33,7 @@ includes:
   grant-bootstrap: ./taskfiles/grant-bootstrap.yml
   grant: ./taskfiles/grant.yml
   e2e-shared: ./taskfiles/e2e-shared.yml
+  vars: ./taskfiles/vars.yml
 
 tasks:
   default:
@@ -45,29 +47,22 @@ tasks:
       - pnpm -r test
 
   test:e2e:
-    desc: Run all Playwright e2e projects (@canopy/api-e2e; see taskfiles/e2e-setup.md)
+    desc: Run Playwright e2e (@canopy/api-e2e; requires repo-root .env — see taskfiles/e2e-setup.md)
     cmds:
+      - task vars:require-dotenv
       - pnpm --filter @canopy/api-e2e exec playwright test
 
   test:e2e:preflight:
-    desc: E2e prerequisite checks (workspace + Playwright + Chromium; shared tasks)
+    desc: |
+      E2e prerequisites — install deps + Playwright, then hydrate repo-root .env via Doppler (e2e-shared:preflight).
     cmds:
+      - task e2e-shared:bootstrap
       - task e2e-shared:preflight
 
-  test:e2e:preflight:infra:
-    desc: Optional delegation-signer health probe (set E2E_DELEGATION_SIGNER_HEALTH_URL)
+  test:e2e:preflight:env:
+    desc: Fail if repo-root .env is missing (CI writes .env before this; local uses vars:doppler:*)
     cmds:
-      - task e2e-shared:preflight:infra
-
-  test:e2e:preflight:verify:local:
-    desc: Probe local full stack (canopy + signer + univocity stub + bootstrap); run while stack is up
-    cmds:
-      - task e2e-shared:preflight:verify:local
-
-  test:e2e:preflight:verify:remote:
-    desc: Probe remote worker (CANOPY_E2E_BASE_URL); health + bootstrap mint
-    cmds:
-      - task e2e-shared:preflight:verify:remote
+      - task e2e-shared:preflight:env
   build:
     desc: build everything
     cmds:

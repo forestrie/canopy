@@ -143,6 +143,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.matrix != '[]'
     runs-on: ubuntu-latest
+    environment: ${{ needs.changes.outputs.environment }}
     concurrency:
       group: worker-deploy-${{ matrix.target.app }}-${{ needs.changes.outputs.environment }}
       cancel-in-progress: true
@@ -156,6 +157,9 @@ jobs:
       CDP_API_KEY_ID: ${{ secrets.CDP_API_KEY_ID }}
       CDP_API_KEY_SECRET: ${{ secrets.CDP_API_KEY_SECRET }}
       DEPLOY_ENV: ${{ needs.changes.outputs.environment }}
+      CANOPY_ID: ${{ vars.CANOPY_ID }}
+      FOREST_PROJECT_ID: ${{ vars.FOREST_PROJECT_ID }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
 
     steps:
       - name: Checkout

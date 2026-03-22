@@ -1,0 +1,40 @@
+---
+# Shared helpers for repo-root `.env` (see root Taskfile `dotenv: [".env"]`).
+# Hydrate with `task vars:doppler:dev` / `vars:doppler:prod`.
+
+version: "3"
+
+vars:
+  DOPPLER: "doppler"
+  DOPPLER_PROJECT: "canopy"
+
+tasks:
+  require-dotenv:
+    desc: Fail immediately if repo-root .env is missing (skipped in CI; Actions pass env explicitly)
+    cmds:
+      - |
+        set -e
+        if [ -n "${CI:-}" ]; then
+          exit 0
+        fi
+        if [ ! -f .env ]; then
+          echo "ERROR: repo-root .env is missing. Run: task vars:doppler:dev (or vars:doppler:prod)." >&2
+          exit 1
+        fi
+
+  doppler:*:
+    desc: |
+      hydrate doppler secrets on disk for the chosen env
+    vars:
+      DOPPLER_ENVIRONMENT: "{{index .MATCH 0}}"
+
+    cmds:
+      - |
+        set -ef
+        {{.DOPPLER}} secrets \
+          download \
+          --scope {{.ROOT_DIR}} \
+          --project {{.DOPPLER_PROJECT}} \
+          --config {{.DOPPLER_ENVIRONMENT}} \
+          --format=env \
+          --no-file > {{.ROOT_DIR}}/.env

@@ -44,7 +44,9 @@ export function buildCompletedGrant(
   const idtimestamp = entryIdToIdtimestamp(entryIdHex);
   const normalized = originalGrantBase64.replace(/-/g, "+").replace(/_/g, "/");
   const grantBytes = new Uint8Array(
-    atob(normalized).split("").map((c) => c.charCodeAt(0)),
+    atob(normalized)
+      .split("")
+      .map((c) => c.charCodeAt(0)),
   );
   const cose = decodeCbor(grantBytes) as unknown[];
   if (!Array.isArray(cose) || cose.length !== 4) {
@@ -86,7 +88,9 @@ export function statementKidBytesFromForestrieGrantBase64(
   if (!(payload instanceof Uint8Array)) {
     throw new Error("Forestrie-Grant COSE payload must be bstr");
   }
-  const map = decodeCbor(payload) as Map<number, Uint8Array> | Record<number, unknown>;
+  const map = decodeCbor(payload) as
+    | Map<number, Uint8Array>
+    | Record<number, unknown>;
   const gd =
     map instanceof Map ? map.get(6) : (map as Record<number, unknown>)[6];
   if (!(gd instanceof Uint8Array) || gd.length === 0) {

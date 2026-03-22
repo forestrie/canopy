@@ -2,14 +2,11 @@
 /**
  * Verify register-grant and register-signed-statement flow against a deployed API.
  * Reports each step: health, mint, register, poll, resolve, POST entry.
- * Usage: BASE_URL=https://api-dev.forestrie.dev pnpm run verify:grant-flow
+ * Usage: CANOPY_BASE_URL=https://api-dev.forestrie.dev pnpm run verify:grant-flow
  *        Optional: LOG_ID=uuid (default 123e4567-e89b-12d3-a456-426614174000)
  */
 
-const BASE_URL = (process.env.BASE_URL ?? process.env.CANOPY_E2E_BASE_URL ?? "").replace(
-  /\/$/,
-  "",
-);
+const BASE_URL = (process.env.CANOPY_BASE_URL ?? "").replace(/\/$/, "");
 const LOG_ID = process.env.LOG_ID ?? "123e4567-e89b-12d3-a456-426614174000";
 const POLL_MAX = parseInt(process.env.POLL_MAX ?? "60", 10);
 const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS ?? "500", 10);
@@ -21,7 +18,7 @@ function step(name: string, ok: boolean, detail: string): void {
 
 async function main(): Promise<void> {
   if (!BASE_URL) {
-    console.error("Set BASE_URL (or CANOPY_E2E_BASE_URL) to the API base URL (e.g. https://api-dev.forestrie.dev)");
+    console.error("Set CANOPY_BASE_URL to the API base URL (e.g. https://api-dev.forestrie.dev)");
     process.exit(1);
   }
 

@@ -4,21 +4,18 @@
 # Provides sustained load testing using constant-arrival-rate executor.
 # Complements the burst-oriented smoke tests in scrapi.yml.
 #
-# Note: We use CANOPY_PERF_ prefix (not K6_) for environment variables to
-# avoid conflicts with k6's built-in environment variable handling.
+# Required: CANOPY_BASE_URL, SCRAPI_API_KEY, CANOPY_PERF_LOG_IDS (or CANOPY_PERF_LOG_ID for a single log).
+# Optional tuning vars keep the CANOPY_PERF_ prefix (not K6_) to avoid k6 built-in env conflicts.
 
 version: "3"
 
 vars:
   K6_DIR: "{{.ROOT_DIR}}/perf/k6/canopy-api"
-  # Required vars (must be set via env or CLI)
-  CANOPY_PERF_BASE_URL: '{{.CANOPY_PERF_BASE_URL | default ""}}'
-  CANOPY_PERF_API_TOKEN: '{{.CANOPY_PERF_API_TOKEN | default "test-api-key"}}'
+  CANOPY_BASE_URL: '{{.CANOPY_BASE_URL | default ""}}'
+  SCRAPI_API_KEY: '{{.SCRAPI_API_KEY | default ""}}'
   CANOPY_PERF_LOG_ID: '{{.CANOPY_PERF_LOG_ID | default ""}}'
-  # Comma-separated log IDs (required for scenario; if only LOG_ID set, script sets LOG_IDS from it)
   CANOPY_PERF_LOG_IDS: '{{.CANOPY_PERF_LOG_IDS | default .CANOPY_PERF_LOG_ID}}'
   CANOPY_PERF_LOG_COUNT: '{{.CANOPY_PERF_LOG_COUNT | default "1"}}'
-  # Optional vars with defaults
   CANOPY_PERF_RATE: '{{.CANOPY_PERF_RATE | default "10"}}'
   CANOPY_PERF_DURATION: '{{.CANOPY_PERF_DURATION | default "3m"}}'
   CANOPY_PERF_WARMUP: '{{.CANOPY_PERF_WARMUP | default "30s"}}'
@@ -37,15 +34,12 @@ tasks:
         fi
         k6 version
 
-  # ---------------------------------------------------------------------------
-  # write:rate - Main sustained write test at configurable rate
-  # ---------------------------------------------------------------------------
   write:rate:
     desc: "Run k6 write test at specified rate (CANOPY_PERF_RATE, default 10). Generate grant pool first: CANOPY_PERF_LOG_IDS=id1,id2 pnpm --filter @canopy/perf run generate-grant-pool"
     deps: [check]
     env:
-      CANOPY_PERF_BASE_URL: "{{.CANOPY_PERF_BASE_URL}}"
-      CANOPY_PERF_API_TOKEN: "{{.CANOPY_PERF_API_TOKEN}}"
+      CANOPY_BASE_URL: "{{.CANOPY_BASE_URL}}"
+      SCRAPI_API_KEY: "{{.SCRAPI_API_KEY}}"
       CANOPY_PERF_LOG_ID: "{{.CANOPY_PERF_LOG_ID}}"
       CANOPY_PERF_LOG_IDS: "{{.CANOPY_PERF_LOG_IDS}}"
       CANOPY_PERF_LOG_COUNT: "{{.CANOPY_PERF_LOG_COUNT}}"
@@ -56,8 +50,12 @@ tasks:
       CANOPY_PERF_SAMPLE_RATE: "{{.CANOPY_PERF_SAMPLE_RATE}}"
     cmds:
       - |
-        if [ -z "$CANOPY_PERF_BASE_URL" ]; then
-          echo "CANOPY_PERF_BASE_URL is required" >&2
+        if [ -z "$CANOPY_BASE_URL" ]; then
+          echo "CANOPY_BASE_URL is required" >&2
+          exit 1
+        fi
+        if [ -z "$SCRAPI_API_KEY" ]; then
+          echo "SCRAPI_API_KEY is required" >&2
           exit 1
         fi
         if [ -z "$CANOPY_PERF_LOG_IDS" ]; then
@@ -70,9 +68,6 @@ tasks:
         fi
         k6 run "{{.K6_DIR}}/scenarios/write-constant-arrival.js"
 
-  # ---------------------------------------------------------------------------
-  # Convenience targets for specific rates
-  # ---------------------------------------------------------------------------
   write:10:
     desc: "Sustained write test at 10 req/s"
     cmds:
@@ -122,15 +117,12 @@ tasks:
         vars:
           CANOPY_PERF_RATE: "300"
 
-  # ---------------------------------------------------------------------------
-  # Quick smoke test - low rate, short duration
-  # ---------------------------------------------------------------------------
   write:smoke:
     desc: "Quick smoke test: 5 req/s for 30s. Generate grant pool first (see write:rate)."
     deps: [check]
     env:
-      CANOPY_PERF_BASE_URL: "{{.CANOPY_PERF_BASE_URL}}"
-      CANOPY_PERF_API_TOKEN: "{{.CANOPY_PERF_API_TOKEN}}"
+      CANOPY_BASE_URL: "{{.CANOPY_BASE_URL}}"
+      SCRAPI_API_KEY: "{{.SCRAPI_API_KEY}}"
       CANOPY_PERF_LOG_ID: "{{.CANOPY_PERF_LOG_ID}}"
       CANOPY_PERF_LOG_IDS: "{{.CANOPY_PERF_LOG_IDS}}"
       CANOPY_PERF_LOG_COUNT: "{{.CANOPY_PERF_LOG_COUNT}}"
@@ -141,8 +133,12 @@ tasks:
       CANOPY_PERF_SAMPLE_RATE: "0"
     cmds:
       - |
-        if [ -z "$CANOPY_PERF_BASE_URL" ]; then
-          echo "CANOPY_PERF_BASE_URL is required" >&2
+        if [ -z "$CANOPY_BASE_URL" ]; then
+          echo "CANOPY_BASE_URL is required" >&2
+          exit 1
+        fi
+        if [ -z "$SCRAPI_API_KEY" ]; then
+          echo "SCRAPI_API_KEY is required" >&2
           exit 1
         fi
         if [ -z "$CANOPY_PERF_LOG_IDS" ]; then
@@ -155,14 +151,11 @@ tasks:
         fi
         k6 run "{{.K6_DIR}}/scenarios/write-constant-arrival.js"
 
-  # ---------------------------------------------------------------------------
-  # Local development targets (uses wrangler dev URL)
-  # ---------------------------------------------------------------------------
   write:local:smoke:
     desc: "Quick smoke test against local wrangler dev (port 8789). Create grant pool first against local API."
     env:
-      CANOPY_PERF_BASE_URL: "http://localhost:8789"
-      CANOPY_PERF_API_TOKEN: "test-api-key"
+      CANOPY_BASE_URL: "http://localhost:8789"
+      SCRAPI_API_KEY: "test-api-key"
       CANOPY_PERF_LOG_ID: "550e8400-e29b-41d4-a716-446655440000"
       CANOPY_PERF_LOG_IDS: "550e8400-e29b-41d4-a716-446655440000"
       CANOPY_PERF_LOG_COUNT: "1"
@@ -174,7 +167,7 @@ tasks:
       - task: check
       - |
         if [ ! -f "{{.K6_DIR}}/data/grant-pool.json" ]; then
-          echo "Create grant pool first: CANOPY_PERF_BASE_URL=http://localhost:8789 CANOPY_PERF_API_TOKEN=test-api-key CANOPY_PERF_LOG_IDS=550e8400-e29b-41d4-a716-446655440000 pnpm --filter @canopy/perf run generate-grant-pool"
+          echo "Create grant pool first: CANOPY_BASE_URL=http://localhost:8789 SCRAPI_API_KEY=test-api-key CANOPY_PERF_LOG_IDS=550e8400-e29b-41d4-a716-446655440000 pnpm --filter @canopy/perf run generate-grant-pool"
           exit 1
         fi
         k6 run "{{.K6_DIR}}/scenarios/write-constant-arrival.js"

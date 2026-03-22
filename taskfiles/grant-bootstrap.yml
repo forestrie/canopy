@@ -7,8 +7,8 @@ version: "3"
 vars:
   ROOT_DIR: "{{.ROOT_DIR | default .}}"
   GRANT_DATA_DIR: '{{.GRANT_DATA_DIR | default "perf/data"}}'
-  CANOPY_PERF_BASE_URL: '{{.CANOPY_PERF_BASE_URL | default .BASE_URL}}'
-  CANOPY_PERF_API_TOKEN: '{{.CANOPY_PERF_API_TOKEN | default .API_TOKEN}}'
+  CANOPY_BASE_URL: "{{.CANOPY_BASE_URL}}"
+  SCRAPI_API_KEY: "{{.SCRAPI_API_KEY}}"
   ROOT_LOG_ID: '{{.ROOT_LOG_ID}}'
   POLL_MAX: '{{.POLL_MAX | default "120"}}'
   POLL_INTERVAL_MS: '{{.POLL_INTERVAL_MS | default "500"}}'
@@ -21,8 +21,9 @@ tasks:
         mkdir -p "{{.GRANT_DATA_DIR}}"
         BODY='{}'
         [ -n "{{.ROOT_LOG_ID}}" ] && BODY='{"rootLogId":"{{.ROOT_LOG_ID}}"}'
-        curl -sS -X POST "{{.CANOPY_PERF_BASE_URL}}/api/grants/bootstrap" \
+        curl -sS -X POST "{{.CANOPY_BASE_URL}}/api/grants/bootstrap" \
           -H "Content-Type: application/json" \
+          -H "Authorization: Bearer {{.SCRAPI_API_KEY}}" \
           -d "$BODY" \
           -o "{{.GRANT_DATA_DIR}}/bootstrap-grant.b64"
         if [ ! -s "{{.GRANT_DATA_DIR}}/bootstrap-grant.b64" ]; then
@@ -37,7 +38,7 @@ tasks:
     cmds:
       - |
         GRANT_B64=$(cat "{{.GRANT_DATA_DIR}}/bootstrap-grant.b64")
-        LOCATION=$(curl -sS -D - -X POST "{{.CANOPY_PERF_BASE_URL}}/logs/{{.ROOT_LOG_ID}}/grants" \
+        LOCATION=$(curl -sS -D - -X POST "{{.CANOPY_BASE_URL}}/logs/{{.ROOT_LOG_ID}}/grants" \
           -H "Authorization: Forestrie-Grant $GRANT_B64" \
           -o /dev/null 2>&1 | grep -i "^Location:" | sed 's/Location: *//' | tr -d '\r\n')
         if [ -z "$LOCATION" ]; then
@@ -51,8 +52,8 @@ tasks:
     desc: "Poll status URL until 303 to receipt; save receipt URL"
     deps: [register]
     env:
-      CANOPY_PERF_BASE_URL: "{{.CANOPY_PERF_BASE_URL}}"
-      CANOPY_PERF_API_TOKEN: "{{.CANOPY_PERF_API_TOKEN}}"
+      CANOPY_BASE_URL: "{{.CANOPY_BASE_URL}}"
+      SCRAPI_API_KEY: "{{.SCRAPI_API_KEY}}"
     cmds:
       - |
         STATUS_URL=$(cat "{{.GRANT_DATA_DIR}}/status-url.txt")
@@ -64,8 +65,7 @@ tasks:
     desc: "GET receipt, build completed grant, save to completed-root-grant.b64"
     deps: [poll]
     env:
-      CANOPY_PERF_BASE_URL: "{{.CANOPY_PERF_BASE_URL}}"
-      CANOPY_PERF_API_TOKEN: "{{.CANOPY_PERF_API_TOKEN}}"
+      SCRAPI_API_KEY: "{{.SCRAPI_API_KEY}}"
     cmds:
       - |
         RECEIPT_URL=$(cat "{{.GRANT_DATA_DIR}}/receipt-url.txt")
@@ -73,7 +73,7 @@ tasks:
         echo "Saved completed grant to {{.GRANT_DATA_DIR}}/completed-root-grant.b64"
 
   bootstrap:
-    desc: "Full bootstrap mint register poll resolve (requires ROOT_LOG_ID, CANOPY_PERF_BASE_URL, CANOPY_PERF_API_TOKEN)"
+    desc: "Full bootstrap mint register poll resolve (requires ROOT_LOG_ID, CANOPY_BASE_URL, SCRAPI_API_KEY)"
     deps: [resolve]
     cmds:
       - |

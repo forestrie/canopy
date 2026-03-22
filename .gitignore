@@ -4,9 +4,9 @@ node_modules
 .pnpm-store
 
 # Environment
-.env.secrets
-.env.local
-.env.*.local
+.old.*
+.env.*
+.env
 
 # Build outputs
 dist

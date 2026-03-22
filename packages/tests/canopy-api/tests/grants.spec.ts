@@ -5,10 +5,6 @@ import {
   reportProblemDetails,
 } from "./utils/problem-details";
 import {
-  skipIfBootstrapMintUnavailable,
-  skipIfRegisterGrantUnavailable,
-} from "./utils/bootstrap-availability";
-import {
   buildCompletedGrant,
   statementKidBytesFromForestrieGrantBase64,
 } from "./utils/grant-completion";
@@ -16,29 +12,24 @@ import { pollUntilReceiptUrl } from "./utils/grant-flow-poll";
 
 /**
  * Grant lifecycle after bootstrap mint: register-grant, poll, receipt, register-statement.
- * Depends on sequencing queue + bootstrap/univocity env for first grant on a log.
+ * Requires a full deployment: delegation-signer, sequencing queue + consumer, univocity as configured.
  */
 test.describe("Grants — register and statement auth", () => {
   test("Forestrie-Grant flow: mint, register, poll, resolve, POST /entries", async ({
     unauthorizedRequest,
   }, testInfo) => {
     const logId = "123e4567-e89b-12d3-a456-426614174000";
-    const baseURL = testInfo.project.use.baseURL ?? "http://127.0.0.1:8789";
+    const baseURL = testInfo.project.use.baseURL ?? "";
 
-    const mintRes = await unauthorizedRequest.post(
-      "/api/grants/bootstrap",
-      {
-        data: JSON.stringify({ rootLogId: logId }),
-        headers: { "content-type": "application/json" },
-      },
-    );
-    skipIfBootstrapMintUnavailable(
-      mintRes.status(),
-      testInfo.project.name,
-    );
+    const mintRes = await unauthorizedRequest.post("/api/grants/bootstrap", {
+      data: JSON.stringify({ rootLogId: logId }),
+      headers: { "content-type": "application/json" },
+    });
 
     const problemMint = await reportProblemDetails(mintRes, test.info());
-    expect(mintRes.status(), formatProblemDetailsMessage(problemMint)).toBe(201);
+    expect(mintRes.status(), formatProblemDetailsMessage(problemMint)).toBe(
+      201,
+    );
     const grantBase64 = await mintRes.text();
 
     const registerRes = await unauthorizedRequest.post(
@@ -50,23 +41,13 @@ test.describe("Grants — register and statement auth", () => {
         maxRedirects: 0,
       },
     );
-    skipIfRegisterGrantUnavailable(
-      registerRes.status(),
-      baseURL,
-      testInfo.project.name,
-    );
-
-    if (registerRes.status() === 503) {
-      test.skip(
-        true,
-        "Sequencing DO not reachable in local wrangler dev (grant enqueued only when forestrie-ingress DO connects).",
-      );
-    }
 
     const problemReg = await reportProblemDetails(registerRes, test.info());
-    expect(registerRes.status(), formatProblemDetailsMessage(problemReg)).toBe(
-      303,
-    );
+    expect(
+      registerRes.status(),
+      `${formatProblemDetailsMessage(problemReg) ?? "register-grant"} — expected 303 See Other (enqueued); fix worker queue / sequencing / DO wiring`,
+    ).toBe(303);
+
     let statusUrl = registerRes.headers()["location"];
     if (!statusUrl?.startsWith("http")) {
       statusUrl = `${baseURL}${statusUrl!.startsWith("/") ? "" : "/"}${statusUrl}`;
@@ -77,18 +58,17 @@ test.describe("Grants — register and statement auth", () => {
       statusUrl!,
       baseURL,
     );
-    if (!receiptUrl) {
-      test.skip(
-        true,
-        "Poll timeout (queue not processing grants, or status URL unreachable).",
-      );
-    }
+    expect(
+      receiptUrl,
+      "Status poll did not reach a receipt URL in time. Ensure SEQUENCING_QUEUE is drained (consumer running) and status URLs are reachable.",
+    ).not.toBeNull();
 
     const receiptRes = await unauthorizedRequest.get(receiptUrl!);
     const problemReceipt = await reportProblemDetails(receiptRes, test.info());
-    expect(receiptRes.status(), formatProblemDetailsMessage(problemReceipt)).toBe(
-      200,
-    );
+    expect(
+      receiptRes.status(),
+      formatProblemDetailsMessage(problemReceipt),
+    ).toBe(200);
     const receiptBytes = receiptRes.body();
     const completedBase64 = buildCompletedGrant(
       grantBase64,
@@ -96,7 +76,8 @@ test.describe("Grants — register and statement auth", () => {
       new Uint8Array(receiptBytes),
     );
 
-    const signerKid = statementKidBytesFromForestrieGrantBase64(completedBase64);
+    const signerKid =
+      statementKidBytesFromForestrieGrantBase64(completedBase64);
     const mockCoseSign1 = cbor.encode([
       cbor.encode(new Map([[4, Buffer.from(signerKid)]])),
       new Map(),

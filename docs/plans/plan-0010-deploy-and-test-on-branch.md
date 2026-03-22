@@ -14,10 +14,10 @@ This doc explains the GitHub Actions that affect deployment and how to get a **f
 |----------|---------|--------------|
 | **Tests** | Push/PR to `main` | Lint, unit tests, perf lib tests, e2e **local** (no deploy). |
 | **Deploy Workers** | **Push to `main`** (path-filtered) **or** **workflow_dispatch** | Deploys canopy-api, delegation-signer, forestrie-ingress, x402-settlement to Cloudflare (dev or prod). On success, runs **Smoke test**. |
-| **Smoke Test** | Called by Deploy Workers, or **workflow_dispatch** | Runs `task scrapi:smoke:N` against an environment (dev/prod). Uses `ENV` and dotenv (`.env`, `.env.{{ENV}}`) for `SCRAPI_BASE_URL` and `SCRAPI_API_KEY`. |
+| **Smoke Test** | Called by Deploy Workers, or **workflow_dispatch** | Runs `task scrapi:smoke:N` against an environment (dev/prod). Uses `ENV` and dotenv (`.env`, `.env.{{ENV}}`) for `CANOPY_FQDN`, `TEST_SCRAPI_LOG_PATH`, and `SCRAPI_API_KEY`. |
 | **Cloudflare Infrastructure** | **workflow_dispatch** only | Creates/destroys Cloudflare infra (R2, queues, etc.) via `task cf:bootstrap`. |
 | **Release** | Push of tag `v*` | Deploys to **production** (with approval), then smoke. |
-| **Performance Tests** | **workflow_dispatch** only | Runs k6 against dev/prod using `perf/.env.dev` or `perf/.env.prod`; generates grant pool then load test. |
+| **Performance Tests** | **workflow_dispatch** only | Runs k6 against dev/prod using Doppler-hydrated repo-root `.env` in CI; generates grant pool then load test. |
 
 Important: **automatic deploy runs only on push to `main`**. Your branch is not deployed unless you run **Deploy Workers** manually and select your branch.
 
@@ -72,13 +72,13 @@ ENV=dev task scrapi:smoke:3
 `task` loads dotenv from `.env` and `.env.{{ENV}}` (e.g. `.env.dev`). So for smoke to hit your deployed dev API:
 
 - **`.env.dev`** (committed) must set:
-  - `SCRAPI_BASE_URL` – base URL for the dev canopy-api (e.g. `https://api-dev.forestrie.dev/logs/<logId>` or your dev worker URL).
+  - `CANOPY_FQDN` and `TEST_SCRAPI_LOG_PATH` – scrapi tasks build the log base as `https://<fqdn><path>` (e.g. `api-dev.forestrie.dev` + `/logs/<logId>`).
   - `SCRAPI_API_KEY` – API key the dev deployment accepts.
 
 If your dev deployment uses a different URL (e.g. a Workers subdomain), either:
 
-- Update `.env.dev` in your branch so `SCRAPI_BASE_URL` points at that deployment, and push, then re-run Deploy Workers from that branch so smoke uses the new URL; or  
-- Run smoke manually from your machine with the right env (e.g. `SCRAPI_BASE_URL=... SCRAPI_API_KEY=... ENV=dev task scrapi:smoke:3`).
+- Update `.env.dev` in your branch so `CANOPY_FQDN` / `TEST_SCRAPI_LOG_PATH` match that deployment, and push, then re-run Deploy Workers from that branch so smoke uses the new target; or  
+- Run smoke manually from your machine with the right env (e.g. `CANOPY_FQDN=... TEST_SCRAPI_LOG_PATH=... SCRAPI_API_KEY=... ENV=dev task scrapi:smoke:3`).
 
 ### 2.4 Running e2e against your deployed branch
 
@@ -88,13 +88,13 @@ After deploying your branch to dev:
 2. Run e2e with **remote** project and that URL:
 
    ```bash
-   CANOPY_E2E_BASE_URL=https://<your-dev-canopy-api-url> pnpm run test:e2e:remote
+   CANOPY_BASE_URL=https://<your-dev-canopy-api-url> pnpm run test:e2e:remote
    ```
 
    Or run only the grant-flow test:
 
    ```bash
-   cd packages/tests/canopy-api && CANOPY_E2E_BASE_URL=https://<your-dev-canopy-api-url> pnpm exec playwright test --project=remote -g "grant flow"
+   cd packages/tests/canopy-api && CANOPY_BASE_URL=https://<your-dev-canopy-api-url> pnpm exec playwright test --project=remote -g "grant flow"
    ```
 
 For the **grant flow** e2e to pass (not skip), the dev deployment must have:
@@ -111,8 +111,8 @@ For the **grant flow** e2e to pass (not skip), the dev deployment must have:
 - [ ] **Secrets:** Repo has `CLOUDFLARE_API_TOKEN`; for prod canopy-api, `CDP_API_KEY_ID` and `CDP_API_KEY_SECRET` if you use CDP.
 - [ ] **Branch pushed:** Your branch is pushed to the remote.
 - [ ] **Deploy Workers:** Run **Deploy Workers** manually, select **your branch**, environment **dev**, and (if you want) all apps or only the ones you changed.
-- [ ] **Smoke:** After deploy, the Smoke test job runs automatically; it uses `.env.dev` (from the branch you deployed). If smoke fails, check `SCRAPI_BASE_URL` and `SCRAPI_API_KEY` in `.env.dev` and that the deployed workers are healthy.
-- [ ] **E2E (optional):** Run e2e remote with `CANOPY_E2E_BASE_URL` set to your dev canopy-api URL; for grant flow, ensure delegation-signer and queue (and consumer) are configured in that environment.
+- [ ] **Smoke:** After deploy, the Smoke test job runs automatically; it uses `.env.dev` (from the branch you deployed). If smoke fails, check `CANOPY_FQDN`, `TEST_SCRAPI_LOG_PATH`, and `SCRAPI_API_KEY` in `.env.dev` and that the deployed workers are healthy.
+- [ ] **E2E (optional):** Run e2e remote with `CANOPY_BASE_URL` set to your dev canopy-api URL; for grant flow, ensure delegation-signer and queue (and consumer) are configured in that environment.
 
 **Local bootstrap without GCP KMS:** You can run the full bootstrap flow locally using a test-only key. See [ADR-0002](../adr-0002-delegation-signer-local-test-key.md): start delegation-signer with `task wrangler:dev:delegation-signer` (test-key mode), set canopy-api `DELEGATION_SIGNER_URL=http://localhost:8791`, `DELEGATION_SIGNER_BEARER_TOKEN=test`, `ROOT_LOG_ID=…`, then run `task wrangler:dev` and `pnpm run verify:grant-flow` or e2e local.
 

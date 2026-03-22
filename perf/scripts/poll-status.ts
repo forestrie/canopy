@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
  * Poll a grant/statement status URL until 303 to receipt URL.
- * Usage: BASE_URL=... API_TOKEN=... tsx poll-status.ts <statusUrl> [maxPolls] [pollIntervalMs]
+ * Usage: CANOPY_BASE_URL=... SCRAPI_API_KEY=... tsx poll-status.ts <statusUrl> [maxPolls] [pollIntervalMs]
  * Output: receipt URL (full) to stdout, or exit 1 on timeout.
  */
 
-const baseUrl = process.env.CANOPY_PERF_BASE_URL?.replace(/\/$/, "") ?? process.env.BASE_URL?.replace(/\/$/, "");
-const apiToken = process.env.CANOPY_PERF_API_TOKEN ?? process.env.API_TOKEN;
+const baseUrl = process.env.CANOPY_BASE_URL?.replace(/\/$/, "");
+const apiToken = process.env.SCRAPI_API_KEY?.trim();
 const args = process.argv.slice(2).filter((a) => a !== "--");
 const statusUrlArg = args[0];
 const maxPolls = parseInt(args[1] ?? process.env.POLL_MAX ?? "120", 10);
@@ -23,14 +23,18 @@ const statusUrl = statusUrlArg.startsWith("http")
   : `${baseUrl}${statusUrlArg.startsWith("/") ? "" : "/"}${statusUrlArg}`;
 
 if (!baseUrl && !statusUrlArg.startsWith("http")) {
-  console.error("Set CANOPY_PERF_BASE_URL (or BASE_URL) when statusUrl is path-only");
+  console.error("Set CANOPY_BASE_URL when statusUrl is path-only");
   process.exit(1);
 }
 
-const headers: Record<string, string> = {};
-if (apiToken) {
-  headers["Authorization"] = `Bearer ${apiToken}`;
+if (!apiToken) {
+  console.error("SCRAPI_API_KEY is required");
+  process.exit(1);
 }
+
+const headers: Record<string, string> = {
+  Authorization: `Bearer ${apiToken}`,
+};
 
 async function poll(): Promise<string | null> {
   for (let i = 0; i < maxPolls; i++) {

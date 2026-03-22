@@ -25,6 +25,8 @@ jobs:
   wrangler:
     name: Wrangler ${{ inputs.action }}
     runs-on: ubuntu-latest
+    # Doppler → GitHub sync: **dev** maps to Doppler `dev`.
+    environment: dev
 
     steps:
       - name: Checkout
@@ -78,7 +80,7 @@ jobs:
         if: inputs.action == 'apply'
         env:
           R2_ADMIN: ${{ secrets.R2_ADMIN }}
-          CLOUDFLARE_ACCOUNT_ID: "68f25af297c4235c3f1c47b2f73925b0"
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           R2_BUCKET_NAME: ${{ inputs.canopy_id }}-leaves
         run: |
           echo "Configuring CORS for R2 bucket ${R2_BUCKET_NAME}"

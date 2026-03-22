@@ -1,53 +1,41 @@
 import { defineConfig } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import dotenv from "dotenv";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-process.env.CANOPY_E2E_API_TOKEN ??= "test-api";
-
-const LOCAL_PORT = Number(
-  process.env.CANOPY_E2E_LOCAL_PORT ?? detectWranglerPort() ?? 8789,
-);
-
 const repoRoot = resolve(__dirname, "../../..");
+const envPath = resolve(repoRoot, ".env");
 
-/** Remote project hits an existing deployment; do not start wrangler (avoids port/inspector clashes). */
-function shouldStartLocalWebServer(): boolean {
-  if (process.env.CANOPY_E2E_DISABLE_WEBSERVER === "true") {
-    return false;
-  }
-  const a = process.argv;
-  for (let i = 0; i < a.length; i++) {
-    const arg = a[i];
-    if (arg === "--project" && a[i + 1] === "remote") {
-      return false;
-    }
-    if (arg.startsWith("--project=") && arg.slice("--project=".length) === "remote") {
-      return false;
-    }
-  }
-  return true;
+function stripExportPrefixes(raw: string) {
+  return raw.replace(/^\s*export\s+/gm, "");
 }
 
-/** Fast iteration: only canopy-api (no signer / univocity stub); bootstrap tests skip or fail soft. */
-const useLightLocalStack = process.env.CANOPY_E2E_LIGHT_STACK === "true";
+if (existsSync(envPath)) {
+  const parsed = dotenv.parse(
+    stripExportPrefixes(readFileSync(envPath, "utf8")),
+  );
+  for (const [k, v] of Object.entries(parsed)) {
+    process.env[k] = v;
+  }
+} else if (!process.env.CI) {
+  throw new Error(
+    "Missing repo-root .env. Run `task vars:doppler:dev` (or vars:doppler:prod), " +
+      "or create .env at the repository root before running Playwright.",
+  );
+}
 
-const localWebServer = useLightLocalStack
-  ? {
-      command: "pnpm --filter @canopy/api dev -- --test-scheduled",
-      port: LOCAL_PORT,
-      reuseExistingServer: true,
-      timeout: 60_000,
-    }
-  : {
-      cwd: repoRoot,
-      command: `node ${resolve(repoRoot, "scripts/start-e2e-local-stack.mjs")}`,
-      port: LOCAL_PORT,
-      reuseExistingServer: false,
-      timeout: 120_000,
-    };
+const baseURL = (() => {
+  const raw = process.env.CANOPY_BASE_URL?.trim();
+  if (!raw) {
+    throw new Error(
+      "CANOPY_BASE_URL is not set. For local runs use repo-root .env; " +
+        "in CI export it in the job environment (e.g. GitHub Environment variables).",
+    );
+  }
+  return raw.replace(/\/$/, "");
+})();
 
 export default defineConfig({
   testDir: "./tests",
@@ -58,40 +46,12 @@ export default defineConfig({
   reporter: process.env.CI
     ? [["html", { outputFolder: "playwright-report" }]]
     : "list",
-  ...(shouldStartLocalWebServer() ? { webServer: localWebServer } : {}),
   projects: [
     {
-      name: "local",
+      name: "dev",
       use: {
-        baseURL: `http://127.0.0.1:${LOCAL_PORT}`,
-      },
-    },
-    {
-      name: "remote",
-      use: {
-        baseURL:
-          process.env.CANOPY_E2E_BASE_URL ??
-          //"https://canopy-api-robin-dev.dev.forestrie.com",
-          // "https://canopy-api-robin-dev.dev.forestrie.com",
-          "https://canopy-api.robinbryce.workers.dev",
+        baseURL,
       },
     },
   ],
 });
-
-function detectWranglerPort(): number | undefined {
-  try {
-    const wranglerConfigPath = resolve(
-      __dirname,
-      "../../apps/canopy-api/wrangler.jsonc",
-    );
-    const raw = readFileSync(wranglerConfigPath, "utf8");
-    const match = raw.match(/"port"\s*:\s*(\d+)/);
-    if (match) {
-      return Number.parseInt(match[1], 10);
-    }
-  } catch {
-    // ignore - fall through to default
-  }
-  return undefined;
-}

@@ -24,12 +24,11 @@ Run `task tools:check` to verify installation.
 2. Enable R2 in your account
 3. Create API tokens with specific permissions (see [docs/CLOUDFLARE_TOKENS.md](docs/CLOUDFLARE_TOKENS.md)):
 
-4. Add your API tokens to `.env.secrets`:
+4. Hydrate **repo-root `.env`** (gitignored) from Doppler (see `taskfiles/vars.yml`), e.g.:
    ```bash
-   cp .env.example.secrets .env.secrets
-   # Edit .env.secrets and add your tokens:
-   # R2_ADMIN, R2_WRITER, R2_READER, QUEUE_ADMIN
+   task vars:doppler:dev
    ```
+   Include tokens such as **`R2_ADMIN`**, **`R2_WRITER`**, **`R2_READER`**, **`QUEUE_ADMIN`** in that Doppler config (or add them to `.env` if you maintain it by hand).
 
 ### 2. Infrastructure Bootstrap
 
@@ -48,10 +47,7 @@ task cloudflare:status --summary
 
 ## Environment Variables
 
-The project uses a two-file environment configuration:
-
-- `.env` - Non-sensitive configuration (committed)
-- `.env.secrets` - Sensitive credentials (git-ignored)
+Local automation and Task read **repo-root `.env` only** (`Taskfile.dist.yml` → `dotenv: [".env"]`; file is gitignored). Hydrate it with **`task vars:doppler:dev`** / **`vars:doppler:prod`** or edit by hand.
 
 Key variables:
 
@@ -91,7 +87,7 @@ per day is typically sufficient.
 
 ### 3. Configure the Private Key
 
-Add the dev wallet's private key to `.env.secrets`:
+Add the dev wallet's private key to **`.env`**:
 
 ```bash
 # Shared x402 dev payer wallet (Base Sepolia)
@@ -121,7 +117,7 @@ CANOPY_X402_DEV_DAILY_CLAIM_USDC=100
 
 ### 5. Automated Faucet Refill (Optional)
 
-To automate faucet funding, configure CDP API credentials in `.env.secrets`:
+To automate faucet funding, configure CDP API credentials in **`.env`**:
 
 ```bash
 CDP_API_KEY_ID=your-cdp-api-key-id

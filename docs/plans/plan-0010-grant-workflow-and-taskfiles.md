@@ -44,7 +44,7 @@ Re-use: poll status and resolve receipt are shared between bootstrap and grant-p
 ### 4.1 grant-shared.yml
 
 - **Purpose:** Shared variables and small, reusable tasks used by both bootstrap and grant-pool.
-- **Vars (examples):** `BASE_URL`, `API_TOKEN`, `ROOT_LOG_ID`, `MASSIF_HEIGHT`, paths for data dir (e.g. `perf/data`), timeout and poll interval for status polling.
+- **Vars (examples):** `CANOPY_BASE_URL`, `SCRAPI_API_KEY`, `ROOT_LOG_ID`, `MASSIF_HEIGHT`, paths for data dir (e.g. `perf/data`), timeout and poll interval for status polling.
 - **Tasks:**
   - **poll-status** – Given a status URL (and base URL + token), GET in a loop until 303 to a URL ending with `/receipt`; output the receipt URL (e.g. to a file or stdout). Implement via a small script (Node/TS or shell + curl) invoked by the task.
   - **resolve-receipt** – Given a receipt URL (and base URL + token), GET the receipt, decode entryId to idtimestamp, build completed transparent statement from original grant + idtimestamp + receipt, write base64 to a file (or stdout). Implement via a script; task passes receipt URL and paths.
@@ -56,7 +56,7 @@ Scripts can live under `perf/scripts/` (e.g. `poll-status.ts`, `resolve-receipt-
 
 - **Purpose:** Mint the bootstrap grant, register it for the root log, poll until sequenced, resolve receipt, and save the completed grant. No server-side storage; all outputs are files (or artifacts in CI).
 - **Tasks:**
-  - **mint** – Call POST /api/grants/bootstrap; save response body to a file (e.g. `{{.GRANT_DATA_DIR}}/bootstrap-grant.b64`). Requires BASE_URL, API_TOKEN (if needed for any middleware), and delegation-signer configured on the server (ROOT_LOG_ID etc. in server env).
+  - **mint** – Call POST /api/grants/bootstrap; save response body to a file (e.g. `{{.GRANT_DATA_DIR}}/bootstrap-grant.b64`). Requires `CANOPY_BASE_URL`, `SCRAPI_API_KEY`, and delegation-signer configured on the server (ROOT_LOG_ID etc. in server env).
   - **register** – POST /logs/{{.ROOT_LOG_ID}}/grants with Forestrie-Grant from the file saved by mint. Parse 303 Location and save status URL to a file (e.g. `status-url.txt`). Depends on mint (or a pre-existing bootstrap grant file).
   - **poll** – Call poll-status task (from grant-shared) with the status URL from register. Save receipt URL to a file. Depends on register.
   - **resolve** – Call resolve-receipt task (from grant-shared) with the receipt URL from poll and the original bootstrap grant file; write completed grant base64 to e.g. `{{.GRANT_DATA_DIR}}/completed-root-grant.b64`. Depends on poll.
@@ -101,8 +101,8 @@ includes:
 ## 5. generate-grant-pool script
 
 - **Role:** Implement the HTTP and COSE logic: call POST /api/grants/bootstrap (or per-log mint), POST register-grant, poll status URL, GET receipt URL, build completed transparent statement, write grant-pool.json.
-- **Invocation:** Either called by taskfiles (e.g. `grant:pool` runs `pnpm --filter @canopy/perf run generate-grant-pool` with env set by the task) or run standalone with env vars (CANOPY_PERF_BASE_URL, CANOPY_PERF_API_TOKEN, CANOPY_PERF_LOG_IDS, etc.).
-- **Inputs:** Base URL, API token, list of log IDs; optionally path to existing bootstrap/completed grant file (for root) to avoid re-minting.
+- **Invocation:** Either called by taskfiles (e.g. `grant:pool` runs `pnpm --filter @canopy/perf run generate-grant-pool` with env set by the task) or run standalone with env vars (CANOPY_BASE_URL, SCRAPI_API_KEY, CANOPY_PERF_LOG_IDS, etc.).
+- **Inputs:** `CANOPY_BASE_URL`, `SCRAPI_API_KEY`, list of log IDs; optionally path to existing bootstrap/completed grant file (for root) to avoid re-minting.
 - **Outputs:** `perf/k6/canopy-api/data/grant-pool.json` with structure k6 expects: e.g. `{ "signer": "<hex>", "grants": [ { "logId": "...", "grantBase64": "..." } ] }`.
 - **Per-log grant (Option A):** POST /api/grants/bootstrap accepts optional body `{ "rootLogId": "<logId>" }`. The script calls it once per log, then register-grant + poll + resolve for each, and writes grant-pool.json.
 
@@ -116,7 +116,7 @@ Each step is independently verifiable. Implement in order; run verification befo
 | **6.2** | **API: stop storing; remove GET** | `bootstrap-grant.ts`: remove R2 get/put; always return 201 with body (base64). `index.ts`: remove GET /grants/bootstrap/... or return 404. | handlePostBootstrapGrant does not call r2Grants. GET /grants/bootstrap/:id returns 404. |
 | **6.3** | **perf/scripts: poll-status** | Add `perf/scripts/poll-status.ts`: args = baseUrl, apiToken, statusUrl, maxPolls, pollIntervalMs; GET until 303 to URL ending `/receipt`; print receipt URL. | Run against known status URL or mock; exits 0 with receipt URL or non-zero on timeout. |
 | **6.4** | **perf/scripts: resolve-receipt-to-grant** | Add `perf/scripts/resolve-receipt-to-grant.ts`: GET receipt, decode entryId to idtimestamp, build COSE with headers -65537 and 396, write base64 to output. | Run with real receipt URL and grant file; output is valid COSE with both headers. |
-| **6.5** | **grant-shared.yml** | Add `taskfiles/grant-shared.yml`: vars (BASE_URL, API_TOKEN, GRANT_DATA_DIR, MASSIF_HEIGHT, POLL_*); tasks poll-status, resolve-receipt invoking scripts. | `task grant-shared:poll-status` and resolve-receipt run with required vars. |
+| **6.5** | **grant-shared.yml** | Add `taskfiles/grant-shared.yml`: vars (CANOPY_BASE_URL, SCRAPI_API_KEY, GRANT_DATA_DIR, MASSIF_HEIGHT, POLL_*); tasks poll-status, resolve-receipt invoking scripts. | `task grant-shared:poll-status` and resolve-receipt run with required vars. |
 | **6.6** | **grant-bootstrap.yml** | Add `taskfiles/grant-bootstrap.yml`: includes grant-shared; tasks mint, register, poll, resolve, bootstrap. | `task grant-bootstrap:mint` saves file; `task grant-bootstrap:bootstrap` e2e when server is up. |
 | **6.7** | **grant.yml** | Add `taskfiles/grant.yml`: includes grant-shared; tasks single, pool (per log: mint with body rootLogId, register, poll, resolve; write grant-pool.json). | `task grant:single` with one log; `task grant:pool` produces grant-pool.json. |
 | **6.8** | **Wire taskfiles** | `Taskfile.dist.yml`: add includes for grant-shared, grant-bootstrap, grant. | `task --list` shows grant and grant-bootstrap tasks. |
@@ -145,7 +145,7 @@ Run everything that does not require a Cloudflare deployment first; add or adjus
 1. **Unit:** Run `pnpm -r test` (canopy-api bootstrap tests pass).
 2. **Unit (perf):** Add `perf/lib/grant-completion.ts` (extract from scripts) + `perf/lib/grant-completion.test.ts`; run `pnpm --filter @canopy/perf test`.
 3. **E2E local:** Run `pnpm run test:e2e:local`; grant test skips gracefully when delegation-signer or queue missing.
-4. **Integration (optional):** Start `pnpm --filter @canopy/api dev`, then `task grant-bootstrap:mint` with `CANOPY_PERF_BASE_URL=http://localhost:8789`; assert bootstrap-grant.b64 exists.
+4. **Integration (optional):** Start `pnpm --filter @canopy/api dev`, then `task grant-bootstrap:mint` with `CANOPY_BASE_URL=http://localhost:8789` and `SCRAPI_API_KEY=...`; assert bootstrap-grant.b64 exists.
 
 **CI without deploy:** Run unit tests + perf unit tests + e2e with project=local (webServer starts API). Grant e2e skips if bootstrap or register returns 5xx. No smoke against remote until after deploy.
 

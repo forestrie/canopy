@@ -5,7 +5,7 @@
  * build completed grant; write grant-pool.json with grantBase64 per log and signer hex.
  *
  * Usage:
- *   CANOPY_PERF_BASE_URL=... CANOPY_PERF_API_TOKEN=... CANOPY_PERF_LOG_IDS=uuid1,uuid2,... \
+ *   CANOPY_BASE_URL=... SCRAPI_API_KEY=... CANOPY_PERF_LOG_IDS=uuid1,uuid2,... \
  *   pnpm --filter @canopy/perf run generate-grant-pool
  *
  * Output: perf/k6/canopy-api/data/grant-pool.json
@@ -17,22 +17,19 @@ import { fileURLToPath } from "url";
 import { decode as decodeCbor } from "cbor-x";
 import {
   buildCompletedGrant,
-  extractEntryIdFromReceiptUrl,
   signerHexFromGrantPayload,
 } from "../lib/grant-completion.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const BASE_URL = process.env.CANOPY_PERF_BASE_URL?.replace(/\/$/, "");
-const API_TOKEN = process.env.CANOPY_PERF_API_TOKEN;
+const BASE_URL = process.env.CANOPY_BASE_URL?.replace(/\/$/, "");
+const API_TOKEN = process.env.SCRAPI_API_KEY?.trim();
 const LOG_IDS_RAW = process.env.CANOPY_PERF_LOG_IDS;
 const POLL_MAX = parseInt(process.env.POLL_MAX ?? "120", 10);
 const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS ?? "500", 10);
 
 if (!BASE_URL || !API_TOKEN || !LOG_IDS_RAW) {
-  console.error(
-    "Required: CANOPY_PERF_BASE_URL, CANOPY_PERF_API_TOKEN, CANOPY_PERF_LOG_IDS",
-  );
+  console.error("Required: CANOPY_BASE_URL, SCRAPI_API_KEY, CANOPY_PERF_LOG_IDS");
   process.exit(1);
 }
 
@@ -77,7 +74,7 @@ for (const logId of LOG_IDS) {
 
   const mintRes = await fetch(`${BASE_URL}/api/grants/bootstrap`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify({ rootLogId: logId }),
   });
   if (!mintRes.ok) {

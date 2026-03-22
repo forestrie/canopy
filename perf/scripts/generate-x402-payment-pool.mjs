@@ -7,8 +7,8 @@
  * runtime for secp256k1 signing.
  *
  * Usage:
- *   CANOPY_PERF_BASE_URL=... \
- *   CANOPY_PERF_API_TOKEN=... \
+ *   CANOPY_BASE_URL=... \
+ *   SCRAPI_API_KEY=... \
  *   CANOPY_PERF_LOG_ID=... \
  *   CANOPY_X402_DEV_PRIVATE_KEY=... \
  *   CANOPY_PERF_POOL_SIZE=... \
@@ -28,8 +28,8 @@ import { fileURLToPath } from "url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Configuration from environment
-const BASE_URL = process.env.CANOPY_PERF_BASE_URL;
-const API_TOKEN = process.env.CANOPY_PERF_API_TOKEN;
+const BASE_URL = process.env.CANOPY_BASE_URL;
+const API_TOKEN = process.env.SCRAPI_API_KEY?.trim();
 const LOG_ID = process.env.CANOPY_PERF_LOG_ID;
 const PRIVATE_KEY = process.env.CANOPY_X402_DEV_PRIVATE_KEY;
 const POOL_SIZE = parseInt(process.env.CANOPY_PERF_POOL_SIZE || "10000", 10);
@@ -40,8 +40,8 @@ const VALIDITY_SECONDS = parseInt(
 
 if (!BASE_URL || !API_TOKEN || !LOG_ID || !PRIVATE_KEY) {
   console.error("Required environment variables:");
-  console.error("  CANOPY_PERF_BASE_URL");
-  console.error("  CANOPY_PERF_API_TOKEN");
+  console.error("  CANOPY_BASE_URL");
+  console.error("  SCRAPI_API_KEY");
   console.error("  CANOPY_PERF_LOG_ID");
   console.error("  CANOPY_X402_DEV_PRIVATE_KEY");
   process.exit(1);
