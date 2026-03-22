@@ -55,7 +55,9 @@ describe("statementSignerBindingBytes", () => {
     const gd = new Uint8Array(64);
     for (let i = 0; i < 64; i++) gd[i] = i;
     const a = assembly({ grantData: gd });
-    expect([...statementSignerBindingBytes(a)]).toEqual([...gd.subarray(0, 32)]);
+    expect([...statementSignerBindingBytes(a)]).toEqual([
+      ...gd.subarray(0, 32),
+    ]);
   });
 
   it("uses full grantData when shorter than 64", () => {

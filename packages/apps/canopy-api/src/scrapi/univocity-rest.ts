@@ -42,10 +42,13 @@ export async function getLogConfig(
   if (!base) {
     throw new Error("UNIVOCITY_SERVICE_URL not configured");
   }
-  const res = await fetch(`${base}/api/logs/${encodeURIComponent(logId)}/config`, {
-    method: "GET",
-    headers: { Accept: "application/json" },
-  });
+  const res = await fetch(
+    `${base}/api/logs/${encodeURIComponent(logId)}/config`,
+    {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    },
+  );
   if (res.status === 404) return null;
   if (!res.ok) {
     throw new Error(`Univocity GET /api/logs/config failed: ${res.status}`);

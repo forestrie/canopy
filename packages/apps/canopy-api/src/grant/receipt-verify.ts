@@ -118,22 +118,24 @@ export function parseReceipt(receiptBytes: Uint8Array): {
     throw new Error("Receipt missing header 396 (inclusion proof)");
   }
   const proofsMap = proofsRaw as Map<number, unknown> | Record<number, unknown>;
-  const proofList = (proofsMap instanceof Map
-    ? proofsMap.get(-1)
-    : (proofsMap as Record<number, unknown>)[-1]) as unknown[] | undefined;
+  const proofList = (
+    proofsMap instanceof Map
+      ? proofsMap.get(-1)
+      : (proofsMap as Record<number, unknown>)[-1]
+  ) as unknown[] | undefined;
   if (!Array.isArray(proofList) || proofList.length === 0) {
     throw new Error("Receipt proof -1 must be non-empty array");
   }
   const entry = proofList[0] as Record<number, unknown> | Map<number, unknown>;
-  const mmrIndexRaw = entry instanceof Map ? entry.get(1) : (entry as Record<number, unknown>)[1];
-  const pathRaw = entry instanceof Map ? entry.get(2) : (entry as Record<number, unknown>)[2];
+  const mmrIndexRaw =
+    entry instanceof Map ? entry.get(1) : (entry as Record<number, unknown>)[1];
+  const pathRaw =
+    entry instanceof Map ? entry.get(2) : (entry as Record<number, unknown>)[2];
   if (mmrIndexRaw === undefined || !Array.isArray(pathRaw)) {
     throw new Error("Proof entry must have 1: mmrIndex, 2: path");
   }
   const mmrIndex =
-    typeof mmrIndexRaw === "bigint"
-      ? mmrIndexRaw
-      : BigInt(Number(mmrIndexRaw));
+    typeof mmrIndexRaw === "bigint" ? mmrIndexRaw : BigInt(Number(mmrIndexRaw));
   const path = pathRaw.map((h: unknown) => {
     if (!(h instanceof Uint8Array) || h.length !== 32) {
       throw new Error("Proof path elements must be 32-byte hashes");
@@ -163,8 +165,16 @@ export async function verifyReceiptInclusion(
   }
   const idtimestamp =
     idtimestampBytes.length === 8
-      ? new DataView(idtimestampBytes.buffer, idtimestampBytes.byteOffset, 8).getBigUint64(0, false)
-      : new DataView(idtimestampBytes.buffer, idtimestampBytes.byteOffset + idtimestampBytes.length - 8, 8).getBigUint64(0, false);
+      ? new DataView(
+          idtimestampBytes.buffer,
+          idtimestampBytes.byteOffset,
+          8,
+        ).getBigUint64(0, false)
+      : new DataView(
+          idtimestampBytes.buffer,
+          idtimestampBytes.byteOffset + idtimestampBytes.length - 8,
+          8,
+        ).getBigUint64(0, false);
   const leafHash = await univocityLeafHash(idtimestamp, inner);
 
   const { root, proof } = parseReceipt(receiptBytes);
@@ -187,8 +197,16 @@ export async function verifyReceiptInclusionFromParsed(
   }
   const idtimestamp =
     idtimestampBytes.length === 8
-      ? new DataView(idtimestampBytes.buffer, idtimestampBytes.byteOffset, 8).getBigUint64(0, false)
-      : new DataView(idtimestampBytes.buffer, idtimestampBytes.byteOffset + idtimestampBytes.length - 8, 8).getBigUint64(0, false);
+      ? new DataView(
+          idtimestampBytes.buffer,
+          idtimestampBytes.byteOffset,
+          8,
+        ).getBigUint64(0, false)
+      : new DataView(
+          idtimestampBytes.buffer,
+          idtimestampBytes.byteOffset + idtimestampBytes.length - 8,
+          8,
+        ).getBigUint64(0, false);
   const leafHash = await univocityLeafHash(idtimestamp, inner);
   const hasher = new SubtleHasher();
   return verifyInclusion(hasher, leafHash, proof, root);
@@ -207,7 +225,11 @@ export async function verifyGrantReceipt(
   },
 ): Promise<boolean> {
   const { coseSign1 } = parseReceipt(receiptBytes);
-  const inclusionOk = await verifyReceiptInclusion(grant, idtimestampBytes, receiptBytes);
+  const inclusionOk = await verifyReceiptInclusion(
+    grant,
+    idtimestampBytes,
+    receiptBytes,
+  );
   if (!inclusionOk) return false;
   if (options?.verifySignature) {
     return options.verifySignature(coseSign1);

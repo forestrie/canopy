@@ -26,12 +26,7 @@ function transparentStatementHeader(grant: Grant): string {
     [HEADER_IDTIMESTAMP, IDTIMESTAMP_ZEROS],
   ]);
   const signature = new Uint8Array(64);
-  const coseSign1 = [
-    PROTECTED_EMPTY,
-    unprotected,
-    payloadBytes,
-    signature,
-  ];
+  const coseSign1 = [PROTECTED_EMPTY, unprotected, payloadBytes, signature];
   const bytes = new Uint8Array(encodeCbor(coseSign1));
   const base64 = btoa(String.fromCharCode(...bytes));
   return `Forestrie-Grant ${base64}`;

@@ -131,12 +131,7 @@ describe("MMR Algorithms", () => {
       const wrongRoot = new Uint8Array(32);
       wrongRoot[0] = 0xff;
 
-      const isValid = await verifyInclusion(
-        hasher,
-        leafHash,
-        proof,
-        wrongRoot,
-      );
+      const isValid = await verifyInclusion(hasher, leafHash, proof, wrongRoot);
       expect(isValid).toBe(false);
     });
 

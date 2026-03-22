@@ -80,7 +80,8 @@ export interface BootstrapMintEnv {
  */
 function publicKeyToGrantData64(keyBytes: Uint8Array): Uint8Array {
   if (keyBytes.length === 64) return keyBytes;
-  if (keyBytes.length === 65 && keyBytes[0] === 0x04) return keyBytes.slice(1, 65);
+  if (keyBytes.length === 65 && keyBytes[0] === 0x04)
+    return keyBytes.slice(1, 65);
   throw new Error(
     `Bootstrap public key must be 64 bytes (x||y) or 65 bytes (04||x||y) for ES256 grantData; got ${keyBytes.length}`,
   );
@@ -97,16 +98,20 @@ export interface BootstrapMintBody {
 /**
  * Parse request body for optional rootLogId/logId. Returns undefined if body empty or missing.
  */
-async function parseBootstrapBody(request: Request): Promise<BootstrapMintBody | undefined> {
+async function parseBootstrapBody(
+  request: Request,
+): Promise<BootstrapMintBody | undefined> {
   const ct = request.headers.get("Content-Type") ?? "";
   if (!ct.includes("application/json")) {
     return undefined;
   }
   try {
     const body = (await request.json()) as Record<string, unknown>;
-    const rootLogId = typeof body?.rootLogId === "string" ? body.rootLogId : undefined;
+    const rootLogId =
+      typeof body?.rootLogId === "string" ? body.rootLogId : undefined;
     const logId = typeof body?.logId === "string" ? body.logId : undefined;
-    const alg = typeof body?.alg === "string" ? body.alg.trim().toUpperCase() : undefined;
+    const alg =
+      typeof body?.alg === "string" ? body.alg.trim().toUpperCase() : undefined;
     if (!rootLogId && !logId && alg === undefined) return undefined;
     return {
       rootLogId: rootLogId ?? logId,
@@ -163,7 +168,8 @@ export async function handlePostBootstrapGrant(
   try {
     const publicKeyEnv = {
       delegationSignerUrl: env.delegationSignerUrl,
-      delegationSignerPublicKeyToken: env.delegationSignerPublicKeyToken ?? env.delegationSignerBearerToken,
+      delegationSignerPublicKeyToken:
+        env.delegationSignerPublicKeyToken ?? env.delegationSignerBearerToken,
       bootstrapAlg: alg,
     };
     const { publicKeyBytes } = await getBootstrapPublicKey(publicKeyEnv);
@@ -241,7 +247,12 @@ export async function handlePostBootstrapGrant(
   const unprotected = new Map<number, unknown>([
     [HEADER_IDTIMESTAMP, IDTIMESTAMP_ZEROS],
   ]);
-  const coseSign1 = [PROTECTED_EMPTY, unprotected, payloadBytes, signatureBytes];
+  const coseSign1 = [
+    PROTECTED_EMPTY,
+    unprotected,
+    payloadBytes,
+    signatureBytes,
+  ];
   const transparentStatement = new Uint8Array(encodeCbor(coseSign1));
 
   const base64 = btoa(String.fromCharCode(...transparentStatement));

@@ -76,7 +76,11 @@ export function encodeGrantForResponse(
   for (let i = 0; i < IDTIMESTAMP_BYTES; i++) b.push(idts[i]!);
   b.push(CBOR_KEY_LOG_ID, CBOR_BSTR_LEN32_LEAD, WIRE_LOG_ID_OWNER_LOG_ID_BYTES);
   for (let i = 0; i < WIRE_LOG_ID_OWNER_LOG_ID_BYTES; i++) b.push(logId32[i]!);
-  b.push(CBOR_KEY_OWNER_LOG_ID, CBOR_BSTR_LEN32_LEAD, WIRE_LOG_ID_OWNER_LOG_ID_BYTES);
+  b.push(
+    CBOR_KEY_OWNER_LOG_ID,
+    CBOR_BSTR_LEN32_LEAD,
+    WIRE_LOG_ID_OWNER_LOG_ID_BYTES,
+  );
   for (let i = 0; i < WIRE_LOG_ID_OWNER_LOG_ID_BYTES; i++)
     b.push(ownerLogId32[i]!);
   b.push(CBOR_KEY_GRANT_FLAGS, CBOR_BSTR_LEN_8);
@@ -106,7 +110,10 @@ export function decodeGrantResponse(bytes: Uint8Array): {
     m instanceof Map ? m.get(k) : (m as Record<number, unknown>)[k];
 
   const idtimestampVal = get(CBOR_KEY_IDTIMESTAMP);
-  if (!(idtimestampVal instanceof Uint8Array) || idtimestampVal.length < IDTIMESTAMP_BYTES) {
+  if (
+    !(idtimestampVal instanceof Uint8Array) ||
+    idtimestampVal.length < IDTIMESTAMP_BYTES
+  ) {
     throw new Error("Grant response: key 0 must be 8-byte bstr");
   }
   const idtimestamp = new Uint8Array(IDTIMESTAMP_BYTES);
@@ -190,9 +197,7 @@ function mapToGrant(m: Map<number, unknown> | Record<number, unknown>): Grant {
   const minGrowth = requireUint(get(CBOR_KEY_MIN_GROWTH));
   const grantDataRaw = get(CBOR_KEY_GRANT_DATA);
   const grantData =
-    grantDataRaw instanceof Uint8Array
-      ? grantDataRaw
-      : new Uint8Array(0);
+    grantDataRaw instanceof Uint8Array ? grantDataRaw : new Uint8Array(0);
 
   return {
     logId,

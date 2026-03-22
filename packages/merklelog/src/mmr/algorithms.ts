@@ -119,12 +119,7 @@ export async function verifyInclusion(
 
   const leafIdx =
     proof.leafIndex !== undefined ? proof.leafIndex : proof.mmrIndex!;
-  const calculatedRoot = await calculateRoot(
-    hasher,
-    leafHash,
-    proof,
-    leafIdx,
-  );
+  const calculatedRoot = await calculateRoot(hasher, leafHash, proof, leafIdx);
 
   return arraysEqual(calculatedRoot, root);
 }
@@ -147,8 +142,5 @@ export function verifyConsistency(
   root2: Uint8Array,
 ): boolean {
   // TODO: Implement full consistency check (verify proof2 extends proof1)
-  return (
-    arraysEqual(root1, root1) &&
-    arraysEqual(root2, root2)
-  );
+  return arraysEqual(root1, root1) && arraysEqual(root2, root2);
 }

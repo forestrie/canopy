@@ -134,8 +134,7 @@ describe("SCRAPI flow", () => {
       new Uint8Array(64),
     ]) as Uint8Array;
     const authHeader =
-      "Forestrie-Grant " +
-      btoa(String.fromCharCode(...transparentStatement));
+      "Forestrie-Grant " + btoa(String.fromCharCode(...transparentStatement));
 
     const payload = new Uint8Array([0x48, 0x65, 0x6c, 0x6c, 0x6f]); // "Hello"
     const coseSign1 = encodeCoseSign1Statement(

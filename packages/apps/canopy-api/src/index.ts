@@ -117,23 +117,15 @@ export default {
       }
 
       // Subplan 08 / Plan 0010: POST /api/grants/bootstrap (no auth, no storage)
-      if (
-        pathname === "/api/grants/bootstrap" &&
-        request.method === "POST"
-      ) {
+      if (pathname === "/api/grants/bootstrap" && request.method === "POST") {
         const delegationSignerUrl = env.DELEGATION_SIGNER_URL;
         const token = env.DELEGATION_SIGNER_BEARER_TOKEN;
         if (!delegationSignerUrl || !token) {
-          return problemResponse(
-            503,
-            "Service Unavailable",
-            "about:blank",
-            {
-              detail:
-                "Bootstrap grant mint not configured (DELEGATION_SIGNER_URL, DELEGATION_SIGNER_BEARER_TOKEN required)",
-              headers: corsHeaders,
-            },
-          );
+          return problemResponse(503, "Service Unavailable", "about:blank", {
+            detail:
+              "Bootstrap grant mint not configured (DELEGATION_SIGNER_URL, DELEGATION_SIGNER_BEARER_TOKEN required)",
+            headers: corsHeaders,
+          });
         }
         const response = await handlePostBootstrapGrant(request, {
           rootLogId: env.ROOT_LOG_ID,
@@ -156,15 +148,11 @@ export default {
         segments[1] === "bootstrap" &&
         request.method === "GET"
       ) {
-        return problemResponse(
-          404,
-          "Not Found",
-          "about:blank",
-          {
-            detail: "Bootstrap grants are not stored; use POST /api/grants/bootstrap and save the response",
-            headers: corsHeaders,
-          },
-        );
+        return problemResponse(404, "Not Found", "about:blank", {
+          detail:
+            "Bootstrap grants are not stored; use POST /api/grants/bootstrap and save the response",
+          headers: corsHeaders,
+        });
       }
 
       // Health check
@@ -223,17 +211,19 @@ export default {
                 delegationSignerBearerToken: env.DELEGATION_SIGNER_BEARER_TOKEN,
                 delegationSignerPublicKeyToken:
                   env.DELEGATION_SIGNER_PUBLIC_KEY_TOKEN,
-                bootstrapAlg: env.BOOTSTRAP_ALG as "ES256" | "KS256" | undefined,
+                bootstrapAlg: env.BOOTSTRAP_ALG as
+                  | "ES256"
+                  | "KS256"
+                  | undefined,
                 univocityServiceUrl: univocityUrl,
               }
             : undefined;
-        const queueEnv =
-          env.SEQUENCING_QUEUE
-            ? {
-                sequencingQueue: env.SEQUENCING_QUEUE,
-                shardCountStr: env.QUEUE_SHARD_COUNT,
-              }
-            : undefined;
+        const queueEnv = env.SEQUENCING_QUEUE
+          ? {
+              sequencingQueue: env.SEQUENCING_QUEUE,
+              shardCountStr: env.QUEUE_SHARD_COUNT,
+            }
+          : undefined;
         const response = await registerGrant(request, segments[1], {
           queueEnv,
           bootstrapEnv,
@@ -252,13 +242,12 @@ export default {
         if (request.method === "POST") {
           // POST /logs/{logId}/entries - Register new statement
           // Grant-based auth is required (Step 5); x402 payment removed (Plan 0001 Step 4).
-          const inclusionEnv =
-            env.SEQUENCING_QUEUE
-              ? {
-                  sequencingQueue: env.SEQUENCING_QUEUE,
-                  shardCountStr: env.QUEUE_SHARD_COUNT,
-                }
-              : undefined;
+          const inclusionEnv = env.SEQUENCING_QUEUE
+            ? {
+                sequencingQueue: env.SEQUENCING_QUEUE,
+                shardCountStr: env.QUEUE_SHARD_COUNT,
+              }
+            : undefined;
           const response = await registerSignedStatement(
             request,
             segments[1],

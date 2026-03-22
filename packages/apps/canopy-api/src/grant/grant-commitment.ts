@@ -54,10 +54,7 @@ function grantCommitmentPreimage(grant: Grant): Uint8Array {
   const flags32 = grantFlags32(grant.grant as Uint8Array);
   const maxHeight = grant.maxHeight ?? 0;
   const minGrowth = grant.minGrowth ?? 0;
-  const ownerLogId = leftPad(
-    grant.ownerLogId as Uint8Array,
-    LOG_ID_BYTES,
-  );
+  const ownerLogId = leftPad(grant.ownerLogId as Uint8Array, LOG_ID_BYTES);
   const grantData = grantDataToBytes(grant.grantData ?? new Uint8Array(0));
 
   const total =
@@ -98,7 +95,9 @@ export async function grantCommitmentHashFromGrant(
 /**
  * Encode grant commitment hash bytes as lowercase hex (for status URL path).
  */
-export function grantCommitmentHashToHex(grantCommitmentHash: Uint8Array): string {
+export function grantCommitmentHashToHex(
+  grantCommitmentHash: Uint8Array,
+): string {
   return Array.from(grantCommitmentHash)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");

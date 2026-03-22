@@ -83,8 +83,12 @@ function mapKmsError(err: unknown): Response {
   return ServerErrors.badGateway(detail ?? `KMS error (${status})`);
 }
 
-function bootstrapKeyRef(env: DelegateGrantEnv, alg: BootstrapAlg): KmsKeyVersionRef {
-  const cryptoKey = alg === "KS256" ? env.KMS_KEY_SECP256K1 : env.KMS_KEY_SECP256R1;
+function bootstrapKeyRef(
+  env: DelegateGrantEnv,
+  alg: BootstrapAlg,
+): KmsKeyVersionRef {
+  const cryptoKey =
+    alg === "KS256" ? env.KMS_KEY_SECP256K1 : env.KMS_KEY_SECP256R1;
   return {
     projectId: env.FOREST_PROJECT_ID,
     location: env.GCP_LOCATION,

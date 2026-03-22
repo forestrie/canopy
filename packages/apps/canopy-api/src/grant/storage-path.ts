@@ -6,7 +6,9 @@
 /**
  * Compute content-addressable storage path for encoded grant bytes (v0).
  */
-export async function grantStoragePath(encodedGrantBytes: Uint8Array): Promise<string> {
+export async function grantStoragePath(
+  encodedGrantBytes: Uint8Array,
+): Promise<string> {
   const hashBytes = await crypto.subtle.digest("SHA-256", encodedGrantBytes);
   const hashHex = Array.from(new Uint8Array(hashBytes))
     .map((b) => b.toString(16).padStart(2, "0"))

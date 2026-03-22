@@ -35,7 +35,9 @@ function publicKeyToSpkiDer(
   if (uncompressed65.length !== 65 || uncompressed65[0] !== 0x04) {
     throw new Error("Expected 65-byte uncompressed public key (04||x||y)");
   }
-  const oidEcPublicKey = new Uint8Array([0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01]);
+  const oidEcPublicKey = new Uint8Array([
+    0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01,
+  ]);
   const algIdSeq = new Uint8Array([
     0x30,
     5 + oidEcPublicKey.length + 2 + curveOid.length,
@@ -62,7 +64,9 @@ function publicKeyToSpkiDer(
 }
 
 const OID_SECP256K1 = new Uint8Array([0x2b, 0x81, 0x04, 0x00, 0x0a]);
-const OID_P256 = new Uint8Array([0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07]); // 1.2.840.10045.3.1.7
+const OID_P256 = new Uint8Array([
+  0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07,
+]); // 1.2.840.10045.3.1.7
 
 let cachedPrivateKey: Uint8Array | null = null;
 let cachedPublicKeyDer: Uint8Array | null = null;

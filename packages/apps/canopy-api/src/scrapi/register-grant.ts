@@ -133,7 +133,10 @@ export async function registerGrant(
         }
         return await enqueueAndStoreGrant(request, grant, env, logId);
       } catch (e) {
-        console.warn("Bootstrap branch (verify ok, enqueue or key fetch failed)", e);
+        console.warn(
+          "Bootstrap branch (verify ok, enqueue or key fetch failed)",
+          e,
+        );
         return ServerErrors.serviceUnavailable(
           e instanceof Error
             ? e.message
@@ -201,7 +204,9 @@ async function enqueueAndStoreGrant(
 }
 
 /** Plan 0005: grant from Authorization: Forestrie-Grant only. */
-function resolveAuth(request: Request): { grantResult: GrantResult } | Response {
+function resolveAuth(
+  request: Request,
+): { grantResult: GrantResult } | Response {
   const result = getGrantFromRequest(request);
   if (result instanceof Response) return result;
   return { grantResult: result };

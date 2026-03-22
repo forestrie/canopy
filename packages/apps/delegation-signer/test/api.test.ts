@@ -390,7 +390,9 @@ describe("grant-delegate (Plan 0004 subplan 04)", () => {
     delete (env as any).DELEGATION_SIGNER_USE_TEST_KEY;
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toContain("application/x-pem-file");
+    expect(response.headers.get("content-type")).toContain(
+      "application/x-pem-file",
+    );
     expect(response.headers.get("x-key-algorithm")).toBe("ES256");
     const pem = await response.text();
     expect(pem).toContain("-----BEGIN PUBLIC KEY-----");
@@ -406,7 +408,9 @@ describe("grant-delegate (Plan 0004 subplan 04)", () => {
     delete (env as any).DELEGATION_SIGNER_USE_TEST_KEY;
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toContain("application/x-pem-file");
+    expect(response.headers.get("content-type")).toContain(
+      "application/x-pem-file",
+    );
     expect(response.headers.get("x-key-algorithm")).toBe("KS256");
     const pem = await response.text();
     expect(pem).toContain("-----BEGIN PUBLIC KEY-----");
@@ -560,7 +564,9 @@ describe("GET /api/public-key/:well-known (no auth)", () => {
 
   it("returns 200 and PEM with Bearer token (default ES256)", async () => {
     const fetchStub = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(typeof input === "string" ? input : (input as Request).url);
+      const url = String(
+        typeof input === "string" ? input : (input as Request).url,
+      );
       if (url.includes("/publicKey")) {
         return new Response(JSON.stringify({ pem: dummyPem }), {
           status: 200,
@@ -588,7 +594,9 @@ describe("GET /api/public-key/:well-known (no auth)", () => {
   it("returns 200 and PEM with ?alg=KS256 (secp256k1)", async () => {
     let requestedKey = "";
     const fetchStub = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(typeof input === "string" ? input : (input as Request).url);
+      const url = String(
+        typeof input === "string" ? input : (input as Request).url,
+      );
       if (url.includes("/publicKey")) {
         requestedKey = url;
         return new Response(JSON.stringify({ pem: dummyPem }), {
@@ -615,7 +623,9 @@ describe("GET /api/public-key/:well-known (no auth)", () => {
   it("returns 200 using DELEGATION_SIGNER_PUBLIC_KEY_ACCESS_TOKEN without Bearer", async () => {
     (env as any).DELEGATION_SIGNER_PUBLIC_KEY_ACCESS_TOKEN = "server-token";
     const fetchStub = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(typeof input === "string" ? input : (input as Request).url);
+      const url = String(
+        typeof input === "string" ? input : (input as Request).url,
+      );
       if (url.includes("/publicKey")) {
         return new Response(JSON.stringify({ pem: dummyPem }), {
           status: 200,

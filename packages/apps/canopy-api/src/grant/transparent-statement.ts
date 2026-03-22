@@ -17,7 +17,11 @@ function toHeaderMap(
   value: Map<number, unknown> | Record<string, unknown> | unknown,
 ): Map<number, unknown> {
   if (value instanceof Map) return value as Map<number, unknown>;
-  if (typeof value === "object" && value !== null && !(value instanceof Uint8Array)) {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    !(value instanceof Uint8Array)
+  ) {
     const out = new Map<number, unknown>();
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       const n = Number(k);
@@ -51,7 +55,8 @@ export function decodeTransparentStatement(bytes: Uint8Array): GrantResult {
 
   const idtimestampVal = unprotected.get(HEADER_IDTIMESTAMP);
   const idtimestamp: Uint8Array =
-    idtimestampVal instanceof Uint8Array && idtimestampVal.length >= IDTIMESTAMP_BYTES
+    idtimestampVal instanceof Uint8Array &&
+    idtimestampVal.length >= IDTIMESTAMP_BYTES
       ? idtimestampVal.length === IDTIMESTAMP_BYTES
         ? idtimestampVal
         : idtimestampVal.slice(-IDTIMESTAMP_BYTES)

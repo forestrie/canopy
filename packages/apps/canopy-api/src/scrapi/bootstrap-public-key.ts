@@ -4,10 +4,7 @@
  * Default alg is ES256 (P-256); KS256 (secp256k1) also supported.
  */
 
-import {
-  decodeCoseSign1,
-  encodeSigStructure,
-} from "@canopy/encoding";
+import { decodeCoseSign1, encodeSigStructure } from "@canopy/encoding";
 import { p256 } from "@noble/curves/p256.js";
 
 export type BootstrapAlg = "ES256" | "KS256";
@@ -27,7 +24,10 @@ export interface BootstrapPublicKeyResult {
 }
 
 /** Per-alg cache: parallel ES256/KS256 fetches must not clobber each other (e.g. Playwright workers). */
-const bootstrapPublicKeyByAlg = new Map<BootstrapAlg, BootstrapPublicKeyResult>();
+const bootstrapPublicKeyByAlg = new Map<
+  BootstrapAlg,
+  BootstrapPublicKeyResult
+>();
 
 /**
  * Extract 65-byte uncompressed EC public key (04||x||y) from SPKI DER.
@@ -37,7 +37,12 @@ const bootstrapPublicKeyByAlg = new Map<BootstrapAlg, BootstrapPublicKeyResult>(
 function extractUncompressed65FromEcSpkiDer(der: Uint8Array): Uint8Array {
   // Need index i where subarray(i+3, i+68) fits: i + 68 <= der.length → i <= der.length - 68
   for (let i = 0; i <= der.length - 68; i++) {
-    if (der[i] === 0x03 && der[i + 1] === 66 && der[i + 2] === 0x00 && der[i + 3] === 0x04) {
+    if (
+      der[i] === 0x03 &&
+      der[i + 1] === 66 &&
+      der[i + 2] === 0x00 &&
+      der[i + 3] === 0x04
+    ) {
       const key = new Uint8Array(65);
       key.set(der.subarray(i + 3, i + 68));
       return key;

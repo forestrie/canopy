@@ -24,7 +24,10 @@ function mockDelegationSignerAndPublicKey() {
       if (u.includes("/api/public-key") && u.includes("bootstrap")) {
         return Promise.resolve(
           new Response(
-            JSON.stringify({ x: `0x${MOCK_PUBKEY_X}`, y: `0x${MOCK_PUBKEY_Y}` }),
+            JSON.stringify({
+              x: `0x${MOCK_PUBKEY_X}`,
+              y: `0x${MOCK_PUBKEY_Y}`,
+            }),
             { status: 200, headers: { "Content-Type": "application/json" } },
           ),
         );
@@ -78,8 +81,14 @@ describe("handlePostBootstrapGrant", () => {
       expect(grantData!.length).toBe(64);
       const expectedGrantData = new Uint8Array(64);
       for (let i = 0; i < 32; i++) {
-        expectedGrantData[i] = parseInt(MOCK_PUBKEY_X.slice(i * 2, i * 2 + 2), 16);
-        expectedGrantData[32 + i] = parseInt(MOCK_PUBKEY_Y.slice(i * 2, i * 2 + 2), 16);
+        expectedGrantData[i] = parseInt(
+          MOCK_PUBKEY_X.slice(i * 2, i * 2 + 2),
+          16,
+        );
+        expectedGrantData[32 + i] = parseInt(
+          MOCK_PUBKEY_Y.slice(i * 2, i * 2 + 2),
+          16,
+        );
       }
       expect(Array.from(grantData!)).toEqual(Array.from(expectedGrantData));
     } finally {

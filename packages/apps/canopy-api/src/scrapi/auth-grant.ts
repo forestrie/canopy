@@ -69,7 +69,8 @@ export function getGrantFromRequest(request: Request): GrantResult | Response {
   try {
     return decodeTransparentStatement(bytes);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Invalid transparent statement";
+    const msg =
+      e instanceof Error ? e.message : "Invalid transparent statement";
     return ClientErrors.badRequest(msg);
   }
 }

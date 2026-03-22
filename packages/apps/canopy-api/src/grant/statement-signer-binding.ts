@@ -32,7 +32,8 @@ export function isStatementRegistrationGrant(grant: Grant): boolean {
 /**
  * @deprecated Use {@link isStatementRegistrationGrant}; kept for transitional imports.
  */
-export const isPublishCheckpointStatementAuthGrant = isStatementRegistrationGrant;
+export const isPublishCheckpointStatementAuthGrant =
+  isStatementRegistrationGrant;
 
 /**
  * Bytes to compare (equality) against the statement COSE `kid`.

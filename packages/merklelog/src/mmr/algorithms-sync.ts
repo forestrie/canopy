@@ -9,14 +9,14 @@
 import type { Hasher } from "./types.js";
 
 function concatChunks(chunks: Uint8Array[]): Uint8Array {
-    const totalLength = chunks.reduce((s, c) => s + c.length, 0);
-    const out = new Uint8Array(totalLength);
-    let offset = 0;
-    for (const c of chunks) {
-        out.set(c, offset);
-        offset += c.length;
-    }
-    return out;
+  const totalLength = chunks.reduce((s, c) => s + c.length, 0);
+  const out = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.length;
+  }
+  return out;
 }
 
 /**
@@ -27,20 +27,20 @@ function concatChunks(chunks: Uint8Array[]): Uint8Array {
  * Only available in Node.js; throws if node:crypto is not available.
  */
 export async function createSyncHasher(): Promise<Hasher> {
-    const { createHash } = await import("node:crypto");
-    const chunks: Uint8Array[] = [];
-    return {
-        reset(): void {
-            chunks.length = 0;
-        },
-        update(data: Uint8Array): void {
-            chunks.push(data);
-        },
-        digest(): Promise<Uint8Array> {
-            const combined = concatChunks(chunks);
-            const buf = Buffer.from(combined);
-            const out = createHash("sha256").update(buf).digest();
-            return Promise.resolve(new Uint8Array(out));
-        },
-    };
+  const { createHash } = await import("node:crypto");
+  const chunks: Uint8Array[] = [];
+  return {
+    reset(): void {
+      chunks.length = 0;
+    },
+    update(data: Uint8Array): void {
+      chunks.push(data);
+    },
+    digest(): Promise<Uint8Array> {
+      const combined = concatChunks(chunks);
+      const buf = Buffer.from(combined);
+      const out = createHash("sha256").update(buf).digest();
+      return Promise.resolve(new Uint8Array(out));
+    },
+  };
 }

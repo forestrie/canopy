@@ -692,7 +692,9 @@ export async function buildReceiptForEntry(
     const checkpointObject = await mmrs.get(checkpointKey);
     if (!checkpointObject) return null;
 
-    const checkpointBytes = new Uint8Array(await checkpointObject.arrayBuffer());
+    const checkpointBytes = new Uint8Array(
+      await checkpointObject.arrayBuffer(),
+    );
     const checkpointDecoded = decodeCbor(checkpointBytes) as unknown;
     const checkpoint = unwrapCoseSign1Tag(checkpointDecoded, "checkpoint");
     const checkpointSign1 = requireCoseSign1(checkpoint, "checkpoint");
@@ -730,7 +732,9 @@ export async function buildReceiptForEntry(
         }
         const peakIdx = peakStackMap.get(i);
         if (peakIdx === undefined) {
-          throw new Error(`missing ancestor peak for mmr index ${i.toString(10)}`);
+          throw new Error(
+            `missing ancestor peak for mmr index ${i.toString(10)}`,
+          );
         }
         const off = peakStackStart + BigInt(peakIdx) * 32n;
         return slice32(massifBytes, off, "peak-stack");
