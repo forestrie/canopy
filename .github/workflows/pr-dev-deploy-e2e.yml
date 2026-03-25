@@ -102,14 +102,18 @@ jobs:
       - name: Configure Custodian secrets and deploy canopy-api (dev)
         working-directory: packages/apps/canopy-api
         env:
-          CUSTODIAN_URL: ${{ vars.CUSTODIAN_URL }}
+          CUSTODIAN_URL_FROM_VAR: ${{ vars.CUSTODIAN_URL }}
+          CUSTODIAN_URL_FROM_SECRET: ${{ secrets.CUSTODIAN_URL }}
           CUSTODIAN_BOOTSTRAP_APP_TOKEN: ${{ secrets.CUSTODIAN_BOOTSTRAP_APP_TOKEN }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
-          URL=$(trim_ws "${CUSTODIAN_URL:-}")
+          URL=$(trim_ws "${CUSTODIAN_URL_FROM_VAR:-}")
           if [ -z "$URL" ]; then
-            echo "::error::CUSTODIAN_URL must be set in GitHub Environment **dev** (sync from Doppler vars)."
+            URL=$(trim_ws "${CUSTODIAN_URL_FROM_SECRET:-}")
+          fi
+          if [ -z "$URL" ]; then
+            echo "::error::CUSTODIAN_URL must be set in GitHub Environment **dev** (Doppler → var or secret)."
             exit 1
           fi
           if [ -z "$(trim_ws "${CUSTODIAN_BOOTSTRAP_APP_TOKEN:-}")" ]; then
