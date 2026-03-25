@@ -207,7 +207,30 @@ jobs:
             echo "CDP_API_KEY_ID or CDP_API_KEY_SECRET not set; skipping CDP secret configuration."
           fi
 
+      - name: Configure Custodian secrets and deploy canopy-api (dev)
+        if: matrix.target.app == 'canopy-api' && env.DEPLOY_ENV == 'dev'
+        working-directory: packages/apps/canopy-api
+        env:
+          CUSTODIAN_URL: ${{ vars.CUSTODIAN_URL }}
+          CUSTODIAN_BOOTSTRAP_APP_TOKEN: ${{ secrets.CUSTODIAN_BOOTSTRAP_APP_TOKEN }}
+        run: |
+          set -euo pipefail
+          trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+          URL=$(trim_ws "${CUSTODIAN_URL:-}")
+          if [ -z "$URL" ]; then
+            echo "::error::CUSTODIAN_URL must be set in GitHub Environment **dev** (Doppler → vars)."
+            exit 1
+          fi
+          if [ -z "$(trim_ws "${CUSTODIAN_BOOTSTRAP_APP_TOKEN:-}")" ]; then
+            echo "::error::CUSTODIAN_BOOTSTRAP_APP_TOKEN must be set in GitHub Environment **dev** secrets."
+            exit 1
+          fi
+          printf '%s' "$URL" | wrangler secret put CUSTODIAN_URL --env dev
+          printf '%s' "$CUSTODIAN_BOOTSTRAP_APP_TOKEN" | wrangler secret put CUSTODIAN_BOOTSTRAP_APP_TOKEN --env dev
+          wrangler deploy --env dev
+
       - name: Deploy ${{ matrix.target.app }} (${{ env.DEPLOY_ENV }})
+        if: matrix.target.app != 'canopy-api' || env.DEPLOY_ENV != 'dev'
         run: task wrangler:deploy:${{ matrix.target.app }} ENV=${{ env.DEPLOY_ENV }}
 
   health-check:
