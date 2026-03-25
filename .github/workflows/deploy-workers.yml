@@ -214,7 +214,11 @@ jobs:
     name: Smoke test (${{ needs.changes.outputs.environment }})
     needs: [changes, deploy]
     if: always() && needs.deploy.result == 'success'
+    # Caller must match target env so environment-scoped secrets (e.g. SCRAPI_API_KEY)
+    # are in scope for secrets: inherit into the reusable workflow.
+    environment: ${{ needs.changes.outputs.environment }}
     uses: ./.github/workflows/smoke-test.yml
+    secrets: inherit
     with:
       environment: ${{ needs.changes.outputs.environment }}
       test_count: 3
