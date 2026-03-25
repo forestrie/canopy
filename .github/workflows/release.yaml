@@ -62,10 +62,21 @@ jobs:
       - name: Deploy to Cloudflare (production)
         run: task deploy:prod
 
-  smoke-test:
-    name: Smoke test (prod)
+  health-check:
+    name: Health check (prod)
     needs: deploy-prod
-    uses: ./.github/workflows/smoke-test.yml
+    if: always() && needs.deploy-prod.result == 'success'
+    uses: ./.github/workflows/health-check.yml
+    secrets: inherit
     with:
       environment: prod
-      test_count: 3
+
+  api-e2e:
+    name: API e2e (prod, non-mutating)
+    needs: [deploy-prod, health-check]
+    if: always() && needs.deploy-prod.result == 'success' && needs.health-check.result == 'success'
+    uses: ./.github/workflows/api-e2e-playwright.yml
+    secrets: inherit
+    with:
+      environment: prod
+      playwright_project: prod

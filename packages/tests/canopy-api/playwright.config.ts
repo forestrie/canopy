@@ -60,7 +60,22 @@ export default defineConfig({
     : "list",
   projects: [
     {
+      name: "health",
+      testMatch: ["**/api.spec.ts", "**/observability.spec.ts"],
+      use: {
+        baseURL,
+      },
+    },
+    {
       name: "dev",
+      use: {
+        baseURL,
+      },
+    },
+    {
+      // Prod / release: excludes mutating bootstrap mint tests.
+      name: "prod",
+      testIgnore: ["**/grants-bootstrap.spec.ts"],
       use: {
         baseURL,
       },

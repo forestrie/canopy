@@ -1,0 +1,72 @@
+name: Health check
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: "GitHub Environment (dev / stage / prod) for vars and secrets"
+        required: true
+        type: string
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target GitHub Environment"
+        required: true
+        type: choice
+        options:
+          - dev
+          - stage
+          - prod
+        default: dev
+
+jobs:
+  health:
+    name: Health check (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.6.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Read-only API health (Playwright)
+        env:
+          CANOPY_FQDN: ${{ vars.CANOPY_FQDN }}
+          CANOPY_BASE_URL: ${{ vars.CANOPY_BASE_URL }}
+        run: |
+          set -euo pipefail
+          trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+          BASE="$(trim_ws "${CANOPY_BASE_URL:-}")"
+          if [ -n "$BASE" ]; then
+            export CANOPY_BASE_URL="${BASE%/}"
+          else
+            FQ=$(trim_ws "${CANOPY_FQDN:-}")
+            FQ="${FQ#https://}"
+            FQ="${FQ#http://}"
+            FQ="${FQ%%/*}"
+            FQ="${FQ%/}"
+            if [ -z "$FQ" ]; then
+              echo "::error::Set **CANOPY_BASE_URL** or **CANOPY_FQDN** in GitHub Environment **${{ inputs.environment }}**."
+              exit 1
+            fi
+            export CANOPY_BASE_URL="https://${FQ}"
+            export CANOPY_BASE_URL="${CANOPY_BASE_URL%/}"
+          fi
+          pnpm --filter @canopy/api-e2e exec playwright install chromium
+          pnpm --filter @canopy/api-e2e exec playwright test --project=health

@@ -5,10 +5,10 @@ import type { ProblemDetails } from "./problem-details";
  * Plan 0014: bootstrap mint requires Custodian on the Worker. Deployments that still
  * mention DELEGATION_SIGNER_* are behind this repo; unconfigured mint returns 503.
  *
- * Default: **skip** bootstrap e2e when mint responds 503 with a "not configured" body
- * so `task test:e2e` stays usable while a shared dev worker catches up.
+ * Default (no **`CI`**, no **`E2E_REQUIRE_BOOTSTRAP`**): **skip** when mint returns 503
+ * with a "not configured" body so local `task test:e2e` stays usable while dev catches up.
  *
- * Set **`E2E_REQUIRE_BOOTSTRAP=1`** (e.g. in CI once the target deployment is Custodian-backed)
+ * Set **`E2E_REQUIRE_BOOTSTRAP=1`** (or run with **`CI=true`**, e.g. GitHub Actions)
  * to **fail** instead of skip when bootstrap mint is unavailable.
  */
 export function skipOrThrowIfBootstrapMintUnconfigured(
@@ -21,6 +21,7 @@ export function skipOrThrowIfBootstrapMintUnconfigured(
   if (!/not configured/i.test(haystack)) return "ok";
 
   const strict =
+    process.env.CI === "true" ||
     process.env.E2E_REQUIRE_BOOTSTRAP === "1" ||
     process.env.E2E_REQUIRE_BOOTSTRAP === "true";
 

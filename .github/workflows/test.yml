@@ -1,16 +1,16 @@
 name: Tests
 
+# Pull requests: see **PR dev deploy and e2e** (`pr-dev-deploy-e2e.yml`) for
+# deploy + health + full e2e gating. This workflow runs on **main** only.
+
 on:
   push:
-    branches: [main]
-  pull_request:
     branches: [main]
 
 jobs:
   test:
     name: Test Suite
     runs-on: ubuntu-latest
-    # Doppler → GitHub sync: use the **dev** environment (maps to Doppler `dev`).
     environment: dev
 
     steps:
@@ -40,35 +40,11 @@ jobs:
       - name: Perf lib unit tests
         run: pnpm --filter @canopy/perf test
 
-      # Playwright resolves CANOPY_BASE_URL from vars or https://CANOPY_FQDN (see packages/tests/canopy-api/playwright.config.ts).
-      # Optional: set E2E_REQUIRE_BOOTSTRAP=1 here once the dev worker is Custodian-backed (Plan 0014) to fail if bootstrap mint is 503.
-      - name: API e2e tests (deployed)
-        env:
-          CANOPY_FQDN: ${{ vars.CANOPY_FQDN }}
-          SCRAPI_API_KEY: ${{ secrets.SCRAPI_API_KEY }}
-          CANOPY_BASE_URL: ${{ vars.CANOPY_BASE_URL }}
-        run: |
-          set -euo pipefail
-          trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
-          if [ -z "$(trim_ws "${SCRAPI_API_KEY:-}")" ]; then
-            echo "::error::SCRAPI_API_KEY is not set in GitHub Environment **dev** (synced from Doppler)."
-            exit 1
-          fi
-          BASE="$(trim_ws "${CANOPY_BASE_URL:-}")"
-          if [ -n "$BASE" ]; then
-            export CANOPY_BASE_URL="${BASE%/}"
-          else
-            FQ=$(trim_ws "${CANOPY_FQDN:-}")
-            FQ="${FQ#https://}"
-            FQ="${FQ#http://}"
-            FQ="${FQ%%/*}"
-            FQ="${FQ%/}"
-            if [ -z "$FQ" ]; then
-              echo "::error::Set **CANOPY_BASE_URL** or **CANOPY_FQDN** in GitHub Environment **dev** (Doppler-synced variables)."
-              exit 1
-            fi
-            export CANOPY_BASE_URL="https://${FQ}"
-            export CANOPY_BASE_URL="${CANOPY_BASE_URL%/}"
-          fi
-          pnpm --filter @canopy/api-e2e exec playwright install chromium
-          pnpm --filter @canopy/api-e2e exec playwright test --project=dev
+  api-e2e:
+    name: API e2e (deployed dev)
+    needs: test
+    uses: ./.github/workflows/api-e2e-playwright.yml
+    secrets: inherit
+    with:
+      environment: dev
+      playwright_project: dev

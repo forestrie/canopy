@@ -1,0 +1,72 @@
+name: API Playwright e2e
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: "GitHub Environment for vars and secrets"
+        required: true
+        type: string
+      playwright_project:
+        description: "Playwright project (dev = full suite; prod = excludes mutating bootstrap tests)"
+        required: true
+        type: string
+
+jobs:
+  api-e2e:
+    name: API e2e (${{ inputs.environment }}, ${{ inputs.playwright_project }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.6.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Full API e2e (Playwright)
+        env:
+          CANOPY_FQDN: ${{ vars.CANOPY_FQDN }}
+          SCRAPI_API_KEY: ${{ secrets.SCRAPI_API_KEY }}
+          CANOPY_BASE_URL: ${{ vars.CANOPY_BASE_URL }}
+          E2E_REQUIRE_BOOTSTRAP: ${{ inputs.playwright_project == 'dev' && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+          if [ -z "$(trim_ws "${SCRAPI_API_KEY:-}")" ]; then
+            echo "::error::SCRAPI_API_KEY is not set in GitHub Environment **${{ inputs.environment }}** (Doppler sync)."
+            exit 1
+          fi
+          BASE="$(trim_ws "${CANOPY_BASE_URL:-}")"
+          if [ -n "$BASE" ]; then
+            export CANOPY_BASE_URL="${BASE%/}"
+          else
+            FQ=$(trim_ws "${CANOPY_FQDN:-}")
+            FQ="${FQ#https://}"
+            FQ="${FQ#http://}"
+            FQ="${FQ%%/*}"
+            FQ="${FQ%/}"
+            if [ -z "$FQ" ]; then
+              echo "::error::Set **CANOPY_BASE_URL** or **CANOPY_FQDN** in GitHub Environment **${{ inputs.environment }}**."
+              exit 1
+            fi
+            export CANOPY_BASE_URL="https://${FQ}"
+            export CANOPY_BASE_URL="${CANOPY_BASE_URL%/}"
+          fi
+          pnpm --filter @canopy/api-e2e exec playwright install chromium
+          pnpm --filter @canopy/api-e2e exec playwright test \
+            --project="${{ inputs.playwright_project }}" \
+            --forbid-only

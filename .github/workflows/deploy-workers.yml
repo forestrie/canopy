@@ -210,14 +210,21 @@ jobs:
       - name: Deploy ${{ matrix.target.app }} (${{ env.DEPLOY_ENV }})
         run: task wrangler:deploy:${{ matrix.target.app }} ENV=${{ env.DEPLOY_ENV }}
 
-  smoke-test:
-    name: Smoke test (${{ needs.changes.outputs.environment }})
+  health-check:
+    name: Health check (${{ needs.changes.outputs.environment }})
     needs: [changes, deploy]
     if: always() && needs.deploy.result == 'success'
-    # Reusable workflow job sets environment from inputs; caller must pass secrets
-    # (environment secrets are not in scope for the child unless inherited).
-    uses: ./.github/workflows/smoke-test.yml
+    uses: ./.github/workflows/health-check.yml
     secrets: inherit
     with:
       environment: ${{ needs.changes.outputs.environment }}
-      test_count: 3
+
+  api-e2e:
+    name: API e2e (${{ needs.changes.outputs.environment }})
+    needs: [changes, deploy, health-check]
+    if: always() && needs.deploy.result == 'success' && needs.health-check.result == 'success'
+    uses: ./.github/workflows/api-e2e-playwright.yml
+    secrets: inherit
+    with:
+      environment: ${{ needs.changes.outputs.environment }}
+      playwright_project: ${{ needs.changes.outputs.environment == 'prod' && 'prod' || 'dev' }}

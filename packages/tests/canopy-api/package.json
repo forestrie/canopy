@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "test:e2e": "pnpm exec playwright test --project=dev",
-    "test:e2e:dev": "pnpm exec playwright test --project=dev"
+    "test:e2e:dev": "pnpm exec playwright test --project=dev",
+    "test:e2e:health": "pnpm exec playwright test --project=health",
+    "test:e2e:prod": "pnpm exec playwright test --project=prod"
   },
   "dependencies": {
     "@canopy/api": "workspace:*",
