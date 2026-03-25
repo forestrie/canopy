@@ -99,12 +99,15 @@ jobs:
         run: pnpm --filter @canopy/api run test
 
       # wrangler.jsonc leaves dev CUSTODIAN_URL empty; bootstrap e2e needs Custodian.
+      # Required (repo or **dev** environment): var/secret CUSTODIAN_URL; secret
+      # CUSTODIAN_BOOTSTRAP_APP_TOKEN or BOOTSTRAP_APP_TOKEN (Custodian naming).
       - name: Configure Custodian secrets and deploy canopy-api (dev)
         working-directory: packages/apps/canopy-api
         env:
           CUSTODIAN_URL_FROM_VAR: ${{ vars.CUSTODIAN_URL }}
           CUSTODIAN_URL_FROM_SECRET: ${{ secrets.CUSTODIAN_URL }}
           CUSTODIAN_BOOTSTRAP_APP_TOKEN: ${{ secrets.CUSTODIAN_BOOTSTRAP_APP_TOKEN }}
+          BOOTSTRAP_APP_TOKEN: ${{ secrets.BOOTSTRAP_APP_TOKEN }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
@@ -113,15 +116,19 @@ jobs:
             URL=$(trim_ws "${CUSTODIAN_URL_FROM_SECRET:-}")
           fi
           if [ -z "$URL" ]; then
-            echo "::error::CUSTODIAN_URL must be set in GitHub Environment **dev** (Doppler → var or secret)."
+            echo "::error::CUSTODIAN_URL is missing. Add it as a **dev** environment or repository variable, or as secret CUSTODIAN_URL (Doppler → GitHub sync). See Plan 0014 / wrangler dev vars."
             exit 1
           fi
-          if [ -z "$(trim_ws "${CUSTODIAN_BOOTSTRAP_APP_TOKEN:-}")" ]; then
-            echo "::error::CUSTODIAN_BOOTSTRAP_APP_TOKEN must be set in GitHub Environment **dev** secrets."
+          TOKEN=$(trim_ws "${CUSTODIAN_BOOTSTRAP_APP_TOKEN:-}")
+          if [ -z "$TOKEN" ]; then
+            TOKEN=$(trim_ws "${BOOTSTRAP_APP_TOKEN:-}")
+          fi
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Bootstrap Custodian token missing. Set secret **CUSTODIAN_BOOTSTRAP_APP_TOKEN** (preferred) or **BOOTSTRAP_APP_TOKEN** on the repo or **dev** environment."
             exit 1
           fi
           printf '%s' "$URL" | wrangler secret put CUSTODIAN_URL --env dev
-          printf '%s' "$CUSTODIAN_BOOTSTRAP_APP_TOKEN" | wrangler secret put CUSTODIAN_BOOTSTRAP_APP_TOKEN --env dev
+          printf '%s' "$TOKEN" | wrangler secret put CUSTODIAN_BOOTSTRAP_APP_TOKEN --env dev
           wrangler deploy --env dev
 
   health-after-deploy:
