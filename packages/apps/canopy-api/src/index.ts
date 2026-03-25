@@ -60,11 +60,14 @@ export interface Env {
   X402_SETTLEMENT_DO?: DurableObjectNamespace;
   // Number of DO shards for x402 settlement (typically 4)
   X402_DO_SHARD_COUNT?: string;
-  // Subplan 08: grant-first bootstrap
+  // Subplan 08 / Plan 0014: grant-first bootstrap via Custodian
   ROOT_LOG_ID?: string;
-  DELEGATION_SIGNER_URL?: string;
-  DELEGATION_SIGNER_BEARER_TOKEN?: string;
-  DELEGATION_SIGNER_PUBLIC_KEY_TOKEN?: string;
+  /** Base URL of arbor Custodian (no trailing slash). */
+  CUSTODIAN_URL?: string;
+  /** Maps to Custodian secret BOOTSTRAP_APP_TOKEN (Wrangler secret). */
+  CUSTODIAN_BOOTSTRAP_APP_TOKEN?: string;
+  /** Maps to Custodian secret APP_TOKEN; used when minting custody-key grants (Phase 2). */
+  CUSTODIAN_APP_TOKEN?: string;
   /** Bootstrap signing alg: ES256 (default) or KS256. */
   BOOTSTRAP_ALG?: string;
   UNIVOCITY_SERVICE_URL?: string;
@@ -118,19 +121,19 @@ export default {
 
       // Subplan 08 / Plan 0010: POST /api/grants/bootstrap (no auth, no storage)
       if (pathname === "/api/grants/bootstrap" && request.method === "POST") {
-        const delegationSignerUrl = env.DELEGATION_SIGNER_URL;
-        const token = env.DELEGATION_SIGNER_BEARER_TOKEN;
-        if (!delegationSignerUrl || !token) {
+        const custodianUrl = env.CUSTODIAN_URL?.trim();
+        const token = env.CUSTODIAN_BOOTSTRAP_APP_TOKEN;
+        if (!custodianUrl || !token) {
           return problemResponse(503, "Service Unavailable", "about:blank", {
             detail:
-              "Bootstrap grant mint not configured (DELEGATION_SIGNER_URL, DELEGATION_SIGNER_BEARER_TOKEN required)",
+              "Bootstrap grant mint not configured (CUSTODIAN_URL, CUSTODIAN_BOOTSTRAP_APP_TOKEN required)",
             headers: corsHeaders,
           });
         }
         const response = await handlePostBootstrapGrant(request, {
           rootLogId: env.ROOT_LOG_ID,
-          delegationSignerUrl,
-          delegationSignerBearerToken: token,
+          custodianUrl,
+          custodianBootstrapAppToken: token,
           bootstrapAlg: env.BOOTSTRAP_ALG as "ES256" | "KS256" | undefined,
         });
         const headers = new Headers(response.headers);
@@ -202,15 +205,13 @@ export default {
         const univocityUrl = env.UNIVOCITY_SERVICE_URL?.trim();
         const bootstrapEnv =
           env.ROOT_LOG_ID &&
-          env.DELEGATION_SIGNER_URL &&
-          env.DELEGATION_SIGNER_BEARER_TOKEN &&
+          env.CUSTODIAN_URL?.trim() &&
+          env.CUSTODIAN_BOOTSTRAP_APP_TOKEN &&
           univocityUrl
             ? {
                 rootLogId: env.ROOT_LOG_ID,
-                delegationSignerUrl: env.DELEGATION_SIGNER_URL,
-                delegationSignerBearerToken: env.DELEGATION_SIGNER_BEARER_TOKEN,
-                delegationSignerPublicKeyToken:
-                  env.DELEGATION_SIGNER_PUBLIC_KEY_TOKEN,
+                custodianUrl: env.CUSTODIAN_URL.trim(),
+                custodianBootstrapAppToken: env.CUSTODIAN_BOOTSTRAP_APP_TOKEN,
                 bootstrapAlg: env.BOOTSTRAP_ALG as
                   | "ES256"
                   | "KS256"

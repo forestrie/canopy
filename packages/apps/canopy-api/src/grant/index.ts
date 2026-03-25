@@ -28,7 +28,11 @@ export {
   type GrantResult,
   type ParsedReceipt,
 } from "./types.js";
-export { decodeTransparentStatement } from "./transparent-statement.js";
+export {
+  decodeTransparentStatement,
+  HEADER_FORESTRIE_GRANT_V0,
+  HEADER_IDTIMESTAMP,
+} from "./transparent-statement.js";
 export { bytesToUuid, LOG_ID_BYTES, uuidToBytes } from "./uuid-bytes.js";
 export {
   parseReceipt,

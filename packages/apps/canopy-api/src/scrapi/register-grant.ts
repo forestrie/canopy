@@ -16,9 +16,10 @@ import {
 } from "./grant-sequencing.js";
 import { ClientErrors, ServerErrors } from "./problem-details";
 import {
-  getBootstrapPublicKey,
-  verifyBootstrapCoseSign1,
-} from "./bootstrap-public-key.js";
+  CUSTODIAN_BOOTSTRAP_KEY_ID,
+  fetchCustodianPublicKey,
+  verifyCustodianEs256GrantSign1,
+} from "./custodian-grant.js";
 import { isLogInitialized } from "./univocity-rest.js";
 import type { LogShardEnv } from "../sequeue/logshard.js";
 import type { InclusionEnv } from "./verify-grant-inclusion.js";
@@ -32,12 +33,11 @@ export interface RegisterGrantEnv {
    * success path (Subplan 08). Same DO namespace as register-signed-statement.
    */
   queueEnv?: LogShardEnv;
-  /** Subplan 08: root log id (hex), delegation-signer URL and token, univocity REST URL. */
+  /** Subplan 08 / Plan 0014: root log id, Custodian URL + bootstrap app token, univocity REST URL. */
   bootstrapEnv?: {
     rootLogId: string;
-    delegationSignerUrl: string;
-    delegationSignerBearerToken: string;
-    delegationSignerPublicKeyToken?: string;
+    custodianUrl: string;
+    custodianBootstrapAppToken: string;
     bootstrapAlg?: "ES256" | "KS256";
     univocityServiceUrl: string;
   };
@@ -61,7 +61,7 @@ export interface RegisterGrantEnv {
  * 1. Ask univocity whether the log is initialized (isLogInitialized(logId)).
  * 2. If the log is not initialized and the supplied grant is the bootstrap grant (ownerLogId
  *    equals logId, grant has GF_CREATE|GF_EXTEND, and the transparent statement’s signature
- *    verifies with the bootstrap public key from the delegation signer), accept it without
+ *    verifies with the bootstrap public key from Custodian (RFC 8152 COSE Sign1)), accept it without
  *    inclusion check and enqueue. This is the first grant for the root log.
  * 3. If the log is not initialized but the grant is not the bootstrap grant, return 403
  *    (log not initialized; use bootstrap grant to bootstrap).
@@ -114,17 +114,23 @@ export async function registerGrant(
       grantResult.bytes
     ) {
       try {
-        const bootstrapKey = await getBootstrapPublicKey({
-          delegationSignerUrl: env.bootstrapEnv.delegationSignerUrl,
-          delegationSignerPublicKeyToken:
-            env.bootstrapEnv.delegationSignerPublicKeyToken ??
-            env.bootstrapEnv.delegationSignerBearerToken,
-          bootstrapAlg: env.bootstrapEnv.bootstrapAlg,
-        });
-        const ok = await verifyBootstrapCoseSign1(
+        if (env.bootstrapEnv.bootstrapAlg === "KS256") {
+          return ServerErrors.serviceUnavailable(
+            "KS256 bootstrap grant verification is not implemented",
+          );
+        }
+        const pk = await fetchCustodianPublicKey(
+          env.bootstrapEnv.custodianUrl,
+          CUSTODIAN_BOOTSTRAP_KEY_ID,
+        );
+        if (pk.alg !== "ES256") {
+          return ServerErrors.serviceUnavailable(
+            `Bootstrap grant verification requires Custodian key alg ES256; got ${pk.alg}`,
+          );
+        }
+        const ok = await verifyCustodianEs256GrantSign1(
           grantResult.bytes,
-          bootstrapKey.publicKeyBytes,
-          bootstrapKey.alg,
+          pk.publicKeyPem,
         );
         if (!ok) {
           return ClientErrors.forbidden(

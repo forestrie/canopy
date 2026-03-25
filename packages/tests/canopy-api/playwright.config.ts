@@ -26,16 +26,28 @@ if (existsSync(envPath)) {
   );
 }
 
-const baseURL = (() => {
-  const raw = process.env.CANOPY_BASE_URL?.trim();
-  if (!raw) {
+/**
+ * Match `.github/workflows/test.yml` API e2e step: prefer CANOPY_BASE_URL, else https://CANOPY_FQDN.
+ * Doppler `dev` often supplies CANOPY_FQDN only.
+ */
+function resolveCanopyBaseUrl(): string {
+  const trim = (s: string | undefined) => (s ?? "").trim();
+  const direct = trim(process.env.CANOPY_BASE_URL);
+  if (direct) return direct.replace(/\/$/, "");
+
+  let fq = trim(process.env.CANOPY_FQDN);
+  fq = fq.replace(/^https?:\/\//i, "");
+  fq = (fq.split("/")[0] ?? "").replace(/\/$/, "");
+  if (!fq) {
     throw new Error(
-      "CANOPY_BASE_URL is not set. For local runs use repo-root .env; " +
-        "in CI export it in the job environment (e.g. GitHub Environment variables).",
+      "Set CANOPY_BASE_URL or CANOPY_FQDN in repo-root .env (e.g. task vars:doppler:dev) " +
+        "or export them in CI — same as .github/workflows/test.yml API e2e job.",
     );
   }
-  return raw.replace(/\/$/, "");
-})();
+  return `https://${fq}`.replace(/\/$/, "");
+}
+
+const baseURL = resolveCanopyBaseUrl();
 
 export default defineConfig({
   testDir: "./tests",

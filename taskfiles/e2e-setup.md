@@ -21,8 +21,10 @@ Playwright and root Taskfile **`dotenv: [".env"]`** use **only** this file. Ther
 
 Required keys for e2e include at least:
 
-- **`CANOPY_BASE_URL`** — worker origin (e.g. `https://api-dev.example.com`)
-- **`SCRAPI_API_KEY`** — bearer token for authorized fixtures
+- **`CANOPY_BASE_URL`** *or* **`CANOPY_FQDN`** — worker origin. Playwright resolves `CANOPY_BASE_URL` first; if unset, it builds `https://…` from `CANOPY_FQDN` (same logic as `.github/workflows/test.yml`). Doppler `dev` may only define **`CANOPY_FQDN`**.
+- **`SCRAPI_API_KEY`** — bearer token for authorized fixtures (when used)
+
+Bootstrap grant Playwright tests skip with a clear reason if the deployed worker returns 503 “bootstrap not configured”. Set **`E2E_REQUIRE_BOOTSTRAP=1`** to fail instead of skip once the deployment uses Custodian (Plan 0014).
 
 If **`.env`** is missing, `task vars:require-dotenv`, smoke tasks, and Playwright fail immediately with a short error.
 

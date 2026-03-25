@@ -40,6 +40,8 @@ jobs:
       - name: Perf lib unit tests
         run: pnpm --filter @canopy/perf test
 
+      # Playwright resolves CANOPY_BASE_URL from vars or https://CANOPY_FQDN (see packages/tests/canopy-api/playwright.config.ts).
+      # Optional: set E2E_REQUIRE_BOOTSTRAP=1 here once the dev worker is Custodian-backed (Plan 0014) to fail if bootstrap mint is 503.
       - name: API e2e tests (deployed)
         env:
           CANOPY_FQDN: ${{ vars.CANOPY_FQDN }}

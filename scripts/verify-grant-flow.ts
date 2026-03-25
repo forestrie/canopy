@@ -119,7 +119,9 @@ async function main(): Promise<void> {
   }
 
   console.log("\nAll steps passed. Register-grant and register-signed-statement flow is OK.");
-  console.log("To exercise POST /entries, use the e2e grant-flow test or k6 with a completed grant.");
+  console.log(
+    "To exercise POST /entries, use k6/perf with a completed grant or extend Playwright e2e when that flow is reintroduced.",
+  );
 }
 
 main().catch((e) => {

@@ -1,16 +1,30 @@
 import { encodeCoseSign1Statement } from "@canopy/encoding";
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 import { env } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { encodeEntryId } from "../src/scrapi/entry-id";
 import worker from "../src/index";
 import type { Env } from "../src/index";
 import { uuidToBytes } from "../src/grant";
 import type { Grant } from "../src/grant";
+import { forestrieGrantAuthorizationHeader } from "./helpers/custodian-transparent-grant";
 
 // Cast the test env to our Env type.
 const testEnv = env as unknown as Env;
+
+const FLOW_GRANT_KID16 = new Uint8Array(16).fill(0xee);
+
+let flowGrantPriv: CryptoKey;
+
+beforeAll(async () => {
+  const pair = (await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  )) as CryptoKeyPair;
+  flowGrantPriv = pair.privateKey;
+});
 
 describe("SCRAPI flow", () => {
   // This test requires the SEQUENCED_CONTENT DO to be seeded with lookup data.
@@ -113,28 +127,13 @@ describe("SCRAPI flow", () => {
       minGrowth: 0,
       grantData: new Uint8Array(signerKid),
     };
-    // Plan 0005: auth via Authorization: Forestrie-Grant with transparent statement (no receipt when inclusionEnv unset in test).
-    const logId32 = new Uint8Array(32);
-    logId32.set(uuidToBytes(logId), 16);
-    const ownerLogId32 = new Uint8Array(32);
-    ownerLogId32.set(uuidToBytes("660e8400-e29b-41d4-a716-446655440001"), 16);
-    const payloadMap = new Map<number, unknown>([
-      [1, logId32],
-      [2, ownerLogId32],
-      [3, flags],
-      [4, 0],
-      [5, 0],
-      [6, new Uint8Array(signerKid)],
-    ]);
-    const grantPayloadBytes = encodeCbor(payloadMap) as Uint8Array;
-    const transparentStatement = encodeCbor([
-      encodeCbor(new Map()),
-      new Map([[-65537, idtimestampBytes]]),
-      grantPayloadBytes,
-      new Uint8Array(64),
-    ]) as Uint8Array;
-    const authHeader =
-      "Forestrie-Grant " + btoa(String.fromCharCode(...transparentStatement));
+    // Plan 0014: Forestrie-Grant uses Custodian COSE profile (digest payload + -65538).
+    const authHeader = await forestrieGrantAuthorizationHeader(
+      grant,
+      flowGrantPriv,
+      FLOW_GRANT_KID16,
+      idtimestampBytes,
+    );
 
     const payload = new Uint8Array([0x48, 0x65, 0x6c, 0x6c, 0x6f]); // "Hello"
     const coseSign1 = encodeCoseSign1Statement(

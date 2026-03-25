@@ -68,6 +68,9 @@ importers:
       '@noble/curves':
         specifier: ^1.9.7
         version: 1.9.7
+      '@noble/hashes':
+        specifier: ^1.7.1
+        version: 1.8.0
       '@x402/core':
         specifier: ^2.1.0
         version: 2.2.0

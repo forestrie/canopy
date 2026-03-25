@@ -1,35 +1,35 @@
 /**
- * Register-grant endpoint tests (Plan 0001 Step 6, Plan 0005).
- * Auth: Authorization: Forestrie-Grant <base64> (transparent statement only).
- * Request body: grant wire format v0 (CBOR keys 1–6).
+ * Register-grant endpoint tests (Plan 0001 Step 6, Plan 0005, Plan 0014).
+ * Auth: Authorization: Forestrie-Grant <base64> (Custodian COSE profile).
  */
 
 import { encodeGrantRequest } from "@canopy/encoding";
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 import { env } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import worker from "../src/index";
 import type { Env } from "../src/index";
-import { encodeGrantPayload, uuidToBytes } from "../src/grant";
+import { uuidToBytes } from "../src/grant";
 import type { Grant } from "../src/grant";
+import { forestrieGrantAuthorizationHeader } from "./helpers/custodian-transparent-grant";
 
 const testEnv = env as unknown as Env;
 
-const PROTECTED_EMPTY = new Uint8Array([0xa0]);
-const IDTIMESTAMP_ZEROS = new Uint8Array(8);
-const HEADER_IDTIMESTAMP = -65537;
+const TEST_KID = new Uint8Array(16).fill(0xcd);
 
-/** Build transparent statement (COSE Sign1) for Authorization: Forestrie-Grant. */
-function transparentStatementHeader(grant: Grant): string {
-  const payloadBytes = encodeGrantPayload(grant);
-  const unprotected = new Map<number, Uint8Array>([
-    [HEADER_IDTIMESTAMP, IDTIMESTAMP_ZEROS],
-  ]);
-  const signature = new Uint8Array(64);
-  const coseSign1 = [PROTECTED_EMPTY, unprotected, payloadBytes, signature];
-  const bytes = new Uint8Array(encodeCbor(coseSign1));
-  const base64 = btoa(String.fromCharCode(...bytes));
-  return `Forestrie-Grant ${base64}`;
+let testPriv: CryptoKey;
+
+beforeAll(async () => {
+  const pair = (await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  )) as CryptoKeyPair;
+  testPriv = pair.privateKey;
+});
+
+async function transparentStatementHeader(grant: Grant): Promise<string> {
+  return forestrieGrantAuthorizationHeader(grant, testPriv, TEST_KID);
 }
 
 describe("POST /logs/{logId}/grants", () => {
@@ -56,7 +56,7 @@ describe("POST /logs/{logId}/grants", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/cbor",
-        Authorization: transparentStatementHeader(authGrant),
+        Authorization: await transparentStatementHeader(authGrant),
       },
       body: bodyBytes,
     });

@@ -1,25 +1,22 @@
 /**
- * Subplan 08 / Plan 0010: Bootstrap grant mint (no server-side storage).
- * POST /api/grants/bootstrap — build grant, sign via delegation-signer (COSE ToBeSigned),
- * return transparent statement in response body. Optional body { rootLogId } for per-log mint.
- * Caller is responsible for persisting the grant.
+ * Subplan 08 / Plan 0010 / Plan 0014: Bootstrap grant mint (no server-side storage).
+ * POST /api/grants/bootstrap — build grant, sign via Custodian (RFC 8152 COSE Sign1),
+ * return transparent statement in response body (201, base64).
  *
- * Plan 0011 §0: grantData must equal the bootstrap public key (64 bytes for ES256) so the
- * Univocity contract accepts the root's first checkpoint. We fetch the bootstrap public
- * key before building the grant and set grant.grantData to the normalized key.
+ * Plan 0011 §0: grantData must equal the bootstrap public key (64 bytes for ES256).
  */
 
-import { encodeSigStructure } from "@canopy/encoding";
-import { encode as encodeCbor } from "cbor-x";
 import type { Grant } from "../grant/grant.js";
 import { encodeGrantPayload } from "../grant/codec.js";
-import { getBootstrapPublicKey } from "./bootstrap-public-key.js";
+import {
+  CUSTODIAN_BOOTSTRAP_KEY_ID,
+  fetchCustodianPublicKey,
+  mergeGrantHeadersIntoCustodianSign1,
+  postCustodianSignGrantPayload,
+  publicKeyPemToUncompressed65,
+} from "./custodian-grant.js";
 import { ClientErrors, ServerErrors } from "./problem-details.js";
 
-/** COSE Sign1 protected = empty map (0xa0). */
-const PROTECTED_EMPTY = new Uint8Array([0xa0]);
-const IDTIMESTAMP_ZEROS = new Uint8Array(8);
-const HEADER_IDTIMESTAMP = -65537;
 const WIRE_LOG_ID_BYTES = 32;
 
 /** 64 hex chars → 32 bytes. */
@@ -57,26 +54,17 @@ function logIdToWireBytes(logId: string): Uint8Array {
   throw new Error("rootLogId must be 64 hex chars or a UUID (32 hex)");
 }
 
-function bytesToHex(b: Uint8Array): string {
-  return Array.from(b)
-    .map((x) => x.toString(16).padStart(2, "0"))
-    .join("");
-}
-
 export interface BootstrapMintEnv {
   /** Default when request body does not include rootLogId. */
   rootLogId?: string;
-  delegationSignerUrl: string;
-  delegationSignerBearerToken: string;
-  /** Optional: token for GET /api/public-key (default: same as bearer token). */
-  delegationSignerPublicKeyToken?: string;
+  custodianUrl: string;
+  custodianBootstrapAppToken: string;
   /** Alg for bootstrap signing; default ES256. */
   bootstrapAlg?: "ES256" | "KS256";
 }
 
 /**
  * Normalize public key to 64 bytes (x || y) for ES256 grantData (Univocity contract).
- * Contract expects 64 bytes; delegation-signer often returns 65 (04||x||y).
  */
 function publicKeyToGrantData64(keyBytes: Uint8Array): Uint8Array {
   if (keyBytes.length === 64) return keyBytes;
@@ -123,12 +111,6 @@ async function parseBootstrapBody(
   }
 }
 
-/**
- * POST /api/grants/bootstrap — no auth required. Build bootstrap grant, call delegation-signer,
- * return transparent statement in response body (201, base64). No server-side storage.
- * Optional body: { "rootLogId": "<logId>" } or { "logId": "<logId>" } to mint for that log
- * instead of env ROOT_LOG_ID. logId may be 64 hex (32 bytes) or UUID (32 hex).
- */
 function normalizeBootstrapAlg(raw: string | undefined): "ES256" | "KS256" {
   const s = raw?.trim().toUpperCase();
   return s === "KS256" ? "KS256" : "ES256";
@@ -157,23 +139,30 @@ export async function handlePostBootstrapGrant(
   }
   const ownerLogIdBytes = logIdBytes.slice(0, 32);
 
-  // Plan 0011 §0: grantData must equal bootstrap public key (64 bytes ES256) for Univocity contract.
   let grantData: Uint8Array;
   if (alg === "KS256") {
-    // KS256 bootstrap grantData (20-byte address) not yet implemented.
     return ServerErrors.internal(
       "KS256 bootstrap grantData not yet implemented; use ES256 for bootstrap grant",
     );
   }
+
+  const custodianUrl = env.custodianUrl?.trim();
+  if (!custodianUrl) {
+    return ServerErrors.internal("CUSTODIAN_URL not configured");
+  }
+
   try {
-    const publicKeyEnv = {
-      delegationSignerUrl: env.delegationSignerUrl,
-      delegationSignerPublicKeyToken:
-        env.delegationSignerPublicKeyToken ?? env.delegationSignerBearerToken,
-      bootstrapAlg: alg,
-    };
-    const { publicKeyBytes } = await getBootstrapPublicKey(publicKeyEnv);
-    grantData = publicKeyToGrantData64(publicKeyBytes);
+    const pk = await fetchCustodianPublicKey(
+      custodianUrl,
+      CUSTODIAN_BOOTSTRAP_KEY_ID,
+    );
+    if (pk.alg !== "ES256") {
+      return ServerErrors.internal(
+        `Bootstrap grant mint requires Custodian alg ES256; got ${pk.alg}`,
+      );
+    }
+    const uncompressed = publicKeyPemToUncompressed65(pk.publicKeyPem);
+    grantData = publicKeyToGrantData64(uncompressed);
   } catch (e) {
     return ServerErrors.badGateway(
       e instanceof Error ? e.message : "Bootstrap public key fetch failed",
@@ -182,7 +171,7 @@ export async function handlePostBootstrapGrant(
 
   const grantBitmap = new Uint8Array(8);
   grantBitmap[4] = 0x03; // GF_CREATE | GF_EXTEND
-  grantBitmap[7] = 0x01; // GF_AUTH_LOG (root auth checkpoint grant; not data-log /entries)
+  grantBitmap[7] = 0x01; // GF_AUTH_LOG
   const grant: Grant = {
     logId: logIdBytes,
     ownerLogId: ownerLogIdBytes,
@@ -193,67 +182,32 @@ export async function handlePostBootstrapGrant(
   };
 
   const payloadBytes = encodeGrantPayload(grant);
-  const sigStructure = encodeSigStructure(
-    PROTECTED_EMPTY,
-    new Uint8Array(0),
-    payloadBytes,
-  );
-  const digest = await crypto.subtle.digest("SHA-256", sigStructure);
-  const coseTbsHash = bytesToHex(new Uint8Array(digest));
 
-  const signerUrl = env.delegationSignerUrl?.trim().replace(/\/$/, "");
-  if (!signerUrl) {
-    return ServerErrors.internal("DELEGATION_SIGNER_URL not configured");
-  }
-
-  let signatureHex: string;
+  let sign1Raw: Uint8Array;
   try {
-    const res = await fetch(`${signerUrl}/api/delegate/bootstrap`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${env.delegationSignerBearerToken}`,
-      },
-      body: JSON.stringify({ cose_tbs_hash: coseTbsHash, alg }),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      return ServerErrors.badGateway(
-        `Delegation-signer bootstrap failed: ${res.status} ${text}`,
-      );
-    }
-    const data = (await res.json()) as { signature?: string };
-    if (!data.signature?.trim()) {
-      return ServerErrors.badGateway("Delegation-signer returned no signature");
-    }
-    signatureHex = data.signature.trim();
+    sign1Raw = await postCustodianSignGrantPayload(
+      custodianUrl,
+      CUSTODIAN_BOOTSTRAP_KEY_ID,
+      env.custodianBootstrapAppToken,
+      payloadBytes,
+    );
   } catch (e) {
     return ServerErrors.badGateway(
-      e instanceof Error ? e.message : "Delegation-signer request failed",
+      e instanceof Error ? e.message : "Custodian bootstrap sign failed",
     );
   }
 
-  const sigHex = signatureHex.replace(/^0x/i, "").trim();
-  if (sigHex.length !== 128 || !/^[0-9a-fA-F]+$/.test(sigHex)) {
-    return ServerErrors.badGateway(
-      "Delegation-signer signature must be 64 bytes (128 hex)",
+  let transparentStatement: Uint8Array;
+  try {
+    transparentStatement = mergeGrantHeadersIntoCustodianSign1(
+      sign1Raw,
+      payloadBytes,
+    );
+  } catch (e) {
+    return ServerErrors.internal(
+      e instanceof Error ? e.message : "Failed to assemble transparent statement",
     );
   }
-  const signatureBytes = new Uint8Array(64);
-  for (let i = 0; i < 64; i++) {
-    signatureBytes[i] = parseInt(sigHex.slice(i * 2, i * 2 + 2), 16);
-  }
-
-  const unprotected = new Map<number, unknown>([
-    [HEADER_IDTIMESTAMP, IDTIMESTAMP_ZEROS],
-  ]);
-  const coseSign1 = [
-    PROTECTED_EMPTY,
-    unprotected,
-    payloadBytes,
-    signatureBytes,
-  ];
-  const transparentStatement = new Uint8Array(encodeCbor(coseSign1));
 
   const base64 = btoa(String.fromCharCode(...transparentStatement));
   return new Response(base64, {
