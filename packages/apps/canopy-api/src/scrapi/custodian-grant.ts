@@ -218,4 +218,3 @@ export async function signGrantPayloadWithCustodianCustodyKey(options: {
   );
   return mergeGrantHeadersIntoCustodianSign1(raw, options.grantPayloadBytes);
 }
-

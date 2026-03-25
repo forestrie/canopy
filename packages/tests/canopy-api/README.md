@@ -49,10 +49,10 @@ Other keys:
 
 ## Test layout
 
-| File                    | Area                                                                 |
-| ----------------------- | -------------------------------------------------------------------- |
-| `api.spec.ts`           | Cross-cutting HTTP (e.g. CORS OPTIONS).                              |
-| `observability.spec.ts` | `/api/health`, `/.well-known/scitt-configuration` (metrics TBD).     |
+| File                       | Area                                                                 |
+| -------------------------- | -------------------------------------------------------------------- |
+| `api.spec.ts`              | Cross-cutting HTTP (e.g. CORS OPTIONS).                              |
+| `observability.spec.ts`    | `/api/health`, `/.well-known/scitt-configuration` (metrics TBD).     |
 | `grants-bootstrap.spec.ts` | Bootstrap mint + register-grant (Custodian-profile Forestrie-Grant). |
 
 - Fixtures: `tests/fixtures`.

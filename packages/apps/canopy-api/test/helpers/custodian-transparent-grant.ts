@@ -67,11 +67,6 @@ export async function encodeCustodianProfileForestrieGrant(
     [HEADER_IDTIMESTAMP, idtimestamp],
     [HEADER_FORESTRIE_GRANT_V0, grantPayload],
   ]);
-  const cose = [
-    protectedInner,
-    unprot,
-    digest,
-    new Uint8Array(signature),
-  ];
+  const cose = [protectedInner, unprot, digest, new Uint8Array(signature)];
   return new Uint8Array(encodeCbor(cose));
 }

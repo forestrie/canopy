@@ -12,11 +12,7 @@ const HEADER_FORESTRIE_GRANT_V0 = -65538;
 
 function toHeaderMap(raw: unknown): Map<number, unknown> {
   if (raw instanceof Map) return raw as Map<number, unknown>;
-  if (
-    typeof raw === "object" &&
-    raw !== null &&
-    !(raw instanceof Uint8Array)
-  ) {
+  if (typeof raw === "object" && raw !== null && !(raw instanceof Uint8Array)) {
     const out = new Map<number, unknown>();
     for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
       const n = Number(k);
@@ -91,7 +87,9 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
     );
     const body = (await mintRes.text()).trim();
     expect(body.length).toBeGreaterThan(0);
-    expect(() => assertCustodianProfileTransparentStatement(body)).not.toThrow();
+    expect(() =>
+      assertCustodianProfileTransparentStatement(body),
+    ).not.toThrow();
   });
 
   test("After bootstrap mint, POST /logs/{logId}/grants returns 303 See Other (enqueued)", async ({
@@ -122,12 +120,15 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
       assertCustodianProfileTransparentStatement(grantBase64),
     ).not.toThrow();
 
-    const registerRes = await unauthorizedRequest.post(`/logs/${logId}/grants`, {
-      headers: {
-        Authorization: `Forestrie-Grant ${grantBase64}`,
+    const registerRes = await unauthorizedRequest.post(
+      `/logs/${logId}/grants`,
+      {
+        headers: {
+          Authorization: `Forestrie-Grant ${grantBase64}`,
+        },
+        maxRedirects: 0,
       },
-      maxRedirects: 0,
-    });
+    );
 
     const problemReg = await reportProblemDetails(registerRes, testInfo);
     const regStatus = registerRes.status();
@@ -150,10 +151,7 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
     }
     const escapedLogId = logId.replace(/-/g, "\\-");
     expect(absolute).toMatch(
-      new RegExp(
-        `/logs/${escapedLogId}/entries/[0-9a-f]{64}$`,
-        "i",
-      ),
+      new RegExp(`/logs/${escapedLogId}/entries/[0-9a-f]{64}$`, "i"),
     );
   });
 });

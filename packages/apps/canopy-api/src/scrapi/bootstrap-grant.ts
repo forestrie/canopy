@@ -205,7 +205,9 @@ export async function handlePostBootstrapGrant(
     );
   } catch (e) {
     return ServerErrors.internal(
-      e instanceof Error ? e.message : "Failed to assemble transparent statement",
+      e instanceof Error
+        ? e.message
+        : "Failed to assemble transparent statement",
     );
   }
 

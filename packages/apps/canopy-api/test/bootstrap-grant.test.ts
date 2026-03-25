@@ -71,12 +71,7 @@ async function custodianSign1PayloadOnly(
     sigBuffer,
   );
   return new Uint8Array(
-    encodeCbor([
-      protectedInner,
-      new Map(),
-      digest,
-      new Uint8Array(signature),
-    ]),
+    encodeCbor([protectedInner, new Map(), digest, new Uint8Array(signature)]),
   );
 }
 
