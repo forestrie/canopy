@@ -5,11 +5,12 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Target environment"
+        description: "GitHub Environment (Doppler dev / stg / prd)"
         required: true
         type: choice
         options:
           - dev
+          - stage
           - prod
         default: dev
       rate:
@@ -48,7 +49,7 @@ on:
         default: "30s"
         type: string
       logs_per_shard:
-        description: "Logs per shard (uses pre-balanced IDs: 1=4 logs, 2=8 logs, 3=12 logs)"
+        description: "Logs per shard (synthesized UUIDs per run; 1=4 logs, 2=8, 3=12; shard count 4)"
         required: false
         default: "1"
         type: choice
@@ -64,14 +65,19 @@ jobs:
   perf-test:
     name: k6 Performance Test (${{ inputs.environment }}, ${{ matrix.rate }} req/s)
     runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
     strategy:
       fail-fast: false
       matrix:
         rate:
           - ${{ github.event.inputs.rate || '10' }}
 
+    # Log IDs for k6/grant-pool are synthesized per run (shard-balanced UUIDs); see Build log ID list step.
+    # Non-sensitive values → GitHub Variables; sensitive → Secrets (Doppler → GitHub sync).
     env:
-      CANOPY_PERF_API_TOKEN: ${{ secrets.CANOPY_PERF_API_TOKEN }}
+      SCRAPI_API_KEY: ${{ secrets.SCRAPI_API_KEY }}
+      CANOPY_BASE_URL: ${{ vars.CANOPY_BASE_URL }}
+      FORESTRIE_INGRESS_URL: ${{ vars.FORESTRIE_INGRESS_URL }}
 
     steps:
       - name: Checkout
@@ -105,81 +111,29 @@ jobs:
       - name: Setup k6
         uses: grafana/setup-k6-action@v1
 
-      - name: Load environment config
-        id: env_config
-        run: |
-          ENV=${{ inputs.environment }}
-          echo "Loading perf/.env.${ENV}..."
-          source perf/.env.${ENV}
-          echo "CANOPY_PERF_BASE_URL=${CANOPY_PERF_BASE_URL}" >> $GITHUB_ENV
-          echo "FORESTRIE_INGRESS_URL=${FORESTRIE_INGRESS_URL}" >> $GITHUB_ENV
-          echo "X402_SETTLEMENT_URL=${X402_SETTLEMENT_URL}" >> $GITHUB_ENV
-          # Export all log ID variables
-          echo "CANOPY_PERF_1LPS_0=${CANOPY_PERF_1LPS_0}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_1LPS_1=${CANOPY_PERF_1LPS_1}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_1LPS_2=${CANOPY_PERF_1LPS_2}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_1LPS_3=${CANOPY_PERF_1LPS_3}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_2LPS_0=${CANOPY_PERF_2LPS_0}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_2LPS_1=${CANOPY_PERF_2LPS_1}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_2LPS_2=${CANOPY_PERF_2LPS_2}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_2LPS_3=${CANOPY_PERF_2LPS_3}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_2LPS_4=${CANOPY_PERF_2LPS_4}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_2LPS_5=${CANOPY_PERF_2LPS_5}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_2LPS_6=${CANOPY_PERF_2LPS_6}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_2LPS_7=${CANOPY_PERF_2LPS_7}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_3LPS_0=${CANOPY_PERF_3LPS_0}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_3LPS_1=${CANOPY_PERF_3LPS_1}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_3LPS_2=${CANOPY_PERF_3LPS_2}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_3LPS_3=${CANOPY_PERF_3LPS_3}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_3LPS_4=${CANOPY_PERF_3LPS_4}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_3LPS_5=${CANOPY_PERF_3LPS_5}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_3LPS_6=${CANOPY_PERF_3LPS_6}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_3LPS_7=${CANOPY_PERF_3LPS_7}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_3LPS_8=${CANOPY_PERF_3LPS_8}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_3LPS_9=${CANOPY_PERF_3LPS_9}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_3LPS_10=${CANOPY_PERF_3LPS_10}" >> $GITHUB_ENV
-          echo "CANOPY_PERF_3LPS_11=${CANOPY_PERF_3LPS_11}" >> $GITHUB_ENV
-          echo "Environment: ${ENV}"
-          echo "Target URL: ${CANOPY_PERF_BASE_URL}"
-          echo "Ingress URL: ${FORESTRIE_INGRESS_URL}"
-
-      - name: Build log ID list from balanced sets
+      - name: Build shard-balanced log ID list
         id: log_ids
         run: |
+          set -euo pipefail
           LOGS_PER_SHARD=${{ github.event.inputs.logs_per_shard || '1' }}
-          SHARD_COUNT=4  # Fixed for now
+          SHARD_COUNT=4
           LOG_COUNT=$((LOGS_PER_SHARD * SHARD_COUNT))
-          
-          echo "logs_per_shard=$LOGS_PER_SHARD" >> $GITHUB_OUTPUT
-          echo "log_count=$LOG_COUNT" >> $GITHUB_OUTPUT
 
-          # Build comma-separated list of log IDs from pre-balanced sets
-          LOG_IDS=""
-          case $LOGS_PER_SHARD in
-            1)
-              LOG_IDS="$CANOPY_PERF_1LPS_0,$CANOPY_PERF_1LPS_1,$CANOPY_PERF_1LPS_2,$CANOPY_PERF_1LPS_3"
-              ;;
-            2)
-              LOG_IDS="$CANOPY_PERF_2LPS_0,$CANOPY_PERF_2LPS_1,$CANOPY_PERF_2LPS_2,$CANOPY_PERF_2LPS_3"
-              LOG_IDS="$LOG_IDS,$CANOPY_PERF_2LPS_4,$CANOPY_PERF_2LPS_5,$CANOPY_PERF_2LPS_6,$CANOPY_PERF_2LPS_7"
-              ;;
-            3)
-              LOG_IDS="$CANOPY_PERF_3LPS_0,$CANOPY_PERF_3LPS_1,$CANOPY_PERF_3LPS_2,$CANOPY_PERF_3LPS_3"
-              LOG_IDS="$LOG_IDS,$CANOPY_PERF_3LPS_4,$CANOPY_PERF_3LPS_5,$CANOPY_PERF_3LPS_6,$CANOPY_PERF_3LPS_7"
-              LOG_IDS="$LOG_IDS,$CANOPY_PERF_3LPS_8,$CANOPY_PERF_3LPS_9,$CANOPY_PERF_3LPS_10,$CANOPY_PERF_3LPS_11"
-              ;;
-          esac
+          echo "logs_per_shard=$LOGS_PER_SHARD" >> "$GITHUB_OUTPUT"
+          echo "log_count=$LOG_COUNT" >> "$GITHUB_OUTPUT"
 
-          echo "log_ids=$LOG_IDS" >> $GITHUB_OUTPUT
+          LOG_IDS="$(node perf/scripts/generate-shard-balanced-ids.js \
+            --logs-per-shard "$LOGS_PER_SHARD" \
+            --shard-count "$SHARD_COUNT" \
+            --format csv)"
+
+          echo "log_ids=$LOG_IDS" >> "$GITHUB_OUTPUT"
           echo "Using $LOGS_PER_SHARD log(s) per shard ($LOG_COUNT total): $LOG_IDS"
 
-          # Save log IDs to file for later processing
           echo "$LOG_IDS" > /tmp/log_ids.txt
 
       - name: Generate grant pool
         env:
-          CANOPY_PERF_BASE_URL: ${{ env.CANOPY_PERF_BASE_URL }}
-          CANOPY_PERF_API_TOKEN: ${{ env.CANOPY_PERF_API_TOKEN }}
           CANOPY_PERF_LOG_IDS: ${{ steps.log_ids.outputs.log_ids }}
         run: |
           echo "Creating grants for each log (grant-based auth)..."
@@ -198,7 +152,7 @@ jobs:
         id: stats_before
         run: |
           echo "Fetching queue stats before test..."
-          STATS=$(curl -s -H "Authorization: Bearer $CANOPY_PERF_API_TOKEN" \
+          STATS=$(curl -s -H "Authorization: Bearer $SCRAPI_API_KEY" \
             "${FORESTRIE_INGRESS_URL}/queue/stats")
           echo "stats=$STATS" >> $GITHUB_OUTPUT
           PENDING=$(echo "$STATS" | jq -r '.pending // 0')
@@ -271,7 +225,7 @@ jobs:
           echo "  Sample rate: ${CANOPY_PERF_SAMPLE_RATE} (for e2e latency)"
           echo "  Log count: ${CANOPY_PERF_LOG_COUNT}"
           echo "  Log IDs: ${CANOPY_PERF_LOG_IDS}"
-          echo "  Target: ${CANOPY_PERF_BASE_URL}/logs/.../entries"
+          echo "  Target: ${CANOPY_BASE_URL}/logs/.../entries"
           k6 run --no-usage-report perf/k6/canopy-api/dist/write-constant-arrival.bundle.js
 
       - name: Capture queue stats (after)
@@ -279,7 +233,7 @@ jobs:
         id: stats_after
         run: |
           echo "Fetching queue stats after test..."
-          STATS=$(curl -s -H "Authorization: Bearer $CANOPY_PERF_API_TOKEN" \
+          STATS=$(curl -s -H "Authorization: Bearer $SCRAPI_API_KEY" \
             "${FORESTRIE_INGRESS_URL}/queue/stats")
           echo "stats=$STATS" >> $GITHUB_OUTPUT
           PENDING=$(echo "$STATS" | jq -r '.pending // 0')

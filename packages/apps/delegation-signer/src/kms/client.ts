@@ -48,6 +48,16 @@ function pemToDer(pem: string): Uint8Array {
   return base64ToBytes(base64);
 }
 
+/** Encode SPKI DER as PEM (e.g. for public key distribution). */
+export function derToPem(der: Uint8Array, label = "PUBLIC KEY"): string {
+  const b64 = btoa(String.fromCharCode(...der));
+  const lines: string[] = [];
+  for (let i = 0; i < b64.length; i += 64) {
+    lines.push(b64.slice(i, i + 64));
+  }
+  return `-----BEGIN ${label}-----\n${lines.join("\n")}\n-----END ${label}-----\n`;
+}
+
 export async function kmsAsymmetricSignSha256(
   accessToken: string,
   ref: KmsKeyVersionRef,

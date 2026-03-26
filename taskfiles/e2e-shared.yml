@@ -1,0 +1,30 @@
+---
+# Shared tasks for Playwright e2e (@canopy/api-e2e). Included from Taskfile.dist.yml as e2e-shared.
+# Setup and env: see taskfiles/e2e-setup.md
+#
+# Run tasks from the repository root (same directory as Taskfile.dist.yml).
+# Preflight uses sed/awk (no nested ${var#"${var%%[![:space:]]}"} — mvdan/sh panics on that).
+
+version: "3"
+
+vars:
+  ENV: '{{.ENV | default "dev"}}'
+
+tasks:
+  bootstrap:
+    desc: Bootstrap tasks typically only needed in a fresh clone, which includes CI builds
+    cmds:
+      - pnpm install
+      - pnpm --filter @canopy/api-e2e exec playwright --version
+      - pnpm --filter @canopy/api-e2e exec playwright install chromium
+
+  preflight:
+    desc: |
+      Hydrate repo-root .env from Doppler (config matches ENV, default dev).
+    cmds:
+      - task: :vars:doppler:{{.ENV}}
+
+  preflight:env:
+    desc: Fail if repo-root .env is missing (Playwright and tasks load only this file)
+    cmds:
+      - task: :vars:require-dotenv

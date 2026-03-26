@@ -4,15 +4,18 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "test:e2e": "pnpm exec playwright test --project=remote",
-    "test:e2e:local": "pnpm exec playwright test --project=local",
-    "test:e2e:remote": "pnpm exec playwright test --project=remote"
+    "test:e2e": "pnpm exec playwright test --project=dev",
+    "test:e2e:dev": "pnpm exec playwright test --project=dev",
+    "test:e2e:health": "pnpm exec playwright test --project=health",
+    "test:e2e:prod": "pnpm exec playwright test --project=prod"
   },
   "dependencies": {
-    "@canopy/api": "workspace:*"
+    "@canopy/api": "workspace:*",
+    "cbor-x": "^1.5.9"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",
+    "dotenv": "^17.2.3",
     "typescript": "^5.9.2"
   }
 }

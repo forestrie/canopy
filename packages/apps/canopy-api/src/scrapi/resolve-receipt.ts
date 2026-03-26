@@ -15,7 +15,7 @@
  * - Attach the inclusion proof to the appropriate peak receipt at header label 396.
  */
 
-import { decode as decodeCbor } from "cbor-x";
+import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 
 import { cborResponse } from "./cbor-response";
 import { CBOR_CONTENT_TYPES } from "./cbor-content-types";
@@ -670,4 +670,102 @@ function popcount64(x: bigint): number {
     v >>= 1n;
   }
   return count;
+}
+
+/**
+ * Build a grant/entry receipt for the given log and MMR index (for grant receipt verification).
+ * Fetches checkpoint and massif from R2, builds inclusion proof, attaches to peak receipt.
+ * Returns CBOR-encoded receipt bytes or null if checkpoint/massif missing or on error.
+ */
+export async function buildReceiptForEntry(
+  logId: string,
+  massifHeight: number,
+  mmrIndex: bigint,
+  mmrs: R2Bucket,
+): Promise<Uint8Array | null> {
+  try {
+    const massifIndex = massifIndexFromMMRIndex(massifHeight, mmrIndex);
+    const objectIndex = formatObjectIndex16(massifIndex);
+    const checkpointKey = `v2/merklelog/checkpoints/${massifHeight}/${logId}/${objectIndex}.sth`;
+    const massifKey = `v2/merklelog/massifs/${massifHeight}/${logId}/${objectIndex}.log`;
+
+    const checkpointObject = await mmrs.get(checkpointKey);
+    if (!checkpointObject) return null;
+
+    const checkpointBytes = new Uint8Array(
+      await checkpointObject.arrayBuffer(),
+    );
+    const checkpointDecoded = decodeCbor(checkpointBytes) as unknown;
+    const checkpoint = unwrapCoseSign1Tag(checkpointDecoded, "checkpoint");
+    const checkpointSign1 = requireCoseSign1(checkpoint, "checkpoint");
+
+    const checkpointUnprotected = toHeaderMap(checkpointSign1[1]);
+    const peakReceiptsRaw = checkpointUnprotected.get(SEAL_PEAK_RECEIPTS_LABEL);
+    if (!Array.isArray(peakReceiptsRaw)) return null;
+    const peakReceipts = peakReceiptsRaw as unknown[];
+
+    const checkpointPayload = checkpointSign1[2];
+    if (!(checkpointPayload instanceof Uint8Array)) return null;
+    const state = decodeCbor(checkpointPayload) as unknown;
+    const mmrSize = readStateMMRSize(state);
+    if (mmrSize <= 0n) return null;
+    const mmrLastIndex = mmrSize - 1n;
+    if (mmrIndex > mmrLastIndex) return null;
+
+    const massifObject = await mmrs.get(massifKey);
+    if (!massifObject) return null;
+
+    const massifBytes = new Uint8Array(await massifObject.arrayBuffer());
+    const massifHeader = readMassifStart(massifBytes);
+    if (massifHeader.massifHeight !== massifHeight) return null;
+    if (BigInt(massifHeader.massifIndex) !== massifIndex) return null;
+
+    const firstIndex = massifFirstLeaf(massifHeader.massifHeight, massifIndex);
+    const peakStackMap = peakStackMapForMassif(massifHeight, firstIndex);
+    const { peakStackStart, logStart } = v2OffsetsForMassif(massifHeight);
+    const store: IndexStoreGetter = {
+      get: (i) => {
+        if (i >= firstIndex) {
+          const localIndex = i - firstIndex;
+          const off = logStart + localIndex * 32n;
+          return slice32(massifBytes, off, "log-data");
+        }
+        const peakIdx = peakStackMap.get(i);
+        if (peakIdx === undefined) {
+          throw new Error(
+            `missing ancestor peak for mmr index ${i.toString(10)}`,
+          );
+        }
+        const off = peakStackStart + BigInt(peakIdx) * 32n;
+        return slice32(massifBytes, off, "peak-stack");
+      },
+    };
+
+    const proof = inclusionProof(store, mmrLastIndex, mmrIndex);
+    const peakIndex = peakIndexForLeafProof(mmrSize, proof.length);
+    const receiptBytes = peakReceipts[peakIndex];
+    if (!(receiptBytes instanceof Uint8Array)) return null;
+
+    const receiptDecoded = decodeCbor(receiptBytes) as unknown;
+    const receipt = unwrapCoseSign1Tag(receiptDecoded, "peak receipt");
+    const receiptSign1 = requireCoseSign1(receipt, "peak receipt");
+    const receiptUnprotected = toHeaderMap(receiptSign1[1]);
+    const inclusionProofEntry = new Map<number, unknown>([
+      [1, mmrIndex],
+      [2, proof],
+    ]);
+    const verifiableProofs = new Map<number, unknown>([
+      [-1, [inclusionProofEntry]],
+    ]);
+    receiptUnprotected.set(VDS_COSE_RECEIPT_PROOFS_TAG, verifiableProofs);
+    const assembled: CoseSign1 = [
+      receiptSign1[0],
+      receiptUnprotected,
+      receiptSign1[2],
+      receiptSign1[3],
+    ];
+    return encodeCbor(assembled) as Uint8Array;
+  } catch {
+    return null;
+  }
 }

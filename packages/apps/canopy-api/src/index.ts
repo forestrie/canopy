@@ -5,11 +5,11 @@
  */
 
 import { problemResponse } from "./scrapi/cbor-response";
+import { handlePostBootstrapGrant } from "./scrapi/bootstrap-grant.js";
 import { registerGrant } from "./scrapi/register-grant";
 import { registerSignedStatement } from "./scrapi/register-signed-statement";
 import { queryRegistrationStatus } from "./scrapi/query-registration-status";
 import { resolveReceipt } from "./scrapi/resolve-receipt";
-import { serveGrant } from "./scrapi/serve-grant";
 import { getTransparencyConfiguration } from "./scrapi/transparency-configuration";
 import type { SettlementJob } from "@canopy/x402-settlement-types";
 
@@ -21,10 +21,10 @@ export interface Env {
   // - v2/merklelog/massifs/{massifHeight}/{logId}/{massifIndex}.log
   // - v2/merklelog/checkpoints/{massifHeight}/{logId}/{massifIndex}.sth
   R2_MMRS: R2Bucket;
-  // Grants storage bucket (content-addressable grant objects).
-  // Path format: <kind>/<hash>.cbor. Location returned to clients is path-only, relative to GRANT_STORAGE_PUBLIC_BASE.
+  // Grants storage bucket (optional legacy / other uses). Forestrie-Grant v0 path when used:
+  // grant/<sha256>.cbor (content-addressed). Register-grant does not require R2 (Plan 0008).
   R2_GRANTS: R2Bucket;
-  // Public base URL for grant storage (path-only location is relative to this).
+  // Public base URL if clients resolve grant paths under this bucket.
   GRANT_STORAGE_PUBLIC_BASE?: string;
   // Durable Object namespace for the ingress sequencing queue.
   // Sharded by logId hash. Owned by forestrie-ingress worker.
@@ -60,6 +60,21 @@ export interface Env {
   X402_SETTLEMENT_DO?: DurableObjectNamespace;
   // Number of DO shards for x402 settlement (typically 4)
   X402_DO_SHARD_COUNT?: string;
+  // Subplan 08 / Plan 0014: grant-first bootstrap via Custodian
+  ROOT_LOG_ID?: string;
+  /** Base URL of arbor Custodian (no trailing slash). */
+  CUSTODIAN_URL?: string;
+  /** Maps to Custodian secret BOOTSTRAP_APP_TOKEN (Wrangler secret). */
+  CUSTODIAN_BOOTSTRAP_APP_TOKEN?: string;
+  /** Maps to Custodian secret APP_TOKEN; used when minting custody-key grants (Phase 2). */
+  CUSTODIAN_APP_TOKEN?: string;
+  /** Bootstrap signing alg: ES256 (default) or KS256. */
+  BOOTSTRAP_ALG?: string;
+  UNIVOCITY_SERVICE_URL?: string;
+  UNIVOCITY_CONTRACT_RPC_URL?: string;
+  UNIVOCITY_CONTRACT_ADDRESS?: string;
+  /** Optional: base URL for checkpoint fetch (storage source when R2 not used). */
+  OBJECT_STORAGE_ROOT_URL?: string;
 }
 
 export default {
@@ -70,13 +85,13 @@ export default {
   ): Promise<Response> {
     const url = new URL(request.url);
     const { pathname } = url;
+    const segments = pathname.split("/").slice(1);
 
     // CORS headers for development
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers":
-        "Content-Type, Authorization, X-Grant-Location",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
     };
 
     // Handle OPTIONS preflight
@@ -100,6 +115,45 @@ export default {
         return problemResponse(500, "Internal Server Error", "about:blank", {
           detail:
             "x402 verify-and-settle mode requires X402_FACILITATOR_URL to be configured",
+          headers: corsHeaders,
+        });
+      }
+
+      // Subplan 08 / Plan 0010: POST /api/grants/bootstrap (no auth, no storage)
+      if (pathname === "/api/grants/bootstrap" && request.method === "POST") {
+        const custodianUrl = env.CUSTODIAN_URL?.trim();
+        const token = env.CUSTODIAN_BOOTSTRAP_APP_TOKEN;
+        if (!custodianUrl || !token) {
+          return problemResponse(503, "Service Unavailable", "about:blank", {
+            detail:
+              "Bootstrap grant mint not configured (CUSTODIAN_URL, CUSTODIAN_BOOTSTRAP_APP_TOKEN required)",
+            headers: corsHeaders,
+          });
+        }
+        const response = await handlePostBootstrapGrant(request, {
+          rootLogId: env.ROOT_LOG_ID,
+          custodianUrl,
+          custodianBootstrapAppToken: token,
+          bootstrapAlg: env.BOOTSTRAP_ALG as "ES256" | "KS256" | undefined,
+        });
+        const headers = new Headers(response.headers);
+        Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        });
+      }
+
+      // GET /grants/bootstrap/:rootLogId — not stored; return 404 (Plan 0010)
+      if (
+        segments[0] === "grants" &&
+        segments[1] === "bootstrap" &&
+        request.method === "GET"
+      ) {
+        return problemResponse(404, "Not Found", "about:blank", {
+          detail:
+            "Bootstrap grants are not stored; use POST /api/grants/bootstrap and save the response",
           headers: corsHeaders,
         });
       }
@@ -133,33 +187,6 @@ export default {
         });
       }
 
-      // note the first segment is the empty string due to leading '/'
-      const segments = pathname.split("/").slice(1);
-
-      // GET /grants/authority/{innerHex} — serve grant with lazy completion (subplan 03)
-      if (
-        segments.length === 3 &&
-        segments[0] === "grants" &&
-        segments[1] === "authority" &&
-        request.method === "GET"
-      ) {
-        const massifHeight = parseInt(env.MASSIF_HEIGHT || "14", 10);
-        const response = await serveGrant(segments[2]!, {
-          r2Grants: env.R2_GRANTS,
-          r2Mmrs: env.R2_MMRS,
-          sequencingQueue: env.SEQUENCING_QUEUE,
-          shardCountStr: env.QUEUE_SHARD_COUNT,
-          massifHeight,
-        });
-        const headers = new Headers(response.headers);
-        Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
-        return new Response(response.body, {
-          status: response.status,
-          statusText: response.statusText,
-          headers,
-        });
-      }
-
       if (segments[0] !== "logs") {
         return problemResponse(
           404,
@@ -169,20 +196,38 @@ export default {
         );
       }
 
-      // POST /logs/{logId}/grants — create grant (Plan 0001 Step 6, subplan 03: sequencing)
+      // POST /logs/{logId}/grants — create grant (Plan 0001 Step 6, subplan 03/08)
       if (
         segments.length === 3 &&
         segments[2] === "grants" &&
         request.method === "POST"
       ) {
-        const response = await registerGrant(request, segments[1], {
-          r2Grants: env.R2_GRANTS,
-          sequencingEnv: env.SEQUENCING_QUEUE
+        const univocityUrl = env.UNIVOCITY_SERVICE_URL?.trim();
+        const bootstrapEnv =
+          env.ROOT_LOG_ID &&
+          env.CUSTODIAN_URL?.trim() &&
+          env.CUSTODIAN_BOOTSTRAP_APP_TOKEN &&
+          univocityUrl
             ? {
-                sequencingQueue: env.SEQUENCING_QUEUE,
-                shardCountStr: env.QUEUE_SHARD_COUNT,
+                rootLogId: env.ROOT_LOG_ID,
+                custodianUrl: env.CUSTODIAN_URL.trim(),
+                custodianBootstrapAppToken: env.CUSTODIAN_BOOTSTRAP_APP_TOKEN,
+                bootstrapAlg: env.BOOTSTRAP_ALG as
+                  | "ES256"
+                  | "KS256"
+                  | undefined,
+                univocityServiceUrl: univocityUrl,
               }
-            : undefined,
+            : undefined;
+        const queueEnv = env.SEQUENCING_QUEUE
+          ? {
+              sequencingQueue: env.SEQUENCING_QUEUE,
+              shardCountStr: env.QUEUE_SHARD_COUNT,
+            }
+          : undefined;
+        const response = await registerGrant(request, segments[1], {
+          queueEnv,
+          bootstrapEnv,
         });
         const headers = new Headers(response.headers);
         Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
@@ -198,20 +243,19 @@ export default {
         if (request.method === "POST") {
           // POST /logs/{logId}/entries - Register new statement
           // Grant-based auth is required (Step 5); x402 payment removed (Plan 0001 Step 4).
-          const massifHeight = parseInt(env.MASSIF_HEIGHT || "14", 10);
+          const inclusionEnv = env.SEQUENCING_QUEUE
+            ? {
+                sequencingQueue: env.SEQUENCING_QUEUE,
+                shardCountStr: env.QUEUE_SHARD_COUNT,
+              }
+            : undefined;
           const response = await registerSignedStatement(
             request,
             segments[1],
             env.SEQUENCING_QUEUE,
             env.QUEUE_SHARD_COUNT,
             undefined,
-            env.R2_GRANTS,
-            {
-              r2Mmrs: env.R2_MMRS,
-              sequencingQueue: env.SEQUENCING_QUEUE,
-              shardCountStr: env.QUEUE_SHARD_COUNT,
-              massifHeight,
-            },
+            inclusionEnv,
           );
 
           const headers = new Headers(response.headers);

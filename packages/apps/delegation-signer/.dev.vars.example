@@ -1,0 +1,4 @@
+# Local dev only: use in-process test key for bootstrap (no GCP KMS).
+# Copy to .dev.vars and run `pnpm dev` or `task wrangler:dev:delegation-signer`.
+# See docs/adr-0002-delegation-signer-local-test-key.md.
+DELEGATION_SIGNER_USE_TEST_KEY=1

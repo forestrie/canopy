@@ -4,24 +4,15 @@
  */
 
 import type { SequencingQueueStub } from "@canopy/forestrie-ingress-types";
-import { shardNameForLog } from "@canopy/forestrie-sharding";
+import { getQueueForLog } from "../sequeue/logshard.js";
 import { bytesToUuid } from "../grant/uuid-bytes.js";
-import { innerHashToHex } from "../grant/inner-hash.js";
+import { grantCommitmentHashToHex } from "../grant/grant-commitment.js";
 
-function getShardCount(shardCountStr: string): number {
-  const count = parseInt(shardCountStr, 10);
-  if (Number.isNaN(count) || count < 1) {
-    return 1;
-  }
-  return count;
-}
-
-function hexToBytes(hex: string): ArrayBuffer {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes.buffer;
+function contentHashBuffer(inner: Uint8Array): ArrayBuffer {
+  return inner.buffer.slice(
+    inner.byteOffset,
+    inner.byteOffset + inner.byteLength,
+  ) as ArrayBuffer;
 }
 
 export interface GrantSequencingResult {
@@ -49,17 +40,12 @@ export async function enqueueGrantForSequencing(
   env: GrantSequencingEnv,
 ): Promise<GrantSequencingResult> {
   const ownerLogIdUuid = bytesToUuid(ownerLogIdBytes);
-  const innerHex = innerHashToHex(inner);
-  const shardCount = getShardCount(env.shardCountStr);
-  const shardName = shardNameForLog(ownerLogIdUuid, shardCount);
-  const queueId = env.sequencingQueue.idFromName(shardName);
-  const queue = env.sequencingQueue.get(
-    queueId,
-  ) as unknown as SequencingQueueStub;
+  const innerHex = grantCommitmentHashToHex(inner);
+  const queue = getQueueForLog(env, ownerLogIdUuid);
 
-  const contentHashBytes = hexToBytes(innerHex);
+  const contentHash = contentHashBuffer(inner);
 
-  const existing = await queue.resolveContent(contentHashBytes);
+  const existing = await queue.resolveContent(contentHash);
   if (existing !== null) {
     return {
       statusUrlPath: `/logs/${ownerLogIdUuid}/entries/${innerHex}`,
@@ -73,7 +59,7 @@ export async function enqueueGrantForSequencing(
   const src =
     ownerLogIdBytes.length >= 16 ? ownerLogIdBytes.slice(-16) : ownerLogIdBytes;
   logId16.set(src, 16 - src.length);
-  await queue.enqueue(logId16.buffer, contentHashBytes, undefined);
+  await queue.enqueue(logId16.buffer, contentHash, undefined);
 
   return {
     statusUrlPath: `/logs/${ownerLogIdUuid}/entries/${innerHex}`,

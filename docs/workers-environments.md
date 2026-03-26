@@ -12,7 +12,7 @@ All three configs include the **R2_GRANTS** binding (and R2_MMRS, DOs, etc.).
 
 ## Perf test and dev traffic
 
-- The **Performance Tests** workflow uses `perf/.env.dev` and sends traffic to **CANOPY_PERF_BASE_URL** (typically `https://api-dev.forestrie.dev`).
+- The **Performance Tests** workflow uses GitHub Environment **`dev`**, **`stage`**, or **`prod`** (Doppler **`dev`** / **`stg`** / **`prd`** sync). Variables and secrets supply **`CANOPY_BASE_URL`**, **`FORESTRIE_INGRESS_URL`**, **`SCRAPI_API_KEY`**, etc. **Perf log IDs are not stored in GitHub**—each run generates shard-balanced UUIDs with `perf/scripts/generate-shard-balanced-ids.js` (no Doppler CLI or `.env` file in the job).
 - That hostname is routed to **canopy-api-dev**, not to the worker named **canopy-api**.
 - So perf and normal dev traffic hit **canopy-api-dev**.
 

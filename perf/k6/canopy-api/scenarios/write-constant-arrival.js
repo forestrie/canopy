@@ -6,8 +6,8 @@
  * regardless of response times.
  *
  * Environment variables:
- *   CANOPY_PERF_BASE_URL   - Base URL of canopy-api (required)
- *   CANOPY_PERF_API_TOKEN  - Bearer token for Authorization (required)
+ *   CANOPY_BASE_URL        - Base URL of canopy-api (required)
+ *   SCRAPI_API_KEY         - Bearer token for Authorization (required)
  *   CANOPY_PERF_LOG_IDS    - Comma-separated list of log IDs (required)
  *   CANOPY_PERF_LOG_COUNT  - Number of logs to use (default: 1)
  *   CANOPY_PERF_RATE       - Requests per second (default: 10)
@@ -17,8 +17,8 @@
  *   CANOPY_PERF_SAMPLE_RATE - Fraction of requests to sample for e2e (default: 0.01)
  *
  * Example:
- *   CANOPY_PERF_BASE_URL=https://canopy-api.example.workers.dev \
- *   CANOPY_PERF_API_TOKEN=your-token \
+ *   CANOPY_BASE_URL=https://canopy-api.example.workers.dev \
+ *   SCRAPI_API_KEY=your-token \
  *   CANOPY_PERF_LOG_IDS=uuid1,uuid2,uuid3 \
  *   CANOPY_PERF_RATE=100 \
  *   k6 run scenarios/write-constant-arrival.js
@@ -44,8 +44,8 @@ import {
 // Read configuration from environment
 // Note: We use CANOPY_PERF_ prefix instead of K6_ to avoid k6's built-in
 // environment variable handling which can override scenario configuration.
-const BASE_URL = __ENV.CANOPY_PERF_BASE_URL;
-const API_TOKEN = __ENV.CANOPY_PERF_API_TOKEN;
+const BASE_URL = __ENV.CANOPY_BASE_URL;
+const API_TOKEN = __ENV.SCRAPI_API_KEY;
 const LOG_IDS_RAW = __ENV.CANOPY_PERF_LOG_IDS;
 const LOG_COUNT = parseInt(__ENV.CANOPY_PERF_LOG_COUNT || "1", 10);
 const RATE = parseInt(__ENV.CANOPY_PERF_RATE || "10", 10);
@@ -63,10 +63,10 @@ const LOG_IDS = LOG_IDS_RAW
 
 // Validate required environment variables
 if (!BASE_URL) {
-  throw new Error("CANOPY_PERF_BASE_URL is required");
+  throw new Error("CANOPY_BASE_URL is required");
 }
 if (!API_TOKEN) {
-  throw new Error("CANOPY_PERF_API_TOKEN is required");
+  throw new Error("SCRAPI_API_KEY is required");
 }
 if (LOG_IDS.length === 0) {
   throw new Error("CANOPY_PERF_LOG_IDS is required (comma-separated list)");
@@ -176,10 +176,10 @@ export function setup() {
         "check pool.signer is 64 hex chars",
     );
   }
-  const logIdToGrant = {};
+  const logIdToGrantBase64 = {};
   const grants = pool.grants || [];
   for (const g of grants) {
-    logIdToGrant[g.logId] = g.grantLocation;
+    logIdToGrantBase64[g.logId] = g.grantBase64;
   }
   if (grants.length === 0) {
     throw new Error(
@@ -195,7 +195,7 @@ export function setup() {
   console.log(`  Duration: ${WARMUP} warmup + ${DURATION} sustained`);
   console.log(`  Payload: ${MSG_BYTES} bytes`);
   console.log(`  Sample rate: ${SAMPLE_RATE * 100}%`);
-  console.log(`  Grant pool: ${grants.length} grants (X-Grant-Location)`);
+  console.log(`  Grant pool: ${grants.length} grants (Forestrie-Grant)`);
 
   // Do not pass signerBytes through setup return: k6 may serialize it and VUs can
   // receive a corrupted/wrong-length copy. Each VU derives signer from pool instead.
@@ -206,7 +206,7 @@ export function setup() {
     logCount: LOG_IDS.length,
     msgBytes: MSG_BYTES,
     sampleRate: SAMPLE_RATE,
-    logIdToGrant,
+    logIdToGrantBase64,
     poolSignerHex: pool.signer,
   };
 }
@@ -218,8 +218,8 @@ export default function (data) {
   const logId = data.logIds[logIndex];
   requestCounter++;
 
-  const grantLocation = data.logIdToGrant[logId];
-  if (!grantLocation) {
+  const grantBase64 = data.logIdToGrantBase64[logId];
+  if (!grantBase64) {
     console.error(`No grant for logId ${logId}; ensure grant-pool.json includes this log`);
     return;
   }
@@ -236,13 +236,13 @@ export default function (data) {
   // Decide if this request should measure e2e latency (sampled)
   const measureE2E = data.sampleRate > 0 && Math.random() < data.sampleRate;
 
-  // POST with X-Grant-Location (grant-based auth)
+  // POST with Forestrie-Grant (grant-based auth)
   const result = postAndMaybeWaitWithGrant(
     data.baseUrl,
     logId,
     data.apiToken,
     coseSign1,
-    grantLocation,
+    grantBase64,
     measureE2E,
     60, // maxPolls
     250, // pollIntervalMs

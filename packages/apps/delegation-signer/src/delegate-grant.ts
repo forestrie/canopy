@@ -7,6 +7,10 @@
 
 import { ClientErrors, ServerErrors } from "./http/problem-details";
 import { KmsError, kmsAsymmetricSignSha256 } from "./kms/client";
+import {
+  signDigestSha256 as testKeySignDigest,
+  signDigestSha256Es256 as testKeySignDigestEs256,
+} from "./kms/test-key-signer";
 import type { KmsKeyVersionRef } from "./kms/client";
 import { kmsDerSignatureToCoseRaw } from "./cose/sign1";
 /**
@@ -17,10 +21,20 @@ export interface DelegateGrantEnv {
   GCP_LOCATION: string;
   KMS_KEY_RING: string;
   KMS_KEY_SECP256K1: string;
+  KMS_KEY_SECP256R1: string;
   KMS_KEY_VERSION: string;
   DELEGATION_SIGNER_UNIVOCITY_URL?: string;
   DELEGATION_SIGNER_ROOT_LOG_ID?: string;
   DELEGATION_SIGNER_PARENT_KEYS_JSON?: string;
+  DELEGATION_SIGNER_USE_TEST_KEY?: string;
+  DELEGATION_SIGNER_TEST_KEY_PRIVATE_HEX?: string;
+}
+
+export type BootstrapAlg = "ES256" | "KS256";
+
+function useTestKey(env: DelegateGrantEnv): boolean {
+  const v = env.DELEGATION_SIGNER_USE_TEST_KEY?.trim().toLowerCase();
+  return v === "1" || v === "true";
 }
 
 const JSON_MIME = "application/json";
@@ -69,14 +83,25 @@ function mapKmsError(err: unknown): Response {
   return ServerErrors.badGateway(detail ?? `KMS error (${status})`);
 }
 
-function bootstrapKeyRef(env: DelegateGrantEnv): KmsKeyVersionRef {
+function bootstrapKeyRef(
+  env: DelegateGrantEnv,
+  alg: BootstrapAlg,
+): KmsKeyVersionRef {
+  const cryptoKey =
+    alg === "KS256" ? env.KMS_KEY_SECP256K1 : env.KMS_KEY_SECP256R1;
   return {
     projectId: env.FOREST_PROJECT_ID,
     location: env.GCP_LOCATION,
     keyRing: env.KMS_KEY_RING,
-    cryptoKey: env.KMS_KEY_SECP256K1,
+    cryptoKey,
     cryptoKeyVersion: env.KMS_KEY_VERSION,
   };
+}
+
+function parseBootstrapAlg(raw: string | undefined): BootstrapAlg {
+  const s = raw?.trim().toUpperCase();
+  if (s === "KS256") return "KS256";
+  return "ES256"; // default
 }
 
 function normalizeLogIdHex(s: string): string {
@@ -175,7 +200,8 @@ async function signDigestWithKey(
 
 /**
  * POST /api/delegate/bootstrap
- * Body: JSON { payload_hash: string } (64 hex chars).
+ * Body: JSON { payload_hash?: string, cose_tbs_hash?: string, alg?: "ES256"|"KS256" }.
+ * - payload_hash / cose_tbs_hash: 64 hex chars (either, not both). Default alg is ES256.
  * Returns: JSON { signature: string } (hex, raw r||s).
  */
 export async function handleDelegateBootstrap(
@@ -201,28 +227,61 @@ export async function handleDelegateBootstrap(
     return ClientErrors.unsupportedMediaType("Use application/json");
   }
 
-  let body: { payload_hash?: string };
+  let body: { payload_hash?: string; cose_tbs_hash?: string; alg?: string };
   try {
-    body = (await request.json()) as { payload_hash?: string };
+    body = (await request.json()) as {
+      payload_hash?: string;
+      cose_tbs_hash?: string;
+      alg?: string;
+    };
   } catch {
     return ClientErrors.badRequest("Invalid JSON body");
   }
 
-  const payloadHash = body.payload_hash?.trim();
-  if (!payloadHash) {
-    return ClientErrors.badRequest("payload_hash is required (64 hex chars)");
-  }
+  const alg = parseBootstrapAlg(body.alg);
 
-  let digest: Uint8Array;
-  try {
-    digest = hexToBytes(payloadHash);
-  } catch (e) {
+  const payloadHash = body.payload_hash?.trim();
+  const coseTbsHash = body.cose_tbs_hash?.trim();
+  if (coseTbsHash) {
+    if (payloadHash) {
+      return ClientErrors.badRequest(
+        "Send either payload_hash or cose_tbs_hash, not both",
+      );
+    }
+  } else if (!payloadHash) {
     return ClientErrors.badRequest(
-      e instanceof Error ? e.message : "invalid payload_hash",
+      "payload_hash or cose_tbs_hash is required (64 hex chars)",
     );
   }
 
-  const ref = bootstrapKeyRef(env);
+  const hashHex = coseTbsHash ?? payloadHash;
+  let digest: Uint8Array;
+  try {
+    digest = hexToBytes(hashHex!);
+  } catch (e) {
+    return ClientErrors.badRequest(
+      e instanceof Error ? e.message : "invalid hash (64 hex chars)",
+    );
+  }
+
+  if (useTestKey(env)) {
+    try {
+      const raw =
+        alg === "KS256"
+          ? testKeySignDigest(
+              digest,
+              env.DELEGATION_SIGNER_TEST_KEY_PRIVATE_HEX?.trim() || undefined,
+            )
+          : testKeySignDigestEs256(digest);
+      return jsonResponse({ signature: bytesToHex(raw) });
+    } catch (e) {
+      return ServerErrors.internal(
+        e instanceof Error ? e.message : "Test key sign failed",
+      );
+    }
+  }
+
+  const ref = bootstrapKeyRef(env, alg);
   try {
     const signature = await signDigestWithKey(token, ref, digest);
     return jsonResponse({ signature });

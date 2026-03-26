@@ -1,26 +1,35 @@
 /**
- * Register Signed Statement operation for SCRAPI
- * Requires grant-based auth (Plan 0001 Step 5): locate grant → retrieve → verify signer.
+ * Statement registration (POST /logs/{logId}/entries). Registers a signed statement in the
+ * transparency log for the given logId. Grant-based auth and optional receipt-based inclusion.
  */
 
 import {
   QueueFullError,
   type SequencingQueueStub,
 } from "@canopy/forestrie-ingress-types";
-import { shardNameForLog } from "@canopy/forestrie-sharding";
+import { getQueueForLog } from "../sequeue/logshard.js";
 import { getContentSize, parseCborBody } from "./cbor-request";
 import { seeOtherResponse } from "./cbor-response";
 
 import {
-  getGrantLocationFromRequest,
-  fetchGrant,
   getSignerFromCoseSign1,
   signerMatchesGrant,
   GrantAuthErrors,
 } from "./grant-auth";
-import { getCompletedGrant } from "./serve-grant";
+import {
+  isStatementRegistrationGrant,
+  statementSignerBindingBytes,
+} from "../grant/statement-signer-binding.js";
+import {
+  getGrantFromRequest,
+  grantAuthorize,
+  type AuthGrantAuthorizeEnv,
+} from "./auth-grant.js";
 import { ClientErrors, ServerErrors } from "./problem-details";
 import { getMaxStatementSize } from "./transparency-configuration";
+import type { InclusionEnv } from "./verify-grant-inclusion.js";
+
+export type InclusionVerificationEnv = InclusionEnv;
 
 /**
  * Statement Registration Request
@@ -40,41 +49,37 @@ export interface RegisterStatementResponse {
   status: "accepted" | "pending";
 }
 
-/** Log signer mismatch (grant auth). */
-function logSignerMismatch(
-  statementSigner: Uint8Array | null,
-  grantSigner: Uint8Array,
-): void {
-  console.warn("[grant-auth] signer_mismatch", {
-    statementKidLen: statementSigner?.length ?? 0,
-    grantSignerLen: grantSigner.length,
-  });
-}
-
 /**
- * Parse shard count from environment string.
- */
-function getShardCount(shardCountStr: string): number {
-  const count = parseInt(shardCountStr, 10);
-  if (isNaN(count) || count < 1) {
-    console.error(`Invalid QUEUE_SHARD_COUNT: ${shardCountStr}, using 1`);
-    return 1;
-  }
-  return count;
-}
-
-/** Optional env for completing sequenced grants (/grants/authority/{innerHex}) when used as X-Grant-Location. */
-export interface GrantCompletionEnv {
-  r2Mmrs: R2Bucket;
-  sequencingQueue: DurableObjectNamespace;
-  shardCountStr: string;
-  massifHeight: number;
-}
-
-/**
- * Process a statement registration request.
- * Requires grant location (X-Grant-Location or Authorization: Bearer <path>); retrieves grant from R2 and verifies statement signer matches grant.
- * When path is /grants/authority/{innerHex}, grantCompletionEnv is used to complete the grant (subplan 03).
+ * Handles POST /logs/{logId}/entries. Registers the submitted signed statement (COSE Sign1)
+ * so it will be appended as a leaf to the log. The statement is identified by the hash of
+ * its bytes until sequencing completes; the client polls the returned status URL then
+ * obtains the permanent entry ID and receipt from query-registration-status and resolve-receipt.
+ *
+ * Auth: the grant is taken from the request only (Authorization: Forestrie-Grant <base64>
+ * transparent statement). No fetch by URL. The grant’s receipt, when present in the
+ * statement, is used for inclusion verification when inclusionEnv is set.
+ *
+ * Parameters:
+ * - request: body is the statement (application/cose raw COSE Sign1 or application/cbor
+ *   with { signedStatement }) and must include Authorization: Forestrie-Grant.
+ * - logId: target log from the URL.
+ * - sequencingQueue, shardCountStr: DO namespace and shard count for the sequencing queue
+ *   (same sharding as grant-sequencing; getQueueForLog by logId).
+ * - enqueueExtras: optional extra payload for the DO enqueue call.
+ * - inclusionEnv: when set, grantAuthorize requires the grant to have a valid receipt
+ *   proving inclusion in the authority log; otherwise registration is rejected (403).
+ *
+ * Validation: grant must be present and valid; if inclusionEnv set, inclusion is checked.
+ * Statement must be valid COSE Sign1; the grant must be a **data-log** statement grant
+ * (bitmap: GF_DATA_LOG + GF_EXTEND per `isStatementRegistrationGrant`) and **`kid`** must match
+ * **`statementSignerBindingBytes(grant)`** = **`grantData`** only (ARC-0001 §6). Wire v0 has no
+ * separate signer/kind CBOR keys.
+ * On success, enqueues (logId, contentHash) and returns 303 to the status URL for polling.
+ * On queue backpressure returns 503 with Retry-After.
+ *
+ * Agent References: Plan 0001 Step 5 (grant-based auth); Plan 0004 Subplan 08 (receipt-based
+ * inclusion when inclusionEnv set); ARC-0001 (grant verification, signer binding);
+ * Plan 0005 (grant from Forestrie-Grant only, receipt from artifact).
  */
 export async function registerSignedStatement(
   request: Request,
@@ -82,51 +87,36 @@ export async function registerSignedStatement(
   sequencingQueue: DurableObjectNamespace,
   shardCountStr: string,
   enqueueExtras: Parameters<SequencingQueueStub["enqueue"]>[2] | undefined,
-  r2Grants: R2Bucket,
-  grantCompletionEnv?: GrantCompletionEnv,
+  inclusionEnv?: InclusionEnv,
 ): Promise<Response> {
   try {
-    const grantLocation = getGrantLocationFromRequest(request);
-    if (!grantLocation) {
-      return GrantAuthErrors.grantRequired();
-    }
-
-    let grantResult: {
-      grant: import("../grant/types.js").Grant;
-      bytes: Uint8Array;
-    } | null;
-    if (grantLocation.startsWith("/grants/") && grantCompletionEnv) {
-      grantResult = await getCompletedGrant(grantLocation, {
-        r2Grants,
-        r2Mmrs: grantCompletionEnv.r2Mmrs,
-        sequencingQueue: grantCompletionEnv.sequencingQueue,
-        shardCountStr: grantCompletionEnv.shardCountStr,
-        massifHeight: grantCompletionEnv.massifHeight,
-      });
-    } else {
-      grantResult = await fetchGrant(r2Grants, grantLocation);
-    }
-    if (!grantResult) {
-      return GrantAuthErrors.grantNotFound();
-    }
+    // --- Grant resolution (Plan 0005: Authorization: Forestrie-Grant only) ---
+    const authEnv: AuthGrantAuthorizeEnv = { inclusionEnv };
+    const grantResult = getGrantFromRequest(request);
+    if (grantResult instanceof Response) return grantResult;
     const { grant } = grantResult;
 
+    // --- Grant authorization — receipt-based inclusion (Subplan 08, ARC-0001) ---
+    // Receipt from artifact only (Plan 0005); no X-Grant-Receipt-Location or server-built receipt.
+    const authError = await grantAuthorize(grantResult, authEnv);
+    if (authError) return authError;
+
+    // --- Request and body validation ---
+    // Enforce max statement size; accept application/cose (raw COSE Sign1) or application/cbor
+    // (wrapper with signedStatement). Reject unsupported media type.
     const maxSize = getMaxStatementSize();
     const size = getContentSize(request);
     if (typeof size === "number" && size > maxSize) {
       return ClientErrors.payloadTooLarge(size, maxSize);
     }
 
-    // Parse the body dealing with either COSE or CBOR
     let statementData: Uint8Array;
     const contentType = request.headers.get("content-type") || "";
 
     if (contentType.includes("cose")) {
-      // Direct COSE Sign1 data
       const buffer = await request.arrayBuffer();
       statementData = new Uint8Array(buffer);
     } else if (contentType.includes("cbor")) {
-      // CBOR-encoded request
       try {
         const body = await parseCborBody<RegisterStatementRequest>(request);
         statementData = body.signedStatement;
@@ -139,63 +129,56 @@ export async function registerSignedStatement(
       return ClientErrors.unsupportedMediaType(contentType);
     }
 
-    // Validate COSE Sign1 structure (basic validation)
+    // --- Statement structure and signer binding (ARC-0001 §6) ---
+    if (!isStatementRegistrationGrant(grant)) {
+      return ClientErrors.forbidden(
+        "Grant must authorize statement registration (data-log flags + extend, or auth-log bootstrap with create|extend).",
+      );
+    }
+
     if (!validateCoseSign1Structure(statementData)) {
       return ClientErrors.invalidStatement("Invalid COSE Sign1 structure");
     }
 
-    // Verify statement signer matches grant's signer binding
     const statementSigner = getSignerFromCoseSign1(statementData);
-    if (!signerMatchesGrant(statementSigner, grant.signer)) {
-      logSignerMismatch(statementSigner, grant.signer);
+    const grantSignerBinding = statementSignerBindingBytes(grant);
+    if (grantSignerBinding.length === 0) {
+      return ClientErrors.forbidden(
+        "Grant grantData must carry the statement signer binding (non-empty).",
+      );
+    }
+    if (!signerMatchesGrant(statementSigner, grantSignerBinding)) {
+      logSignerMismatch(statementSigner, grantSignerBinding);
       return GrantAuthErrors.signerMismatch();
     }
 
-    // Optional: reject if grant is expired or not yet valid
-    const now = Math.floor(Date.now() / 1000);
-    if (grant.exp !== undefined && now > grant.exp) {
-      return GrantAuthErrors.grantInvalid(); // or a dedicated grant_expired
-    }
-    if (grant.nbf !== undefined && now < grant.nbf) {
-      return GrantAuthErrors.grantInvalid();
+    if (!sequencingQueue) {
+      return ServerErrors.serviceUnavailable(
+        "Statement sequencing not configured (SEQUENCING_QUEUE required)",
+      );
     }
 
-    // Calculate content hash for the operation ID
+    // --- Enqueue for sequencing (Subplan 03; SCRAPI 2.1.3.2) ---
+    // Content hash identifies the statement until sequencing completes. Same DO shard as
+    // grant-sequencing (getQueueForLog by logId). Response is 303 See Other to the entry
+    // status URL; client polls until sequenced.
     const contentHash = await calculateSHA256(
       statementData.buffer as ArrayBuffer,
     );
-
-    // Convert logId (UUID string) to 16-byte ArrayBuffer
     const logIdBytes = uuidToBytes(logId);
-
-    // Enqueue to SequencingQueue DO shard for this log
-    const shardCount = getShardCount(shardCountStr);
-    const shardName = shardNameForLog(logId, shardCount);
-    const queueId = sequencingQueue.idFromName(shardName);
-    const queue = sequencingQueue.get(
-      queueId,
-    ) as unknown as SequencingQueueStub;
+    const queue = getQueueForLog({ sequencingQueue, shardCountStr }, logId);
     await queue.enqueue(logIdBytes, hexToBytes(contentHash), enqueueExtras);
 
-    // The SCRAPI pre-sequence identifier is the content hash.
-    // This is used as the operation ID until sequencing completes.
-
-    // Derive Location header from request URL
     const requestUrl = new URL(request.url);
     const location = `${requestUrl.origin}${requestUrl.pathname}/${contentHash}`;
 
-    // Return 303 See Other - registration is running (per SCRAPI 2.1.3.2)
-    // This is always async for this implementation
     console.log("Statement registration accepted", {
       logId,
-      grantLocation,
       contentHash,
     });
-    return seeOtherResponse(location, 5); // Suggest retry after 5 seconds
+    return seeOtherResponse(location, 5);
   } catch (error) {
-    // Handle queue backpressure with 503 Service Unavailable
-    // This follows Cloudflare DO best practices: signal saturation early
-    // with 503 to allow clients to back off gracefully.
+    // Queue backpressure: return 503 with Retry-After so clients can back off (DO best practice).
     if (error instanceof QueueFullError) {
       console.warn("Queue full, returning 503:", {
         pendingCount: error.pendingCount,
@@ -213,6 +196,17 @@ export async function registerSignedStatement(
       error instanceof Error ? error.message : "Failed to register statement",
     );
   }
+}
+
+/** Log signer mismatch (grant auth). */
+function logSignerMismatch(
+  statementSigner: Uint8Array | null,
+  grantSigner: Uint8Array,
+): void {
+  console.warn("[grant-auth] signer_mismatch", {
+    statementKidLen: statementSigner?.length ?? 0,
+    grantSignerLen: grantSigner.length,
+  });
 }
 
 /**

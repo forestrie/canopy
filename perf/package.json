@@ -4,13 +4,20 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "generate-grant-pool": "tsx scripts/generate-grant-pool.ts"
+    "generate-grant-pool": "tsx scripts/generate-grant-pool.ts",
+    "generate-shard-balanced-ids": "node scripts/generate-shard-balanced-ids.js",
+    "poll-status": "tsx scripts/poll-status.ts",
+    "resolve-receipt-to-grant": "tsx scripts/resolve-receipt-to-grant.ts",
+    "verify-grant-flow": "tsx ../scripts/verify-grant-flow.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@canopy/encoding": "workspace:*"
   },
   "devDependencies": {
+    "cbor-x": "^1.5.9",
     "tsx": "^4.8.1",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.4"
   }
 }

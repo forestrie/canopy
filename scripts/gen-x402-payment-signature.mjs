@@ -15,9 +15,7 @@
  *   printf '%s' "$X_PAYMENT_REQUIRED_BASE64" | \
  *     node scripts/gen-x402-payment-signature.mjs
  *
- * The script uses the shared dev payer key CANOPY_X402_DEV_PRIVATE_KEY by
- * default, with optional per-tool overrides such as SCRAPI_X402_PRIVATE_KEY
- * or CANOPY_PERF_X402_PRIVATE_KEY.
+ * The script uses the dev payer key CANOPY_X402_DEV_PRIVATE_KEY (required).
  *
  * Output: base64-encoded JSON payload suitable for the X-PAYMENT header.
  *
@@ -149,15 +147,11 @@ async function main() {
     process.exit(1);
   }
 
-  // Determine dev private key: shared default with optional per-tool overrides.
-  const privateKey =
-    process.env.SCRAPI_X402_PRIVATE_KEY ||
-    process.env.CANOPY_PERF_X402_PRIVATE_KEY ||
-    process.env.CANOPY_X402_DEV_PRIVATE_KEY;
+  const privateKey = process.env.CANOPY_X402_DEV_PRIVATE_KEY;
 
   if (!privateKey) {
     console.error(
-      "Missing dev x402 private key: set CANOPY_X402_DEV_PRIVATE_KEY (or SCRAPI_X402_PRIVATE_KEY / CANOPY_PERF_X402_PRIVATE_KEY)",
+      "Missing dev x402 private key: set CANOPY_X402_DEV_PRIVATE_KEY",
     );
     process.exit(1);
   }

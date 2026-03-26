@@ -65,9 +65,9 @@ export function getPaymentRequirements(baseUrl, logId, apiToken) {
  *
  * @param {string} baseUrl - Base URL (e.g., https://canopy-api.example.workers.dev)
  * @param {string} logId - Log ID for the target log
- * @param {string} apiToken - Bearer token for Authorization
+ * @param {string} apiToken - Unused; kept for API compatibility
  * @param {Uint8Array} cosePayload - CBOR-encoded COSE Sign1 message (kid must match grant signer)
- * @param {string} grantLocation - URL path from grant creation (e.g. /attestor/abc123.cbor)
+ * @param {string} grantBase64 - Base64-encoded grant (transparent statement) for Forestrie-Grant
  * @returns {Object} - { success, statusCode, statusUrl, error, startTime }
  */
 export function postEntryWithGrant(
@@ -75,15 +75,14 @@ export function postEntryWithGrant(
   logId,
   apiToken,
   cosePayload,
-  grantLocation,
+  grantBase64,
 ) {
   const url = `${baseUrl}/logs/${logId}/entries`;
   const startTime = Date.now();
 
   const headers = {
     "Content-Type": 'application/cose; cose-type="cose-sign1"',
-    Authorization: `Bearer ${apiToken}`,
-    "X-Grant-Location": grantLocation,
+    Authorization: `Forestrie-Grant ${grantBase64}`,
   };
 
   const response = http.post(url, cosePayload.buffer, {
@@ -245,13 +244,13 @@ export function pollUntilSequenced(
 }
 
 /**
- * POST with grant location and optionally poll until sequenced (for sampled e2e latency).
+ * POST with Forestrie-Grant and optionally poll until sequenced (for sampled e2e latency).
  *
  * @param {string} baseUrl - Base URL
  * @param {string} logId - Log ID
- * @param {string} apiToken - Bearer token
+ * @param {string} apiToken - Bearer token (for poll; POST uses Forestrie-Grant only)
  * @param {Uint8Array} cosePayload - CBOR-encoded COSE Sign1 message (kid must match grant)
- * @param {string} grantLocation - X-Grant-Location path
+ * @param {string} grantBase64 - Base64 grant for Authorization: Forestrie-Grant
  * @param {boolean} [measureE2E=false] - Whether to poll until sequenced
  * @param {number} [maxPolls=60] - Maximum poll attempts for e2e
  * @param {number} [pollIntervalMs=250] - Poll interval for e2e
@@ -262,7 +261,7 @@ export function postAndMaybeWaitWithGrant(
   logId,
   apiToken,
   cosePayload,
-  grantLocation,
+  grantBase64,
   measureE2E = false,
   maxPolls = 60,
   pollIntervalMs = 250,
@@ -272,7 +271,7 @@ export function postAndMaybeWaitWithGrant(
     logId,
     apiToken,
     cosePayload,
-    grantLocation,
+    grantBase64,
   );
 
   if (!postResult.success || !measureE2E) {

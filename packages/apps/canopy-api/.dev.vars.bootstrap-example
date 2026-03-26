@@ -1,0 +1,6 @@
+# Copy to .dev.vars for local bootstrap testing against Custodian.
+# ROOT_LOG_ID: 32 hex (e.g. UUID without dashes) or 64 hex.
+ROOT_LOG_ID=123e4567e89b12d3a456426614174000
+CUSTODIAN_URL=http://127.0.0.1:9092
+CUSTODIAN_BOOTSTRAP_APP_TOKEN=test-bootstrap
+CUSTODIAN_APP_TOKEN=test-app

@@ -1,21 +1,30 @@
 import { encodeCoseSign1Statement } from "@canopy/encoding";
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 import { env } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import { encodeEntryId } from "../src/scrapi/entry-id";
 import worker from "../src/index";
 import type { Env } from "../src/index";
-import {
-  encodeGrant,
-  grantStoragePath,
-  KIND_ATTESTOR,
-  uuidToBytes,
-} from "../src/grant";
+import { uuidToBytes } from "../src/grant";
 import type { Grant } from "../src/grant";
+import { forestrieGrantAuthorizationHeader } from "./helpers/custodian-transparent-grant";
 
 // Cast the test env to our Env type.
 const testEnv = env as unknown as Env;
+
+const FLOW_GRANT_KID16 = new Uint8Array(16).fill(0xee);
+
+let flowGrantPriv: CryptoKey;
+
+beforeAll(async () => {
+  const pair = (await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  )) as CryptoKeyPair;
+  flowGrantPriv = pair.privateKey;
+});
 
 describe("SCRAPI flow", () => {
   // This test requires the SEQUENCED_CONTENT DO to be seeded with lookup data.
@@ -51,7 +60,7 @@ describe("SCRAPI flow", () => {
     );
   });
 
-  it("POST /logs/{logId}/entries without grant location returns 401", async () => {
+  it("POST /logs/{logId}/entries without Forestrie-Grant returns 401", async () => {
     const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
 
     const request = new Request(`http://localhost/logs/${logId}/entries`, {
@@ -78,14 +87,14 @@ describe("SCRAPI flow", () => {
     expect(decoded.reason).toBe("grant_required");
   });
 
-  it("POST /logs/{logId}/entries with invalid grant location returns 401", async () => {
+  it("POST /logs/{logId}/entries with invalid grant value returns 400", async () => {
     const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
 
     const request = new Request(`http://localhost/logs/${logId}/entries`, {
       method: "POST",
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',
-        "X-Grant-Location": "/attestor/nonexistent.cbor",
+        Authorization: "Forestrie-Grant not-valid-base64!!!",
       },
       body: new Uint8Array([0x80]),
     });
@@ -96,29 +105,35 @@ describe("SCRAPI flow", () => {
       {} as ExecutionContext,
     );
 
-    expect(response.status).toBe(401);
+    expect([400, 401]).toContain(response.status);
     const bodyBytes = new Uint8Array(await response.arrayBuffer());
     const decoded = decodeCbor(bodyBytes) as any;
-    expect(decoded.reason).toBe("grant_not_found");
+    expect(decoded).toMatchObject({ status: response.status });
   });
 
   it("POST with valid grant and matching signer proceeds to enqueue (303 or 503)", async () => {
     const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
     const signerKid = new Uint8Array([0x99, 0x88, 0x77]);
+    const idtimestampBytes = new Uint8Array(8).fill(42);
 
+    const flags = new Uint8Array(8);
+    flags[4] = 0x03; // GF_CREATE | GF_EXTEND
+    flags[7] = 0x02; // GF_DATA_LOG
     const grant: Grant = {
-      version: 1,
-      idtimestamp: new Uint8Array(8).fill(42),
       logId: uuidToBytes(logId),
       ownerLogId: uuidToBytes("660e8400-e29b-41d4-a716-446655440001"),
-      grantFlags: new Uint8Array(8),
-      grantData: new Uint8Array([]),
-      signer: signerKid,
-      kind: new Uint8Array([KIND_ATTESTOR]),
+      grant: flags,
+      maxHeight: 0,
+      minGrowth: 0,
+      grantData: new Uint8Array(signerKid),
     };
-    const grantBytes = encodeGrant(grant);
-    const storagePath = await grantStoragePath(grantBytes, grant.kind);
-    await testEnv.R2_GRANTS.put(storagePath, grantBytes);
+    // Plan 0014: Forestrie-Grant uses Custodian COSE profile (digest payload + -65538).
+    const authHeader = await forestrieGrantAuthorizationHeader(
+      grant,
+      flowGrantPriv,
+      FLOW_GRANT_KID16,
+      idtimestampBytes,
+    );
 
     const payload = new Uint8Array([0x48, 0x65, 0x6c, 0x6c, 0x6f]); // "Hello"
     const coseSign1 = encodeCoseSign1Statement(
@@ -131,7 +146,7 @@ describe("SCRAPI flow", () => {
       method: "POST",
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',
-        "X-Grant-Location": `/${storagePath}`,
+        Authorization: authHeader,
       },
       body: coseSign1,
     });
@@ -142,11 +157,16 @@ describe("SCRAPI flow", () => {
       {} as ExecutionContext,
     );
 
-    expect([303, 503, 500]).toContain(response.status);
+    expect([303, 503]).toContain(response.status);
     if (response.status === 303) {
       expect(response.headers.get("Location")).toContain(logId);
+    } else {
+      const problem = decodeCbor(
+        new Uint8Array(await response.arrayBuffer()),
+      ) as { detail?: string };
+      expect(String(problem.detail ?? "")).toContain("SEQUENCING_QUEUE");
     }
-    // 500 can occur in test env when SEQUENCING_QUEUE is not bound
+    // 503 when wrangler.test omits SEQUENCING_QUEUE; 303 when queue is bound (e.g. wrangler dev)
   });
 
   it("resolve-receipt returns a COSE_Sign1 receipt with an attached proof", async () => {

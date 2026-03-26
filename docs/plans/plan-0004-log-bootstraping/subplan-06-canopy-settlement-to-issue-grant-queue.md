@@ -2,10 +2,12 @@
 
 **Status**: DRAFT  
 **Date**: 2026-03-09  
-**Parent**: [Plan 0004 overview](overview.md)
+**Parent**: [Plan 0004 overview](overview.md)  
+**Related**: [Subplan 08 grant-first bootstrap](subplan-08-grant-first-bootstrap.md) (bootstrap is **not** via settlement)
 
 ## 1. Scope
 
+- This subplan covers **paid grants only** (x402 settlement → grant creation). **Root bootstrap** is **not** via settlement; see [Subplan 08: Grant-first root bootstrap](subplan-08-grant-first-bootstrap.md).
 - After **x402 settlement** completes (payment verified and settled for a grant resource), **canopy** (canopy-api or x402-settlement worker):
   1. **Creates the grant** (requests delegation, signs grant per subplan 01).
   2. **Runs grant-sequencing**: produces entry (ownerLogId, ContentHash = inner) and **pushes to the same DO** as register-signed-statement (forestrie-ingress SequencingQueue). Ranger extends the log (unchanged except optional idtimestamps in ack per config).
@@ -46,7 +48,7 @@ Primary path: canopy creates grant after x402 settlement and runs grant-sequenci
 | Step | Action | Input | Output | Location / hint | Verification |
 |------|--------|-------|--------|------------------|--------------|
 | **6.1** | Settlement completion hook | x402 settlement success (canopy-api or x402-settlement worker) | Grant params: logId, ownerLogId, kind, grant params, settlement id (idempotency) | Canopy: settlement handler. Extract from settlement payload; validate. | Same payload used for grant creation. |
-| **6.2** | Request delegation | Grant params (kind: bootstrap vs derived); subplan 04 signer API | Delegation for local key (bootstrap) or parent log (derived) | Call signer: “delegation for local key” or “delegation for parent log” with parentLogId. | No private key in canopy; delegation only. |
+| **6.2** | Request delegation | Grant params (kind: derived / paid); subplan 04 signer API | Delegation for parent log (derived) | Call signer: “delegation for local key” or “delegation for parent log” with parentLogId. | No private key in canopy; delegation only. |
 | **6.3** | Build and sign grant; compute inner | Delegation; subplan 01 encoding (go-univocity or equivalent) | Signed grant; ContentHash = inner (InnerHash) | Build grant struct; sign with delegation; compute inner = InnerHashFromGrant (subplan 01). | Inner matches go-univocity; signature verifies. |
 | **6.4** | Grant-sequencing: enqueue and wait for result | ownerLogId, inner, extras; same DO as register-signed-statement (forestrie-ingress SequencingQueue) | Sequencing result: leafIndex, massifIndex; idTimestamp if present in DO | Enqueue(ownerLogId, inner, extras). Poll or callback for result. Dedupe by inner (subplan 03). | Entry in DO; ranger extends log; result returned. |
 | **6.5** | Resolve idtimestamp and write grant doc | Result from 6.4; resolveContent(inner) | idtimestamp (from DO or R2 fallback), mmrIndex | Call resolveContent(inner). If idTimestamp in DO use it; else use R2 fallback (readIdtimestampFromMassif). Write grant document with idtimestamp, mmrIndex; publish to storage. | Grant doc has correct idtimestamp; no assumption idtimestamp always in DO. |

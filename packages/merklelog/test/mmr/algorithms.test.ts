@@ -3,11 +3,10 @@ import {
   bagPeaks,
   calculateRoot,
   verifyInclusion,
-  Hasher,
 } from "../../src/mmr/algorithms.js";
-import type { Proof } from "../../src/mmr/types.js";
+import type { Proof, Hasher } from "../../src/mmr/types.js";
 
-// Simple SHA-256 hasher implementation for testing
+// Test hasher: same algorithm as before, digest returns Promise (single async Hasher).
 class TestHasher implements Hasher {
   private data: Uint8Array[] = [];
 
@@ -19,9 +18,7 @@ class TestHasher implements Hasher {
     this.data.push(data);
   }
 
-  digest(): Uint8Array {
-    // Simple hash simulation for testing (not cryptographically secure)
-    // XOR all bytes together to create a deterministic "hash" that's different from inputs
+  digest(): Promise<Uint8Array> {
     const result = new Uint8Array(32);
     let hash = 0;
     for (const arr of this.data) {
@@ -30,45 +27,44 @@ class TestHasher implements Hasher {
         result[i % 32] ^= arr[i];
       }
     }
-    // Fill remaining bytes with hash value to ensure different inputs produce different outputs
     for (let i = 0; i < 32; i++) {
       result[i] = (result[i] + hash + i) & 0xff;
     }
-    return result;
+    return Promise.resolve(result);
   }
 }
 
 describe("MMR Algorithms", () => {
   describe("bagPeaks", () => {
-    it("should return single peak as-is", () => {
+    it("should return single peak as-is", async () => {
       const hasher = new TestHasher();
       const peak = new Uint8Array(32);
       peak[0] = 0x42;
-      const result = bagPeaks(hasher, [peak]);
+      const result = await bagPeaks(hasher, [peak]);
       expect(result).toEqual(peak);
     });
 
-    it("should bag two peaks", () => {
+    it("should bag two peaks", async () => {
       const hasher = new TestHasher();
       const peak1 = new Uint8Array(32);
       peak1[0] = 0x01;
       const peak2 = new Uint8Array(32);
       peak2[0] = 0x02;
 
-      const result = bagPeaks(hasher, [peak1, peak2]);
+      const result = await bagPeaks(hasher, [peak1, peak2]);
       expect(result.length).toBe(32);
       expect(result).not.toEqual(peak1);
       expect(result).not.toEqual(peak2);
     });
 
-    it("should throw on empty peaks", () => {
+    it("should throw on empty peaks", async () => {
       const hasher = new TestHasher();
-      expect(() => bagPeaks(hasher, [])).toThrow();
+      await expect(bagPeaks(hasher, [])).rejects.toThrow();
     });
   });
 
   describe("calculateRoot", () => {
-    it("should calculate root from leaf and empty proof", () => {
+    it("should calculate root from leaf and empty proof", async () => {
       const hasher = new TestHasher();
       const leafHash = new Uint8Array(32);
       leafHash[0] = 0x01;
@@ -78,11 +74,11 @@ describe("MMR Algorithms", () => {
         leafIndex: 0n,
       };
 
-      const root = calculateRoot(hasher, leafHash, proof, 0n);
+      const root = await calculateRoot(hasher, leafHash, proof, 0n);
       expect(root.length).toBe(32);
     });
 
-    it("should calculate root from leaf and proof path", () => {
+    it("should calculate root from leaf and proof path", async () => {
       const hasher = new TestHasher();
       const leafHash = new Uint8Array(32);
       leafHash[0] = 0x01;
@@ -95,13 +91,13 @@ describe("MMR Algorithms", () => {
         leafIndex: 0n,
       };
 
-      const root = calculateRoot(hasher, leafHash, proof, 0n);
+      const root = await calculateRoot(hasher, leafHash, proof, 0n);
       expect(root.length).toBe(32);
     });
   });
 
   describe("verifyInclusion", () => {
-    it("should verify simple inclusion proof", () => {
+    it("should verify simple inclusion proof", async () => {
       const hasher = new TestHasher();
       const leafHash = new Uint8Array(32);
       leafHash[0] = 0x01;
@@ -111,15 +107,18 @@ describe("MMR Algorithms", () => {
         leafIndex: 0n,
       };
 
-      // Calculate expected root
-      const expectedRoot = calculateRoot(hasher, leafHash, proof, 0n);
+      const expectedRoot = await calculateRoot(hasher, leafHash, proof, 0n);
 
-      // Verify
-      const isValid = verifyInclusion(hasher, leafHash, proof, expectedRoot);
+      const isValid = await verifyInclusion(
+        hasher,
+        leafHash,
+        proof,
+        expectedRoot,
+      );
       expect(isValid).toBe(true);
     });
 
-    it("should reject invalid proof", () => {
+    it("should reject invalid proof", async () => {
       const hasher = new TestHasher();
       const leafHash = new Uint8Array(32);
       leafHash[0] = 0x01;
@@ -132,11 +131,11 @@ describe("MMR Algorithms", () => {
       const wrongRoot = new Uint8Array(32);
       wrongRoot[0] = 0xff;
 
-      const isValid = verifyInclusion(hasher, leafHash, proof, wrongRoot);
+      const isValid = await verifyInclusion(hasher, leafHash, proof, wrongRoot);
       expect(isValid).toBe(false);
     });
 
-    it("should throw if proof has no index", () => {
+    it("should throw if proof has no index", async () => {
       const hasher = new TestHasher();
       const leafHash = new Uint8Array(32);
       const proof: Proof = {
@@ -144,7 +143,9 @@ describe("MMR Algorithms", () => {
       };
 
       const root = new Uint8Array(32);
-      expect(() => verifyInclusion(hasher, leafHash, proof, root)).toThrow();
+      await expect(
+        verifyInclusion(hasher, leafHash, proof, root),
+      ).rejects.toThrow();
     });
   });
 });

@@ -1,41 +1,63 @@
 /**
- * Register-grant endpoint tests (Plan 0001 Step 6).
- * Request body must be grant wire format (go-univocity keys 0–8).
+ * Register-grant endpoint tests (Plan 0001 Step 6, Plan 0005, Plan 0014).
+ * Auth: Authorization: Forestrie-Grant <base64> (Custodian COSE profile).
  */
 
 import { encodeGrantRequest } from "@canopy/encoding";
-import { encode as encodeCbor } from "cbor-x";
+import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 import { env } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import worker from "../src/index";
 import type { Env } from "../src/index";
-import {
-  bytesToUuid,
-  decodeGrant,
-  kindBytesToSegment,
-  KIND_ATTESTOR,
-  uuidToBytes,
-} from "../src/grant";
+import { uuidToBytes } from "../src/grant";
+import type { Grant } from "../src/grant";
+import { forestrieGrantAuthorizationHeader } from "./helpers/custodian-transparent-grant";
 
 const testEnv = env as unknown as Env;
+
+const TEST_KID = new Uint8Array(16).fill(0xcd);
+
+let testPriv: CryptoKey;
+
+beforeAll(async () => {
+  const pair = (await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  )) as CryptoKeyPair;
+  testPriv = pair.privateKey;
+});
+
+async function transparentStatementHeader(grant: Grant): Promise<string> {
+  return forestrieGrantAuthorizationHeader(grant, testPriv, TEST_KID);
+}
 
 describe("POST /logs/{logId}/grants", () => {
   const logId = "550e8400-e29b-41d4-a716-446655440000";
 
-  it("returns 201 and stores grant at content-addressable path", async () => {
-    const bodyBytes = encodeGrantRequest({
-      idtimestamp: new Uint8Array(8),
+  it("returns 503 when grant sequencing not configured (no SEQUENCING_QUEUE)", async () => {
+    const authGrant: Grant = {
       logId: uuidToBytes(logId),
       ownerLogId: uuidToBytes("660e8400-e29b-41d4-a716-446655440001"),
-      grantFlags: new Uint8Array(8),
+      grant: new Uint8Array(8),
+      maxHeight: 0,
+      minGrowth: 0,
       grantData: new Uint8Array([]),
-      signer: new Uint8Array([0x01, 0x02, 0x03]),
-      kind: new Uint8Array([KIND_ATTESTOR]),
+    };
+
+    const bodyBytes = encodeGrantRequest({
+      logId: uuidToBytes(logId),
+      ownerLogId: uuidToBytes("660e8400-e29b-41d4-a716-446655440001"),
+      grant: new Uint8Array(8),
+      grantData: new Uint8Array([]),
     });
 
     const request = new Request(`http://localhost/logs/${logId}/grants`, {
       method: "POST",
-      headers: { "Content-Type": "application/cbor" },
+      headers: {
+        "Content-Type": "application/cbor",
+        Authorization: await transparentStatementHeader(authGrant),
+      },
       body: bodyBytes,
     });
 
@@ -45,25 +67,13 @@ describe("POST /logs/{logId}/grants", () => {
       {} as ExecutionContext,
     );
 
-    expect(response.status).toBe(201);
-    const location = response.headers.get("Location");
-    expect(location).not.toBeNull();
-    expect(location).toMatch(/^\/attestor\/[0-9a-f]{64}\.cbor$/);
-
-    const key = location!.slice(1);
-    const obj = await testEnv.R2_GRANTS.get(key);
-    expect(obj).not.toBeNull();
-    const stored = new Uint8Array(await obj!.arrayBuffer());
-    const decoded = decodeGrant(stored);
-    expect(decoded.logId.length).toBe(32);
-    expect(bytesToUuid(decoded.logId)).toBe(logId);
-    expect(kindBytesToSegment(decoded.kind)).toBe("attestor");
-    expect(new Uint8Array(decoded.signer)).toEqual(
-      new Uint8Array([0x01, 0x02, 0x03]),
-    );
+    expect(response.status).toBe(503);
+    const responseBytes = new Uint8Array(await response.arrayBuffer());
+    const decoded = decodeCbor(responseBytes) as { detail?: string };
+    expect(decoded.detail).toContain("Grant sequencing not configured");
   });
 
-  it("returns 401 without grant location for entries", async () => {
+  it("returns 401 without Authorization: Forestrie-Grant for POST /entries", async () => {
     const request = new Request(`http://localhost/logs/${logId}/entries`, {
       method: "POST",
       headers: { "Content-Type": "application/cbor" },
@@ -77,17 +87,23 @@ describe("POST /logs/{logId}/grants", () => {
     expect(response.status).toBe(401);
   });
 
-  it("returns 415 for non-CBOR content type at grants", async () => {
+  it("returns 401 without Authorization: Forestrie-Grant", async () => {
+    const bodyBytes = encodeGrantRequest({
+      logId: uuidToBytes(logId),
+      ownerLogId: uuidToBytes("660e8400-e29b-41d4-a716-446655440001"),
+      grant: new Uint8Array(8),
+      grantData: new Uint8Array([]),
+    });
     const request = new Request(`http://localhost/logs/${logId}/grants`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: "{}",
+      headers: { "Content-Type": "application/cbor" },
+      body: bodyBytes,
     });
     const response = await worker.fetch(
       request,
       testEnv,
       {} as ExecutionContext,
     );
-    expect(response.status).toBe(415);
+    expect(response.status).toBe(401);
   });
 });

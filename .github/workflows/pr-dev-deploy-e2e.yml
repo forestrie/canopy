@@ -1,0 +1,171 @@
+# Deploys canopy-api to dev, then read-only health checks, then full Playwright e2e.
+# For branch protection on `main`, require this workflow (or the final job
+# "API e2e (dev, dev)" from the nested API Playwright e2e workflow) to pass.
+#
+# Fork PRs: only "Validate" runs; deploy/e2e are skipped (no repo secrets).
+
+name: PR dev deploy and e2e
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: dev-deploy-e2e-${{ github.repository }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate (lint and unit)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.6.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Lint
+        run: pnpm run check
+
+      - name: Unit tests
+        run: pnpm -r test
+
+      - name: Perf lib unit tests
+        run: pnpm --filter @canopy/perf test
+
+  deploy-dev:
+    name: Deploy canopy-api (dev)
+    needs: validate
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: dev
+
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      DEPLOY_ENV: dev
+      CANOPY_ID: ${{ vars.CANOPY_ID }}
+      FOREST_PROJECT_ID: ${{ vars.FOREST_PROJECT_ID }}
+      FORESTRIE_APEX: ${{ vars.FORESTRIE_APEX }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.6.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install go-task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Wrangler
+        run: pnpm add -g wrangler
+
+      - name: Authenticate Wrangler
+        run: |
+          echo "Authenticating with Cloudflare..."
+          yes n | wrangler whoami
+
+      - name: Unit tests (@canopy/api)
+        run: pnpm --filter @canopy/api run test
+
+      # wrangler.jsonc leaves dev CUSTODIAN_URL empty; Worker secrets set here.
+      # CUSTODIAN_URL: var/secret, or derive from FORESTRIE_APEX + FOREST_PROJECT_ID
+      # (https://custodian.<suffix>.<apex>/v1). Bootstrap + optional app token.
+      - name: Configure Custodian secrets and deploy canopy-api (dev)
+        working-directory: packages/apps/canopy-api
+        env:
+          CUSTODIAN_URL_FROM_VAR: ${{ vars.CUSTODIAN_URL }}
+          CUSTODIAN_URL_FROM_SECRET: ${{ secrets.CUSTODIAN_URL }}
+          CUSTODIAN_BOOTSTRAP_APP_TOKEN: ${{ secrets.CUSTODIAN_BOOTSTRAP_APP_TOKEN }}
+          BOOTSTRAP_APP_TOKEN: ${{ secrets.BOOTSTRAP_APP_TOKEN }}
+          CUSTODIAN_APP_TOKEN: ${{ secrets.CUSTODIAN_APP_TOKEN }}
+        run: |
+          set -euo pipefail
+          trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+          norm_apex() {
+            local a
+            a=$(trim_ws "$1")
+            a="${a#https://}"
+            a="${a#http://}"
+            a="${a%.}"
+            printf '%s' "$a"
+          }
+          URL=$(trim_ws "${CUSTODIAN_URL_FROM_VAR:-}")
+          if [ -z "$URL" ]; then
+            URL=$(trim_ws "${CUSTODIAN_URL_FROM_SECRET:-}")
+          fi
+          if [ -z "$URL" ] && [ -n "${FORESTRIE_APEX:-}" ] && [ -n "${FOREST_PROJECT_ID:-}" ]; then
+            APEX=$(norm_apex "${FORESTRIE_APEX}")
+            SUFFIX="${FOREST_PROJECT_ID#forest-}"
+            URL="https://custodian.${SUFFIX}.${APEX}/v1"
+            echo "Derived CUSTODIAN_URL from FOREST_PROJECT_ID + FORESTRIE_APEX"
+          fi
+          if [ -z "$URL" ]; then
+            echo "::error::CUSTODIAN_URL missing. Set var/secret or FORESTRIE_APEX + FOREST_PROJECT_ID."
+            exit 1
+          fi
+          TOKEN=$(trim_ws "${CUSTODIAN_BOOTSTRAP_APP_TOKEN:-}")
+          if [ -z "$TOKEN" ]; then
+            TOKEN=$(trim_ws "${BOOTSTRAP_APP_TOKEN:-}")
+          fi
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Set CUSTODIAN_BOOTSTRAP_APP_TOKEN or BOOTSTRAP_APP_TOKEN."
+            exit 1
+          fi
+          printf '%s' "$URL" | wrangler secret put CUSTODIAN_URL --env dev
+          printf '%s' "$TOKEN" | wrangler secret put CUSTODIAN_BOOTSTRAP_APP_TOKEN --env dev
+          APP=$(trim_ws "${CUSTODIAN_APP_TOKEN:-}")
+          if [ -n "$APP" ]; then
+            printf '%s' "$APP" | wrangler secret put CUSTODIAN_APP_TOKEN --env dev
+          fi
+          wrangler deploy --env dev
+
+  health-after-deploy:
+    name: Health check (dev)
+    needs: [validate, deploy-dev]
+    if: always() && needs.deploy-dev.result == 'success'
+    uses: ./.github/workflows/health-check.yml
+    secrets: inherit
+    with:
+      environment: dev
+
+  api-e2e-full:
+    name: API e2e full (dev)
+    needs: [validate, deploy-dev, health-after-deploy]
+    if: always() && needs.deploy-dev.result == 'success' && needs.health-after-deploy.result == 'success'
+    uses: ./.github/workflows/api-e2e-playwright.yml
+    secrets: inherit
+    with:
+      environment: dev
+      playwright_project: dev

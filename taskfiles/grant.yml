@@ -1,0 +1,47 @@
+---
+# Grant pool: mint per log, register, poll, resolve; write grant-pool.json (Plan 0010).
+
+version: "3"
+
+vars:
+  ROOT_DIR: "{{.ROOT_DIR | default .}}"
+  GRANT_DATA_DIR: '{{.GRANT_DATA_DIR | default "perf/data"}}'
+  K6_DATA_DIR: "{{.ROOT_DIR}}/perf/k6/canopy-api/data"
+  CANOPY_BASE_URL: "{{.CANOPY_BASE_URL}}"
+  SCRAPI_API_KEY: "{{.SCRAPI_API_KEY}}"
+  CANOPY_PERF_LOG_IDS: '{{.CANOPY_PERF_LOG_IDS}}'
+  POLL_MAX: '{{.POLL_MAX | default "120"}}'
+  POLL_INTERVAL_MS: '{{.POLL_INTERVAL_MS | default "500"}}'
+
+tasks:
+  single:
+    desc: "Register one grant for one log, poll, resolve; output completed grant (LOG_ID=... GRANT_FILE=... OUT_FILE=...)"
+    cmds:
+      - |
+        LOG_ID="${LOG_ID:-{{.LOG_ID}}}"
+        GRANT_FILE="${GRANT_FILE:-{{.GRANT_FILE}}}"
+        OUT_FILE="${OUT_FILE:-{{.OUT_FILE}}}"
+        if [ -z "$LOG_ID" ] || [ -z "$GRANT_FILE" ] || [ -z "$OUT_FILE" ]; then
+          echo "LOG_ID, GRANT_FILE, OUT_FILE required" >&2
+          exit 1
+        fi
+        GRANT_B64=$(cat "$GRANT_FILE")
+        LOCATION=$(curl -sS -D - -X POST "{{.CANOPY_BASE_URL}}/logs/$LOG_ID/grants" \
+          -H "Authorization: Forestrie-Grant $GRANT_B64" -o /dev/null 2>&1 | grep -i "^Location:" | sed 's/Location: *//' | tr -d '\r\n')
+        [ -n "$LOCATION" ] || { echo "No 303 Location" >&2; exit 1; }
+        RECEIPT_URL=$(CANOPY_BASE_URL="{{.CANOPY_BASE_URL}}" SCRAPI_API_KEY="{{.SCRAPI_API_KEY}}" \
+          pnpm --filter @canopy/perf run poll-status -- "$LOCATION" "{{.POLL_MAX}}" "{{.POLL_INTERVAL_MS}}")
+        SCRAPI_API_KEY="{{.SCRAPI_API_KEY}}" \
+          pnpm --filter @canopy/perf run resolve-receipt-to-grant -- "$RECEIPT_URL" "$GRANT_FILE" "$OUT_FILE"
+        echo "Completed grant: $OUT_FILE"
+
+  pool:
+    desc: "Generate grant pool: for each CANOPY_PERF_LOG_IDS mint (body rootLogId), register, poll, resolve; write grant-pool.json"
+    cmds:
+      - |
+        if [ -z "{{.CANOPY_BASE_URL}}" ] || [ -z "{{.SCRAPI_API_KEY}}" ] || [ -z "{{.CANOPY_PERF_LOG_IDS}}" ]; then
+          echo "CANOPY_BASE_URL, SCRAPI_API_KEY, CANOPY_PERF_LOG_IDS required" >&2
+          exit 1
+        fi
+        pnpm --filter @canopy/perf run generate-grant-pool
+        echo "Grant pool: {{.K6_DATA_DIR}}/grant-pool.json"

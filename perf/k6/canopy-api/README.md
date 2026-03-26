@@ -4,26 +4,18 @@ Sustained load testing using [k6](https://k6.io) with constant-arrival-rate
 execution. These tests complement the burst-oriented smoke tests in
 `taskfiles/scrapi.yml`.
 
-**Auth model:** Tests use **grant-based auth** (Plan 0001): create grants via
-`POST /logs/{logId}/grants`, then send `X-Grant-Location` on
-`POST /logs/{logId}/entries`. The workflow (or local script) pre-creates a
-grant per log; k6 sends that header and signs COSE with a matching kid.
+**Auth model:** Tests use **grant-based auth** (Plan 0010): the grant-pool
+script mints grants via `POST /api/grants/bootstrap` (per log), registers each
+with `POST /logs/{logId}/grants` (Forestrie-Grant), then resolves receipts to
+completed grants. k6 sends `Authorization: Forestrie-Grant <base64>` on
+`POST /logs/{logId}/entries` and signs COSE with the grant signer (kid).
 
 ## Rate limits and headers
 
 - **Rate limits:** Grant-signer rate limiting is implemented in the API but
   **not** applied in the request path yet; perf tests are not throttled by it.
-- **Headers:** The API allows `X-Grant-Location` in CORS
-  (`Access-Control-Allow-Headers`). k6 sets `X-Grant-Location` on every POST
-  /entries request.
-
-## Object storage (R2_GRANTS)
-
-The API stores grants in the **R2_GRANTS** bucket. Creation of this bucket is
-**automatic** when you run the Cloudflare bootstrap: `task cloudflare:bootstrap`
-(or `task cloudflare:create`) creates both the merklelog bucket and the grants
-bucket (`canopy-{env}-1-grants`). Ensure bootstrap has been run before
-deploying canopy-api or running perf against an environment that uses it.
+- **Headers:** k6 sets `Authorization: Forestrie-Grant <grantBase64>` on every
+  POST /entries request (no Bearer or X-Grant-Location).
 
 ## Prerequisites
 
@@ -56,8 +48,8 @@ task perf:check
 1. Generate the grant pool (one-time per set of log IDs):
 
 ```bash
-export CANOPY_PERF_BASE_URL="https://canopy-api.example.workers.dev"
-export CANOPY_PERF_API_TOKEN="your-api-token"
+export CANOPY_BASE_URL="https://canopy-api.example.workers.dev"
+export SCRAPI_API_KEY="your-api-token"
 export CANOPY_PERF_LOG_IDS="uuid-1,uuid-2"
 pnpm --filter @canopy/perf run generate-grant-pool
 ```
@@ -65,6 +57,8 @@ pnpm --filter @canopy/perf run generate-grant-pool
 2. Run a quick smoke test (5 req/s for 30s):
 
 ```bash
+export CANOPY_BASE_URL="https://canopy-api.example.workers.dev"
+export SCRAPI_API_KEY="your-api-token"
 export CANOPY_PERF_LOG_IDS="uuid-1"  # or reuse same as above
 task perf:write:smoke
 ```
@@ -84,13 +78,14 @@ CANOPY_PERF_RATE=50 task perf:write:rate
 
 ## Environment Variables
 
-Note: We use `CANOPY_PERF_` prefix (not `K6_`) to avoid conflicts with k6's
-built-in environment variable handling which can override scenario config.
+**Core (shared with e2e / grant tooling):** `CANOPY_BASE_URL`, `SCRAPI_API_KEY`.
+
+**k6 tuning** uses a `CANOPY_PERF_` prefix (not `K6_`) so k6’s built-in env handling does not override scenario config.
 
 | Variable                 | Required | Default       | Description                            |
 | ------------------------ | -------- | ------------- | -------------------------------------- |
-| CANOPY_PERF_BASE_URL     | Yes      | -             | Base URL of canopy-api                 |
-| CANOPY_PERF_API_TOKEN    | Yes      | test-api-key  | Bearer token for Authorization         |
+| CANOPY_BASE_URL          | Yes      | -             | Base URL of canopy-api                 |
+| SCRAPI_API_KEY           | Yes      | -             | Bearer token (bootstrap, poll, receipt GET, x402 handshake) |
 | CANOPY_PERF_LOG_IDS      | Yes      | -             | Comma-separated log IDs (for k6 + grant-pool script) |
 | CANOPY_PERF_LOG_ID       | No       | -             | Single log ID (taskfile convenience; use LOG_IDS for multi-log) |
 | CANOPY_PERF_RATE         | No       | 10            | Requests per second                    |
@@ -98,6 +93,18 @@ built-in environment variable handling which can override scenario config.
 | CANOPY_PERF_WARMUP       | No       | 30s           | Warmup ramp duration                   |
 | CANOPY_PERF_MSG_BYTES    | No       | 64            | Payload size in bytes                  |
 | CANOPY_PERF_SAMPLE_RATE  | No       | 0.01          | Fraction of requests to sample for e2e |
+
+### Shard-balanced log IDs (CI and local)
+
+GitHub **Performance Tests** do **not** store log UUIDs in variables. Each run generates **djb2**-balanced UUIDs (shard count **4**, matching ingress) via:
+
+```bash
+node perf/scripts/generate-shard-balanced-ids.js --logs-per-shard 1 --format csv
+# or (use -s so pnpm does not print to stdout): 
+pnpm --filter @canopy/perf -s run generate-shard-balanced-ids -- --logs-per-shard 2 --format csv
+```
+
+Pipe that line into **`CANOPY_PERF_LOG_IDS`** before **`generate-grant-pool`**. Run the script with **no arguments** for a human-readable dump (all presets) plus optional **`CANOPY_PERF_*LPS_*`-style** lines for debugging only.
 
 ## Task Targets
 
@@ -119,7 +126,7 @@ task perf:write:300   # 300 req/s
 # Custom rate
 CANOPY_PERF_RATE=75 task perf:write:rate
 
-# Local development (wrangler dev on port 8787)
+# Local development (wrangler dev on port 8789)
 task perf:write:local:smoke
 ```
 
@@ -129,8 +136,8 @@ For more control, run k6 directly:
 
 ```bash
 # From repository root
-CANOPY_PERF_BASE_URL="https://canopy-api.example.workers.dev" \
-CANOPY_PERF_API_TOKEN="your-token" \
+CANOPY_BASE_URL="https://canopy-api.example.workers.dev" \
+SCRAPI_API_KEY="your-token" \
 CANOPY_PERF_LOG_ID="your-log-id" \
 CANOPY_PERF_RATE=100 \
 CANOPY_PERF_DURATION=5m \

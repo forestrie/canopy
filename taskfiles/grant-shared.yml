@@ -1,0 +1,47 @@
+---
+# Shared tasks for grant bootstrap and grant-pool (Plan 0010).
+# Used by grant-bootstrap.yml and grant.yml.
+
+version: "3"
+
+vars:
+  ROOT_DIR: "{{.ROOT_DIR | default .}}"
+  PERF_SCRIPTS: "{{.ROOT_DIR}}/perf/scripts"
+  GRANT_DATA_DIR: '{{.GRANT_DATA_DIR | default "perf/data"}}'
+  CANOPY_BASE_URL: "{{.CANOPY_BASE_URL}}"
+  SCRAPI_API_KEY: "{{.SCRAPI_API_KEY}}"
+  POLL_MAX: '{{.POLL_MAX | default "120"}}'
+  POLL_INTERVAL_MS: '{{.POLL_INTERVAL_MS | default "500"}}'
+  MASSIF_HEIGHT: '{{.MASSIF_HEIGHT | default "14"}}'
+
+tasks:
+  poll-status:
+    desc: "Poll status URL until 303 to receipt; output receipt URL (STATUS_URL=... GRANT_DATA_DIR optional)"
+    env:
+      CANOPY_BASE_URL: "{{.CANOPY_BASE_URL}}"
+      SCRAPI_API_KEY: "{{.SCRAPI_API_KEY}}"
+      POLL_MAX: "{{.POLL_MAX}}"
+      POLL_INTERVAL_MS: "{{.POLL_INTERVAL_MS}}"
+    cmds:
+      - |
+        STATUS_URL="${STATUS_URL:-{{.STATUS_URL}}}"
+        if [ -z "$STATUS_URL" ]; then
+          echo "STATUS_URL is required" >&2
+          exit 1
+        fi
+        pnpm --filter @canopy/perf run poll-status -- "$STATUS_URL" "{{.POLL_MAX}}" "{{.POLL_INTERVAL_MS}}"
+
+  resolve-receipt:
+    desc: "GET receipt URL, build completed grant, write base64 to OUTPUT_PATH (RECEIPT_URL=... ORIGINAL_GRANT_PATH=... OUTPUT_PATH=...)"
+    env:
+      SCRAPI_API_KEY: "{{.SCRAPI_API_KEY}}"
+    cmds:
+      - |
+        RECEIPT_URL="${RECEIPT_URL:-{{.RECEIPT_URL}}}"
+        ORIGINAL_GRANT_PATH="${ORIGINAL_GRANT_PATH:-{{.ORIGINAL_GRANT_PATH}}}"
+        OUTPUT_PATH="${OUTPUT_PATH:-{{.OUTPUT_PATH}}}"
+        if [ -z "$RECEIPT_URL" ] || [ -z "$ORIGINAL_GRANT_PATH" ] || [ -z "$OUTPUT_PATH" ]; then
+          echo "RECEIPT_URL, ORIGINAL_GRANT_PATH, OUTPUT_PATH are required" >&2
+          exit 1
+        fi
+        pnpm --filter @canopy/perf run resolve-receipt-to-grant -- "$RECEIPT_URL" "$ORIGINAL_GRANT_PATH" "$OUTPUT_PATH"

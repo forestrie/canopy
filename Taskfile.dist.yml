@@ -1,8 +1,8 @@
 version: "3"
 
-# Environment selection: ENV=dev (default) or ENV=prod
-# Load order: .env (shared) -> .env.{ENV} (environment-specific) -> .env.secrets
-dotenv: [".env", ".env.{{.ENV}}", ".env.secrets"]
+# Environment selection: ENV=dev (default) or ENV=prod (for Doppler config name only).
+# Single repo-root `.env` (gitignored); hydrate with `task vars:doppler:dev` etc.
+dotenv: [".env"]
 
 vars:
   # Default to dev environment
@@ -10,17 +10,24 @@ vars:
   CANOPY_ID: '{{.CANOPY_ID | default "canopy-dev-1"}}'
   FOREST_PROJECT_ID: '{{.FOREST_PROJECT_ID | default "forest-dev-1"}}'
   CLOUDFLARE_ACCOUNT_ID: "{{.CLOUDFLARE_ACCOUNT_ID}}"
+  # Public Custodian base (no path suffix); defaults to dev DNS. Override for prod.
+  CUSTODIAN_BASE_URL: '{{.CUSTODIAN_BASE_URL | default "https://custodian.dev-1.forestrie.dev"}}'
 
 includes:
   scrapi:
     taskfile: ./taskfiles/scrapi.yml
     vars:
-      BASE_URL: "{{.SCRAPI_BASE_URL}}"
+      CANOPY_FQDN: "{{.CANOPY_FQDN}}"
+      TEST_SCRAPI_LOG_PATH: "{{.TEST_SCRAPI_LOG_PATH}}"
       API_KEY: "{{.SCRAPI_API_KEY}}"
   scout:
     taskfile: ./taskfiles/scout.yml
     vars:
       BASE_URL: "{{.SCOUT_BASE_URL}}"
+  custodian:
+    taskfile: ./taskfiles/custodian.yml
+    vars:
+      BASE_URL: "{{.CUSTODIAN_BASE_URL}}"
   x402: ./taskfiles/x402.yml
   cf: ./taskfiles/cloudflare.yml
   deploy: ./taskfiles/deploy.yml
@@ -28,6 +35,11 @@ includes:
   wrangler: ./taskfiles/wrangler.yml
   merklelog: ./taskfiles/merklelog.yml
   perf: ./taskfiles/perf.yml
+  grant-shared: ./taskfiles/grant-shared.yml
+  grant-bootstrap: ./taskfiles/grant-bootstrap.yml
+  grant: ./taskfiles/grant.yml
+  e2e-shared: ./taskfiles/e2e-shared.yml
+  vars: ./taskfiles/vars.yml
 
 tasks:
   default:
@@ -39,10 +51,33 @@ tasks:
     desc: run all the current tests
     cmds:
       - pnpm -r test
+
+  test:e2e:
+    desc: Run Playwright e2e (@canopy/api-e2e; requires repo-root .env — see taskfiles/e2e-setup.md)
+    cmds:
+      - task vars:require-dotenv
+      - pnpm --filter @canopy/api-e2e exec playwright test
+
+  test:e2e:preflight:
+    desc: |
+      E2e prerequisites — install deps + Playwright, then hydrate repo-root .env via Doppler (e2e-shared:preflight).
+    cmds:
+      - task e2e-shared:bootstrap
+      - task e2e-shared:preflight
+
+  test:e2e:preflight:env:
+    desc: Fail if repo-root .env is missing (CI writes .env before this; local uses vars:doppler:*)
+    cmds:
+      - task e2e-shared:preflight:env
   build:
     desc: build everything
     cmds:
       - pnpm -r build
+
+  check:md:
+    desc: "Validate Mermaid diagram syntax in a markdown file (task check:md -- path/to/file.md)"
+    cmds:
+      - node scripts/validate-mermaid.mjs {{.CLI_ARGS}}
 
   tools:check:
     desc: Check for required tools (Node, pnpm, Wrangler)

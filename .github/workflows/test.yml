@@ -1,15 +1,17 @@
 name: Tests
 
+# Pull requests: see **PR dev deploy and e2e** (`pr-dev-deploy-e2e.yml`) for
+# deploy + health + full e2e gating. This workflow runs on **main** only.
+
 on:
   push:
-    branches: [main]
-  pull_request:
     branches: [main]
 
 jobs:
   test:
     name: Test Suite
     runs-on: ubuntu-latest
+    environment: dev
 
     steps:
       - name: Checkout
@@ -35,5 +37,14 @@ jobs:
       - name: Unit tests
         run: pnpm -r test
 
-      - name: API e2e tests
-        run: pnpm run test:e2e
+      - name: Perf lib unit tests
+        run: pnpm --filter @canopy/perf test
+
+  api-e2e:
+    name: API e2e (deployed dev)
+    needs: test
+    uses: ./.github/workflows/api-e2e-playwright.yml
+    secrets: inherit
+    with:
+      environment: dev
+      playwright_project: dev

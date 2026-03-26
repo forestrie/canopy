@@ -1,177 +1,235 @@
 /**
- * Register-grant endpoint (Plan 0001 Step 6, Plan 0004 subplan 03).
- * POST /logs/{logId}/grants — create grant, enqueue for sequencing, return 303 to status URL.
- * Body must be grant wire format (go-univocity: CBOR map keys 0–8).
- * When sequencingEnv is provided, grant is stored by inner hash and 303 is returned (client polls query-registration-status).
+ * Grant registration (POST /logs/{logId}/grants). Enqueues a caller-supplied grant for
+ * sequencing; no server-side grant storage.
  */
 
-import { decodeGrant, encodeGrant } from "../grant/codec.js";
-import { innerHashFromGrant, innerHashToHex } from "../grant/inner-hash.js";
-import { kindBytesToSegment } from "../grant/kinds.js";
-import { grantStoragePath } from "../grant/storage-path.js";
-import type { Grant } from "../grant/types.js";
+import { hasCreateAndExtend } from "../grant/grant-flags.js";
+import { grantCommitmentHashFromGrant } from "../grant/grant-commitment.js";
+import type { Grant, GrantResult } from "../grant/types.js";
 import { bytesToUuid } from "../grant/uuid-bytes.js";
+import { getGrantFromRequest, grantAuthorize } from "./auth-grant.js";
 import { QueueFullError } from "@canopy/forestrie-ingress-types";
-import { getContentSize } from "./cbor-request";
-import { cborResponse, seeOtherResponse } from "./cbor-response";
+import { seeOtherResponse } from "./cbor-response";
 import {
   enqueueGrantForSequencing,
   type GrantSequencingEnv,
 } from "./grant-sequencing.js";
 import { ClientErrors, ServerErrors } from "./problem-details";
+import {
+  CUSTODIAN_BOOTSTRAP_KEY_ID,
+  fetchCustodianPublicKey,
+  verifyCustodianEs256GrantSign1,
+} from "./custodian-grant.js";
+import { isLogInitialized } from "./univocity-rest.js";
+import type { LogShardEnv } from "../sequeue/logshard.js";
+import type { InclusionEnv } from "./verify-grant-inclusion.js";
 
 const MAX_GRANT_BODY_SIZE = 4 * 1024; // 4 KiB
 
-/** Storage path for sequenced grants: authority/{innerHex}.cbor so GET can complete by inner. */
-const SEQUENCED_GRANT_KIND_SEGMENT = "authority";
-
 export interface RegisterGrantEnv {
-  r2Grants: R2Bucket;
-  sequencingEnv?: GrantSequencingEnv;
+  /**
+   * When set: enqueue grants for sequencing (Subplan 03). With queue alone or initialized log,
+   * {@link grantAuthorize} always runs (receipt + MMR inclusion) except the one-time bootstrap
+   * success path (Subplan 08). Same DO namespace as register-signed-statement.
+   */
+  queueEnv?: LogShardEnv;
+  /** Subplan 08 / Plan 0014: root log id, Custodian URL + bootstrap app token, univocity REST URL. */
+  bootstrapEnv?: {
+    rootLogId: string;
+    custodianUrl: string;
+    custodianBootstrapAppToken: string;
+    bootstrapAlg?: "ES256" | "KS256";
+    univocityServiceUrl: string;
+  };
 }
 
 /**
- * Handle POST /logs/{logId}/grants.
- * Request body must be full grant CBOR (wire format keys 0–8).
- * When sequencingEnv is set: store at authority/{innerHex}.cbor, enqueue, return 303 to status URL.
+ * Handles POST /logs/{logId}/grants. Enqueues the caller-supplied grant for sequencing so it
+ * becomes a leaf in the authority log identified by grant.ownerLogId. The grant is always
+ * supplied in the request via Authorization: Forestrie-Grant <base64> (a SCITT transparent
+ * statement; payload is grant content, idtimestamp and receipt in headers). No server-side
+ * grant storage: the caller obtains idtimestamp and receipt after sequencing via
+ * query-registration-status (303 to …/entries/{entryId}/receipt) and resolve-receipt.
+ *
+ * Parameters:
+ * - request: must include Authorization: Forestrie-Grant with a valid transparent statement.
+ * - logId: log ID from the URL; grant.logId must match (target log of the grant).
+ * - env.queueEnv: when set, enqueue is performed (same DO namespace as register-signed-statement).
+ * - env.bootstrapEnv: when set together with queueEnv, enables bootstrap vs receipt-based branching.
+ *
+ * Bootstrapping (when both queueEnv and bootstrapEnv are set):
+ * 1. Ask univocity whether the log is initialized (isLogInitialized(logId)).
+ * 2. If the log is not initialized and the supplied grant is the bootstrap grant (ownerLogId
+ *    equals logId, grant has GF_CREATE|GF_EXTEND, and the transparent statement’s signature
+ *    verifies with the bootstrap public key from Custodian (RFC 8152 COSE Sign1)), accept it without
+ *    inclusion check and enqueue. This is the first grant for the root log.
+ * 3. If the log is not initialized but the grant is not the bootstrap grant, return 403
+ *    (log not initialized; use bootstrap grant to bootstrap).
+ * 4. If the log is initialized (or bootstrapEnv is unset), require receipt-based inclusion
+ *    ({@link grantAuthorize}): idtimestamp, receipt in the transparent statement, and MMR proof
+ *    must verify for `ownerLogId`’s authority log; then enqueue.
+ *
+ * **Queue without bootstrapEnv:** Same as (4): always {@link grantAuthorize} before enqueue.
+ * There is no separate “queue-only, no inclusion” mode.
+ *
+ * When queueEnv is unset, returns 503 (grant sequencing not configured).
+ *
+ * Agent References: Plan 0001 Step 6; Plan 0004 Subplan 03 (grant-sequencing), Subplan 08
+ * (grant-first bootstrap, receipt-based inclusion); Plan 0005 (Forestrie-Grant only);
+ * Plan 0008 (no grant storage, no X-Grant-Location).
  */
 export async function registerGrant(
   request: Request,
   logId: string,
   env: RegisterGrantEnv,
 ): Promise<Response> {
-  const contentType = request.headers.get("content-type") || "";
-  if (!contentType.includes("cbor")) {
-    return ClientErrors.unsupportedMediaType("Use application/cbor");
+  // --- Resolve auth grant (Authorization: Forestrie-Grant only, Plan 0005) ---
+  const authResult = resolveAuth(request);
+  if (authResult instanceof Response) return authResult;
+  const { grantResult } = authResult;
+  const grant = grantResult.grant;
+
+  // --- Grant must target this log (URL logId matches grant.logId) ---
+  if (!logIdBytesMatchUrl(grant, logId)) {
+    return ClientErrors.badRequest("logId in grant must match URL logId");
   }
 
-  const size = getContentSize(request);
-  if (typeof size === "number" && size > MAX_GRANT_BODY_SIZE) {
-    return ClientErrors.payloadTooLarge(size, MAX_GRANT_BODY_SIZE);
-  }
-
-  let bodyBytes: Uint8Array;
-  try {
-    const buffer = await request.arrayBuffer();
-    bodyBytes = new Uint8Array(buffer);
-  } catch (e) {
-    return ClientErrors.badRequest(
-      `Body read failed: ${e instanceof Error ? e.message : "unknown"}`,
+  if (!env.queueEnv) {
+    return ServerErrors.serviceUnavailable(
+      "Grant sequencing not configured (SEQUENCING_QUEUE required)",
     );
   }
 
-  let grant: Grant;
-  try {
-    grant = decodeGrant(bodyBytes);
-  } catch (e) {
-    return ClientErrors.badRequest(
-      `Invalid grant CBOR: ${e instanceof Error ? e.message : "decode failed"}`,
-    );
-  }
+  // --- Subplan 08: optional bootstrap branch (requires bootstrapEnv + univocity) ---
+  if (env.bootstrapEnv) {
+    const logInitialized = await isLogInitialized(logId, {
+      univocityServiceUrl: env.bootstrapEnv.univocityServiceUrl,
+    }).catch(() => true);
 
-  try {
-    if (bytesToUuid(grant.logId) !== logId) {
-      return ClientErrors.badRequest("logId in body must match URL logId");
-    }
-  } catch {
-    return ClientErrors.badRequest("Invalid logId bytes");
-  }
-
-  const useSequencing = env.sequencingEnv != null;
-
-  if (useSequencing) {
-    const inner = await innerHashFromGrant(grant);
-    const ownerLogId =
-      grant.ownerLogId.length >= 16
-        ? grant.ownerLogId.slice(-16)
-        : grant.ownerLogId;
-    let result;
-    try {
-      result = await enqueueGrantForSequencing(
-        ownerLogId,
-        inner,
-        env.sequencingEnv!,
-      );
-    } catch (error) {
-      if (error instanceof QueueFullError) {
-        return ServerErrors.serviceUnavailableWithRetry(
-          `Queue capacity exceeded (${error.pendingCount}/${error.maxPending} pending)`,
-          error.retryAfterSeconds,
+    // Bootstrap (§3.3): uninitialized root log, first grant — not in MMR yet, so no receipt.
+    if (
+      !logInitialized &&
+      ownerLogIdEqualsLogId(grant, logId) &&
+      hasCreateAndExtend(grant.grant as Uint8Array) &&
+      grantResult.bytes
+    ) {
+      try {
+        if (env.bootstrapEnv.bootstrapAlg === "KS256") {
+          return ServerErrors.serviceUnavailable(
+            "KS256 bootstrap grant verification is not implemented",
+          );
+        }
+        const pk = await fetchCustodianPublicKey(
+          env.bootstrapEnv.custodianUrl,
+          CUSTODIAN_BOOTSTRAP_KEY_ID,
+        );
+        if (pk.alg !== "ES256") {
+          return ServerErrors.serviceUnavailable(
+            `Bootstrap grant verification requires Custodian key alg ES256; got ${pk.alg}`,
+          );
+        }
+        const ok = await verifyCustodianEs256GrantSign1(
+          grantResult.bytes,
+          pk.publicKeyPem,
+        );
+        if (!ok) {
+          return ClientErrors.forbidden(
+            "Log not initialized; use bootstrap grant as auth to bootstrap",
+          );
+        }
+        return await enqueueAndStoreGrant(request, grant, env, logId);
+      } catch (e) {
+        console.warn(
+          "Bootstrap branch (verify ok, enqueue or key fetch failed)",
+          e,
+        );
+        return ServerErrors.serviceUnavailable(
+          e instanceof Error
+            ? e.message
+            : "Grant sequencing failed after bootstrap verification",
         );
       }
-      throw error;
     }
 
-    const grantWithPlaceholder: Grant = {
-      ...grant,
-      idtimestamp: new Uint8Array(8),
-    };
-    const encoded = encodeGrant(grantWithPlaceholder);
-    const storagePath = `${SEQUENCED_GRANT_KIND_SEGMENT}/${result.innerHex}.cbor`;
-
-    try {
-      await env.r2Grants.put(storagePath, encoded);
-    } catch (e) {
-      console.error("Grant storage put failed", e);
-      return ServerErrors.storageError(
-        e instanceof Error ? e.message : "R2 put failed",
+    if (!logInitialized) {
+      return ClientErrors.forbidden(
+        "Log not initialized; use bootstrap grant as auth to bootstrap",
       );
     }
-
-    const requestUrl = new URL(request.url);
-    const statusUrl = `${requestUrl.origin}${result.statusUrlPath}`;
-    const grantLocationPath = `/grants/${SEQUENCED_GRANT_KIND_SEGMENT}/${result.innerHex}`;
-
-    console.log("Grant enqueued for sequencing", {
-      statusUrlPath: result.statusUrlPath,
-      grantLocation: grantLocationPath,
-      alreadySequenced: result.alreadySequenced,
-      logId,
-    });
-
-    const res = seeOtherResponse(statusUrl, 5);
-    res.headers.set("X-Grant-Location", grantLocationPath);
-    return res;
   }
 
-  const canonicalGrant: Grant = {
-    ...grant,
-    idtimestamp: new Uint8Array(8),
-  };
-  const canonicalBytes = encodeGrant(canonicalGrant);
-  const hash = await crypto.subtle.digest("SHA-256", canonicalBytes);
-  const idtimestamp = new Uint8Array(hash.slice(0, 8));
+  // --- Receipt-based inclusion for every other case (initialized log, or no bootstrapEnv) ---
+  const authError = await grantAuthorize(grantResult, {
+    inclusionEnv: env.queueEnv as InclusionEnv,
+  });
+  if (authError) return authError;
+  return await enqueueAndStoreGrant(request, grant, env, logId);
+}
 
-  const grantWithId: Grant = {
-    ...grant,
-    idtimestamp,
-  };
-
-  const encoded = encodeGrant(grantWithId);
-  const storagePath = await grantStoragePath(encoded, grantWithId.kind);
-
+/**
+ * Enqueue grant to sequencing DO (Subplan 03, Plan 0008). No grant storage; return 303 to status URL.
+ * Used by bootstrap and non-bootstrap paths when queue env is set.
+ */
+async function enqueueAndStoreGrant(
+  request: Request,
+  grant: Grant,
+  env: RegisterGrantEnv,
+  logId: string,
+): Promise<Response> {
+  const inner = await grantCommitmentHashFromGrant(grant);
+  const ownerLogId =
+    grant.ownerLogId.length >= 16
+      ? grant.ownerLogId.slice(-16)
+      : grant.ownerLogId;
+  let result;
   try {
-    await env.r2Grants.put(storagePath, encoded);
-  } catch (e) {
-    console.error("Grant storage put failed", e);
-    return ServerErrors.storageError(
-      e instanceof Error ? e.message : "R2 put failed",
+    result = await enqueueGrantForSequencing(
+      ownerLogId,
+      inner,
+      env.queueEnv! as GrantSequencingEnv,
     );
+  } catch (error) {
+    if (error instanceof QueueFullError) {
+      return ServerErrors.serviceUnavailableWithRetry(
+        `Queue capacity exceeded (${error.pendingCount}/${error.maxPending} pending)`,
+        error.retryAfterSeconds,
+      );
+    }
+    throw error;
   }
+  const requestUrl = new URL(request.url);
+  const statusUrl = `${requestUrl.origin}${result.statusUrlPath}`;
 
-  const locationPath = `/${storagePath}`;
-  console.log("Grant created", {
-    location: locationPath,
-    kind: kindBytesToSegment(grantWithId.kind),
+  console.log("Grant enqueued for sequencing", {
+    statusUrlPath: result.statusUrlPath,
+    alreadySequenced: result.alreadySequenced,
     logId,
   });
 
-  return cborResponse(
-    { location: locationPath, kind: kindBytesToSegment(grantWithId.kind) },
-    201,
-    {
-      Location: locationPath,
-      "Content-Type": "application/cbor",
-    },
-  );
+  return seeOtherResponse(statusUrl, 5);
+}
+
+/** Plan 0005: grant from Authorization: Forestrie-Grant only. */
+function resolveAuth(
+  request: Request,
+): { grantResult: GrantResult } | Response {
+  const result = getGrantFromRequest(request);
+  if (result instanceof Response) return result;
+  return { grantResult: result };
+}
+
+function logIdBytesMatchUrl(grant: Grant, logId: string): boolean {
+  try {
+    return bytesToUuid(grant.logId) === logId;
+  } catch {
+    return false;
+  }
+}
+
+function ownerLogIdEqualsLogId(grant: Grant, logId: string): boolean {
+  try {
+    return bytesToUuid(grant.ownerLogId) === logId;
+  } catch {
+    return false;
+  }
 }

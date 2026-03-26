@@ -23,8 +23,8 @@ The API is **CBOR end-to-end**: request and response bodies use CBOR where appli
 
 ## Grant storage and location
 
-- Grants are stored in **object storage** (R2 or equivalent) under a **content-addressable** path: `<kind>/<hash>.cbor` where `hash` is derived from the grant content (e.g. SHA-256 of the encoded grant). Same content → same path; idempotent.
-- The **grant location** returned to clients and required at register-statement is a **URL path only** (e.g. `/<kind>/<hash>.cbor`), interpreted **relative to the public grant storage hostname**. The API configuration includes (or adds) a public base URL for grant storage; the client uses that base + path to form a full URL if needed, and passes the **path** (or full URL with that base) to register-statement.
+- Grants are stored in **object storage** (R2 or equivalent) under a **content-addressable** path: **`grant/<hash>.cbor`** where `hash` is SHA-256 of the encoded grant (v0 wire, keys **1–6**). Same content → same path; idempotent.
+- The **grant location** returned to clients is a **URL path only** (e.g. `/grant/<hash>.cbor`), interpreted **relative to the public grant storage hostname**. Register-statement in the current phase uses **Authorization: Forestrie-Grant** (no path fetch); see [register-statement](register-statement.md).
 - See [register-grant](register-grant.md) and [register-statement](register-statement.md) for request/response and error details.
 
 ## Errors

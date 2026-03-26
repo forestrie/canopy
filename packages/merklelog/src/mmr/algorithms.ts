@@ -26,7 +26,10 @@ import { arraysEqual } from "../utils/arrays.js";
  * @param peaks - Array of peak hashes (highest to lowest)
  * @returns The bagged root hash
  */
-export function bagPeaks(hasher: Hasher, peaks: Uint8Array[]): Uint8Array {
+export async function bagPeaks(
+  hasher: Hasher,
+  peaks: Uint8Array[],
+): Promise<Uint8Array> {
   if (peaks.length === 0) {
     throw new Error("Cannot bag empty peaks array");
   }
@@ -35,10 +38,8 @@ export function bagPeaks(hasher: Hasher, peaks: Uint8Array[]): Uint8Array {
     return peaks[0];
   }
 
-  // Work with a copy to avoid mutating input
   const peakHashes = [...peaks];
 
-  // The hashes are highest to lowest, we consume from the end backwards
   while (peakHashes.length > 1) {
     const right = peakHashes.pop()!;
     const left = peakHashes.pop()!;
@@ -46,7 +47,7 @@ export function bagPeaks(hasher: Hasher, peaks: Uint8Array[]): Uint8Array {
     hasher.reset();
     hasher.update(right);
     hasher.update(left);
-    const combined = hasher.digest();
+    const combined = await hasher.digest();
 
     peakHashes.push(combined);
   }
@@ -60,40 +61,37 @@ export function bagPeaks(hasher: Hasher, peaks: Uint8Array[]): Uint8Array {
  * @param hasher - Cryptographic hasher instance
  * @param leafHash - Hash of the leaf being proven
  * @param proof - Inclusion proof path
- * @param leafIndex - Zero-based leaf index
+ * @param leafIndex - Zero-based leaf index (or MMR index when proof has mmrIndex only)
  * @returns The calculated root hash
  */
-export function calculateRoot(
+export async function calculateRoot(
   hasher: Hasher,
   leafHash: Uint8Array,
   proof: Proof,
   leafIndex: bigint,
-): Uint8Array {
+): Promise<Uint8Array> {
   let currentHash = leafHash;
   const mmrIndex = new Uint64(leafIndex);
   let currentHeight = heightIndex(mmrIndex);
-  let currentPos = mmrIndex.add(new Uint64(1)); // Convert to position
+  let currentPos = mmrIndex.add(new Uint64(1));
 
   for (const siblingHash of proof.path) {
     hasher.reset();
 
-    // Determine if we're left or right child based on height progression
     const nextHeight = heightIndex(new Uint64(currentPos.toBigInt()));
     const isRightChild = nextHeight > currentHeight;
 
     if (isRightChild) {
-      // Right child: parent = H(sibling | current)
       hasher.update(siblingHash);
       hasher.update(currentHash);
       currentPos = currentPos.add(new Uint64(1));
     } else {
-      // Left child: parent = H(current | sibling)
       hasher.update(currentHash);
       hasher.update(siblingHash);
       currentPos = currentPos.add(new Uint64(2).shl(currentHeight));
     }
 
-    currentHash = hasher.digest();
+    currentHash = await hasher.digest();
     currentHeight += 1;
   }
 
@@ -109,20 +107,19 @@ export function calculateRoot(
  * @param root - Expected root hash
  * @returns True if the proof is valid
  */
-export function verifyInclusion(
+export async function verifyInclusion(
   hasher: Hasher,
   leafHash: Uint8Array,
   proof: Proof,
   root: Uint8Array,
-): boolean {
-  // Check for undefined/null, not falsy (since 0n is falsy but valid)
+): Promise<boolean> {
   if (proof.leafIndex === undefined && proof.mmrIndex === undefined) {
     throw new Error("Proof must have either leafIndex or mmrIndex");
   }
 
   const leafIdx =
     proof.leafIndex !== undefined ? proof.leafIndex : proof.mmrIndex!;
-  const calculatedRoot = calculateRoot(hasher, leafHash, proof, leafIdx);
+  const calculatedRoot = await calculateRoot(hasher, leafHash, proof, leafIdx);
 
   return arraysEqual(calculatedRoot, root);
 }
@@ -144,17 +141,6 @@ export function verifyConsistency(
   root1: Uint8Array,
   root2: Uint8Array,
 ): boolean {
-  // Verify both proofs independently
-  // This is a simplified version - full implementation would need
-  // to verify that proof2 extends proof1 correctly
-
-  // For now, we just verify that both roots are valid
-  // A full implementation would check that the proofs are consistent
-  // with each other (i.e., proof2 extends proof1)
-
-  return (
-    arraysEqual(root1, root1) && // Trivial check
-    arraysEqual(root2, root2) // Trivial check
-    // TODO: Implement full consistency check
-  );
+  // TODO: Implement full consistency check (verify proof2 extends proof1)
+  return arraysEqual(root1, root1) && arraysEqual(root2, root2);
 }

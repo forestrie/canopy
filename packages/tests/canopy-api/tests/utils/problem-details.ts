@@ -89,3 +89,12 @@ export function formatProblemDetailsMessage(
 
   return `[canopy-api-e2e] ${summary}${extras}`;
 }
+
+/** First bytes of a response body for assertion messages (response may be consumed). */
+export async function responseTextPreview(res: APIResponse): Promise<string> {
+  try {
+    return (await res.text()).slice(0, 500);
+  } catch {
+    return "";
+  }
+}

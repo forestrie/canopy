@@ -28,8 +28,7 @@ Core docs to reference:
   - End-to-end: `@playwright/test` in a dedicated `@canopy/api-e2e` package.
 
 Environment configuration:
-- `.env`: non-sensitive config (committed).
-- `.env.secrets`: sensitive credentials (git-ignored).
+- **Repo-root `.env`** (gitignored): hydrate with `task vars:doppler:dev` / `vars:doppler:prod` (see `taskfiles/vars.yml`). Root `Taskfile.dist.yml` uses **`dotenv: [".env"]`** only.
 - Key variables (see `README.md` and `Taskfile.dist.yml`):
   - `CANOPY_ID`, `FOREST_PROJECT_ID`, `CLOUDFLARE_ACCOUNT_ID`.
   - Cloudflare tokens such as `R2_ADMIN`, `R2_WRITER`, `R2_READER`, `QUEUE_ADMIN`.
@@ -56,18 +55,17 @@ Install dependencies (monorepo-wide):
 - **Build all packages**: `pnpm build`
 - **Run all tests (workspace)**: `pnpm test`
 - **Lint all packages**: `pnpm lint`
-- **Format code under [packages/`**: `pnpm format`
+- **Format code under `packages/`**: `pnpm format`
 - **Prettier check**: `pnpm check`
 - **Deploy API (default env)**: `pnpm deploy`
 - **Deploy API (production)**: `pnpm deploy:production`
 
-End-to-end API tests (Playwright), via the `@canopy/api-e2e` package:
-- All projects (remote-focused): `pnpm --filter @canopy/api-e2e test:e2e`
-- Local dev worker: `pnpm --filter @canopy/api-e2e test:e2e:local`
-- Remote deployment: `pnpm --filter @canopy/api-e2e test:e2e:remote`
+End-to-end API tests (Playwright), via the `@canopy/api-e2e` package (deployed worker only):
+- Preflight (tooling + Doppler ? repo-root `.env`): `task test:e2e:preflight`
+- Run tests: `pnpm --filter @canopy/api-e2e test:e2e` or `task test:e2e`
 
-Relevant E2E environment variables (see `packages/tests/canopy-api/README.md`):
-- `CANOPY_E2E_API_TOKEN`, `CANOPY_E2E_BASE_URL`, `CANOPY_E2E_LOCAL_PORT`.
+Relevant E2E environment variables (see `taskfiles/e2e-setup.md` and `packages/tests/canopy-api/README.md`):
+- **`CANOPY_BASE_URL`** (required worker origin), **`SCRAPI_API_KEY`** (bearer). CI (`.github/workflows/test.yml`) uses GitHub Environment **`dev`** and exports **`CANOPY_BASE_URL`** / **`CANOPY_FQDN`** (variables) plus **`SCRAPI_API_KEY`** (secret) into the Playwright step—no `.env` file in Actions.
 
 ### API package-specific commands
 
@@ -85,7 +83,7 @@ Running a single Vitest file for the Worker:
 - `pnpm --filter @canopy/api test -- path/to/your.test.ts`
 
 Running a focused Playwright E2E test file:
-- `pnpm --filter @canopy/api-e2e test:e2e:local -- tests/path/to/spec.spec.ts`
+- `pnpm --filter @canopy/api-e2e exec playwright test --project=dev tests/path/to/spec.spec.ts`
 
 > Prefer running these from the repository root so pnpm can correctly resolve workspace dependencies and scripts.
 
@@ -114,7 +112,7 @@ Key characteristics (inferred from `package.json` and `tsconfig.json`):
 Conceptually:
 - **API layer**: Exposes SCRAPI-compliant endpoints over HTTP (worker routes). Requests/responses likely encode/decode COSE receipts and SCITT artifacts.
 - **Storage & queueing**: Uses Cloudflare R2 (for artifact storage) and Queues (for handing off work to an external sequencer).
-- **Config**: Worker behaviour is parameterized via `.env`/`.env.secrets` and Cloudflare bindings, with names derived from `CANOPY_ID` and `FOREST_PROJECT_ID`.
+- **Config**: Local task automation reads repo-root `.env` (Doppler-hydrated); Workers use Wrangler bindings, with names derived from `CANOPY_ID` and `FOREST_PROJECT_ID`.
 
 When modifying Worker code or tests:
 - Keep `tsconfig` includes consistent so new `src/` or `test/` directories are picked up.
@@ -162,17 +160,19 @@ Purpose (per its `README.md` and `package.json`):
 Structure:
 - `tests/fixtures`: Shared fixtures for E2E scenarios.
 - `tests/**/*.ts`: Playwright test specs that operate at the HTTP boundary.
-- `playwright.config.ts`: Project definitions (`local` vs `remote`) and base URLs.
+- `playwright.config.ts`: Single **`dev`** project; config is loaded **only** from repo-root **`.env`** (missing file ? immediate error).
 
 Behavioral expectations:
-- "Local" tests manage a `wrangler dev` process and hit it on `CANOPY_E2E_LOCAL_PORT`.
-- "Remote" tests target a deployed Worker via `CANOPY_E2E_BASE_URL`.
-- Auth-related scenarios rely on `CANOPY_E2E_API_TOKEN`, and will skip or adjust behavior when a placeholder token is present.
+- Tests target a **deployed** worker (**`CANOPY_BASE_URL`**).
+- Playwright does not start wrangler or local emulation stacks.
+- Specs **fail** if bootstrap, sequencing, or polling requirements are not met; CI and
+  developers are expected to provide a capable environment (no `test.skip` for missing infra).
+- Auth-related scenarios use **`SCRAPI_API_KEY`** for the Bearer header (via fixtures).
 
 ### Task-based orchestration
 
 Root `Taskfile.dist.yml` wires together:
-- Environment loading from `.env` and `.env.secrets`.
+- Environment loading from repo-root `.env` only (`dotenv: [".env"]`).
 - Shared variables (`CANOPY_ID`, `FOREST_PROJECT_ID`, `CLOUDFLARE_ACCOUNT_ID`).
 - Included taskfiles under `taskfiles/` for SCRAPI, Cloudflare infra, MinIO, and Wrangler.
 

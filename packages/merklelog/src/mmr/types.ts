@@ -25,7 +25,9 @@ export interface Peak {
 }
 
 /**
- * Hasher interface for cryptographic hashing operations
+ * Hasher interface for cryptographic hashing operations.
+ * digest() is async so callers can use crypto.subtle (Workers, browser) or
+ * wrap Node's crypto.createHash (e.g. digest(): Promise.resolve(syncDigest())).
  */
 export interface Hasher {
   /** Reset the hasher state */
@@ -33,5 +35,5 @@ export interface Hasher {
   /** Update the hasher with data */
   update(data: Uint8Array): void;
   /** Finalize and return the hash */
-  digest(): Uint8Array;
+  digest(): Promise<Uint8Array>;
 }

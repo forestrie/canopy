@@ -13,7 +13,7 @@ type AuthFixtures = {
 
 export const test = base.extend<AuthFixtures>({
   authToken: async ({}, use) => {
-    const token = process.env.CANOPY_E2E_API_TOKEN;
+    const token = process.env.SCRAPI_API_KEY?.trim() || undefined;
     await use(token);
   },
 

@@ -253,12 +253,15 @@ tasks:
       QUEUE_NAME: '{{.QUEUE_NAME | default (print .CANOPY_ID "-" .NAME)}}'
     cmds:
       - cmd: |
+          if [ ! -f .env ]; then
+            echo "ERROR: repo-root .env is missing. Run: task vars:doppler:dev" >&2
+            exit 1
+          fi
           set -a
-          [ -f .env ] && source .env
-          [ -f .env.secrets ] && source .env.secrets
+          source .env
           set +a
           if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
-            echo "ERROR: CLOUDFLARE_API_TOKEN is not set. Populate it in .env/.env.secrets."
+            echo "ERROR: CLOUDFLARE_API_TOKEN is not set. Add it to repo-root .env."
             exit 1
           fi
           if ! command -v jq >/dev/null 2>&1; then
