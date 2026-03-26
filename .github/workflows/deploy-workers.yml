@@ -67,6 +67,8 @@ jobs:
         uses: dorny/paths-filter@v3
         with:
           filters: |
+            deploy_workflow:
+              - '.github/workflows/deploy-workers.yml'
             canopy_api:
               - 'packages/apps/canopy-api/**'
               - 'packages/shared/**'
@@ -117,17 +119,25 @@ jobs:
             fi
           else
             # For push events, use change detection
-            if [ "${{ steps.changes.outputs.canopy_api }}" = "true" ]; then
+            if [ "${{ steps.changes.outputs.deploy_workflow }}" = "true" ]; then
+              # Workflow YAML changed: deploy all workers (same as workflow_dispatch)
               apps+=("{\"app\":\"canopy-api\",\"pkg\":\"@canopy/api\"}")
-            fi
-            if [ "${{ steps.changes.outputs.delegation_signer }}" = "true" ]; then
               apps+=("{\"app\":\"delegation-signer\",\"pkg\":\"@canopy/delegation-signer\"}")
-            fi
-            if [ "${{ steps.changes.outputs.forestrie_ingress }}" = "true" ]; then
               apps+=("{\"app\":\"forestrie-ingress\",\"pkg\":\"@canopy/forestrie-ingress\"}")
-            fi
-            if [ "${{ steps.changes.outputs.x402_settlement }}" = "true" ]; then
               apps+=("{\"app\":\"x402-settlement\",\"pkg\":\"@canopy/x402-settlement\"}")
+            else
+              if [ "${{ steps.changes.outputs.canopy_api }}" = "true" ]; then
+                apps+=("{\"app\":\"canopy-api\",\"pkg\":\"@canopy/api\"}")
+              fi
+              if [ "${{ steps.changes.outputs.delegation_signer }}" = "true" ]; then
+                apps+=("{\"app\":\"delegation-signer\",\"pkg\":\"@canopy/delegation-signer\"}")
+              fi
+              if [ "${{ steps.changes.outputs.forestrie_ingress }}" = "true" ]; then
+                apps+=("{\"app\":\"forestrie-ingress\",\"pkg\":\"@canopy/forestrie-ingress\"}")
+              fi
+              if [ "${{ steps.changes.outputs.x402_settlement }}" = "true" ]; then
+                apps+=("{\"app\":\"x402-settlement\",\"pkg\":\"@canopy/x402-settlement\"}")
+              fi
             fi
           fi
 
