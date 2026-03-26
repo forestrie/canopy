@@ -25,9 +25,9 @@
     "X402_PRICE_EXACT": "$0.001",
     "X402_PRICE_UPTO_MAX": "$1.00",
     "GRANT_STORAGE_PUBLIC_BASE": "https://grants-dev.forestrie.dev",
-    // Plan 0014: CUSTODIAN_URL must be a Worker secret (not a var — wrangler
-    // rejects secret put if the name exists under vars). ROOT_LOG_ID;
-    // CUSTODIAN_BOOTSTRAP_APP_TOKEN and CUSTODIAN_APP_TOKEN as secrets.
+    // Plan 0014: public Custodian (Traefik /v1/api → pod /api). Base must end
+    // with /v1. Tokens: CUSTODIAN_BOOTSTRAP_APP_TOKEN, CUSTODIAN_APP_TOKEN (secrets).
+    "CUSTODIAN_URL": "https://custodian.dev-1.forestrie.dev/v1",
     "ROOT_LOG_ID": "123e4567e89b12d3a456426614174000",
     // "UNIVOCITY_SERVICE_URL": "",
     // "UNIVOCITY_CONTRACT_RPC_URL": "",
@@ -89,6 +89,7 @@
         "X402_PRICE_EXACT": "$0.001",
         "X402_PRICE_UPTO_MAX": "$1.00",
         "GRANT_STORAGE_PUBLIC_BASE": "https://grants-dev.forestrie.dev",
+        "CUSTODIAN_URL": "https://custodian.dev-1.forestrie.dev/v1",
         "ROOT_LOG_ID": "123e4567e89b12d3a456426614174000",
       },
       "r2_buckets": [
@@ -146,8 +147,8 @@
         "X402_PRICE_EXACT": "$0.001",
         "X402_PRICE_UPTO_MAX": "$1.00",
         "GRANT_STORAGE_PUBLIC_BASE": "https://grants.forestrie.dev",
-        // Bootstrap: CUSTODIAN_URL = https://custodian.<slug>.<apex>/v1; secrets
-        // CUSTODIAN_BOOTSTRAP_APP_TOKEN, CUSTODIAN_APP_TOKEN; UNIVOCITY_*
+        "CUSTODIAN_URL": "https://custodian.prod-1.forestrie.dev/v1",
+        // CUSTODIAN_BOOTSTRAP_APP_TOKEN, CUSTODIAN_APP_TOKEN (secrets); UNIVOCITY_*
       },
       "r2_buckets": [
         {
