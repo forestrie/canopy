@@ -143,6 +143,7 @@ jobs:
             echo "::error::Set CUSTODIAN_BOOTSTRAP_APP_TOKEN or BOOTSTRAP_APP_TOKEN."
             exit 1
           fi
+          wrangler deploy --env dev
           printf '%s' "$URL" | wrangler secret put CUSTODIAN_URL --env dev
           printf '%s' "$TOKEN" | wrangler secret put CUSTODIAN_BOOTSTRAP_APP_TOKEN --env dev
           APP=$(trim_ws "${CUSTODIAN_APP_TOKEN:-}")

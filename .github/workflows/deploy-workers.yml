@@ -251,6 +251,9 @@ jobs:
             echo "::error::Set CUSTODIAN_BOOTSTRAP_APP_TOKEN or BOOTSTRAP_APP_TOKEN."
             exit 1
           fi
+          # Deploy first so the Worker drops any stale var binding for CUSTODIAN_URL;
+          # Cloudflare rejects secret put if that name was declared under vars.
+          wrangler deploy --env "$ENV"
           printf '%s' "$URL" | wrangler secret put CUSTODIAN_URL --env "$ENV"
           printf '%s' "$TOKEN" | wrangler secret put CUSTODIAN_BOOTSTRAP_APP_TOKEN --env "$ENV"
           APP=$(trim_ws "${CUSTODIAN_APP_TOKEN:-}")
