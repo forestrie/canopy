@@ -1,0 +1,36 @@
+---
+# curl checks for Custodian behind Traefik (public /v1/api → /api, /healthz, /metrics).
+# After DNS + Flux ingress, run e.g. `task custodian:verify` or `CUSTODIAN_BASE_URL=... task custodian:healthz`.
+
+version: "3"
+
+vars:
+  BASE_URL: "{{.BASE_URL}}"
+
+tasks:
+  healthz:
+    desc: GET /healthz (Custodian liveness)
+    cmds:
+      - curl -sS -o /dev/null -w "HTTP %{http_code}\n" "{{.BASE_URL}}/healthz"
+
+  metrics:
+    desc: GET /metrics (first lines; public for now per ingress plan)
+    cmds:
+      - curl -sS "{{.BASE_URL}}/metrics" | head -n 8
+
+  bootstrap-public:
+    desc: GET /v1/api/keys/:bootstrap/public (CBOR) — URL-encoded key id
+    cmds:
+      - |
+        curl -sS -v \
+          -H "Accept: application/cbor" \
+          -o bootstrap-public.cbor \
+          "{{.BASE_URL}}/v1/api/keys/%3Abootstrap/public"
+
+  verify:
+    desc: Run healthz, metrics, and bootstrap-public checks (requires public ingress)
+    cmds:
+      - task: healthz
+      - task: metrics
+      - task: bootstrap-public
+      - echo "Custodian checks done. See bootstrap-public.cbor if HTTP 200."

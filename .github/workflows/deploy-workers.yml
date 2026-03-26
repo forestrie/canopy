@@ -159,6 +159,7 @@ jobs:
       DEPLOY_ENV: ${{ needs.changes.outputs.environment }}
       CANOPY_ID: ${{ vars.CANOPY_ID }}
       FOREST_PROJECT_ID: ${{ vars.FOREST_PROJECT_ID }}
+      FORESTRIE_APEX: ${{ vars.FORESTRIE_APEX }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
 
     steps:
@@ -207,23 +208,39 @@ jobs:
             echo "CDP_API_KEY_ID or CDP_API_KEY_SECRET not set; skipping CDP secret configuration."
           fi
 
-      - name: Configure Custodian secrets and deploy canopy-api (dev)
-        if: matrix.target.app == 'canopy-api' && env.DEPLOY_ENV == 'dev'
+      - name: Configure Custodian secrets and deploy canopy-api
+        if: matrix.target.app == 'canopy-api'
         working-directory: packages/apps/canopy-api
         env:
           CUSTODIAN_URL_FROM_VAR: ${{ vars.CUSTODIAN_URL }}
           CUSTODIAN_URL_FROM_SECRET: ${{ secrets.CUSTODIAN_URL }}
           CUSTODIAN_BOOTSTRAP_APP_TOKEN: ${{ secrets.CUSTODIAN_BOOTSTRAP_APP_TOKEN }}
           BOOTSTRAP_APP_TOKEN: ${{ secrets.BOOTSTRAP_APP_TOKEN }}
+          CUSTODIAN_APP_TOKEN: ${{ secrets.CUSTODIAN_APP_TOKEN }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+          norm_apex() {
+            local a
+            a=$(trim_ws "$1")
+            a="${a#https://}"
+            a="${a#http://}"
+            a="${a%.}"
+            printf '%s' "$a"
+          }
+          ENV="${DEPLOY_ENV}"
           URL=$(trim_ws "${CUSTODIAN_URL_FROM_VAR:-}")
           if [ -z "$URL" ]; then
             URL=$(trim_ws "${CUSTODIAN_URL_FROM_SECRET:-}")
           fi
+          if [ -z "$URL" ] && [ -n "${FORESTRIE_APEX:-}" ] && [ -n "${FOREST_PROJECT_ID:-}" ]; then
+            APEX=$(norm_apex "${FORESTRIE_APEX}")
+            SUFFIX="${FOREST_PROJECT_ID#forest-}"
+            URL="https://custodian.${SUFFIX}.${APEX}/v1"
+            echo "Derived CUSTODIAN_URL from FOREST_PROJECT_ID + FORESTRIE_APEX"
+          fi
           if [ -z "$URL" ]; then
-            echo "::error::CUSTODIAN_URL is missing (dev environment or repository var/secret). Sync from Doppler; see Plan 0014."
+            echo "::error::CUSTODIAN_URL missing. Set var/secret or FORESTRIE_APEX + FOREST_PROJECT_ID."
             exit 1
           fi
           TOKEN=$(trim_ws "${CUSTODIAN_BOOTSTRAP_APP_TOKEN:-}")
@@ -231,15 +248,19 @@ jobs:
             TOKEN=$(trim_ws "${BOOTSTRAP_APP_TOKEN:-}")
           fi
           if [ -z "$TOKEN" ]; then
-            echo "::error::Set **CUSTODIAN_BOOTSTRAP_APP_TOKEN** or **BOOTSTRAP_APP_TOKEN** (repo or dev environment secret)."
+            echo "::error::Set CUSTODIAN_BOOTSTRAP_APP_TOKEN or BOOTSTRAP_APP_TOKEN."
             exit 1
           fi
-          printf '%s' "$URL" | wrangler secret put CUSTODIAN_URL --env dev
-          printf '%s' "$TOKEN" | wrangler secret put CUSTODIAN_BOOTSTRAP_APP_TOKEN --env dev
-          wrangler deploy --env dev
+          printf '%s' "$URL" | wrangler secret put CUSTODIAN_URL --env "$ENV"
+          printf '%s' "$TOKEN" | wrangler secret put CUSTODIAN_BOOTSTRAP_APP_TOKEN --env "$ENV"
+          APP=$(trim_ws "${CUSTODIAN_APP_TOKEN:-}")
+          if [ -n "$APP" ]; then
+            printf '%s' "$APP" | wrangler secret put CUSTODIAN_APP_TOKEN --env "$ENV"
+          fi
+          wrangler deploy --env "$ENV"
 
       - name: Deploy ${{ matrix.target.app }} (${{ env.DEPLOY_ENV }})
-        if: matrix.target.app != 'canopy-api' || env.DEPLOY_ENV != 'dev'
+        if: matrix.target.app != 'canopy-api'
         run: task wrangler:deploy:${{ matrix.target.app }} ENV=${{ env.DEPLOY_ENV }}
 
   health-check:

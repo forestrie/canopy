@@ -10,6 +10,8 @@ vars:
   CANOPY_ID: '{{.CANOPY_ID | default "canopy-dev-1"}}'
   FOREST_PROJECT_ID: '{{.FOREST_PROJECT_ID | default "forest-dev-1"}}'
   CLOUDFLARE_ACCOUNT_ID: "{{.CLOUDFLARE_ACCOUNT_ID}}"
+  # Public Custodian base (no path suffix); defaults to dev DNS. Override for prod.
+  CUSTODIAN_BASE_URL: '{{.CUSTODIAN_BASE_URL | default "https://custodian.dev-1.forestrie.dev"}}'
 
 includes:
   scrapi:
@@ -22,6 +24,10 @@ includes:
     taskfile: ./taskfiles/scout.yml
     vars:
       BASE_URL: "{{.SCOUT_BASE_URL}}"
+  custodian:
+    taskfile: ./taskfiles/custodian.yml
+    vars:
+      BASE_URL: "{{.CUSTODIAN_BASE_URL}}"
   x402: ./taskfiles/x402.yml
   cf: ./taskfiles/cloudflare.yml
   deploy: ./taskfiles/deploy.yml
