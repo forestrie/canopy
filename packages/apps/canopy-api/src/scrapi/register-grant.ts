@@ -68,8 +68,8 @@ export interface RegisterGrantEnv {
  *    equals logId, grant has GF_CREATE|GF_EXTEND, and the transparent statement’s signature
  *    verifies with the bootstrap public key from Custodian (RFC 8152 COSE Sign1)), accept it without
  *    inclusion check and enqueue. This is the first grant for the root log.
- * 3. If the log is not initialized but the grant is not the bootstrap grant, return 403
- *    (log not initialized; use bootstrap grant to bootstrap).
+ * 3. If the log is not initialized but the grant is not bootstrap-shaped, return 403
+ *    (problem detail distinguishes wrong shape vs failed COSE verify when shape matched).
  * 4. If the log is initialized (or bootstrapEnv is unset), require receipt-based inclusion
  *    ({@link grantAuthorize}): idtimestamp, receipt in the transparent statement, and MMR proof
  *    must verify for `ownerLogId`’s authority log; then enqueue.
@@ -151,7 +151,7 @@ export async function registerGrant(
         );
         if (!ok) {
           return ClientErrors.forbidden(
-            "Log not initialized; use bootstrap grant as auth to bootstrap",
+            "Bootstrap grant COSE signature did not verify against Custodian :bootstrap public key (ES256).",
           );
         }
         return await enqueueAndStoreGrant(request, grant, env, logId);
@@ -170,7 +170,7 @@ export async function registerGrant(
 
     if (!logInitialized) {
       return ClientErrors.forbidden(
-        "Log not initialized; use bootstrap grant as auth to bootstrap",
+        "Log has no MMRS data yet; use the bootstrap grant only (ownerLogId=logId, create+extend, Custodian-signed Forestrie-Grant).",
       );
     }
   }
