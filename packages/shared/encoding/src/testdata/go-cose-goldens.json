@@ -1,0 +1,72 @@
+{
+  "goCoseVersion": "v1.3.0",
+  "fxamackerCborVersion": "v2.9.0",
+  "description": "Sig_structure bytes align with github.com/veraison/go-cose Sign1Message.toBeSigned",
+  "bstrVectors": [
+    {
+      "name": "bstr_len_0",
+      "payloadHex": "",
+      "encodingHex": "40"
+    },
+    {
+      "name": "bstr_len_1",
+      "payloadHex": "cc",
+      "encodingHex": "41cc"
+    },
+    {
+      "name": "bstr_len_23",
+      "payloadHex": "cccccccccccccccccccccccccccccccccccccccccccccc",
+      "encodingHex": "57cccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    {
+      "name": "bstr_len_24",
+      "payloadHex": "cccccccccccccccccccccccccccccccccccccccccccccccc",
+      "encodingHex": "5818cccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    {
+      "name": "bstr_len_25",
+      "payloadHex": "cccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "encodingHex": "5819cccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    {
+      "name": "bstr_len_255",
+      "payloadHex": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "encodingHex": "58ffcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    {
+      "name": "bstr_len_256",
+      "payloadHex": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "encodingHex": "590100cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ],
+  "sigStructureVectors": [
+    {
+      "name": "custodian_profile_es256_empty_aad",
+      "protectedMapInnerHex": "a3012603782e6170706c69636174696f6e2f666f726573747269652e637573746f6469616e2d73746174656d656e742b63626f7204500102030405060708090a0b0c0d0e0f10",
+      "externalAadHex": "",
+      "payloadHex": "000b16212c37424d58636e79848f9aa5b0bbc6d1dce7f2fd08131e29343f4a55",
+      "sigStructureHex": "846a5369676e6174757265315846a3012603782e6170706c69636174696f6e2f666f726573747269652e637573746f6469616e2d73746174656d656e742b63626f7204500102030405060708090a0b0c0d0e0f10405820000b16212c37424d58636e79848f9aa5b0bbc6d1dce7f2fd08131e29343f4a55"
+    },
+    {
+      "name": "protected_kid_only_empty_aad",
+      "protectedMapInnerHex": "a104500102030405060708090a0b0c0d0e0f10",
+      "externalAadHex": "",
+      "payloadHex": "000b16212c37424d58636e79848f9aa5b0bbc6d1dce7f2fd08131e29343f4a55",
+      "sigStructureHex": "846a5369676e61747572653153a104500102030405060708090a0b0c0d0e0f10405820000b16212c37424d58636e79848f9aa5b0bbc6d1dce7f2fd08131e29343f4a55"
+    },
+    {
+      "name": "custodian_profile_nonzero_external_aad",
+      "protectedMapInnerHex": "a3012603782e6170706c69636174696f6e2f666f726573747269652e637573746f6469616e2d73746174656d656e742b63626f7204500102030405060708090a0b0c0d0e0f10",
+      "externalAadHex": "010203",
+      "payloadHex": "000b16212c37424d58636e79848f9aa5b0bbc6d1dce7f2fd08131e29343f4a55",
+      "sigStructureHex": "846a5369676e6174757265315846a3012603782e6170706c69636174696f6e2f666f726573747269652e637573746f6469616e2d73746174656d656e742b63626f7204500102030405060708090a0b0c0d0e0f10430102035820000b16212c37424d58636e79848f9aa5b0bbc6d1dce7f2fd08131e29343f4a55"
+    },
+    {
+      "name": "custodian_empty_payload_bstr",
+      "protectedMapInnerHex": "a3012603782e6170706c69636174696f6e2f666f726573747269652e637573746f6469616e2d73746174656d656e742b63626f7204500102030405060708090a0b0c0d0e0f10",
+      "externalAadHex": "",
+      "payloadHex": "",
+      "sigStructureHex": "846a5369676e6174757265315846a3012603782e6170706c69636174696f6e2f666f726573747269652e637573746f6469616e2d73746174656d656e742b63626f7204500102030405060708090a0b0c0d0e0f104040"
+    }
+  ]
+}

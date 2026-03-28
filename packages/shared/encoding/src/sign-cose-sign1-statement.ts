@@ -3,7 +3,7 @@
  * Builds Sig_structure per RFC 8152 and signs with ES256 (P-256).
  */
 
-import { encodeCoseProtectedWithKid } from "./encode-cose-protected.js";
+import { encodeCoseProtectedMapBytes } from "./encode-cose-protected.js";
 import { encodeCoseSign1Statement } from "./encode-cose-sign1-statement.js";
 import { encodeSigStructure } from "./encode-sig-structure.js";
 
@@ -20,11 +20,11 @@ export async function signCoseSign1Statement(
   kid: Uint8Array,
   privateKey: CryptoKey,
 ): Promise<Uint8Array> {
-  const protectedBstr = encodeCoseProtectedWithKid(kid);
+  const protectedMapBytes = encodeCoseProtectedMapBytes(kid);
   const externalAad = new Uint8Array(0);
 
   const sigStructureBytes = encodeSigStructure(
-    protectedBstr,
+    protectedMapBytes,
     externalAad,
     payload,
   );

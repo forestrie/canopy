@@ -3,7 +3,7 @@
  * POST /api/grants/bootstrap: optional body { rootLogId }, no server-side storage.
  */
 
-import { encodeCborBstr, encodeSigStructure } from "@canopy/encoding";
+import { encodeSigStructure } from "@canopy/encoding";
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 import { sha256 } from "@noble/hashes/sha256";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -57,7 +57,7 @@ async function custodianSign1PayloadOnly(
   ]);
   const protectedInner = new Uint8Array(encodeCbor(protectedMap));
   const sigStructure = encodeSigStructure(
-    encodeCborBstr(protectedInner),
+    protectedInner,
     new Uint8Array(0),
     digest,
   );

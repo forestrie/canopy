@@ -4,7 +4,6 @@
  */
 
 import { decode as decodeCbor } from "cbor-x";
-import { encodeCborBstr } from "./encode-cbor-bstr.js";
 import { encodeSigStructure } from "./encode-sig-structure.js";
 
 /** Optional structured logging when verification fails (no secrets). */
@@ -79,12 +78,11 @@ export async function verifyCoseSign1(
     return false;
   }
 
-  // Decode gives bstr *content* (map bytes). Sig_structure needs the same bytes
-  // as in the message (the full bstr). Re-encode so sign and verify match.
-  const protectedBstrForSig = encodeCborBstr(protectedBstr);
+  // Decode gives bstr *content* (serialized protected map). encodeSigStructure
+  // wraps it once as body_protected — same as go-cose / Custodian.
   const externalAad = new Uint8Array(0);
   const sigStructure = encodeSigStructure(
-    protectedBstrForSig,
+    protectedBstr,
     externalAad,
     payloadBstr,
   );

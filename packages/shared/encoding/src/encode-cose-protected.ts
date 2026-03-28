@@ -9,12 +9,20 @@ import { encodeCborBstr } from "./encode-cbor-bstr.js";
 export const COSE_KID = 4;
 
 /**
+ * Serialize the COSE protected header map bytes only (not wrapped in an outer bstr).
+ * This is the COSE Sign1 `[0]` bstr **payload** and the input expected by
+ * `encodeSigStructure` (which wraps it for Sig_structure per RFC 8152).
+ */
+export function encodeCoseProtectedMapBytes(kid: Uint8Array): Uint8Array {
+  return encodeCborMapIntToBstr(COSE_KID, kid);
+}
+
+/**
  * Encode protected header as CBOR bstr containing a map with one entry: COSE_KID -> kid.
  * Used in COSE Sign1 statement (protected = bstr with map { 4: kid }).
  */
 export function encodeCoseProtectedWithKid(kid: Uint8Array): Uint8Array {
-  const mapBytes = encodeCborMapIntToBstr(COSE_KID, kid);
-  return encodeCborBstr(mapBytes);
+  return encodeCborBstr(encodeCoseProtectedMapBytes(kid));
 }
 
 /**

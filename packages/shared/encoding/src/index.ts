@@ -16,6 +16,7 @@ export {
 } from "./problem-details.js";
 export {
   COSE_KID,
+  encodeCoseProtectedMapBytes,
   encodeCoseProtectedWithKid,
 } from "./encode-cose-protected.js";
 export { encodeCoseSign1Statement } from "./encode-cose-sign1-statement.js";

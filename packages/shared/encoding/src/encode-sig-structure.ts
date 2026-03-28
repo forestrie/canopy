@@ -35,11 +35,14 @@ function concat(...arrays: Uint8Array[]): Uint8Array {
 }
 
 /**
- * Encode Sig_structure for COSE Sign1 (RFC 8152).
- * Same bytes as used for signing and verification.
+ * Encode Sig_structure for COSE Sign1 (RFC 8152 / RFC 9052).
+ * Same bytes as veraison/go-cose `Sign1Message.toBeSigned` and Custodian signing.
+ *
+ * @param protectedHeaderMapBytes — CBOR map bytes inside Sign1 `protected` (the bstr
+ *   **contents** from COSE_Sign1[0], not a pre-wrapped bstr item).
  */
 export function encodeSigStructure(
-  protectedBstr: Uint8Array,
+  protectedHeaderMapBytes: Uint8Array,
   externalAad: Uint8Array,
   payloadBstr: Uint8Array,
 ): Uint8Array {
@@ -48,7 +51,7 @@ export function encodeSigStructure(
   return concat(
     arrayHeader,
     label,
-    encodeCborBstr(protectedBstr),
+    encodeCborBstr(protectedHeaderMapBytes),
     encodeCborBstr(externalAad),
     encodeCborBstr(payloadBstr),
   );
