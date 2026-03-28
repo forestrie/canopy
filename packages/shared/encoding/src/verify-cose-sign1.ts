@@ -7,6 +7,44 @@ import { decode as decodeCbor } from "cbor-x";
 import { encodeCborBstr } from "./encode-cbor-bstr.js";
 import { encodeSigStructure } from "./encode-sig-structure.js";
 
+/** Optional structured logging when verification fails (no secrets). */
+export interface VerifyCoseSign1Options {
+  logFailures?: boolean;
+  /** Included in JSON log lines under `prefix`. */
+  logPrefix?: string;
+}
+
+function hexPreview(bytes: Uint8Array, maxBytes: number): string {
+  const n = Math.min(maxBytes, bytes.length);
+  let s = "";
+  for (let i = 0; i < n; i++) {
+    s += bytes[i]!.toString(16).padStart(2, "0");
+  }
+  if (bytes.length > n) s += "…";
+  return s;
+}
+
+async function sha256HexPrefix16(bytes: Uint8Array): Promise<string> {
+  const d = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
+  return hexPreview(new Uint8Array(d), 8);
+}
+
+function logVerifyFailure(
+  opts: VerifyCoseSign1Options | undefined,
+  msg: string,
+  extra: Record<string, unknown>,
+): void {
+  if (!opts?.logFailures) return;
+  console.warn(
+    JSON.stringify({
+      tag: "verifyCoseSign1Failure",
+      prefix: opts.logPrefix ?? "",
+      reason: msg,
+      ...extra,
+    }),
+  );
+}
+
 /**
  * Verify COSE Sign1 signature with a public key (ES256).
  * Builds Sig_structure per RFC 8152 and verifies ECDSA P-256 (ES256).
@@ -19,13 +57,27 @@ import { encodeSigStructure } from "./encode-sig-structure.js";
 export async function verifyCoseSign1(
   coseSign1Bytes: Uint8Array,
   publicKey: CryptoKey,
+  opts?: VerifyCoseSign1Options,
 ): Promise<boolean> {
   const decoded = decodeCoseSign1(coseSign1Bytes);
-  if (!decoded) return false;
+  if (!decoded) {
+    logVerifyFailure(opts, "decode_failed", {
+      coseSign1Len: coseSign1Bytes.length,
+      coseSign1HeadHex: hexPreview(coseSign1Bytes, 16),
+    });
+    return false;
+  }
 
   const { protectedBstr, payloadBstr, signature } = decoded;
 
-  if (signature.length !== 64) return false;
+  if (signature.length !== 64) {
+    logVerifyFailure(opts, "signature_wrong_length", {
+      signatureLen: signature.length,
+      signatureHeadHex: hexPreview(signature, 8),
+      signatureLooksLikeASN1DER: signature.length > 0 && signature[0] === 0x30,
+    });
+    return false;
+  }
 
   // Decode gives bstr *content* (map bytes). Sig_structure needs the same bytes
   // as in the message (the full bstr). Re-encode so sign and verify match.
@@ -38,13 +90,29 @@ export async function verifyCoseSign1(
   );
 
   try {
-    return await crypto.subtle.verify(
+    const ok = await crypto.subtle.verify(
       { name: "ECDSA", hash: "SHA-256" },
       publicKey,
       signature as BufferSource,
       sigStructure as BufferSource,
     );
-  } catch {
+    if (!ok) {
+      logVerifyFailure(opts, "ecdsa_verify_false", {
+        protectedBstrLen: protectedBstr.length,
+        payloadBstrLen: payloadBstr.length,
+        sigStructureLen: sigStructure.length,
+        sigStructureSha256HexPrefix: await sha256HexPrefix16(sigStructure),
+        signatureHeadHex: hexPreview(signature, 8),
+      });
+    }
+    return ok;
+  } catch (e) {
+    logVerifyFailure(opts, "subtle_verify_threw", {
+      error: e instanceof Error ? e.message : String(e),
+      protectedBstrLen: protectedBstr.length,
+      payloadBstrLen: payloadBstr.length,
+      sigStructureLen: sigStructure.length,
+    });
     return false;
   }
 }

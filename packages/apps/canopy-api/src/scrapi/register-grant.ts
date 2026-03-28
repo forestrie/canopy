@@ -145,9 +145,32 @@ export async function registerGrant(
             `Bootstrap grant verification requires Custodian key alg ES256; got ${pk.alg}`,
           );
         }
+        let custodianHost = "";
+        try {
+          custodianHost = new URL(env.bootstrapEnv.custodianUrl).host;
+        } catch {
+          custodianHost = "(invalid-custodian-url)";
+        }
+        const spkiFingerprint = await sha256HexPrefix8(
+          new TextEncoder().encode(pk.publicKeyPem),
+        );
+        console.warn(
+          JSON.stringify({
+            tag: "bootstrapGrantVerifyAttempt",
+            custodianHost,
+            keyId: pk.keyId,
+            publicKeyAlg: pk.alg,
+            spkiPemSha256HexPrefix: spkiFingerprint,
+            transparentStatementLen: grantResult.bytes.length,
+          }),
+        );
         const ok = await verifyCustodianEs256GrantSign1(
           grantResult.bytes,
           pk.publicKeyPem,
+          {
+            logFailures: true,
+            logPrefix: "register-grant-bootstrap",
+          },
         );
         if (!ok) {
           return ClientErrors.forbidden(
@@ -224,6 +247,16 @@ async function enqueueAndStoreGrant(
   });
 
   return seeOtherResponse(statusUrl, 5);
+}
+
+async function sha256HexPrefix8(data: BufferSource): Promise<string> {
+  const d = await crypto.subtle.digest("SHA-256", data as BufferSource);
+  const u8 = new Uint8Array(d);
+  let s = "";
+  for (let i = 0; i < Math.min(8, u8.length); i++) {
+    s += u8[i]!.toString(16).padStart(2, "0");
+  }
+  return s;
 }
 
 /** Plan 0005: grant from Authorization: Forestrie-Grant only. */

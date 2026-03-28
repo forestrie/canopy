@@ -23,6 +23,7 @@ export { signCoseSign1Statement } from "./sign-cose-sign1-statement.js";
 export {
   decodeCoseSign1,
   type DecodedCoseSign1,
+  type VerifyCoseSign1Options,
   verifyCoseSign1,
 } from "./verify-cose-sign1.js";
 export {

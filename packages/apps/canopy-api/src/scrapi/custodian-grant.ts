@@ -6,7 +6,7 @@
  */
 
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
-import { verifyCoseSign1 } from "@canopy/encoding";
+import { type VerifyCoseSign1Options, verifyCoseSign1 } from "@canopy/encoding";
 import {
   HEADER_FORESTRIE_GRANT_V0,
   HEADER_IDTIMESTAMP,
@@ -195,9 +195,10 @@ export async function importSpkiPemEs256VerifyKey(
 export async function verifyCustodianEs256GrantSign1(
   coseSign1Bytes: Uint8Array,
   publicKeyPem: string,
+  verifyOpts?: VerifyCoseSign1Options,
 ): Promise<boolean> {
   const key = await importSpkiPemEs256VerifyKey(publicKeyPem);
-  return verifyCoseSign1(coseSign1Bytes, key);
+  return verifyCoseSign1(coseSign1Bytes, key, verifyOpts);
 }
 
 /**
