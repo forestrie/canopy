@@ -4,13 +4,13 @@
  */
 
 import { decode as decodeCbor } from "cbor-x";
-import { derEcdsaToRawRs } from "./der-ecdsa-to-raw-rs.js";
 import { encodeCborBstr } from "./encode-cbor-bstr.js";
 import { encodeSigStructure } from "./encode-sig-structure.js";
 
 /**
  * Verify COSE Sign1 signature with a public key (ES256).
- * Builds Sig_structure per RFC 8152 and verifies ECDSA P-256.
+ * Builds Sig_structure per RFC 8152 and verifies ECDSA P-256 (ES256).
+ * Signature bstr must be IEEE P1363 R‖S (64 bytes); ASN.1 DER is not COSE ES256.
  *
  * @param coseSign1Bytes - Full COSE Sign1 CBOR bytes (4-element array)
  * @param publicKey - CryptoKey (EC P-256, usage verify)
@@ -25,20 +25,7 @@ export async function verifyCoseSign1(
 
   const { protectedBstr, payloadBstr, signature } = decoded;
 
-  // COSE allows signature as raw r||s (64 bytes for P-256) or ASN.1 DER (~70–72 bytes).
-  // Web Crypto ECDSA verify expects IEEE P1363 (raw).
-  let sigRaw = signature;
-  if (
-    signature.length !== 64 &&
-    signature.length > 0 &&
-    signature[0] === 0x30
-  ) {
-    try {
-      sigRaw = derEcdsaToRawRs(signature, 32);
-    } catch {
-      return false;
-    }
-  }
+  if (signature.length !== 64) return false;
 
   // Decode gives bstr *content* (map bytes). Sig_structure needs the same bytes
   // as in the message (the full bstr). Re-encode so sign and verify match.
@@ -54,7 +41,7 @@ export async function verifyCoseSign1(
     return await crypto.subtle.verify(
       { name: "ECDSA", hash: "SHA-256" },
       publicKey,
-      sigRaw as BufferSource,
+      signature as BufferSource,
       sigStructure as BufferSource,
     );
   } catch {
