@@ -43,6 +43,12 @@ function assertCustodianProfileTransparentStatement(base64: string): void {
       "Expected COSE payload to be 32-byte SHA-256 digest (Custodian profile)",
     );
   }
+  const sig = sign1[3];
+  if (!(sig instanceof Uint8Array) || sig.length !== 64) {
+    throw new Error(
+      "Expected COSE ES256 signature bstr to be 64-byte IEEE P1363 (not KMS DER)",
+    );
+  }
   const unprotected = toHeaderMap(sign1[1]);
   const embedded = unprotected.get(HEADER_FORESTRIE_GRANT_V0);
   if (!(embedded instanceof Uint8Array) || embedded.length === 0) {
