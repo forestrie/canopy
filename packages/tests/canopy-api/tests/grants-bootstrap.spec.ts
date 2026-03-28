@@ -59,9 +59,9 @@ const DEFAULT_ROOT_LOG_ID = "123e4567-e89b-12d3-a456-426614174000";
  * register-grant on the **bootstrap branch** (uninitialized root log).
  *
  * Requires: `CUSTODIAN_URL`, `CUSTODIAN_BOOTSTRAP_APP_TOKEN`, `SEQUENCING_QUEUE`,
- * `bootstrapEnv` + `queueEnv` in the worker, and Univocity reachable for the target
- * log such that the log is **not** initialized (otherwise register-grant expects
- * receipt-based auth and this test will not get 303).
+ * `R2_MMRS`, `bootstrapEnv` + `queueEnv` in the worker, and **no** first massif tile
+ * for the target log in MMRS storage (otherwise register-grant expects receipt-based
+ * auth and this test will not get 303).
  */
 test.describe("Bootstrap grant e2e — mint and register-grant", () => {
   test("POST /api/grants/bootstrap returns 201 and Custodian-profile transparent statement", async ({
@@ -136,7 +136,7 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
     if (regStatus !== 303) {
       regHint += `\nBody preview: ${await responseTextPreview(registerRes)}`;
       regHint +=
-        "\nExpected 303 See Other when bootstrap branch accepts the grant (queue + bootstrapEnv + uninitialized root log in Univocity).";
+        "\nExpected 303 See Other when bootstrap branch accepts the grant (queue + bootstrapEnv + no first MMRS massif for logId).";
     }
     expect(regStatus, regHint).toBe(303);
 

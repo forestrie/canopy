@@ -202,12 +202,11 @@ export default {
         segments[2] === "grants" &&
         request.method === "POST"
       ) {
-        const univocityUrl = env.UNIVOCITY_SERVICE_URL?.trim();
+        const massifHeight = parseInt(env.MASSIF_HEIGHT || "14", 10);
         const bootstrapEnv =
           env.ROOT_LOG_ID &&
           env.CUSTODIAN_URL?.trim() &&
-          env.CUSTODIAN_BOOTSTRAP_APP_TOKEN &&
-          univocityUrl
+          env.CUSTODIAN_BOOTSTRAP_APP_TOKEN
             ? {
                 rootLogId: env.ROOT_LOG_ID,
                 custodianUrl: env.CUSTODIAN_URL.trim(),
@@ -216,7 +215,8 @@ export default {
                   | "ES256"
                   | "KS256"
                   | undefined,
-                univocityServiceUrl: univocityUrl,
+                r2Mmrs: env.R2_MMRS,
+                massifHeight,
               }
             : undefined;
         const queueEnv = env.SEQUENCING_QUEUE

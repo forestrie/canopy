@@ -2,7 +2,7 @@
 
 This package houses the Playwright API-mode tests for the Canopy Worker. It depends on `@canopy/api` but keeps the runtime isolated so Cloudflare build and deploy scripts remain unchanged.
 
-Tests run against a **deployed** worker URL. They do **not** start wrangler, Custodian, or Univocity locally.
+Tests run against a **deployed** worker URL. They do **not** start wrangler or Custodian locally.
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ That installs Playwright/Chromium and runs **`task vars:doppler:{{ENV}}`** so **
 
 `tests/grants-bootstrap.spec.ts` exercises **Custodian-backed** bootstrap mint and **register-grant on the bootstrap branch** (303 See Other with a registration-status `Location`).
 
-That requires a suitably configured deployment: **`CUSTODIAN_URL`**, **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`**, sequencing queue bindings, `bootstrapEnv` + `queueEnv`, and Univocity reporting the target root log as **not** initialized. If the log is already initialized or the queue is missing, register-grant will not return 303 for this flow—fix the environment or use a fresh `rootLogId` in the spec.
+That requires a suitably configured deployment: **`CUSTODIAN_URL`**, **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`**, **`R2_MMRS`**, sequencing queue bindings, `bootstrapEnv` + `queueEnv`, and **no** first massif object for the target log in MMRS (same key layout as resolve-receipt). If that massif already exists or the queue is missing, register-grant will not return 303 for this flow—fix the environment or use a fresh `rootLogId` in the spec.
 
 Receipt polling, completed transparent statements, and `POST /logs/.../entries` are **not** covered here (removed as stale vs Plan 0014 Custodian wire format); use Worker Vitest (`packages/apps/canopy-api/test`) or perf scripts for deeper grant lifecycle checks.
 

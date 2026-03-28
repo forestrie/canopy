@@ -20,7 +20,7 @@ import {
   fetchCustodianPublicKey,
   verifyCustodianEs256GrantSign1,
 } from "./custodian-grant.js";
-import { isLogInitialized } from "./univocity-rest.js";
+import { isLogInitializedMmrs } from "./log-initialized-mmrs.js";
 import type { LogShardEnv } from "../sequeue/logshard.js";
 import type { InclusionEnv } from "./verify-grant-inclusion.js";
 
@@ -33,13 +33,17 @@ export interface RegisterGrantEnv {
    * success path (Subplan 08). Same DO namespace as register-signed-statement.
    */
   queueEnv?: LogShardEnv;
-  /** Subplan 08 / Plan 0014: root log id, Custodian URL + bootstrap app token, univocity REST URL. */
+  /**
+   * Subplan 08 / Plan 0014: Custodian bootstrap verification + MMRS "log exists" check
+   * (first massif tile in R2_MMRS).
+   */
   bootstrapEnv?: {
     rootLogId: string;
     custodianUrl: string;
     custodianBootstrapAppToken: string;
     bootstrapAlg?: "ES256" | "KS256";
-    univocityServiceUrl: string;
+    r2Mmrs: R2Bucket;
+    massifHeight: number;
   };
 }
 
@@ -55,10 +59,11 @@ export interface RegisterGrantEnv {
  * - request: must include Authorization: Forestrie-Grant with a valid transparent statement.
  * - logId: log ID from the URL; grant.logId must match (target log of the grant).
  * - env.queueEnv: when set, enqueue is performed (same DO namespace as register-signed-statement).
- * - env.bootstrapEnv: when set together with queueEnv, enables bootstrap vs receipt-based branching.
+ * - env.bootstrapEnv: when set with queueEnv, enables bootstrap vs receipt-based branching (MMRS + Custodian).
  *
  * Bootstrapping (when both queueEnv and bootstrapEnv are set):
- * 1. Ask univocity whether the log is initialized (isLogInitialized(logId)).
+ * 1. Check whether the log has sequenced MMRS data (first massif tile in R2_MMRS). Small races
+ *    vs the first write are acceptable; overlapping bootstrap-shaped grants are treated as idempotent.
  * 2. If the log is not initialized and the supplied grant is the bootstrap grant (ownerLogId
  *    equals logId, grant has GF_CREATE|GF_EXTEND, and the transparent statement’s signature
  *    verifies with the bootstrap public key from Custodian (RFC 8152 COSE Sign1)), accept it without
@@ -100,11 +105,23 @@ export async function registerGrant(
     );
   }
 
-  // --- Subplan 08: optional bootstrap branch (requires bootstrapEnv + univocity) ---
+  // --- Subplan 08: optional bootstrap branch (requires bootstrapEnv + R2_MMRS first massif check) ---
   if (env.bootstrapEnv) {
-    const logInitialized = await isLogInitialized(logId, {
-      univocityServiceUrl: env.bootstrapEnv.univocityServiceUrl,
-    }).catch(() => true);
+    let logInitialized: boolean;
+    try {
+      logInitialized = await isLogInitializedMmrs(
+        logId,
+        env.bootstrapEnv.r2Mmrs,
+        env.bootstrapEnv.massifHeight,
+      );
+    } catch (e) {
+      console.warn("isLogInitializedMmrs failed", e);
+      return ServerErrors.serviceUnavailable(
+        e instanceof Error
+          ? e.message
+          : "Failed to read merklelog storage for log initialization check",
+      );
+    }
 
     // Bootstrap (§3.3): uninitialized root log, first grant — not in MMR yet, so no receipt.
     if (
