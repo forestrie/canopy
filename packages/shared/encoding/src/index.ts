@@ -25,6 +25,7 @@ export {
   type DecodedCoseSign1,
   verifyCoseSign1,
 } from "./verify-cose-sign1.js";
+export { derEcdsaToRawRs } from "./der-ecdsa-to-raw-rs.js";
 export {
   importTestPrivateKey,
   importTestPublicKey,
