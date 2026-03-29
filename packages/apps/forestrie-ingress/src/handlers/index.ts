@@ -7,3 +7,4 @@ export { handleAck } from "./ack.js";
 export { handleStats } from "./stats.js";
 export { handleShards } from "./shards.js";
 export { handleDebugRecent } from "./debug.js";
+export { handleAdminResetStorage } from "./admin-reset-storage.js";

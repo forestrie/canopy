@@ -13,6 +13,7 @@ import {
   handleStats,
   handleDebugRecent,
   handleShards,
+  handleAdminResetStorage,
 } from "./handlers/index.js";
 
 // Export Durable Objects for Cloudflare runtime
@@ -57,6 +58,9 @@ export default {
     }
     if (pathname === "/queue/debug/recent" && method === "GET") {
       return handleDebugRecent(request, env);
+    }
+    if (pathname === "/queue/admin/reset-storage" && method === "POST") {
+      return handleAdminResetStorage(request, url, env);
     }
 
     // Method not allowed for queue endpoints

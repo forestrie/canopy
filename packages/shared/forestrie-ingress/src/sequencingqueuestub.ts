@@ -96,4 +96,10 @@ export interface SequencingQueueStub {
    * @returns Current queue stats
    */
   stats(): Promise<QueueStats>;
+
+  /**
+   * Dev/ops only: wipe durable storage and re-init an empty queue schema.
+   * Guarded by HTTP in forestrie-ingress; not exposed via canopy-api.
+   */
+  devResetStorage(): Promise<void>;
 }

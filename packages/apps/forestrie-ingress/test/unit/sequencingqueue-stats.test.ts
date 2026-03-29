@@ -45,4 +45,21 @@ describe("SequencingQueue stats", () => {
     stats = await stub.stats();
     expect(stats.pending).toBe(1);
   });
+
+  it("devResetStorage clears pending and dead letters", async () => {
+    const stub = getStub("dev-reset-storage-test");
+    const logId = new Uint8Array(16).fill(0x0a).buffer;
+    const contentHash = new Uint8Array(32).fill(0xab).buffer;
+
+    await stub.enqueue(logId, contentHash);
+    let stats = await stub.stats();
+    expect(stats.pending).toBe(1);
+
+    await stub.devResetStorage();
+
+    stats = await stub.stats();
+    expect(stats.pending).toBe(0);
+    expect(stats.deadLetters).toBe(0);
+    expect(stats.oldestEntryAgeMs).toBeNull();
+  });
 });

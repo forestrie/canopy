@@ -772,6 +772,19 @@ export class SequencingQueue extends DurableObject<Env> {
   }
 
   /**
+   * Dev/ops: wipe durable SQLite + KV and re-run schema init (empty queue).
+   * The HTTP worker must only call this after checking NODE_ENV and reset token.
+   */
+  async devResetStorage(): Promise<void> {
+    await this.ctx.storage.deleteAll();
+    this.initialized = false;
+    this.nextSeq = 1;
+    this.pendingCount = 0;
+    this.pollers.clear();
+    this.ensureSchema();
+  }
+
+  /**
    * Handle HTTP requests to the DO.
    * This will be used for ranger pull/ack endpoints in Phase 4.
    */
