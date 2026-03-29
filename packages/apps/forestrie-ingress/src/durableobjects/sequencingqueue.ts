@@ -217,11 +217,21 @@ export class SequencingQueue extends DurableObject<Env> {
       .toArray();
     this.pendingCount = countResult[0]?.cnt ?? 0;
 
-    // Get max seq for next assignment
+    // Next seq must exceed both queue_entries and dead_letters. Rows moved to
+    // dead_letters keep their seq (PRIMARY KEY there); if we only looked at
+    // queue_entries, after hibernation we could assign a recycled seq and
+    // movePoisonToDeadLetters would INSERT duplicate dead_letters.seq
+    // (SQLITE_CONSTRAINT_PRIMARYKEY on dead_letters.seq).
     const maxSeqResult = this.ctx.storage.sql
       .exec<{
         max_seq: number | null;
-      }>("SELECT MAX(seq) as max_seq FROM queue_entries")
+      }>(
+        `SELECT MAX(seq) AS max_seq FROM (
+           SELECT seq FROM queue_entries
+           UNION ALL
+           SELECT seq FROM dead_letters
+         )`,
+      )
       .toArray();
     const maxSeq = maxSeqResult[0]?.max_seq ?? 0;
     this.nextSeq = (maxSeq ?? 0) + 1;
