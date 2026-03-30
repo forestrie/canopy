@@ -3,6 +3,7 @@ import { decode } from "cbor-x";
 import { expectAPI as expect, test } from "./fixtures/auth";
 import {
   pollQueryRegistrationUntilReceiptRedirect,
+  pollResolveReceiptUntil200,
   sequencingBackoff,
 } from "./utils/arithmetic-backoff-poll";
 import { postRegisterGrantExpect303 } from "./utils/bootstrap-grant-setup";
@@ -208,7 +209,7 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
       return;
     }
 
-    test.setTimeout(210_000);
+    test.setTimeout(360_000);
     const logId = randomUUID();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
@@ -245,18 +246,19 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
         maxWaitMs: 180_000,
       });
 
-    const receiptRes = await unauthorizedRequest.get(receiptUrlAbsolute, {
-      headers: { Accept: "application/cbor" },
+    const receiptRes = await pollResolveReceiptUntil200({
+      request: unauthorizedRequest,
+      receiptUrlAbsolute,
+      ladderMs: sequencingBackoff,
+      maxWaitMs: 120_000,
     });
-    expect(receiptRes.status(), "resolve-receipt returns CBOR receipt").toBe(
-      200,
-    );
-    const ct = receiptRes.headers()["content-type"] ?? "";
+    expect(receiptRes.status, "resolve-receipt returns CBOR receipt").toBe(200);
+    const ct = receiptRes.headers["content-type"] ?? "";
     expect(ct, "SCITT receipt content type").toMatch(
       /application\/scitt-receipt\+cbor/i,
     );
 
-    const receiptBytes = new Uint8Array(await receiptRes.body());
+    const receiptBytes = receiptRes.body;
     const decoded = decode(receiptBytes) as unknown;
     expect(Array.isArray(decoded), "receipt is COSE Sign1 array").toBe(true);
     expect((decoded as unknown[]).length).toBe(4);

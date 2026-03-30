@@ -111,3 +111,56 @@ export async function pollQueryRegistrationUntilReceiptRedirect(
       `can produce MMRS data, then query-registration-status can redirect to the receipt URL (see repo AGENTS.md).`,
   );
 }
+
+export interface PollReceiptBodyOptions {
+  request: APIRequestContext;
+  receiptUrlAbsolute: string;
+  ladderMs?: number[];
+  /** Budget after registration already returned a receipt Location (R2 may lag). */
+  maxWaitMs?: number;
+  accept?: string;
+}
+
+/**
+ * GET resolve-receipt until 200. Query-registration-status may 303 to the
+ * permanent receipt URL before checkpoint/massif objects exist in R2 (404).
+ */
+export async function pollResolveReceiptUntil200(
+  opts: PollReceiptBodyOptions,
+): Promise<{
+  status: number;
+  headers: { [key: string]: string };
+  body: Uint8Array;
+}> {
+  const ladder = opts.ladderMs ?? sequencingBackoff;
+  const maxWaitMs = opts.maxWaitMs ?? 120_000;
+  const accept = opts.accept ?? "application/cbor";
+  const start = Date.now();
+  let attempt = 0;
+
+  while (Date.now() - start < maxWaitMs) {
+    const res = await opts.request.get(opts.receiptUrlAbsolute, {
+      headers: { Accept: accept },
+    });
+    if (res.status() === 200) {
+      return {
+        status: res.status(),
+        headers: res.headers(),
+        body: new Uint8Array(await res.body()),
+      };
+    }
+    if (res.status() !== 404) {
+      throw new Error(
+        `resolve-receipt: expected 200 or retryable 404, got ${res.status()} for ${opts.receiptUrlAbsolute}`,
+      );
+    }
+    const ladderStep = ladder[Math.min(attempt, ladder.length - 1)]!;
+    await sleepMs(ladderStep);
+    attempt++;
+  }
+
+  throw new Error(
+    `resolve-receipt: 404 until timeout ${maxWaitMs}ms (${opts.receiptUrlAbsolute}). ` +
+      `MMRS checkpoint/massif may still be writing after sequencing ack.`,
+  );
+}
