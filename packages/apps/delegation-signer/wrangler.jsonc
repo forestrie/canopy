@@ -21,6 +21,10 @@
     "KMS_KEY_VERSION": "1",
     "MASSIF_HEIGHT": 14,
     "NODE_ENV": "dev",
+    // Optional (Plan 0016): when set, /api/delegations signs via Custodian
+    // POST .../sign with rawSignatureOnly in body (same BOOTSTRAP_APP_TOKEN as canopy-api).
+    // "CUSTODIAN_URL": "https://custodian.example",
+    // "CUSTODIAN_BOOTSTRAP_APP_TOKEN": "use-secret-store",
   },
   "env": {
     "dev": {

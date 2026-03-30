@@ -154,6 +154,79 @@ describe("delegation-signer worker", () => {
     expect(logId).toBe("log:forest-dev-1/arbor-dev-1");
   });
 
+  it("returns COSE_Sign1 via Custodian raw-sign when CUSTODIAN_* is set", async () => {
+    (env as any).CUSTODIAN_URL = "https://custodian.example";
+    (env as any).CUSTODIAN_BOOTSTRAP_APP_TOKEN = "custodian-secret";
+    delete (env as any).KMS_KID_SECP256K1_B64;
+    delete (env as any).KMS_KID_SECP256R1_B64;
+
+    const pem =
+      "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\n-----END PUBLIC KEY-----";
+
+    const fetchStub = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("custodian.example") && url.includes("/public")) {
+        return new Response(
+          encodeCbor({
+            keyId: ":bootstrap",
+            publicKey: pem,
+            alg: "ES256",
+          }) as BodyInit,
+          {
+            status: 200,
+            headers: { "content-type": "application/cbor" },
+          },
+        );
+      }
+      if (url.includes("custodian.example") && url.includes("/sign")) {
+        const rawSig = new Uint8Array(64);
+        rawSig.fill(0x55);
+        return new Response(encodeCbor({ signature: rawSig }) as BodyInit, {
+          status: 200,
+          headers: { "content-type": "application/cbor" },
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchStub);
+
+    const delegatedKey = new Map<any, any>([
+      [1, 2],
+      [-1, 1],
+      [-2, new Uint8Array(32).fill(1)],
+      [-3, new Uint8Array(32).fill(2)],
+    ]);
+    const body = encodeCbor({
+      delegated_pubkey: delegatedKey,
+      constraints: new Map(),
+    }) as Uint8Array;
+
+    const request = new Request("http://localhost/api/delegations", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/cbor",
+      },
+      body: body as unknown as BodyInit,
+    });
+
+    const response = await worker.fetch(request, env);
+    expect(response.status).toBe(200);
+    const coseBytes = new Uint8Array(await response.arrayBuffer());
+    const cose = decodeCbor(coseBytes) as any[];
+    const signatureRaw = cose[3] as Uint8Array;
+    expect(signatureRaw.byteLength).toBe(64);
+    expect(signatureRaw.every((b) => b === 0x55)).toBe(true);
+
+    expect(
+      fetchStub.mock.calls.some((c) => String(c[0]).includes("/sign")),
+    ).toBe(true);
+
+    vi.unstubAllGlobals();
+    delete (env as any).CUSTODIAN_URL;
+    delete (env as any).CUSTODIAN_BOOTSTRAP_APP_TOKEN;
+  });
+
   it("returns a COSE_Sign1 delegation certificate for a prefix/no-log request", async () => {
     // Avoid calling KMS publicKey in this test by providing a deterministic kid.
     const kid = new Uint8Array(16);

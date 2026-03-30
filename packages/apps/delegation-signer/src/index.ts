@@ -27,6 +27,12 @@ import {
   type DelegationCurve,
 } from "./cose/sign1";
 import { deriveKidFromPublicKeyDer } from "./cose/kid";
+import {
+  algMatchesDelegatedCurve,
+  fetchCustodianPublicKeyMeta,
+  pemToDerFromPublicKeyPem,
+  postCustodianSignRaw,
+} from "./custodian-client";
 
 export interface Env {
   FOREST_PROJECT_ID: string;
@@ -74,6 +80,14 @@ export interface Env {
    * Optional: 64 hex chars (32-byte private key) for test key. If unset, well-known default.
    */
   DELEGATION_SIGNER_TEST_KEY_PRIVATE_HEX?: string;
+  /**
+   * When set with CUSTODIAN_BOOTSTRAP_APP_TOKEN, /api/delegations may sign via
+   * Custodian (raw ECDSA over Sig_structure digest) for :bootstrap when the
+   * delegated curve matches GET .../:bootstrap/public alg. KMS is used otherwise
+   * or when KMS kid env overrides are set.
+   */
+  CUSTODIAN_URL?: string;
+  CUSTODIAN_BOOTSTRAP_APP_TOKEN?: string;
 }
 
 type LogSpecificDelegationRequest = {
@@ -570,9 +584,35 @@ async function handleDelegation(request: Request, env: Env): Promise<Response> {
   const delegationId = new Uint8Array(16);
   crypto.getRandomValues(delegationId);
 
+  const kidOverride =
+    curve === "secp256k1"
+      ? env.KMS_KID_SECP256K1_B64
+      : env.KMS_KID_SECP256R1_B64;
+  const custodianUrl = env.CUSTODIAN_URL?.trim();
+  const custodianToken = env.CUSTODIAN_BOOTSTRAP_APP_TOKEN?.trim();
+
+  let signViaCustodian = false;
+  let custodianPub: { publicKeyPem: string; alg: string } | null = null;
+  if (custodianUrl && custodianToken && !kidOverride?.trim()) {
+    try {
+      const pub = await fetchCustodianPublicKeyMeta(custodianUrl, ":bootstrap");
+      if (algMatchesDelegatedCurve(pub.alg, curve)) {
+        signViaCustodian = true;
+        custodianPub = pub;
+      }
+    } catch {
+      signViaCustodian = false;
+    }
+  }
+
   let kid: Uint8Array;
   try {
-    kid = await getKidForCurve(token, env, curve);
+    if (signViaCustodian && custodianPub) {
+      const der = pemToDerFromPublicKeyPem(custodianPub.publicKeyPem);
+      kid = await deriveKidFromPublicKeyDer(der);
+    } else {
+      kid = await getKidForCurve(token, env, curve);
+    }
   } catch (e) {
     return ServerErrors.internal(
       e instanceof Error ? e.message : "failed to derive kid",
@@ -590,35 +630,50 @@ async function handleDelegation(request: Request, env: Env): Promise<Response> {
     expiresAt,
   });
 
-  const cryptoKey =
-    curve === "secp256k1" ? env.KMS_KEY_SECP256K1 : env.KMS_KEY_SECP256R1;
-
-  let signatureDer: Uint8Array;
-  try {
-    signatureDer = await kmsAsymmetricSignSha256(
-      token,
-      {
-        projectId: env.FOREST_PROJECT_ID,
-        location: env.GCP_LOCATION,
-        keyRing: env.KMS_KEY_RING,
-        cryptoKey,
-        cryptoKeyVersion: env.KMS_KEY_VERSION,
-      },
-      tbs.digestSha256,
-    );
-  } catch (e) {
-    return mapKmsError(e);
-  }
-
   let signatureRaw: Uint8Array;
-  try {
-    signatureRaw = kmsDerSignatureToCoseRaw(signatureDer);
-  } catch (e) {
-    return ServerErrors.internal(
-      e instanceof Error
-        ? `signature conversion failed: ${e.message}`
-        : "signature conversion failed",
-    );
+  if (signViaCustodian && custodianUrl && custodianToken) {
+    try {
+      signatureRaw = await postCustodianSignRaw(
+        custodianUrl,
+        ":bootstrap",
+        custodianToken,
+        tbs.digestSha256,
+      );
+    } catch (e) {
+      return ServerErrors.badGateway(
+        e instanceof Error ? e.message : "custodian sign failed",
+      );
+    }
+  } else {
+    const cryptoKey =
+      curve === "secp256k1" ? env.KMS_KEY_SECP256K1 : env.KMS_KEY_SECP256R1;
+
+    let signatureDer: Uint8Array;
+    try {
+      signatureDer = await kmsAsymmetricSignSha256(
+        token,
+        {
+          projectId: env.FOREST_PROJECT_ID,
+          location: env.GCP_LOCATION,
+          keyRing: env.KMS_KEY_RING,
+          cryptoKey,
+          cryptoKeyVersion: env.KMS_KEY_VERSION,
+        },
+        tbs.digestSha256,
+      );
+    } catch (e) {
+      return mapKmsError(e);
+    }
+
+    try {
+      signatureRaw = kmsDerSignatureToCoseRaw(signatureDer);
+    } catch (e) {
+      return ServerErrors.internal(
+        e instanceof Error
+          ? `signature conversion failed: ${e.message}`
+          : "signature conversion failed",
+      );
+    }
   }
 
   const cose = assembleCoseSign1(

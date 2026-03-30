@@ -168,7 +168,7 @@ async function resolveParentKeyRef(
   if (rootLogId) {
     const normalizedRoot = normalizeLogIdHex(rootLogId);
     if (normalizedRoot && normalizedRoot === normalized) {
-      return bootstrapKeyRef(env);
+      return bootstrapKeyRef(env, parseBootstrapAlg(undefined));
     }
   }
 
