@@ -11,7 +11,7 @@ Canopy is a SCITT/SCRAPI transparency log built as a pnpm monorepo of Cloudflare
 | `@canopy/api` | 8789 | Main SCRAPI HTTP API |
 | `@canopy/forestrie-ingress` | 8791 | SequencingQueue Durable Object host |
 | `@canopy/x402-settlement` | 8792 | x402 payment settlement worker |
-| `@canopy/delegation-signer` | 8791 | COSE delegation signing (GCP KMS) |
+| `@canopy/delegation-signer` | 8791 | COSE delegation signing (Custodian raw-sign or GCP KMS) |
 
 ### Key commands
 
@@ -20,7 +20,7 @@ Canopy is a SCITT/SCRAPI transparency log built as a pnpm monorepo of Cloudflare
 - **Format check**: `pnpm check` (Prettier)
 - **Type check**: `pnpm -r --filter './packages/**' typecheck` (includes `pnpm --filter @canopy/api-e2e typecheck` when that script is present)
 - **Dev server (canopy-api)**: `pnpm --filter @canopy/api dev` (wrangler dev on port 8789)
-- **E2E tests (local)**: `pnpm test:e2e:local` (starts wrangler dev automatically via Playwright `webServer`)
+- **E2E tests**: `pnpm test:e2e` — requires repo-root `.env` with `CANOPY_BASE_URL` or `CANOPY_FQDN` (see `packages/tests/canopy-api/playwright.config.ts` and CI)
 - **Build (dry-run)**: `pnpm -r build`
 
 ### Gotchas
