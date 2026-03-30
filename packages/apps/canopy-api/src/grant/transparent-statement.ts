@@ -12,7 +12,8 @@ import type { ParsedReceipt } from "./parsed-receipt.js";
 import { decodeGrantPayload } from "./codec.js";
 import { parseReceipt } from "./receipt-verify.js";
 
-const HEADER_RECEIPT = 396;
+/** Full SCITT receipt (COSE Sign1 bytes) in transparent statement unprotected (Plan 0005). */
+export const HEADER_RECEIPT = 396;
 export const HEADER_IDTIMESTAMP = -65537;
 /** Full grant v0 CBOR when COSE payload is Custodian digest attestation (Plan 0014). */
 export const HEADER_FORESTRIE_GRANT_V0 = -65538;

@@ -3,7 +3,7 @@
  * for tests: Sign1 payload = SHA-256(grant v0 CBOR); unprotected -65538 = grant payload.
  */
 
-import { encodeSigStructure } from "@canopy/encoding";
+import { encodeCoseSign1Raw, encodeSigStructure } from "@canopy/encoding";
 import { encode as encodeCbor } from "cbor-x";
 import { sha256 } from "@noble/hashes/sha256";
 import { encodeGrantPayload } from "../../src/grant/codec.js";
@@ -67,6 +67,10 @@ export async function encodeCustodianProfileForestrieGrant(
     [HEADER_IDTIMESTAMP, idtimestamp],
     [HEADER_FORESTRIE_GRANT_V0, grantPayload],
   ]);
-  const cose = [protectedInner, unprot, digest, new Uint8Array(signature)];
-  return new Uint8Array(encodeCbor(cose));
+  return encodeCoseSign1Raw(
+    protectedInner,
+    unprot,
+    digest,
+    new Uint8Array(signature),
+  );
 }

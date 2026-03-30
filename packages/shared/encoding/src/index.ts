@@ -27,6 +27,9 @@ export {
   type VerifyCoseSign1Options,
   verifyCoseSign1,
 } from "./verify-cose-sign1.js";
+export { coseUnprotectedToMap } from "./cose-unprotected-map.js";
+export { encodeCoseSign1Raw } from "./encode-cose-sign1-raw.js";
+export { mergeUnprotectedIntoCoseSign1 } from "./merge-cose-sign1-unprotected.js";
 export {
   importTestPrivateKey,
   importTestPublicKey,

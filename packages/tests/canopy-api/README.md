@@ -26,7 +26,7 @@ That installs Playwright/Chromium and runs **`task vars:doppler:{{ENV}}`** so **
 
 That requires a suitably configured deployment: **`CUSTODIAN_URL`**, **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`**, **`R2_MMRS`**, sequencing queue bindings, `bootstrapEnv` + `queueEnv`, and **no** first massif object for the target log in MMRS (same key layout as resolve-receipt). If that massif already exists or the queue is missing, register-grant will not return 303 for this flow—fix the environment or use a fresh `rootLogId` in the spec.
 
-Receipt polling, completed transparent statements, and `POST /logs/.../entries` are **not** covered here (removed as stale vs Plan 0014 Custodian wire format); use Worker Vitest (`packages/apps/canopy-api/test`) or perf scripts for deeper grant lifecycle checks.
+A third test (**poll query-registration-status → SCITT receipt**, assert **mmrIndex 0**) runs a fresh UUID root log, mint + register (HTTP 201 / 303 only), then polls with an arithmetic delay ladder (`sequencingBackoff` in `tests/utils/arithmetic-backoff-poll.ts`). That path needs **forestrie-ingress** (or equivalent) processing the same SequencingQueue so MMRS is written—see repo **`AGENTS.md`**. If you only have **canopy-api-dev** without ingress, set **`E2E_SKIP_SEQUENCING_POLL=1`** to skip that test.
 
 ## Environment variables
 
@@ -41,6 +41,7 @@ Resolved in **`playwright.config.ts`** from **repo-root `.env`** (after `task va
 
 - Requires the **deployed** worker to implement Plan 0014 bootstrap mint (**`CUSTODIAN_URL`**, **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`** on the Worker). If mint returns **503** with a “not configured” problem detail, those tests are **skipped** with a message (so `task test:e2e` still passes while a shared dev worker is behind `main`).
 - Set **`E2E_REQUIRE_BOOTSTRAP=1`** to **fail** the run when bootstrap mint is unavailable (use in CI once the target deployment is Custodian-backed).
+- **`E2E_SKIP_SEQUENCING_POLL=1`**: skip only the registration-status polling / receipt test when ingress is not running against the same dev stack.
 - Responses mentioning **`DELEGATION_SIGNER_*`** mean the live worker is an **older build** than this repository; redeploy canopy-api from current `main`.
 
 Other keys:

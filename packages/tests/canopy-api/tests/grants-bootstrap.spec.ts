@@ -1,6 +1,17 @@
+import { randomUUID } from "node:crypto";
 import { decode } from "cbor-x";
 import { expectAPI as expect, test } from "./fixtures/auth";
+import {
+  pollQueryRegistrationUntilReceiptRedirect,
+  sequencingBackoff,
+} from "./utils/arithmetic-backoff-poll";
+import { postRegisterGrantExpect303 } from "./utils/bootstrap-grant-setup";
 import { skipOrThrowIfBootstrapMintUnconfigured } from "./utils/bootstrap-e2e-guard";
+import { attachReceiptAndIdtimestampToTransparentStatement } from "../../../apps/canopy-api/src/scrapi/attach-scitt-transparent-statement-receipt.js";
+import {
+  decodeEntryIdHex,
+  entryIdHexToIdtimestampBe8,
+} from "./utils/entry-id-e2e";
 import {
   formatProblemDetailsMessage,
   reportProblemDetails,
@@ -60,6 +71,20 @@ function assertCustodianProfileTransparentStatement(base64: string): void {
 
 const DEFAULT_ROOT_LOG_ID = "123e4567-e89b-12d3-a456-426614174000";
 
+function base64ToBytes(b64: string): Uint8Array {
+  const normalized = b64.replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(normalized);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+function bytesToForestrieGrantBase64(bytes: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]!);
+  return btoa(s);
+}
+
 /**
  * End-to-end against a **deployed** worker: Custodian-backed bootstrap mint and
  * register-grant on the **bootstrap branch** (uninitialized root log).
@@ -68,8 +93,14 @@ const DEFAULT_ROOT_LOG_ID = "123e4567-e89b-12d3-a456-426614174000";
  * `R2_MMRS`, `bootstrapEnv` + `queueEnv` in the worker, and **no** first massif tile
  * for the target log in MMRS storage (otherwise register-grant expects receipt-based
  * auth and this test will not get 303).
+ *
+ * The **sequencing → receipt** test needs **forestrie-ingress** (or equivalent) running
+ * against the same env so enqueued grants are sequenced and MMRS is written. Set
+ * **`E2E_SKIP_SEQUENCING_POLL=1`** to skip only that test when api-dev is up without ingress.
  */
 test.describe("Bootstrap grant e2e — mint and register-grant", () => {
+  test.describe.configure({ mode: "serial" });
+
   test("POST /api/grants/bootstrap returns 201 and Custodian-profile transparent statement", async ({
     unauthorizedRequest,
   }, testInfo) => {
@@ -159,5 +190,127 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
     expect(absolute).toMatch(
       new RegExp(`/logs/${escapedLogId}/entries/[0-9a-f]{64}$`, "i"),
     );
+  });
+
+  test("Bootstrap mint + register, poll sequencing, SCITT receipt, mmrIndex 0", async ({
+    unauthorizedRequest,
+  }, testInfo) => {
+    if (
+      process.env.E2E_SKIP_SEQUENCING_POLL === "1" ||
+      process.env.E2E_SKIP_SEQUENCING_POLL === "true"
+    ) {
+      testInfo.skip(
+        true,
+        "E2E_SKIP_SEQUENCING_POLL: skipping poll until SCITT receipt (e.g. api-dev without forestrie-ingress)",
+      );
+      return;
+    }
+
+    test.setTimeout(210_000);
+    const logId = randomUUID();
+    const baseURL = testInfo.project.use.baseURL ?? "";
+
+    const mintRes = await unauthorizedRequest.post("/api/grants/bootstrap", {
+      data: JSON.stringify({ rootLogId: logId }),
+      headers: { "content-type": "application/json" },
+    });
+    const problemMint = await reportProblemDetails(mintRes, testInfo);
+    if (
+      skipOrThrowIfBootstrapMintUnconfigured(
+        mintRes.status(),
+        problemMint,
+        testInfo,
+      ) === "skip"
+    ) {
+      return;
+    }
+    expect(mintRes.status(), formatProblemDetailsMessage(problemMint)).toBe(
+      201,
+    );
+    const grantBase64 = (await mintRes.text()).trim();
+
+    const { statusUrlAbsolute } = await postRegisterGrantExpect303(
+      unauthorizedRequest,
+      { logId, baseURL, grantBase64 },
+    );
+
+    const { receiptUrlAbsolute, entryIdHex } =
+      await pollQueryRegistrationUntilReceiptRedirect({
+        request: unauthorizedRequest,
+        statusUrlAbsolute,
+        baseURL,
+        ladderMs: sequencingBackoff,
+        maxWaitMs: 180_000,
+      });
+
+    const receiptRes = await unauthorizedRequest.get(receiptUrlAbsolute, {
+      headers: { Accept: "application/cbor" },
+    });
+    expect(receiptRes.status(), "resolve-receipt returns CBOR receipt").toBe(
+      200,
+    );
+    const ct = receiptRes.headers()["content-type"] ?? "";
+    expect(ct, "SCITT receipt content type").toMatch(
+      /application\/scitt-receipt\+cbor/i,
+    );
+
+    const receiptBytes = new Uint8Array(await receiptRes.body());
+    const decoded = decode(receiptBytes) as unknown;
+    expect(Array.isArray(decoded), "receipt is COSE Sign1 array").toBe(true);
+    expect((decoded as unknown[]).length).toBe(4);
+    const sign1 = decoded as unknown[];
+    expect(
+      sign1[0] instanceof Uint8Array,
+      "Sign1[0] protected header bstr",
+    ).toBe(true);
+    expect(sign1[2] instanceof Uint8Array, "Sign1[2] payload bstr").toBe(true);
+    expect(sign1[3] instanceof Uint8Array, "Sign1[3] signature bstr").toBe(
+      true,
+    );
+
+    const { mmrIndex } = decodeEntryIdHex(entryIdHex);
+    expect(
+      mmrIndex,
+      "first leaf in empty MMR must have mmrIndex 0 (bootstrap grant)",
+    ).toBe(0n);
+
+    const grantBytes = base64ToBytes(grantBase64);
+    const idtimestampBe8 = entryIdHexToIdtimestampBe8(entryIdHex);
+    const completedBytes = attachReceiptAndIdtimestampToTransparentStatement(
+      grantBytes,
+      receiptBytes,
+      idtimestampBe8,
+    );
+    const completedB64 = bytesToForestrieGrantBase64(completedBytes);
+
+    const secondRegisterRes = await unauthorizedRequest.post(
+      `/logs/${logId}/grants`,
+      {
+        headers: { Authorization: `Forestrie-Grant ${completedB64}` },
+        maxRedirects: 0,
+      },
+    );
+    const problemSecond = await reportProblemDetails(
+      secondRegisterRes,
+      testInfo,
+    );
+    expect(
+      secondRegisterRes.status(),
+      formatProblemDetailsMessage(problemSecond) ??
+        (await responseTextPreview(secondRegisterRes)),
+    ).toBe(303);
+    const locSecond = secondRegisterRes.headers().location;
+    expect(
+      locSecond,
+      "second register-grant 303 must include Location",
+    ).toBeTruthy();
+    let absoluteSecond = locSecond!;
+    if (!absoluteSecond.startsWith("http")) {
+      absoluteSecond = `${baseURL}${absoluteSecond.startsWith("/") ? "" : "/"}${absoluteSecond}`;
+    }
+    const innerMatch = statusUrlAbsolute.match(/\/entries\/([0-9a-f]{64})/i);
+    expect(innerMatch, "status URL must contain inner hex").toBeTruthy();
+    const innerHex = innerMatch![1]!.toLowerCase();
+    expect(absoluteSecond.toLowerCase()).toContain(`/entries/${innerHex}`);
   });
 });

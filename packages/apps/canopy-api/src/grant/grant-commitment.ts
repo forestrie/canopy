@@ -88,7 +88,7 @@ export async function grantCommitmentHashFromGrant(
   grant: Grant,
 ): Promise<Uint8Array> {
   const preimage = grantCommitmentPreimage(grant);
-  const hash = await crypto.subtle.digest("SHA-256", preimage);
+  const hash = await crypto.subtle.digest("SHA-256", preimage as BufferSource);
   return new Uint8Array(hash);
 }
 
