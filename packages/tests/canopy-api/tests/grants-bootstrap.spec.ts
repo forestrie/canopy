@@ -132,7 +132,9 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
   test("After bootstrap mint, POST /logs/{logId}/grants returns 303 See Other (enqueued)", async ({
     unauthorizedRequest,
   }, testInfo) => {
-    const logId = DEFAULT_ROOT_LOG_ID;
+    // Fresh log so api-dev (MMRS already present for DEFAULT_ROOT_LOG_ID) still
+    // hits the bootstrap branch; see AGENTS.md bootstrap e2e caveats.
+    const logId = randomUUID();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
     const mintRes = await unauthorizedRequest.post("/api/grants/bootstrap", {
