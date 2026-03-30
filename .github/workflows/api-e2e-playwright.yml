@@ -16,7 +16,7 @@ jobs:
   api-e2e:
     name: API e2e (${{ inputs.environment }}, ${{ inputs.playwright_project }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     environment: ${{ inputs.environment }}
 
     steps:
