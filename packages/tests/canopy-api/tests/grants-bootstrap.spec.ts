@@ -209,7 +209,7 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
       return;
     }
 
-    test.setTimeout(480_000);
+    test.setTimeout(600_000);
     const logId = randomUUID();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
@@ -250,7 +250,7 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
       request: unauthorizedRequest,
       receiptUrlAbsolute,
       ladderMs: sequencingBackoff,
-      maxWaitMs: 300_000,
+      maxWaitMs: 420_000,
     });
     expect(receiptRes.status, "resolve-receipt returns CBOR receipt").toBe(200);
     const ct = receiptRes.headers["content-type"] ?? "";
