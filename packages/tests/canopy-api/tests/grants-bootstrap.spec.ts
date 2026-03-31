@@ -282,9 +282,10 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
 
     const { mmrIndex } = decodeEntryIdHex(entryIdHex);
     expect(
-      mmrIndex < 8n,
-      "bootstrap grant should map to a small MMR index for a fresh log",
-    ).toBe(true);
+      mmrIndex,
+      "random logId implies first leaf only; non-zero means concurrent " +
+        "bootstrap on the same log (parallel tests reusing logId)",
+    ).toBe(0n);
 
     const grantBytes = base64ToBytes(grantBase64);
     const idtimestampBe8 = entryIdHexToIdtimestampBe8(entryIdHex);

@@ -69,6 +69,9 @@ jobs:
           filters: |
             deploy_workflow:
               - '.github/workflows/deploy-workers.yml'
+            wrangler_tasks:
+              - 'Taskfile.dist.yml'
+              - 'taskfiles/wrangler.yml'
             canopy_api:
               - 'packages/apps/canopy-api/**'
               - 'packages/shared/**'
@@ -119,8 +122,8 @@ jobs:
             fi
           else
             # For push events, use change detection
-            if [ "${{ steps.changes.outputs.deploy_workflow }}" = "true" ]; then
-              # Workflow YAML changed: deploy all workers (same as workflow_dispatch)
+            if [ "${{ steps.changes.outputs.deploy_workflow }}" = "true" ] || [ "${{ steps.changes.outputs.wrangler_tasks }}" = "true" ]; then
+              # Workflow / shared deploy wiring changed: deploy all workers
               apps+=("{\"app\":\"canopy-api\",\"pkg\":\"@canopy/api\"}")
               apps+=("{\"app\":\"delegation-signer\",\"pkg\":\"@canopy/delegation-signer\"}")
               apps+=("{\"app\":\"forestrie-ingress\",\"pkg\":\"@canopy/forestrie-ingress\"}")

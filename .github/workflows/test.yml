@@ -2,12 +2,42 @@ name: Tests
 
 # Pull requests: see **PR dev deploy and e2e** (`pr-dev-deploy-e2e.yml`) for
 # deploy + health + full e2e gating. This workflow runs on **main** only.
+#
+# When a push also triggers **Deploy Workers** (same `paths` as that workflow),
+# Playwright e2e is deferred to deploy-workers (after deploy + health-check) so
+# tests hit the new workers. Otherwise e2e runs here so pushes that only touch
+# tests/docs still validate the deployed dev API once.
 
 on:
   push:
     branches: [main]
 
 jobs:
+  paths:
+    name: Path filter (worker deploy overlap)
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_workers: ${{ steps.filter.outputs.deploy_workers }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Detect deploy-workers-triggered paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          # Keep in sync with `on.push.paths` in deploy-workers.yml
+          filters: |
+            deploy_workers:
+              - "packages/apps/canopy-api/**"
+              - "packages/apps/delegation-signer/**"
+              - "packages/apps/forestrie-ingress/**"
+              - "packages/apps/x402-settlement/**"
+              - "packages/shared/**"
+              - "packages/merklelog/**"
+              - "Taskfile.dist.yml"
+              - "taskfiles/wrangler.yml"
+              - ".github/workflows/deploy-workers.yml"
+
   test:
     name: Test Suite
     runs-on: ubuntu-latest
@@ -42,7 +72,8 @@ jobs:
 
   api-e2e:
     name: API e2e (deployed dev)
-    needs: test
+    needs: [paths, test]
+    if: needs.paths.outputs.deploy_workers != 'true'
     uses: ./.github/workflows/api-e2e-playwright.yml
     secrets: inherit
     with:
