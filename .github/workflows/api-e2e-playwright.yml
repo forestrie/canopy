@@ -43,6 +43,10 @@ jobs:
           SCRAPI_API_KEY: ${{ secrets.SCRAPI_API_KEY }}
           CANOPY_BASE_URL: ${{ vars.CANOPY_BASE_URL }}
           E2E_REQUIRE_BOOTSTRAP: ${{ inputs.playwright_project == 'dev' && '1' || '0' }}
+          # Optional: enables `bootstrap-log-first-entry.spec.ts` (runner calls Custodian :bootstrap/sign).
+          # Use the same base as the worker (`…/v1` per canopy-api wrangler.jsonc). Omit to skip that test.
+          CUSTODIAN_URL: ${{ vars.CUSTODIAN_URL }}
+          CUSTODIAN_BOOTSTRAP_APP_TOKEN: ${{ secrets.CUSTODIAN_BOOTSTRAP_APP_TOKEN }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }

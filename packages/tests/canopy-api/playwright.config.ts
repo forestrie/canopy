@@ -76,7 +76,10 @@ export default defineConfig({
     {
       // Prod / release: excludes mutating bootstrap mint tests.
       name: "prod",
-      testIgnore: ["**/grants-bootstrap.spec.ts"],
+      testIgnore: [
+        "**/grants-bootstrap.spec.ts",
+        "**/bootstrap-log-first-entry.spec.ts",
+      ],
       use: {
         baseURL,
       },

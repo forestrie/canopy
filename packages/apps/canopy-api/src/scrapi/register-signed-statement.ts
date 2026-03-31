@@ -13,8 +13,8 @@ import { seeOtherResponse } from "./cbor-response";
 
 import {
   getSignerFromCoseSign1,
-  signerMatchesGrant,
   GrantAuthErrors,
+  signerMatchesStatementRegistrationGrant,
 } from "./grant-auth";
 import {
   isStatementRegistrationGrant,
@@ -72,7 +72,8 @@ export interface RegisterStatementResponse {
  * Validation: grant must be present and valid; if inclusionEnv set, inclusion is checked.
  * Statement must be valid COSE Sign1; the grant must be a **data-log** statement grant
  * (bitmap: GF_DATA_LOG + GF_EXTEND per `isStatementRegistrationGrant`) and **`kid`** must match
- * **`statementSignerBindingBytes(grant)`** = **`grantData`** only (ARC-0001 §6). Wire v0 has no
+ * **`statementSignerBindingBytes(grant)`** or Custodian 16-byte kid for 64-byte **x||y**
+ * `grantData` (bootstrap Sign1). Wire v0 has no
  * separate signer/kind CBOR keys.
  * On success, enqueues (logId, contentHash) and returns 303 to the status URL for polling.
  * On queue backpressure returns 503 with Retry-After.
@@ -147,7 +148,7 @@ export async function registerSignedStatement(
         "Grant grantData must carry the statement signer binding (non-empty).",
       );
     }
-    if (!signerMatchesGrant(statementSigner, grantSignerBinding)) {
+    if (!signerMatchesStatementRegistrationGrant(statementSigner, grant)) {
       logSignerMismatch(statementSigner, grantSignerBinding);
       return GrantAuthErrors.signerMismatch();
     }

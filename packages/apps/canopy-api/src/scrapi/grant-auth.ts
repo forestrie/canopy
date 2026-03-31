@@ -7,6 +7,10 @@
  */
 
 import { decode as decodeCbor } from "cbor-x";
+import { custodianStatementKidFromXyGrantData } from "../grant/custodian-statement-kid.js";
+import { grantDataToBytes } from "../grant/grant-data.js";
+import type { Grant } from "../grant/types.js";
+import { statementSignerBindingBytes } from "../grant/statement-signer-binding.js";
 import { cborResponse } from "./cbor-response";
 import { CBOR_CONTENT_TYPES } from "./cbor-content-types";
 
@@ -58,6 +62,30 @@ export function signerMatchesGrant(
     if (statementSigner[i] !== grantSigner[i]) return false;
   }
   return true;
+}
+
+/**
+ * Register-statement: COSE `kid` must equal {@link statementSignerBindingBytes} **or**, for
+ * 64-byte ES256 **x||y** `grantData`, the 16-byte Custodian profile kid (bootstrap KMS Sign1).
+ */
+export function signerMatchesStatementRegistrationGrant(
+  statementSigner: Uint8Array | null,
+  grant: Grant,
+): boolean {
+  const primaryBinding = statementSignerBindingBytes(grant);
+  if (primaryBinding.length === 0) return false;
+  if (signerMatchesGrant(statementSigner, primaryBinding)) return true;
+
+  const gd = grantDataToBytes(grant.grantData);
+  if (gd.length !== 64 || !statementSigner || statementSigner.length !== 16) {
+    return false;
+  }
+  try {
+    const custodianKid = custodianStatementKidFromXyGrantData(gd);
+    return signerMatchesGrant(statementSigner, custodianKid);
+  } catch {
+    return false;
+  }
 }
 
 /** Problem detail body for grant auth failures (Concise Problem Details, CBOR). */

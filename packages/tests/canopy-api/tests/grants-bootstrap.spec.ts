@@ -1,90 +1,22 @@
 import { randomUUID } from "node:crypto";
 import { decode } from "cbor-x";
 import { expectAPI as expect, test } from "./fixtures/auth";
+import { sequencingBackoff } from "./utils/arithmetic-backoff-poll";
 import {
-  pollQueryRegistrationUntilReceiptRedirect,
-  pollResolveReceiptUntil200,
-  sequencingBackoff,
-} from "./utils/arithmetic-backoff-poll";
-import { postRegisterGrantExpect303 } from "./utils/bootstrap-grant-setup";
+  assertCustodianProfileTransparentStatement,
+  buildCompletedGrantBase64,
+  completeBootstrapGrantWithReceipt,
+  DEFAULT_ROOT_LOG_ID,
+  mintBootstrapGrantPlaywright,
+  shouldSkipSequencingPoll,
+} from "./utils/bootstrap-grant-flow";
+import { decodeEntryIdHex } from "./utils/entry-id-e2e";
 import { skipOrThrowIfBootstrapMintUnconfigured } from "./utils/bootstrap-e2e-guard";
-import { attachReceiptAndIdtimestampToTransparentStatement } from "../../../apps/canopy-api/src/scrapi/attach-scitt-transparent-statement-receipt.js";
-import {
-  decodeEntryIdHex,
-  entryIdHexToIdtimestampBe8,
-} from "./utils/entry-id-e2e";
 import {
   formatProblemDetailsMessage,
   reportProblemDetails,
   responseTextPreview,
 } from "./utils/problem-details";
-
-/** Plan 0014 / `transparent-statement.ts`: full grant v0 CBOR in unprotected header. */
-const HEADER_FORESTRIE_GRANT_V0 = -65538;
-
-function toHeaderMap(raw: unknown): Map<number, unknown> {
-  if (raw instanceof Map) return raw as Map<number, unknown>;
-  if (typeof raw === "object" && raw !== null && !(raw instanceof Uint8Array)) {
-    const out = new Map<number, unknown>();
-    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-      const n = Number(k);
-      if (Number.isFinite(n)) out.set(n, v);
-    }
-    return out;
-  }
-  return new Map();
-}
-
-/**
- * Assert base64 body matches Custodian Forestrie-Grant wire: COSE Sign1, 32-byte
- * digest payload, unprotected -65538 carries grant v0 CBOR.
- */
-function assertCustodianProfileTransparentStatement(base64: string): void {
-  const normalized = base64.replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(normalized);
-  const bytes = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-
-  const sign1 = decode(bytes) as unknown;
-  if (!Array.isArray(sign1) || sign1.length !== 4) {
-    throw new Error("Expected untagged COSE Sign1 (CBOR array of 4 elements)");
-  }
-  const payload = sign1[2];
-  if (!(payload instanceof Uint8Array) || payload.length !== 32) {
-    throw new Error(
-      "Expected COSE payload to be 32-byte SHA-256 digest (Custodian profile)",
-    );
-  }
-  const sig = sign1[3];
-  if (!(sig instanceof Uint8Array) || sig.length !== 64) {
-    throw new Error(
-      "Expected COSE ES256 signature bstr to be 64-byte IEEE P1363 (not KMS DER)",
-    );
-  }
-  const unprotected = toHeaderMap(sign1[1]);
-  const embedded = unprotected.get(HEADER_FORESTRIE_GRANT_V0);
-  if (!(embedded instanceof Uint8Array) || embedded.length === 0) {
-    throw new Error(
-      `Expected unprotected header ${HEADER_FORESTRIE_GRANT_V0} (grant v0 CBOR bytes)`,
-    );
-  }
-}
-
-const DEFAULT_ROOT_LOG_ID = "123e4567-e89b-12d3-a456-426614174000";
-
-function base64ToBytes(b64: string): Uint8Array {
-  const normalized = b64.replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(normalized);
-  const out = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
-  return out;
-}
-
-function bytesToForestrieGrantBase64(bytes: Uint8Array): string {
-  let s = "";
-  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]!);
-  return btoa(s);
-}
 
 /**
  * End-to-end against a **deployed** worker: Custodian-backed bootstrap mint and
@@ -138,24 +70,14 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
     const logId = randomUUID();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
-    const mintRes = await unauthorizedRequest.post("/api/grants/bootstrap", {
-      data: JSON.stringify({ rootLogId: logId }),
-      headers: { "content-type": "application/json" },
-    });
-    const problemMint = await reportProblemDetails(mintRes, testInfo);
-    if (
-      skipOrThrowIfBootstrapMintUnconfigured(
-        mintRes.status(),
-        problemMint,
-        testInfo,
-      ) === "skip"
-    ) {
-      return;
-    }
-    expect(mintRes.status(), formatProblemDetailsMessage(problemMint)).toBe(
-      201,
+    const minted = await mintBootstrapGrantPlaywright(
+      unauthorizedRequest,
+      logId,
+      testInfo,
     );
-    const grantBase64 = (await mintRes.text()).trim();
+    if (minted.skipped) return;
+
+    const grantBase64 = minted.grantBase64;
     expect(() =>
       assertCustodianProfileTransparentStatement(grantBase64),
     ).not.toThrow();
@@ -198,10 +120,7 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
   test("Bootstrap mint + register, poll sequencing, SCITT receipt, mmrIndex 0", async ({
     unauthorizedRequest,
   }, testInfo) => {
-    if (
-      process.env.E2E_SKIP_SEQUENCING_POLL === "1" ||
-      process.env.E2E_SKIP_SEQUENCING_POLL === "true"
-    ) {
+    if (shouldSkipSequencingPoll()) {
       testInfo.skip(
         true,
         "E2E_SKIP_SEQUENCING_POLL: skipping poll until SCITT receipt (e.g. api-dev without forestrie-ingress)",
@@ -213,45 +132,22 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
     const logId = randomUUID();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
-    const mintRes = await unauthorizedRequest.post("/api/grants/bootstrap", {
-      data: JSON.stringify({ rootLogId: logId }),
-      headers: { "content-type": "application/json" },
-    });
-    const problemMint = await reportProblemDetails(mintRes, testInfo);
-    if (
-      skipOrThrowIfBootstrapMintUnconfigured(
-        mintRes.status(),
-        problemMint,
-        testInfo,
-      ) === "skip"
-    ) {
-      return;
-    }
-    expect(mintRes.status(), formatProblemDetailsMessage(problemMint)).toBe(
-      201,
-    );
-    const grantBase64 = (await mintRes.text()).trim();
-
-    const { statusUrlAbsolute } = await postRegisterGrantExpect303(
+    const minted = await mintBootstrapGrantPlaywright(
       unauthorizedRequest,
-      { logId, baseURL, grantBase64 },
+      logId,
+      testInfo,
     );
+    if (minted.skipped) return;
 
-    const { receiptUrlAbsolute, entryIdHex } =
-      await pollQueryRegistrationUntilReceiptRedirect({
-        request: unauthorizedRequest,
-        statusUrlAbsolute,
+    const { grantBase64, statusUrlAbsolute, entryIdHex, receiptRes } =
+      await completeBootstrapGrantWithReceipt({
+        unauthorizedRequest,
+        logId,
         baseURL,
+        grantBase64: minted.grantBase64,
         ladderMs: sequencingBackoff,
-        maxWaitMs: 180_000,
       });
 
-    const receiptRes = await pollResolveReceiptUntil200({
-      request: unauthorizedRequest,
-      receiptUrlAbsolute,
-      ladderMs: sequencingBackoff,
-      maxWaitMs: 420_000,
-    });
     expect(receiptRes.status, "resolve-receipt returns CBOR receipt").toBe(200);
     const ct = receiptRes.headers["content-type"] ?? "";
     expect(ct, "SCITT receipt content type").toMatch(
@@ -267,8 +163,6 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
       sign1[0] instanceof Uint8Array,
       "Sign1[0] protected header bstr",
     ).toBe(true);
-    // MMRIVER peak receipts marshal with a detached payload (nil in Sign1[2]);
-    // see go-merklelog massifs.signEmptyPeakReceipt.
     const payload = sign1[2];
     expect(
       payload === null ||
@@ -287,14 +181,11 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
         "bootstrap on the same log (parallel tests reusing logId)",
     ).toBe(0n);
 
-    const grantBytes = base64ToBytes(grantBase64);
-    const idtimestampBe8 = entryIdHexToIdtimestampBe8(entryIdHex);
-    const completedBytes = attachReceiptAndIdtimestampToTransparentStatement(
-      grantBytes,
+    const completedB64 = buildCompletedGrantBase64(
+      grantBase64,
       receiptBytes,
-      idtimestampBe8,
+      entryIdHex,
     );
-    const completedB64 = bytesToForestrieGrantBase64(completedBytes);
 
     const secondRegisterRes = await unauthorizedRequest.post(
       `/logs/${logId}/grants`,

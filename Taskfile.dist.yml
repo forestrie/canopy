@@ -58,6 +58,15 @@ tasks:
       - task vars:require-dotenv
       - pnpm --filter @canopy/api-e2e exec playwright test
 
+  test:e2e:doppler:
+    desc: |
+      Run Playwright e2e with env from Doppler CLI (no repo-root .env required).
+      Project **canopy**, config **ENV** (default dev). Same keys as `task vars:doppler:dev` downloads.
+    cmds:
+      - |
+        doppler run --project canopy --config {{.ENV}} -- \
+          pnpm --filter @canopy/api-e2e exec playwright test --project=dev
+
   test:e2e:preflight:
     desc: |
       E2e prerequisites — install deps + Playwright, then hydrate repo-root .env via Doppler (e2e-shared:preflight).

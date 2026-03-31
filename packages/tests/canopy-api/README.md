@@ -19,6 +19,7 @@ That installs Playwright/Chromium and runs **`task vars:doppler:{{ENV}}`** so **
 
 - `pnpm --filter @canopy/api-e2e exec playwright test` — all tests (**`dev`** project)
 - `pnpm --filter @canopy/api-e2e test:e2e` — same as above (`--project=dev`)
+- From repo root: **`task test:e2e:doppler`** — same as `doppler run --project canopy --config $ENV -- pnpm --filter @canopy/api-e2e exec playwright test --project=dev` (no `.env` file needed)
 
 ### Bootstrap grant (mint + register-grant)
 
@@ -27,6 +28,8 @@ That installs Playwright/Chromium and runs **`task vars:doppler:{{ENV}}`** so **
 That requires a suitably configured deployment: **`CUSTODIAN_URL`**, **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`**, **`R2_MMRS`**, sequencing queue bindings, `bootstrapEnv` + `queueEnv`, and **no** first massif object for the target log in MMRS (same key layout as resolve-receipt). If that massif already exists or the queue is missing, register-grant will not return 303 for this flow—fix the environment or use a fresh `rootLogId` in the spec.
 
 A third test (**poll query-registration-status → SCITT receipt**, assert **mmrIndex 0**) runs a fresh UUID root log, mint + register (HTTP 201 / 303 only), then polls with an arithmetic delay ladder (`sequencingBackoff` in `tests/utils/arithmetic-backoff-poll.ts`). That path needs **forestrie-ingress** (or equivalent) processing the same SequencingQueue so MMRS is written—see repo **`AGENTS.md`**. If you only have **canopy-api-dev** without ingress, set **`E2E_SKIP_SEQUENCING_POLL=1`** to skip that test.
+
+**First signed entry** (`tests/bootstrap-log-first-entry.spec.ts`): after the same mint → register → receipt flow as the poll test, calls **Custodian** from the **test runner** (`POST /api/keys/:bootstrap/sign` with **`CUSTODIAN_URL`** and **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`**) to build a COSE Sign1 statement body, then **`POST /logs/{logId}/entries`** with the **completed** Forestrie-Grant. Supply those via repo-root `.env` or **`doppler run --project canopy --config dev`** (see **`taskfiles/e2e-setup.md`**). Use the **exact** `CUSTODIAN_URL` the **deployed worker** uses (including **`/v1`**, see `packages/apps/canopy-api/wrangler.jsonc`); a different host or path can yield **`403` `signer_mismatch`** because the minted `grantData` pubkey would not match the Sign1 `kid`. The deployed API must also include register-statement support for Custodian’s **16-byte** `kid` (same commit as `signerMatchesStatementRegistrationGrant`); older workers only accept the 32-byte **x** binding and return **`signer_mismatch`** for Custodian-signed statements. The test is skipped when Custodian env vars are unset or when **`E2E_SKIP_SEQUENCING_POLL=1`**. In GitHub Actions, optional **`vars.CUSTODIAN_URL`** + **`secrets.CUSTODIAN_BOOTSTRAP_APP_TOKEN`** enable this test. Shared helpers: `tests/utils/bootstrap-grant-flow.ts`.
 
 ## Environment variables
 
@@ -50,12 +53,13 @@ Other keys:
 
 ## Test layout
 
-| File                       | Area                                                                 |
-| -------------------------- | -------------------------------------------------------------------- |
-| `api.spec.ts`              | Cross-cutting HTTP (e.g. CORS OPTIONS).                              |
-| `observability.spec.ts`    | `/api/health`, `/.well-known/scitt-configuration` (metrics TBD).     |
-| `grants-bootstrap.spec.ts` | Bootstrap mint + register-grant (Custodian-profile Forestrie-Grant). |
+| File                                | Area                                                                      |
+| ----------------------------------- | ------------------------------------------------------------------------- |
+| `api.spec.ts`                       | Cross-cutting HTTP (e.g. CORS OPTIONS).                                   |
+| `observability.spec.ts`             | `/api/health`, `/.well-known/scitt-configuration` (metrics TBD).          |
+| `grants-bootstrap.spec.ts`          | Bootstrap mint + register-grant (Custodian-profile Forestrie-Grant).      |
+| `bootstrap-log-first-entry.spec.ts` | Completed bootstrap grant + Custodian-signed statement → `POST /entries`. |
 
 - Fixtures: `tests/fixtures`.
-- Shared e2e utils: `tests/utils/problem-details.ts`, `tests/utils/bootstrap-e2e-guard.ts`.
+- Shared e2e utils: `tests/utils/problem-details.ts`, `tests/utils/bootstrap-e2e-guard.ts`, `tests/utils/bootstrap-grant-flow.ts`.
 - Worker unit/integration tests: `packages/apps/canopy-api/test`.
