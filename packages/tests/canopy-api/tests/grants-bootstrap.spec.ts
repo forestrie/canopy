@@ -22,6 +22,9 @@ import {
  * End-to-end against a **deployed** worker: Custodian-backed bootstrap mint and
  * register-grant on the **bootstrap branch** (uninitialized root log).
  *
+ * This suite does **not** call Custodian `POST /api/keys` (no per-log custody key
+ * creation or `selfLogId`); mint uses the bootstrap path only.
+ *
  * Requires: `CUSTODIAN_URL`, `CUSTODIAN_BOOTSTRAP_APP_TOKEN`, `SEQUENCING_QUEUE`,
  * `R2_MMRS`, `bootstrapEnv` + `queueEnv` in the worker, and **no** first massif tile
  * for the target log in MMRS storage (otherwise register-grant expects receipt-based

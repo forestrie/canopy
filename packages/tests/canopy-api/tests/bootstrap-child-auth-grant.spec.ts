@@ -1,6 +1,9 @@
 /**
  * After root bootstrap, register a **child auth** Forestrie-Grant (ARC-0017): custody ES256 key
  * signs grant with logId = child, ownerLogId = root; leaf sequences on **parent** log.
+ *
+ * Custodian `POST /api/keys` requires a valid `selfLogId` UUID; the KMS key id is that UUID
+ * with hyphens removed (`custodianKmsCryptoKeyIdFromLogUuid` in `custodian-custody-grant.ts`).
  */
 
 import { randomUUID } from "node:crypto";
@@ -19,6 +22,7 @@ import { custodianBootstrapSignEnv } from "./utils/custodian-bootstrap-sign";
 import {
   authLogBootstrapShapedFlags,
   custodianCustodySignEnv,
+  custodianKmsCryptoKeyIdFromLogUuid,
   grantData64FromCustodianPem,
   postCustodianCreateEs256Key,
   signGrantPayloadWithCustodyKey,
@@ -86,7 +90,14 @@ test.describe("Bootstrap root + child auth grant e2e", () => {
       baseUrl: custodyEnv.baseUrl,
       appToken: custodyEnv.token,
       keyOwnerId: `canopy-e2e-child-auth-${childLogId}`,
+      selfLogId: childLogId,
     });
+    const expectedKmsId = custodianKmsCryptoKeyIdFromLogUuid(childLogId);
+    const kmsSegment = keyId.split("/cryptoKeys/").pop() ?? keyId;
+    expect(
+      kmsSegment,
+      "Custodian keyId must name the CryptoKey after selfLogId (hyphen-free UUID)",
+    ).toBe(expectedKmsId);
 
     const grantData = grantData64FromCustodianPem(publicKeyPem);
     const grant: Grant = {
@@ -98,10 +109,12 @@ test.describe("Bootstrap root + child auth grant e2e", () => {
       grantData,
     };
 
+    // Custodian paths are /api/keys/{keyId}/sign with a single segment; full KMS
+    // resource names contain slashes and break routing — use the CryptoKey short id.
     const grantBase64 = await signGrantPayloadWithCustodyKey({
       baseUrl: custodyEnv.baseUrl,
       appToken: custodyEnv.token,
-      keyId,
+      keyId: kmsSegment,
       grant,
     });
 

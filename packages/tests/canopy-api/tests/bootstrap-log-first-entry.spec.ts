@@ -34,6 +34,9 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
  * First transparency **statement** on a freshly bootstrapped root log: completed
  * Forestrie-Grant (receipt + idtimestamp) plus Custodian `:bootstrap` COSE Sign1 body.
  *
+ * No Custody `POST /api/keys` here — signing uses `:bootstrap` only, not per-log keys
+ * or `selfLogId` (see `bootstrap-child-auth-grant.spec.ts` for custody key creation).
+ *
  * Needs the same sequencing + MMRS setup as `grants-bootstrap` poll test. The happy path
  * also needs **Custodian** on the runner (`CUSTODIAN_URL`, `CUSTODIAN_BOOTSTRAP_APP_TOKEN`).
  * The wrong-signer test uses an ephemeral P-256 key locally (no Custodian sign call).

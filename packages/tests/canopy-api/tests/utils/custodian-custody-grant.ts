@@ -33,6 +33,20 @@ function grantData64FromUncompressed(u: Uint8Array): Uint8Array {
   );
 }
 
+/**
+ * KMS CryptoKey id Custodian uses for a log: RFC-4122 UUID with hyphens removed
+ * (32 lowercase hex digits). Must match `selfLogId` sent to `POST /api/keys`.
+ */
+export function custodianKmsCryptoKeyIdFromLogUuid(logId: string): string {
+  const compact = logId.trim().replace(/-/g, "").toLowerCase();
+  if (!/^[0-9a-f]{32}$/.test(compact)) {
+    throw new Error(
+      `selfLogId must be a UUID (32 hex digits); got length ${compact.length}`,
+    );
+  }
+  return compact;
+}
+
 /** ES256 **x‖y** (64 bytes) from Custodian PEM. */
 export function grantData64FromCustodianPem(publicKeyPem: string): Uint8Array {
   const u65 = publicKeyPemToUncompressed65(publicKeyPem);
@@ -43,9 +57,19 @@ export async function postCustodianCreateEs256Key(opts: {
   baseUrl: string;
   appToken: string;
   keyOwnerId: string;
+  /**
+   * Required. RFC-4122 log id; Custodian rejects create without a valid UUID (400).
+   * KMS CryptoKey id === {@link custodianKmsCryptoKeyIdFromLogUuid}(selfLogId).
+   */
+  selfLogId: string;
 }): Promise<{ keyId: string; publicKeyPem: string }> {
   const base = trimBase(opts.baseUrl);
-  const encoded = encodeCbor({ keyOwnerId: opts.keyOwnerId, alg: "ES256" });
+  const body: Record<string, unknown> = {
+    keyOwnerId: opts.keyOwnerId,
+    selfLogId: opts.selfLogId,
+    alg: "ES256",
+  };
+  const encoded = encodeCbor(body);
   const u8 =
     encoded instanceof Uint8Array
       ? encoded
