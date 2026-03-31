@@ -17,9 +17,11 @@ That installs Playwright/Chromium and runs **`task vars:doppler:{{ENV}}`** so **
 
 ## Scripts
 
-- `pnpm --filter @canopy/api-e2e exec playwright test` — all tests (**`dev`** project)
-- `pnpm --filter @canopy/api-e2e test:e2e` — same as above (`--project=dev`)
-- From repo root: **`task test:e2e:doppler`** — same as `doppler run --project canopy --config $ENV -- pnpm --filter @canopy/api-e2e exec playwright test --project=dev` (no `.env` file needed)
+- **CI / env already set:** `pnpm --filter @canopy/api-e2e exec playwright test` — all tests (**`dev`** project), or `pnpm --filter @canopy/api-e2e test:e2e` (same).
+- **Local (Doppler):** do **not** use a Doppler-injected npm script — use **`task test:e2e:doppler`** from the repo root, or  
+  `doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e exec playwright test --project=dev`  
+  (see **`.cursor/rules/e2e-local-doppler.mdc`**). Use `ENV=prod` with the task when targeting prod Doppler config.
+- **Local (hydrated `.env`):** `task test:e2e:preflight` then `task test:e2e` or root `pnpm test:e2e`.
 
 ### Bootstrap grant (mint + register-grant)
 

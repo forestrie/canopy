@@ -1,0 +1,22 @@
+---
+description: Local Playwright e2e must use Doppler outside package.json (CI-safe scripts)
+alwaysApply: true
+---
+
+# API e2e tests and Doppler
+
+## `packages/tests/canopy-api/package.json`
+
+- **Do not** add `doppler run` (or any Doppler CLI) inside **`@canopy/api-e2e`** npm scripts.
+- Scripts such as **`test:e2e`**, **`test:e2e:health`**, and **`test:e2e:prod`** must remain plain **`pnpm exec playwright test ...`** so CI can run `pnpm --filter @canopy/api-e2e exec playwright test` with environment variables supplied by the workflow.
+
+## Local runs (developers and agents)
+
+When running Playwright e2e **locally** against dev (or another Doppler config), **always** inject secrets via Doppler **outside** npm, for example:
+
+- **Repo root:** `task test:e2e:doppler` (use `ENV=prod` when the Doppler config should be `prod`).
+- **Explicit:** `doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e exec playwright test --project=dev` (append spec paths or `--grep` as needed).
+
+**Alternative:** `task test:e2e:preflight` to hydrate repo-root **`.env`**, then `task test:e2e` or `pnpm test:e2e` from the root.
+
+See **`taskfiles/e2e-setup.md`** and **`packages/tests/canopy-api/README.md`**.

@@ -20,7 +20,7 @@ Canopy is a SCITT/SCRAPI transparency log built as a pnpm monorepo of Cloudflare
 - **Format check**: `pnpm check` (Prettier)
 - **Type check**: `pnpm -r --filter './packages/**' typecheck` (includes `pnpm --filter @canopy/api-e2e typecheck` when that script is present)
 - **Dev server (canopy-api)**: `pnpm --filter @canopy/api dev` (wrangler dev on port 8789)
-- **E2E tests**: `pnpm test:e2e` — requires repo-root `.env` with `CANOPY_BASE_URL` or `CANOPY_FQDN` (see `packages/tests/canopy-api/playwright.config.ts` and CI)
+- **E2E tests**: In CI, workflows export vars and run Playwright directly. **Locally**, prefer `task test:e2e:doppler` (or hydrate `.env` via `task test:e2e:preflight` then `pnpm test:e2e`). Do not add Doppler to `@canopy/api-e2e` package scripts — see `.cursor/rules/e2e-local-doppler.mdc` and `taskfiles/e2e-setup.md`.
 - **Build (dry-run)**: `pnpm -r build`
 
 ### Gotchas

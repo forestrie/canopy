@@ -37,17 +37,17 @@ task test:e2e:preflight   # tooling + hydrate .env from Doppler
 task test:e2e             # requires existing .env
 ```
 
-Inject secrets directly (no `.env` file) using the same Doppler project as `taskfiles/vars.yml` (**`canopy`**, not necessarily other Forestrie repos named e.g. `curator`):
+Inject secrets locally (no `.env` file) using the same Doppler project as `taskfiles/vars.yml` (**`canopy`**). **Do not** put `doppler run` in `@canopy/api-e2e` `package.json` scripts — CI runs Playwright without the Doppler CLI.
 
 ```bash
 doppler run --project canopy --config dev -- \
   pnpm --filter @canopy/api-e2e exec playwright test --project=dev
 
-# Or use the repo task (alias for the above; `ENV=prod` selects Doppler config prod):
+# Or from repo root (`ENV=prod` selects Doppler config prod):
 task test:e2e:doppler
 ```
 
-Or from the package:
+When the environment is already set (e.g. CI):
 
 ```bash
 pnpm --filter @canopy/api-e2e exec playwright test --project=dev

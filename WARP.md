@@ -62,10 +62,12 @@ Install dependencies (monorepo-wide):
 
 End-to-end API tests (Playwright), via the `@canopy/api-e2e` package (deployed worker only):
 - Preflight (tooling + Doppler ? repo-root `.env`): `task test:e2e:preflight`
-- Run tests: `pnpm --filter @canopy/api-e2e test:e2e` or `task test:e2e`
+- Run tests locally with Doppler (no `.env`): `task test:e2e:doppler`
+- Run tests with existing `.env` or CI-style env: `pnpm --filter @canopy/api-e2e test:e2e` or `task test:e2e`  
+  (`package.json` scripts must stay Doppler-free; see `.cursor/rules/e2e-local-doppler.mdc`)
 
 Relevant E2E environment variables (see `taskfiles/e2e-setup.md` and `packages/tests/canopy-api/README.md`):
-- **`CANOPY_BASE_URL`** (required worker origin), **`SCRAPI_API_KEY`** (bearer). CI (`.github/workflows/test.yml`) uses GitHub Environment **`dev`** and exports **`CANOPY_BASE_URL`** / **`CANOPY_FQDN`** (variables) plus **`SCRAPI_API_KEY`** (secret) into the Playwright step—no `.env` file in Actions.
+- **`CANOPY_BASE_URL`** (required worker origin), **`SCRAPI_API_KEY`** (bearer). CI (`.github/workflows/test.yml`) uses GitHub Environment **`dev`** and exports **`CANOPY_BASE_URL`** / **`CANOPY_FQDN`** (variables) plus **`SCRAPI_API_KEY`** (secret) into the Playwright stepno `.env` file in Actions.
 
 ### API package-specific commands
 
@@ -82,8 +84,8 @@ From the **repo root** (recommended so pnpm workspace semantics apply):
 Running a single Vitest file for the Worker:
 - `pnpm --filter @canopy/api test -- path/to/your.test.ts`
 
-Running a focused Playwright E2E test file:
-- `pnpm --filter @canopy/api-e2e exec playwright test --project=dev tests/path/to/spec.spec.ts`
+Running a focused Playwright E2E test file (local; prefix with Doppler when secrets are not in `.env`):
+- `doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e exec playwright test --project=dev tests/path/to/spec.spec.ts`
 
 > Prefer running these from the repository root so pnpm can correctly resolve workspace dependencies and scripts.
 
@@ -194,7 +196,7 @@ In source files with a clear primary piece of functionality, order definitions a
 2. **Public methods before private**: Within classes, public methods come before
    private methods.
 3. **Helpers in topological order**: Helper functions and private methods should be
-   ordered by their position in the call graphâ€”methods called by the primary
+   ordered by their position in the call graph—methods called by the primary
    functionality appear before their own helpers. Leaf-most helpers (those that call
    no other local functions) appear last.
 
@@ -222,12 +224,12 @@ lexically.
 **File naming pattern**: `{prefix}-{area}.test.ts`
 
 For example, tests for a `SequencingQueue` Durable Object:
-- `sequencingqueue.test.ts` â€“ basic instantiation and schema tests
-- `sequencingqueue-enqueue.test.ts` â€“ enqueue() method tests
-- `sequencingqueue-pull.test.ts` â€“ pull() method tests
-- `sequencingqueue-ack.test.ts` â€“ ackRange() method tests
-- `sequencingqueue-stats.test.ts` â€“ stats() method tests
-- `sequencingqueue-fixture.ts` â€“ shared test helpers (testEnv, getStub, etc.)
+- `sequencingqueue.test.ts` – basic instantiation and schema tests
+- `sequencingqueue-enqueue.test.ts` – enqueue() method tests
+- `sequencingqueue-pull.test.ts` – pull() method tests
+- `sequencingqueue-ack.test.ts` – ackRange() method tests
+- `sequencingqueue-stats.test.ts` – stats() method tests
+- `sequencingqueue-fixture.ts` – shared test helpers (testEnv, getStub, etc.)
 
 **Benefits**:
 - Smaller, focused test files are easier to navigate and maintain.
