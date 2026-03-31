@@ -229,6 +229,9 @@ importers:
       '@canopy/api':
         specifier: workspace:*
         version: link:../../apps/canopy-api
+      '@canopy/encoding':
+        specifier: workspace:*
+        version: link:../../shared/encoding
       cbor-x:
         specifier: ^1.5.9
         version: 1.6.0

@@ -26,6 +26,13 @@ export function hasDataLogClass(grant: Uint8Array): boolean {
   return (low & 0x02) !== 0 && (low & 0x01) === 0;
 }
 
+/** GF_AUTH_LOG (0x01) in low byte without GF_DATA_LOG (0x02). */
+export function hasAuthLogClass(grant: Uint8Array): boolean {
+  if (grant.length < 8) return false;
+  const low = grant[7] ?? 0;
+  return (low & 0x01) !== 0 && (low & 0x02) === 0;
+}
+
 /** Register-signed-statement: data-log grant with extend (or create+extend) capability. */
 export function isDataLogStatementGrantFlags(grant: Uint8Array): boolean {
   return hasExtendCapability(grant) && hasDataLogClass(grant);

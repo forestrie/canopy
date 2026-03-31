@@ -31,6 +31,8 @@ A third test (**poll query-registration-status → SCITT receipt**, assert **mmr
 
 **First signed entry** (`tests/bootstrap-log-first-entry.spec.ts`): after the same mint → register → receipt flow as the poll test, calls **Custodian** from the **test runner** (`POST /api/keys/:bootstrap/sign` with **`CUSTODIAN_URL`** and **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`**) to build a COSE Sign1 statement body, then **`POST /logs/{logId}/entries`** with the **completed** Forestrie-Grant. Supply those via repo-root `.env` or **`doppler run --project canopy --config dev`** (see **`taskfiles/e2e-setup.md`**). Use the **exact** `CUSTODIAN_URL` the **deployed worker** uses (including **`/v1`**, see `packages/apps/canopy-api/wrangler.jsonc`); a different host or path can yield **`403` `signer_mismatch`** because the minted `grantData` pubkey would not match the Sign1 `kid`. The deployed API must also include register-statement support for Custodian’s **16-byte** `kid` (same commit as `signerMatchesStatementRegistrationGrant`); older workers only accept the 32-byte **x** binding and return **`signer_mismatch`** for Custodian-signed statements. The test is skipped when Custodian env vars are unset or when **`E2E_SKIP_SEQUENCING_POLL=1`**. In GitHub Actions, optional **`vars.CUSTODIAN_URL`** + **`secrets.CUSTODIAN_BOOTSTRAP_APP_TOKEN`** enable this test. Shared helpers: `tests/utils/bootstrap-grant-flow.ts`.
 
+**Child auth grant** (`tests/bootstrap-child-auth-grant.spec.ts`): bootstraps a root log, completes the first grant to MMRS, then **`POST /api/keys`** (Custodian **`CUSTODIAN_APP_TOKEN`**) to create an ES256 custody key, builds a child Forestrie-Grant signed with that key (**`POST /api/keys/{keyId}/sign`**), and **`POST /logs/{child}/grants`**. Expect **`303`** with **`Location`** under the **parent** root log (`/logs/{root}/entries/…`). Skipped without **`CUSTODIAN_APP_TOKEN`** or when **`E2E_SKIP_SEQUENCING_POLL=1`**. Helpers: `tests/utils/custodian-custody-grant.ts`.
+
 ## Environment variables
 
 Resolved in **`playwright.config.ts`** from **repo-root `.env`** (after `task vars:doppler:dev`) **and** the process environment. If `.env` is missing locally, Playwright throws (unless `CI` is set).
@@ -53,12 +55,13 @@ Other keys:
 
 ## Test layout
 
-| File                                | Area                                                                      |
-| ----------------------------------- | ------------------------------------------------------------------------- |
-| `api.spec.ts`                       | Cross-cutting HTTP (e.g. CORS OPTIONS).                                   |
-| `observability.spec.ts`             | `/api/health`, `/.well-known/scitt-configuration` (metrics TBD).          |
-| `grants-bootstrap.spec.ts`          | Bootstrap mint + register-grant (Custodian-profile Forestrie-Grant).      |
-| `bootstrap-log-first-entry.spec.ts` | Completed bootstrap grant + Custodian-signed statement → `POST /entries`. |
+| File                                 | Area                                                                                                             |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `api.spec.ts`                        | Cross-cutting HTTP (e.g. CORS OPTIONS).                                                                          |
+| `observability.spec.ts`              | `/api/health`, `/.well-known/scitt-configuration` (metrics TBD).                                                 |
+| `grants-bootstrap.spec.ts`           | Bootstrap mint + register-grant (Custodian-profile Forestrie-Grant).                                             |
+| `bootstrap-log-first-entry.spec.ts`  | `POST /entries` with completed bootstrap grant (Custodian sign); rejects wrong signer (`403` `signer_mismatch`). |
+| `bootstrap-child-auth-grant.spec.ts` | Root bootstrap + custody-key child auth grant; 303 targets parent log entries.                                   |
 
 - Fixtures: `tests/fixtures`.
 - Shared e2e utils: `tests/utils/problem-details.ts`, `tests/utils/bootstrap-e2e-guard.ts`, `tests/utils/bootstrap-grant-flow.ts`.

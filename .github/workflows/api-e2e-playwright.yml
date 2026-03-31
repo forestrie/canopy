@@ -47,6 +47,8 @@ jobs:
           # Use the same base as the worker (`…/v1` per canopy-api wrangler.jsonc). Omit to skip that test.
           CUSTODIAN_URL: ${{ vars.CUSTODIAN_URL }}
           CUSTODIAN_BOOTSTRAP_APP_TOKEN: ${{ secrets.CUSTODIAN_BOOTSTRAP_APP_TOKEN }}
+          # Optional: enables `bootstrap-child-auth-grant.spec.ts` (runner POST /api/keys + custody sign).
+          CUSTODIAN_APP_TOKEN: ${{ secrets.CUSTODIAN_APP_TOKEN }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }

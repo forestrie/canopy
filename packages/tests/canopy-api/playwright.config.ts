@@ -79,6 +79,7 @@ export default defineConfig({
       testIgnore: [
         "**/grants-bootstrap.spec.ts",
         "**/bootstrap-log-first-entry.spec.ts",
+        "**/bootstrap-child-auth-grant.spec.ts",
       ],
       use: {
         baseURL,

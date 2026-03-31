@@ -13,6 +13,7 @@ export {
   grantCommitmentHashToHex,
 } from "./grant-commitment.js";
 export {
+  hasAuthLogClass,
   hasCreateAndExtend,
   hasDataLogClass,
   hasExtendCapability,

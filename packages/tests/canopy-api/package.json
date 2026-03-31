@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@canopy/api": "workspace:*",
+    "@canopy/encoding": "workspace:*",
     "cbor-x": "^1.5.9"
   },
   "devDependencies": {

@@ -3,7 +3,8 @@
  * sequencing; no server-side grant storage.
  */
 
-import { hasCreateAndExtend } from "../grant/grant-flags.js";
+import { grantDataToBytes } from "../grant/grant-data.js";
+import { hasAuthLogClass, hasCreateAndExtend } from "../grant/grant-flags.js";
 import { grantCommitmentHashFromGrant } from "../grant/grant-commitment.js";
 import type { Grant, GrantResult } from "../grant/types.js";
 import { bytesToUuid } from "../grant/uuid-bytes.js";
@@ -19,6 +20,7 @@ import {
   CUSTODIAN_BOOTSTRAP_KEY_ID,
   fetchCustodianPublicKey,
   verifyCustodianEs256GrantSign1,
+  verifyCustodianEs256GrantSign1WithGrantDataXy,
 } from "./custodian-grant.js";
 import { isLogInitializedMmrs } from "./log-initialized-mmrs.js";
 import type { LogShardEnv } from "../sequeue/logshard.js";
@@ -68,13 +70,17 @@ export interface RegisterGrantEnv {
  *    equals logId, grant has GF_CREATE|GF_EXTEND, and the transparent statement’s signature
  *    verifies with the bootstrap public key from Custodian (RFC 8152 COSE Sign1)), accept it without
  *    inclusion check and enqueue. This is the first grant for the root log.
- * 3. If the log is not initialized but the grant is not bootstrap-shaped, return 403
- *    (problem detail distinguishes wrong shape vs failed COSE verify when shape matched).
- * 4. If the log is initialized (or bootstrapEnv is unset), require receipt-based inclusion
+ * 3. **Child auth first grant (ARC-0017):** if the URL logId is **uninitialized** but **differs** from
+ *    `ownerLogId` (child target log), the **parent** `ownerLogId` log is **initialized**, flags are
+ *    GF_CREATE|GF_EXTEND + GF_AUTH_LOG, `grantData` is 64-byte ES256 x‖y, and the COSE signature
+ *    verifies against that subject key, enqueue without receipt (same pattern as bootstrap: signer
+ *    matches `grantData`).
+ * 4. If the log is not initialized and neither (2) nor (3) applies, return 403.
+ * 5. If the log is initialized (or bootstrapEnv is unset), require receipt-based inclusion
  *    ({@link grantAuthorize}): idtimestamp, receipt in the transparent statement, and MMR proof
  *    must verify for `ownerLogId`’s authority log; then enqueue.
  *
- * **Queue without bootstrapEnv:** Same as (4): always {@link grantAuthorize} before enqueue.
+ * **Queue without bootstrapEnv:** Same as (5): always {@link grantAuthorize} before enqueue.
  * There is no separate “queue-only, no inclusion” mode.
  *
  * When queueEnv is unset, returns 503 (grant sequencing not configured).
@@ -187,6 +193,72 @@ export async function registerGrant(
           e instanceof Error
             ? e.message
             : "Grant sequencing failed after bootstrap verification",
+        );
+      }
+    }
+
+    // Child auth first grant (ARC-0017 §7.2 / §7.5): grant.logId = child C (no MMRS yet),
+    // grant.ownerLogId = parent R (initialized). Signature must match grantData (subject ES256 x||y).
+    if (
+      !logInitialized &&
+      !ownerLogIdEqualsLogId(grant, logId) &&
+      hasCreateAndExtend(grant.grant as Uint8Array) &&
+      hasAuthLogClass(grant.grant as Uint8Array) &&
+      grantResult.bytes
+    ) {
+      const gd = grantDataToBytes(grant.grantData);
+      if (gd.length !== 64) {
+        return ClientErrors.forbidden(
+          "Child auth first grant requires 64-byte ES256 grantData (x||y).",
+        );
+      }
+      let parentUuid: string;
+      try {
+        parentUuid = bytesToUuid(grant.ownerLogId);
+      } catch {
+        return ClientErrors.badRequest("Invalid ownerLogId in grant");
+      }
+      let parentInitialized: boolean;
+      try {
+        parentInitialized = await isLogInitializedMmrs(
+          parentUuid,
+          env.bootstrapEnv.r2Mmrs,
+          env.bootstrapEnv.massifHeight,
+        );
+      } catch (e) {
+        console.warn("isLogInitializedMmrs (parent) failed", e);
+        return ServerErrors.serviceUnavailable(
+          e instanceof Error
+            ? e.message
+            : "Failed to read merklelog storage for parent initialization check",
+        );
+      }
+      if (!parentInitialized) {
+        return ClientErrors.forbidden(
+          "Parent authority log has no MMRS data yet; bootstrap the root before child auth grants.",
+        );
+      }
+      const ok = await verifyCustodianEs256GrantSign1WithGrantDataXy(
+        grantResult.bytes,
+        gd,
+        {
+          logFailures: true,
+          logPrefix: "register-grant-child-auth-first",
+        },
+      );
+      if (!ok) {
+        return ClientErrors.forbidden(
+          "Child auth first grant: COSE signature did not verify against grantData public key (ES256).",
+        );
+      }
+      try {
+        return await enqueueAndStoreGrant(request, grant, env, logId);
+      } catch (e) {
+        console.warn("Child auth first grant (verify ok, enqueue failed)", e);
+        return ServerErrors.serviceUnavailable(
+          e instanceof Error
+            ? e.message
+            : "Grant sequencing failed after child auth grant verification",
         );
       }
     }

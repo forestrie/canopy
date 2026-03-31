@@ -99,10 +99,14 @@ export async function postCustodianSignGrantPayload(
   const base = trimBase(custodianBaseUrl);
   const keySeg = encodeURIComponent(keyId);
   const cborBody = encodeCbor({ payload: grantPayloadBytes });
-  const body =
+  const u8 =
     cborBody instanceof Uint8Array
       ? cborBody
       : new Uint8Array(cborBody as ArrayLike<number>);
+  const bodyBuf = u8.buffer.slice(
+    u8.byteOffset,
+    u8.byteOffset + u8.byteLength,
+  ) as ArrayBuffer;
   const res = await fetch(`${base}/api/keys/${keySeg}/sign`, {
     method: "POST",
     headers: {
@@ -110,7 +114,7 @@ export async function postCustodianSignGrantPayload(
       "Content-Type": "application/cbor",
       Accept: 'application/cose; cose-type="cose-sign1"',
     },
-    body,
+    body: bodyBuf,
   });
   if (!res.ok) {
     throw new Error(`Custodian sign failed: ${res.status} ${await res.text()}`);
@@ -179,7 +183,7 @@ export function publicKeyPemToUncompressed65(pem: string): Uint8Array {
 export async function importSpkiPemEs256VerifyKey(
   pem: string,
 ): Promise<CryptoKey> {
-  const der = pemBodyToDer(pem);
+  const der = new Uint8Array(pemBodyToDer(pem));
   return crypto.subtle.importKey(
     "spki",
     der,
@@ -198,6 +202,41 @@ export async function verifyCustodianEs256GrantSign1(
   verifyOpts?: VerifyCoseSign1Options,
 ): Promise<boolean> {
   const key = await importSpkiPemEs256VerifyKey(publicKeyPem);
+  return verifyCoseSign1(coseSign1Bytes, key, verifyOpts);
+}
+
+/**
+ * Import P-256 verify key from ES256 **`grantData`**: uncompressed **x‖y** (64 bytes).
+ */
+export async function importEs256PublicKeyFromGrantDataXy64(
+  xy: Uint8Array,
+): Promise<CryptoKey> {
+  if (xy.length !== 64) {
+    throw new Error(
+      "ES256 grantData must be 64 bytes (x||y) for raw public key import",
+    );
+  }
+  const raw = new Uint8Array(65);
+  raw[0] = 0x04;
+  raw.set(xy, 1);
+  return crypto.subtle.importKey(
+    "raw",
+    raw,
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["verify"],
+  );
+}
+
+/**
+ * Child auth first grant: verify COSE Sign1 using the **subject** key in **`grantData`** (x‖y).
+ */
+export async function verifyCustodianEs256GrantSign1WithGrantDataXy(
+  coseSign1Bytes: Uint8Array,
+  grantDataXy64: Uint8Array,
+  verifyOpts?: VerifyCoseSign1Options,
+): Promise<boolean> {
+  const key = await importEs256PublicKeyFromGrantDataXy64(grantDataXy64);
   return verifyCoseSign1(coseSign1Bytes, key, verifyOpts);
 }
 

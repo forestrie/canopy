@@ -26,6 +26,8 @@ Required keys for e2e include at least:
 
 Bootstrap grant Playwright tests skip with a clear reason if the deployed worker returns 503 “bootstrap not configured”. Set **`E2E_REQUIRE_BOOTSTRAP=1`** to fail instead of skip once the deployment uses Custodian (Plan 0014).
 
+**Child auth grant** (`tests/bootstrap-child-auth-grant.spec.ts`): after root bootstrap + receipt, creates a Custodian custody key (`POST /api/keys` with **`CUSTODIAN_APP_TOKEN`**), signs a child-shaped Forestrie-Grant (`logId` = new child UUID, `ownerLogId` = root), and registers it on **`POST /logs/{child}/grants`**. The 303 **`Location`** must target the **parent** log’s `/entries/…` (sequencing by `ownerLogId`). Without **`CUSTODIAN_APP_TOKEN`**, the test is skipped.
+
 If **`.env`** is missing, `task vars:require-dotenv`, smoke tasks, and Playwright fail immediately with a short error.
 
 ## Running tests
