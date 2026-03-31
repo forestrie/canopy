@@ -267,7 +267,15 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
       sign1[0] instanceof Uint8Array,
       "Sign1[0] protected header bstr",
     ).toBe(true);
-    expect(sign1[2] instanceof Uint8Array, "Sign1[2] payload bstr").toBe(true);
+    // MMRIVER peak receipts marshal with a detached payload (nil in Sign1[2]);
+    // see go-merklelog massifs.signEmptyPeakReceipt.
+    const payload = sign1[2];
+    expect(
+      payload === null ||
+        payload === undefined ||
+        payload instanceof Uint8Array,
+      "Sign1[2] must be nil (detached) or payload bstr",
+    ).toBe(true);
     expect(sign1[3] instanceof Uint8Array, "Sign1[3] signature bstr").toBe(
       true,
     );

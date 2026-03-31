@@ -103,7 +103,7 @@ export async function grantAuthorize(
   const valid = await verifyReceiptInclusionFromParsed(
     grant,
     idtimestamp,
-    receipt.root,
+    receipt.explicitPeak,
     receipt.proof,
   );
   if (!valid) {

@@ -2,12 +2,19 @@
  * Grant receipt verification: parse COSE receipt, verify MMR inclusion, optionally verify signature.
  * Uses @canopy/merklelog verifyInclusion and grant leaf commitment.
  *
- * Receipt format: COSE Sign1 with payload = peak hash (root, 32 bytes); header 396 = inclusion proof.
+ * Receipt format: COSE Sign1 with payload = peak hash (32 bytes) or detached
+ * (nil); header 396 = inclusion proof. Detached payloads match MMRIVER peak
+ * receipts from storage (payload cleared after signing).
  * Proof structure (MMRIVER): { -1: [ { 1: mmrIndex, 2: path (array of 32-byte hashes) } ] }.
  */
 
 import { decode as decodeCbor } from "cbor-x";
-import { verifyInclusion, type Hasher, type Proof } from "@canopy/merklelog";
+import {
+  calculateRoot,
+  verifyInclusion,
+  type Hasher,
+  type Proof,
+} from "@canopy/merklelog";
 import type { Grant } from "./grant.js";
 import { grantCommitmentHashFromGrant } from "./grant-commitment.js";
 import { univocityLeafHash } from "./leaf-commitment.js";
@@ -95,10 +102,11 @@ function toHeaderMap(
 }
 
 /**
- * Parse receipt bytes (COSE Sign1, optionally CBOR tag 18 wrapped) and extract root and proof.
+ * Parse receipt bytes (COSE Sign1, optionally CBOR tag 18 wrapped) and extract
+ * optional explicit peak (from payload) and proof.
  */
 export function parseReceipt(receiptBytes: Uint8Array): {
-  root: Uint8Array;
+  explicitPeak: Uint8Array | null;
   proof: Proof;
   coseSign1: CoseSign1;
 } {
@@ -107,10 +115,17 @@ export function parseReceipt(receiptBytes: Uint8Array): {
   const coseSign1 = requireCoseSign1(unwrapped);
 
   const payload = coseSign1[2];
-  if (!(payload instanceof Uint8Array) || payload.length !== 32) {
-    throw new Error("Receipt payload must be 32 bytes (peak hash)");
+  let explicitPeak: Uint8Array | null = null;
+  if (payload instanceof Uint8Array) {
+    if (payload.length !== 32) {
+      throw new Error("Receipt payload must be 32 bytes (peak hash)");
+    }
+    explicitPeak = payload;
+  } else if (payload !== null && payload !== undefined) {
+    throw new Error(
+      "Receipt payload must be nil (detached) or 32-byte peak hash",
+    );
   }
-  const root = payload;
 
   const unprotected = toHeaderMap(coseSign1[1]);
   const proofsRaw = unprotected.get(VDS_COSE_RECEIPT_PROOFS_TAG);
@@ -144,7 +159,7 @@ export function parseReceipt(receiptBytes: Uint8Array): {
   });
 
   return {
-    root,
+    explicitPeak,
     proof: { path, mmrIndex },
     coseSign1,
   };
@@ -177,9 +192,15 @@ export async function verifyReceiptInclusion(
         ).getBigUint64(0, false);
   const leafHash = await univocityLeafHash(idtimestamp, inner);
 
-  const { root, proof } = parseReceipt(receiptBytes);
+  const { explicitPeak, proof } = parseReceipt(receiptBytes);
   const hasher = new SubtleHasher();
-  return verifyInclusion(hasher, leafHash, proof, root);
+  const leafIdx =
+    proof.leafIndex !== undefined ? proof.leafIndex : proof.mmrIndex!;
+  const peak =
+    explicitPeak !== null
+      ? explicitPeak
+      : await calculateRoot(hasher, leafHash, proof, leafIdx);
+  return verifyInclusion(hasher, leafHash, proof, peak);
 }
 
 /**
@@ -188,7 +209,7 @@ export async function verifyReceiptInclusion(
 export async function verifyReceiptInclusionFromParsed(
   grant: Grant,
   idtimestampBytes: Uint8Array,
-  root: Uint8Array,
+  explicitPeak: Uint8Array | null,
   proof: Proof,
 ): Promise<boolean> {
   const inner = await grantCommitmentHashFromGrant(grant);
@@ -209,7 +230,13 @@ export async function verifyReceiptInclusionFromParsed(
         ).getBigUint64(0, false);
   const leafHash = await univocityLeafHash(idtimestamp, inner);
   const hasher = new SubtleHasher();
-  return verifyInclusion(hasher, leafHash, proof, root);
+  const leafIdx =
+    proof.leafIndex !== undefined ? proof.leafIndex : proof.mmrIndex!;
+  const peak =
+    explicitPeak !== null
+      ? explicitPeak
+      : await calculateRoot(hasher, leafHash, proof, leafIdx);
+  return verifyInclusion(hasher, leafHash, proof, peak);
 }
 
 /**

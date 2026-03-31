@@ -96,8 +96,8 @@ export function decodeTransparentStatement(bytes: Uint8Array): GrantResult {
   let receipt: ParsedReceipt | undefined;
   const receiptVal = unprotected.get(HEADER_RECEIPT);
   if (receiptVal instanceof Uint8Array && receiptVal.length > 0) {
-    const { root, proof } = parseReceipt(receiptVal);
-    receipt = { root, proof };
+    const { explicitPeak, proof } = parseReceipt(receiptVal);
+    receipt = { explicitPeak, proof };
   }
 
   const grant = decodeGrantPayload(grantPayloadBytes);
