@@ -1,3 +1,7 @@
+/**
+ * Common HTTP status codes (aligned with CoAP / RFC 7252 class semantics for reference).
+ */
+
 export const COAP_CODES = {
   OK: 200,
   CREATED: 201,

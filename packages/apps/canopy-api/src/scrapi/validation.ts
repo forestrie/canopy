@@ -1,4 +1,4 @@
-import { ClientErrors } from "./problem-details";
+import { ClientErrors } from "../cbor-api/problem-details.js";
 
 export function validateUUID(id: string | undefined): Response | null {
   if (!id) return ClientErrors.badRequest("Missing id");

@@ -11,8 +11,8 @@ import { custodianStatementKidFromXyGrantData } from "../grant/custodian-stateme
 import { grantDataToBytes } from "../grant/grant-data.js";
 import type { Grant } from "../grant/types.js";
 import { statementSignerBindingBytes } from "../grant/statement-signer-binding.js";
-import { cborResponse } from "./cbor-response";
-import { CBOR_CONTENT_TYPES } from "./cbor-content-types";
+import { CBOR_CONTENT_TYPES } from "../cbor-api/cbor-content-types.js";
+import { cborResponse } from "../cbor-api/cbor-response.js";
 
 /** COSE header label for key id (kid). */
 const COSE_KID = 4;

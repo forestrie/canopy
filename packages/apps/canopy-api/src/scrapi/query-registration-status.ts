@@ -13,19 +13,16 @@
 
 import type { SequencingQueueStub } from "@canopy/forestrie-ingress-types";
 import { getQueueForLog } from "../sequeue/logshard.js";
-import { seeOtherResponse } from "./cbor-response";
-import { ClientErrors, ServerErrors } from "./problem-details";
+import { seeOtherResponse } from "../cbor-api/cbor-response.js";
+import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
 import { encodeEntryId } from "./entry-id";
 import {
   mmrIndexFromLeafIndex,
   readIdtimestampFromMassif,
 } from "./sequencing-result.js";
-
-function isUuid(id: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    id,
-  );
-}
+import { logIdSegmentToCanonicalUuid } from "../grant/log-id-wire.js";
+import { bytesToUuid } from "../grant/uuid-bytes.js";
+import { getParsedGenesis } from "../forest/genesis-cache.js";
 
 function isSha256Hex(id: string): boolean {
   return /^[0-9a-f]{64}$/i.test(id);
@@ -57,11 +54,32 @@ export async function queryRegistrationStatus(
   r2Mmrs: R2Bucket,
   massifHeight: number,
   shardCountStr: string,
+  r2Grants: R2Bucket,
 ): Promise<Response> {
-  const [logID, _, contentHashRaw] = entrySegments;
+  const [bootstrapSeg, logIDRaw, _, contentHashRaw] = entrySegments;
 
-  if (!logID || !isUuid(logID)) {
-    return ClientErrors.badRequest("logId must be a UUID");
+  const genesisLookup = await getParsedGenesis(bootstrapSeg!, {
+    R2_GRANTS: r2Grants,
+  });
+  if ("kind" in genesisLookup && genesisLookup.kind === "bad_segment") {
+    return ClientErrors.badRequest("Invalid bootstrap log-id in path");
+  }
+  if ("kind" in genesisLookup && genesisLookup.kind === "not_found") {
+    return ClientErrors.notFound(
+      "Not Found",
+      "Forest genesis not found for bootstrap log-id in path",
+    );
+  }
+  if ("kind" in genesisLookup && genesisLookup.kind === "corrupt") {
+    return ServerErrors.internal("Stored genesis for this forest is invalid");
+  }
+  const bootstrapUrlUuid = bytesToUuid(genesisLookup.wire);
+
+  let logID: string;
+  try {
+    logID = logIdSegmentToCanonicalUuid(logIDRaw!);
+  } catch {
+    return ClientErrors.badRequest("logId in path must be a valid log id");
   }
   if (!contentHashRaw || !isSha256Hex(contentHashRaw)) {
     return ClientErrors.badRequest("contentHash must be 64 hex characters");
@@ -126,7 +144,7 @@ export async function queryRegistrationStatus(
     });
 
     const requestUrl = new URL(request.url);
-    const permanentLocation = `${requestUrl.origin}/logs/${logID}/${massifHeight}/entries/${entryId}/receipt`;
+    const permanentLocation = `${requestUrl.origin}/logs/${bootstrapUrlUuid}/${logID}/${massifHeight}/entries/${entryId}/receipt`;
     console.log("[query-registration-status] redirecting to receipt", {
       logID,
       contentHash,

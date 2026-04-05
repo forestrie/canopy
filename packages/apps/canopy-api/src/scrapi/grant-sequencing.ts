@@ -16,7 +16,7 @@ function contentHashBuffer(inner: Uint8Array): ArrayBuffer {
 }
 
 export interface GrantSequencingResult {
-  /** Status URL path: /logs/{ownerLogId}/entries/{innerHex} (caller prepends origin). */
+  /** Status URL path: /logs/{bootstrapLogId}/{ownerLogId}/entries/{innerHex} (caller prepends origin). */
   statusUrlPath: string;
   /** Lowercase hex inner hash (for storage path and status URL). */
   innerHex: string;
@@ -38,6 +38,8 @@ export async function enqueueGrantForSequencing(
   ownerLogIdBytes: Uint8Array,
   inner: Uint8Array,
   env: GrantSequencingEnv,
+  /** Canonical UUID for bootstrap log id (first path segment under `/logs/`). */
+  bootstrapCanonicalLogId: string,
 ): Promise<GrantSequencingResult> {
   const ownerLogIdUuid = bytesToUuid(ownerLogIdBytes);
   const innerHex = grantCommitmentHashToHex(inner);
@@ -48,7 +50,7 @@ export async function enqueueGrantForSequencing(
   const existing = await queue.resolveContent(contentHash);
   if (existing !== null) {
     return {
-      statusUrlPath: `/logs/${ownerLogIdUuid}/entries/${innerHex}`,
+      statusUrlPath: `/logs/${bootstrapCanonicalLogId}/${ownerLogIdUuid}/entries/${innerHex}`,
       innerHex,
       ownerLogIdUuid,
       alreadySequenced: true,
@@ -62,7 +64,7 @@ export async function enqueueGrantForSequencing(
   await queue.enqueue(logId16.buffer, contentHash, undefined);
 
   return {
-    statusUrlPath: `/logs/${ownerLogIdUuid}/entries/${innerHex}`,
+    statusUrlPath: `/logs/${bootstrapCanonicalLogId}/${ownerLogIdUuid}/entries/${innerHex}`,
     innerHex,
     ownerLogIdUuid,
     alreadySequenced: false,

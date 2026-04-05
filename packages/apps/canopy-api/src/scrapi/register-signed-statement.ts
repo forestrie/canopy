@@ -1,5 +1,5 @@
 /**
- * Statement registration — **`POST /register/entries`**.
+ * Statement registration — **`POST /register/{bootstrap-logid}/entries`**.
  *
  * **Flow:** The client sends the signed statement (COSE Sign1 body) and
  * **`Authorization: Forestrie-Grant`** holding a **transparent statement** (embedded grant,
@@ -27,8 +27,8 @@ import {
   type SequencingQueueStub,
 } from "@canopy/forestrie-ingress-types";
 import { getQueueForLog } from "../sequeue/logshard.js";
-import { getContentSize, parseCborBody } from "./cbor-request";
-import { seeOtherResponse } from "./cbor-response";
+import { getContentSize, parseCborBody } from "../cbor-api/cbor-request.js";
+import { seeOtherResponse } from "../cbor-api/cbor-response.js";
 
 import { verifyCoseSign1 } from "@canopy/encoding";
 import { grantDataToBytes } from "../grant/grant-data.js";
@@ -54,9 +54,10 @@ import {
 } from "./auth-grant.js";
 import { isCanopyApiPoolTestMode } from "../env/runtime-mode.js";
 import type { ReceiptVerifyKeyResolver } from "../env/receipt-verify-key-resolver.js";
-import { ClientErrors, ServerErrors } from "./problem-details";
+import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
 import { getMaxStatementSize } from "./transparency-configuration";
 import type { InclusionEnv } from "./verify-grant-inclusion.js";
+import { getParsedGenesis } from "../forest/genesis-cache.js";
 
 export type InclusionVerificationEnv = InclusionEnv;
 
@@ -88,9 +89,11 @@ export async function registerSignedStatement(
   sequencingQueue: DurableObjectNamespace,
   shardCountStr: string,
   enqueueExtras: Parameters<SequencingQueueStub["enqueue"]>[2] | undefined,
-  inclusionEnv?: InclusionEnv,
-  resolveReceiptVerifyKey?: ReceiptVerifyKeyResolver,
-  nodeEnv?: string,
+  inclusionEnv: InclusionEnv | undefined,
+  resolveReceiptVerifyKey: ReceiptVerifyKeyResolver | undefined,
+  nodeEnv: string | undefined,
+  bootstrapLogIdSegment: string,
+  r2Grants: R2Bucket,
 ): Promise<Response> {
   try {
     const nenv = nodeEnv ?? "production";
@@ -100,13 +103,31 @@ export async function registerSignedStatement(
       );
     }
 
-    // --- Grant resolution (Plan 0005: Authorization: Forestrie-Grant only) ---
+    // Resolve Authorization first so missing **Forestrie-Grant** is **401** before genesis/R2 work.
     const authEnv: AuthGrantAuthorizeEnv = {
       inclusionEnv,
       resolveReceiptVerifyKey,
     };
     const grantResult = getGrantFromRequest(request);
     if (grantResult instanceof Response) return grantResult;
+
+    const genesisLookup = await getParsedGenesis(bootstrapLogIdSegment, {
+      R2_GRANTS: r2Grants,
+    });
+    if ("kind" in genesisLookup && genesisLookup.kind === "bad_segment") {
+      return ClientErrors.badRequest("Invalid bootstrap log-id in path");
+    }
+    if ("kind" in genesisLookup && genesisLookup.kind === "not_found") {
+      return ClientErrors.notFound(
+        "Not Found",
+        "Forest genesis not found; provision POST /api/forest/{log-id}/genesis first.",
+      );
+    }
+    if ("kind" in genesisLookup && genesisLookup.kind === "corrupt") {
+      return ServerErrors.internal("Stored genesis for this forest is invalid");
+    }
+    const bootstrapUrlUuid = bytesToUuid(genesisLookup.wire);
+
     const { grant } = grantResult;
 
     let statementTargetLogUuid: string;
@@ -241,7 +262,7 @@ export async function registerSignedStatement(
     await queue.enqueue(logIdBytes, hexToBytes(contentHash), enqueueExtras);
 
     const requestUrl = new URL(request.url);
-    const location = `${requestUrl.origin}/logs/${statementTargetLogUuid}/entries/${contentHash}`;
+    const location = `${requestUrl.origin}/logs/${bootstrapUrlUuid}/${statementTargetLogUuid}/entries/${contentHash}`;
 
     console.log("Statement registration accepted", {
       logId: statementTargetLogUuid,

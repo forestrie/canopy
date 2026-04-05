@@ -65,7 +65,7 @@ vi.mock("../src/scrapi/register-signed-statement", () => ({
         status: 303,
         headers: {
           Location:
-            "http://localhost/logs/de305d54-75b4-431b-adb2-eb6b9e546014/entries/" +
+            "http://localhost/logs/de305d54-75b4-431b-adb2-eb6b9e546014/de305d54-75b4-431b-adb2-eb6b9e546014/entries/" +
             "0123456789abcdef".repeat(4),
         },
       }),
@@ -88,7 +88,7 @@ describe("x402 verify-and-settle mode", () => {
       X402_FACILITATOR_URL: undefined as any,
     };
 
-    const request = new Request(`http://localhost/register/entries`, {
+    const request = new Request(`http://localhost/register/${logId}/entries`, {
       method: "POST",
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',
@@ -125,7 +125,7 @@ describe("x402 verify-and-settle mode", () => {
       X402_FACILITATOR_URL: "https://example.invalid/facilitator",
     };
 
-    const request = new Request(`http://localhost/register/entries`, {
+    const request = new Request(`http://localhost/register/${logId}/entries`, {
       method: "POST",
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',
@@ -161,7 +161,7 @@ describe("x402 verify-and-settle mode", () => {
       isValid: true,
     });
 
-    const request = new Request(`http://localhost/register/entries`, {
+    const request = new Request(`http://localhost/register/${logId}/entries`, {
       method: "POST",
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',
@@ -183,7 +183,7 @@ describe("x402 verify-and-settle mode", () => {
     const location = response.headers.get("Location");
     expect(location).not.toBeNull();
     expect(location).toMatch(
-      /\/logs\/de305d54-75b4-431b-adb2-eb6b9e546014\/entries\/[0-9a-f]{64}$/,
+      /\/logs\/de305d54-75b4-431b-adb2-eb6b9e546014\/de305d54-75b4-431b-adb2-eb6b9e546014\/entries\/[0-9a-f]{64}$/,
     );
   });
 });

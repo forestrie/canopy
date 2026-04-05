@@ -1,10 +1,68 @@
-import { problemResponse } from "../scrapi/cbor-response";
+import { problemResponse } from "../cbor-api/cbor-response.js";
 import { isCanopyApiPoolTestMode } from "./runtime-mode";
+
+function pathnameIsForestAdmin(pathname: string): boolean {
+  return pathname === "/api/forest" || pathname.startsWith("/api/forest/");
+}
+
+/** `/api/forest/**` readiness: curator admin token only (no ROOT_LOG_ID). */
+export interface CanopyAdminEnv {
+  NODE_ENV: string;
+  CURATOR_ADMIN_TOKEN?: string;
+}
+
+/**
+ * Non-pool workers serving `/api/forest/**` need CURATOR_ADMIN_TOKEN.
+ */
+export function responseIfForestAdminIncomplete(
+  env: CanopyAdminEnv,
+  corsHeaders: Record<string, string>,
+): Response | null {
+  if (isCanopyApiPoolTestMode(env)) {
+    return null;
+  }
+  if (!env.CURATOR_ADMIN_TOKEN?.trim()) {
+    return problemResponse(503, "Service Unavailable", "about:blank", {
+      detail:
+        "Canopy API is misconfigured (missing CURATOR_ADMIN_TOKEN; required for /api/forest admin routes).",
+      headers: corsHeaders,
+    });
+  }
+  return null;
+}
+
+/** Env slice required for {@link checkRequestEnv} (structural typing with worker `Env`). */
+export type CanopyCheckRequestEnv = CanopyAdminEnv &
+  CanopyBootstrapTrioEnv &
+  CanopySequencingEnv &
+  CanopyReceiptVerifierEnv;
+
+/**
+ * Route-aware deployment readiness: `/api/forest/**` needs only {@link CanopyAdminEnv};
+ * all other routes keep bootstrap trio + sequencing + receipt verifier checks.
+ */
+export function checkRequestEnv(
+  request: Request,
+  env: CanopyCheckRequestEnv,
+  corsHeaders: Record<string, string>,
+): Response | null {
+  if (isCanopyApiPoolTestMode(env)) {
+    return null;
+  }
+  const pathname = new URL(request.url).pathname;
+  if (pathnameIsForestAdmin(pathname)) {
+    return responseIfForestAdminIncomplete(env, corsHeaders);
+  }
+  const trio = responseIfBootstrapTrioIncomplete(env, corsHeaders);
+  if (trio) return trio;
+  const queue = responseIfSequencingQueueIncomplete(env, corsHeaders);
+  if (queue) return queue;
+  return responseIfReceiptVerifierMisconfigured(env, corsHeaders);
+}
 
 /** Subset of Env needed to validate Custodian bootstrap trio for grant paths. */
 export interface CanopyBootstrapTrioEnv {
   NODE_ENV: string;
-  ROOT_LOG_ID?: string;
   CUSTODIAN_URL?: string;
   CUSTODIAN_BOOTSTRAP_APP_TOKEN?: string;
 }
@@ -72,8 +130,9 @@ export function responseIfReceiptVerifierMisconfigured(
 }
 
 /**
- * Non-pool workers must have ROOT_LOG_ID, CUSTODIAN_URL (non-empty), and
- * CUSTODIAN_BOOTSTRAP_APP_TOKEN. Returns a 503 problem response if not.
+ * Non-pool workers must have CUSTODIAN_URL (non-empty) and
+ * CUSTODIAN_BOOTSTRAP_APP_TOKEN. Bootstrap log identity is taken from URL paths
+ * and forest genesis, not from ROOT_LOG_ID.
  */
 export function responseIfBootstrapTrioIncomplete(
   env: CanopyBootstrapTrioEnv,
@@ -83,7 +142,6 @@ export function responseIfBootstrapTrioIncomplete(
     return null;
   }
   const missing: string[] = [];
-  if (!env.ROOT_LOG_ID?.trim()) missing.push("ROOT_LOG_ID");
   if (!env.CUSTODIAN_URL?.trim()) missing.push("CUSTODIAN_URL");
   if (!env.CUSTODIAN_BOOTSTRAP_APP_TOKEN?.trim()) {
     missing.push("CUSTODIAN_BOOTSTRAP_APP_TOKEN");

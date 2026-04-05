@@ -49,9 +49,10 @@ jobs:
           CUSTODIAN_BOOTSTRAP_APP_TOKEN: ${{ secrets.CUSTODIAN_BOOTSTRAP_APP_TOKEN }}
           # Optional: enables `bootstrap-child-auth-grant.spec.ts` (runner POST /api/keys + custody sign).
           CUSTODIAN_APP_TOKEN: ${{ secrets.CUSTODIAN_APP_TOKEN }}
-          # Optional: match deployment ROOT_LOG_ID so receipt verification resolves :bootstrap.
+          # Bootstrap mint e2e: POST /api/forest/{log-id}/genesis (409 OK if exists).
+          CURATOR_ADMIN_TOKEN: ${{ secrets.CURATOR_ADMIN_TOKEN }}
+          # Optional: fixed root log UUID for sequencing/receipt tests (else random / env fallback).
           E2E_BOOTSTRAP_LOG_ID: ${{ vars.E2E_BOOTSTRAP_LOG_ID }}
-          ROOT_LOG_ID: ${{ vars.ROOT_LOG_ID }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }

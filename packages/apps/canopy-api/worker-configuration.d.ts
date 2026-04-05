@@ -23,7 +23,6 @@ declare namespace Cloudflare {
     CUSTODIAN_URL:
       | "https://custodian.dev-1.forestrie.dev/v1"
       | "https://custodian.prod-1.forestrie.dev/v1";
-    ROOT_LOG_ID: string;
     DELEGATION_SIGNER_URL: string;
     DELEGATION_SIGNER_BEARER_TOKEN: string;
     SEQUENCING_QUEUE: DurableObjectNamespace /* SequencingQueue from forestrie-ingress */;
@@ -33,7 +32,10 @@ declare namespace Cloudflare {
     X402_SETTLEMENT_QUEUE: Queue;
   }
 }
-interface Env extends Cloudflare.Env {}
+interface Env extends Cloudflare.Env {
+  /** Wrangler secret: Bearer token for `/api/forest/**` (not in generated deploy types). */
+  CURATOR_ADMIN_TOKEN?: string;
+}
 
 // Begin runtime types
 /*! *****************************************************************************

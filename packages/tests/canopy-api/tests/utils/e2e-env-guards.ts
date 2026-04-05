@@ -5,10 +5,10 @@ import { custodianCustodySignEnv } from "./custodian-custody-grant";
 
 /**
  * Root log UUID for e2e that **complete** a bootstrap grant and hit
- * receipt-based `grantAuthorize` (Custodian curator/log-key must resolve the
- * owner log, usually `:bootstrap` when the id matches deployment `ROOT_LOG_ID`).
+ * receipt-based `grantAuthorize` (Custodian `:bootstrap` when curator genesis
+ * matches that log’s published COSE EC2 `x,y`).
  *
- * Reads `E2E_BOOTSTRAP_LOG_ID` then `ROOT_LOG_ID` (32 hex, 0x-prefix, or UUID);
+ * Reads `E2E_BOOTSTRAP_LOG_ID` then legacy `ROOT_LOG_ID` (32 hex, 0x-prefix, or UUID);
  * if both unset, returns a random UUID (local dev only unless Custodian maps it).
  */
 export function e2eReceiptBootstrapRootLogId(): string {
@@ -55,6 +55,22 @@ export function skipWithoutCustodianBootstrap(testInfo: TestInfo): boolean {
       true,
       "CUSTODIAN_URL and CUSTODIAN_BOOTSTRAP_APP_TOKEN required for bootstrap signing",
     );
+    return true;
+  }
+  return false;
+}
+
+/** Forest genesis POST (`CURATOR_ADMIN_TOKEN`) for bootstrap-scoped SCRAPI e2e. */
+export function skipWithoutCuratorAdmin(testInfo: TestInfo): boolean {
+  if (!process.env.CURATOR_ADMIN_TOKEN?.trim()) {
+    const strict =
+      process.env.CI === "true" ||
+      process.env.E2E_REQUIRE_BOOTSTRAP === "1" ||
+      process.env.E2E_REQUIRE_BOOTSTRAP === "true";
+    const msg =
+      "CURATOR_ADMIN_TOKEN required to POST /api/forest/{log-id}/genesis for bootstrap mint e2e";
+    if (strict) throw new Error(msg);
+    testInfo.skip(true, msg);
     return true;
   }
   return false;

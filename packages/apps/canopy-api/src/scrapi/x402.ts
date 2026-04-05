@@ -119,7 +119,7 @@ export type ParsePaymentResult =
   | { ok: false; error: string };
 
 /**
- * Build the X-PAYMENT-REQUIRED header value for POST /logs/{logId}/entries.
+ * Build the X-PAYMENT-REQUIRED header value for POST /register/{bootstrap-logid}/entries.
  *
  * Returns base64-encoded JSON per x402 v2 spec.
  */

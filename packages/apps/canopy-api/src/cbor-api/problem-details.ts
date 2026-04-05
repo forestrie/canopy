@@ -1,4 +1,4 @@
-import { cborResponse } from "./cbor-response";
+import { cborResponse } from "./cbor-response.js";
 
 function pd(status: number, title: string, detail?: string) {
   const body: Record<string, unknown> = { type: "about:blank", title, status };

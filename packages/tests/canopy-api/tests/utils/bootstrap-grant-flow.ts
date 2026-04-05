@@ -1,18 +1,19 @@
 import type { APIRequestContext, TestInfo } from "@playwright/test";
 import { decode } from "cbor-x";
 import { attachReceiptAndIdtimestampToTransparentStatement } from "../../../../apps/canopy-api/src/scrapi/attach-scitt-transparent-statement-receipt.js";
-import { expectAPI as expect } from "../fixtures/auth";
-import { sequencingBackoff } from "./arithmetic-backoff-poll";
-import { skipOrThrowIfBootstrapMintUnconfigured } from "./bootstrap-e2e-guard";
+import { custodianBootstrapSignEnv } from "./custodian-bootstrap-sign";
+import {
+  skipWithoutCuratorAdmin,
+  skipWithoutCustodianBootstrap,
+} from "./e2e-env-guards";
 import { entryIdHexToIdtimestampBe8 } from "./entry-id-e2e";
+import { mintTransparentBootstrapGrantBase64 } from "./mint-bootstrap-grant-e2e.js";
 import {
   completeGrantRegistrationThroughReceipt,
   type CompleteGrantRegistrationThroughReceiptResult,
 } from "./register-grant-through-receipt";
-import {
-  formatProblemDetailsMessage,
-  reportProblemDetails,
-} from "./problem-details";
+
+export { mintTransparentBootstrapGrantBase64 };
 
 /** Plan 0014 / `transparent-statement.ts`: full grant v0 CBOR in unprotected header. */
 const HEADER_FORESTRIE_GRANT_V0 = -65538;
@@ -88,30 +89,27 @@ export type MintBootstrapGrantResult =
   | { skipped: false; grantBase64: string };
 
 /**
- * POST /api/grants/bootstrap. On unconfigured deployment, may skip per
- * {@link skipOrThrowIfBootstrapMintUnconfigured}.
+ * Bootstrap mint for e2e: genesis + Custodian `:bootstrap` sign (Plan 0019).
+ * Skips when custodian env or `CURATOR_ADMIN_TOKEN` is missing (strict in CI).
  */
 export async function mintBootstrapGrantPlaywright(
   unauthorizedRequest: APIRequestContext,
   rootLogId: string,
   testInfo: TestInfo,
 ): Promise<MintBootstrapGrantResult> {
-  const mintRes = await unauthorizedRequest.post("/api/grants/bootstrap", {
-    data: JSON.stringify({ rootLogId }),
-    headers: { "content-type": "application/json" },
+  if (skipWithoutCustodianBootstrap(testInfo)) return { skipped: true };
+  if (skipWithoutCuratorAdmin(testInfo)) return { skipped: true };
+
+  const boot = custodianBootstrapSignEnv()!;
+  const curator = process.env.CURATOR_ADMIN_TOKEN!.trim();
+
+  const grantBase64 = await mintTransparentBootstrapGrantBase64({
+    request: unauthorizedRequest,
+    rootLogId,
+    curatorToken: curator,
+    custodianUrl: boot.baseUrl,
+    custodianBootstrapToken: boot.token,
   });
-  const problemMint = await reportProblemDetails(mintRes, testInfo);
-  if (
-    skipOrThrowIfBootstrapMintUnconfigured(
-      mintRes.status(),
-      problemMint,
-      testInfo,
-    ) === "skip"
-  ) {
-    return { skipped: true };
-  }
-  expect(mintRes.status(), formatProblemDetailsMessage(problemMint)).toBe(201);
-  const grantBase64 = (await mintRes.text()).trim();
   return { skipped: false, grantBase64 };
 }
 
@@ -134,7 +132,15 @@ export type CompleteBootstrapGrantWithReceiptResult =
 export async function completeBootstrapGrantWithReceipt(
   opts: CompleteBootstrapGrantWithReceiptOptions,
 ): Promise<CompleteBootstrapGrantWithReceiptResult> {
-  return completeGrantRegistrationThroughReceipt(opts);
+  return completeGrantRegistrationThroughReceipt({
+    unauthorizedRequest: opts.unauthorizedRequest,
+    bootstrapLogId: opts.logId,
+    baseURL: opts.baseURL,
+    grantBase64: opts.grantBase64,
+    ladderMs: opts.ladderMs,
+    pollRegistrationMaxMs: opts.pollRegistrationMaxMs,
+    resolveReceiptMaxMs: opts.resolveReceiptMaxMs,
+  });
 }
 
 export function buildCompletedGrantBase64(

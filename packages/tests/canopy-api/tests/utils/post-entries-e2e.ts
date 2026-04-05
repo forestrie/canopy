@@ -6,12 +6,13 @@ const COSE_SIGN1_CONTENT_TYPE = 'application/cose; cose-type="cose-sign1"';
 export async function postLogEntriesCoseSign1(
   request: APIRequestContext,
   opts: {
+    bootstrapLogId: string;
     logId: string;
     completedGrantB64: string;
     sign1Bytes: Uint8Array;
   },
 ): Promise<APIResponse> {
-  return request.post("/register/entries", {
+  return request.post(`/register/${opts.bootstrapLogId}/entries`, {
     headers: {
       Authorization: `Forestrie-Grant ${opts.completedGrantB64}`,
       "content-type": COSE_SIGN1_CONTENT_TYPE,
@@ -22,6 +23,7 @@ export async function postLogEntriesCoseSign1(
 }
 
 export function assert303ContentHashLocation(opts: {
+  bootstrapLogId: string;
   logId: string;
   baseURL: string;
   location: string | undefined;
@@ -36,6 +38,6 @@ export function assert303ContentHashLocation(opts: {
     absolute = `${opts.baseURL}${absolute.startsWith("/") ? "" : "/"}${absolute}`;
   }
   expect(absolute.toLowerCase()).toContain(
-    `/logs/${opts.logId}/entries/${opts.contentHashHexLower}`.toLowerCase(),
+    `/logs/${opts.bootstrapLogId}/${opts.logId}/entries/${opts.contentHashHexLower}`.toLowerCase(),
   );
 }

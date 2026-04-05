@@ -8,7 +8,8 @@ import { postRegisterGrantExpect303 } from "./bootstrap-grant-setup";
 
 export interface CompleteGrantRegistrationThroughReceiptOptions {
   unauthorizedRequest: APIRequestContext;
-  logId: string;
+  /** First path segment after `/logs/` — forest bootstrap log id (UUID). */
+  bootstrapLogId: string;
   baseURL: string;
   grantBase64: string;
   ladderMs?: number[];
@@ -33,7 +34,7 @@ export async function completeGrantRegistrationThroughReceipt(
   const { statusUrlAbsolute } = await postRegisterGrantExpect303(
     opts.unauthorizedRequest,
     {
-      logId: opts.logId,
+      bootstrapLogId: opts.bootstrapLogId,
       baseURL: opts.baseURL,
       grantBase64: opts.grantBase64,
     },

@@ -10,10 +10,10 @@ import {
   mintBootstrapGrantPlaywright,
 } from "./utils/bootstrap-grant-flow";
 import { decodeEntryIdHex } from "./utils/entry-id-e2e";
-import { skipOrThrowIfBootstrapMintUnconfigured } from "./utils/bootstrap-e2e-guard";
 import {
   e2eReceiptBootstrapRootLogId,
   skipSequencingPollIfDisabled,
+  skipWithoutCuratorAdmin,
 } from "./utils/e2e-env-guards";
 import {
   formatProblemDetailsMessage,
@@ -22,55 +22,47 @@ import {
 } from "./utils/problem-details";
 
 /**
- * End-to-end against a **deployed** worker: Custodian-backed bootstrap mint and
- * register-grant on the **bootstrap branch** (uninitialized root log).
+ * End-to-end against a **deployed** worker: curator genesis + Custodian bootstrap
+ * mint and register-grant on the **bootstrap branch** (uninitialized root log).
  *
  * This suite does **not** call Custodian `POST /api/keys` (no per-log custody key
- * creation or `selfLogId`); mint uses the bootstrap path only.
+ * creation or `selfLogId`); mint uses `:bootstrap` + `POST /api/forest/.../genesis`.
  *
- * Requires: `CUSTODIAN_URL`, `CUSTODIAN_BOOTSTRAP_APP_TOKEN`, `SEQUENCING_QUEUE`,
- * `R2_MMRS`, `bootstrapEnv` + `queueEnv` in the worker, and **no** first massif tile
- * for the target log in MMRS storage (otherwise register-grant expects receipt-based
- * auth and this test will not get 303).
+ * Requires: `CURATOR_ADMIN_TOKEN`, `CUSTODIAN_URL`, `CUSTODIAN_BOOTSTRAP_APP_TOKEN`,
+ * `SEQUENCING_QUEUE`, `R2_MMRS`, `bootstrapEnv` + `queueEnv` in the worker, and **no**
+ * first massif tile for the target log in MMRS storage (otherwise register-grant
+ * expects receipt-based auth and this test will not get 303).
  *
- * The **sequencing → receipt** test needs **forestrie-ingress** (or equivalent) running
- * against the same env so enqueued grants are sequenced and MMRS is written. Set
- * **`E2E_SKIP_SEQUENCING_POLL=1`** to skip only that test when api-dev is up without ingress.
+ * The **sequencing → receipt** test needs **forestrie-ingress** (or equivalent)
+ * running against the same env so enqueued grants are sequenced and MMRS is written.
+ * Set **`E2E_SKIP_SEQUENCING_POLL=1`** to skip only that test when api-dev is up
+ * without ingress.
  */
 test.describe("Bootstrap grant e2e — mint and register-grant", () => {
   test.describe.configure({ mode: "serial" });
 
-  test("POST /api/grants/bootstrap returns 201 and Custodian-profile transparent statement", async ({
+  test("Bootstrap mint yields Custodian-profile transparent statement", async ({
     unauthorizedRequest,
   }, testInfo) => {
-    const mintRes = await unauthorizedRequest.post("/api/grants/bootstrap", {
-      data: JSON.stringify({ rootLogId: DEFAULT_ROOT_LOG_ID }),
-      headers: { "content-type": "application/json" },
-    });
+    if (skipWithoutCuratorAdmin(testInfo)) return;
 
-    const problemMint = await reportProblemDetails(mintRes, testInfo);
-    if (
-      skipOrThrowIfBootstrapMintUnconfigured(
-        mintRes.status(),
-        problemMint,
-        testInfo,
-      ) === "skip"
-    ) {
-      return;
-    }
-    expect(mintRes.status(), formatProblemDetailsMessage(problemMint)).toBe(
-      201,
+    const minted = await mintBootstrapGrantPlaywright(
+      unauthorizedRequest,
+      DEFAULT_ROOT_LOG_ID,
+      testInfo,
     );
-    const body = (await mintRes.text()).trim();
-    expect(body.length).toBeGreaterThan(0);
+    if (minted.skipped) return;
+
     expect(() =>
-      assertCustodianProfileTransparentStatement(body),
+      assertCustodianProfileTransparentStatement(minted.grantBase64),
     ).not.toThrow();
   });
 
-  test("After bootstrap mint, POST /register/grants returns 303 See Other (enqueued)", async ({
+  test("After bootstrap mint, POST /register/{bootstrap}/grants returns 303 See Other (enqueued)", async ({
     unauthorizedRequest,
   }, testInfo) => {
+    if (skipWithoutCuratorAdmin(testInfo)) return;
+
     // Fresh log so api-dev (MMRS already present for DEFAULT_ROOT_LOG_ID) still
     // hits the bootstrap branch; see AGENTS.md bootstrap e2e caveats.
     const logId = randomUUID();
@@ -88,12 +80,15 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
       assertCustodianProfileTransparentStatement(grantBase64),
     ).not.toThrow();
 
-    const registerRes = await unauthorizedRequest.post("/register/grants", {
-      headers: {
-        Authorization: `Forestrie-Grant ${grantBase64}`,
+    const registerRes = await unauthorizedRequest.post(
+      `/register/${logId}/grants`,
+      {
+        headers: {
+          Authorization: `Forestrie-Grant ${grantBase64}`,
+        },
+        maxRedirects: 0,
       },
-      maxRedirects: 0,
-    });
+    );
 
     const problemReg = await reportProblemDetails(registerRes, testInfo);
     const regStatus = registerRes.status();
@@ -108,15 +103,15 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
     const location = registerRes.headers().location;
     expect(
       location,
-      "303 must include Location for GET registration status (/logs/.../entries/{innerHex})",
+      "303 must include Location for GET registration status (/logs/{bootstrap}/{log}/entries/{innerHex})",
     ).toBeTruthy();
     let absolute = location!;
     if (!absolute.startsWith("http")) {
       absolute = `${baseURL}${absolute.startsWith("/") ? "" : "/"}${absolute}`;
     }
-    const escapedLogId = logId.replace(/-/g, "\\-");
+    const escaped = logId.replace(/-/g, "\\-");
     expect(absolute).toMatch(
-      new RegExp(`/logs/${escapedLogId}/entries/[0-9a-f]{64}$`, "i"),
+      new RegExp(`/logs/${escaped}/${escaped}/entries/[0-9a-f]{64}$`, "i"),
     );
   });
 
@@ -124,6 +119,7 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
     unauthorizedRequest,
   }, testInfo) => {
     if (skipSequencingPollIfDisabled(testInfo)) return;
+    if (skipWithoutCuratorAdmin(testInfo)) return;
 
     test.setTimeout(600_000);
     const logId = e2eReceiptBootstrapRootLogId();
@@ -185,7 +181,7 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
     );
 
     const secondRegisterRes = await unauthorizedRequest.post(
-      "/register/grants",
+      `/register/${logId}/grants`,
       {
         headers: { Authorization: `Forestrie-Grant ${completedB64}` },
         maxRedirects: 0,

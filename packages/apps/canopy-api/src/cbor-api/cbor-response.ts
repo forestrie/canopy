@@ -1,7 +1,7 @@
 import { encode as encodeCbor } from "cbor-x";
 
-import { CBOR_MIME } from "./cbor-const";
-import { convertHeaders } from "./cbor-request";
+import { CBOR_MIME } from "./cbor-const.js";
+import { convertHeaders } from "./cbor-request.js";
 
 export function cborResponse(
   data: unknown,
@@ -101,8 +101,7 @@ export function acceptedResponse(
 }
 
 /**
- * Return 303 See Other response for async operations
- * Per SCRAPI spec 2.1.3.2, registration is running and client should poll Location
+ * Return 303 See Other (e.g. async registration: client polls `Location`).
  */
 export function seeOtherResponse(
   location: string,

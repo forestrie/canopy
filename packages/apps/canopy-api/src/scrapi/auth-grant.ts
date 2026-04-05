@@ -15,9 +15,9 @@ import {
   verifyGrantIncluded,
   type InclusionEnv,
 } from "./verify-grant-inclusion.js";
-import { cborResponse } from "./cbor-response";
-import { ClientErrors, ServerErrors } from "./problem-details";
-import { CBOR_CONTENT_TYPES } from "./cbor-content-types";
+import { CBOR_CONTENT_TYPES } from "../cbor-api/cbor-content-types.js";
+import { cborResponse } from "../cbor-api/cbor-response.js";
+import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
 
 const FORESTRIE_GRANT_SCHEME = "Forestrie-Grant";
 

@@ -19,9 +19,27 @@ vi.mock("../src/scrapi/log-initialized-mmrs.js", () => ({
   isLogInitializedMmrs: vi.fn(async (logId: string) => logId === PARENT),
 }));
 
+vi.mock("../src/forest/genesis-cache.js", () => ({
+  getParsedGenesis: vi.fn(async (segment: string) => {
+    const { logIdToWireBytes } = await import("../src/grant/log-id-wire.js");
+    try {
+      const wire = logIdToWireBytes(segment);
+      return {
+        wire,
+        x: new Uint8Array(32),
+        y: new Uint8Array(32),
+        univocityAddr: null,
+        chainIds: null,
+      };
+    } catch {
+      return { kind: "bad_segment" as const };
+    }
+  }),
+}));
+
 vi.mock("../src/scrapi/grant-sequencing.js", () => ({
   enqueueGrantForSequencing: vi.fn(async () => ({
-    statusUrlPath: `/logs/${PARENT}/entries/abcd0000abcd0000abcd0000abcd0000abcd0000abcd0000abcd0000abcd0000`,
+    statusUrlPath: `/logs/${PARENT}/${PARENT}/entries/abcd0000abcd0000abcd0000abcd0000abcd0000abcd0000abcd0000abcd0000`,
     innerHex:
       "abcd0000abcd0000abcd0000abcd0000abcd0000abcd0000abcd0000abcd0000",
     ownerLogIdUuid: PARENT,
@@ -77,7 +95,8 @@ function baseEnv(): RegisterGrantEnv {
       shardCountStr: "4",
     },
     bootstrapEnv: {
-      rootLogId: PARENT,
+      bootstrapLogId: PARENT,
+      r2Grants: {} as R2Bucket,
       custodianUrl: "https://custodian.test",
       custodianBootstrapAppToken: "bootstrap-token",
       r2Mmrs: {} as R2Bucket,
@@ -113,18 +132,20 @@ function childAuthGrant(overrides?: Partial<Grant>): Grant {
 describe("registerGrant child auth first grant", () => {
   it("returns 303 when parent initialized, signature matches grantData", async () => {
     const grant = childAuthGrant();
-    const request = new Request(`http://test/register/grants`, {
+    const request = new Request(`http://test/register/${PARENT}/grants`, {
       method: "POST",
       headers: { Authorization: await forestrieAuth(grant, subjectPriv) },
     });
     const res = await registerGrant(request, baseEnv());
     expect(res.status).toBe(303);
-    expect(res.headers.get("Location")).toContain(`/logs/${PARENT}/entries/`);
+    expect(res.headers.get("Location")).toContain(
+      `/logs/${PARENT}/${PARENT}/entries/`,
+    );
   });
 
   it("returns 403 when COSE signer does not match grantData", async () => {
     const grant = childAuthGrant();
-    const request = new Request(`http://test/register/grants`, {
+    const request = new Request(`http://test/register/${PARENT}/grants`, {
       method: "POST",
       headers: { Authorization: await forestrieAuth(grant, otherPriv) },
     });
@@ -136,7 +157,7 @@ describe("registerGrant child auth first grant", () => {
     const grant = childAuthGrant({
       grantData: new Uint8Array(16),
     });
-    const request = new Request(`http://test/register/grants`, {
+    const request = new Request(`http://test/register/${PARENT}/grants`, {
       method: "POST",
       headers: { Authorization: await forestrieAuth(grant, subjectPriv) },
     });
@@ -149,13 +170,15 @@ describe("registerGrant child auth first grant", () => {
     flags[4] = 0x03;
     flags[7] = 0x02;
     const grant = childAuthGrant({ grant: flags });
-    const request = new Request(`http://test/register/grants`, {
+    const request = new Request(`http://test/register/${PARENT}/grants`, {
       method: "POST",
       headers: { Authorization: await forestrieAuth(grant, subjectPriv) },
     });
     const res = await registerGrant(request, baseEnv());
     expect(res.status).toBe(303);
-    expect(res.headers.get("Location")).toContain(`/logs/${PARENT}/entries/`);
+    expect(res.headers.get("Location")).toContain(
+      `/logs/${PARENT}/${PARENT}/entries/`,
+    );
   });
 
   it("returns 403 for child data first grant when signer does not match grantData", async () => {
@@ -163,7 +186,7 @@ describe("registerGrant child auth first grant", () => {
     flags[4] = 0x03;
     flags[7] = 0x02;
     const grant = childAuthGrant({ grant: flags });
-    const request = new Request(`http://test/register/grants`, {
+    const request = new Request(`http://test/register/${PARENT}/grants`, {
       method: "POST",
       headers: { Authorization: await forestrieAuth(grant, otherPriv) },
     });
@@ -180,7 +203,7 @@ describe("registerGrant child auth first grant parent not initialized", () => {
     vi.mocked(isLogInitializedMmrs).mockImplementation(async () => false);
 
     const grant = childAuthGrant();
-    const request = new Request(`http://test/register/grants`, {
+    const request = new Request(`http://test/register/${PARENT}/grants`, {
       method: "POST",
       headers: { Authorization: await forestrieAuth(grant, subjectPriv) },
     });

@@ -32,6 +32,7 @@ import {
   e2eReceiptBootstrapRootLogId,
   shouldSkipSequencingPoll,
   skipSequencingPollIfDisabled,
+  skipWithoutCuratorAdmin,
   skipWithoutCustodianBootstrap,
   skipWithoutCustodianCustody,
 } from "./utils/e2e-env-guards";
@@ -70,6 +71,7 @@ test.describe("Auth log → data log delegation chain", () => {
       );
       return;
     }
+    if (skipWithoutCuratorAdmin(testInfo)) return;
 
     const rootLogId = e2eReceiptBootstrapRootLogId();
     const baseURL = testInfo.project.use.baseURL ?? "";
@@ -139,7 +141,7 @@ test.describe("Auth log → data log delegation chain", () => {
 
     const authRegComplete = await completeGrantRegistrationThroughReceipt({
       unauthorizedRequest,
-      logId: authLogId,
+      bootstrapLogId: rootLogId,
       baseURL,
       grantBase64: authGrantB64,
       ladderMs: sequencingBackoff,
@@ -175,7 +177,7 @@ test.describe("Auth log → data log delegation chain", () => {
 
     const dataComplete = await completeGrantRegistrationThroughReceipt({
       unauthorizedRequest,
-      logId: dataLogId,
+      bootstrapLogId: rootLogId,
       baseURL,
       grantBase64: dataGrantB64,
       ladderMs: sequencingBackoff,
@@ -197,6 +199,7 @@ test.describe("Auth log → data log delegation chain", () => {
     });
 
     const entriesOk = await postLogEntriesCoseSign1(unauthorizedRequest, {
+      bootstrapLogId: rootLogId,
       logId: dataLogId,
       completedGrantB64: completedDataB64,
       sign1Bytes: sign1Delegated,
@@ -210,6 +213,7 @@ test.describe("Auth log → data log delegation chain", () => {
 
     const expectedHash = await sha256Hex(sign1Delegated);
     assert303ContentHashLocation({
+      bootstrapLogId: rootLogId,
       logId: dataLogId,
       baseURL,
       location: entriesOk.headers().location,
@@ -258,7 +262,7 @@ test.describe("Auth log → data log delegation chain", () => {
 
     await completeGrantRegistrationThroughReceipt({
       unauthorizedRequest,
-      logId: authLogId,
+      bootstrapLogId: rootLogId,
       baseURL,
       grantBase64: authGrantB64,
       ladderMs: sequencingBackoff,
@@ -288,7 +292,7 @@ test.describe("Auth log → data log delegation chain", () => {
 
     const dataComplete = await completeGrantRegistrationThroughReceipt({
       unauthorizedRequest,
-      logId: dataLogId,
+      bootstrapLogId: rootLogId,
       baseURL,
       grantBase64: dataGrantB64,
       ladderMs: sequencingBackoff,
@@ -309,6 +313,7 @@ test.describe("Auth log → data log delegation chain", () => {
     });
 
     const entriesBad = await postLogEntriesCoseSign1(unauthorizedRequest, {
+      bootstrapLogId: rootLogId,
       logId: dataLogId,
       completedGrantB64: completedDataB64,
       sign1Bytes: sign1WrongSigner,

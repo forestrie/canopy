@@ -1,5 +1,6 @@
 import { decode as decodeCbor } from "cbor-x";
-import { CBOR_MIME } from "./cbor-const";
+
+import { CBOR_MIME } from "./cbor-const.js";
 
 /**
  * Parse CBOR request body

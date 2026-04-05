@@ -15,6 +15,7 @@ import {
   e2eReceiptBootstrapRootLogId,
   shouldSkipSequencingPoll,
   skipSequencingPollIfDisabled,
+  skipWithoutCuratorAdmin,
   skipWithoutCustodianBootstrap,
 } from "./utils/e2e-env-guards";
 import {
@@ -40,7 +41,8 @@ import { sha256Hex } from "./utils/statement-sign-bytes";
  * The wrong-signer test uses an ephemeral P-256 key locally (no Custodian sign call).
  *
  * One mint + completed grant is shared across both tests so a fixed
- * `ROOT_LOG_ID` / `E2E_BOOTSTRAP_LOG_ID` (CI) is only consumed once per describe.
+ * `E2E_BOOTSTRAP_LOG_ID` (optional; falls back to legacy `ROOT_LOG_ID`) is only
+ * consumed once per describe.
  */
 test.describe("Bootstrap log e2e — first signed entry", () => {
   test.describe.configure({ mode: "serial", timeout: 600_000 });
@@ -66,6 +68,7 @@ test.describe("Bootstrap log e2e — first signed entry", () => {
       );
       return;
     }
+    if (skipWithoutCuratorAdmin(testInfo)) return;
 
     const logId = e2eReceiptBootstrapRootLogId();
     const baseURL = testInfo.project.use.baseURL ?? "";
@@ -113,6 +116,7 @@ test.describe("Bootstrap log e2e — first signed entry", () => {
 
     const expectedHash = await sha256Hex(sign1Bytes);
     const entriesRes = await postLogEntriesCoseSign1(unauthorizedRequest, {
+      bootstrapLogId: shared.logId,
       logId: shared.logId,
       completedGrantB64: shared.completedGrantB64,
       sign1Bytes,
@@ -125,6 +129,7 @@ test.describe("Bootstrap log e2e — first signed entry", () => {
     expect(entriesRes.status(), hint).toBe(303);
 
     assert303ContentHashLocation({
+      bootstrapLogId: shared.logId,
       logId: shared.logId,
       baseURL: shared.baseURL,
       location: entriesRes.headers().location,
@@ -158,6 +163,7 @@ test.describe("Bootstrap log e2e — first signed entry", () => {
     );
 
     const entriesRes = await postLogEntriesCoseSign1(unauthorizedRequest, {
+      bootstrapLogId: shared.logId,
       logId: shared.logId,
       completedGrantB64: shared.completedGrantB64,
       sign1Bytes,

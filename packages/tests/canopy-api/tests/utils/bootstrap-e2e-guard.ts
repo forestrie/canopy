@@ -2,14 +2,15 @@ import type { TestInfo } from "@playwright/test";
 import type { ProblemDetails } from "./problem-details";
 
 /**
- * Plan 0014: bootstrap mint requires Custodian on the Worker. Deployments that still
- * mention DELEGATION_SIGNER_* are behind this repo; unconfigured mint returns 503.
+ * Plan 0014 / 0019: Some routes still return **503** when the Worker is missing queue,
+ * receipt verifier, or Custodian configuration. Legacy **bootstrap mint** on the Worker
+ * is removed; e2e mint uses runner-side Custodian + `POST /api/forest/.../genesis`.
  *
- * Default (no **`CI`**, no **`E2E_REQUIRE_BOOTSTRAP`**): **skip** when mint returns 503
+ * Default (no **`CI`**, no **`E2E_REQUIRE_BOOTSTRAP`**): **skip** on select responses
  * with a "not configured" body so local `task test:e2e` stays usable while dev catches up.
  *
  * Set **`E2E_REQUIRE_BOOTSTRAP=1`** (or run with **`CI=true`**, e.g. GitHub Actions)
- * to **fail** instead of skip when bootstrap mint is unavailable.
+ * to **fail** instead of skip when the deployment looks misconfigured.
  */
 function workerBootstrapOrDeployment503(
   problem: ProblemDetails | undefined,
@@ -17,7 +18,7 @@ function workerBootstrapOrDeployment503(
   const haystack = `${problem?.title ?? ""} ${problem?.detail ?? ""}`;
   if (/not configured/i.test(haystack)) return true;
   if (!/misconfigured/i.test(haystack)) return false;
-  return /CUSTODIAN_APP_TOKEN|SEQUENCING_QUEUE|ROOT_LOG_ID|CUSTODIAN_URL|CUSTODIAN_BOOTSTRAP|FORESTRIE_RECEIPT_VERIFY_TEST/i.test(
+  return /CUSTODIAN_APP_TOKEN|SEQUENCING_QUEUE|CURATOR_ADMIN_TOKEN|CUSTODIAN_URL|CUSTODIAN_BOOTSTRAP|FORESTRIE_RECEIPT_VERIFY_TEST/i.test(
     haystack,
   );
 }

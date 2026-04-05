@@ -2,7 +2,7 @@
  * Resolve Receipt operation for SCRAPI.
  *
  * Permanent receipt URL shape:
- *   /logs/{logId}/{massifHeight}/entries/{entryId}/receipt
+ *   /logs/{bootstrapLogId}/{logId}/{massifHeight}/entries/{entryId}/receipt
  *
  * entryId is a 16-byte value encoded as 32 hex characters:
  *   entryId = hex( idtimestamp_be8 || mmrIndex_be8 )
@@ -17,20 +17,16 @@
 
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 
-import { cborResponse } from "./cbor-response";
-import { CBOR_CONTENT_TYPES } from "./cbor-content-types";
+import { CBOR_CONTENT_TYPES } from "../cbor-api/cbor-content-types.js";
+import { cborResponse } from "../cbor-api/cbor-response.js";
 import { decodeEntryId, isEntryIdHex } from "./entry-id";
-import { ClientErrors } from "./problem-details";
+import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
+import { logIdSegmentToCanonicalUuid } from "../grant/log-id-wire.js";
+import { getParsedGenesis } from "../forest/genesis-cache.js";
 
 // COSE / MMRIVER constants (mirrors go-merklelog/massifs/rootsigner.go)
 const VDS_COSE_RECEIPT_PROOFS_TAG = 396;
 const SEAL_PEAK_RECEIPTS_LABEL = -65931;
-
-function isUuid(id: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    id,
-  );
-}
 
 function isUintDecimal(id: string): boolean {
   return /^[0-9]+$/.test(id);
@@ -46,19 +42,45 @@ type CoseSign1 = [
 /**
  * Resolve a receipt for a registered statement.
  *
- * @param entrySegments - [logId, massifHeight, 'entries', entryId, 'receipt']
+ * @param entrySegments - [bootstrapLogId, logId, massifHeight, 'entries', entryId, 'receipt']
  */
 export async function resolveReceipt(
   _request: Request,
   entrySegments: string[],
   mmrs: R2Bucket,
+  r2Grants: R2Bucket,
 ): Promise<Response> {
-  const [logID, massifHeightRaw, entriesLiteral, entryIdRaw, receiptLiteral] =
-    entrySegments;
+  const [
+    bootstrapSeg,
+    logIDRaw,
+    massifHeightRaw,
+    entriesLiteral,
+    entryIdRaw,
+    receiptLiteral,
+  ] = entrySegments;
 
   try {
-    if (!logID || !isUuid(logID)) {
-      return ClientErrors.badRequest("logId must be a UUID");
+    const genesisLookup = await getParsedGenesis(bootstrapSeg!, {
+      R2_GRANTS: r2Grants,
+    });
+    if ("kind" in genesisLookup && genesisLookup.kind === "bad_segment") {
+      return ClientErrors.badRequest("Invalid bootstrap log-id in path");
+    }
+    if ("kind" in genesisLookup && genesisLookup.kind === "not_found") {
+      return ClientErrors.notFound(
+        "Not Found",
+        "Forest genesis not found for bootstrap log-id in path",
+      );
+    }
+    if ("kind" in genesisLookup && genesisLookup.kind === "corrupt") {
+      return ServerErrors.internal("Stored genesis for this forest is invalid");
+    }
+
+    let logID: string;
+    try {
+      logID = logIdSegmentToCanonicalUuid(logIDRaw!);
+    } catch {
+      return ClientErrors.badRequest("logId in path must be a valid log id");
     }
     if (entriesLiteral !== "entries") {
       return ClientErrors.notFound(`Entry ${logID} not found`);

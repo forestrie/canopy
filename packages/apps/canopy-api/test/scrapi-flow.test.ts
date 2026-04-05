@@ -10,6 +10,20 @@ import { uuidToBytes } from "../src/grant";
 import type { Grant } from "../src/grant";
 import { custodianStatementKidFromXyGrantData } from "../src/grant/custodian-statement-kid.js";
 import { forestrieGrantAuthorizationHeader } from "./helpers/custodian-transparent-grant";
+import {
+  COSE_ALG_ES256,
+  COSE_CRV_P256,
+  COSE_EC2_CRV,
+  COSE_EC2_X,
+  COSE_EC2_Y,
+  COSE_KEY_ALG,
+  COSE_KEY_KTY,
+  COSE_KTY_EC2,
+} from "../src/cose/cose-key.js";
+
+const FLOW_CURATOR = "scrapi-flow-curator-token";
+/** Set in beforeAll: genesis for this id is stored in R2_GRANTS. */
+let flowBootstrapLogId = "";
 
 // Cast the test env to our Env type.
 const testEnv = env as unknown as Env;
@@ -31,6 +45,33 @@ beforeAll(async () => {
     throw new Error("expected uncompressed P-256 raw public key");
   }
   flowGrantData64 = raw.subarray(1, 65);
+
+  flowBootstrapLogId = crypto.randomUUID();
+
+  const x = new Uint8Array(32).fill(0x3a);
+  const y = new Uint8Array(32).fill(0x4b);
+  const genesisBody = encodeCbor(
+    new Map<number, unknown>([
+      [COSE_KEY_KTY, COSE_KTY_EC2],
+      [COSE_EC2_CRV, COSE_CRV_P256],
+      [COSE_EC2_X, x],
+      [COSE_EC2_Y, y],
+      [COSE_KEY_ALG, COSE_ALG_ES256],
+    ]),
+  ) as Uint8Array;
+  const res = await worker.fetch(
+    new Request(`http://localhost/api/forest/${flowBootstrapLogId}/genesis`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/cbor",
+        Authorization: `Bearer ${FLOW_CURATOR}`,
+      },
+      body: genesisBody,
+    }),
+    { ...testEnv, CURATOR_ADMIN_TOKEN: FLOW_CURATOR },
+    {} as ExecutionContext,
+  );
+  expect(res.status).toBe(201);
 });
 
 describe("SCRAPI flow", () => {
@@ -53,7 +94,7 @@ describe("SCRAPI flow", () => {
     });
 
     const request = new Request(
-      `http://localhost/logs/${logId}/entries/${contentHash}`,
+      `http://localhost/logs/${flowBootstrapLogId}/${logId}/entries/${contentHash}`,
     );
     const response = await worker.fetch(
       request,
@@ -63,20 +104,23 @@ describe("SCRAPI flow", () => {
 
     expect(response.status).toBe(303);
     expect(response.headers.get("Location")).toBe(
-      `http://localhost/logs/${logId}/${massifHeight}/entries/${expectedEntryId}/receipt`,
+      `http://localhost/logs/${flowBootstrapLogId}/${logId}/${massifHeight}/entries/${expectedEntryId}/receipt`,
     );
   });
 
   it("POST /register/entries without Forestrie-Grant returns 401", async () => {
     const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
 
-    const request = new Request(`http://localhost/register/entries`, {
-      method: "POST",
-      headers: {
-        "content-type": 'application/cose; cose-type="cose-sign1"',
+    const request = new Request(
+      `http://localhost/register/${flowBootstrapLogId}/entries`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": 'application/cose; cose-type="cose-sign1"',
+        },
+        body: new Uint8Array([0x80]),
       },
-      body: new Uint8Array([0x80]),
-    });
+    );
 
     const response = await worker.fetch(
       request,
@@ -97,14 +141,17 @@ describe("SCRAPI flow", () => {
   it("POST /register/entries with invalid grant value returns 400", async () => {
     const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
 
-    const request = new Request(`http://localhost/register/entries`, {
-      method: "POST",
-      headers: {
-        "content-type": 'application/cose; cose-type="cose-sign1"',
-        Authorization: "Forestrie-Grant not-valid-base64!!!",
+    const request = new Request(
+      `http://localhost/register/${flowBootstrapLogId}/entries`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": 'application/cose; cose-type="cose-sign1"',
+          Authorization: "Forestrie-Grant not-valid-base64!!!",
+        },
+        body: new Uint8Array([0x80]),
       },
-      body: new Uint8Array([0x80]),
-    });
+    );
 
     const response = await worker.fetch(
       request,
@@ -150,14 +197,17 @@ describe("SCRAPI flow", () => {
       flowGrantPriv,
     );
 
-    const request = new Request(`http://localhost/register/entries`, {
-      method: "POST",
-      headers: {
-        "content-type": 'application/cose; cose-type="cose-sign1"',
-        Authorization: authHeader,
+    const request = new Request(
+      `http://localhost/register/${flowBootstrapLogId}/entries`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": 'application/cose; cose-type="cose-sign1"',
+          Authorization: authHeader,
+        },
+        body: coseSign1,
       },
-      body: coseSign1,
-    });
+    );
 
     const response = await worker.fetch(
       request,
@@ -167,7 +217,9 @@ describe("SCRAPI flow", () => {
 
     expect([303, 503]).toContain(response.status);
     if (response.status === 303) {
-      expect(response.headers.get("Location")).toContain(logId);
+      expect(response.headers.get("Location")).toContain(
+        `/logs/${flowBootstrapLogId}/${logId}/entries/`,
+      );
     } else {
       const problem = decodeCbor(
         new Uint8Array(await response.arrayBuffer()),
@@ -283,7 +335,7 @@ describe("SCRAPI flow", () => {
 
     // --- Request receipt ---
     const request = new Request(
-      `http://localhost/logs/${logId}/${massifHeight}/entries/${entryId}/receipt`,
+      `http://localhost/logs/${flowBootstrapLogId}/${logId}/${massifHeight}/entries/${entryId}/receipt`,
     );
     const response = await worker.fetch(
       request,

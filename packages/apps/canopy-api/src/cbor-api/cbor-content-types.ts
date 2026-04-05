@@ -1,3 +1,7 @@
+/**
+ * Content-Type values used across CBOR-first HTTP APIs (SCRAPI, COSE, receipts).
+ */
+
 export const CBOR_CONTENT_TYPES = {
   CBOR: "application/cbor",
   COSE: "application/cose",

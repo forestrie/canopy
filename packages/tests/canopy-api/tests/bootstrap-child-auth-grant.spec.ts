@@ -16,6 +16,7 @@ import {
 import {
   e2eReceiptBootstrapRootLogId,
   skipSequencingPollIfDisabled,
+  skipWithoutCuratorAdmin,
   skipWithoutCustodianBootstrap,
   skipWithoutCustodianCustody,
 } from "./utils/e2e-env-guards";
@@ -39,6 +40,7 @@ test.describe("Bootstrap root + child auth grant e2e", () => {
   }, testInfo) => {
     if (skipSequencingPollIfDisabled(testInfo)) return;
     if (skipWithoutCustodianBootstrap(testInfo)) return;
+    if (skipWithoutCuratorAdmin(testInfo)) return;
     if (skipWithoutCustodianCustody(testInfo)) return;
 
     const custodyEnv = custodianCustodySignEnv()!;
@@ -98,17 +100,17 @@ test.describe("Bootstrap root + child auth grant e2e", () => {
 
     const childComplete = await completeGrantRegistrationThroughReceipt({
       unauthorizedRequest,
-      logId: childLogId,
+      bootstrapLogId: rootLogId,
       baseURL,
       grantBase64,
       ladderMs: sequencingBackoff,
     });
     expect(childComplete.receiptRes.status).toBe(200);
     expect(childComplete.statusUrlAbsolute.toLowerCase()).toContain(
-      `/logs/${rootLogId.toLowerCase()}/entries/`,
+      `/logs/${rootLogId.toLowerCase()}/${rootLogId.toLowerCase()}/entries/`,
     );
     expect(childComplete.statusUrlAbsolute.toLowerCase()).not.toContain(
-      `/logs/${childLogId.toLowerCase()}/entries/`,
+      `/logs/${rootLogId.toLowerCase()}/${childLogId.toLowerCase()}/entries/`,
     );
   });
 });

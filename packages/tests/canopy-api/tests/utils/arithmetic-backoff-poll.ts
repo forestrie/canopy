@@ -22,7 +22,7 @@ function toAbsoluteUrl(baseURL: string, location: string): string {
 
 /** Location points at GET resolve-receipt (permanent URL with massif height). */
 const RECEIPT_LOCATION_RE =
-  /\/logs\/[^/]+\/\d+\/entries\/[0-9a-f]{32}\/receipt(?:\?|$)/i;
+  /\/logs\/[^/]+\/[^/]+\/\d+\/entries\/[0-9a-f]{32}\/receipt(?:\?|$)/i;
 
 function parseEntryIdFromReceiptLocation(location: string): string {
   const m = location.match(/\/entries\/([0-9a-f]{32})\/receipt/i);
@@ -36,7 +36,7 @@ function parseEntryIdFromReceiptLocation(location: string): string {
 
 export interface PollUntilReceiptOptions {
   request: APIRequestContext;
-  /** GET /logs/{logId}/entries/{innerHex} (registration status). */
+  /** GET /logs/{bootstrap}/{logId}/entries/{innerHex} (registration status). */
   statusUrlAbsolute: string;
   baseURL: string;
   /** Defaults to {@link sequencingBackoff} if omitted. */

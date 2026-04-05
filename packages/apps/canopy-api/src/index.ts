@@ -4,17 +4,13 @@
  * Minimal SCRAPI-compatible API without SvelteKit
  */
 
-import {
-  responseIfBootstrapTrioIncomplete,
-  responseIfReceiptVerifierMisconfigured,
-  responseIfSequencingQueueIncomplete,
-} from "./env/deployment-env";
+import { checkRequestEnv } from "./env/deployment-env";
 import {
   createReceiptVerifyKeyResolver,
   type ReceiptVerifyKeyResolver,
 } from "./env/receipt-verify-key-resolver";
-import { problemResponse } from "./scrapi/cbor-response";
-import { handlePostBootstrapGrant } from "./scrapi/bootstrap-grant.js";
+import { problemResponse } from "./cbor-api/cbor-response.js";
+import { handleForestRequest } from "./forest/handle-forest-request.js";
 import { registerGrant, type RegisterGrantEnv } from "./scrapi/register-grant";
 import { registerSignedStatement } from "./scrapi/register-signed-statement";
 import { queryRegistrationStatus } from "./scrapi/query-registration-status";
@@ -69,8 +65,6 @@ export interface Env {
   X402_SETTLEMENT_DO?: DurableObjectNamespace;
   // Number of DO shards for x402 settlement (typically 4)
   X402_DO_SHARD_COUNT?: string;
-  // Subplan 08 / Plan 0014: grant-first bootstrap via Custodian
-  ROOT_LOG_ID?: string;
   /** Base URL of arbor Custodian (no trailing slash). */
   CUSTODIAN_URL?: string;
   /** Maps to Custodian secret BOOTSTRAP_APP_TOKEN (Wrangler secret). */
@@ -84,6 +78,8 @@ export interface Env {
   FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX?: string;
   /** Bootstrap signing alg: ES256 (default) or KS256. */
   BOOTSTRAP_ALG?: string;
+  /** Bearer secret for `POST /api/forest/**` admin routes (Wrangler secret). */
+  CURATOR_ADMIN_TOKEN?: string;
   UNIVOCITY_SERVICE_URL?: string;
   UNIVOCITY_CONTRACT_RPC_URL?: string;
   UNIVOCITY_CONTRACT_ADDRESS?: string;
@@ -94,18 +90,13 @@ export interface Env {
 function buildBootstrapEnvForRegisterGrant(
   env: Env,
   massifHeight: number,
-): RegisterGrantEnv["bootstrapEnv"] | undefined {
-  if (
-    !env.ROOT_LOG_ID ||
-    !env.CUSTODIAN_URL?.trim() ||
-    !env.CUSTODIAN_BOOTSTRAP_APP_TOKEN
-  ) {
-    return undefined;
-  }
+  bootstrapLogId: string,
+): RegisterGrantEnv["bootstrapEnv"] {
   return {
-    rootLogId: env.ROOT_LOG_ID,
-    custodianUrl: env.CUSTODIAN_URL.trim(),
-    custodianBootstrapAppToken: env.CUSTODIAN_BOOTSTRAP_APP_TOKEN,
+    bootstrapLogId,
+    r2Grants: env.R2_GRANTS,
+    custodianUrl: env.CUSTODIAN_URL?.trim() ?? "",
+    custodianBootstrapAppToken: env.CUSTODIAN_BOOTSTRAP_APP_TOKEN ?? "",
     bootstrapAlg: env.BOOTSTRAP_ALG as "ES256" | "KS256" | undefined,
     r2Mmrs: env.R2_MMRS,
     massifHeight,
@@ -167,25 +158,19 @@ export default {
     }
 
     try {
-      const misconfigured = responseIfBootstrapTrioIncomplete(env, corsHeaders);
+      const misconfigured = checkRequestEnv(request, env, corsHeaders);
       if (misconfigured) {
         return misconfigured;
       }
 
-      const missingQueue = responseIfSequencingQueueIncomplete(
+      const forestResponse = await handleForestRequest(
+        request,
+        pathname,
         env,
         corsHeaders,
       );
-      if (missingQueue) {
-        return missingQueue;
-      }
-
-      const receiptEnvBad = responseIfReceiptVerifierMisconfigured(
-        env,
-        corsHeaders,
-      );
-      if (receiptEnvBad) {
-        return receiptEnvBad;
+      if (forestResponse) {
+        return forestResponse;
       }
 
       const resolveReceiptVerifyKey = receiptVerifyResolverForEnv(env);
@@ -202,45 +187,6 @@ export default {
         return problemResponse(500, "Internal Server Error", "about:blank", {
           detail:
             "x402 verify-and-settle mode requires X402_FACILITATOR_URL to be configured",
-          headers: corsHeaders,
-        });
-      }
-
-      // Subplan 08 / Plan 0010: POST /api/grants/bootstrap (no auth, no storage)
-      if (pathname === "/api/grants/bootstrap" && request.method === "POST") {
-        const custodianUrl = env.CUSTODIAN_URL?.trim();
-        const token = env.CUSTODIAN_BOOTSTRAP_APP_TOKEN;
-        if (!custodianUrl || !token) {
-          return problemResponse(503, "Service Unavailable", "about:blank", {
-            detail:
-              "Bootstrap grant mint not configured (CUSTODIAN_URL, CUSTODIAN_BOOTSTRAP_APP_TOKEN required)",
-            headers: corsHeaders,
-          });
-        }
-        const response = await handlePostBootstrapGrant(request, {
-          rootLogId: env.ROOT_LOG_ID,
-          custodianUrl,
-          custodianBootstrapAppToken: token,
-          bootstrapAlg: env.BOOTSTRAP_ALG as "ES256" | "KS256" | undefined,
-        });
-        const headers = new Headers(response.headers);
-        Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
-        return new Response(response.body, {
-          status: response.status,
-          statusText: response.statusText,
-          headers,
-        });
-      }
-
-      // GET /grants/bootstrap/:rootLogId — not stored; return 404 (Plan 0010)
-      if (
-        segments[0] === "grants" &&
-        segments[1] === "bootstrap" &&
-        request.method === "GET"
-      ) {
-        return problemResponse(404, "Not Found", "about:blank", {
-          detail:
-            "Bootstrap grants are not stored; use POST /api/grants/bootstrap and save the response",
           headers: corsHeaders,
         });
       }
@@ -275,10 +221,6 @@ export default {
       }
 
       const massifHeight = parseInt(env.MASSIF_HEIGHT || "14", 10);
-      const bootstrapEnvForGrant = buildBootstrapEnvForRegisterGrant(
-        env,
-        massifHeight,
-      );
       const queueEnvForSequencing = env.SEQUENCING_QUEUE
         ? {
             sequencingQueue: env.SEQUENCING_QUEUE,
@@ -286,9 +228,15 @@ export default {
           }
         : undefined;
 
-      // POST /register/grants | /register/entries — separate namespace from GET /logs/…
+      // POST /register/{bootstrap-logid}/grants | /register/{bootstrap-logid}/entries
       if (segments[0] === "register" && request.method === "POST") {
-        if (segments.length === 2 && segments[1] === "grants") {
+        if (segments.length === 3 && segments[2] === "grants" && segments[1]) {
+          const bootstrapSeg = segments[1];
+          const bootstrapEnvForGrant = buildBootstrapEnvForRegisterGrant(
+            env,
+            massifHeight,
+            bootstrapSeg,
+          );
           const response = await registerGrant(request, {
             queueEnv: queueEnvForSequencing,
             bootstrapEnv: bootstrapEnvForGrant,
@@ -302,7 +250,7 @@ export default {
             headers,
           });
         }
-        if (segments.length === 2 && segments[1] === "entries") {
+        if (segments.length === 3 && segments[2] === "entries" && segments[1]) {
           const inclusionEnv = env.SEQUENCING_QUEUE
             ? {
                 sequencingQueue: env.SEQUENCING_QUEUE,
@@ -317,6 +265,8 @@ export default {
             inclusionEnv,
             resolveReceiptVerifyKey,
             env.NODE_ENV,
+            segments[1],
+            env.R2_GRANTS,
           );
           const headers = new Headers(response.headers);
           Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
@@ -344,8 +294,8 @@ export default {
         );
       }
 
-      // Route group 1: /logs/{logId}/entries... (GET only; POST statement is /register/entries)
-      if (segments.length >= 3 && segments[2] === "entries") {
+      // Route group 1: /logs/{bootstrap}/{logId}/entries/{contentHash} (GET)
+      if (segments.length === 5 && segments[3] === "entries") {
         if (request.method !== "GET") {
           return problemResponse(
             405,
@@ -355,40 +305,34 @@ export default {
           );
         }
 
-        // GET /logs/{logId}/entries/{contentHash} - Query registration status
-        if (segments.length === 4) {
-          const response = await queryRegistrationStatus(
-            request,
-            segments.slice(1),
-            // Type assertion: the DO binding provides SequencingQueueStub methods via RPC
-            env.SEQUENCING_QUEUE as unknown as Parameters<
-              typeof queryRegistrationStatus
-            >[2],
-            env.R2_MMRS,
-            massifHeight,
-            env.QUEUE_SHARD_COUNT,
-          );
-
-          const headers = new Headers(response.headers);
-          Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
-
-          return new Response(response.body, {
-            status: response.status,
-            statusText: response.statusText,
-            headers,
-          });
-        }
-
-        return problemResponse(
-          404,
-          "Not Found",
-          `The requested resource ${pathname} was not found`,
-          corsHeaders,
+        const response = await queryRegistrationStatus(
+          request,
+          segments.slice(1),
+          env.SEQUENCING_QUEUE as unknown as Parameters<
+            typeof queryRegistrationStatus
+          >[2],
+          env.R2_MMRS,
+          massifHeight,
+          env.QUEUE_SHARD_COUNT,
+          env.R2_GRANTS,
         );
+
+        const headers = new Headers(response.headers);
+        Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
+
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        });
       }
 
-      // Route group 2: /logs/{logId}/{massifHeight}/entries/{entryId}/receipt
-      if (segments.length >= 4 && segments[3] === "entries") {
+      // Route group 2: /logs/{bootstrap}/{logId}/{massifHeight}/entries/{entryId}/receipt
+      if (
+        segments.length === 7 &&
+        segments[4] === "entries" &&
+        segments[6] === "receipt"
+      ) {
         if (request.method !== "GET") {
           return problemResponse(
             405,
@@ -402,6 +346,7 @@ export default {
           request,
           segments.slice(1),
           env.R2_MMRS,
+          env.R2_GRANTS,
         );
 
         const headers = new Headers(response.headers);
