@@ -113,22 +113,22 @@ function childAuthGrant(overrides?: Partial<Grant>): Grant {
 describe("registerGrant child auth first grant", () => {
   it("returns 303 when parent initialized, signature matches grantData", async () => {
     const grant = childAuthGrant();
-    const request = new Request(`http://test/logs/${CHILD}/grants`, {
+    const request = new Request(`http://test/register/grants`, {
       method: "POST",
       headers: { Authorization: await forestrieAuth(grant, subjectPriv) },
     });
-    const res = await registerGrant(request, CHILD, baseEnv());
+    const res = await registerGrant(request, baseEnv());
     expect(res.status).toBe(303);
     expect(res.headers.get("Location")).toContain(`/logs/${PARENT}/entries/`);
   });
 
   it("returns 403 when COSE signer does not match grantData", async () => {
     const grant = childAuthGrant();
-    const request = new Request(`http://test/logs/${CHILD}/grants`, {
+    const request = new Request(`http://test/register/grants`, {
       method: "POST",
       headers: { Authorization: await forestrieAuth(grant, otherPriv) },
     });
-    const res = await registerGrant(request, CHILD, baseEnv());
+    const res = await registerGrant(request, baseEnv());
     expect(res.status).toBe(403);
   });
 
@@ -136,29 +136,39 @@ describe("registerGrant child auth first grant", () => {
     const grant = childAuthGrant({
       grantData: new Uint8Array(16),
     });
-    const request = new Request(`http://test/logs/${CHILD}/grants`, {
+    const request = new Request(`http://test/register/grants`, {
       method: "POST",
       headers: { Authorization: await forestrieAuth(grant, subjectPriv) },
     });
-    const res = await registerGrant(request, CHILD, baseEnv());
+    const res = await registerGrant(request, baseEnv());
     expect(res.status).toBe(403);
   });
 
-  it("returns 403 for GF_DATA_LOG class (not child auth path)", async () => {
+  it("returns 303 for GF_DATA_LOG child first grant (child data path)", async () => {
     const flags = new Uint8Array(8);
     flags[4] = 0x03;
     flags[7] = 0x02;
     const grant = childAuthGrant({ grant: flags });
-    const request = new Request(`http://test/logs/${CHILD}/grants`, {
+    const request = new Request(`http://test/register/grants`, {
       method: "POST",
       headers: { Authorization: await forestrieAuth(grant, subjectPriv) },
     });
-    const res = await registerGrant(request, CHILD, baseEnv());
+    const res = await registerGrant(request, baseEnv());
+    expect(res.status).toBe(303);
+    expect(res.headers.get("Location")).toContain(`/logs/${PARENT}/entries/`);
+  });
+
+  it("returns 403 for child data first grant when signer does not match grantData", async () => {
+    const flags = new Uint8Array(8);
+    flags[4] = 0x03;
+    flags[7] = 0x02;
+    const grant = childAuthGrant({ grant: flags });
+    const request = new Request(`http://test/register/grants`, {
+      method: "POST",
+      headers: { Authorization: await forestrieAuth(grant, otherPriv) },
+    });
+    const res = await registerGrant(request, baseEnv());
     expect(res.status).toBe(403);
-    const buf = new Uint8Array(await res.arrayBuffer());
-    const { decode } = await import("cbor-x");
-    const body = decode(buf) as { detail?: string };
-    expect(body.detail).toContain("bootstrap grant only");
   });
 });
 
@@ -170,11 +180,11 @@ describe("registerGrant child auth first grant parent not initialized", () => {
     vi.mocked(isLogInitializedMmrs).mockImplementation(async () => false);
 
     const grant = childAuthGrant();
-    const request = new Request(`http://test/logs/${CHILD}/grants`, {
+    const request = new Request(`http://test/register/grants`, {
       method: "POST",
       headers: { Authorization: await forestrieAuth(grant, subjectPriv) },
     });
-    const res = await registerGrant(request, CHILD, baseEnv());
+    const res = await registerGrant(request, baseEnv());
     expect(res.status).toBe(403);
     const buf = new Uint8Array(await res.arrayBuffer());
     const { decode } = await import("cbor-x");

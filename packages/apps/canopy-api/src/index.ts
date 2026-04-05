@@ -4,9 +4,10 @@
  * Minimal SCRAPI-compatible API without SvelteKit
  */
 
+import { responseIfBootstrapTrioIncomplete } from "./env/deployment-env";
 import { problemResponse } from "./scrapi/cbor-response";
 import { handlePostBootstrapGrant } from "./scrapi/bootstrap-grant.js";
-import { registerGrant } from "./scrapi/register-grant";
+import { registerGrant, type RegisterGrantEnv } from "./scrapi/register-grant";
 import { registerSignedStatement } from "./scrapi/register-signed-statement";
 import { queryRegistrationStatus } from "./scrapi/query-registration-status";
 import { resolveReceipt } from "./scrapi/resolve-receipt";
@@ -77,6 +78,27 @@ export interface Env {
   OBJECT_STORAGE_ROOT_URL?: string;
 }
 
+function buildBootstrapEnvForRegisterGrant(
+  env: Env,
+  massifHeight: number,
+): RegisterGrantEnv["bootstrapEnv"] | undefined {
+  if (
+    !env.ROOT_LOG_ID ||
+    !env.CUSTODIAN_URL?.trim() ||
+    !env.CUSTODIAN_BOOTSTRAP_APP_TOKEN
+  ) {
+    return undefined;
+  }
+  return {
+    rootLogId: env.ROOT_LOG_ID,
+    custodianUrl: env.CUSTODIAN_URL.trim(),
+    custodianBootstrapAppToken: env.CUSTODIAN_BOOTSTRAP_APP_TOKEN,
+    bootstrapAlg: env.BOOTSTRAP_ALG as "ES256" | "KS256" | undefined,
+    r2Mmrs: env.R2_MMRS,
+    massifHeight,
+  };
+}
+
 export default {
   async fetch(
     request: Request,
@@ -103,6 +125,11 @@ export default {
     }
 
     try {
+      const misconfigured = responseIfBootstrapTrioIncomplete(env, corsHeaders);
+      if (misconfigured) {
+        return misconfigured;
+      }
+
       const x402Mode: X402Mode = env.X402_MODE ?? "verify-only";
       const x402FacilitatorUrl = env.X402_FACILITATOR_URL;
       const x402Network = env.X402_NETWORK;
@@ -187,62 +214,34 @@ export default {
         });
       }
 
-      if (segments[0] !== "logs") {
-        return problemResponse(
-          404,
-          "Not Found",
-          `The requested resource ${pathname} was not found`,
-          corsHeaders,
-        );
-      }
+      const massifHeight = parseInt(env.MASSIF_HEIGHT || "14", 10);
+      const bootstrapEnvForGrant = buildBootstrapEnvForRegisterGrant(
+        env,
+        massifHeight,
+      );
+      const queueEnvForSequencing = env.SEQUENCING_QUEUE
+        ? {
+            sequencingQueue: env.SEQUENCING_QUEUE,
+            shardCountStr: env.QUEUE_SHARD_COUNT,
+          }
+        : undefined;
 
-      // POST /logs/{logId}/grants — create grant (Plan 0001 Step 6, subplan 03/08)
-      if (
-        segments.length === 3 &&
-        segments[2] === "grants" &&
-        request.method === "POST"
-      ) {
-        const massifHeight = parseInt(env.MASSIF_HEIGHT || "14", 10);
-        const bootstrapEnv =
-          env.ROOT_LOG_ID &&
-          env.CUSTODIAN_URL?.trim() &&
-          env.CUSTODIAN_BOOTSTRAP_APP_TOKEN
-            ? {
-                rootLogId: env.ROOT_LOG_ID,
-                custodianUrl: env.CUSTODIAN_URL.trim(),
-                custodianBootstrapAppToken: env.CUSTODIAN_BOOTSTRAP_APP_TOKEN,
-                bootstrapAlg: env.BOOTSTRAP_ALG as
-                  | "ES256"
-                  | "KS256"
-                  | undefined,
-                r2Mmrs: env.R2_MMRS,
-                massifHeight,
-              }
-            : undefined;
-        const queueEnv = env.SEQUENCING_QUEUE
-          ? {
-              sequencingQueue: env.SEQUENCING_QUEUE,
-              shardCountStr: env.QUEUE_SHARD_COUNT,
-            }
-          : undefined;
-        const response = await registerGrant(request, segments[1], {
-          queueEnv,
-          bootstrapEnv,
-        });
-        const headers = new Headers(response.headers);
-        Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
-        return new Response(response.body, {
-          status: response.status,
-          statusText: response.statusText,
-          headers,
-        });
-      }
-
-      // Route group 1: /logs/{logId}/entries...
-      if (segments.length >= 3 && segments[2] === "entries") {
-        if (request.method === "POST") {
-          // POST /logs/{logId}/entries - Register new statement
-          // Grant-based auth is required (Step 5); x402 payment removed (Plan 0001 Step 4).
+      // POST /register/grants | /register/entries — separate namespace from GET /logs/…
+      if (segments[0] === "register" && request.method === "POST") {
+        if (segments.length === 2 && segments[1] === "grants") {
+          const response = await registerGrant(request, {
+            queueEnv: queueEnvForSequencing,
+            bootstrapEnv: bootstrapEnvForGrant,
+          });
+          const headers = new Headers(response.headers);
+          Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
+          return new Response(response.body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers,
+          });
+        }
+        if (segments.length === 2 && segments[1] === "entries") {
           const inclusionEnv = env.SEQUENCING_QUEUE
             ? {
                 sequencingQueue: env.SEQUENCING_QUEUE,
@@ -251,13 +250,11 @@ export default {
             : undefined;
           const response = await registerSignedStatement(
             request,
-            segments[1],
             env.SEQUENCING_QUEUE,
             env.QUEUE_SHARD_COUNT,
             undefined,
             inclusionEnv,
           );
-
           const headers = new Headers(response.headers);
           Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
 
@@ -267,7 +264,25 @@ export default {
             headers,
           });
         }
+        return problemResponse(
+          404,
+          "Not Found",
+          `The requested resource ${pathname} was not found`,
+          corsHeaders,
+        );
+      }
 
+      if (segments[0] !== "logs") {
+        return problemResponse(
+          404,
+          "Not Found",
+          `The requested resource ${pathname} was not found`,
+          corsHeaders,
+        );
+      }
+
+      // Route group 1: /logs/{logId}/entries... (GET only; POST statement is /register/entries)
+      if (segments.length >= 3 && segments[2] === "entries") {
         if (request.method !== "GET") {
           return problemResponse(
             405,
@@ -279,7 +294,6 @@ export default {
 
         // GET /logs/{logId}/entries/{contentHash} - Query registration status
         if (segments.length === 4) {
-          const massifHeight = parseInt(env.MASSIF_HEIGHT || "14", 10);
           const response = await queryRegistrationStatus(
             request,
             segments.slice(1),

@@ -1,4 +1,4 @@
-import { encodeCoseSign1Statement } from "@canopy/encoding";
+import { signCoseSign1Statement } from "@canopy/encoding";
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -8,14 +8,15 @@ import worker from "../src/index";
 import type { Env } from "../src/index";
 import { uuidToBytes } from "../src/grant";
 import type { Grant } from "../src/grant";
+import { custodianStatementKidFromXyGrantData } from "../src/grant/custodian-statement-kid.js";
 import { forestrieGrantAuthorizationHeader } from "./helpers/custodian-transparent-grant";
 
 // Cast the test env to our Env type.
 const testEnv = env as unknown as Env;
 
-const FLOW_GRANT_KID16 = new Uint8Array(16).fill(0xee);
-
 let flowGrantPriv: CryptoKey;
+/** ES256 public key as x‖y (64 bytes); matches {@link flowGrantPriv}. */
+let flowGrantData64: Uint8Array;
 
 beforeAll(async () => {
   const pair = (await crypto.subtle.generateKey(
@@ -24,6 +25,13 @@ beforeAll(async () => {
     ["sign", "verify"],
   )) as CryptoKeyPair;
   flowGrantPriv = pair.privateKey;
+  const raw = new Uint8Array(
+    await crypto.subtle.exportKey("raw", pair.publicKey),
+  );
+  if (raw.length !== 65 || raw[0] !== 0x04) {
+    throw new Error("expected uncompressed P-256 raw public key");
+  }
+  flowGrantData64 = raw.subarray(1, 65);
 });
 
 describe("SCRAPI flow", () => {
@@ -60,10 +68,10 @@ describe("SCRAPI flow", () => {
     );
   });
 
-  it("POST /logs/{logId}/entries without Forestrie-Grant returns 401", async () => {
+  it("POST /register/entries without Forestrie-Grant returns 401", async () => {
     const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
 
-    const request = new Request(`http://localhost/logs/${logId}/entries`, {
+    const request = new Request(`http://localhost/register/entries`, {
       method: "POST",
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',
@@ -87,10 +95,10 @@ describe("SCRAPI flow", () => {
     expect(decoded.reason).toBe("grant_required");
   });
 
-  it("POST /logs/{logId}/entries with invalid grant value returns 400", async () => {
+  it("POST /register/entries with invalid grant value returns 400", async () => {
     const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
 
-    const request = new Request(`http://localhost/logs/${logId}/entries`, {
+    const request = new Request(`http://localhost/register/entries`, {
       method: "POST",
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',
@@ -113,7 +121,8 @@ describe("SCRAPI flow", () => {
 
   it("POST with valid grant and matching signer proceeds to enqueue (303 or 503)", async () => {
     const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
-    const signerKid = new Uint8Array([0x99, 0x88, 0x77]);
+    const statementKid = flowGrantData64.subarray(0, 32);
+    const kid16 = custodianStatementKidFromXyGrantData(flowGrantData64);
     const idtimestampBytes = new Uint8Array(8).fill(42);
 
     const flags = new Uint8Array(8);
@@ -125,24 +134,24 @@ describe("SCRAPI flow", () => {
       grant: flags,
       maxHeight: 0,
       minGrowth: 0,
-      grantData: new Uint8Array(signerKid),
+      grantData: flowGrantData64,
     };
     // Plan 0014: Forestrie-Grant uses Custodian COSE profile (digest payload + -65538).
     const authHeader = await forestrieGrantAuthorizationHeader(
       grant,
       flowGrantPriv,
-      FLOW_GRANT_KID16,
+      kid16,
       idtimestampBytes,
     );
 
     const payload = new Uint8Array([0x48, 0x65, 0x6c, 0x6c, 0x6f]); // "Hello"
-    const coseSign1 = encodeCoseSign1Statement(
+    const coseSign1 = await signCoseSign1Statement(
       payload,
-      signerKid,
-      new Uint8Array(64),
+      statementKid,
+      flowGrantPriv,
     );
 
-    const request = new Request(`http://localhost/logs/${logId}/entries`, {
+    const request = new Request(`http://localhost/register/entries`, {
       method: "POST",
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',

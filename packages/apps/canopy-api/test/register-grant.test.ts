@@ -32,10 +32,10 @@ async function transparentStatementHeader(grant: Grant): Promise<string> {
   return forestrieGrantAuthorizationHeader(grant, testPriv, TEST_KID);
 }
 
-describe("POST /logs/{logId}/grants", () => {
+describe("POST /register/grants and POST /register/entries", () => {
   const logId = "550e8400-e29b-41d4-a716-446655440000";
 
-  it("returns 503 when grant sequencing not configured (no SEQUENCING_QUEUE)", async () => {
+  it("returns 503 when grant sequencing not configured", async () => {
     const authGrant: Grant = {
       logId: uuidToBytes(logId),
       ownerLogId: uuidToBytes("660e8400-e29b-41d4-a716-446655440001"),
@@ -52,7 +52,7 @@ describe("POST /logs/{logId}/grants", () => {
       grantData: new Uint8Array([]),
     });
 
-    const request = new Request(`http://localhost/logs/${logId}/grants`, {
+    const request = new Request(`http://localhost/register/grants`, {
       method: "POST",
       headers: {
         "Content-Type": "application/cbor",
@@ -73,8 +73,56 @@ describe("POST /logs/{logId}/grants", () => {
     expect(decoded.detail).toContain("Grant sequencing not configured");
   });
 
-  it("returns 401 without Authorization: Forestrie-Grant for POST /entries", async () => {
+  it("returns 404 for POST /logs/{logId}/grants", async () => {
+    const request = new Request(`http://localhost/logs/${logId}/grants`, {
+      method: "POST",
+    });
+    const response = await worker.fetch(
+      request,
+      testEnv,
+      {} as ExecutionContext,
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 405 for POST /logs/{logId}/entries", async () => {
     const request = new Request(`http://localhost/logs/${logId}/entries`, {
+      method: "POST",
+    });
+    const response = await worker.fetch(
+      request,
+      testEnv,
+      {} as ExecutionContext,
+    );
+    expect(response.status).toBe(405);
+  });
+
+  it("returns 404 for POST /logs/grants (use /register/grants)", async () => {
+    const request = new Request(`http://localhost/logs/grants`, {
+      method: "POST",
+    });
+    const response = await worker.fetch(
+      request,
+      testEnv,
+      {} as ExecutionContext,
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 404 for POST /logs/entries (use /register/entries)", async () => {
+    const request = new Request(`http://localhost/logs/entries`, {
+      method: "POST",
+    });
+    const response = await worker.fetch(
+      request,
+      testEnv,
+      {} as ExecutionContext,
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it("returns 401 without Authorization: Forestrie-Grant for POST /register/entries", async () => {
+    const request = new Request(`http://localhost/register/entries`, {
       method: "POST",
       headers: { "Content-Type": "application/cbor" },
       body: encodeCbor({ signedStatement: new Uint8Array(100) }),
@@ -87,14 +135,14 @@ describe("POST /logs/{logId}/grants", () => {
     expect(response.status).toBe(401);
   });
 
-  it("returns 401 without Authorization: Forestrie-Grant", async () => {
+  it("returns 401 without Authorization: Forestrie-Grant for POST /register/grants", async () => {
     const bodyBytes = encodeGrantRequest({
       logId: uuidToBytes(logId),
       ownerLogId: uuidToBytes("660e8400-e29b-41d4-a716-446655440001"),
       grant: new Uint8Array(8),
       grantData: new Uint8Array([]),
     });
-    const request = new Request(`http://localhost/logs/${logId}/grants`, {
+    const request = new Request(`http://localhost/register/grants`, {
       method: "POST",
       headers: { "Content-Type": "application/cbor" },
       body: bodyBytes,

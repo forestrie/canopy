@@ -9,5 +9,5 @@ import type { Grant } from "./grant.js";
 /** Alias: transparent-statement payload / decoded grant map. */
 export type GrantAssembly = Grant;
 
-/** POST /logs/{logId}/grants body (grant content keys 1–6). */
+/** POST /register/grants body (grant content keys 1–6). */
 export type GrantRequest = Grant;

@@ -87,7 +87,7 @@ poolOptions: {
 #### d) Updated Routing (`src/index.ts`)
 
 - Separated POST and GET routes:
-  - `POST /logs/{logId}/entries` → `registerSignedStatement()`
+  - `POST /register/entries` → `registerSignedStatement()`
   - `GET /logs/{logId}/entries/{entryId}` → `resolveReceipt()`
 - Fixed import paths (using `cbor-response.ts`, not `cborresponse.ts`)
 

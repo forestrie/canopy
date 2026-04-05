@@ -1,10 +1,41 @@
 /**
- * Grant registration (POST /logs/{logId}/grants). Enqueues a caller-supplied grant for
- * sequencing; no server-side grant storage.
+ * Grant registration (`POST /register/grants`). Enqueues a caller-supplied grant for sequencing;
+ * no server-side grant storage.
+ *
+ * ## Logs (T vs O) and hierarchy
+ *
+ * - **Target log `T`** — `grant.logId`: the log the grant applies to (the child log when issuing
+ *   a child grant, or the root when bootstrapping).
+ * - **Owner / authority log `O`** — `grant.ownerLogId`: the parent authority log that sequences
+ *   grants for this operation. The sequencing queue shard is keyed by **`O`** (last 16 bytes),
+ *   not `T`. For a root bootstrap grant, `O === T`; for a child-first grant, `O` is the parent
+ *   auth log and `T` is the new child log.
+ *
+ * ## Pairing with {@link registerSignedStatement}
+ *
+ * **register-grant** admits *new* grants into the transparency system. When the relevant log (or,
+ * for child-first grants, the **parent** log) still has **no MMRS tile**, a SCITT receipt cannot
+ * exist yet, so {@link grantAuthorize} cannot be used. This module implements **bootstrap /
+ * first-grant** verification instead (Custodian COSE for root; statement-signer binding in
+ * `grantData` for child auth/data logs once the parent is MMRS-initialized). After the log has
+ * MMRS state, **every** accepted grant goes through {@link grantAuthorize} (receipt inclusion) —
+ * the same primitive **register-signed-statement** always uses for grant auth. In other words:
+ * hierarchical logs are opened with register-grant; ongoing minted grants and statement append
+ * both prove authority via completed, included grants.
+ *
+ * ## Auth-critical branches (when `bootstrapEnv` is set)
+ *
+ * Uninitialized **target** `T`: root bootstrap (`O === T`), child **auth** first grant, or child
+ * **data** first grant — each with explicit COSE checks. If `T` is uninitialized and none of those
+ * shapes match → 403. Initialized `T` → {@link grantAuthorize} then enqueue.
  */
 
 import { grantDataToBytes } from "../grant/grant-data.js";
-import { hasAuthLogClass, hasCreateAndExtend } from "../grant/grant-flags.js";
+import {
+  hasAuthLogClass,
+  hasCreateAndExtend,
+  hasDataLogClass,
+} from "../grant/grant-flags.js";
 import { grantCommitmentHashFromGrant } from "../grant/grant-commitment.js";
 import type { Grant, GrantResult } from "../grant/types.js";
 import { bytesToUuid } from "../grant/uuid-bytes.js";
@@ -37,7 +68,8 @@ export interface RegisterGrantEnv {
   queueEnv?: LogShardEnv;
   /**
    * Subplan 08 / Plan 0014: Custodian bootstrap verification + MMRS "log exists" check
-   * (first massif tile in R2_MMRS).
+   * (first massif tile in R2_MMRS). From index on validated workers; absent only in pool tests
+   * with incomplete bindings.
    */
   bootstrapEnv?: {
     rootLogId: string;
@@ -50,59 +82,26 @@ export interface RegisterGrantEnv {
 }
 
 /**
- * Handles POST /logs/{logId}/grants. Enqueues the caller-supplied grant for sequencing so it
- * becomes a leaf in the authority log identified by grant.ownerLogId. The grant is always
- * supplied in the request via Authorization: Forestrie-Grant <base64> (a SCITT transparent
- * statement; payload is grant content, idtimestamp and receipt in headers). No server-side
- * grant storage: the caller obtains idtimestamp and receipt after sequencing via
- * query-registration-status (303 to …/entries/{entryId}/receipt) and resolve-receipt.
+ * Resolves `Authorization: Forestrie-Grant`, then chooses **bootstrap / first-grant** vs
+ * **receipt** authorization depending on MMRS initialization and grant shape (see file comment).
+ * On success, enqueues the grant commitment on the **`ownerLogId`** queue shard.
  *
- * Parameters:
- * - request: must include Authorization: Forestrie-Grant with a valid transparent statement.
- * - logId: log ID from the URL; grant.logId must match (target log of the grant).
- * - env.queueEnv: when set, enqueue is performed (same DO namespace as register-signed-statement).
- * - env.bootstrapEnv: when set with queueEnv, enables bootstrap vs receipt-based branching (MMRS + Custodian).
- *
- * Bootstrapping (when both queueEnv and bootstrapEnv are set):
- * 1. Check whether the log has sequenced MMRS data (first massif tile in R2_MMRS). Small races
- *    vs the first write are acceptable; overlapping bootstrap-shaped grants are treated as idempotent.
- * 2. If the log is not initialized and the supplied grant is the bootstrap grant (ownerLogId
- *    equals logId, grant has GF_CREATE|GF_EXTEND, and the transparent statement’s signature
- *    verifies with the bootstrap public key from Custodian (RFC 8152 COSE Sign1)), accept it without
- *    inclusion check and enqueue. This is the first grant for the root log.
- * 3. **Child auth first grant (ARC-0017):** if the URL logId is **uninitialized** but **differs** from
- *    `ownerLogId` (child target log), the **parent** `ownerLogId` log is **initialized**, flags are
- *    GF_CREATE|GF_EXTEND + GF_AUTH_LOG, `grantData` is 64-byte ES256 x‖y, and the COSE signature
- *    verifies against that subject key, enqueue without receipt (same pattern as bootstrap: signer
- *    matches `grantData`).
- * 4. If the log is not initialized and neither (2) nor (3) applies, return 403.
- * 5. If the log is initialized (or bootstrapEnv is unset), require receipt-based inclusion
- *    ({@link grantAuthorize}): idtimestamp, receipt in the transparent statement, and MMR proof
- *    must verify for `ownerLogId`’s authority log; then enqueue.
- *
- * **Queue without bootstrapEnv:** Same as (5): always {@link grantAuthorize} before enqueue.
- * There is no separate “queue-only, no inclusion” mode.
- *
- * When queueEnv is unset, returns 503 (grant sequencing not configured).
- *
- * Agent References: Plan 0001 Step 6; Plan 0004 Subplan 03 (grant-sequencing), Subplan 08
- * (grant-first bootstrap, receipt-based inclusion); Plan 0005 (Forestrie-Grant only);
- * Plan 0008 (no grant storage, no X-Grant-Location).
+ * @see RegisterGrantEnv for bootstrap vs receipt paths.
  */
 export async function registerGrant(
   request: Request,
-  logId: string,
   env: RegisterGrantEnv,
 ): Promise<Response> {
-  // --- Resolve auth grant (Authorization: Forestrie-Grant only, Plan 0005) ---
   const authResult = resolveAuth(request);
   if (authResult instanceof Response) return authResult;
   const { grantResult } = authResult;
   const grant = grantResult.grant;
 
-  // --- Grant must target this log (URL logId matches grant.logId) ---
-  if (!logIdBytesMatchUrl(grant, logId)) {
-    return ClientErrors.badRequest("logId in grant must match URL logId");
+  let targetLogUuid: string;
+  try {
+    targetLogUuid = bytesToUuid(grant.logId);
+  } catch {
+    return ClientErrors.badRequest("Invalid logId in grant");
   }
 
   if (!env.queueEnv) {
@@ -111,12 +110,14 @@ export async function registerGrant(
     );
   }
 
-  // --- Subplan 08: optional bootstrap branch (requires bootstrapEnv + R2_MMRS first massif check) ---
   if (env.bootstrapEnv) {
+    // MMRS on T decides whether we can require an inclusion receipt (grantAuthorize) or must
+    // use one of the pre-receipt bootstrap / child-first paths below. Child-first paths also
+    // require the parent O to be initialized so the chain of authority is anchored.
     let logInitialized: boolean;
     try {
       logInitialized = await isLogInitializedMmrs(
-        logId,
+        targetLogUuid,
         env.bootstrapEnv.r2Mmrs,
         env.bootstrapEnv.massifHeight,
       );
@@ -129,10 +130,10 @@ export async function registerGrant(
       );
     }
 
-    // Bootstrap (§3.3): uninitialized root log, first grant — not in MMR yet, so no receipt.
+    // Root authority log: first grant on T where O===T — Custodian :bootstrap key verifies COSE.
     if (
       !logInitialized &&
-      ownerLogIdEqualsLogId(grant, logId) &&
+      ownerMatchesTargetUuid(grant, targetLogUuid) &&
       hasCreateAndExtend(grant.grant as Uint8Array) &&
       grantResult.bytes
     ) {
@@ -183,7 +184,7 @@ export async function registerGrant(
             "Bootstrap grant COSE signature did not verify against Custodian :bootstrap public key (ES256).",
           );
         }
-        return await enqueueAndStoreGrant(request, grant, env, logId);
+        return await enqueueAndStoreGrant(request, grant, env, targetLogUuid);
       } catch (e) {
         console.warn(
           "Bootstrap branch (verify ok, enqueue or key fetch failed)",
@@ -197,11 +198,10 @@ export async function registerGrant(
       }
     }
 
-    // Child auth first grant (ARC-0017 §7.2 / §7.5): grant.logId = child C (no MMRS yet),
-    // grant.ownerLogId = parent R (initialized). Signature must match grantData (subject ES256 x||y).
+    // Child *auth* log first grant: O!==T, auth-log class — parent O must be MMRS-hot; COSE vs grantData (x||y).
     if (
       !logInitialized &&
-      !ownerLogIdEqualsLogId(grant, logId) &&
+      !ownerMatchesTargetUuid(grant, targetLogUuid) &&
       hasCreateAndExtend(grant.grant as Uint8Array) &&
       hasAuthLogClass(grant.grant as Uint8Array) &&
       grantResult.bytes
@@ -252,13 +252,79 @@ export async function registerGrant(
         );
       }
       try {
-        return await enqueueAndStoreGrant(request, grant, env, logId);
+        return await enqueueAndStoreGrant(request, grant, env, targetLogUuid);
       } catch (e) {
         console.warn("Child auth first grant (verify ok, enqueue failed)", e);
         return ServerErrors.serviceUnavailable(
           e instanceof Error
             ? e.message
             : "Grant sequencing failed after child auth grant verification",
+        );
+      }
+    }
+
+    // Child *data* log first grant: O!==T, data-log flags only — same parent/MMRS and grantData verify pattern as auth child.
+    if (
+      !logInitialized &&
+      !ownerMatchesTargetUuid(grant, targetLogUuid) &&
+      hasCreateAndExtend(grant.grant as Uint8Array) &&
+      hasDataLogClass(grant.grant as Uint8Array) &&
+      !hasAuthLogClass(grant.grant as Uint8Array) &&
+      grantResult.bytes
+    ) {
+      const gd = grantDataToBytes(grant.grantData);
+      if (gd.length !== 64) {
+        return ClientErrors.forbidden(
+          "Child data first grant requires 64-byte ES256 grantData (x||y).",
+        );
+      }
+      let parentUuid: string;
+      try {
+        parentUuid = bytesToUuid(grant.ownerLogId);
+      } catch {
+        return ClientErrors.badRequest("Invalid ownerLogId in grant");
+      }
+      let parentInitialized: boolean;
+      try {
+        parentInitialized = await isLogInitializedMmrs(
+          parentUuid,
+          env.bootstrapEnv.r2Mmrs,
+          env.bootstrapEnv.massifHeight,
+        );
+      } catch (e) {
+        console.warn("isLogInitializedMmrs (parent, child data) failed", e);
+        return ServerErrors.serviceUnavailable(
+          e instanceof Error
+            ? e.message
+            : "Failed to read merklelog storage for parent initialization check",
+        );
+      }
+      if (!parentInitialized) {
+        return ClientErrors.forbidden(
+          "Authority log has no MMRS data yet; initialize the owner log before child data grants.",
+        );
+      }
+      const ok = await verifyCustodianEs256GrantSign1WithGrantDataXy(
+        grantResult.bytes,
+        gd,
+        {
+          logFailures: true,
+          logPrefix: "register-grant-child-data-first",
+        },
+      );
+      if (!ok) {
+        return ClientErrors.forbidden(
+          "Child data first grant: COSE signature did not verify against grantData public key (ES256).",
+        );
+      }
+      try {
+        return await enqueueAndStoreGrant(request, grant, env, targetLogUuid);
+      } catch (e) {
+        console.warn("Child data first grant (verify ok, enqueue failed)", e);
+        return ServerErrors.serviceUnavailable(
+          e instanceof Error
+            ? e.message
+            : "Grant sequencing failed after child data grant verification",
         );
       }
     }
@@ -270,23 +336,19 @@ export async function registerGrant(
     }
   }
 
-  // --- Receipt-based inclusion for every other case (initialized log, or no bootstrapEnv) ---
+  // Log (T) has MMRS: grant must carry a valid receipt (same bar as register-signed-statement).
   const authError = await grantAuthorize(grantResult, {
     inclusionEnv: env.queueEnv as InclusionEnv,
   });
   if (authError) return authError;
-  return await enqueueAndStoreGrant(request, grant, env, logId);
+  return await enqueueAndStoreGrant(request, grant, env, targetLogUuid);
 }
 
-/**
- * Enqueue grant to sequencing DO (Subplan 03, Plan 0008). No grant storage; return 303 to status URL.
- * Used by bootstrap and non-bootstrap paths when queue env is set.
- */
 async function enqueueAndStoreGrant(
   request: Request,
   grant: Grant,
   env: RegisterGrantEnv,
-  logId: string,
+  targetLogUuid: string,
 ): Promise<Response> {
   const inner = await grantCommitmentHashFromGrant(grant);
   const ownerLogId =
@@ -315,7 +377,7 @@ async function enqueueAndStoreGrant(
   console.log("Grant enqueued for sequencing", {
     statusUrlPath: result.statusUrlPath,
     alreadySequenced: result.alreadySequenced,
-    logId,
+    targetLogUuid,
   });
 
   return seeOtherResponse(statusUrl, 5);
@@ -331,7 +393,6 @@ async function sha256HexPrefix8(data: BufferSource): Promise<string> {
   return s;
 }
 
-/** Plan 0005: grant from Authorization: Forestrie-Grant only. */
 function resolveAuth(
   request: Request,
 ): { grantResult: GrantResult } | Response {
@@ -340,17 +401,10 @@ function resolveAuth(
   return { grantResult: result };
 }
 
-function logIdBytesMatchUrl(grant: Grant, logId: string): boolean {
+/** True when authority log equals target log (root bootstrap shape). */
+function ownerMatchesTargetUuid(grant: Grant, targetUuid: string): boolean {
   try {
-    return bytesToUuid(grant.logId) === logId;
-  } catch {
-    return false;
-  }
-}
-
-function ownerLogIdEqualsLogId(grant: Grant, logId: string): boolean {
-  try {
-    return bytesToUuid(grant.ownerLogId) === logId;
+    return bytesToUuid(grant.ownerLogId) === targetUuid;
   } catch {
     return false;
   }

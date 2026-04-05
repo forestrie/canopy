@@ -88,7 +88,7 @@ describe("x402 verify-and-settle mode", () => {
       X402_FACILITATOR_URL: undefined as any,
     };
 
-    const request = new Request(`http://localhost/logs/${logId}/entries`, {
+    const request = new Request(`http://localhost/register/entries`, {
       method: "POST",
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',
@@ -125,7 +125,7 @@ describe("x402 verify-and-settle mode", () => {
       X402_FACILITATOR_URL: "https://example.invalid/facilitator",
     };
 
-    const request = new Request(`http://localhost/logs/${logId}/entries`, {
+    const request = new Request(`http://localhost/register/entries`, {
       method: "POST",
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',
@@ -161,7 +161,7 @@ describe("x402 verify-and-settle mode", () => {
       isValid: true,
     });
 
-    const request = new Request(`http://localhost/logs/${logId}/entries`, {
+    const request = new Request(`http://localhost/register/entries`, {
       method: "POST",
       headers: {
         "content-type": 'application/cose; cose-type="cose-sign1"',

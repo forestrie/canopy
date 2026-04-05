@@ -1,13 +1,18 @@
 /**
  * Grant auth primitives: get grant from request (Authorization: Forestrie-Grant) and
- * authorize (inclusion/receipt verification). Plan 0005: caller supplies grant as
- * base64-encoded SCITT transparent statement only; no fetch; receipt from artifact only.
+ * authorize (receipt MMR + {@link verifyGrantIncluded} on **`grant.ownerLogId`** when
+ * `inclusionEnv` is passed; the HTTP worker passes it whenever **`SEQUENCING_QUEUE`** is bound). Plan 0005:
+ * caller supplies transparent statement only; receipt from artifact. Optional env exists for direct tests
+ * without queue bindings — not a public client concern.
  */
 
 import type { GrantResult } from "../grant/types.js";
 import { decodeTransparentStatement } from "../grant/transparent-statement.js";
 import { verifyReceiptInclusionFromParsed } from "../grant/receipt-verify.js";
-import type { InclusionEnv } from "./verify-grant-inclusion.js";
+import {
+  verifyGrantIncluded,
+  type InclusionEnv,
+} from "./verify-grant-inclusion.js";
 import { cborResponse } from "./cbor-response";
 import { ClientErrors } from "./problem-details";
 import { CBOR_CONTENT_TYPES } from "./cbor-content-types";
@@ -79,7 +84,8 @@ export function getGrantFromRequest(request: Request): GrantResult | Response {
  * Verify that the grant receipt is valid when inclusionEnv is set (Plan 0005).
  * Uses grantResult.grant and grantResult.receipt only; no request; no fetch.
  *
- * @returns null if valid (or when inclusionEnv is not set); otherwise a Response (403) to return.
+ * @returns null if valid (or when inclusionEnv is omitted — callers such as Vitest without queue stubs);
+ * otherwise a Response (403) to return.
  */
 export async function grantAuthorize(
   grantResult: GrantResult,
@@ -111,5 +117,13 @@ export async function grantAuthorize(
       "Grant receipt verification failed (inclusion proof).",
     );
   }
+
+  const onOwnerQueue = await verifyGrantIncluded(grant, env.inclusionEnv);
+  if (!onOwnerQueue) {
+    return ClientErrors.forbidden(
+      "Grant commitment is not recorded on the owner log sequencing queue.",
+    );
+  }
+
   return null;
 }
