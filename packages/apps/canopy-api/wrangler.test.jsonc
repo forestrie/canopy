@@ -4,9 +4,8 @@
   "main": "./src/index.ts",
   "compatibility_date": "2024-10-01",
   "compatibility_flags": ["nodejs_compat_v2"],
-  // NODE_ENV "test" opts out of the fetch-time Custodian bootstrap check
-  // (CUSTODIAN_URL, CUSTODIAN_BOOTSTRAP_APP_TOKEN) so Vitest + pool workers can
-  // run without those vars; production and wrangler dev still require them.
+  // NODE_ENV "test" opts out of fetch-time non-pool Custodian URL / queue / receipt checks
+  // so Vitest + pool workers can run without those vars; production still requires them.
   "vars": {
     "CANOPY_ID": "canopy-dev-1",
     "FOREST_PROJECT_ID": "forest-dev-1",

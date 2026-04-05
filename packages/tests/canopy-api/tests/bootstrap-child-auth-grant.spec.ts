@@ -46,7 +46,7 @@ test.describe("Bootstrap root + child auth grant e2e", () => {
     const childLogId = randomUUID();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
-    const mintGrantB64 = await mintBootstrapGrantPlaywright(
+    const { grantBase64: mintGrantB64 } = await mintBootstrapGrantPlaywright(
       unauthorizedRequest,
       rootLogId,
     );

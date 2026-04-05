@@ -1,6 +1,6 @@
 /**
- * Non-pool workers must have Custodian bootstrap trio, SEQUENCING_QUEUE, and
- * CUSTODIAN_APP_TOKEN (and must not set the pool-only receipt test hex).
+ * Non-pool workers must have CUSTODIAN_URL, SEQUENCING_QUEUE, and CUSTODIAN_APP_TOKEN
+ * (and must not set the pool-only receipt test hex).
  * Vitest pool uses NODE_ENV "test" and skips these checks — see AGENTS.md.
  */
 
@@ -25,18 +25,16 @@ const fakeQueue = {} as DurableObjectNamespace;
 const devLikeBase: Partial<Env> = {
   NODE_ENV: "development",
   CUSTODIAN_URL: "https://custodian.example/v1",
-  CUSTODIAN_BOOTSTRAP_APP_TOKEN: "bootstrap-token",
   CUSTODIAN_APP_TOKEN: "app-token",
   SEQUENCING_QUEUE: fakeQueue,
 };
 
-describe("Bootstrap duo validation (non-pool NODE_ENV)", () => {
+describe("CUSTODIAN_URL validation (non-pool NODE_ENV)", () => {
   it("returns 503 on /api/health when CUSTODIAN_URL is missing", async () => {
     const badEnv: Env = {
       ...poolEnv,
       NODE_ENV: "development",
       CUSTODIAN_URL: undefined,
-      CUSTODIAN_BOOTSTRAP_APP_TOKEN: "token",
       CUSTODIAN_APP_TOKEN: "app",
       SEQUENCING_QUEUE: fakeQueue,
     };

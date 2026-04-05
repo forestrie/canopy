@@ -1,6 +1,6 @@
 /**
  * Custodian POST /api/keys/{keyId}/sign with raw payload bytes (e2e).
- * Shared contract for :bootstrap (bootstrap token) and custody keys (app token).
+ * Bearer token must match the key class (e.g. `CUSTODIAN_APP_TOKEN` for custody keys).
  */
 
 import { encode as encodeCbor } from "cbor-x";

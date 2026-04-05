@@ -18,7 +18,7 @@ function workerBootstrapOrDeployment503(
   const haystack = `${problem?.title ?? ""} ${problem?.detail ?? ""}`;
   if (/not configured/i.test(haystack)) return true;
   if (!/misconfigured/i.test(haystack)) return false;
-  return /CUSTODIAN_APP_TOKEN|SEQUENCING_QUEUE|CURATOR_ADMIN_TOKEN|CUSTODIAN_URL|CUSTODIAN_BOOTSTRAP|FORESTRIE_RECEIPT_VERIFY_TEST/i.test(
+  return /CUSTODIAN_APP_TOKEN|SEQUENCING_QUEUE|CURATOR_ADMIN_TOKEN|CUSTODIAN_URL|FORESTRIE_RECEIPT_VERIFY_TEST/i.test(
     haystack,
   );
 }
@@ -38,9 +38,8 @@ export function skipOrThrowIfBootstrapMintUnconfigured(
 
   const msg =
     `Worker unavailable or misconfigured (${problem?.detail ?? problem?.title ?? "503"}). ` +
-    `Deploy canopy-api with CUSTODIAN_URL, CUSTODIAN_BOOTSTRAP_APP_TOKEN, ` +
-    `CUSTODIAN_APP_TOKEN, and SEQUENCING_QUEUE. Legacy DELEGATION_SIGNER_* ` +
-    `workers must be redeployed.`;
+    `Deploy canopy-api with CUSTODIAN_URL, CUSTODIAN_APP_TOKEN, and SEQUENCING_QUEUE. ` +
+    `Legacy DELEGATION_SIGNER_* workers must be redeployed.`;
 
   if (strict) {
     throw new Error(msg);

@@ -60,11 +60,10 @@ export function checkRequestEnv(
   return responseIfReceiptVerifierMisconfigured(env, corsHeaders);
 }
 
-/** Subset of Env needed to validate Custodian bootstrap trio for grant paths. */
+/** Subset of Env needed to validate Custodian URL for grant paths (receipt path uses APP_TOKEN separately). */
 export interface CanopyBootstrapTrioEnv {
   NODE_ENV: string;
   CUSTODIAN_URL?: string;
-  CUSTODIAN_BOOTSTRAP_APP_TOKEN?: string;
 }
 
 /** Env slice for mandatory sequencing queue outside Vitest pool workers. */
@@ -130,9 +129,8 @@ export function responseIfReceiptVerifierMisconfigured(
 }
 
 /**
- * Non-pool workers must have CUSTODIAN_URL (non-empty) and
- * CUSTODIAN_BOOTSTRAP_APP_TOKEN. Bootstrap log identity is taken from URL paths
- * and forest genesis, not from ROOT_LOG_ID.
+ * Non-pool workers must have CUSTODIAN_URL (non-empty). Bootstrap grants are
+ * verified against forest genesis + grantData; per-log Custodian keys use APP_TOKEN on receipt paths.
  */
 export function responseIfBootstrapTrioIncomplete(
   env: CanopyBootstrapTrioEnv,
@@ -141,15 +139,10 @@ export function responseIfBootstrapTrioIncomplete(
   if (isCanopyApiPoolTestMode(env)) {
     return null;
   }
-  const missing: string[] = [];
-  if (!env.CUSTODIAN_URL?.trim()) missing.push("CUSTODIAN_URL");
-  if (!env.CUSTODIAN_BOOTSTRAP_APP_TOKEN?.trim()) {
-    missing.push("CUSTODIAN_BOOTSTRAP_APP_TOKEN");
-  }
-  if (missing.length === 0) return null;
+  if (env.CUSTODIAN_URL?.trim()) return null;
 
   return problemResponse(503, "Service Unavailable", "about:blank", {
-    detail: `Canopy API is misconfigured (missing ${missing.join(", ")}).`,
+    detail: "Canopy API is misconfigured (missing CUSTODIAN_URL).",
     headers: corsHeaders,
   });
 }

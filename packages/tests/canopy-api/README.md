@@ -25,13 +25,13 @@ That installs Playwright/Chromium and runs **`task vars:doppler:{{ENV}}`** so **
 
 ### Bootstrap grant (mint + register-grant)
 
-`tests/grants-bootstrap.spec.ts` exercises **runner-side** bootstrap mint (Genesis **`POST /api/forest/{log-id}/genesis`** with **`CURATOR_ADMIN_TOKEN`**, then Custodian `:bootstrap` sign) and **`POST /register/{bootstrap-logid}/grants`** on the **bootstrap branch** (303 See Other with a registration-status `Location` under `/logs/{bootstrap}/{owner}/entries/…`).
+`tests/grants-bootstrap.spec.ts` exercises **runner-side** bootstrap mint (per-root **`POST /api/keys`** with **`CUSTODIAN_APP_TOKEN`**, genesis **`POST /api/forest/{log-id}/genesis`** with **`CURATOR_ADMIN_TOKEN`**, then custody ES256 sign) and **`POST /register/{bootstrap-logid}/grants`** on the **bootstrap branch** (303 See Other with a registration-status `Location` under `/logs/{bootstrap}/{owner}/entries/…`).
 
 The **deployed** worker needs **`R2_MMRS`**, sequencing queue bindings, and `bootstrapEnv` + `queueEnv`. Specs pick a **fresh UUID** per run so the target log has no MMRS massif yet for the first register-grant (303). Tests that poll sequencing and resolve receipts need **forestrie-ingress** on the same SequencingQueue — see **`AGENTS.md`**. If you only have **canopy-api-dev** without ingress, set **`E2E_SKIP_SEQUENCING_POLL=1`** to skip those tests.
 
-**First signed entry** (`tests/bootstrap-log-first-entry.spec.ts`): same as above for mint → register → receipt, then runner **`POST /api/keys/:bootstrap/sign`** and **`POST /register/{bootstrap}/entries`**. Missing **`CURATOR_ADMIN_TOKEN`** or Custodian bootstrap vars causes **hard failure** at mint (`assertBootstrapMintE2eEnv`); only **`E2E_SKIP_SEQUENCING_POLL=1`** skips work when ingress is absent.
+**First signed entry** (`tests/bootstrap-log-first-entry.spec.ts`): same as above for mint → register → receipt, then runner **`POST /api/keys/{root-key}/sign`** (same key as mint) and **`POST /register/{bootstrap}/entries`**. Missing **`CURATOR_ADMIN_TOKEN`** or **`CUSTODIAN_APP_TOKEN`** causes **hard failure** at mint (`assertBootstrapMintE2eEnv`); only **`E2E_SKIP_SEQUENCING_POLL=1`** skips work when ingress is absent.
 
-**Child auth grant** (`tests/bootstrap-child-auth-grant.spec.ts`): root bootstrap mint (same required env as above) + custody **`CUSTODIAN_APP_TOKEN`**. Missing custody env still **skips** via `skipWithoutCustodianCustody`. Helpers: `tests/utils/custodian-custody-grant.ts`.
+**Child auth grant** (`tests/bootstrap-child-auth-grant.spec.ts`): root bootstrap mint (same **`CUSTODIAN_APP_TOKEN`** as above) plus an additional custody key for the child grant. Helpers: `tests/utils/custodian-custody-grant.ts`.
 
 ## Environment variables
 
@@ -44,7 +44,7 @@ Resolved in **`playwright.config.ts`** from **repo-root `.env`** (after `task va
 
 **Bootstrap grant e2e** (`grants-bootstrap.spec.ts` and related specs):
 
-- **Runner:** **`CURATOR_ADMIN_TOKEN`** (genesis), **`CUSTODIAN_URL`**, **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`**. The **Worker** must still expose SCRAPI **`/register/{bootstrap}/…`** with queue/MMRS configured.
+- **Runner:** **`CURATOR_ADMIN_TOKEN`** (genesis), **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`** (create key + sign). The **Worker** must still expose SCRAPI **`/register/{bootstrap}/…`** with queue/MMRS configured.
 - If bootstrap mint env is missing, tests **fail** immediately with a clear error (no silent skip).
 - **`E2E_SKIP_SEQUENCING_POLL=1`**: skip only tests that poll sequencing / receipt when ingress is not running against the same dev stack.
 

@@ -20,13 +20,13 @@ import {
 } from "./utils/problem-details";
 
 /**
- * End-to-end against a **deployed** worker: curator genesis + Custodian bootstrap
- * mint and register-grant on the **bootstrap branch** (uninitialized root log).
+ * End-to-end against a **deployed** worker: per-root Custodian custody key + curator genesis +
+ * ES256 mint and register-grant on the **bootstrap branch** (uninitialized root log).
  *
- * This suite does **not** call Custodian `POST /api/keys` (no per-log custody key
- * creation or `selfLogId`); mint uses `:bootstrap` + `POST /api/forest/.../genesis`.
+ * Mint provisions a **per-root** custody ES256 key (`POST /api/keys` with `selfLogId`
+ * = log id) then `POST /api/forest/.../genesis` and signs the grant with that key.
  *
- * Requires: `CURATOR_ADMIN_TOKEN`, `CUSTODIAN_URL`, `CUSTODIAN_BOOTSTRAP_APP_TOKEN`,
+ * Requires: `CURATOR_ADMIN_TOKEN`, `CUSTODIAN_URL`, `CUSTODIAN_APP_TOKEN`,
  * `SEQUENCING_QUEUE`, `R2_MMRS`, `bootstrapEnv` + `queueEnv` in the worker, and **no**
  * first massif tile for the target log in MMRS storage (otherwise register-grant
  * expects receipt-based auth and this test will not get 303).
@@ -43,7 +43,7 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
     unauthorizedRequest,
   }) => {
     const logId = randomUUID();
-    const grantBase64 = await mintBootstrapGrantPlaywright(
+    const { grantBase64 } = await mintBootstrapGrantPlaywright(
       unauthorizedRequest,
       logId,
     );
@@ -59,7 +59,7 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
     const logId = randomUUID();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
-    const grantBase64 = await mintBootstrapGrantPlaywright(
+    const { grantBase64 } = await mintBootstrapGrantPlaywright(
       unauthorizedRequest,
       logId,
     );
@@ -111,7 +111,7 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
     const logId = e2eReceiptBootstrapRootLogId();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
-    const mintGrantB64 = await mintBootstrapGrantPlaywright(
+    const { grantBase64: mintGrantB64 } = await mintBootstrapGrantPlaywright(
       unauthorizedRequest,
       logId,
     );

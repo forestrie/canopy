@@ -1,5 +1,5 @@
 import type { APIRequestContext } from "@playwright/test";
-import { custodianBootstrapSignEnv } from "./custodian-bootstrap-sign";
+import { custodianCustodySignEnv } from "./custodian-custody-grant";
 import { mintTransparentBootstrapGrantBase64 } from "./mint-bootstrap-grant-e2e.js";
 
 export interface BootstrapMintAndRegisterResult {
@@ -24,18 +24,18 @@ export async function bootstrapMintAndRegisterEnqueued(
 ): Promise<BootstrapMintAndRegisterResult> {
   const rootLogId = opts.rootLogIdForMint ?? opts.logId;
   const curator = process.env.CURATOR_ADMIN_TOKEN?.trim();
-  const boot = custodianBootstrapSignEnv();
-  if (!curator || !boot) {
+  const custody = custodianCustodySignEnv();
+  if (!curator || !custody) {
     throw new Error(
-      "CURATOR_ADMIN_TOKEN and CUSTODIAN_URL + CUSTODIAN_BOOTSTRAP_APP_TOKEN required",
+      "CURATOR_ADMIN_TOKEN and CUSTODIAN_URL + CUSTODIAN_APP_TOKEN required",
     );
   }
-  const grantBase64 = await mintTransparentBootstrapGrantBase64({
+  const { grantBase64 } = await mintTransparentBootstrapGrantBase64({
     request: unauthorizedRequest,
     rootLogId,
     curatorToken: curator,
-    custodianUrl: boot.baseUrl,
-    custodianBootstrapToken: boot.token,
+    custodianUrl: custody.baseUrl,
+    custodianAppToken: custody.token,
   });
 
   const registerRes = await unauthorizedRequest.post(

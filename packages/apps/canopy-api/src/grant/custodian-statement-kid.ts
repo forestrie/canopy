@@ -1,7 +1,7 @@
 /**
  * Custodian `KidFromECDSAPublicKey` (arbor services/custodian/src/kid.go): SHA-256 of the
  * uncompressed secp256r1 point (`0x04 || x || y`, 32-byte big-endian coordinates) truncated
- * to 16 bytes. Matches COSE `kid` in Sign1 from POST /api/keys/:bootstrap/sign.
+ * to 16 bytes. Matches COSE `kid` in Sign1 from Custodian `POST /api/keys/{keyId}/sign`.
  */
 
 import { sha256 } from "@noble/hashes/sha256";

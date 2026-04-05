@@ -1,10 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type { TestInfo } from "@playwright/test";
-import { custodianBootstrapSignEnv } from "./custodian-bootstrap-sign";
 import { custodianCustodySignEnv } from "./custodian-custody-grant";
 
 /**
- * New bootstrap forest log id for e2e (runner-side genesis + `:bootstrap` mint + register).
+ * New bootstrap forest log id for e2e (runner-side genesis + custody mint + register).
  *
  * Always a **fresh** UUID so the first `POST /register/.../grants` hits the MMRS-cold
  * bootstrap branch on shared dev. Receipt and follow-on grants use the same id returned
@@ -35,7 +34,7 @@ const BOOTSTRAP_MINT_E2E_HELP =
   "See packages/tests/canopy-api/README.md.";
 
 /**
- * Runner-side bootstrap mint requires Custodian `:bootstrap` and curator genesis POST.
+ * Runner-side bootstrap mint requires Custodian custody (`POST /api/keys` + sign) and curator genesis.
  * Call before minting; throws so the test **fails** (not skipped) when misconfigured.
  */
 export function assertBootstrapMintE2eEnv(): void {
@@ -44,9 +43,9 @@ export function assertBootstrapMintE2eEnv(): void {
       `CURATOR_ADMIN_TOKEN is required to POST /api/forest/{log-id}/genesis. ${BOOTSTRAP_MINT_E2E_HELP}`,
     );
   }
-  if (!custodianBootstrapSignEnv()) {
+  if (!custodianCustodySignEnv()) {
     throw new Error(
-      `CUSTODIAN_URL and CUSTODIAN_BOOTSTRAP_APP_TOKEN are required for bootstrap grant signing. ${BOOTSTRAP_MINT_E2E_HELP}`,
+      `CUSTODIAN_URL and CUSTODIAN_APP_TOKEN are required for bootstrap grant signing. ${BOOTSTRAP_MINT_E2E_HELP}`,
     );
   }
 }

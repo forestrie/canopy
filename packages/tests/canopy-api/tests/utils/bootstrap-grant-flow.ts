@@ -1,8 +1,8 @@
 import type { APIRequestContext } from "@playwright/test";
 import { decode } from "cbor-x";
 import { attachReceiptAndIdtimestampToTransparentStatement } from "../../../../apps/canopy-api/src/scrapi/attach-scitt-transparent-statement-receipt.js";
-import { custodianBootstrapSignEnv } from "./custodian-bootstrap-sign";
 import { assertBootstrapMintE2eEnv } from "./e2e-env-guards";
+import { custodianCustodySignEnv } from "./custodian-custody-grant";
 import { entryIdHexToIdtimestampBe8 } from "./entry-id-e2e";
 import { mintTransparentBootstrapGrantBase64 } from "./mint-bootstrap-grant-e2e.js";
 import {
@@ -80,23 +80,23 @@ export function bytesToForestrieGrantBase64(bytes: Uint8Array): string {
 }
 
 /**
- * Bootstrap mint for e2e: `POST /api/forest/{log-id}/genesis` + Custodian `:bootstrap` sign
- * (Plan 0019). **Throws** if `CURATOR_ADMIN_TOKEN` or Custodian bootstrap env is missing.
+ * Bootstrap mint for e2e: per-root Custodian custody key + `POST /api/forest/{log-id}/genesis`
+ * + ES256 sign (Plan 0019). **Throws** if `CURATOR_ADMIN_TOKEN` or custody env is missing.
  */
 export async function mintBootstrapGrantPlaywright(
   unauthorizedRequest: APIRequestContext,
   rootLogId: string,
-): Promise<string> {
+): Promise<{ grantBase64: string; rootCustodySignKeyId: string }> {
   assertBootstrapMintE2eEnv();
   const curator = process.env.CURATOR_ADMIN_TOKEN!.trim();
-  const boot = custodianBootstrapSignEnv()!;
+  const custody = custodianCustodySignEnv()!;
 
   return mintTransparentBootstrapGrantBase64({
     request: unauthorizedRequest,
     rootLogId,
     curatorToken: curator,
-    custodianUrl: boot.baseUrl,
-    custodianBootstrapToken: boot.token,
+    custodianUrl: custody.baseUrl,
+    custodianAppToken: custody.token,
   });
 }
 

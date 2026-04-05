@@ -64,7 +64,7 @@ test.describe("Auth log → data log delegation chain", () => {
     const rootLogId = e2eReceiptBootstrapRootLogId();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
-    const mintGrantB64 = await mintBootstrapGrantPlaywright(
+    const { grantBase64: mintGrantB64 } = await mintBootstrapGrantPlaywright(
       unauthorizedRequest,
       rootLogId,
     );

@@ -12,8 +12,6 @@ import {
   HEADER_IDTIMESTAMP,
 } from "../grant/transparent-statement.js";
 
-export const CUSTODIAN_BOOTSTRAP_KEY_ID = ":bootstrap";
-
 function trimBase(url: string): string {
   return url.trim().replace(/\/$/, "");
 }

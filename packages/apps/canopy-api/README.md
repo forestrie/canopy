@@ -21,7 +21,8 @@ must sign with that same key material so inclusion checks can succeed.
 - `R2_MMRS`: R2 bucket for merklelog storage (massifs + checkpoints)
 - `CUSTODIAN_APP_TOKEN`: Custodian app token (secret). **Required** outside
   `NODE_ENV=test` so receipt signatures can be verified against the
-  per–owner-log key. Bootstrap mint still uses `CUSTODIAN_BOOTSTRAP_APP_TOKEN`.
+  per–owner-log key and for runner-side per-root bootstrap keys (`POST /api/keys`).
+- `CUSTODIAN_BOOTSTRAP_APP_TOKEN`: optional legacy secret; canopy-api does not use it for bootstrap grant verification.
 
 ### Test-only receipt verifier (`NODE_ENV=test` only)
 

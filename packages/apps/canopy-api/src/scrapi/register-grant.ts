@@ -16,8 +16,8 @@
  * **register-grant** admits *new* grants into the transparency system. When the relevant log (or,
  * for child-first grants, the **parent** log) still has **no MMRS tile**, a SCITT receipt cannot
  * exist yet, so {@link grantAuthorize} cannot be used. This module implements **bootstrap /
- * first-grant** verification instead (Custodian COSE for root; statement-signer binding in
- * `grantData` for child auth/data logs once the parent is MMRS-initialized). After the log has
+ * first-grant** verification instead (COSE vs grantData x‖y matching forest genesis for root;
+ * statement-signer binding in `grantData` for child auth/data logs once the parent is MMRS-initialized). After the log has
  * MMRS state, **every** accepted grant goes through {@link grantAuthorize} (receipt inclusion) —
  * the same primitive **register-signed-statement** always uses for grant auth. In other words:
  * hierarchical logs are opened with register-grant; ongoing minted grants and statement append
@@ -53,7 +53,6 @@ import {
 } from "./grant-sequencing.js";
 import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
 import {
-  CUSTODIAN_BOOTSTRAP_KEY_ID,
   fetchCustodianCuratorLogKey,
   fetchCustodianPublicKey,
   publicKeyPemToUncompressed65,
@@ -89,7 +88,6 @@ export interface RegisterGrantEnv {
     bootstrapLogId: string;
     r2Grants: R2Bucket;
     custodianUrl: string;
-    custodianBootstrapAppToken: string;
     /** Curator custody paths (`curator/log-key`); optional in pool tests. */
     custodianAppToken: string;
     bootstrapAlg?: "ES256" | "KS256";
@@ -169,7 +167,8 @@ export async function registerGrant(
     );
   }
 
-  // Root authority log: first grant on T where O===T — Custodian :bootstrap key verifies COSE.
+  // Root authority log: first grant on T where O===T — COSE verifies against grantData x‖y
+  // that must match curated forest genesis (trust anchor is genesis + embedded pubkey, not a fixed Custodian alias).
   if (
     !logInitialized &&
     ownerMatchesTargetUuid(grant, targetLogUuid) &&
@@ -180,47 +179,6 @@ export async function registerGrant(
       if (env.bootstrapEnv.bootstrapAlg === "KS256") {
         return ServerErrors.serviceUnavailable(
           "KS256 bootstrap grant verification is not implemented",
-        );
-      }
-      const pk = await fetchCustodianPublicKey(
-        env.bootstrapEnv.custodianUrl,
-        CUSTODIAN_BOOTSTRAP_KEY_ID,
-      );
-      if (pk.alg !== "ES256") {
-        return ServerErrors.serviceUnavailable(
-          `Bootstrap grant verification requires Custodian key alg ES256; got ${pk.alg}`,
-        );
-      }
-      let custodianHost = "";
-      try {
-        custodianHost = new URL(env.bootstrapEnv.custodianUrl).host;
-      } catch {
-        custodianHost = "(invalid-custodian-url)";
-      }
-      const spkiFingerprint = await sha256HexPrefix8(
-        new TextEncoder().encode(pk.publicKeyPem),
-      );
-      console.warn(
-        JSON.stringify({
-          tag: "bootstrapGrantVerifyAttempt",
-          custodianHost,
-          keyId: pk.keyId,
-          publicKeyAlg: pk.alg,
-          spkiPemSha256HexPrefix: spkiFingerprint,
-          transparentStatementLen: grantResult.bytes.length,
-        }),
-      );
-      const ok = await verifyCustodianEs256GrantSign1(
-        grantResult.bytes,
-        pk.publicKeyPem,
-        {
-          logFailures: true,
-          logPrefix: "register-grant-bootstrap",
-        },
-      );
-      if (!ok) {
-        return ClientErrors.forbidden(
-          "Bootstrap grant COSE signature did not verify against Custodian :bootstrap public key (ES256).",
         );
       }
       const gdRoot = grantDataToBytes(grant.grantData);
@@ -239,6 +197,33 @@ export async function registerGrant(
       if (!bytesEqual(grant.logId, genesis.wire)) {
         return ClientErrors.forbidden(
           "Bootstrap grant logId must match forest bootstrap log.",
+        );
+      }
+      let custodianHost = "";
+      try {
+        custodianHost = new URL(env.bootstrapEnv.custodianUrl).host;
+      } catch {
+        custodianHost = "(invalid-custodian-url)";
+      }
+      console.warn(
+        JSON.stringify({
+          tag: "bootstrapGrantVerifyAttempt",
+          custodianHost,
+          grantDataXySha256HexPrefix: await sha256HexPrefix8(gdRoot),
+          transparentStatementLen: grantResult.bytes.length,
+        }),
+      );
+      const ok = await verifyCustodianEs256GrantSign1WithGrantDataXy(
+        grantResult.bytes,
+        gdRoot,
+        {
+          logFailures: true,
+          logPrefix: "register-grant-bootstrap",
+        },
+      );
+      if (!ok) {
+        return ClientErrors.forbidden(
+          "Bootstrap grant COSE signature did not verify against grantData public key (ES256).",
         );
       }
       return await enqueueAndStoreGrant(

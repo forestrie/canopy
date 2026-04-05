@@ -109,15 +109,15 @@ jobs:
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
-          TOKEN=$(trim_ws "${CUSTODIAN_BOOTSTRAP_APP_TOKEN:-}")
-          if [ -z "$TOKEN" ]; then
-            TOKEN=$(trim_ws "${BOOTSTRAP_APP_TOKEN:-}")
+          BOOT=$(trim_ws "${CUSTODIAN_BOOTSTRAP_APP_TOKEN:-}")
+          if [ -z "$BOOT" ]; then
+            BOOT=$(trim_ws "${BOOTSTRAP_APP_TOKEN:-}")
           fi
-          if [ -z "$TOKEN" ]; then
-            echo "::error::Set CUSTODIAN_BOOTSTRAP_APP_TOKEN or BOOTSTRAP_APP_TOKEN."
-            exit 1
+          if [ -n "$BOOT" ]; then
+            printf '%s' "$BOOT" | wrangler secret put CUSTODIAN_BOOTSTRAP_APP_TOKEN --env dev
+          else
+            echo "CUSTODIAN_BOOTSTRAP_APP_TOKEN not set; skipping (optional for canopy-api)."
           fi
-          printf '%s' "$TOKEN" | wrangler secret put CUSTODIAN_BOOTSTRAP_APP_TOKEN --env dev
           APP=$(trim_ws "${CUSTODIAN_APP_TOKEN:-}")
           if [ -z "$APP" ]; then
             echo "::error::CUSTODIAN_APP_TOKEN is required for canopy-api (receipt verification)."

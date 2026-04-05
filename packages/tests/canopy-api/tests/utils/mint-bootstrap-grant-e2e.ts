@@ -1,5 +1,6 @@
 /**
- * Runner-side bootstrap mint: curator genesis + Custodian `:bootstrap` sign (Plan 0019).
+ * Runner-side bootstrap mint: per-root `POST /api/keys` (custody ES256) + curator genesis
+ * + sign with that key (Plan 0019). No Custodian `:bootstrap` alias.
  */
 
 import type { APIRequestContext } from "@playwright/test";
@@ -7,13 +8,12 @@ import { encodeGrantPayload } from "../../../../apps/canopy-api/src/grant/codec.
 import type { Grant } from "../../../../apps/canopy-api/src/grant/grant.js";
 import { uuidToBytes } from "../../../../apps/canopy-api/src/grant/uuid-bytes.js";
 import {
-  CUSTODIAN_BOOTSTRAP_KEY_ID,
-  fetchCustodianPublicKey,
   mergeGrantHeadersIntoCustodianSign1,
   postCustodianSignGrantPayload,
   publicKeyPemToUncompressed65,
 } from "../../../../apps/canopy-api/src/scrapi/custodian-grant.js";
 import { ensureForestGenesisE2e } from "./forest-genesis-e2e.js";
+import { postCustodianCreateEs256Key } from "./custodian-custody-grant.js";
 
 function bytesToForestrieGrantBase64(bytes: Uint8Array): string {
   let s = "";
@@ -33,13 +33,17 @@ export async function mintTransparentBootstrapGrantBase64(opts: {
   rootLogId: string;
   curatorToken: string;
   custodianUrl: string;
-  custodianBootstrapToken: string;
-}): Promise<string> {
-  const pk = await fetchCustodianPublicKey(
-    opts.custodianUrl,
-    CUSTODIAN_BOOTSTRAP_KEY_ID,
-  );
-  const uncompressed = publicKeyPemToUncompressed65(pk.publicKeyPem);
+  custodianAppToken: string;
+}): Promise<{ grantBase64: string; rootCustodySignKeyId: string }> {
+  const { keyId, publicKeyPem } = await postCustodianCreateEs256Key({
+    baseUrl: opts.custodianUrl,
+    appToken: opts.custodianAppToken,
+    keyOwnerId: `canopy-e2e-root-bootstrap-${opts.rootLogId}`,
+    selfLogId: opts.rootLogId,
+  });
+  const kmsSegment = keyId.split("/cryptoKeys/").pop() ?? keyId;
+
+  const uncompressed = publicKeyPemToUncompressed65(publicKeyPem);
   const x = uncompressed.subarray(1, 33);
   const y = uncompressed.subarray(33, 65);
   await ensureForestGenesisE2e(opts.request, {
@@ -67,10 +71,13 @@ export async function mintTransparentBootstrapGrantBase64(opts: {
   const payloadBytes = encodeGrantPayload(grant);
   const sign1Raw = await postCustodianSignGrantPayload(
     opts.custodianUrl,
-    CUSTODIAN_BOOTSTRAP_KEY_ID,
-    opts.custodianBootstrapToken,
+    kmsSegment,
+    opts.custodianAppToken,
     payloadBytes,
   );
   const merged = mergeGrantHeadersIntoCustodianSign1(sign1Raw, payloadBytes);
-  return bytesToForestrieGrantBase64(merged);
+  return {
+    grantBase64: bytesToForestrieGrantBase64(merged),
+    rootCustodySignKeyId: kmsSegment,
+  };
 }
