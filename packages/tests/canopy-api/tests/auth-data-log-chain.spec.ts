@@ -15,6 +15,7 @@ import {
   completeBootstrapGrantWithReceipt,
   mintBootstrapGrantPlaywright,
 } from "./utils/bootstrap-grant-flow";
+import { custodianBootstrapSignEnv } from "./utils/custodian-bootstrap-sign";
 import {
   custodianCustodySignEnv,
   custodianKmsCryptoKeyIdFromLogUuid,
@@ -28,49 +29,60 @@ import {
   dataLogCreateExtendFlags,
 } from "./utils/e2e-grant-flags";
 import {
+  e2eReceiptBootstrapRootLogId,
+  shouldSkipSequencingPoll,
   skipSequencingPollIfDisabled,
   skipWithoutCustodianBootstrap,
   skipWithoutCustodianCustody,
 } from "./utils/e2e-env-guards";
+import { e2eDataLogDelegationStatementPayload } from "./utils/multi-log-grant-chain";
+import {
+  assert303ContentHashLocation,
+  postLogEntriesCoseSign1,
+} from "./utils/post-entries-e2e";
 import {
   formatProblemDetailsMessage,
   reportProblemDetails,
   responseTextPreview,
 } from "./utils/problem-details";
-import {
-  assert303ContentHashLocation,
-  postLogEntriesCoseSign1,
-} from "./utils/post-entries-e2e";
 import { completeGrantRegistrationThroughReceipt } from "./utils/register-grant-through-receipt";
 import { sha256Hex } from "./utils/statement-sign-bytes";
-import { e2eDataLogDelegationStatementPayload } from "./utils/multi-log-grant-chain";
 import type { Grant } from "../../../apps/canopy-api/src/grant/types.js";
 import { uuidToBytes } from "../../../apps/canopy-api/src/grant/uuid-bytes.js";
 
 test.describe("Auth log → data log delegation chain", () => {
-  test.describe.configure({ mode: "serial" });
+  test.describe.configure({ mode: "serial", timeout: 600_000 });
 
-  test("delegated signer posts register-statement on data log with data-log grant auth", async ({
-    unauthorizedRequest,
-  }, testInfo) => {
-    if (skipSequencingPollIfDisabled(testInfo)) return;
-    if (skipWithoutCustodianBootstrap(testInfo)) return;
-    if (skipWithoutCustodianCustody(testInfo)) return;
+  const shared = { rootLogId: "", baseURL: "" };
 
-    test.setTimeout(600_000);
-    const rootLogId = randomUUID();
-    const authLogId = randomUUID();
-    const dataLogId = randomUUID();
-    const delegatedSignerLogId = randomUUID();
+  test.beforeAll(async ({ unauthorizedRequest }, testInfo) => {
+    if (shouldSkipSequencingPoll()) {
+      testInfo.skip(
+        true,
+        "E2E_SKIP_SEQUENCING_POLL: skip until SCITT / ingress",
+      );
+      return;
+    }
+    if (!custodianBootstrapSignEnv()) {
+      testInfo.skip(
+        true,
+        "CUSTODIAN_URL and CUSTODIAN_BOOTSTRAP_APP_TOKEN required for bootstrap signing",
+      );
+      return;
+    }
+
+    const rootLogId = e2eReceiptBootstrapRootLogId();
     const baseURL = testInfo.project.use.baseURL ?? "";
-    const custody = custodianCustodySignEnv()!;
 
     const minted = await mintBootstrapGrantPlaywright(
       unauthorizedRequest,
       rootLogId,
       testInfo,
     );
-    if (minted.skipped) return;
+    if (minted.skipped) {
+      testInfo.skip(true, "bootstrap mint unconfigured");
+      return;
+    }
 
     await completeBootstrapGrantWithReceipt({
       unauthorizedRequest,
@@ -79,6 +91,25 @@ test.describe("Auth log → data log delegation chain", () => {
       grantBase64: minted.grantBase64,
       ladderMs: sequencingBackoff,
     });
+
+    shared.rootLogId = rootLogId;
+    shared.baseURL = baseURL;
+  });
+
+  test("delegated signer posts register-statement on data log with data-log grant auth", async ({
+    unauthorizedRequest,
+  }, testInfo) => {
+    if (skipSequencingPollIfDisabled(testInfo)) return;
+    if (skipWithoutCustodianBootstrap(testInfo)) return;
+    if (skipWithoutCustodianCustody(testInfo)) return;
+    if (!shared.rootLogId) return;
+
+    const rootLogId = shared.rootLogId;
+    const baseURL = shared.baseURL;
+    const authLogId = randomUUID();
+    const dataLogId = randomUUID();
+    const delegatedSignerLogId = randomUUID();
+    const custody = custodianCustodySignEnv()!;
 
     const { keyId: authKeyId, publicKeyPem: authPubPem } =
       await postCustodianCreateEs256Key({
@@ -192,29 +223,14 @@ test.describe("Auth log → data log delegation chain", () => {
     if (skipSequencingPollIfDisabled(testInfo)) return;
     if (skipWithoutCustodianBootstrap(testInfo)) return;
     if (skipWithoutCustodianCustody(testInfo)) return;
+    if (!shared.rootLogId) return;
 
-    test.setTimeout(600_000);
-    const rootLogId = randomUUID();
+    const rootLogId = shared.rootLogId;
+    const baseURL = shared.baseURL;
     const authLogId = randomUUID();
     const dataLogId = randomUUID();
     const delegatedSignerLogId = randomUUID();
-    const baseURL = testInfo.project.use.baseURL ?? "";
     const custody = custodianCustodySignEnv()!;
-
-    const minted = await mintBootstrapGrantPlaywright(
-      unauthorizedRequest,
-      rootLogId,
-      testInfo,
-    );
-    if (minted.skipped) return;
-
-    await completeBootstrapGrantWithReceipt({
-      unauthorizedRequest,
-      logId: rootLogId,
-      baseURL,
-      grantBase64: minted.grantBase64,
-      ladderMs: sequencingBackoff,
-    });
 
     const { keyId: authKeyId, publicKeyPem: authPubPem } =
       await postCustodianCreateEs256Key({

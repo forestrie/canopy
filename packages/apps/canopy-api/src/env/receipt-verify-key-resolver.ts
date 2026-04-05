@@ -4,7 +4,6 @@
  */
 
 import {
-  CUSTODIAN_BOOTSTRAP_KEY_ID,
   fetchCustodianCuratorLogKey,
   fetchCustodianPublicKey,
   importEs256PublicKeyFromGrantDataXy64,
@@ -13,26 +12,6 @@ import {
 import { isCanopyApiPoolTestMode } from "./runtime-mode.js";
 
 const MAX_OWNER_LOG_CACHE = 64;
-
-/**
- * Curator may have no row yet for a log that only has bootstrap mint; receipts
- * are still signed with :bootstrap until custody maps a per-log key.
- */
-async function curatorLogKeyIdOrBootstrap(
-  base: string,
-  token: string,
-  logIdLowerHex32: string,
-): Promise<string> {
-  try {
-    return await fetchCustodianCuratorLogKey(base, token, logIdLowerHex32);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (/\b400\b/.test(msg) && /no key for log/i.test(msg)) {
-      return CUSTODIAN_BOOTSTRAP_KEY_ID;
-    }
-    throw e;
-  }
-}
 
 function hexToBytes32Pair(hex: string): Uint8Array {
   const s = hex.replace(/^0x/i, "").trim();
@@ -80,7 +59,7 @@ export function createReceiptVerifyKeyResolver(config: {
     let p = cache.get(ownerLogIdLowerHex32);
     if (!p) {
       p = (async () => {
-        const keyId = await curatorLogKeyIdOrBootstrap(
+        const keyId = await fetchCustodianCuratorLogKey(
           base,
           token,
           ownerLogIdLowerHex32,

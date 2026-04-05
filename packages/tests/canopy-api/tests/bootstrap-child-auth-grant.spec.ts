@@ -14,6 +14,7 @@ import {
   mintBootstrapGrantPlaywright,
 } from "./utils/bootstrap-grant-flow";
 import {
+  e2eReceiptBootstrapRootLogId,
   skipSequencingPollIfDisabled,
   skipWithoutCustodianBootstrap,
   skipWithoutCustodianCustody,
@@ -43,7 +44,7 @@ test.describe("Bootstrap root + child auth grant e2e", () => {
     const custodyEnv = custodianCustodySignEnv()!;
 
     test.setTimeout(600_000);
-    const rootLogId = randomUUID();
+    const rootLogId = e2eReceiptBootstrapRootLogId();
     const childLogId = randomUUID();
     const baseURL = testInfo.project.use.baseURL ?? "";
 

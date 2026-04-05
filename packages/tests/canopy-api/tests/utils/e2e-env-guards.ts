@@ -1,6 +1,37 @@
+import { randomUUID } from "node:crypto";
 import type { TestInfo } from "@playwright/test";
 import { custodianBootstrapSignEnv } from "./custodian-bootstrap-sign";
 import { custodianCustodySignEnv } from "./custodian-custody-grant";
+
+/**
+ * Root log UUID for e2e that **complete** a bootstrap grant and hit
+ * receipt-based `grantAuthorize` (Custodian curator/log-key must resolve the
+ * owner log, usually `:bootstrap` when the id matches deployment `ROOT_LOG_ID`).
+ *
+ * Reads `E2E_BOOTSTRAP_LOG_ID` then `ROOT_LOG_ID` (32 hex, 0x-prefix, or UUID);
+ * if both unset, returns a random UUID (local dev only unless Custodian maps it).
+ */
+export function e2eReceiptBootstrapRootLogId(): string {
+  const raw = (
+    process.env.E2E_BOOTSTRAP_LOG_ID?.trim() ||
+    process.env.ROOT_LOG_ID?.trim() ||
+    ""
+  ).replace(/^0x/i, "");
+  if (!raw) return randomUUID();
+  const hex = raw.replace(/-/g, "").toLowerCase();
+  if (hex.length === 32 && /^[0-9a-f]+$/.test(hex)) {
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+  }
+  const lower = raw.toLowerCase();
+  if (
+    lower.length >= 36 &&
+    lower.includes("-") &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(lower)
+  ) {
+    return lower;
+  }
+  return randomUUID();
+}
 
 /** True when sequencing poll tests should be skipped (no ingress). */
 export function shouldSkipSequencingPoll(): boolean {

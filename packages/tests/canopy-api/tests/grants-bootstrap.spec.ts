@@ -11,7 +11,10 @@ import {
 } from "./utils/bootstrap-grant-flow";
 import { decodeEntryIdHex } from "./utils/entry-id-e2e";
 import { skipOrThrowIfBootstrapMintUnconfigured } from "./utils/bootstrap-e2e-guard";
-import { skipSequencingPollIfDisabled } from "./utils/e2e-env-guards";
+import {
+  e2eReceiptBootstrapRootLogId,
+  skipSequencingPollIfDisabled,
+} from "./utils/e2e-env-guards";
 import {
   formatProblemDetailsMessage,
   reportProblemDetails,
@@ -123,7 +126,7 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
     if (skipSequencingPollIfDisabled(testInfo)) return;
 
     test.setTimeout(600_000);
-    const logId = randomUUID();
+    const logId = e2eReceiptBootstrapRootLogId();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
     const minted = await mintBootstrapGrantPlaywright(
