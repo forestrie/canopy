@@ -227,6 +227,7 @@ jobs:
           CUSTODIAN_BOOTSTRAP_APP_TOKEN: ${{ secrets.CUSTODIAN_BOOTSTRAP_APP_TOKEN }}
           BOOTSTRAP_APP_TOKEN: ${{ secrets.BOOTSTRAP_APP_TOKEN }}
           CUSTODIAN_APP_TOKEN: ${{ secrets.CUSTODIAN_APP_TOKEN }}
+          CURATOR_ADMIN_TOKEN: ${{ secrets.CURATOR_ADMIN_TOKEN }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
@@ -246,6 +247,12 @@ jobs:
             exit 1
           fi
           printf '%s' "$APP" | wrangler secret put CUSTODIAN_APP_TOKEN --env "$ENV"
+          CURATOR=$(trim_ws "${CURATOR_ADMIN_TOKEN:-}")
+          if [ -z "$CURATOR" ]; then
+            echo "::error::CURATOR_ADMIN_TOKEN is required for canopy-api (POST /api/forest/.../genesis)."
+            exit 1
+          fi
+          printf '%s' "$CURATOR" | wrangler secret put CURATOR_ADMIN_TOKEN --env "$ENV"
           wrangler deploy --env "$ENV"
 
       - name: Deploy ${{ matrix.target.app }} (${{ env.DEPLOY_ENV }})
