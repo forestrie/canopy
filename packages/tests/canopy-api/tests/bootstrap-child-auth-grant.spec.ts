@@ -8,17 +8,16 @@
 
 import { randomUUID } from "node:crypto";
 import { expectAPI as expect, test } from "./fixtures/auth";
-import {
-  pollQueryRegistrationUntilReceiptRedirect,
-  pollResolveReceiptUntil200,
-  sequencingBackoff,
-} from "./utils/arithmetic-backoff-poll";
+import { sequencingBackoff } from "./utils/arithmetic-backoff-poll";
 import {
   completeBootstrapGrantWithReceipt,
   mintBootstrapGrantPlaywright,
-  shouldSkipSequencingPoll,
 } from "./utils/bootstrap-grant-flow";
-import { custodianBootstrapSignEnv } from "./utils/custodian-bootstrap-sign";
+import {
+  skipSequencingPollIfDisabled,
+  skipWithoutCustodianBootstrap,
+  skipWithoutCustodianCustody,
+} from "./utils/e2e-env-guards";
 import {
   authLogBootstrapShapedFlags,
   custodianCustodySignEnv,
@@ -27,43 +26,21 @@ import {
   postCustodianCreateEs256Key,
   signGrantPayloadWithCustodyKey,
 } from "./utils/custodian-custody-grant";
-import {
-  formatProblemDetailsMessage,
-  reportProblemDetails,
-} from "./utils/problem-details";
 import type { Grant } from "../../../apps/canopy-api/src/grant/types.js";
 import { uuidToBytes } from "../../../apps/canopy-api/src/grant/uuid-bytes.js";
+import { completeGrantRegistrationThroughReceipt } from "./utils/register-grant-through-receipt";
 
 test.describe("Bootstrap root + child auth grant e2e", () => {
   test.describe.configure({ mode: "serial" });
 
-  test("POST /logs/{child}/grants returns 303 to parent entries; receipt polls", async ({
+  test("POST /register/grants (child grant) returns 303 to parent entries; receipt polls", async ({
     unauthorizedRequest,
   }, testInfo) => {
-    if (shouldSkipSequencingPoll()) {
-      testInfo.skip(
-        true,
-        "E2E_SKIP_SEQUENCING_POLL: skip until SCITT / ingress",
-      );
-      return;
-    }
+    if (skipSequencingPollIfDisabled(testInfo)) return;
+    if (skipWithoutCustodianBootstrap(testInfo)) return;
+    if (skipWithoutCustodianCustody(testInfo)) return;
 
-    if (!custodianBootstrapSignEnv()) {
-      testInfo.skip(
-        true,
-        "CUSTODIAN_URL and CUSTODIAN_BOOTSTRAP_APP_TOKEN required for root bootstrap",
-      );
-      return;
-    }
-
-    const custodyEnv = custodianCustodySignEnv();
-    if (!custodyEnv) {
-      testInfo.skip(
-        true,
-        "CUSTODIAN_URL and CUSTODIAN_APP_TOKEN required for custody child-auth grant",
-      );
-      return;
-    }
+    const custodyEnv = custodianCustodySignEnv()!;
 
     test.setTimeout(600_000);
     const rootLogId = randomUUID();
@@ -118,49 +95,19 @@ test.describe("Bootstrap root + child auth grant e2e", () => {
       grant,
     });
 
-    const registerRes = await unauthorizedRequest.post(
-      `/logs/${childLogId}/grants`,
-      {
-        headers: {
-          Authorization: `Forestrie-Grant ${grantBase64}`,
-        },
-        maxRedirects: 0,
-      },
+    const childComplete = await completeGrantRegistrationThroughReceipt({
+      unauthorizedRequest,
+      logId: childLogId,
+      baseURL,
+      grantBase64,
+      ladderMs: sequencingBackoff,
+    });
+    expect(childComplete.receiptRes.status).toBe(200);
+    expect(childComplete.statusUrlAbsolute.toLowerCase()).toContain(
+      `/logs/${rootLogId.toLowerCase()}/entries/`,
     );
-
-    const regProblem = await reportProblemDetails(registerRes, testInfo);
-    const regHint =
-      formatProblemDetailsMessage(regProblem) ??
-      (await registerRes.text().then((t) => t.slice(0, 300)));
-    expect(registerRes.status(), regHint).toBe(303);
-
-    const loc = registerRes.headers()["location"];
-    expect(loc).toBeTruthy();
-    const locLower = loc!.toLowerCase();
-    expect(locLower).toContain(`/logs/${rootLogId.toLowerCase()}/entries/`);
-    expect(locLower).not.toContain(
+    expect(childComplete.statusUrlAbsolute.toLowerCase()).not.toContain(
       `/logs/${childLogId.toLowerCase()}/entries/`,
     );
-
-    const statusAbsolute = loc!.startsWith("http")
-      ? loc!
-      : `${baseURL.replace(/\/$/, "")}${loc!.startsWith("/") ? "" : "/"}${loc!}`;
-
-    const { receiptUrlAbsolute } =
-      await pollQueryRegistrationUntilReceiptRedirect({
-        request: unauthorizedRequest,
-        statusUrlAbsolute: statusAbsolute,
-        baseURL,
-        ladderMs: sequencingBackoff,
-        maxWaitMs: 180_000,
-      });
-
-    const childReceipt = await pollResolveReceiptUntil200({
-      request: unauthorizedRequest,
-      receiptUrlAbsolute,
-      ladderMs: sequencingBackoff,
-      maxWaitMs: 420_000,
-    });
-    expect(childReceipt.status).toBe(200);
   });
 });

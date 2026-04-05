@@ -6,29 +6,25 @@ import {
   buildCompletedGrantBase64,
   completeBootstrapGrantWithReceipt,
   mintBootstrapGrantPlaywright,
-  shouldSkipSequencingPoll,
 } from "./utils/bootstrap-grant-flow";
 import {
-  custodianBootstrapSignEnv,
   e2eFirstStatementPayload,
   postCustodianBootstrapSignPayloadBytes,
 } from "./utils/custodian-bootstrap-sign";
+import {
+  skipSequencingPollIfDisabled,
+  skipWithoutCustodianBootstrap,
+} from "./utils/e2e-env-guards";
+import {
+  assert303ContentHashLocation,
+  postLogEntriesCoseSign1,
+} from "./utils/post-entries-e2e";
 import {
   formatProblemDetailsMessage,
   reportProblemDetails,
   responseTextPreview,
 } from "./utils/problem-details";
-
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const buf = bytes.buffer.slice(
-    bytes.byteOffset,
-    bytes.byteOffset + bytes.byteLength,
-  ) as ArrayBuffer;
-  const hashBuffer = await crypto.subtle.digest("SHA-256", buf);
-  return [...new Uint8Array(hashBuffer)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
+import { sha256Hex } from "./utils/statement-sign-bytes";
 
 /**
  * First transparency **statement** on a freshly bootstrapped root log: completed
@@ -44,24 +40,11 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
 test.describe("Bootstrap log e2e — first signed entry", () => {
   test.describe.configure({ mode: "serial" });
 
-  test("POST /logs/{logId}/entries returns 303 with content-hash Location", async ({
+  test("POST /register/entries returns 303 with content-hash Location", async ({
     unauthorizedRequest,
   }, testInfo) => {
-    if (shouldSkipSequencingPoll()) {
-      testInfo.skip(
-        true,
-        "E2E_SKIP_SEQUENCING_POLL: skip until SCITT / ingress (same as bootstrap receipt test)",
-      );
-      return;
-    }
-
-    if (!custodianBootstrapSignEnv()) {
-      testInfo.skip(
-        true,
-        "CUSTODIAN_URL and CUSTODIAN_BOOTSTRAP_APP_TOKEN must be set in repo-root .env for Custodian statement signing",
-      );
-      return;
-    }
+    if (skipSequencingPollIfDisabled(testInfo)) return;
+    if (skipWithoutCustodianBootstrap(testInfo)) return;
 
     test.setTimeout(600_000);
     const logId = randomUUID();
@@ -96,17 +79,11 @@ test.describe("Bootstrap log e2e — first signed entry", () => {
       await postCustodianBootstrapSignPayloadBytes(statementPayload);
 
     const expectedHash = await sha256Hex(sign1Bytes);
-    const entriesRes = await unauthorizedRequest.post(
-      `/logs/${logId}/entries`,
-      {
-        headers: {
-          Authorization: `Forestrie-Grant ${completedGrantB64}`,
-          "content-type": 'application/cose; cose-type="cose-sign1"',
-        },
-        data: Buffer.from(sign1Bytes),
-        maxRedirects: 0,
-      },
-    );
+    const entriesRes = await postLogEntriesCoseSign1(unauthorizedRequest, {
+      logId,
+      completedGrantB64,
+      sign1Bytes,
+    });
 
     const problem = await reportProblemDetails(entriesRes, testInfo);
     const hint =
@@ -114,27 +91,18 @@ test.describe("Bootstrap log e2e — first signed entry", () => {
       (await responseTextPreview(entriesRes));
     expect(entriesRes.status(), hint).toBe(303);
 
-    const loc = entriesRes.headers().location;
-    expect(loc, "303 must include Location with content hash").toBeTruthy();
-    let absolute = loc!;
-    if (!absolute.startsWith("http")) {
-      absolute = `${baseURL}${absolute.startsWith("/") ? "" : "/"}${absolute}`;
-    }
-    expect(absolute.toLowerCase()).toContain(
-      `/logs/${logId}/entries/${expectedHash}`.toLowerCase(),
-    );
+    assert303ContentHashLocation({
+      logId,
+      baseURL,
+      location: entriesRes.headers().location,
+      contentHashHexLower: expectedHash,
+    });
   });
 
-  test("POST /logs/{logId}/entries rejects valid Sign1 when kid is not bootstrap signer", async ({
+  test("POST /register/entries rejects valid Sign1 when kid is not bootstrap signer", async ({
     unauthorizedRequest,
   }, testInfo) => {
-    if (shouldSkipSequencingPoll()) {
-      testInfo.skip(
-        true,
-        "E2E_SKIP_SEQUENCING_POLL: skip until SCITT / ingress (same as bootstrap receipt test)",
-      );
-      return;
-    }
+    if (skipSequencingPollIfDisabled(testInfo)) return;
 
     test.setTimeout(600_000);
     const logId = randomUUID();
@@ -183,17 +151,11 @@ test.describe("Bootstrap log e2e — first signed entry", () => {
       pair.privateKey,
     );
 
-    const entriesRes = await unauthorizedRequest.post(
-      `/logs/${logId}/entries`,
-      {
-        headers: {
-          Authorization: `Forestrie-Grant ${completedGrantB64}`,
-          "content-type": 'application/cose; cose-type="cose-sign1"',
-        },
-        data: Buffer.from(sign1Bytes),
-        maxRedirects: 0,
-      },
-    );
+    const entriesRes = await postLogEntriesCoseSign1(unauthorizedRequest, {
+      logId,
+      completedGrantB64,
+      sign1Bytes,
+    });
 
     const problem = await reportProblemDetails(entriesRes, testInfo);
     const hint =

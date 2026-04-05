@@ -6,7 +6,7 @@
 
 ## Endpoint
 
-`POST /logs/{logId}/grants`
+`POST /register/grants`
 
 Creates a grant (enqueues for sequencing). Per [Plan 0005](../plans/plan-0005-grant-receipt-unified-resolve.md), **grant storage and location are the caller's responsibility** in the current phase; the API may return the grant in the response for the caller to persist. No payment in this phase.
 
@@ -14,7 +14,7 @@ Creates a grant (enqueues for sequencing). Per [Plan 0005](../plans/plan-0005-gr
 
 - **Content-Type**: `application/cbor` (CBOR end-to-end).
 - **Body**: CBOR-encoded grant request (**Forestrie-Grant v0** — map keys **1–6** only):
-  - **logId** — 16 bytes (UUID of target log). Must match URL `{logId}`.
+  - **logId** — 16 bytes (UUID of target log). Authoritative target log id (not duplicated in the URL).
   - **ownerLogId** — 16 bytes (UUID of authority log that owns this grant).
   - **grant** (CBOR key 3) — 8 bytes (flags bitmap; `PublishGrant.grant` on-chain).
   - **grantData** — bytes (issuer attestation; for register-statement, binds allowed statement signer via **`statementSignerBindingBytes`**).
@@ -54,7 +54,7 @@ All error responses are CBOR (Concise Problem Details) consistent with other API
 Request:
 
 ```
-POST /logs/550e8400-e29b-41d4-a716-446655440000/grants
+POST /register/grants
 Content-Type: application/cbor
 
 <CBOR grant request>

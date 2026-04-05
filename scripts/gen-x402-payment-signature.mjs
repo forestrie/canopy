@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Generate a standard x402 X-PAYMENT header for POST /logs/{logId}/entries.
+ * Generate a standard x402 X-PAYMENT header for POST /register/entries.
  *
  * This script generates EIP-3009 transferWithAuthorization signatures
  * compatible with the official x402 protocol and facilitators.

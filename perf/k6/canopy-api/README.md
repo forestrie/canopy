@@ -6,9 +6,9 @@ execution. These tests complement the burst-oriented smoke tests in
 
 **Auth model:** Tests use **grant-based auth** (Plan 0010): the grant-pool
 script mints grants via `POST /api/grants/bootstrap` (per log), registers each
-with `POST /logs/{logId}/grants` (Forestrie-Grant), then resolves receipts to
+with `POST /register/grants` (Forestrie-Grant), then resolves receipts to
 completed grants. k6 sends `Authorization: Forestrie-Grant <base64>` on
-`POST /logs/{logId}/entries` and signs COSE with the grant signer (kid).
+`POST /register/entries` and signs COSE with the grant signer (kid).
 
 ## Rate limits and headers
 
@@ -193,7 +193,7 @@ Example console output:
 ```
 === k6 write-constant-arrival Summary ===
 
-Target: https://canopy-api.example.workers.dev/logs/abc123/entries
+Target: https://canopy-api.example.workers.dev/register/entries
 Rate: 100 req/s, Duration: 30s warmup + 3m
 
 Total requests: 18150

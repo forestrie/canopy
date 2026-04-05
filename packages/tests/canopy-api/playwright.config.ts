@@ -80,6 +80,7 @@ export default defineConfig({
         "**/grants-bootstrap.spec.ts",
         "**/bootstrap-log-first-entry.spec.ts",
         "**/bootstrap-child-auth-grant.spec.ts",
+        "**/auth-data-log-chain.spec.ts",
       ],
       use: {
         baseURL,

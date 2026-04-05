@@ -7,16 +7,17 @@ alwaysApply: true
 
 This project uses numbered document categories in `docs/`:
 
-- `arc-NNNN-name.md` — architecture documents
-- `adr-NNNN-name.md` — architecture decision records
-- `plan-NNNN-name.md` — implementation plans
+- `arc-NNNN-name.md` — architecture documents (typically at `docs/`)
+- `adr-NNNN-name.md` — architecture decision records (typically at `docs/`)
+- `plan-NNNN-name.md` — implementation plans under **`docs/plans/`**
 
 ## Numbering
 
 All document types are sequentially numbered with a zero-padded
 four-digit prefix (NNNN) starting from 0001. When creating a new
-document, find the highest existing number for that prefix in `docs/`
-and increment by one.
+document, find the highest existing number for that prefix under
+`docs/` (including `docs/plans/`, `docs/plans/archived/`, and any
+other `docs/**` trees) and increment by one.
 
 ## Purpose
 
@@ -33,6 +34,35 @@ Each document should include a YAML-style header with:
 
 ## Cross-referencing
 
-Reference related documents rather than Reference related documents rather than Reference related documents rathemarkdown
-See [ADR-0003](adr-0003-credential-optimization.md) for rationale.
-```
+Reference related documents with standard markdown links.
+
+Example: from `docs/plans/`, see [ADR-0001](../adr-0001-encoding-one-per-artifact.md) for rationale (adjust paths from the current document’s directory).
+
+## Cursor plans → `docs/plans/`
+
+After a **Cursor-built plan** is produced (for example under
+`.cursor/plans/*.plan.md` or equivalent), treat that content as input for
+**persistent documentation** — do not leave the plan only in Cursor-local
+storage.
+
+**Decide merge vs new file:**
+
+1. **Revise an existing plan** when the new work is clearly an **extension or
+   follow-up** of a numbered plan already in `docs/plans/` (or archived under
+   `docs/plans/archived/`). Signals include: explicit references to that plan’s
+   id or path, same initiative or scope continued, or user/thread context tying
+   the session to that document. **Fold in** the new material: update sections,
+   task lists, and decisions so the doc reads as one coherent plan. Where old
+   and new content **contradict**, **keep the new content** and remove or
+   rewrite superseded parts so the document is internally consistent.
+
+2. **Create a new plan** when there is no clear parent document. Allocate the
+   next **plan-NNNN-*** number (see **Numbering** above). Write
+   **`docs/plans/plan-NNNN-short-slug.md`**, revising and reformatting the Cursor
+   plan body to match this workflow (YAML-style header with **Status**, **Date**,
+   **Related**; clear sections; drop Cursor-only scaffolding such as UUID HTML
+   comments unless they carry operational meaning).
+
+**Formatting:** match established `docs/plans/` plans — prose and bullets as
+in sibling files; link related arc/adr/plan docs in **Related**; use
+**DRAFT** until explicitly accepted.

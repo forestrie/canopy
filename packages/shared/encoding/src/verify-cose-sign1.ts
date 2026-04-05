@@ -138,11 +138,18 @@ export function decodeCoseSign1(
   if (!Array.isArray(arr) || arr.length < 4) return null;
 
   const protectedBstr = arr[0];
-  const payloadBstr = arr[2];
+  const payloadRaw = arr[2];
   const sig = arr[3];
 
   if (!(protectedBstr instanceof Uint8Array)) return null;
-  if (!(payloadBstr instanceof Uint8Array)) return null;
+  /** COSE detached content: payload is null/nil; Sig_structure uses empty bstr (RFC 8152). */
+  const payloadBstr =
+    payloadRaw === null || payloadRaw === undefined
+      ? new Uint8Array(0)
+      : payloadRaw instanceof Uint8Array
+        ? payloadRaw
+        : null;
+  if (payloadBstr === null) return null;
   if (!(sig instanceof Uint8Array)) return null;
 
   return {

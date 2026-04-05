@@ -25,9 +25,8 @@ beforeAll(async () => {
     ["sign", "verify"],
   )) as CryptoKeyPair;
   flowGrantPriv = pair.privateKey;
-  const raw = new Uint8Array(
-    await crypto.subtle.exportKey("raw", pair.publicKey),
-  );
+  const exported = await crypto.subtle.exportKey("raw", pair.publicKey);
+  const raw = new Uint8Array(exported as ArrayBuffer);
   if (raw.length !== 65 || raw[0] !== 0x04) {
     throw new Error("expected uncompressed P-256 raw public key");
   }

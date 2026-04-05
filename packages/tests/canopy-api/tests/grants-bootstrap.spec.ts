@@ -8,10 +8,10 @@ import {
   completeBootstrapGrantWithReceipt,
   DEFAULT_ROOT_LOG_ID,
   mintBootstrapGrantPlaywright,
-  shouldSkipSequencingPoll,
 } from "./utils/bootstrap-grant-flow";
 import { decodeEntryIdHex } from "./utils/entry-id-e2e";
 import { skipOrThrowIfBootstrapMintUnconfigured } from "./utils/bootstrap-e2e-guard";
+import { skipSequencingPollIfDisabled } from "./utils/e2e-env-guards";
 import {
   formatProblemDetailsMessage,
   reportProblemDetails,
@@ -65,7 +65,7 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
     ).not.toThrow();
   });
 
-  test("After bootstrap mint, POST /logs/{logId}/grants returns 303 See Other (enqueued)", async ({
+  test("After bootstrap mint, POST /register/grants returns 303 See Other (enqueued)", async ({
     unauthorizedRequest,
   }, testInfo) => {
     // Fresh log so api-dev (MMRS already present for DEFAULT_ROOT_LOG_ID) still
@@ -85,15 +85,12 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
       assertCustodianProfileTransparentStatement(grantBase64),
     ).not.toThrow();
 
-    const registerRes = await unauthorizedRequest.post(
-      `/logs/${logId}/grants`,
-      {
-        headers: {
-          Authorization: `Forestrie-Grant ${grantBase64}`,
-        },
-        maxRedirects: 0,
+    const registerRes = await unauthorizedRequest.post("/register/grants", {
+      headers: {
+        Authorization: `Forestrie-Grant ${grantBase64}`,
       },
-    );
+      maxRedirects: 0,
+    });
 
     const problemReg = await reportProblemDetails(registerRes, testInfo);
     const regStatus = registerRes.status();
@@ -123,13 +120,7 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
   test("Bootstrap mint + register, poll sequencing, SCITT receipt, mmrIndex 0", async ({
     unauthorizedRequest,
   }, testInfo) => {
-    if (shouldSkipSequencingPoll()) {
-      testInfo.skip(
-        true,
-        "E2E_SKIP_SEQUENCING_POLL: skipping poll until SCITT receipt (e.g. api-dev without forestrie-ingress)",
-      );
-      return;
-    }
+    if (skipSequencingPollIfDisabled(testInfo)) return;
 
     test.setTimeout(600_000);
     const logId = randomUUID();
@@ -191,7 +182,7 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
     );
 
     const secondRegisterRes = await unauthorizedRequest.post(
-      `/logs/${logId}/grants`,
+      "/register/grants",
       {
         headers: { Authorization: `Forestrie-Grant ${completedB64}` },
         maxRedirects: 0,

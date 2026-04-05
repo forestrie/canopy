@@ -31,15 +31,12 @@ export async function bootstrapMintAndRegisterEnqueued(
   }
   const grantBase64 = (await mintRes.text()).trim();
 
-  const registerRes = await unauthorizedRequest.post(
-    `/logs/${opts.logId}/grants`,
-    {
-      headers: {
-        Authorization: `Forestrie-Grant ${grantBase64}`,
-      },
-      maxRedirects: 0,
+  const registerRes = await unauthorizedRequest.post("/register/grants", {
+    headers: {
+      Authorization: `Forestrie-Grant ${grantBase64}`,
     },
-  );
+    maxRedirects: 0,
+  });
   if (registerRes.status() !== 303) {
     throw new Error(
       `register-grant: expected 303, got ${registerRes.status()} (body preview: ${(await registerRes.text()).slice(0, 200)})`,
@@ -53,20 +50,17 @@ export async function bootstrapMintAndRegisterEnqueued(
   return { grantBase64, statusUrlAbsolute };
 }
 
-/** POST /logs/{logId}/grants with Forestrie-Grant; expects 303 + registration status Location. */
+/** POST /register/grants with Forestrie-Grant; expects 303 + registration status Location. */
 export async function postRegisterGrantExpect303(
   unauthorizedRequest: APIRequestContext,
   opts: { logId: string; baseURL: string; grantBase64: string },
 ): Promise<{ statusUrlAbsolute: string }> {
-  const registerRes = await unauthorizedRequest.post(
-    `/logs/${opts.logId}/grants`,
-    {
-      headers: {
-        Authorization: `Forestrie-Grant ${opts.grantBase64}`,
-      },
-      maxRedirects: 0,
+  const registerRes = await unauthorizedRequest.post("/register/grants", {
+    headers: {
+      Authorization: `Forestrie-Grant ${opts.grantBase64}`,
     },
-  );
+    maxRedirects: 0,
+  });
   if (registerRes.status() !== 303) {
     throw new Error(
       `register-grant: expected 303, got ${registerRes.status()} (body preview: ${(await registerRes.text()).slice(0, 200)})`,

@@ -60,4 +60,41 @@ describe("verifyCoseSign1 + go-cose Sig_structure bytes", () => {
       true,
     );
   });
+
+  it("verifies ES256 when Sign1 payload is null (detached content)", async () => {
+    const pair = (await crypto.subtle.generateKey(
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign", "verify"],
+    )) as CryptoKeyPair;
+
+    const protectedInner = new Uint8Array(
+      encode(new Map<number, number>([[1, -7]])),
+    );
+    const { encodeSigStructure } = await import("./encode-sig-structure.js");
+    const sigStructure = encodeSigStructure(
+      protectedInner,
+      new Uint8Array(0),
+      new Uint8Array(0),
+    );
+
+    const sigBuf = (await crypto.subtle.sign(
+      { name: "ECDSA", hash: "SHA-256" },
+      pair.privateKey,
+      sigStructure.buffer.slice(
+        sigStructure.byteOffset,
+        sigStructure.byteOffset + sigStructure.byteLength,
+      ) as ArrayBuffer,
+    )) as ArrayBuffer;
+    const sig64 = new Uint8Array(sigBuf);
+    expect(sig64.byteLength).toBe(64);
+
+    const sign1Bytes = new Uint8Array(
+      encode([protectedInner, new Map<number, unknown>(), null, sig64]),
+    );
+
+    await expect(verifyCoseSign1(sign1Bytes, pair.publicKey)).resolves.toBe(
+      true,
+    );
+  });
 });

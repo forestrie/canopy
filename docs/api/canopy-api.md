@@ -9,7 +9,7 @@
 Canopy API is the HTTP surface for the Forestrie transparency ledger. It provides:
 
 - **Register-grant** — Create a grant (authorization to register statements or publish checkpoints). Grants are stored in object storage and identified by a content-addressable path. No payment in the initial phase.
-- **Register-statement** — Register a signed statement (COSE Sign1) into a log. **Requires** a valid grant: the client supplies the grant location, the API retrieves the grant, verifies the statement signer matches the grant, and enqueues the statement.
+- **Register-statement** — Register a signed statement (COSE Sign1) into a log. **Requires** a valid grant in **`Authorization: Forestrie-Grant`**; the API verifies inclusion when required, verifies the statement signer against **`grantData`**, and enqueues the statement.
 
 The API is **CBOR end-to-end**: request and response bodies use CBOR where applicable. Errors use **Concise Problem Details** (CBOR) consistent with RFC 9290 and existing `application/problem+cbor` usage so agents can parse and branch on error type.
 
@@ -17,8 +17,8 @@ The API is **CBOR end-to-end**: request and response bodies use CBOR where appli
 
 | Endpoint                     | Purpose                                                                      |
 | ---------------------------- | ---------------------------------------------------------------------------- |
-| `POST /logs/{logId}/grants`  | Create a grant; returns grant location (URL path).                           |
-| `POST /logs/{logId}/entries` | Register a signed statement; requires grant location in request.             |
+| `POST /register/grants`    | Create a grant; returns grant location (URL path). |
+| `POST /register/entries`   | Register a signed statement; grant in `Authorization: Forestrie-Grant`. |
 | (existing)                   | Query registration status, resolve receipt, transparency configuration, etc. |
 
 ## Grant storage and location

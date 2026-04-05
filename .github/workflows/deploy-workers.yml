@@ -241,9 +241,11 @@ jobs:
           fi
           printf '%s' "$TOKEN" | wrangler secret put CUSTODIAN_BOOTSTRAP_APP_TOKEN --env "$ENV"
           APP=$(trim_ws "${CUSTODIAN_APP_TOKEN:-}")
-          if [ -n "$APP" ]; then
-            printf '%s' "$APP" | wrangler secret put CUSTODIAN_APP_TOKEN --env "$ENV"
+          if [ -z "$APP" ]; then
+            echo "::error::CUSTODIAN_APP_TOKEN is required for canopy-api (receipt verification)."
+            exit 1
           fi
+          printf '%s' "$APP" | wrangler secret put CUSTODIAN_APP_TOKEN --env "$ENV"
           wrangler deploy --env "$ENV"
 
       - name: Deploy ${{ matrix.target.app }} (${{ env.DEPLOY_ENV }})

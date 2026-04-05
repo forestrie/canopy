@@ -265,7 +265,7 @@ at the first call site; **(c)** ensure any verifier for those statements is the
 ## Acceptance criteria
 
 - With Custodian configured, **`POST /api/grants/bootstrap`** returns a
-  transparent statement that **`POST /logs/{logId}/grants`** accepts on the
+  transparent statement that **`POST /register/grants`** accepts on the
   bootstrap branch for an uninitialized root log (same log id / grant shape).
 - That statement is **normative COSE Sign1** (RFC 8152), verifiable with the
   **same** verifier logic used elsewhere for Custodian-issued grant Sign1 (**no**

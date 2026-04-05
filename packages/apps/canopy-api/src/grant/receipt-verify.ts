@@ -9,6 +9,7 @@
  */
 
 import { decode as decodeCbor } from "cbor-x";
+import { verifyCoseSign1 } from "@canopy/encoding";
 import {
   calculateRoot,
   verifyInclusion,
@@ -203,15 +204,33 @@ export async function verifyReceiptInclusion(
   return verifyInclusion(hasher, leafHash, proof, peak);
 }
 
+export interface ReceiptInclusionVerifyOptions {
+  /** Full receipt COSE Sign1 CBOR bytes (transparent statement header 396). */
+  receiptCoseBytes: Uint8Array;
+  /** Log-operator public key (Custodian SPKI PEM → importKey) for receipt Sign1. */
+  receiptVerifyKey: CryptoKey;
+}
+
 /**
  * Verify inclusion using already-parsed root and proof (e.g. from GrantResult, Plan 0005).
+ * When `receiptVerification` is set: verifies receipt COSE Sign1 first, then MMR inclusion.
  */
 export async function verifyReceiptInclusionFromParsed(
   grant: Grant,
   idtimestampBytes: Uint8Array,
   explicitPeak: Uint8Array | null,
   proof: Proof,
+  receiptVerification?: ReceiptInclusionVerifyOptions,
 ): Promise<boolean> {
+  if (receiptVerification) {
+    const sigOk = await verifyCoseSign1(
+      receiptVerification.receiptCoseBytes,
+      receiptVerification.receiptVerifyKey,
+      { logFailures: true, logPrefix: "grant-receipt-cose" },
+    );
+    if (!sigOk) return false;
+  }
+
   const inner = await grantCommitmentHashFromGrant(grant);
   if (!idtimestampBytes || idtimestampBytes.length < 8) {
     throw new Error("idtimestamp required for receipt verification (8 bytes)");

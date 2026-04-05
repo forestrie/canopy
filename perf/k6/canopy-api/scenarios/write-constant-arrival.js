@@ -188,7 +188,7 @@ export function setup() {
   }
 
   console.log(`k6 write-constant-arrival starting`);
-  console.log(`  Target: ${BASE_URL}/logs/.../entries`);
+  console.log(`  Target: ${BASE_URL}/register/entries`);
   console.log(`  Log count: ${LOG_IDS.length}`);
   console.log(`  Log IDs: ${LOG_IDS.join(", ")}`);
   console.log(`  Rate: ${RATE} req/s`);
@@ -383,7 +383,7 @@ export function handleSummary(data) {
 function textSummary(data, options) {
   const lines = [];
   lines.push("\n=== k6 write-constant-arrival Summary ===\n");
-  lines.push(`Target: ${BASE_URL}/logs/.../entries`);
+  lines.push(`Target: ${BASE_URL}/register/entries`);
   lines.push(`Log count: ${LOG_IDS.length}`);
   lines.push(`Rate: ${RATE} req/s, Duration: ${WARMUP} warmup + ${DURATION}`);
   lines.push("");

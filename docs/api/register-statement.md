@@ -6,9 +6,9 @@
 
 ## Endpoint
 
-`POST /logs/{logId}/entries`
+`POST /register/entries`
 
-Registers a signed statement (COSE Sign1) into the log. **Requires** a valid grant: the client **supplies the grant in the Authorization header** as `Authorization: Forestrie-Grant <base64>` (base64-encoded SCITT transparent statement). The API decodes it, verifies receipt-based inclusion when required, verifies that the statement signer matches the grant signer, then enqueues the statement. No grant fetch by the API in this phase. See [Plan 0005](../plans/plan-0005-grant-receipt-unified-resolve.md).
+Registers a signed statement (COSE Sign1) into the log identified by **`grant.logId`** (queue shard and `Location` use that target log). **Requires** a valid grant: the client **supplies the grant in the Authorization header** as `Authorization: Forestrie-Grant <base64>` (base64-encoded SCITT transparent statement). The API decodes it, verifies receipt-based inclusion when required, verifies that the statement signer matches the grant signer, then enqueues the statement. No grant fetch by the API in this phase. See [Plan 0005](../plans/plan-0005-grant-receipt-unified-resolve.md).
 
 ## Grant supply (required)
 

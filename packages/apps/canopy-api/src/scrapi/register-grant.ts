@@ -56,6 +56,7 @@ import {
 import { isLogInitializedMmrs } from "./log-initialized-mmrs.js";
 import type { LogShardEnv } from "../sequeue/logshard.js";
 import type { InclusionEnv } from "./verify-grant-inclusion.js";
+import type { ReceiptVerifyKeyResolver } from "../env/receipt-verify-key-resolver.js";
 
 const MAX_GRANT_BODY_SIZE = 4 * 1024; // 4 KiB
 
@@ -79,6 +80,8 @@ export interface RegisterGrantEnv {
     r2Mmrs: R2Bucket;
     massifHeight: number;
   };
+  /** Custodian (or pool-test) receipt Sign1 verify key; required when using receipt inclusion. */
+  resolveReceiptVerifyKey?: ReceiptVerifyKeyResolver;
 }
 
 /**
@@ -339,6 +342,7 @@ export async function registerGrant(
   // Log (T) has MMRS: grant must carry a valid receipt (same bar as register-signed-statement).
   const authError = await grantAuthorize(grantResult, {
     inclusionEnv: env.queueEnv as InclusionEnv,
+    resolveReceiptVerifyKey: env.resolveReceiptVerifyKey,
   });
   if (authError) return authError;
   return await enqueueAndStoreGrant(request, grant, env, targetLogUuid);

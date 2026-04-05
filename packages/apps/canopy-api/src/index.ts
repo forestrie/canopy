@@ -4,7 +4,15 @@
  * Minimal SCRAPI-compatible API without SvelteKit
  */
 
-import { responseIfBootstrapTrioIncomplete } from "./env/deployment-env";
+import {
+  responseIfBootstrapTrioIncomplete,
+  responseIfReceiptVerifierMisconfigured,
+  responseIfSequencingQueueIncomplete,
+} from "./env/deployment-env";
+import {
+  createReceiptVerifyKeyResolver,
+  type ReceiptVerifyKeyResolver,
+} from "./env/receipt-verify-key-resolver";
 import { problemResponse } from "./scrapi/cbor-response";
 import { handlePostBootstrapGrant } from "./scrapi/bootstrap-grant.js";
 import { registerGrant, type RegisterGrantEnv } from "./scrapi/register-grant";
@@ -67,8 +75,13 @@ export interface Env {
   CUSTODIAN_URL?: string;
   /** Maps to Custodian secret BOOTSTRAP_APP_TOKEN (Wrangler secret). */
   CUSTODIAN_BOOTSTRAP_APP_TOKEN?: string;
-  /** Maps to Custodian secret APP_TOKEN; used when minting custody-key grants (Phase 2). */
+  /** Maps to Custodian secret APP_TOKEN; curator/log-key + receipt verification. */
   CUSTODIAN_APP_TOKEN?: string;
+  /**
+   * Pool-test only: 128 hex chars = ES256 public x‖y (64 bytes) for receipt Sign1 verify
+   * when Custodian is not used. Forbidden when NODE_ENV !== "test" (503).
+   */
+  FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX?: string;
   /** Bootstrap signing alg: ES256 (default) or KS256. */
   BOOTSTRAP_ALG?: string;
   UNIVOCITY_SERVICE_URL?: string;
@@ -97,6 +110,35 @@ function buildBootstrapEnvForRegisterGrant(
     r2Mmrs: env.R2_MMRS,
     massifHeight,
   };
+}
+
+let receiptVerifyResolverCache:
+  | { signature: string; resolver: ReceiptVerifyKeyResolver }
+  | undefined;
+
+function receiptVerifyResolverForEnv(env: Env): ReceiptVerifyKeyResolver {
+  const signature = [
+    env.NODE_ENV,
+    env.CUSTODIAN_URL ?? "",
+    env.CUSTODIAN_APP_TOKEN ?? "",
+    env.FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX ?? "",
+  ].join("\0");
+  if (
+    !receiptVerifyResolverCache ||
+    receiptVerifyResolverCache.signature !== signature
+  ) {
+    receiptVerifyResolverCache = {
+      signature,
+      resolver: createReceiptVerifyKeyResolver({
+        custodianBaseUrl: env.CUSTODIAN_URL ?? "",
+        custodianAppToken: env.CUSTODIAN_APP_TOKEN ?? "",
+        nodeEnv: env.NODE_ENV,
+        testReceiptVerifyEs256XyHex:
+          env.FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX,
+      }),
+    };
+  }
+  return receiptVerifyResolverCache.resolver;
 }
 
 export default {
@@ -129,6 +171,24 @@ export default {
       if (misconfigured) {
         return misconfigured;
       }
+
+      const missingQueue = responseIfSequencingQueueIncomplete(
+        env,
+        corsHeaders,
+      );
+      if (missingQueue) {
+        return missingQueue;
+      }
+
+      const receiptEnvBad = responseIfReceiptVerifierMisconfigured(
+        env,
+        corsHeaders,
+      );
+      if (receiptEnvBad) {
+        return receiptEnvBad;
+      }
+
+      const resolveReceiptVerifyKey = receiptVerifyResolverForEnv(env);
 
       const x402Mode: X402Mode = env.X402_MODE ?? "verify-only";
       const x402FacilitatorUrl = env.X402_FACILITATOR_URL;
@@ -232,6 +292,7 @@ export default {
           const response = await registerGrant(request, {
             queueEnv: queueEnvForSequencing,
             bootstrapEnv: bootstrapEnvForGrant,
+            resolveReceiptVerifyKey,
           });
           const headers = new Headers(response.headers);
           Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
@@ -254,6 +315,8 @@ export default {
             env.QUEUE_SHARD_COUNT,
             undefined,
             inclusionEnv,
+            resolveReceiptVerifyKey,
+            env.NODE_ENV,
           );
           const headers = new Headers(response.headers);
           Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));

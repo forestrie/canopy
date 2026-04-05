@@ -1,7 +1,7 @@
 /**
  * Grant request CBOR encoder (Forestrie-Grant **v0**).
  * Emits CBOR map keys **1–6** only (grant content; no idtimestamp). Idtimestamp is supplied
- * separately by the server. Use for POST /logs/{logId}/grants body.
+ * separately by the server. Use for POST /register/grants body.
  */
 
 const WIRE_LOG_ID_OWNER_LOG_ID_BYTES = 32;

@@ -21,7 +21,7 @@
 ### 3.1 Bootstrap (one root log)
 
 1. **Mint:** POST /api/grants/bootstrap (no auth). Response body = bootstrap transparent statement (base64 or COSE). Workflow saves it to a file (e.g. `perf/data/bootstrap-grant.cose` or `.b64`).
-2. **Register:** POST /logs/{rootLogId}/grants with `Authorization: Forestrie-Grant <saved_base64>`. Response 303 with Location = status URL.
+2. **Register:** POST /register/grants with `Authorization: Forestrie-Grant <saved_base64>`. Response 303 with Location = status URL.
 3. **Poll:** GET status URL repeatedly until 303 to a receipt URL (`.../entries/{entryId}/receipt`).
 4. **Resolve:** GET receipt URL; decode entryId to get idtimestamp; build completed transparent statement (grant payload + header -65537 = idtimestamp, header 396 = receipt); save to file (e.g. `perf/data/completed-root-grant.cose` or `.b64`) for use as auth in later steps (e.g. data log creation or as the single pool entry if only one log is used).
 
@@ -32,7 +32,7 @@
 For each log ID in the pool (e.g. CANOPY_PERF_LOG_IDS):
 
 1. **Mint:** POST /api/grants/bootstrap with body `{ "rootLogId": "<logId>" }` (or omit to use env ROOT_LOG_ID). Save response body (base64) as the grant for this log.
-2. **Register:** POST /logs/{logId}/grants with `Authorization: Forestrie-Grant <grant_base64>`. 303 to status URL.
+2. **Register:** POST /register/grants with `Authorization: Forestrie-Grant <grant_base64>`. 303 to status URL.
 3. **Poll:** GET status URL repeatedly until 303 to receipt URL.
 4. **Resolve:** GET receipt URL; build completed transparent statement; add to pool (logId → base64 completed grant).
 5. **Output:** grant-pool.json: `{ "grants": [ { "logId": "...", "grantBase64": "..." } ], "signer": "<hex>" }` (signer from grant payload for COSE kid).
@@ -57,7 +57,7 @@ Scripts can live under `perf/scripts/` (e.g. `poll-status.ts`, `resolve-receipt-
 - **Purpose:** Mint the bootstrap grant, register it for the root log, poll until sequenced, resolve receipt, and save the completed grant. No server-side storage; all outputs are files (or artifacts in CI).
 - **Tasks:**
   - **mint** – Call POST /api/grants/bootstrap; save response body to a file (e.g. `{{.GRANT_DATA_DIR}}/bootstrap-grant.b64`). Requires `CANOPY_BASE_URL`, `SCRAPI_API_KEY`, and delegation-signer configured on the server (ROOT_LOG_ID etc. in server env).
-  - **register** – POST /logs/{{.ROOT_LOG_ID}}/grants with Forestrie-Grant from the file saved by mint. Parse 303 Location and save status URL to a file (e.g. `status-url.txt`). Depends on mint (or a pre-existing bootstrap grant file).
+  - **register** – POST /register/grants with Forestrie-Grant from the file saved by mint. Parse 303 Location and save status URL to a file (e.g. `status-url.txt`). Depends on mint (or a pre-existing bootstrap grant file).
   - **poll** – Call poll-status task (from grant-shared) with the status URL from register. Save receipt URL to a file. Depends on register.
   - **resolve** – Call resolve-receipt task (from grant-shared) with the receipt URL from poll and the original bootstrap grant file; write completed grant base64 to e.g. `{{.GRANT_DATA_DIR}}/completed-root-grant.b64`. Depends on poll.
   - **bootstrap** – Single task that runs mint → register → poll → resolve in order (depends on grant-shared). Use when you want to bootstrap the root and have a completed grant file ready for data log creation.

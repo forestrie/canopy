@@ -129,10 +129,4 @@ export async function signGrantPayloadWithCustodyKey(opts: {
   return btoa(s);
 }
 
-/** Bitmap: GF_CREATE|GF_EXTEND (byte 4), GF_AUTH_LOG (byte 7). */
-export function authLogBootstrapShapedFlags(): Uint8Array {
-  const grant = new Uint8Array(8);
-  grant[4] = 0x03;
-  grant[7] = 0x01;
-  return grant;
-}
+export { authLogBootstrapShapedFlags } from "./e2e-grant-flags.js";

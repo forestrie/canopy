@@ -66,7 +66,7 @@ async function main(): Promise<void> {
   // 3. Register
   let statusUrl: string | null = null;
   try {
-    const regRes = await fetch(`${BASE_URL}/logs/${LOG_ID}/grants`, {
+    const regRes = await fetch(`${BASE_URL}/register/grants`, {
       method: "POST",
       headers: { Authorization: `Forestrie-Grant ${grantBase64}` },
       redirect: "manual",

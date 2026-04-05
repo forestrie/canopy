@@ -8,7 +8,7 @@
 
 This document is the **single reference** for how Canopy verifies that an auth grant is allowed for a request. It is referenced by subplans, plans, and API docs wherever grant auth or inclusion is specified.
 
-**§0** states the **logical model**. **§§1–6** state **verification obligations** (when they apply, circularity, checkpoint signer, grant-statement signature, receipts, register-entry binding). **§7** is **summary pseudocode**. **§8** maps **current code**. **§9** lists **implementation gaps** by priority: **envelope signature and K(L) resolution (§4)** are **required** for production trust; **§5–§6** items are **receipt / register-statement** alignment; **§9.8** is **recommended** once univocity **`GF_*`** bit layout is duplicated in-repo (contract alignment for data-log `/entries`).
+**§0** states the **logical model**. **§§1–6** state **verification obligations** (when they apply, circularity, checkpoint signer, grant-statement signature, receipts, register-entry binding). **§6.3** articulates **planned evolution**: split **issuance (envelope) signer** vs **endorsed statement signer** so parent **K(P)** can issue grants whose **`grantData`** names a **different** party allowed to sign **`POST …/entries`**—and lists **document/code deltas** needed to realize that without weakening §6. **§7** is **summary pseudocode**. **§8** maps **current code**. **§9** lists **implementation gaps** by priority: **envelope signature and K(L) resolution (§4)** are **required** for production trust; **§5–§6** items are **receipt / register-statement** alignment; **§9.8** is **recommended** once univocity **`GF_*`** bit layout is duplicated in-repo (contract alignment for data-log `/entries`).
 
 Three verification aspects:
 
@@ -16,7 +16,7 @@ Three verification aspects:
 
 2. **Receipt-based inclusion verification** — show that the grant’s leaf is included in the relevant authority MMR, using a **grant receipt** (COSE Sign1 carrying an MMR inclusion proof) (§5). Aligns with proving consistency against accumulator state before a checkpoint would be **accepted** on-chain (§0).
 
-3. **Signer binding (register-signed-statement)** — Forestrie-Grant wire **v0** is a CBOR map with keys **1–6** only (no **`kind`**, **`signer`**, **`version`**, **`exp`**, **`nbf`**); see **§6.0**. The **statement**’s signer (e.g. COSE `kid`) MUST match **`grantData`** via **`statementSignerBindingBytes(grant)`** (§6). The **`grant`** bitmap MUST satisfy **`isStatementRegistrationGrant`** (data-log checkpoint grant **or** root auth bootstrap shape). **§6.1** gives plain language and **`GF_*` vs `GC_*`**. **Who may issue** the grant is **§4** only: transparent-statement signature vs **K(ownerLogId)** (or delegate).
+3. **Signer binding (register-signed-statement)** — Forestrie-Grant wire **v0** is a CBOR map with keys **1–6** only (no **`kind`**, **`signer`**, **`version`**, **`exp`**, **`nbf`**); see **§6.0**. The **statement**’s signer (e.g. COSE `kid`) MUST match **`grantData`** via **`statementSignerBindingBytes(grant)`** (§6). The **`grant`** bitmap MUST satisfy **`isStatementRegistrationGrant`** (data-log checkpoint grant **or** root auth bootstrap shape). **§6.1** gives plain language and **`GF_*` vs `GC_*`**. **Who may issue** the grant is **§4** only: transparent-statement signature vs **K(ownerLogId)** (or delegate). **§6.3** explains why, **today**, **issuance key** and **endorsed statement signer** are often **collapsed** onto the same **`grantData`**-backed key on child first-grant paths—and what must change for the **split** product model (parent issues, child **grantData** endorses statement signer) to be **normative** without loosening §6.
 
 Implementations live under `packages/apps/canopy-api/src/grant/` and `scrapi/` (register-grant, register-signed-statement).
 
@@ -176,14 +176,14 @@ $$
 
 ### 0.3 Mapping to Canopy (this ARC)
 
-| Model (§0.1) | Role in Canopy |
-|--------------|----------------|
-| AUTH_LOG $A_n$ | The **owner authority log** identified by the grant’s **`ownerLogId`**. New grant leaves are appended to **that** log’s authority MMR (Subplan 03 / ranger). **`logId`** is the **target** of the grant (e.g. data log or child auth log UUID); **`ownerLogId`** is where the **grant leaf** lives. |
-| Checkpoint signer **K(L)** | For authority log **L**, the key material Univocity uses to validate **checkpoints** for **L** (root case: **ES256** key in bootstrap **`grantData`**). **Register-grant** MUST verify the **transparent statement** is signed by **K(L)** or a **delegate** (§4), where **L** is **`bytesToUuid(ownerLogId)`** for the inner grant. |
-| Grant $G_i^{(n)}$ | **`PublishGrant`** commitment + Forestrie-Grant wire **v0** (keys **1–6**; **`GrantAssembly` = `Grant`**) ([Plan 0007](plans/plan-0007-grant-type-and-commitment-alignment.md)). **Issuance** of $G$ is the signed transparent statement; **membership** of the leaf is §5. For **register-statement**, **`isStatementRegistrationGrant`** (**`GF_*`**) and **`grantData`** vs **`kid`** apply (**§6**). |
-| $\operatorname{range}$, $\operatorname{granularity}$ | On-chain **`maxHeight`**, **`minGrowth`**; contract-enforced at checkpoint publish. |
-| Receipt $C_j$ | Unprotected header **396**; §5. |
-| $G \vdash \operatorname{publish}(C, S)$ | Canopy does not call the contract; **issuance** of $G$ is still gated by §4 + §5 as below. |
+| Model (§0.1)                                         | Role in Canopy                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AUTH_LOG $A_n$                                       | The **owner authority log** identified by the grant’s **`ownerLogId`**. New grant leaves are appended to **that** log’s authority MMR (Subplan 03 / ranger). **`logId`** is the **target** of the grant (e.g. data log or child auth log UUID); **`ownerLogId`** is where the **grant leaf** lives.                                                                                                      |
+| Checkpoint signer **K(L)**                           | For authority log **L**, the key material Univocity uses to validate **checkpoints** for **L** (root case: **ES256** key in bootstrap **`grantData`**). **Register-grant** MUST verify the **transparent statement** is signed by **K(L)** or a **delegate** (§4), where **L** is **`bytesToUuid(ownerLogId)`** for the inner grant.                                                                     |
+| Grant $G_i^{(n)}$                                    | **`PublishGrant`** commitment + Forestrie-Grant wire **v0** (keys **1–6**; **`GrantAssembly` = `Grant`**) ([Plan 0007](plans/plan-0007-grant-type-and-commitment-alignment.md)). **Issuance** of $G$ is the signed transparent statement; **membership** of the leaf is §5. For **register-statement**, **`isStatementRegistrationGrant`** (**`GF_*`**) and **`grantData`** vs **`kid`** apply (**§6**). |
+| $\operatorname{range}$, $\operatorname{granularity}$ | On-chain **`maxHeight`**, **`minGrowth`**; contract-enforced at checkpoint publish.                                                                                                                                                                                                                                                                                                                      |
+| Receipt $C_j$                                        | Unprotected header **396**; §5.                                                                                                                                                                                                                                                                                                                                                                          |
+| $G \vdash \operatorname{publish}(C, S)$              | Canopy does not call the contract; **issuance** of $G$ is still gated by §4 + §5 as below.                                                                                                                                                                                                                                                                                                               |
 
 **Bootstrap** (Subplan 08): log not yet initialised — **K(L)** is not yet on-chain; the configured **delegation-signer** acts as an **operational delegate** to sign the **root** transparent statement (current `verifyBootstrapCoseSign1`). After sequencing, **grantData** establishes **K(L)** for future §4 checks on grants whose **`ownerLogId`** is **L**.
 
@@ -193,11 +193,11 @@ $$
 
 ### 1.1 register-grant
 
-**Normative (target behaviour):** Every **`POST /logs/{logId}/grants`** request that enqueues a grant MUST:
+**Normative (target behaviour):** Every **`POST /register/grants`** request that enqueues a grant MUST:
 
 1. **§4 — Grant statement signature:** Verify the **`Authorization: Forestrie-Grant`** COSE Sign1 (transparent statement) using **§4** (signer is **K(L)** or delegate, **L** = authority log the grant appends under = inner **`ownerLogId`**).
-2. **§5 — Receipt / bootstrap branch:** Either  
-   - **Bootstrap:** log not initialised; satisfy Subplan 08 bootstrap checks (including existing bootstrap signature verification), **or**  
+2. **§5 — Receipt / bootstrap branch:** Either
+   - **Bootstrap:** log not initialised; satisfy Subplan 08 bootstrap checks (including existing bootstrap signature verification), **or**
    - **Non-bootstrap:** completed grant with **idtimestamp** + receipt; **§5** inclusion holds.
 
 **Ordering:** §4 should run on every path that accepts the artifact (before or after §5 per efficiency); both must pass where applicable.
@@ -206,7 +206,9 @@ $$
 
 ### 1.2 register-signed-statement
 
-When inclusion is required: **§5** then **§6** (statement **`kid`** vs **`statementSignerBindingBytes(grant)`**).
+Register-signed-statement is **`POST /register/entries`**; target transparency log is **`grant.logId`** only. When inclusion is required: **§5** then **§6** (statement **`kid`** vs **`statementSignerBindingBytes(grant)`**).
+
+**GET registration-status / resolve-receipt** still use **`GET /logs/{logId}/entries/{id}`** so clients know which queue shard to poll: after **register-grant**, **`logId`** in that path is the **authority log** (**`ownerLogId`** / **O**); after **register-signed-statement**, it is the **target data log** (**`grant.logId`** / **T**).
 
 ---
 
@@ -249,7 +251,7 @@ Let **L** be the authority log identified by **`ownerLogId`** of the **inner** g
 
 1. **Parse** COSE Sign1: `protected`, `unprotected`, `payload` (grant CBOR), `signature`.
 2. **Resolve L** = authority log id from **`ownerLogId`** (UUID string from wire bytes).
-3. **Resolve verifying key set** $\mathcal{K}(L) = \{ K(L) \} \cup \mathrm{Delegates}(L)$:  
+3. **Resolve verifying key set** $\mathcal{K}(L) = \{ K(L) \} \cup \mathrm{Delegates}(L)$:
    - Prefer **on-chain / indexer / univocity REST** when available; else **bootstrap grant** for **L** stored in operator pipeline; else **configured** keys for **L** (see §7).
 4. **Verify** COSE Sign1 per RFC 9053: `Sig_structure` over `protected || payload` (and algorithm from protected header), **signature** against some key in $\mathcal{K}(L)$.
 5. If verification fails → **403** (or **401**) — do not enqueue.
@@ -284,7 +286,7 @@ Optional: verify receipt COSE signature (policy).
 
 ### 5.3 Leaf commitment (grant leaf in $A_n$)
 
-- `leafHash = SHA-256(idTimestampBE || inner)`  
+- `leafHash = SHA-256(idTimestampBE || inner)`
 - `inner` = **grant commitment hash** (no **request**, no idtimestamp in preimage).
 
 ### 5.4 Verification pseudocode
@@ -315,31 +317,70 @@ Per [Plan 0005](plans/plan-0005-grant-receipt-unified-resolve.md), receipt is em
 
 **Solidity `PublishGrant`** also has optional **`request`** (**`GC_*`**) — not in the commitment preimage; may appear in TypeScript **`Grant.request`** when hydrated from chain, not required on the Forestrie v0 wire map.
 
-| Axis | Where | Role |
-|------|--------|------|
-| **`GC_AUTH_LOG` / `GC_DATA_LOG`** | **`PublishGrant.request`** | **Checkpoint publish** intent for **log creation** (auth vs data) at **`publishCheckpoint`** time; **not** in the leaf commitment preimage. |
-| **`GF_*`** | **`PublishGrant.grant`** bitmap | **Create vs extend**, **auth log vs data log** target, etc.—**in** the commitment preimage. **`isStatementRegistrationGrant`** uses **`GF_DATA_LOG` + extend** for data-log `/entries`, and **`GF_AUTH_LOG` + `GF_CREATE\|GF_EXTEND`** for root bootstrap grants. |
+| Axis                              | Where                           | Role                                                                                                                                                                                                                                                              |
+| --------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`GC_AUTH_LOG` / `GC_DATA_LOG`** | **`PublishGrant.request`**      | **Checkpoint publish** intent for **log creation** (auth vs data) at **`publishCheckpoint`** time; **not** in the leaf commitment preimage.                                                                                                                       |
+| **`GF_*`**                        | **`PublishGrant.grant`** bitmap | **Create vs extend**, **auth log vs data log** target, etc.—**in** the commitment preimage. **`isStatementRegistrationGrant`** uses **`GF_DATA_LOG` + extend** for data-log `/entries`, and **`GF_AUTH_LOG` + `GF_CREATE\|GF_EXTEND`** for root bootstrap grants. |
 
 After **§5** (when required):
 
 1. **Bitmap:** **`isStatementRegistrationGrant(grant)`** MUST be true (`statement-signer-binding.ts`).
 2. **`grantData`:** MUST be **non-empty**. The COSE **`kid`** (or, for **64-byte** ES256 **x||y**, the **first 32 bytes / x**) must match **`statementSignerBindingBytes(grant)`**.
 
-**Skim — data log + univocity flags:** For **POST `/logs/{logId}/entries`** on a **data** log, **`PublishGrant.grant`** SHOULD carry **`GF_DATA_LOG`** and **`GF_EXTEND`**; **the first grant for that log SHOULD also set `GF_CREATE`**. Root **AUTH** bootstrap grants use **`GF_AUTH_LOG`** + **`GF_CREATE|GF_EXTEND`** with checkpoint key material in **`grantData`**. Full rationale: **§6.1**.
+**Skim — data log + univocity flags:** For **POST `/register/entries`** on a **data** log — i.e. the grant’s **`logId`** is that data log — **`PublishGrant.grant`** SHOULD carry **`GF_DATA_LOG`** and **`GF_EXTEND`**; **the first grant for that log SHOULD also set `GF_CREATE`**. Root **AUTH** bootstrap grants use **`GF_AUTH_LOG`** + **`GF_CREATE|GF_EXTEND`** with checkpoint key material in **`grantData`**. Full rationale: **§6.1**.
 
 ### 6.1 Intent, univocity flags, and “who signed the grant”
 
-**Plain language (data log, POST `/logs/{logId}/entries`):** The owning **AUTH** log (via **§4** + **§5**) has placed a grant leaf that says, in effect: **checkpoints we publish for this data log may carry transparency statements signed by the key named in `grantData`.** The API enforces **`isStatementRegistrationGrant`** plus **`kid` ↔ `grantData`** (**§6.0**, §6 items 1–2).
+**Plain language (data log, POST `/register/entries`):** The owning **AUTH** log (via **§4** + **§5**) has placed a grant leaf that says, in effect: **checkpoints we publish for this data log may carry transparency statements signed by the key named in `grantData`.** The API enforces **`isStatementRegistrationGrant`** plus **`kid` ↔ `grantData`** (**§6.0**, §6 items 1–2).
 
 **`GF_*` vs `GC_*` (univocity `constants.sol`, summarized in [brainstorm-0001 §3.4](brainstorm-0001-x402-checkpoint-grants.md)):** **`PublishGrant.grant`** is an 8-byte wire bitmap of **`GF_*`** flags (create/extend, auth vs data log, …). **`PublishGrant.request`** holds high-level **`GC_*`** codes used at **`publishCheckpoint`** time (e.g. log kind at **creation**); it is **not** in the leaf commitment preimage. For **register-signed-statement** alignment with the contract, the relevant discriminator is **`GF_DATA_LOG`** in **`grant`**, not **`GC_DATA_LOG`** in **`request`**.
 
-**Suggested flag rule for this endpoint (normative target once bit tests exist in Canopy):** For grants authorizing **statement registration on a data log**, **`grant`** SHOULD include **`GF_EXTEND`** and **`GF_DATA_LOG`**. **In practice, `GF_CREATE` is also set** on the **first** grant for that log (first checkpoint): expect **`GF_CREATE \| GF_EXTEND`** together with **`GF_DATA_LOG`**. **Later** grants for the same log may omit **`GF_CREATE`** and carry **`GF_EXTEND`** (and **`GF_DATA_LOG`**) only, if policy allows extend-only follow-up grants. Grants meant for **AUTH** log checkpoint keys (bootstrap, new auth log) use **`GF_AUTH_LOG`** (and typically **GF_CREATE \| GF_EXTEND** for root bootstrap)—those are **register-grant** / checkpoint flows, not a substitute shape for arbitrary **data-log** `/entries` grants.
+**Suggested flag rule for this endpoint (normative target once bit tests exist in Canopy):** For grants authorizing **statement registration on a data log**, **`grant`** SHOULD include **`GF_EXTEND`** and **`GF_DATA_LOG`**. **In practice, `GF_CREATE` is also set** on the **first** grant for that log (first checkpoint): expect **`GF_CREATE \| GF_EXTEND`** together with **`GF_DATA_LOG`**. **Later** grants for the same log may omit **`GF_CREATE`** and carry **`GF_EXTEND`** (and **`GF_DATA_LOG`**) only, if policy allows extend-only follow-up grants. Grants meant for **AUTH** log checkpoint keys (bootstrap, new auth log) use **`GF_AUTH_LOG`** (and typically **GF_CREATE \| GF_EXTEND** for root bootstrap)—those are **register-grant** / checkpoint flows, not a substitute shape for arbitrary **data-log** **register-statement** grants.
 
 **Authorizing log signer:** The party that **issues** the grant (proves the leaf is legitimate) MUST be the **checkpoint signer** for **`ownerLogId`** per **§4** (verify the **transparent statement** COSE signature). **§4** is the sole issuance check; inner CBOR convenience fields that are **not** in the **`PublishGrant`** commitment do not replace it.
 
 **Model consistency:** Wire **v0** drops **`kind`** / **`signer`**; **`GF_*`** / **`GC_*`** remain **on-chain `PublishGrant`** fields. **`grantData` vs `kid`** is the **statement-signer** binding. Tighter **`request`/`GF_*`** matrix checks remain **P3** (**§9.8**) when univocity constants are in-repo.
 
 See [arc-grant-statement-signer-binding](arc-grant-statement-signer-binding.md).
+
+### 6.3 Issuance signer vs endorsed statement signer (current contract vs planned split)
+
+This subsection states whether ARC-0001 is **incorrect** or **incomplete** relative to the intent that **register-signed-statement** should allow **any** child auth or data log (except the **bootstrap** root) to receive a first statement when a **parent-issued** grant authorizes it, with **statement `kid`** bound to an **endorsed** key that may **differ** from the party that signed the **transparent Forestrie-Grant** envelope.
+
+#### 6.3.1 Verdict on ARC-0001 vs that intent
+
+- **Not “incorrect”** at the **logical** level: **§3** and **§4** already describe **K(L)** (or delegate) as the party that may **issue** grants whose leaves append under authority **L**; **§6** already ties **`POST …/entries`** to a **committed** statement-signer binding derived from **grant data** in the preimage.
+- **Incomplete** relative to the **split** intent: the ARC and wire **v0** text treat **`grantData`** as the **sole** “issuer attestation for who may sign registered statements” (**§6.0**). It does **not** yet **normatively** separate:
+  - **Issuance / envelope signer** — must satisfy **§4** for the grant class (e.g. **K(parent)** for a child policy grant), **from**
+  - **Endorsed statement signer** — must satisfy **`signerMatchesStatementRegistrationGrant`** vs **§6** binding bytes (today: **`statementSignerBindingBytes(grant)`** from **`grantData`**).
+
+When those two roles **must** differ (parent signs policy; **`grantData`** names the child’s checkpoint or delegated data-log signer), the **commitment preimage**, Custodian signing profile, and **register-grant** branch verifiers must **all** say explicitly **which key verifies the envelope** and **which bytes bind `kid`**—without implying they are always the same.
+
+#### 6.3.2 What the code does today (tight coupling on child first-grant paths)
+
+On **child auth first grant** and **child data first grant** branches in `register-grant.ts`, the transparent statement is verified with **`verifyCustodianEs256GrantSign1WithGrantDataXy`**: the COSE signature must match the **public key derived from the same 64-byte x‖y** as **`grantData`**. So on those paths **envelope signer ≡ grantData identity**. That matches **§6** today but **does not** realize **parent K(P)** signing the envelope while **`grantData`** endorses a **different** key.
+
+**`register-signed-statement`** does not yet apply full **§4** envelope verification to the Forestrie-Grant (**§9.1**); it applies **§6** `kid` binding after **`grantAuthorize`**. When **§4** is added there, the implementation must **not** conflate “envelope verified with key A” with “`kid` must equal key A” unless the **grant class** says so.
+
+#### 6.3.3 Planned deltas (for roadmap / ADR handoff)
+
+The following changes would **articulate and implement** the split model; taken together they are the **diff** this ARC should track (do **not** treat this list as “allow `kid` without a committed binding”—that would weaken **§6**):
+
+| #      | Layer                                                                           | Change                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------ | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **D1** | **Wire / `PublishGrant` preimage**                                              | Introduce a **versioned** or structured way to carry **endorsed statement signer** (or equivalent) that remains **in the commitment**, **distinct** from the key that proves **parent issued** the grant—**or** document a v0-compatible encoding inside **`grantData`** with an explicit layout (e.g. concatenated blobs + domain separation) so **`statementSignerBindingBytes`** can target **only** the endorsement slice. |
+| **D2** | **register-grant**                                                              | **Per-branch matrix**: (bootstrap, child auth first, child data first, receipt-backed) which **$\mathcal{K}$** verifies the **transparent** Sign1 (**§4**), and whether that equals **`grantData`** pubkey or **K(parent)** / delegate. Replace or generalize **`verifyCustodianEs256GrantSign1WithGrantDataXy`** where **envelope signer ≠ endorsed key**.                                                                    |
+| **D3** | **register-signed-statement**                                                   | Keep **§6**: statement **`kid`** matches **endorsed** binding bytes from the **committed** grant (possibly via **`endorsedStatementSignerBytes(grant)`** alias once D1 lands). Add **§4** envelope verify for the completed artifact (**§9.1**) using **issuance** rules for that grant’s class, **independently** of **`kid`**.                                                                                               |
+| **D4** | **This ARC §6.0–§6.1**                                                          | Update normative text so “issuer attestation” distinguishes **policy issuance** (**§4**) from **statement-signer endorsement** (**§6**); remove any wording that implies **`grantData`** is always both unless the grant class says so.                                                                                                                                                                                        |
+| **D5** | **[arc-grant-statement-signer-binding](arc-grant-statement-signer-binding.md)** | Add a section: envelope (**§4**) vs **`kid`** (**§6**); triage when the two keys differ after D1–D3.                                                                                                                                                                                                                                                                                                                           |
+| **D6** | **Tests / e2e**                                                                 | Parent-signed envelope: **`grantData`** binds delegated or child signer; **`POST …/entries`** with **`kid`** = endorsed; negative: wrong **`kid`** still **`signer_mismatch`**; wrong envelope still rejected at **register-grant** or **§4** on **`/entries`**.                                                                                                                                                               |
+
+**Bootstrap root** remains the **only** case where **§4.3** permits a **platform delegate** without prior **K(L)** from **`grantData`** for **that** log (**§0.3**, **§2**).
+
+#### 6.3.4 Non-goals (no silent loosening)
+
+- Do **not** accept **`kid`** merely because “some key validly signed the transparent statement” without a **committed** endorsement in the **grant preimage** aligned with **§6**.
+- Do **not** drop **`isStatementRegistrationGrant`** / bitmap rules; **data vs auth** class for the **target** log must remain explicit.
 
 ### 6.2 Should Canopy treat **`Grant`** as contract-shaped and check consistency with the preimage inputs?
 
@@ -392,18 +433,18 @@ enqueue_statement(…)
 
 ## 8. Current implementation locations
 
-| Concern | Location |
-|--------|----------|
-| Grant types | `packages/apps/canopy-api/src/grant/grant.ts`, `grant-assembly.ts`, `grant-commitment.ts` |
-| Leaf commitment | `packages/apps/canopy-api/src/grant/leaf-commitment.ts` |
-| Receipt parse / verify | `packages/apps/canopy-api/src/grant/receipt-verify.ts` |
-| Transparent statement decode | `packages/apps/canopy-api/src/grant/transparent-statement.ts` — **decode only; no signature verify** |
-| Register-grant | `packages/apps/canopy-api/src/scrapi/register-grant.ts` |
-| Bootstrap signature | `packages/apps/canopy-api/src/scrapi/bootstrap-public-key.ts` — `verifyBootstrapCoseSign1` (**§4.3 only**) |
-| Grant auth / get grant | `packages/apps/canopy-api/src/scrapi/auth-grant.ts` — `getGrantFromRequest` **does not verify COSE signature** |
-| Statement signer binding | `packages/apps/canopy-api/src/grant/statement-signer-binding.ts` — `isStatementRegistrationGrant`, `statementSignerBindingBytes` (**grantData** only) |
-| Grant bitmap | `packages/apps/canopy-api/src/grant/grant-flags.ts` — **`hasCreateAndExtend`**, **`isDataLogStatementGrantFlags`**, **`hasExtendCapability`**, **`hasDataLogClass`** (assumed low-byte layout; verify vs univocity) |
-| Register-signed-statement | `packages/apps/canopy-api/src/scrapi/register-signed-statement.ts` — **`isStatementRegistrationGrant`** + **`statementSignerBindingBytes`** vs **kid** |
+| Concern                      | Location                                                                                                                                                                                                            |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Grant types                  | `packages/apps/canopy-api/src/grant/grant.ts`, `grant-assembly.ts`, `grant-commitment.ts`                                                                                                                           |
+| Leaf commitment              | `packages/apps/canopy-api/src/grant/leaf-commitment.ts`                                                                                                                                                             |
+| Receipt parse / verify       | `packages/apps/canopy-api/src/grant/receipt-verify.ts`                                                                                                                                                              |
+| Transparent statement decode | `packages/apps/canopy-api/src/grant/transparent-statement.ts` — **decode only; no signature verify**                                                                                                                |
+| Register-grant               | `packages/apps/canopy-api/src/scrapi/register-grant.ts`                                                                                                                                                             |
+| Bootstrap signature          | `packages/apps/canopy-api/src/scrapi/bootstrap-public-key.ts` — `verifyBootstrapCoseSign1` (**§4.3 only**)                                                                                                          |
+| Grant auth / get grant       | `packages/apps/canopy-api/src/scrapi/auth-grant.ts` — `getGrantFromRequest` **does not verify COSE signature**                                                                                                      |
+| Statement signer binding     | `packages/apps/canopy-api/src/grant/statement-signer-binding.ts` — `isStatementRegistrationGrant`, `statementSignerBindingBytes` (**grantData** only)                                                               |
+| Grant bitmap                 | `packages/apps/canopy-api/src/grant/grant-flags.ts` — **`hasCreateAndExtend`**, **`isDataLogStatementGrantFlags`**, **`hasExtendCapability`**, **`hasDataLogClass`** (assumed low-byte layout; verify vs univocity) |
+| Register-signed-statement    | `packages/apps/canopy-api/src/scrapi/register-signed-statement.ts` — **`isStatementRegistrationGrant`** + **`statementSignerBindingBytes`** vs **kid**                                                              |
 
 ---
 
@@ -411,59 +452,60 @@ enqueue_statement(…)
 
 This section is **normative for engineering planning**. **Priority:**
 
-| Tier | §§ | Meaning |
-|------|-----|--------|
-| **P0 — security / issuance** | **§9.1–9.4** | **§4** envelope signature on Forestrie-Grant, **K(L)** resolution, register-grant order of checks. Without these, grants are not cryptographically tied to the authority log signer. |
-| **P1 — tests & contracts** | **§9.5–9.6** | Coverage and API docs for **§4**; clarify envelope vs **§6** **kid** in arc-grant-statement-signer-binding. |
-| **P2 — later** | **§9.7** | Receipt signature, on-chain witness tie-in. |
-| **P3 — contract alignment** | **§9.8** | **`GF_*`** checks on **register-signed-statement** once univocity bit layout lives in-repo (**§6.1**). Parity with **`PublishGrant.grant`**; **not** a substitute for **P0** (bitmap checks do not replace envelope verify). |
+| Tier                         | §§                     | Meaning                                                                                                                                                                                                                      |
+| ---------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **P0 — security / issuance** | **§9.1–9.4**           | **§4** envelope signature on Forestrie-Grant, **K(L)** resolution, register-grant order of checks. Without these, grants are not cryptographically tied to the authority log signer.                                         |
+| **P1 — tests & contracts**   | **§9.5–9.6**           | Coverage and API docs for **§4**; clarify envelope vs **§6** **kid** in arc-grant-statement-signer-binding.                                                                                                                  |
+| **P2 — later**               | **§9.7**               | Receipt signature, on-chain witness tie-in.                                                                                                                                                                                  |
+| **P3 — contract alignment**  | **§9.8**               | **`GF_*`** checks on **register-signed-statement** once univocity bit layout lives in-repo (**§6.1**). Parity with **`PublishGrant.grant`**; **not** a substitute for **P0** (bitmap checks do not replace envelope verify). |
+| **P4 — product model**       | **§6.3.3** (**D1–D6**) | **Issuance vs endorsed statement signer**: wire/preimage, **register-grant** matrix, **§4** on **`/entries`**, doc cross-links, tests. Depends on **P0** so envelope verification is meaningful on both paths.               |
 
 **§5** (receipt / inclusion) is **already implemented** when **`inclusionEnv`** is set (**§9** does not re-list it as a gap). The tables above emphasize **P0** (**§4** envelope + **K(L)**) and **P3** (recommended **§6.1** bitmap checks).
 
 ### 9.1 Grant transparent statement — cryptographic verification
 
-| Gap | Action |
-|-----|--------|
+| Gap                                                  | Action                                                                                                                                                                                                                                                                                                                               |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **No COSE Sign1 verify on Forestrie-Grant envelope** | After obtaining raw transparent statement bytes, **verify** the outer COSE Sign1 signature per RFC 9053 (`Sig_structure`, algorithm from protected header) before treating the grant as authentic. Reuse or extend helpers (cf. `@canopy/encoding` `verifyCoseSign1` used in tests; `decodeCoseSign1` in `bootstrap-public-key.ts`). |
-| **Decode vs verify conflated** | Split **`getGrantFromRequest`**: (a) parse + verify signature → (b) decode payload. Fail closed if signature invalid. |
+| **Decode vs verify conflated**                       | Split **`getGrantFromRequest`**: (a) parse + verify signature → (b) decode payload. Fail closed if signature invalid.                                                                                                                                                                                                                |
 
 **Scope:** **`getGrantFromRequest`** is used for **register-grant** and **register-signed-statement**; missing envelope verify (**§4**) affects **both** paths until this gap is closed (bootstrap **§4.3** remains separate).
 
 ### 9.2 Resolving **K(L)** and delegates **$\mathcal{K}(L)$**
 
-| Gap | Action |
-|-----|--------|
-| **No resolver for checkpoint signer by `ownerLogId`** | Implement **`resolveCheckpointVerifyingKeys(ownerLogId): Promise<CryptoKey[] | JsonWebKey[] | Uint8Array[]>`** (exact type TBD) that returns **K(L)** plus configured delegates. **Sources (in priority order to define):** (1) Univocity / on-chain reader for committed checkpoint key; (2) REST or indexer **bootstrap grant** for **L** → **`grantData`** → ES256 public key; (3) operator **env** allow-list per log UUID (dev / air-gap). |
-| **Child vs parent logs** | Ensure **`ownerLogId`** on the inner grant is the **MMR parent** for the leaf; resolver must key off **that** id, not only URL **`logId`** (target). |
-| **Caching** | Cache **K(L)** per **L** with invalidation on new bootstrap or checkpoint policy (TTL or event-driven). |
+| Gap                                                   | Action                                                                                                                                               |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **No resolver for checkpoint signer by `ownerLogId`** | Implement \*\*`resolveCheckpointVerifyingKeys(ownerLogId): Promise<CryptoKey[]                                                                       | JsonWebKey[] | Uint8Array[]>`** (exact type TBD) that returns **K(L)** plus configured delegates. **Sources (in priority order to define):** (1) Univocity / on-chain reader for committed checkpoint key; (2) REST or indexer **bootstrap grant** for **L** → **`grantData`** → ES256 public key; (3) operator **env\*\* allow-list per log UUID (dev / air-gap). |
+| **Child vs parent logs**                              | Ensure **`ownerLogId`** on the inner grant is the **MMR parent** for the leaf; resolver must key off **that** id, not only URL **`logId`** (target). |
+| **Caching**                                           | Cache **K(L)** per **L** with invalidation on new bootstrap or checkpoint policy (TTL or event-driven).                                              |
 
 ### 9.3 Delegation model (wire + config)
 
-| Gap | Action |
-|-----|--------|
-| **Delegates not defined** | Specify how a delegate proves authority: e.g. **x5c** chain in COSE protected header, **CWT** `delegation` claim, or **config-only** extra keys certified offline. Document in a short ADR or extend this ARC. |
-| **Bootstrap / platform delegate** | Formalise current **delegation-signer** as **$\mathcal{K}(L)$** when **L** uninitialised (**§4.3**); ensure env documents trust assumptions. |
+| Gap                               | Action                                                                                                                                                                                                         |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Delegates not defined**         | Specify how a delegate proves authority: e.g. **x5c** chain in COSE protected header, **CWT** `delegation` claim, or **config-only** extra keys certified offline. Document in a short ADR or extend this ARC. |
+| **Bootstrap / platform delegate** | Formalise current **delegation-signer** as **$\mathcal{K}(L)$** when **L** uninitialised (**§4.3**); ensure env documents trust assumptions.                                                                   |
 
 ### 9.4 register-grant control flow
 
-| Gap | Action |
-|-----|--------|
-| **Non-bootstrap path skips §4** | After `grantAuthorize` / receipt success, **still insufficient** — add **`verifyGrantTransparentStatement(bytes, assembly)`** that runs **§4** using **`assembly.ownerLogId`**. |
+| Gap                                        | Action                                                                                                                                                                                                                                           |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Non-bootstrap path skips §4**            | After `grantAuthorize` / receipt success, **still insufficient** — add **`verifyGrantTransparentStatement(bytes, assembly)`** that runs **§4** using **`assembly.ownerLogId`**.                                                                  |
 | **Queue-only mode** (`bootstrapEnv` unset) | Today enqueues with **no** inclusion and **no** envelope verify — **unsafe** for production. **Options:** require **`bootstrapEnv`** (or successor) whenever queue is on; or require **§4** even without receipt; document **dev-only** if kept. |
-| **Order of checks** | Recommended: **parse → §4 signature → §5 receipt** (fail fast on bad crypto). |
+| **Order of checks**                        | Recommended: **parse → §4 signature → §5 receipt** (fail fast on bad crypto).                                                                                                                                                                    |
 
 ### 9.5 Testing and observability
 
-| Gap | Action |
-|-----|--------|
-| **No tests for envelope signature on register-grant** | Add integration tests: valid signature with **K(L)** → 303; wrong key → 403; bootstrap path unchanged. |
-| **Logging** | On §4 failure, log **L**, key id / thumbprint (no raw secrets), and reason (no key resolved vs bad sig). |
+| Gap                                                   | Action                                                                                                   |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **No tests for envelope signature on register-grant** | Add integration tests: valid signature with **K(L)** → 303; wrong key → 403; bootstrap path unchanged.   |
+| **Logging**                                           | On §4 failure, log **L**, key id / thumbprint (no raw secrets), and reason (no key resolved vs bad sig). |
 
 ### 9.6 Documentation and API contracts
 
-| Gap | Action |
-|-----|--------|
-| **register-grant.md / Plan 0005** | State that **Forestrie-Grant** MUST be a **valid COSE Sign1** under **K(ownerLogId)** or delegate. |
+| Gap                                    | Action                                                                                                  |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| **register-grant.md / Plan 0005**      | State that **Forestrie-Grant** MUST be a **valid COSE Sign1** under **K(ownerLogId)** or delegate.      |
 | **arc-grant-statement-signer-binding** | Distinguish **envelope** signer (**§4**, register-grant) vs **statement kid** (**§6**, register-entry). |
 
 ### 9.7 Optional hardening (later)
@@ -473,11 +515,11 @@ This section is **normative for engineering planning**. **Priority:**
 
 ### 9.8 register-signed-statement — univocity **`grant`** bitmap (P3 — recommended)
 
-| Gap | Action |
-|-----|--------|
-| **Bitmap vs univocity** | Confirm **`GF_*`** bit positions in **`grant-flags.ts`** match **`constants.sol`**; **`isStatementRegistrationGrant`** already combines data-log and bootstrap auth paths. |
-| **`request` / `GC_*` vs bitmap** | When univocity defines **`GC_*` ↔ `GF_*`** invariants, add **`assertRequestMatchesGrantFlags`** for hydrated **`Grant.request`** (**§6.2**). |
-| **logId vs flags** | Optionally cross-check URL **`logId`** / **`grant.logId`** against policy (out of scope until log-kind API is stable). |
+| Gap                              | Action                                                                                                                                                                     |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Bitmap vs univocity**          | Confirm **`GF_*`** bit positions in **`grant-flags.ts`** match **`constants.sol`**; **`isStatementRegistrationGrant`** already combines data-log and bootstrap auth paths. |
+| **`request` / `GC_*` vs bitmap** | When univocity defines **`GC_*` ↔ `GF_*`** invariants, add **`assertRequestMatchesGrantFlags`** for hydrated **`Grant.request`** (**§6.2**).                              |
+| **logId vs flags**               | Optionally cross-check URL **`logId`** / **`grant.logId`** against policy (out of scope until log-kind API is stable).                                                     |
 
 ---
 

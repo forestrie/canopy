@@ -2,14 +2,13 @@ import type { APIRequestContext, TestInfo } from "@playwright/test";
 import { decode } from "cbor-x";
 import { attachReceiptAndIdtimestampToTransparentStatement } from "../../../../apps/canopy-api/src/scrapi/attach-scitt-transparent-statement-receipt.js";
 import { expectAPI as expect } from "../fixtures/auth";
-import {
-  pollQueryRegistrationUntilReceiptRedirect,
-  pollResolveReceiptUntil200,
-  sequencingBackoff,
-} from "./arithmetic-backoff-poll";
+import { sequencingBackoff } from "./arithmetic-backoff-poll";
 import { skipOrThrowIfBootstrapMintUnconfigured } from "./bootstrap-e2e-guard";
-import { postRegisterGrantExpect303 } from "./bootstrap-grant-setup";
 import { entryIdHexToIdtimestampBe8 } from "./entry-id-e2e";
+import {
+  completeGrantRegistrationThroughReceipt,
+  type CompleteGrantRegistrationThroughReceiptResult,
+} from "./register-grant-through-receipt";
 import {
   formatProblemDetailsMessage,
   reportProblemDetails,
@@ -126,13 +125,8 @@ export interface CompleteBootstrapGrantWithReceiptOptions {
   resolveReceiptMaxMs?: number;
 }
 
-export interface CompleteBootstrapGrantWithReceiptResult {
-  statusUrlAbsolute: string;
-  receiptUrlAbsolute: string;
-  entryIdHex: string;
-  grantBase64: string;
-  receiptRes: Awaited<ReturnType<typeof pollResolveReceiptUntil200>>;
-}
+export type CompleteBootstrapGrantWithReceiptResult =
+  CompleteGrantRegistrationThroughReceiptResult;
 
 /**
  * POST register-grant, poll until receipt redirect, GET receipt until 200.
@@ -140,39 +134,7 @@ export interface CompleteBootstrapGrantWithReceiptResult {
 export async function completeBootstrapGrantWithReceipt(
   opts: CompleteBootstrapGrantWithReceiptOptions,
 ): Promise<CompleteBootstrapGrantWithReceiptResult> {
-  const { statusUrlAbsolute } = await postRegisterGrantExpect303(
-    opts.unauthorizedRequest,
-    {
-      logId: opts.logId,
-      baseURL: opts.baseURL,
-      grantBase64: opts.grantBase64,
-    },
-  );
-
-  const ladder = opts.ladderMs ?? sequencingBackoff;
-  const { receiptUrlAbsolute, entryIdHex } =
-    await pollQueryRegistrationUntilReceiptRedirect({
-      request: opts.unauthorizedRequest,
-      statusUrlAbsolute,
-      baseURL: opts.baseURL,
-      ladderMs: ladder,
-      maxWaitMs: opts.pollRegistrationMaxMs ?? 180_000,
-    });
-
-  const receiptRes = await pollResolveReceiptUntil200({
-    request: opts.unauthorizedRequest,
-    receiptUrlAbsolute,
-    ladderMs: ladder,
-    maxWaitMs: opts.resolveReceiptMaxMs ?? 420_000,
-  });
-
-  return {
-    statusUrlAbsolute,
-    receiptUrlAbsolute,
-    entryIdHex,
-    grantBase64: opts.grantBase64,
-    receiptRes,
-  };
+  return completeGrantRegistrationThroughReceipt(opts);
 }
 
 export function buildCompletedGrantBase64(
@@ -190,10 +152,4 @@ export function buildCompletedGrantBase64(
   return bytesToForestrieGrantBase64(completedBytes);
 }
 
-/** True when sequencing poll tests should be skipped (no ingress). */
-export function shouldSkipSequencingPoll(): boolean {
-  return (
-    process.env.E2E_SKIP_SEQUENCING_POLL === "1" ||
-    process.env.E2E_SKIP_SEQUENCING_POLL === "true"
-  );
-}
+export { shouldSkipSequencingPoll } from "./e2e-env-guards";

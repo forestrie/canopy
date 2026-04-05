@@ -20,31 +20,31 @@
 
 ### 1.2 Auth model (Plan 0005)
 
-- **register-grant** and **POST /logs/{logId}/entries** (register-signed-statement) both require **Authorization: Forestrie-Grant &lt;base64&gt;** where the value is the **transparent statement** (COSE Sign1: grant payload, idtimestamp in header -65537, receipt in header 396). No X-Grant-Location fetch; no Bearer grant path.
+- **register-grant** and **POST /register/entries** (register-signed-statement) both require **Authorization: Forestrie-Grant &lt;base64&gt;** where the value is the **transparent statement** (COSE Sign1: grant payload, idtimestamp in header -65537, receipt in header 396). No X-Grant-Location fetch; no Bearer grant path.
 - After bootstrap, any further register-grant or register-signed-statement must supply a **completed** grant (idtimestamp + receipt) in that artifact; the API verifies inclusion via receipt then enqueues.
 
 ### 1.3 Perf and CI today
 
 - **Perf workflow** (`.github/workflows/perf-canopy.yml`): Uses GitHub Environment **`dev`** / **`stage`** / **`prod`** (Doppler-synced vars/secrets). **Log IDs** are **synthesized each run** (shard-balanced UUIDs via `perf/scripts/generate-shard-balanced-ids.js`); no **`CANOPY_PERF_*LPS_*`** GitHub variables. Then **Generate grant pool** (`pnpm --filter @canopy/perf run generate-grant-pool`) and k6 run as before. Grant pool is uploaded as an artifact.
-- **generate-grant-pool** (`perf/scripts/generate-grant-pool.ts`): For each log ID: **POST /api/grants/bootstrap** (`{ rootLogId }`), **POST /logs/{logId}/grants** with **Authorization: Forestrie-Grant** (bootstrap transparent statement), poll status → GET receipt → **`buildCompletedGrant`** → writes **`grant-pool.json`** with **`signer`** (hex, derived from **`grantData`** / key 6) and **`grants: [{ logId, grantBase64 }]`** (completed transparent statements).
-- **k6 scenario** (`perf/k6/canopy-api/scenarios/write-constant-arrival.js`): Loads **`grant-pool.json`**; POST **/logs/{logId}/entries** with **Authorization: Forestrie-Grant &lt;grantBase64&gt;**; statement COSE **`kid`** = **`signerToBytes(pool.signer)`** (must match **`statementSignerBindingBytes`**). **Bearer** is only used where the scenario polls status (not for grant auth on `/entries`).
+- **generate-grant-pool** (`perf/scripts/generate-grant-pool.ts`): For each log ID: **POST /api/grants/bootstrap** (`{ rootLogId }`), **POST /register/grants** with **Authorization: Forestrie-Grant** (bootstrap transparent statement), poll status → GET receipt → **`buildCompletedGrant`** → writes **`grant-pool.json`** with **`signer`** (hex, derived from **`grantData`** / key 6) and **`grants: [{ logId, grantBase64 }]`** (completed transparent statements).
+- **k6 scenario** (`perf/k6/canopy-api/scenarios/write-constant-arrival.js`): Loads **`grant-pool.json`**; POST **/register/entries** with **Authorization: Forestrie-Grant &lt;grantBase64&gt;**; statement COSE **`kid`** = **`signerToBytes(pool.signer)`** (must match **`statementSignerBindingBytes`**). **Bearer** is only used where the scenario polls status (not for grant auth on register-statement).
 
 ## 2. Gaps
 
 ### 2.1 Auth mismatch (resolved in repo)
 
-- The API accepts **Forestrie-Grant** only for register-grant and POST /entries grant auth (Plan 0005). **generate-grant-pool** and k6 have been updated accordingly.
+- The API accepts **Forestrie-Grant** only for register-grant and **POST /register/entries** grant auth (Plan 0005). **generate-grant-pool** and k6 have been updated accordingly.
 - **Remaining:** perf/CI env must supply bootstrap + queue + univocity vars when exercising bootstrap branch; single-log vs multi-log coverage (see §3).
 
 ### 2.2 First grant for perf / CI
 
-To run load tests we need at least one **completed** grant per log (transparent statement with idtimestamp and receipt) to use as auth for POST /entries. Options:
+To run load tests we need at least one **completed** grant per log (transparent statement with idtimestamp and receipt) to use as auth for **POST /register/entries**. Options:
 
 - **Option A – Bootstrap one root log, then use that grant for entries:**  
   1. Obtain bootstrap grant: POST /api/grants/bootstrap (or GET /grants/bootstrap/:rootLogId if already minted).  
-  2. POST /logs/{rootLogId}/grants with Authorization: Forestrie-Grant &lt;bootstrap_base64&gt;.  
+  2. POST /register/grants with Authorization: Forestrie-Grant &lt;bootstrap_base64&gt;.  
   3. Poll status URL until 303 to receipt; resolve receipt to get the completed transparent statement (grant + idtimestamp + receipt).  
-  4. Use that completed grant as Forestrie-Grant for all POST /entries to that rootLogId.  
+  4. Use that completed grant as Forestrie-Grant for all **POST /register/entries** targeting that root log (**`grant.logId`**).  
   So we only need one log (root) for load testing entries; the “grant pool” is one or more copies of that same completed grant (or one entry per VU if we want variety).
 
 - **Option B – Multiple logs (e.g. 4 shards × N logs):**  
@@ -54,7 +54,7 @@ To run load tests we need at least one **completed** grant per log (transparent 
 
 - There is **no** automated step in perf or smoke workflows that:  
   (1) mints the bootstrap grant (POST /api/grants/bootstrap or equivalent),  
-  (2) registers it (POST /logs/{rootLogId}/grants with Forestrie-Grant),  
+  (2) registers it (POST /register/grants with Forestrie-Grant),  
   (3) waits until sequenced and resolves the completed grant.
 - Without that, generate-grant-pool (or a replacement) cannot produce valid Forestrie-Grant tokens. So **first-grant bootstrap must be part of the perf/CI run** (or a pre-run step with stored artifact) before any “generate grant pool” or k6 step.
 
@@ -66,16 +66,16 @@ To run load tests we need at least one **completed** grant per log (transparent 
 
 1. **Align grant pool and k6 with Forestrie-Grant**
    - **generate-grant-pool** (or a new script): Should output a **grant pool** that contains **base64 transparent statements** (and optionally signer hex for COSE kid). To do that it must either:
-     - **Bootstrap path:** Call POST /api/grants/bootstrap (or GET /grants/bootstrap/:rootLogId), then POST /logs/{rootLogId}/grants with Forestrie-Grant &lt;bootstrap&gt;, poll until sequenced, resolve receipt, then store the completed grant (base64) as the pool entry for that log; or
+     - **Bootstrap path:** Call POST /api/grants/bootstrap (or GET /grants/bootstrap/:rootLogId), then POST /register/grants with Forestrie-Grant &lt;bootstrap&gt;, poll until sequenced, resolve receipt, then store the completed grant (base64) as the pool entry for that log; or
      - **Pre-seeded:** Accept a pre-obtained completed grant (e.g. from a prior bootstrap run) and write it into grant-pool.json.
-   - **k6:** Change POST /entries to send **Authorization: Forestrie-Grant &lt;base64&gt;** using the transparent statement from the pool (and keep statement’s kid matching **`statementSignerBindingBytes(grant)`** — i.e. committed **`grantData`**; grant must satisfy **`isStatementRegistrationGrant`**; see ARC-0001 §6). Remove reliance on X-Grant-Location and Bearer for grant auth.
+   - **k6:** **POST /register/entries** must send **Authorization: Forestrie-Grant &lt;base64&gt;** using the transparent statement from the pool (and keep statement’s kid matching **`statementSignerBindingBytes(grant)`** — i.e. committed **`grantData`**; grant must satisfy **`isStatementRegistrationGrant`**; see ARC-0001 §6). Remove reliance on X-Grant-Location and Bearer for grant auth.
 
 2. **First-grant bootstrap for perf/CI**
    - Add a **bootstrap step** that: (a) ensures bootstrap grant exists (POST /api/grants/bootstrap or GET), (b) registers it with Forestrie-Grant, (c) polls until sequenced and resolves the completed grant, (d) writes that grant (and any metadata) for the next step. This can be the same script as “generate-grant-pool” when there is only one root log, or a dedicated “bootstrap-and-export-grant” script used before generate-grant-pool.
    - In **perf workflow**: Run this bootstrap (or generate-grant-pool that includes bootstrap) **before** k6; ensure env has ROOT_LOG_ID, delegation-signer URL/token, and UNIVOCITY_SERVICE_URL if bootstrap branch is used.
 
 3. **Single-log vs multi-log**
-   - For **initial load-test readiness**, implement and document the **single root log** flow: one ROOT_LOG_ID, bootstrap once, one completed grant used for all POST /entries in k6. Perf env can keep a single CANOPY_PERF_ROOT_LOG_ID (64 hex) and use it for both bootstrap and entries.
+   - For **initial load-test readiness**, implement and document the **single root log** flow: one ROOT_LOG_ID, bootstrap once, one completed grant used for all **POST /register/entries** in k6. Perf env can keep a single CANOPY_PERF_ROOT_LOG_ID (64 hex) and use it for both bootstrap and entries.
    - Multi-log (multiple roots or child logs) can be a follow-up once single-log perf and CI are green.
 
 4. **Docs and runbook**

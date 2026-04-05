@@ -84,7 +84,7 @@ for (const logId of LOG_IDS) {
   }
   const grantBase64 = (await mintRes.text()).trim();
 
-  const registerRes = await fetch(`${BASE_URL}/logs/${logId}/grants`, {
+  const registerRes = await fetch(`${BASE_URL}/register/grants`, {
     method: "POST",
     headers: {
       Authorization: `Forestrie-Grant ${grantBase64}`,

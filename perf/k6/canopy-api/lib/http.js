@@ -2,7 +2,7 @@
  * HTTP helpers for k6 canopy-api load testing.
  *
  * Provides:
- * - POST /entries with COSE Sign1 payload
+ * - POST /register/entries with COSE Sign1 payload
  * - 303 redirect parsing
  * - Inline sampled polling for e2e latency measurement
  */
@@ -27,12 +27,12 @@ export const e2eTimeoutCount = new Counter("e2e_timeout_count");
  * passed to an external signing script to generate the X-PAYMENT header.
  *
  * @param {string} baseUrl - Base URL of canopy-api
- * @param {string} logId - Any valid log ID (first from the list is fine)
+ * @param {string} logId - Unused (kept for call-site compatibility); POST is `/register/entries`.
  * @param {string} apiToken - Bearer token for Authorization
  * @returns {string} - Base64-encoded X-PAYMENT-REQUIRED header value
  */
 export function getPaymentRequirements(baseUrl, logId, apiToken) {
-  const url = `${baseUrl}/logs/${logId}/entries`;
+  const url = `${baseUrl}/register/entries`;
   // Minimal body; the server will reject before parsing due to missing
   // X-PAYMENT header and return 402 with X-PAYMENT-REQUIRED.
   const dummyBody = new Uint8Array([0x80]);
@@ -61,10 +61,10 @@ export function getPaymentRequirements(baseUrl, logId, apiToken) {
 }
 
 /**
- * POST a COSE Sign1 statement to /entries (grant-based auth).
+ * POST a COSE Sign1 statement to /register/entries (grant-based auth).
  *
  * @param {string} baseUrl - Base URL (e.g., https://canopy-api.example.workers.dev)
- * @param {string} logId - Log ID for the target log
+ * @param {string} logId - Unused in URL (target log comes from the grant); kept for API compatibility
  * @param {string} apiToken - Unused; kept for API compatibility
  * @param {Uint8Array} cosePayload - CBOR-encoded COSE Sign1 message (kid must match grant signer)
  * @param {string} grantBase64 - Base64-encoded grant (transparent statement) for Forestrie-Grant
@@ -77,7 +77,7 @@ export function postEntryWithGrant(
   cosePayload,
   grantBase64,
 ) {
-  const url = `${baseUrl}/logs/${logId}/entries`;
+  const url = `${baseUrl}/register/entries`;
   const startTime = Date.now();
 
   const headers = {
@@ -118,10 +118,10 @@ export function postEntryWithGrant(
 }
 
 /**
- * POST a COSE Sign1 statement to /entries (legacy x402 payment header).
+ * POST a COSE Sign1 statement to /register/entries (legacy x402 payment header).
  *
  * @param {string} baseUrl - Base URL (e.g., https://canopy-api.example.workers.dev)
- * @param {string} logId - Log ID for the target log
+ * @param {string} logId - Unused in URL; kept for API compatibility
  * @param {string} apiToken - Bearer token for Authorization
  * @param {Uint8Array} cosePayload - CBOR-encoded COSE Sign1 message
  * @param {string} [xPayment] - Optional base64-encoded X-PAYMENT header
@@ -134,7 +134,7 @@ export function postEntry(
   cosePayload,
   xPayment,
 ) {
-  const url = `${baseUrl}/logs/${logId}/entries`;
+  const url = `${baseUrl}/register/entries`;
   const startTime = Date.now();
 
   const headers = {
@@ -247,7 +247,7 @@ export function pollUntilSequenced(
  * POST with Forestrie-Grant and optionally poll until sequenced (for sampled e2e latency).
  *
  * @param {string} baseUrl - Base URL
- * @param {string} logId - Log ID
+ * @param {string} logId - Unused in POST URL; kept for API compatibility
  * @param {string} apiToken - Bearer token (for poll; POST uses Forestrie-Grant only)
  * @param {Uint8Array} cosePayload - CBOR-encoded COSE Sign1 message (kid must match grant)
  * @param {string} grantBase64 - Base64 grant for Authorization: Forestrie-Grant
@@ -313,7 +313,7 @@ export function postAndMaybeWaitWithGrant(
  * POST and optionally poll until sequenced (legacy x402 payment).
  *
  * @param {string} baseUrl - Base URL
- * @param {string} logId - Log ID
+ * @param {string} logId - Unused in POST URL; kept for API compatibility
  * @param {string} apiToken - Bearer token
  * @param {Uint8Array} cosePayload - CBOR-encoded COSE Sign1 message
  * @param {boolean} [measureE2E=false] - Whether to poll until sequenced

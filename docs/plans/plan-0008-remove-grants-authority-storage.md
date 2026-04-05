@@ -33,7 +33,7 @@ The caller already has the grant content; they obtain idtimestamp from the entry
 
 ## 4. Caller flow after change
 
-1. POST /logs/{logId}/grants with grant in body or Authorization: Forestrie-Grant (transparent statement).
+1. POST /register/grants with grant in body or Authorization: Forestrie-Grant (transparent statement).
 2. Server enqueues for sequencing; returns 303 to `/logs/{ownerLogId}/entries/{innerHex}` (status URL).
 3. Client polls GET that status URL until query-registration-status returns 303 to `/logs/{logId}/{massifHeight}/entries/{entryId}/receipt`.
 4. Client decodes entryId (hex) to get idtimestamp and mmrIndex; GET the receipt from that URL.

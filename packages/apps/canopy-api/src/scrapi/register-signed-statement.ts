@@ -18,38 +18,8 @@
  * **GF_DATA_LOG** statement grants require **`O ≠ T`** (see in-body check). The **first** statement
  * on an empty **`T`** is allowed once auth succeeds; **`T`** need not already contain entries.
  *
- * ## Caveats — trust model vs hierarchical fields
- *
- * **Hierarchical grant fields** (`ownerLogId` **`O`**, target **`T`**, flags) describe *who may govern whom*
- * in the intended model. **They are not, by themselves, a verified chain of signatures back to the
- * bootstrap signer.** This handler checks policy bits and `O ≠ T` for data-log statement grants; it does
- * **not** recurse parent grants or prove that **`grantData`** was issued under bootstrap-root authority.
- *
- * **What cryptographic binding is enforced (64-byte `grantData` path):** the **outer** Forestrie-Grant
- * COSE Sign1 and the **statement** COSE Sign1 must verify under the ES256 public key **x‖y** in
- * **`grantData`**,
- * and the statement **`kid`** must match the {@link statementSignerBindingBytes} / Custodian-16 profile.
- * That proves **internal consistency** of the artifacts the client supplied — not that the key is **authorised**
- * by your trust root.
- *
- * **Grant authorization (receipt MMR + owner-queue inclusion):** For **`POST /register/entries`**, the
- * production worker passes `inclusionEnv` whenever **`SEQUENCING_QUEUE`** is bound (see [`index.ts`](../index.ts));
- * deployed canopy-api configs include that binding, so **successful** statement registration **always**
- * runs {@link grantAuthorize} alongside enqueue — not something clients opt into or out of on the wire.
- * That path verifies **MMR inclusion** of the grant leaf against the receipt’s proof/peak
- * (`verifyReceiptInclusionFromParsed` — **no** receipt COSE Sign1 verification here) and that the grant
- * commitment appears on **`O`**’s sequencing shard (`resolveContent`). It is still **not** the aspirational
- * univocal-checkpoint / receipt-signer / **AUTH** semantics model.
- *
- * **Maintainers:** the optional `inclusionEnv` parameter exists so this module can be called directly from
- * **unit tests** without Durable Object bindings (e.g. [`wrangler.test.jsonc`](../../wrangler.test.jsonc)
- * omits **`SEQUENCING_QUEUE`**). That is **not** part of the public HTTP interface. Code does **not** gate
- * omission on `NODE_ENV === "test"` — only on the caller passing env; a deploy **without** the queue binding
- * would skip inclusion in `grantAuthorize` until the handler returns **503** (“sequencing not configured”)
- * after other checks — operations should treat **`SEQUENCING_QUEUE`** as mandatory for real service.
- *
- * **Summary:** production behaviour is *matching signers + grantAuthorize when the worker has a queue* — still
- * **not** *enforced chain to bootstrap* nor *univocally anchored inclusion under one checkpoint key*.
+ * **Receipt path:** {@link grantAuthorize} verifies the receipt COSE Sign1 against the Custodian
+ * key for **`O`**, then MMR inclusion and owner-queue resolution (see architecture docs).
  */
 
 import {
@@ -82,6 +52,8 @@ import {
   grantAuthorize,
   type AuthGrantAuthorizeEnv,
 } from "./auth-grant.js";
+import { isCanopyApiPoolTestMode } from "../env/runtime-mode.js";
+import type { ReceiptVerifyKeyResolver } from "../env/receipt-verify-key-resolver.js";
 import { ClientErrors, ServerErrors } from "./problem-details";
 import { getMaxStatementSize } from "./transparency-configuration";
 import type { InclusionEnv } from "./verify-grant-inclusion.js";
@@ -117,10 +89,22 @@ export async function registerSignedStatement(
   shardCountStr: string,
   enqueueExtras: Parameters<SequencingQueueStub["enqueue"]>[2] | undefined,
   inclusionEnv?: InclusionEnv,
+  resolveReceiptVerifyKey?: ReceiptVerifyKeyResolver,
+  nodeEnv?: string,
 ): Promise<Response> {
   try {
+    const nenv = nodeEnv ?? "production";
+    if (!inclusionEnv && !isCanopyApiPoolTestMode({ NODE_ENV: nenv })) {
+      return ServerErrors.serviceUnavailable(
+        "Statement registration requires sequencing and inclusion verification (SEQUENCING_QUEUE).",
+      );
+    }
+
     // --- Grant resolution (Plan 0005: Authorization: Forestrie-Grant only) ---
-    const authEnv: AuthGrantAuthorizeEnv = { inclusionEnv };
+    const authEnv: AuthGrantAuthorizeEnv = {
+      inclusionEnv,
+      resolveReceiptVerifyKey,
+    };
     const grantResult = getGrantFromRequest(request);
     if (grantResult instanceof Response) return grantResult;
     const { grant } = grantResult;

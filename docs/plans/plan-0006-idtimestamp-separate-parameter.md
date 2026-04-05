@@ -36,7 +36,7 @@ So we have a structural mismatch: the contract’s “grant” is keys 1–8 (pu
 |--------|--------------------|---------------|--------------|
 | Transparent statement payload | No | Payload = 1–8 only | Unchanged (already correct). |
 | Transparent statement header -65537 | Yes | idtimestamp in header | Unchanged. |
-| POST /logs/{logId}/grants body | No | 0–8 (encoding pkg) | Body = grant content only (1–8). Server never reads key 0. |
+| POST /register/grants body | No | 0–8 (encoding pkg) | Body = grant content only (1–8). Server never reads key 0. |
 | R2 authority/{innerHex}.cbor (sequenced) | No | 0–8 (idtimestamp often zeros) | Store **grant content only** (1–8). Idtimestamp comes from massif when serving. |
 | GET /grants/authority/{innerHex} response | Yes | Full grant CBOR 0–8 | Build completed grant from (content, idtimestamp); encode for response (see below). |
 | Receipt verification (leaf commitment) | Yes | grant.idtimestamp + inner | Accept (grantContent, idtimestamp) or (Grant, idtimestamp); use idtimestamp only in leaf hash. |
@@ -48,7 +48,7 @@ Only the following **actually need** idtimestamp as a value:
 - Building the **completed grant** for the client (e.g. GET grant).
 - **Receipt verification** (leaf = H(idTimestampBE || inner)).
 
-All other paths can work with “grant content” only. (Grant sequencing is required for POST /logs/{logId}/grants; there is no fallback storage path.)
+All other paths can work with “grant content” only. (Grant sequencing is required for POST /register/grants; there is no fallback storage path.)
 
 ## 4. Target types and codec
 
@@ -72,7 +72,7 @@ All other paths can work with “grant content” only. (Grant sequencing is req
    - Response encoding for GET /grants/authority/{innerHex}: build `Grant` (content + idtimestamp from massif) and encode for client; response format can stay as single CBOR blob (e.g. 0–8) for compatibility, but the **stored** blob is no longer 0–8.
 
 3. **Encoding package (encodeGrantRequest)**  
-   - Emit **keys 1–8 only** for POST /logs/{logId}/grants body (grant content only). Remove key 0 from output.  
+   - Emit **keys 1–8 only** for POST /register/grants body (grant content only). Remove key 0 from output.  
    - **GrantRequestInput:** Remove or make clearly optional `idtimestamp`; server never uses it from body.  
    - Canopy register-grant: parse body as grant content only (decodeGrantPayload(body, zeros) or add decodeGrantRequest that returns content only).
 

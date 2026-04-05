@@ -24,9 +24,9 @@ Required keys for e2e include at least:
 - **`CANOPY_BASE_URL`** _or_ **`CANOPY_FQDN`** — worker origin. Playwright resolves `CANOPY_BASE_URL` first; if unset, it builds `https://…` from `CANOPY_FQDN` (same logic as `.github/workflows/test.yml`). Doppler `dev` may only define **`CANOPY_FQDN`**.
 - **`SCRAPI_API_KEY`** — bearer token for authorized fixtures (when used)
 
-Bootstrap grant Playwright tests skip with a clear reason if the deployed worker returns 503 “bootstrap not configured”. Set **`E2E_REQUIRE_BOOTSTRAP=1`** to fail instead of skip once the deployment uses Custodian (Plan 0014).
+Bootstrap grant Playwright tests skip with a clear reason if the deployed worker returns **503** with “not configured” or deployment misconfiguration (e.g. missing **`CUSTODIAN_APP_TOKEN`**, **`SEQUENCING_QUEUE`**). The **worker** must have **`CUSTODIAN_APP_TOKEN`** (Wrangler secret) for SCITT receipt verification on register-grant / register-statement, not only the bootstrap token. Set **`E2E_REQUIRE_BOOTSTRAP=1`** to fail instead of skip in CI when the target should be fully configured.
 
-**Child auth grant** (`tests/bootstrap-child-auth-grant.spec.ts`): after root bootstrap + receipt, creates a Custodian custody key (`POST /api/keys` with **`CUSTODIAN_APP_TOKEN`**), signs a child-shaped Forestrie-Grant (`logId` = new child UUID, `ownerLogId` = root), and registers it on **`POST /logs/{child}/grants`**. The 303 **`Location`** must target the **parent** log’s `/entries/…` (sequencing by `ownerLogId`). Without **`CUSTODIAN_APP_TOKEN`**, the test is skipped.
+**Child auth grant** (`tests/bootstrap-child-auth-grant.spec.ts`): after root bootstrap + receipt, creates a Custodian custody key (`POST /api/keys` with **`CUSTODIAN_APP_TOKEN`**), signs a child-shaped Forestrie-Grant (`logId` = new child UUID, `ownerLogId` = root), and registers it on **`POST /register/grants`**. The 303 **`Location`** must target the **parent** log’s `/entries/…` (sequencing by `ownerLogId`). Without **`CUSTODIAN_APP_TOKEN`**, the test is skipped.
 
 If **`.env`** is missing, `task vars:require-dotenv`, smoke tasks, and Playwright fail immediately with a short error.
 

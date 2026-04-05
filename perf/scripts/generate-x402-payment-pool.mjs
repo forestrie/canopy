@@ -176,7 +176,7 @@ function encodeType(typeName, types) {
 
 // Fetch payment requirements from API
 async function getPaymentRequirements(baseUrl, logId, apiToken) {
-  const url = `${baseUrl}/logs/${logId}/entries`;
+  const url = `${baseUrl}/register/entries`;
 
   // Make a request without payment to get the 402 response
   const response = await fetch(url, {

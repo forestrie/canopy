@@ -26,7 +26,7 @@ tasks:
           exit 1
         fi
         GRANT_B64=$(cat "$GRANT_FILE")
-        LOCATION=$(curl -sS -D - -X POST "{{.CANOPY_BASE_URL}}/logs/$LOG_ID/grants" \
+        LOCATION=$(curl -sS -D - -X POST "{{.CANOPY_BASE_URL}}/register/grants" \
           -H "Authorization: Forestrie-Grant $GRANT_B64" -o /dev/null 2>&1 | grep -i "^Location:" | sed 's/Location: *//' | tr -d '\r\n')
         [ -n "$LOCATION" ] || { echo "No 303 Location" >&2; exit 1; }
         RECEIPT_URL=$(CANOPY_BASE_URL="{{.CANOPY_BASE_URL}}" SCRAPI_API_KEY="{{.SCRAPI_API_KEY}}" \

@@ -9,12 +9,14 @@
 import type { GrantResult } from "../grant/types.js";
 import { decodeTransparentStatement } from "../grant/transparent-statement.js";
 import { verifyReceiptInclusionFromParsed } from "../grant/receipt-verify.js";
+import { bytesToUuid } from "../grant/uuid-bytes.js";
+import type { ReceiptVerifyKeyResolver } from "../env/receipt-verify-key-resolver.js";
 import {
   verifyGrantIncluded,
   type InclusionEnv,
 } from "./verify-grant-inclusion.js";
 import { cborResponse } from "./cbor-response";
-import { ClientErrors } from "./problem-details";
+import { ClientErrors, ServerErrors } from "./problem-details";
 import { CBOR_CONTENT_TYPES } from "./cbor-content-types";
 
 const FORESTRIE_GRANT_SCHEME = "Forestrie-Grant";
@@ -38,6 +40,11 @@ function unauthorizedGrantRequired(): Response {
 export interface AuthGrantAuthorizeEnv {
   /** When set, grant must pass receipt-based inclusion verification. */
   inclusionEnv?: InclusionEnv;
+  /**
+   * Resolves ES256 verify key for receipt Sign1 (Custodian curator/log-key path).
+   * Required when `inclusionEnv` is set.
+   */
+  resolveReceiptVerifyKey?: ReceiptVerifyKeyResolver;
 }
 
 /**
@@ -106,15 +113,49 @@ export async function grantAuthorize(
     );
   }
 
+  if (!env.resolveReceiptVerifyKey) {
+    return ServerErrors.serviceUnavailable(
+      "Receipt verification key resolver is not configured.",
+    );
+  }
+
+  let receiptVerifyKey: CryptoKey;
+  try {
+    receiptVerifyKey = await env.resolveReceiptVerifyKey(
+      bytesToUuid(grant.ownerLogId),
+    );
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/\b404\b/.test(msg)) {
+      return ClientErrors.forbidden(
+        "Cannot resolve receipt verification key for this log (Custodian).",
+      );
+    }
+    console.warn("resolveReceiptVerifyKey failed", e);
+    return ServerErrors.serviceUnavailable(
+      msg.length > 200 ? `${msg.slice(0, 200)}…` : msg,
+    );
+  }
+
+  if (!receipt.coseSign1Bytes?.length) {
+    return ClientErrors.forbidden(
+      "Grant receipt is missing raw COSE Sign1 bytes for verification.",
+    );
+  }
+
   const valid = await verifyReceiptInclusionFromParsed(
     grant,
     idtimestamp,
     receipt.explicitPeak,
     receipt.proof,
+    {
+      receiptCoseBytes: receipt.coseSign1Bytes,
+      receiptVerifyKey,
+    },
   );
   if (!valid) {
     return ClientErrors.forbidden(
-      "Grant receipt verification failed (inclusion proof).",
+      "Grant receipt verification failed (receipt signature or inclusion proof).",
     );
   }
 

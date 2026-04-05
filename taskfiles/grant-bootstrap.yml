@@ -38,7 +38,7 @@ tasks:
     cmds:
       - |
         GRANT_B64=$(cat "{{.GRANT_DATA_DIR}}/bootstrap-grant.b64")
-        LOCATION=$(curl -sS -D - -X POST "{{.CANOPY_BASE_URL}}/logs/{{.ROOT_LOG_ID}}/grants" \
+        LOCATION=$(curl -sS -D - -X POST "{{.CANOPY_BASE_URL}}/register/grants" \
           -H "Authorization: Forestrie-Grant $GRANT_B64" \
           -o /dev/null 2>&1 | grep -i "^Location:" | sed 's/Location: *//' | tr -d '\r\n')
         if [ -z "$LOCATION" ]; then

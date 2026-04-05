@@ -61,6 +61,37 @@ export interface CustodianPublicKeyResponse {
 /**
  * GET /api/keys/{keyId}/public — CBOR body keyId, publicKey (PEM), alg.
  */
+/**
+ * GET /api/keys/curator/log-key?logId=… — normal app token; CBOR { keyId }.
+ */
+export async function fetchCustodianCuratorLogKey(
+  custodianBaseUrl: string,
+  bearerToken: string,
+  logIdUuid: string,
+): Promise<string> {
+  const base = trimBase(custodianBaseUrl);
+  const url = `${base}/api/keys/curator/log-key?logId=${encodeURIComponent(logIdUuid)}`;
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${bearerToken}`,
+      Accept: "application/cbor",
+    },
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(
+      `Custodian curator/log-key failed: ${res.status} ${body.slice(0, 200)}`,
+    );
+  }
+  const buf = new Uint8Array(await res.arrayBuffer());
+  const raw = decodeCbor(buf) as unknown;
+  const keyId = readCborStringField(raw, "keyId");
+  if (!keyId) {
+    throw new Error("Custodian curator/log-key response missing keyId");
+  }
+  return keyId;
+}
+
 export async function fetchCustodianPublicKey(
   custodianBaseUrl: string,
   keyId: string,
