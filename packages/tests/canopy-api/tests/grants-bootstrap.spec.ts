@@ -6,7 +6,6 @@ import {
   assertCustodianProfileTransparentStatement,
   buildCompletedGrantBase64,
   completeBootstrapGrantWithReceipt,
-  DEFAULT_ROOT_LOG_ID,
   mintBootstrapGrantPlaywright,
 } from "./utils/bootstrap-grant-flow";
 import { decodeEntryIdHex } from "./utils/entry-id-e2e";
@@ -43,9 +42,10 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
   test("Bootstrap mint yields Custodian-profile transparent statement", async ({
     unauthorizedRequest,
   }) => {
+    const logId = randomUUID();
     const grantBase64 = await mintBootstrapGrantPlaywright(
       unauthorizedRequest,
-      DEFAULT_ROOT_LOG_ID,
+      logId,
     );
 
     expect(() =>
@@ -56,8 +56,6 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
   test("After bootstrap mint, POST /register/{bootstrap}/grants returns 303 See Other (enqueued)", async ({
     unauthorizedRequest,
   }, testInfo) => {
-    // Fresh log so api-dev (MMRS already present for DEFAULT_ROOT_LOG_ID) still
-    // hits the bootstrap branch; see AGENTS.md bootstrap e2e caveats.
     const logId = randomUUID();
     const baseURL = testInfo.project.use.baseURL ?? "";
 

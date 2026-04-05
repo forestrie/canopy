@@ -27,9 +27,7 @@ That installs Playwright/Chromium and runs **`task vars:doppler:{{ENV}}`** so **
 
 `tests/grants-bootstrap.spec.ts` exercises **runner-side** bootstrap mint (Genesis **`POST /api/forest/{log-id}/genesis`** with **`CURATOR_ADMIN_TOKEN`**, then Custodian `:bootstrap` sign) and **`POST /register/{bootstrap-logid}/grants`** on the **bootstrap branch** (303 See Other with a registration-status `Location` under `/logs/{bootstrap}/{owner}/entries/…`).
 
-The **deployed** worker needs **`R2_MMRS`**, sequencing queue bindings, `bootstrapEnv` + `queueEnv`, and **no** first massif object for the target log in MMRS (same key layout as resolve-receipt). If that massif already exists or the queue is missing, register-grant will not return 303 for this flow—fix the environment or use a fresh `rootLogId` in the spec.
-
-A third test (**poll query-registration-status → SCITT receipt**, assert **mmrIndex 0**) runs a fresh UUID root log, mint + register (303), then polls with an arithmetic delay ladder (`sequencingBackoff` in `tests/utils/arithmetic-backoff-poll.ts`). That path needs **forestrie-ingress** (or equivalent) processing the same SequencingQueue so MMRS is written—see repo **`AGENTS.md`**. If you only have **canopy-api-dev** without ingress, set **`E2E_SKIP_SEQUENCING_POLL=1`** to skip that test.
+The **deployed** worker needs **`R2_MMRS`**, sequencing queue bindings, and `bootstrapEnv` + `queueEnv`. Specs pick a **fresh UUID** per run so the target log has no MMRS massif yet for the first register-grant (303). Tests that poll sequencing and resolve receipts need **forestrie-ingress** on the same SequencingQueue — see **`AGENTS.md`**. If you only have **canopy-api-dev** without ingress, set **`E2E_SKIP_SEQUENCING_POLL=1`** to skip those tests.
 
 **First signed entry** (`tests/bootstrap-log-first-entry.spec.ts`): same as above for mint → register → receipt, then runner **`POST /api/keys/:bootstrap/sign`** and **`POST /register/{bootstrap}/entries`**. Missing **`CURATOR_ADMIN_TOKEN`** or Custodian bootstrap vars causes **hard failure** at mint (`assertBootstrapMintE2eEnv`); only **`E2E_SKIP_SEQUENCING_POLL=1`** skips work when ingress is absent.
 
@@ -49,7 +47,6 @@ Resolved in **`playwright.config.ts`** from **repo-root `.env`** (after `task va
 - **Runner:** **`CURATOR_ADMIN_TOKEN`** (genesis), **`CUSTODIAN_URL`**, **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`**. The **Worker** must still expose SCRAPI **`/register/{bootstrap}/…`** with queue/MMRS configured.
 - If bootstrap mint env is missing, tests **fail** immediately with a clear error (no silent skip).
 - **`E2E_SKIP_SEQUENCING_POLL=1`**: skip only tests that poll sequencing / receipt when ingress is not running against the same dev stack.
-- **`E2E_BOOTSTRAP_LOG_ID`** (optional): fixed root UUID for receipt tests; legacy **`ROOT_LOG_ID`** is still read as a fallback by `e2e-env-guards.ts`.
 
 Other keys:
 

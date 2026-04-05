@@ -4,36 +4,13 @@ import { custodianBootstrapSignEnv } from "./custodian-bootstrap-sign";
 import { custodianCustodySignEnv } from "./custodian-custody-grant";
 
 /**
- * Root log UUID for e2e that **complete** a bootstrap grant and (for some suites) hit
- * receipt-based `grantAuthorize` after MMRS exists.
+ * New bootstrap forest log id for e2e (runner-side genesis + `:bootstrap` mint + register).
  *
- * Reads `E2E_BOOTSTRAP_LOG_ID` then legacy `ROOT_LOG_ID` (32 hex, 0x-prefix, or UUID).
- *
- * If both unset, returns a **random** UUID so the first `POST /register/.../grants` on
- * shared api-dev still hits the **bootstrap** branch (MMRS cold). Set
- * `E2E_BOOTSTRAP_LOG_ID` to the same UUID as `e2e-default-bootstrap-log-id.ts` when you
- * need `:bootstrap` receipt verification for that root **and** that log has no MMRS tile
- * yet (cold worker or isolated env).
+ * Always a **fresh** UUID so the first `POST /register/.../grants` hits the MMRS-cold
+ * bootstrap branch on shared dev. Receipt and follow-on grants use the same id returned
+ * from a single call site per describe block (or one `randomUUID()` per test).
  */
 export function e2eReceiptBootstrapRootLogId(): string {
-  const raw = (
-    process.env.E2E_BOOTSTRAP_LOG_ID?.trim() ||
-    process.env.ROOT_LOG_ID?.trim() ||
-    ""
-  ).replace(/^0x/i, "");
-  if (!raw) return randomUUID();
-  const hex = raw.replace(/-/g, "").toLowerCase();
-  if (hex.length === 32 && /^[0-9a-f]+$/.test(hex)) {
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
-  }
-  const lower = raw.toLowerCase();
-  if (
-    lower.length >= 36 &&
-    lower.includes("-") &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(lower)
-  ) {
-    return lower;
-  }
   return randomUUID();
 }
 

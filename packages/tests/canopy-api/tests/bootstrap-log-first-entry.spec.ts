@@ -37,9 +37,8 @@ import { sha256Hex } from "./utils/statement-sign-bytes";
  * also needs **Custodian** on the runner (`CUSTODIAN_URL`, `CUSTODIAN_BOOTSTRAP_APP_TOKEN`).
  * The wrong-signer test uses an ephemeral P-256 key locally (no Custodian sign call).
  *
- * One mint + completed grant is shared across both tests so a fixed
- * `E2E_BOOTSTRAP_LOG_ID` (optional; falls back to legacy `ROOT_LOG_ID`) is only
- * consumed once per describe.
+ * One mint + completed grant is shared across both tests; `logId` is a fresh UUID
+ * for the whole describe (via `e2eReceiptBootstrapRootLogId()` once in `beforeAll`).
  */
 test.describe("Bootstrap log e2e — first signed entry", () => {
   test.describe.configure({ mode: "serial", timeout: 600_000 });
