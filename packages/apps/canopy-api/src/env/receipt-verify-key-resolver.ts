@@ -77,12 +77,12 @@ export function createReceiptVerifyKeyResolver(config: {
         }
 
         // 2) Curator mapping (canonical when indexed).
-        const keyId = await fetchCustodianCuratorLogKey(
-          base,
-          token,
-          ownerLogIdLowerHex32,
-        );
         try {
+          const keyId = await fetchCustodianCuratorLogKey(
+            base,
+            token,
+            ownerLogIdLowerHex32,
+          );
           const { publicKeyPem } = await fetchCustodianPublicKey(base, keyId);
           return pemToVerifyKey(publicKeyPem);
         } catch {
@@ -97,6 +97,12 @@ export function createReceiptVerifyKeyResolver(config: {
         );
         return pemToVerifyKey(publicKeyPem);
       })();
+
+      p = p.catch((err: unknown) => {
+        cache.delete(ownerLogIdLowerHex32);
+        throw err;
+      });
+
       if (cache.size >= MAX_OWNER_LOG_CACHE) {
         cache.clear();
       }
