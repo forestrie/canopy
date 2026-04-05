@@ -7,7 +7,6 @@ import {
   mintBootstrapGrantPlaywright,
 } from "./utils/bootstrap-grant-flow";
 import {
-  custodianBootstrapSignEnv,
   e2eFirstStatementPayload,
   postCustodianBootstrapSignPayloadBytes,
 } from "./utils/custodian-bootstrap-sign";
@@ -15,8 +14,6 @@ import {
   e2eReceiptBootstrapRootLogId,
   shouldSkipSequencingPoll,
   skipSequencingPollIfDisabled,
-  skipWithoutCuratorAdmin,
-  skipWithoutCustodianBootstrap,
 } from "./utils/e2e-env-guards";
 import {
   assert303ContentHashLocation,
@@ -61,34 +58,20 @@ test.describe("Bootstrap log e2e — first signed entry", () => {
       );
       return;
     }
-    if (!custodianBootstrapSignEnv()) {
-      testInfo.skip(
-        true,
-        "CUSTODIAN_URL and CUSTODIAN_BOOTSTRAP_APP_TOKEN required for bootstrap signing",
-      );
-      return;
-    }
-    if (skipWithoutCuratorAdmin(testInfo)) return;
-
     const logId = e2eReceiptBootstrapRootLogId();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
-    const minted = await mintBootstrapGrantPlaywright(
+    const mintGrantB64 = await mintBootstrapGrantPlaywright(
       unauthorizedRequest,
       logId,
-      testInfo,
     );
-    if (minted.skipped) {
-      testInfo.skip(true, "bootstrap mint unconfigured");
-      return;
-    }
 
     const { grantBase64, entryIdHex, receiptRes } =
       await completeBootstrapGrantWithReceipt({
         unauthorizedRequest,
         logId,
         baseURL,
-        grantBase64: minted.grantBase64,
+        grantBase64: mintGrantB64,
         ladderMs: sequencingBackoff,
       });
 
@@ -107,7 +90,6 @@ test.describe("Bootstrap log e2e — first signed entry", () => {
     unauthorizedRequest,
   }, testInfo) => {
     if (skipSequencingPollIfDisabled(testInfo)) return;
-    if (skipWithoutCustodianBootstrap(testInfo)) return;
     if (!shared.logId) return;
 
     const statementPayload = e2eFirstStatementPayload();

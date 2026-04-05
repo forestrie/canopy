@@ -31,9 +31,9 @@ The **deployed** worker needs **`R2_MMRS`**, sequencing queue bindings, `bootstr
 
 A third test (**poll query-registration-status → SCITT receipt**, assert **mmrIndex 0**) runs a fresh UUID root log, mint + register (303), then polls with an arithmetic delay ladder (`sequencingBackoff` in `tests/utils/arithmetic-backoff-poll.ts`). That path needs **forestrie-ingress** (or equivalent) processing the same SequencingQueue so MMRS is written—see repo **`AGENTS.md`**. If you only have **canopy-api-dev** without ingress, set **`E2E_SKIP_SEQUENCING_POLL=1`** to skip that test.
 
-**First signed entry** (`tests/bootstrap-log-first-entry.spec.ts`): after the same mint → register → receipt flow as the poll test, calls **Custodian** from the **test runner** (`POST /api/keys/:bootstrap/sign` with **`CUSTODIAN_URL`** and **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`**) to build a COSE Sign1 statement body, then **`POST /register/{bootstrap}/entries`** with the **completed** Forestrie-Grant (`bootstrap` and target log match the root for this flow). Supply **`CURATOR_ADMIN_TOKEN`**, Custodian vars, and API origin via repo-root `.env` or **`doppler run --project canopy --config dev`** (see **`taskfiles/e2e-setup.md`**). Use the **exact** `CUSTODIAN_URL` the **deployed worker** uses (including **`/v1`**, see `packages/apps/canopy-api/wrangler.jsonc`); a different host or path can yield **`403` `signer_mismatch`**. The test is skipped when curator/custodian env vars are unset or when **`E2E_SKIP_SEQUENCING_POLL=1`**. In GitHub Actions, **`secrets.CURATOR_ADMIN_TOKEN`** and optional **`vars.CUSTODIAN_URL`** + **`secrets.CUSTODIAN_BOOTSTRAP_APP_TOKEN`** enable this path. Shared helpers: `tests/utils/bootstrap-grant-flow.ts`, `tests/utils/mint-bootstrap-grant-e2e.ts`.
+**First signed entry** (`tests/bootstrap-log-first-entry.spec.ts`): same as above for mint → register → receipt, then runner **`POST /api/keys/:bootstrap/sign`** and **`POST /register/{bootstrap}/entries`**. Missing **`CURATOR_ADMIN_TOKEN`** or Custodian bootstrap vars causes **hard failure** at mint (`assertBootstrapMintE2eEnv`); only **`E2E_SKIP_SEQUENCING_POLL=1`** skips work when ingress is absent.
 
-**Child auth grant** (`tests/bootstrap-child-auth-grant.spec.ts`): bootstraps a root log, completes the first grant to MMRS, then **`POST /api/keys`** (Custodian **`CUSTODIAN_APP_TOKEN`**) to create an ES256 custody key, builds a child Forestrie-Grant signed with that key (**`POST /api/keys/{keyId}/sign`**), and **`POST /register/{root}/grants`** with that artifact. Expect **`303`** with **`Location`** under `/logs/{root}/{root}/entries/…` (parent owner log). Skipped without **`CURATOR_ADMIN_TOKEN`**, **`CUSTODIAN_APP_TOKEN`**, bootstrap token, or when **`E2E_SKIP_SEQUENCING_POLL=1`**. Helpers: `tests/utils/custodian-custody-grant.ts`.
+**Child auth grant** (`tests/bootstrap-child-auth-grant.spec.ts`): root bootstrap mint (same required env as above) + custody **`CUSTODIAN_APP_TOKEN`**. Missing custody env still **skips** via `skipWithoutCustodianCustody`. Helpers: `tests/utils/custodian-custody-grant.ts`.
 
 ## Environment variables
 
@@ -47,8 +47,8 @@ Resolved in **`playwright.config.ts`** from **repo-root `.env`** (after `task va
 **Bootstrap grant e2e** (`grants-bootstrap.spec.ts` and related specs):
 
 - **Runner:** **`CURATOR_ADMIN_TOKEN`** (genesis), **`CUSTODIAN_URL`**, **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`**. The **Worker** must still expose SCRAPI **`/register/{bootstrap}/…`** with queue/MMRS configured.
-- If required env is missing, tests **skip** (or **fail** when **`CI`** / **`E2E_REQUIRE_BOOTSTRAP=1`**).
-- **`E2E_SKIP_SEQUENCING_POLL=1`**: skip only the registration-status polling / receipt test when ingress is not running against the same dev stack.
+- If bootstrap mint env is missing, tests **fail** immediately with a clear error (no silent skip).
+- **`E2E_SKIP_SEQUENCING_POLL=1`**: skip only tests that poll sequencing / receipt when ingress is not running against the same dev stack.
 - **`E2E_BOOTSTRAP_LOG_ID`** (optional): fixed root UUID for receipt tests; legacy **`ROOT_LOG_ID`** is still read as a fallback by `e2e-env-guards.ts`.
 
 Other keys:

@@ -16,8 +16,6 @@ import {
 import {
   e2eReceiptBootstrapRootLogId,
   skipSequencingPollIfDisabled,
-  skipWithoutCuratorAdmin,
-  skipWithoutCustodianBootstrap,
   skipWithoutCustodianCustody,
 } from "./utils/e2e-env-guards";
 import {
@@ -39,8 +37,6 @@ test.describe("Bootstrap root + child auth grant e2e", () => {
     unauthorizedRequest,
   }, testInfo) => {
     if (skipSequencingPollIfDisabled(testInfo)) return;
-    if (skipWithoutCustodianBootstrap(testInfo)) return;
-    if (skipWithoutCuratorAdmin(testInfo)) return;
     if (skipWithoutCustodianCustody(testInfo)) return;
 
     const custodyEnv = custodianCustodySignEnv()!;
@@ -50,18 +46,16 @@ test.describe("Bootstrap root + child auth grant e2e", () => {
     const childLogId = randomUUID();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
-    const minted = await mintBootstrapGrantPlaywright(
+    const mintGrantB64 = await mintBootstrapGrantPlaywright(
       unauthorizedRequest,
       rootLogId,
-      testInfo,
     );
-    if (minted.skipped) return;
 
     const { receiptRes } = await completeBootstrapGrantWithReceipt({
       unauthorizedRequest,
       logId: rootLogId,
       baseURL,
-      grantBase64: minted.grantBase64,
+      grantBase64: mintGrantB64,
       ladderMs: sequencingBackoff,
     });
     expect(receiptRes.status).toBe(200);

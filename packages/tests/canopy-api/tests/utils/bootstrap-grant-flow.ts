@@ -1,11 +1,8 @@
-import type { APIRequestContext, TestInfo } from "@playwright/test";
+import type { APIRequestContext } from "@playwright/test";
 import { decode } from "cbor-x";
 import { attachReceiptAndIdtimestampToTransparentStatement } from "../../../../apps/canopy-api/src/scrapi/attach-scitt-transparent-statement-receipt.js";
 import { custodianBootstrapSignEnv } from "./custodian-bootstrap-sign";
-import {
-  skipWithoutCuratorAdmin,
-  skipWithoutCustodianBootstrap,
-} from "./e2e-env-guards";
+import { assertBootstrapMintE2eEnv } from "./e2e-env-guards";
 import { entryIdHexToIdtimestampBe8 } from "./entry-id-e2e";
 import { mintTransparentBootstrapGrantBase64 } from "./mint-bootstrap-grant-e2e.js";
 import {
@@ -84,33 +81,25 @@ export function bytesToForestrieGrantBase64(bytes: Uint8Array): string {
   return btoa(s);
 }
 
-export type MintBootstrapGrantResult =
-  | { skipped: true }
-  | { skipped: false; grantBase64: string };
-
 /**
- * Bootstrap mint for e2e: genesis + Custodian `:bootstrap` sign (Plan 0019).
- * Skips when custodian env or `CURATOR_ADMIN_TOKEN` is missing (strict in CI).
+ * Bootstrap mint for e2e: `POST /api/forest/{log-id}/genesis` + Custodian `:bootstrap` sign
+ * (Plan 0019). **Throws** if `CURATOR_ADMIN_TOKEN` or Custodian bootstrap env is missing.
  */
 export async function mintBootstrapGrantPlaywright(
   unauthorizedRequest: APIRequestContext,
   rootLogId: string,
-  testInfo: TestInfo,
-): Promise<MintBootstrapGrantResult> {
-  if (skipWithoutCustodianBootstrap(testInfo)) return { skipped: true };
-  if (skipWithoutCuratorAdmin(testInfo)) return { skipped: true };
-
-  const boot = custodianBootstrapSignEnv()!;
+): Promise<string> {
+  assertBootstrapMintE2eEnv();
   const curator = process.env.CURATOR_ADMIN_TOKEN!.trim();
+  const boot = custodianBootstrapSignEnv()!;
 
-  const grantBase64 = await mintTransparentBootstrapGrantBase64({
+  return mintTransparentBootstrapGrantBase64({
     request: unauthorizedRequest,
     rootLogId,
     curatorToken: curator,
     custodianUrl: boot.baseUrl,
     custodianBootstrapToken: boot.token,
   });
-  return { skipped: false, grantBase64 };
 }
 
 export interface CompleteBootstrapGrantWithReceiptOptions {

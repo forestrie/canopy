@@ -13,7 +13,6 @@ import { decodeEntryIdHex } from "./utils/entry-id-e2e";
 import {
   e2eReceiptBootstrapRootLogId,
   skipSequencingPollIfDisabled,
-  skipWithoutCuratorAdmin,
 } from "./utils/e2e-env-guards";
 import {
   formatProblemDetailsMessage,
@@ -43,39 +42,29 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
 
   test("Bootstrap mint yields Custodian-profile transparent statement", async ({
     unauthorizedRequest,
-  }, testInfo) => {
-    if (skipWithoutCuratorAdmin(testInfo)) return;
-
-    const minted = await mintBootstrapGrantPlaywright(
+  }) => {
+    const grantBase64 = await mintBootstrapGrantPlaywright(
       unauthorizedRequest,
       DEFAULT_ROOT_LOG_ID,
-      testInfo,
     );
-    if (minted.skipped) return;
 
     expect(() =>
-      assertCustodianProfileTransparentStatement(minted.grantBase64),
+      assertCustodianProfileTransparentStatement(grantBase64),
     ).not.toThrow();
   });
 
   test("After bootstrap mint, POST /register/{bootstrap}/grants returns 303 See Other (enqueued)", async ({
     unauthorizedRequest,
   }, testInfo) => {
-    if (skipWithoutCuratorAdmin(testInfo)) return;
-
     // Fresh log so api-dev (MMRS already present for DEFAULT_ROOT_LOG_ID) still
     // hits the bootstrap branch; see AGENTS.md bootstrap e2e caveats.
     const logId = randomUUID();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
-    const minted = await mintBootstrapGrantPlaywright(
+    const grantBase64 = await mintBootstrapGrantPlaywright(
       unauthorizedRequest,
       logId,
-      testInfo,
     );
-    if (minted.skipped) return;
-
-    const grantBase64 = minted.grantBase64;
     expect(() =>
       assertCustodianProfileTransparentStatement(grantBase64),
     ).not.toThrow();
@@ -119,25 +108,22 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
     unauthorizedRequest,
   }, testInfo) => {
     if (skipSequencingPollIfDisabled(testInfo)) return;
-    if (skipWithoutCuratorAdmin(testInfo)) return;
 
     test.setTimeout(600_000);
     const logId = e2eReceiptBootstrapRootLogId();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
-    const minted = await mintBootstrapGrantPlaywright(
+    const mintGrantB64 = await mintBootstrapGrantPlaywright(
       unauthorizedRequest,
       logId,
-      testInfo,
     );
-    if (minted.skipped) return;
 
     const { grantBase64, statusUrlAbsolute, entryIdHex, receiptRes } =
       await completeBootstrapGrantWithReceipt({
         unauthorizedRequest,
         logId,
         baseURL,
-        grantBase64: minted.grantBase64,
+        grantBase64: mintGrantB64,
         ladderMs: sequencingBackoff,
       });
 

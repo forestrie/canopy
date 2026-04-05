@@ -49,31 +49,25 @@ export function skipSequencingPollIfDisabled(testInfo: TestInfo): boolean {
   return false;
 }
 
-export function skipWithoutCustodianBootstrap(testInfo: TestInfo): boolean {
-  if (!custodianBootstrapSignEnv()) {
-    testInfo.skip(
-      true,
-      "CUSTODIAN_URL and CUSTODIAN_BOOTSTRAP_APP_TOKEN required for bootstrap signing",
-    );
-    return true;
-  }
-  return false;
-}
+const BOOTSTRAP_MINT_E2E_HELP =
+  "Hydrate repo-root .env (task test:e2e:preflight) or run task test:e2e:doppler. " +
+  "See packages/tests/canopy-api/README.md.";
 
-/** Forest genesis POST (`CURATOR_ADMIN_TOKEN`) for bootstrap-scoped SCRAPI e2e. */
-export function skipWithoutCuratorAdmin(testInfo: TestInfo): boolean {
+/**
+ * Runner-side bootstrap mint requires Custodian `:bootstrap` and curator genesis POST.
+ * Call before minting; throws so the test **fails** (not skipped) when misconfigured.
+ */
+export function assertBootstrapMintE2eEnv(): void {
   if (!process.env.CURATOR_ADMIN_TOKEN?.trim()) {
-    const strict =
-      process.env.CI === "true" ||
-      process.env.E2E_REQUIRE_BOOTSTRAP === "1" ||
-      process.env.E2E_REQUIRE_BOOTSTRAP === "true";
-    const msg =
-      "CURATOR_ADMIN_TOKEN required to POST /api/forest/{log-id}/genesis for bootstrap mint e2e";
-    if (strict) throw new Error(msg);
-    testInfo.skip(true, msg);
-    return true;
+    throw new Error(
+      `CURATOR_ADMIN_TOKEN is required to POST /api/forest/{log-id}/genesis. ${BOOTSTRAP_MINT_E2E_HELP}`,
+    );
   }
-  return false;
+  if (!custodianBootstrapSignEnv()) {
+    throw new Error(
+      `CUSTODIAN_URL and CUSTODIAN_BOOTSTRAP_APP_TOKEN are required for bootstrap grant signing. ${BOOTSTRAP_MINT_E2E_HELP}`,
+    );
+  }
 }
 
 export function skipWithoutCustodianCustody(testInfo: TestInfo): boolean {

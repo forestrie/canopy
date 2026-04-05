@@ -15,7 +15,6 @@ import {
   completeBootstrapGrantWithReceipt,
   mintBootstrapGrantPlaywright,
 } from "./utils/bootstrap-grant-flow";
-import { custodianBootstrapSignEnv } from "./utils/custodian-bootstrap-sign";
 import {
   custodianCustodySignEnv,
   custodianKmsCryptoKeyIdFromLogUuid,
@@ -32,8 +31,6 @@ import {
   e2eReceiptBootstrapRootLogId,
   shouldSkipSequencingPoll,
   skipSequencingPollIfDisabled,
-  skipWithoutCuratorAdmin,
-  skipWithoutCustodianBootstrap,
   skipWithoutCustodianCustody,
 } from "./utils/e2e-env-guards";
 import { e2eDataLogDelegationStatementPayload } from "./utils/multi-log-grant-chain";
@@ -64,33 +61,19 @@ test.describe("Auth log → data log delegation chain", () => {
       );
       return;
     }
-    if (!custodianBootstrapSignEnv()) {
-      testInfo.skip(
-        true,
-        "CUSTODIAN_URL and CUSTODIAN_BOOTSTRAP_APP_TOKEN required for bootstrap signing",
-      );
-      return;
-    }
-    if (skipWithoutCuratorAdmin(testInfo)) return;
-
     const rootLogId = e2eReceiptBootstrapRootLogId();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
-    const minted = await mintBootstrapGrantPlaywright(
+    const mintGrantB64 = await mintBootstrapGrantPlaywright(
       unauthorizedRequest,
       rootLogId,
-      testInfo,
     );
-    if (minted.skipped) {
-      testInfo.skip(true, "bootstrap mint unconfigured");
-      return;
-    }
 
     await completeBootstrapGrantWithReceipt({
       unauthorizedRequest,
       logId: rootLogId,
       baseURL,
-      grantBase64: minted.grantBase64,
+      grantBase64: mintGrantB64,
       ladderMs: sequencingBackoff,
     });
 
@@ -102,7 +85,6 @@ test.describe("Auth log → data log delegation chain", () => {
     unauthorizedRequest,
   }, testInfo) => {
     if (skipSequencingPollIfDisabled(testInfo)) return;
-    if (skipWithoutCustodianBootstrap(testInfo)) return;
     if (skipWithoutCustodianCustody(testInfo)) return;
     if (!shared.rootLogId) return;
 
@@ -225,7 +207,6 @@ test.describe("Auth log → data log delegation chain", () => {
     unauthorizedRequest,
   }, testInfo) => {
     if (skipSequencingPollIfDisabled(testInfo)) return;
-    if (skipWithoutCustodianBootstrap(testInfo)) return;
     if (skipWithoutCustodianCustody(testInfo)) return;
     if (!shared.rootLogId) return;
 
