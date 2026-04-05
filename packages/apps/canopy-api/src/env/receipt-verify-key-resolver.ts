@@ -59,11 +59,24 @@ export function createReceiptVerifyKeyResolver(config: {
     let p = cache.get(ownerLogIdLowerHex32);
     if (!p) {
       p = (async () => {
-        const keyId = await fetchCustodianCuratorLogKey(
-          base,
-          token,
-          ownerLogIdLowerHex32,
-        );
+        let keyId: string;
+        try {
+          keyId = await fetchCustodianCuratorLogKey(
+            base,
+            token,
+            ownerLogIdLowerHex32,
+          );
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          const missingLogKey =
+            /\b404\b/.test(msg) ||
+            /not\s*found/i.test(msg) ||
+            /\bno\s+key\b/i.test(msg);
+          if (!missingLogKey) throw e;
+          // Custody ES256 keys from POST /api/keys use KMS id == selfLogId (32 hex). Curator
+          // may not index every log until registered; /public accepts that segment directly.
+          keyId = ownerLogIdLowerHex32;
+        }
         const { publicKeyPem } = await fetchCustodianPublicKey(base, keyId);
         return importSpkiPemEs256VerifyKey(publicKeyPem);
       })();
