@@ -63,14 +63,15 @@ export interface CustodianPublicKeyResponse {
  */
 /**
  * GET /api/keys/curator/log-key?logId=… — normal app token; CBOR { keyId }.
+ * Custodian expects `logId` as 32-char lowercase hex (16-byte log id, no hyphens).
  */
 export async function fetchCustodianCuratorLogKey(
   custodianBaseUrl: string,
   bearerToken: string,
-  logIdUuid: string,
+  logIdLowerHex32: string,
 ): Promise<string> {
   const base = trimBase(custodianBaseUrl);
-  const url = `${base}/api/keys/curator/log-key?logId=${encodeURIComponent(logIdUuid)}`;
+  const url = `${base}/api/keys/curator/log-key?logId=${encodeURIComponent(logIdLowerHex32)}`;
   const res = await fetch(url, {
     headers: {
       Authorization: `Bearer ${bearerToken}`,

@@ -27,12 +27,13 @@ function hexToBytes32Pair(hex: string): Uint8Array {
   return out;
 }
 
+/** @param ownerLogIdLowerHex32 — 32-char lowercase hex for the semantic 16-byte log id. */
 export type ReceiptVerifyKeyResolver = (
-  ownerLogIdUuid: string,
+  ownerLogIdLowerHex32: string,
 ) => Promise<CryptoKey>;
 
 /**
- * Production / dev: fetches Custodian key id per owner log UUID, then SPKI PEM → verify key.
+ * Production / dev: fetches Custodian key id per owner log id (hex), then SPKI PEM → verify key.
  * Pool test with `testReceiptVerifyEs256XyHex`: static ES256 x‖y (no Custodian).
  */
 export function createReceiptVerifyKeyResolver(config: {
@@ -54,14 +55,14 @@ export function createReceiptVerifyKeyResolver(config: {
   const token = config.custodianAppToken.trim();
   const cache = new Map<string, Promise<CryptoKey>>();
 
-  return async (ownerLogIdUuid: string) => {
-    let p = cache.get(ownerLogIdUuid);
+  return async (ownerLogIdLowerHex32: string) => {
+    let p = cache.get(ownerLogIdLowerHex32);
     if (!p) {
       p = (async () => {
         const keyId = await fetchCustodianCuratorLogKey(
           base,
           token,
-          ownerLogIdUuid,
+          ownerLogIdLowerHex32,
         );
         const { publicKeyPem } = await fetchCustodianPublicKey(base, keyId);
         return importSpkiPemEs256VerifyKey(publicKeyPem);
@@ -69,7 +70,7 @@ export function createReceiptVerifyKeyResolver(config: {
       if (cache.size >= MAX_OWNER_LOG_CACHE) {
         cache.clear();
       }
-      cache.set(ownerLogIdUuid, p);
+      cache.set(ownerLogIdLowerHex32, p);
     }
     return p;
   };

@@ -9,7 +9,7 @@
 import type { GrantResult } from "../grant/types.js";
 import { decodeTransparentStatement } from "../grant/transparent-statement.js";
 import { verifyReceiptInclusionFromParsed } from "../grant/receipt-verify.js";
-import { bytesToUuid } from "../grant/uuid-bytes.js";
+import { logIdBytesToCustodianLowerHex } from "../grant/uuid-bytes.js";
 import type { ReceiptVerifyKeyResolver } from "../env/receipt-verify-key-resolver.js";
 import {
   verifyGrantIncluded,
@@ -122,7 +122,7 @@ export async function grantAuthorize(
   let receiptVerifyKey: CryptoKey;
   try {
     receiptVerifyKey = await env.resolveReceiptVerifyKey(
-      bytesToUuid(grant.ownerLogId),
+      logIdBytesToCustodianLowerHex(grant.ownerLogId),
     );
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

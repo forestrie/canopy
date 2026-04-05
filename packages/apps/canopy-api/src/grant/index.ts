@@ -34,7 +34,12 @@ export {
   HEADER_FORESTRIE_GRANT_V0,
   HEADER_IDTIMESTAMP,
 } from "./transparent-statement.js";
-export { bytesToUuid, LOG_ID_BYTES, uuidToBytes } from "./uuid-bytes.js";
+export {
+  bytesToUuid,
+  LOG_ID_BYTES,
+  logIdBytesToCustodianLowerHex,
+  uuidToBytes,
+} from "./uuid-bytes.js";
 export {
   parseReceipt,
   verifyGrantReceipt,

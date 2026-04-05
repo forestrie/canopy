@@ -40,3 +40,19 @@ export function bytesToUuid(bytes: Uint8Array): string {
     .join("");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
+
+/**
+ * 32-char lowercase hex for Custodian `GET …/curator/log-key?logId=` (no hyphens).
+ */
+export function logIdBytesToCustodianLowerHex(bytes: Uint8Array): string {
+  const u =
+    bytes.length === WIRE_LOG_ID_BYTES ? bytes.slice(-LOG_ID_BYTES) : bytes;
+  if (u.length !== LOG_ID_BYTES) {
+    throw new Error(
+      `Expected ${LOG_ID_BYTES} or ${WIRE_LOG_ID_BYTES} bytes for logId hex, got ${bytes.length}`,
+    );
+  }
+  return Array.from(u)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
