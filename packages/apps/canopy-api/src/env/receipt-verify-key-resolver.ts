@@ -13,6 +13,9 @@ import { isCanopyApiPoolTestMode } from "./runtime-mode.js";
 
 const MAX_OWNER_LOG_CACHE = 64;
 
+/** Last-resort receipt verify PEM when curator lacks an index but Ranger still uses legacy key. */
+const CUSTODIAN_LEGACY_SIGNING_KEY_PUBLIC_SEGMENT = ":bootstrap";
+
 function hexToBytes32Pair(hex: string): Uint8Array {
   const s = hex.replace(/^0x/i, "").trim();
   if (s.length !== 128 || !/^[0-9a-fA-F]+$/.test(s)) {
@@ -59,26 +62,40 @@ export function createReceiptVerifyKeyResolver(config: {
     let p = cache.get(ownerLogIdLowerHex32);
     if (!p) {
       p = (async () => {
-        let keyId: string;
+        const pemToVerifyKey = async (publicKeyPem: string) =>
+          importSpkiPemEs256VerifyKey(publicKeyPem);
+
+        // 1) Custody keys: CryptoKey id is usually the 32-char log hex; /public is unauthenticated.
         try {
-          keyId = await fetchCustodianCuratorLogKey(
+          const { publicKeyPem } = await fetchCustodianPublicKey(
             base,
-            token,
             ownerLogIdLowerHex32,
           );
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          const missingLogKey =
-            /\b404\b/.test(msg) ||
-            /not\s*found/i.test(msg) ||
-            /\bno\s+key\b/i.test(msg);
-          if (!missingLogKey) throw e;
-          // Custody ES256 keys from POST /api/keys use KMS id == selfLogId (32 hex). Curator
-          // may not index every log until registered; /public accepts that segment directly.
-          keyId = ownerLogIdLowerHex32;
+          return pemToVerifyKey(publicKeyPem);
+        } catch {
+          // continue
         }
-        const { publicKeyPem } = await fetchCustodianPublicKey(base, keyId);
-        return importSpkiPemEs256VerifyKey(publicKeyPem);
+
+        // 2) Curator mapping (canonical when indexed).
+        const keyId = await fetchCustodianCuratorLogKey(
+          base,
+          token,
+          ownerLogIdLowerHex32,
+        );
+        try {
+          const { publicKeyPem } = await fetchCustodianPublicKey(base, keyId);
+          return pemToVerifyKey(publicKeyPem);
+        } catch {
+          // continue
+        }
+
+        // 3) Legacy dev stacks: Ranger may still sign receipts with :bootstrap while grants
+        // use per-log custody; grant bootstrap verification does not use this path.
+        const { publicKeyPem } = await fetchCustodianPublicKey(
+          base,
+          CUSTODIAN_LEGACY_SIGNING_KEY_PUBLIC_SEGMENT,
+        );
+        return pemToVerifyKey(publicKeyPem);
       })();
       if (cache.size >= MAX_OWNER_LOG_CACHE) {
         cache.clear();
