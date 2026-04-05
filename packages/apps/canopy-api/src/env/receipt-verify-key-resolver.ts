@@ -4,6 +4,7 @@
  */
 
 import {
+  CUSTODIAN_BOOTSTRAP_KEY_ID,
   fetchCustodianCuratorLogKey,
   fetchCustodianPublicKey,
   importEs256PublicKeyFromGrantDataXy64,
@@ -59,13 +60,27 @@ export function createReceiptVerifyKeyResolver(config: {
     let p = cache.get(ownerLogIdLowerHex32);
     if (!p) {
       p = (async () => {
-        const keyId = await fetchCustodianCuratorLogKey(
-          base,
-          token,
-          ownerLogIdLowerHex32,
-        );
-        const { publicKeyPem } = await fetchCustodianPublicKey(base, keyId);
-        return importSpkiPemEs256VerifyKey(publicKeyPem);
+        try {
+          const keyId = await fetchCustodianCuratorLogKey(
+            base,
+            token,
+            ownerLogIdLowerHex32,
+          );
+          const { publicKeyPem } = await fetchCustodianPublicKey(base, keyId);
+          return importSpkiPemEs256VerifyKey(publicKeyPem);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          const missingLogKey =
+            /\b404\b/.test(msg) ||
+            /not\s*found/i.test(msg) ||
+            /\bno\s+key\b/i.test(msg);
+          if (!missingLogKey) throw e;
+          const { publicKeyPem } = await fetchCustodianPublicKey(
+            base,
+            CUSTODIAN_BOOTSTRAP_KEY_ID,
+          );
+          return importSpkiPemEs256VerifyKey(publicKeyPem);
+        }
       })();
       if (cache.size >= MAX_OWNER_LOG_CACHE) {
         cache.clear();

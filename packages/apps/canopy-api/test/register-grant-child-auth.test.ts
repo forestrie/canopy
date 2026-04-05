@@ -98,6 +98,7 @@ function baseEnv(): RegisterGrantEnv {
       bootstrapLogId: PARENT,
       r2Grants: {} as R2Bucket,
       custodianUrl: "https://custodian.test",
+      custodianAppToken: "",
       custodianBootstrapAppToken: "bootstrap-token",
       r2Mmrs: {} as R2Bucket,
       massifHeight: 14,

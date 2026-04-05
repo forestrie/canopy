@@ -32,13 +32,18 @@
 
 import { grantDataToBytes } from "../grant/grant-data.js";
 import {
+  authLogBootstrapShapedFlags,
   hasAuthLogClass,
   hasCreateAndExtend,
   hasDataLogClass,
 } from "../grant/grant-flags.js";
 import { grantCommitmentHashFromGrant } from "../grant/grant-commitment.js";
 import type { Grant, GrantResult } from "../grant/types.js";
-import { bytesToUuid } from "../grant/uuid-bytes.js";
+import {
+  bytesToUuid,
+  logIdBytesToCustodianLowerHex,
+  uuidToBytes,
+} from "../grant/uuid-bytes.js";
 import { getGrantFromRequest, grantAuthorize } from "./auth-grant.js";
 import { QueueFullError } from "@canopy/forestrie-ingress-types";
 import { seeOtherResponse } from "../cbor-api/cbor-response.js";
@@ -49,13 +54,18 @@ import {
 import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
 import {
   CUSTODIAN_BOOTSTRAP_KEY_ID,
+  fetchCustodianCuratorLogKey,
   fetchCustodianPublicKey,
+  publicKeyPemToUncompressed65,
   verifyCustodianEs256GrantSign1,
   verifyCustodianEs256GrantSign1WithGrantDataXy,
 } from "./custodian-grant.js";
 import { isLogInitializedMmrs } from "./log-initialized-mmrs.js";
 import type { LogShardEnv } from "../sequeue/logshard.js";
-import type { InclusionEnv } from "./verify-grant-inclusion.js";
+import {
+  verifyGrantIncluded,
+  type InclusionEnv,
+} from "./verify-grant-inclusion.js";
 import type { ReceiptVerifyKeyResolver } from "../env/receipt-verify-key-resolver.js";
 import { bytesEqual } from "../cbor-api/cbor-map-utils.js";
 import { getParsedGenesis } from "../forest/genesis-cache.js";
@@ -80,6 +90,8 @@ export interface RegisterGrantEnv {
     r2Grants: R2Bucket;
     custodianUrl: string;
     custodianBootstrapAppToken: string;
+    /** Curator custody paths (`curator/log-key`); optional in pool tests. */
+    custodianAppToken: string;
     bootstrapAlg?: "ES256" | "KS256";
     r2Mmrs: R2Bucket;
     massifHeight: number;
@@ -341,34 +353,91 @@ export async function registerGrant(
     } catch {
       return ClientErrors.badRequest("Invalid ownerLogId in grant");
     }
-    let parentInitialized: boolean;
-    try {
-      parentInitialized = await isLogInitializedMmrs(
-        parentUuid,
-        env.bootstrapEnv.r2Mmrs,
-        env.bootstrapEnv.massifHeight,
-      );
-    } catch (e) {
-      console.warn("isLogInitializedMmrs (parent, child data) failed", e);
-      return ServerErrors.serviceUnavailable(
-        e instanceof Error
-          ? e.message
-          : "Failed to read merklelog storage for parent initialization check",
-      );
+
+    const custodianBase = env.bootstrapEnv.custodianUrl.trim();
+    const custodianAppTok = env.bootstrapEnv.custodianAppToken.trim();
+    let parentInitialized = false;
+    let authorityCustodyPem: string | null = null;
+
+    if (custodianBase && custodianAppTok && env.queueEnv) {
+      try {
+        const parentHex = logIdBytesToCustodianLowerHex(
+          uuidToBytes(parentUuid),
+        );
+        const keyId = await fetchCustodianCuratorLogKey(
+          custodianBase,
+          custodianAppTok,
+          parentHex,
+        );
+        const { publicKeyPem } = await fetchCustodianPublicKey(
+          custodianBase,
+          keyId,
+        );
+        authorityCustodyPem = publicKeyPem;
+        const u65 = publicKeyPemToUncompressed65(publicKeyPem);
+        const xy =
+          u65.length === 65 && u65[0] === 0x04 ? u65.subarray(1, 65) : u65;
+        const openingChildAuth: Grant = {
+          logId: uuidToBytes(parentUuid),
+          ownerLogId: genesis.wire,
+          grant: authLogBootstrapShapedFlags(),
+          maxHeight: 0,
+          minGrowth: 0,
+          grantData: xy,
+        };
+        parentInitialized = await verifyGrantIncluded(
+          openingChildAuth,
+          env.queueEnv as InclusionEnv,
+        );
+      } catch (e) {
+        console.warn(
+          "child data parent anchor (Custodian / inclusion) failed",
+          e,
+        );
+        parentInitialized = false;
+      }
     }
+
+    if (!parentInitialized) {
+      try {
+        parentInitialized = await isLogInitializedMmrs(
+          parentUuid,
+          env.bootstrapEnv.r2Mmrs,
+          env.bootstrapEnv.massifHeight,
+        );
+      } catch (e) {
+        console.warn("isLogInitializedMmrs (parent, child data) failed", e);
+        return ServerErrors.serviceUnavailable(
+          e instanceof Error
+            ? e.message
+            : "Failed to read merklelog storage for parent initialization check",
+        );
+      }
+    }
+
     if (!parentInitialized) {
       return ClientErrors.forbidden(
         "Authority log has no MMRS data yet; initialize the owner log before child data grants.",
       );
     }
-    const ok = await verifyCustodianEs256GrantSign1WithGrantDataXy(
-      grantResult.bytes,
-      gd,
-      {
-        logFailures: true,
-        logPrefix: "register-grant-child-data-first",
-      },
-    );
+
+    const ok = authorityCustodyPem
+      ? await verifyCustodianEs256GrantSign1(
+          grantResult.bytes,
+          authorityCustodyPem,
+          {
+            logFailures: true,
+            logPrefix: "register-grant-child-data-first",
+          },
+        )
+      : await verifyCustodianEs256GrantSign1WithGrantDataXy(
+          grantResult.bytes,
+          gd,
+          {
+            logFailures: true,
+            logPrefix: "register-grant-child-data-first",
+          },
+        );
     if (!ok) {
       return ClientErrors.forbidden(
         "Child data first grant: COSE signature did not verify against grantData public key (ES256).",

@@ -97,6 +97,7 @@ function buildBootstrapEnvForRegisterGrant(
     r2Grants: env.R2_GRANTS,
     custodianUrl: env.CUSTODIAN_URL?.trim() ?? "",
     custodianBootstrapAppToken: env.CUSTODIAN_BOOTSTRAP_APP_TOKEN ?? "",
+    custodianAppToken: env.CUSTODIAN_APP_TOKEN?.trim() ?? "",
     bootstrapAlg: env.BOOTSTRAP_ALG as "ES256" | "KS256" | undefined,
     r2Mmrs: env.R2_MMRS,
     massifHeight,
