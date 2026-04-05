@@ -9,13 +9,14 @@ import {
   completeGrantRegistrationThroughReceipt,
   type CompleteGrantRegistrationThroughReceiptResult,
 } from "./register-grant-through-receipt";
+import { E2E_DEFAULT_BOOTSTRAP_LOG_ID } from "./e2e-default-bootstrap-log-id.js";
 
 export { mintTransparentBootstrapGrantBase64 };
 
 /** Plan 0014 / `transparent-statement.ts`: full grant v0 CBOR in unprotected header. */
 const HEADER_FORESTRIE_GRANT_V0 = -65538;
 
-export const DEFAULT_ROOT_LOG_ID = "123e4567-e89b-12d3-a456-426614174000";
+export const DEFAULT_ROOT_LOG_ID = E2E_DEFAULT_BOOTSTRAP_LOG_ID;
 
 function toHeaderMap(raw: unknown): Map<number, unknown> {
   if (raw instanceof Map) return raw as Map<number, unknown>;
