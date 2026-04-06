@@ -103,8 +103,8 @@ test.describe("Custodian HTTP API (deployed)", () => {
 
     const pub = await getCustodianApiPublicKey({
       baseUrl,
-      // keyOwnerId (not full GCP key.Name): path segments must not contain `/`.
-      keyIdSegment: keyOwnerId,
+      // KMS CryptoKey id is selfLogId (32 hex), same segment as sign — not keyOwnerId.
+      keyIdSegment: logHex32,
     });
     expect(pub.publicKeyPem.trim()).toBe(created.publicKeyPem.trim());
     expect(pub.alg).toBe("ES256");
@@ -170,10 +170,7 @@ test.describe("Custodian HTTP API (deployed)", () => {
       ),
     ).toBeTruthy();
 
-    // Curator/log-key above exercises `?log-id=true` resolution. We do not assert
-    // GET /v1/api/keys/{logHex}/public?log-id=true here: custodian resolves KMS
-    // short id while the in-memory store keys KeyInfo by full resource name, so
-    // public-key lookup by resolved id can 404 until store lookup aligns (arbor).
+    // Curator/log-key exercises `?log-id=true`; public above uses the KMS short id (selfLogId).
 
     run = {
       baseUrl,
