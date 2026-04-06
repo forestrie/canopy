@@ -59,7 +59,10 @@ import {
   verifyCustodianEs256GrantSign1,
   verifyCustodianEs256GrantSign1WithGrantDataXy,
 } from "./custodian-grant.js";
-import { isLogInitializedMmrs } from "./log-initialized-mmrs.js";
+import {
+  firstMassifObjectKey,
+  isLogInitializedMmrs,
+} from "./log-initialized-mmrs.js";
 import type { LogShardEnv } from "../sequeue/logshard.js";
 import {
   verifyGrantIncluded,
@@ -343,6 +346,9 @@ export async function registerGrant(
     const custodianAppTok = env.bootstrapEnv.custodianAppToken.trim();
     let parentInitialized = false;
     let authorityCustodyPem: string | null = null;
+    let parentInclusionFromQueue: boolean | undefined;
+    let parentInclusionFromMmrs: boolean | undefined;
+    let parentAnchorCuratorError: string | undefined;
 
     if (custodianBase && custodianAppTok && env.queueEnv) {
       try {
@@ -370,11 +376,13 @@ export async function registerGrant(
           minGrowth: 0,
           grantData: xy,
         };
-        parentInitialized = await verifyGrantIncluded(
+        parentInclusionFromQueue = await verifyGrantIncluded(
           openingChildAuth,
           env.queueEnv as InclusionEnv,
         );
+        parentInitialized = parentInclusionFromQueue;
       } catch (e) {
+        parentAnchorCuratorError = e instanceof Error ? e.message : String(e);
         console.warn(
           "child data parent anchor (Custodian / inclusion) failed",
           e,
@@ -385,11 +393,12 @@ export async function registerGrant(
 
     if (!parentInitialized) {
       try {
-        parentInitialized = await isLogInitializedMmrs(
+        parentInclusionFromMmrs = await isLogInitializedMmrs(
           parentUuid,
           env.bootstrapEnv.r2Mmrs,
           env.bootstrapEnv.massifHeight,
         );
+        parentInitialized = parentInclusionFromMmrs;
       } catch (e) {
         console.warn("isLogInitializedMmrs (parent, child data) failed", e);
         return ServerErrors.serviceUnavailable(
@@ -401,6 +410,43 @@ export async function registerGrant(
     }
 
     if (!parentInitialized) {
+      const mh = env.bootstrapEnv.massifHeight;
+      const firstMassifR2Key = firstMassifObjectKey(parentUuid, mh);
+      let mmrsHeadExists: boolean | null = null;
+      try {
+        mmrsHeadExists =
+          (await env.bootstrapEnv.r2Mmrs.head(firstMassifR2Key)) !== null;
+      } catch (headErr) {
+        console.warn(
+          "registerGrantChildDataParentNotInitialized: R2 head failed",
+          headErr,
+        );
+      }
+      console.warn(
+        JSON.stringify({
+          tag: "registerGrantChildDataParentNotInitialized",
+          parentUuid,
+          parentLogIdHex32: logIdBytesToCustodianLowerHex(
+            uuidToBytes(parentUuid),
+          ),
+          targetLogUuid,
+          massifHeight: mh,
+          firstMassifR2Key,
+          mmrsHeadExists,
+          parentAnchorPathConfigured: Boolean(
+            custodianBase && custodianAppTok && env.queueEnv,
+          ),
+          parentInclusionFromQueue:
+            parentInclusionFromQueue === undefined
+              ? null
+              : parentInclusionFromQueue,
+          parentInclusionFromMmrs:
+            parentInclusionFromMmrs === undefined
+              ? null
+              : parentInclusionFromMmrs,
+          parentAnchorCuratorError: parentAnchorCuratorError ?? null,
+        }),
+      );
       return ClientErrors.forbidden(
         "Authority log has no MMRS data yet; initialize the owner log before child data grants.",
       );
