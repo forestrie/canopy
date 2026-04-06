@@ -8,12 +8,14 @@
     "test:e2e": "pnpm exec playwright test --project=dev",
     "test:e2e:dev": "pnpm exec playwright test --project=dev",
     "test:e2e:health": "pnpm exec playwright test --project=health",
-    "test:e2e:prod": "pnpm exec playwright test --project=prod"
+    "test:e2e:prod": "pnpm exec playwright test --project=prod",
+    "test:e2e:custodian": "pnpm exec playwright test --project=custodian"
   },
   "dependencies": {
     "@canopy/api": "workspace:*",
     "@canopy/encoding": "workspace:*",
-    "cbor-x": "^1.5.9"
+    "cbor-x": "^1.5.9",
+    "uuid": "^11.0.5"
   },
   "devDependencies": {
     "@playwright/test": "^1.48.0",

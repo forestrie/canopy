@@ -6,7 +6,7 @@ import {
   assertCustodianProfileTransparentStatement,
   buildCompletedGrantBase64,
   completeBootstrapGrantWithReceipt,
-  mintBootstrapGrantPlaywright,
+  mintBootstrapGrant,
 } from "./utils/bootstrap-grant-flow";
 import { decodeEntryIdHex } from "./utils/entry-id-e2e";
 import {
@@ -43,7 +43,7 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
     unauthorizedRequest,
   }) => {
     const logId = randomUUID();
-    const { grantBase64 } = await mintBootstrapGrantPlaywright(
+    const { grantBase64 } = await mintBootstrapGrant(
       unauthorizedRequest,
       logId,
     );
@@ -59,7 +59,7 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
     const logId = randomUUID();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
-    const { grantBase64 } = await mintBootstrapGrantPlaywright(
+    const { grantBase64 } = await mintBootstrapGrant(
       unauthorizedRequest,
       logId,
     );
@@ -111,7 +111,7 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
     const logId = e2eReceiptBootstrapRootLogId();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
-    const { grantBase64: mintGrantB64 } = await mintBootstrapGrantPlaywright(
+    const { grantBase64: mintGrantB64 } = await mintBootstrapGrant(
       unauthorizedRequest,
       logId,
     );

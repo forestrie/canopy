@@ -2,8 +2,8 @@
  * After root bootstrap, register a **child auth** Forestrie-Grant (ARC-0017): custody ES256 key
  * signs grant with logId = child, ownerLogId = root; leaf sequences on **parent** log.
  *
- * Custodian `POST /api/keys` requires a valid `selfLogId` UUID; the KMS key id is that UUID
- * with hyphens removed (`custodianKmsCryptoKeyIdFromLogUuid` in `custodian-custody-grant.ts`).
+ * Custodian `POST /api/keys` requires `keyOwnerId` and `selfLogId` as **32 lowercase hex digits**
+ * (optional hyphens); KMS CryptoKey id matches `selfLogId` normalized (`custodianKmsCryptoKeyIdFromLogUuid`).
  */
 
 import { randomUUID } from "node:crypto";
@@ -11,7 +11,7 @@ import { expectAPI as expect, test } from "./fixtures/auth";
 import { sequencingBackoff } from "./utils/arithmetic-backoff-poll";
 import {
   completeBootstrapGrantWithReceipt,
-  mintBootstrapGrantPlaywright,
+  mintBootstrapGrant,
 } from "./utils/bootstrap-grant-flow";
 import {
   e2eReceiptBootstrapRootLogId,
@@ -22,6 +22,7 @@ import {
   authLogBootstrapShapedFlags,
   custodianCustodySignEnv,
   custodianKmsCryptoKeyIdFromLogUuid,
+  e2eCustodianKeyOwnerId,
   grantData64FromCustodianPem,
   postCustodianCreateEs256Key,
   signGrantPayloadWithCustodyKey,
@@ -46,7 +47,7 @@ test.describe("Bootstrap root + child auth grant e2e", () => {
     const childLogId = randomUUID();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
-    const { grantBase64: mintGrantB64 } = await mintBootstrapGrantPlaywright(
+    const { grantBase64: mintGrantB64 } = await mintBootstrapGrant(
       unauthorizedRequest,
       rootLogId,
     );
@@ -63,7 +64,7 @@ test.describe("Bootstrap root + child auth grant e2e", () => {
     const { keyId, publicKeyPem } = await postCustodianCreateEs256Key({
       baseUrl: custodyEnv.baseUrl,
       appToken: custodyEnv.token,
-      keyOwnerId: `canopy-e2e-child-auth-${childLogId}`,
+      keyOwnerId: e2eCustodianKeyOwnerId(),
       selfLogId: childLogId,
     });
     const expectedKmsId = custodianKmsCryptoKeyIdFromLogUuid(childLogId);

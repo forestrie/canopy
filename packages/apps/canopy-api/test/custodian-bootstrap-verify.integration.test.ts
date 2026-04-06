@@ -113,7 +113,7 @@ describe.skipIf(!integration)(
       const { keyId, publicKeyPem } = await postCustodianCreateEs256Key({
         baseUrl: env.url,
         appToken: env.token,
-        keyOwnerId: `canopy-integration-${logUuid}`,
+        keyOwnerId: custodianKmsCryptoKeyIdFromLogUuid(crypto.randomUUID()),
         selfLogId: logUuid,
       });
       const kmsSegment = keyId.split("/cryptoKeys/").pop() ?? keyId;

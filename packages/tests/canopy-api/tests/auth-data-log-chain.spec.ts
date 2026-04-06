@@ -13,11 +13,12 @@ import { sequencingBackoff } from "./utils/arithmetic-backoff-poll";
 import {
   buildCompletedGrantBase64,
   completeBootstrapGrantWithReceipt,
-  mintBootstrapGrantPlaywright,
+  mintBootstrapGrant,
 } from "./utils/bootstrap-grant-flow";
 import {
   custodianCustodySignEnv,
   custodianKmsCryptoKeyIdFromLogUuid,
+  e2eCustodianKeyOwnerId,
   grantData64FromCustodianPem,
   postCustodianCreateEs256Key,
   signGrantPayloadWithCustodyKey,
@@ -64,7 +65,7 @@ test.describe("Auth log → data log delegation chain", () => {
     const rootLogId = e2eReceiptBootstrapRootLogId();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
-    const { grantBase64: mintGrantB64 } = await mintBootstrapGrantPlaywright(
+    const { grantBase64: mintGrantB64 } = await mintBootstrapGrant(
       unauthorizedRequest,
       rootLogId,
     );
@@ -99,7 +100,7 @@ test.describe("Auth log → data log delegation chain", () => {
       await postCustodianCreateEs256Key({
         baseUrl: custody.baseUrl,
         appToken: custody.token,
-        keyOwnerId: `canopy-e2e-chain-auth-${authLogId}`,
+        keyOwnerId: e2eCustodianKeyOwnerId(),
         selfLogId: authLogId,
       });
     const authKms = custodianKmsCryptoKeyIdFromLogUuid(authLogId);
@@ -134,7 +135,7 @@ test.describe("Auth log → data log delegation chain", () => {
       await postCustodianCreateEs256Key({
         baseUrl: custody.baseUrl,
         appToken: custody.token,
-        keyOwnerId: `as://canopy-e2e-delegated-${delegatedSignerLogId}`,
+        keyOwnerId: e2eCustodianKeyOwnerId(),
         selfLogId: delegatedSignerLogId,
       });
     const delSegment = delKeyId.split("/cryptoKeys/").pop() ?? delKeyId;
@@ -221,7 +222,7 @@ test.describe("Auth log → data log delegation chain", () => {
       await postCustodianCreateEs256Key({
         baseUrl: custody.baseUrl,
         appToken: custody.token,
-        keyOwnerId: `canopy-e2e-chain-auth-wrong-${authLogId}`,
+        keyOwnerId: e2eCustodianKeyOwnerId(),
         selfLogId: authLogId,
       });
     const authSegment = authKeyId.split("/cryptoKeys/").pop() ?? authKeyId;
@@ -252,7 +253,7 @@ test.describe("Auth log → data log delegation chain", () => {
     const { publicKeyPem: delPubPem } = await postCustodianCreateEs256Key({
       baseUrl: custody.baseUrl,
       appToken: custody.token,
-      keyOwnerId: `canopy-e2e-delegated-wrong-${delegatedSignerLogId}`,
+      keyOwnerId: e2eCustodianKeyOwnerId(),
       selfLogId: delegatedSignerLogId,
     });
 

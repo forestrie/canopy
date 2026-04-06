@@ -90,10 +90,10 @@ Per-log signing roots are **unified** under **§7** (label-based lookup + root f
 
 ### Phase 3 — Custodian: log-id resolution APIs + cache (**done**)
 
-- **Ops prerequisite (bootstrap parity):** Label the **platform root** CryptoKey in KMS with the same `forestrie_log_id=<normalized ROOT_LOG_ID>` convention as custody keys (Plan §7.3 approach **A**), so **list-by-log-id** and **resolution code paths are identical** for every log. Until that is true, configure **`ROOT_LOG_ID`** on Custodian for the narrow list-miss → **`:bootstrap`** fallback (**§7.3 B**).
+- **Ops prerequisite (bootstrap parity):** Label the **platform root** CryptoKey in KMS with the same **`fo-log_id=<normalized 32-hex ROOT_LOG_ID>`** convention as custody keys (Plan §7.3 approach **A**), so **list-by-log-id** and **resolution code paths are identical** for every log. Until that is true, configure **`ROOT_LOG_ID`** on Custodian for the narrow list-miss → **`:bootstrap`** fallback (**§7.3 B**). **Breaking change (2026-04):** legacy KMS keys labeled `forestrie_log_id` / `owner_id` must be relabeled to **`fo-log_id`** / **`fo-owner_id`** (or rely on **`ROOT_LOG_ID`** until relabeled).
 - **Curator (read-only):** **`GET /api/keys/curator/log-key?logId=<hex>`** (normal app token) → CBOR **`{ keyId }`** — primary alternative to **client list + filter**; cheap to cache at the edge compared to full list.
 - **Path alias:** On **`GET/POST /api/keys/{keyId}/…`** routes, optional query **`log-id=true`** (or **`log-id=1`**) treats **`{keyId}`** as a **log id**; Custodian resolves to the real Custodian key id (custody short id or **`:bootstrap`**) via shared **`ResolveCustodianKeyIDForLogID`** logic.
-- **LRU:** In-process **`log id → key id`** cache capped by **`LOG_ID_CACHE_SIZE`** (default **1024**; set **0** to disable). Eviction is LRU; **misconfiguration** (duplicate labels) may be masked until eviction — enforce **unique `forestrie_log_id`** in ops.
+- **LRU:** In-process **`log id → key id`** cache capped by **`LOG_ID_CACHE_SIZE`** (default **1024**; set **0** to disable). Eviction is LRU; **misconfiguration** (duplicate labels) may be masked until eviction — enforce **unique `fo-log_id`** in ops.
 - **List semantics:** **`GET /api/keys/list?labelKey=value&predicate=and`** added for **read-only** use (same auth as POST); **`POST /api/keys/list`** retained for CBOR bodies with arbitrary label maps. Rationale for historical POST: uniform **application/cbor** request bodies; GET fixes **HTTP semantics** and **cacheability** for simple predicates.
 
 ### Phase 4 — Sealer: direct Custodian + resolution
@@ -118,7 +118,7 @@ Per-log signing roots are **unified** under **§7** (label-based lookup + root f
 1. Canonical **log id** string form beyond **lowercase hex** (e.g. fixed-width UUID) — **Custodian normalizes** to lowercase hex without `0x`; label values must remain consistent with **`buildLabelFilter`** sanitization.
 2. Dedicated **`CUSTODIAN_SEALER_TOKEN`** vs reusing **`APP_TOKEN`** for list + curator + resolve.
 
-**Resolved for implementation:** Prefer **KMS labeling** of the bootstrap key with **`forestrie_log_id`** so Sealer resolution is **one code path**; **`ROOT_LOG_ID`** remains for transition when the root key is **outside** the custody ring listing surface.
+**Resolved for implementation:** Prefer **KMS labeling** of the bootstrap key with **`fo-log_id`** so Sealer resolution is **one code path**; **`ROOT_LOG_ID`** remains for transition when the root key is **outside** the custody ring listing surface.
 
 ---
 
@@ -146,12 +146,12 @@ This section evaluates whether Sealer can **discover** the Custodian **`keyId`**
 - Custodian builds a **GCP KMS `ListCryptoKeys` filter** on **`labels.<key>=<value>`** for CryptoKeys under **`CUSTODY_KEY_RING_ID`**.
 - Returns **`keyId`** (short CryptoKey name), **version**, optional **count**.
 
-**Key creation** (`kms_create.go`): custody CryptoKeys receive **KMS labels**, including `owner_id` and **caller-supplied labels** (sanitized for GCP: lowercase, `[a-z0-9_-]` via `buildLabelFilter`).
+**Key creation** (`kms_create.go`): custody CryptoKeys receive **operator KMS labels** **`fo-owner_id`** and **`fo-log_id`** (Custodian sets these from **`keyOwnerId`** / **`selfLogId`**, normalized to **32 lowercase hex**). **User-supplied** `labels` on create must **not** start with **`fo-`** (reserved Forestrie operator prefix). Additional **caller-supplied** labels are merged after sanitization (GCP: lowercase, `[a-z0-9_-]` via `buildLabelFilter`).
 
 **Implication:** If every **authority signing key** that Sealer might use for a log is a **CryptoKey in the custody ring** and is tagged with a **stable label** whose value is derived from **`logId`**, then Sealer can **lookup by log id**:
 
 1. Normalize `logId` (e.g. UUID bytes → **lowercase hex without `0x`**, fixed width).
-2. **`GET /api/keys/curator/log-key?logId=<hex>`** with **`APP_TOKEN`**, or **`GET /api/keys/list?forestrie_log_id=<hex>&predicate=and`**, or **`POST /api/keys/list`** with CBOR `labels: { forestrie_log_id: "<hex>" }`, `predicate: "and"`.
+2. **`GET /api/keys/curator/log-key?logId=<hex>`** with **`APP_TOKEN`**, or **`GET /api/keys/list?fo-log_id=<hex>&predicate=and`**, or **`POST /api/keys/list`** with CBOR `labels: { "fo-log_id": "<hex>" }`, `predicate: "and"`.
 3. Require **exactly one** matching key; treat **0** as misconfiguration / missing key; **>1** as operator error.
 4. Use returned **`keyId`** for **`GET /api/keys/{keyId}/public`** and **`POST /api/keys/{keyId}/sign`** (**`rawSignatureOnly`**). Custody keys use **`APP_TOKEN`** for sign.
 
@@ -159,11 +159,11 @@ This section evaluates whether Sealer can **discover** the Custodian **`keyId`**
 
 ### 7.2 Curator and shared resolution (implemented on Custodian)
 
-**Primary lookup:** **`GET /api/keys/curator/log-key?logId=<hex>`** ( **`APP_TOKEN`** ) → CBOR **`{ keyId }`**. Uses **`forestrie_log_id`** KMS label (**constant `ForestrieLogIDLabelKey` / `forestrie_log_id`** in arbor `custodian`).
+**Primary lookup:** **`GET /api/keys/curator/log-key?logId=<hex>`** ( **`APP_TOKEN`** ) → CBOR **`{ keyId }`**. Uses **`fo-log_id`** KMS label (**constant `ForestrieLogIDLabelKey` / `fo-log_id`** in arbor `custodian`).
 
 **Optional path alias:** Any **`/api/keys/{keyId}/(public|sign|delete|…)`** may pass **`?log-id=true`** so **`{keyId}`** is interpreted as **log id** and resolved through the **same** function as the curator endpoint. **`GET …/public?log-id=true`** is unauthenticated today (same as plain public); operators should treat log-id exposure like any other public metadata policy.
 
-**List:** **`GET /api/keys/list?forestrie_log_id=<hex>&predicate=and`** returns the same shape as **`POST /api/keys/list`** without a CBOR body. **`POST …/list`** remains for arbitrary multi-label maps in CBOR.
+**List:** **`GET /api/keys/list?fo-log_id=<hex>&predicate=and`** returns the same shape as **`POST /api/keys/list`** without a CBOR body. **`POST …/list`** remains for arbitrary multi-label maps in CBOR.
 
 **Why `POST /api/keys/list` existed:** Custodian standardizes **request bodies** as **CBOR**; a rich `labels` map is awkward in query strings. **GET** is appropriate for **read-only** narrow cases and **HTTP caching**; POST is retained for full expressiveness.
 
@@ -175,7 +175,7 @@ This section evaluates whether Sealer can **discover** the Custodian **`keyId`**
 
 | Approach                                | Pros                                                             | Cons                                                                       |
 | --------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| **A. Label the root key in KMS**        | Same **list / curator / `log-id`** path for **all** logs         | Ops must set **`forestrie_log_id`** on the root key (same as custody keys) |
+| **A. Label the root key in KMS**        | Same **list / curator / `log-id`** path for **all** logs         | Ops must set **`fo-log_id`** on the root key (same as custody keys) |
 | **B. Custodian `ROOT_LOG_ID` fallback** | Transition without relabeling root; list miss → **`:bootstrap`** | Two mechanisms until **A** is done                                         |
 | **C. Mirror root as custody key**       | Pure list path                                                   | Duplication / drift risk                                                   |
 
@@ -183,7 +183,7 @@ This section evaluates whether Sealer can **discover** the Custodian **`keyId`**
 
 ### 7.3.1 In-process LRU (`LOG_ID_CACHE_SIZE`)
 
-Custodian caches **normalized log id → resolved `keyId`** (including **`:bootstrap`**) up to **`LOG_ID_CACHE_SIZE`** entries (default **1024** when unset; **0** disables). **Dup-key misconfiguration** can be hidden until an entry is evicted — ops must guarantee **at most one** CryptoKey per **`forestrie_log_id`**.
+Custodian caches **normalized log id → resolved `keyId`** (including **`:bootstrap`**) up to **`LOG_ID_CACHE_SIZE`** entries (default **1024** when unset; **0** disables). **Dup-key misconfiguration** can be hidden until an entry is evicted — ops must guarantee **at most one** CryptoKey per **`fo-log_id`**.
 
 ### 7.4 Checkpoint reuse (optional optimization)
 

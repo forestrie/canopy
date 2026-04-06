@@ -50,6 +50,7 @@ function resolveCanopyBaseUrl(): string {
 const baseURL = resolveCanopyBaseUrl();
 
 export default defineConfig({
+  globalSetup: "./global-setup.ts",
   testDir: "./tests",
   timeout: 30_000,
   retries: process.env.CI ? 2 : 0,
@@ -82,6 +83,13 @@ export default defineConfig({
         "**/bootstrap-child-auth-grant.spec.ts",
         "**/auth-data-log-chain.spec.ts",
       ],
+      use: {
+        baseURL,
+      },
+    },
+    {
+      name: "custodian",
+      testMatch: ["**/custodian-api.spec.ts"],
       use: {
         baseURL,
       },

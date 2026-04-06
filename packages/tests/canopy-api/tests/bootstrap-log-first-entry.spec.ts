@@ -5,7 +5,7 @@ import { sequencingBackoff } from "./utils/arithmetic-backoff-poll";
 import {
   buildCompletedGrantBase64,
   completeBootstrapGrantWithReceipt,
-  mintBootstrapGrantPlaywright,
+  mintBootstrapGrant,
 } from "./utils/bootstrap-grant-flow";
 import { custodianCustodySignEnv } from "./utils/custodian-custody-grant";
 import { postCustodianSignRawPayloadBytes } from "./utils/custodian-sign-payload";
@@ -71,7 +71,7 @@ test.describe("Bootstrap log e2e — first signed entry", () => {
     const baseURL = testInfo.project.use.baseURL ?? "";
 
     const { grantBase64: mintGrantB64, rootCustodySignKeyId } =
-      await mintBootstrapGrantPlaywright(unauthorizedRequest, logId);
+      await mintBootstrapGrant(unauthorizedRequest, logId);
 
     const { grantBase64, entryIdHex, receiptRes } =
       await completeBootstrapGrantWithReceipt({

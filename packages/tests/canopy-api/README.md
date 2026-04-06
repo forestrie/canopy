@@ -22,6 +22,7 @@ That installs Playwright/Chromium and runs **`task vars:doppler:{{ENV}}`** so **
   `doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e exec playwright test --project=dev`  
   (see **`.cursor/rules/e2e-local-doppler.mdc`**). Use `ENV=prod` with the task when targeting prod Doppler config.
 - **Local (hydrated `.env`):** `task test:e2e:preflight` then `task test:e2e` or root `pnpm test:e2e`.
+- **Custodian HTTP API only:** `pnpm --filter @canopy/api-e2e exec playwright test --project=custodian` or `pnpm --filter @canopy/api-e2e test:e2e:custodian` (same repo-root `.env` / Doppler as other e2e). Requires **`CUSTODIAN_URL`** (ingress **origin**, no `/v1` required), **`CUSTODIAN_APP_TOKEN`**, and **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`** for teardown (`POST /v1/api/keys/{keyId}/delete`). Tests call ops at `/healthz`… and the API at **`/v1/api/…`** (Traefik). Does not call `:bootstrap` key routes.
 
 ### Bootstrap grant (mint + register-grant)
 
@@ -52,6 +53,11 @@ Other keys:
 
 - **`SCRAPI_API_KEY`**: Bearer for authorized fixtures (optional for current specs that use `unauthorizedRequest` only).
 
+**Custodian API e2e** (`custodian-api.spec.ts`, Playwright project **`custodian`**):
+
+- **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**: create key, public, sign, curator, list via **`/v1/api/…`** (ingress); ops probes use the URL **origin** only (`/healthz`, `/readyz`, …).
+- **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`**: required for the second test that calls **`POST /v1/api/keys/{keyId}/delete`** (privileged bootstrap token in Custodian; not the `:bootstrap` KMS key). If unset, that test is skipped and a custody key may remain in the target KMS ring.
+
 ## Test layout
 
 | File                                 | Area                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -62,7 +68,8 @@ Other keys:
 | `bootstrap-log-first-entry.spec.ts`  | `POST /register/{bootstrap}/entries` with completed bootstrap grant (Custodian sign); rejects wrong signer (`403` `signer_mismatch`).                                                                                                                                                                                                                                                                                                                    |
 | `bootstrap-child-auth-grant.spec.ts` | Root bootstrap + custody-key child auth grant; 303 Location under `/logs/{root}/{root}/entries/…`.                                                                                                                                                                                                                                                                                                                                                       |
 | `auth-data-log-chain.spec.ts`        | Root → child **auth** log → first **data** log grant (delegated `grantData`, signed by auth custody) → `POST /entries` on data log with **delegated** signer + completed data-log grant as auth; negative: wrong signer → `signer_mismatch`. **Purpose:** confirm delegated register-statement for a data log under a child auth log. Requires same Custodian + sequencing setup as other custody e2e (`CUSTODIAN_APP_TOKEN`, bootstrap token, ingress). |
+| `custodian-api.spec.ts`              | Direct **`fetch`** to deployed Custodian: root ops + **`/v1/api/…`** key routes (public `POST /v1/api/keys`, sign, curator, list, optional `log-id=true` public, delete via bootstrap app token). **Does not** use `:bootstrap` key paths.                                                                                                                                                                                                               |
 
 - Fixtures: `tests/fixtures`.
-- Shared e2e utils: `tests/utils/e2e-env-guards.ts`, `tests/utils/e2e-grant-flags.ts`, `tests/utils/register-grant-through-receipt.ts`, `tests/utils/post-entries-e2e.ts`, `tests/utils/custodian-sign-payload.ts`, `tests/utils/problem-details.ts`, `tests/utils/bootstrap-e2e-guard.ts`, `tests/utils/bootstrap-grant-flow.ts`.
+- Shared e2e utils: `tests/utils/e2e-env-guards.ts`, `tests/utils/e2e-grant-flags.ts`, `tests/utils/register-grant-through-receipt.ts`, `tests/utils/post-entries-e2e.ts`, `tests/utils/custodian-sign-payload.ts`, `tests/utils/custodian-api-*.ts` (direct Custodian HTTP helpers), `tests/utils/problem-details.ts`, `tests/utils/bootstrap-e2e-guard.ts`, `tests/utils/bootstrap-grant-flow.ts`.
 - Worker unit/integration tests: `packages/apps/canopy-api/test`.

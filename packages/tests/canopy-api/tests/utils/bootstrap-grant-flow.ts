@@ -82,8 +82,11 @@ export function bytesToForestrieGrantBase64(bytes: Uint8Array): string {
 /**
  * Bootstrap mint for e2e: per-root Custodian custody key + `POST /api/forest/{log-id}/genesis`
  * + ES256 sign (Plan 0019). **Throws** if `CURATOR_ADMIN_TOKEN` or custody env is missing.
+ *
+ * Thin wrapper around `mintTransparentBootstrapGrantBase64` with env from `process.env`
+ * (same package as the Playwright specs — no separate test-runner layer).
  */
-export async function mintBootstrapGrantPlaywright(
+export async function mintBootstrapGrant(
   unauthorizedRequest: APIRequestContext,
   rootLogId: string,
 ): Promise<{ grantBase64: string; rootCustodySignKeyId: string }> {

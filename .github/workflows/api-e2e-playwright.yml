@@ -47,6 +47,7 @@ jobs:
           # Use the same base as the worker (`…/v1` per canopy-api wrangler.jsonc).
           CUSTODIAN_URL: ${{ vars.CUSTODIAN_URL }}
           CUSTODIAN_APP_TOKEN: ${{ secrets.CUSTODIAN_APP_TOKEN }}
+          CUSTODIAN_BOOTSTRAP_APP_TOKEN: ${{ secrets.CUSTODIAN_BOOTSTRAP_APP_TOKEN }}
           # Bootstrap mint e2e: POST /api/forest/{log-id}/genesis (409 OK if exists).
           CURATOR_ADMIN_TOKEN: ${{ secrets.CURATOR_ADMIN_TOKEN }}
         run: |
@@ -75,4 +76,8 @@ jobs:
           pnpm --filter @canopy/api-e2e exec playwright install chromium
           pnpm --filter @canopy/api-e2e exec playwright test \
             --project="${{ inputs.playwright_project }}" \
+            --forbid-only
+          # Direct Custodian HTTP API (same CUSTODIAN_* env as custody mint paths).
+          pnpm --filter @canopy/api-e2e exec playwright test \
+            --project=custodian \
             --forbid-only

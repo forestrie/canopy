@@ -13,7 +13,10 @@ import {
   publicKeyPemToUncompressed65,
 } from "../../../../apps/canopy-api/src/scrapi/custodian-grant.js";
 import { ensureForestGenesisE2e } from "./forest-genesis-e2e.js";
-import { postCustodianCreateEs256Key } from "./custodian-custody-grant.js";
+import {
+  custodianKmsCryptoKeyIdFromLogUuid,
+  postCustodianCreateEs256Key,
+} from "./custodian-custody-grant.js";
 
 function bytesToForestrieGrantBase64(bytes: Uint8Array): string {
   let s = "";
@@ -38,7 +41,7 @@ export async function mintTransparentBootstrapGrantBase64(opts: {
   const { keyId, publicKeyPem } = await postCustodianCreateEs256Key({
     baseUrl: opts.custodianUrl,
     appToken: opts.custodianAppToken,
-    keyOwnerId: `canopy-e2e-root-bootstrap-${opts.rootLogId}`,
+    keyOwnerId: custodianKmsCryptoKeyIdFromLogUuid(opts.rootLogId),
     selfLogId: opts.rootLogId,
   });
   const kmsSegment = keyId.split("/cryptoKeys/").pop() ?? keyId;
