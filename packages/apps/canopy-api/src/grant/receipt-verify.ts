@@ -19,6 +19,7 @@ import {
 import type { Grant } from "./grant.js";
 import { grantCommitmentHashFromGrant } from "./grant-commitment.js";
 import { univocityLeafHash } from "./leaf-commitment.js";
+import { resolveReceiptVerifyKey } from "./delegation-verify.js";
 
 /**
  * Hasher for Workers: uses crypto.subtle.digest (no sync crypto in Workers).
@@ -207,7 +208,11 @@ export async function verifyReceiptInclusion(
 export interface ReceiptInclusionVerifyOptions {
   /** Full receipt COSE Sign1 CBOR bytes (transparent statement header 396). */
   receiptCoseBytes: Uint8Array;
-  /** Log-operator public key (Custodian SPKI PEM → importKey) for receipt Sign1. */
+  /**
+   * Log-operator custody key (from Custodian). When the receipt contains a
+   * delegation cert (header 1000), this key is used to verify the delegation
+   * chain, and the delegated key is extracted to verify the receipt signature.
+   */
   receiptVerifyKey: CryptoKey;
 }
 
@@ -223,12 +228,34 @@ export async function verifyReceiptInclusionFromParsed(
   receiptVerification?: ReceiptInclusionVerifyOptions,
 ): Promise<boolean> {
   if (receiptVerification) {
-    const sigOk = await verifyCoseSign1(
+    // Resolve the correct key for signature verification. If the receipt has
+    // a delegation cert (header 1000), this verifies the delegation chain and
+    // extracts the delegated key. For secp256k1 delegated keys, verification
+    // is done inline and alreadyVerified is set.
+    const resolveResult = await resolveReceiptVerifyKey(
       receiptVerification.receiptCoseBytes,
       receiptVerification.receiptVerifyKey,
-      { logFailures: true, logPrefix: "grant-receipt-cose" },
     );
-    if (!sigOk) return false;
+    if (!resolveResult) {
+      console.warn(
+        "grant-receipt-verify: delegation chain resolution failed",
+      );
+      return false;
+    }
+
+    // If verification was already done (secp256k1 path), skip verifyCoseSign1
+    if (!resolveResult.alreadyVerified) {
+      if (!resolveResult.verifyKey) {
+        console.warn("grant-receipt-verify: no verify key available");
+        return false;
+      }
+      const sigOk = await verifyCoseSign1(
+        receiptVerification.receiptCoseBytes,
+        resolveResult.verifyKey,
+        { logFailures: true, logPrefix: "grant-receipt-cose" },
+      );
+      if (!sigOk) return false;
+    }
   }
 
   const inner = await grantCommitmentHashFromGrant(grant);
