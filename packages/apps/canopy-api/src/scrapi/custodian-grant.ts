@@ -228,10 +228,29 @@ export async function importSpkiPemEs256VerifyKey(
   );
 }
 
+/** secp256k1 OID bytes in SPKI DER: 1.3.132.0.10 */
+const SECP256K1_OID_BYTES = new Uint8Array([0x2b, 0x81, 0x04, 0x00, 0x0a]);
+
+/**
+ * Detect if SPKI DER contains secp256k1 OID.
+ */
+function isSecp256k1FromDer(der: Uint8Array): boolean {
+  // Look for the OID bytes in the DER structure
+  outer: for (let i = 0; i <= der.length - SECP256K1_OID_BYTES.length; i++) {
+    for (let j = 0; j < SECP256K1_OID_BYTES.length; j++) {
+      if (der[i + j] !== SECP256K1_OID_BYTES[j]) continue outer;
+    }
+    return true;
+  }
+  return false;
+}
+
 /**
  * Import SPKI PEM as a ParsedVerifyKey based on the algorithm.
  * For ES256 (P-256): returns a CryptoKey via Web Crypto.
  * For ES256K (secp256k1): returns a ParsedEcPublicKey with x, y coordinates.
+ *
+ * If alg is missing or ambiguous, auto-detects curve from SPKI OID.
  *
  * @param pem - SPKI PEM-encoded public key
  * @param alg - Algorithm string from Custodian ("ES256" or "ES256K"/"KS256")
@@ -241,11 +260,21 @@ export async function importSpkiPemVerifyKeyWithAlg(
   alg: string,
 ): Promise<ParsedVerifyKey> {
   const normalizedAlg = alg.toUpperCase().trim();
-  const isSecp256k1 = normalizedAlg === "ES256K" || normalizedAlg === "KS256";
+  const der = pemBodyToDer(pem);
 
-  if (isSecp256k1) {
+  // Explicit ES256K/KS256 or auto-detect from DER when alg is missing/default
+  const algSaysSecp256k1 =
+    normalizedAlg === "ES256K" || normalizedAlg === "KS256";
+  const derSaysSecp256k1 = isSecp256k1FromDer(der);
+
+  // Use secp256k1 if either alg says so OR if alg is ambiguous and DER contains secp256k1 OID
+  const useSecp256k1 =
+    algSaysSecp256k1 ||
+    (!normalizedAlg || normalizedAlg === "ES256" ? derSaysSecp256k1 : false);
+
+  if (useSecp256k1) {
     // Extract x, y coordinates from PEM for secp256k1
-    const uncompressed = publicKeyPemToUncompressed65(pem);
+    const uncompressed = extractUncompressed65FromEcSpkiDer(der);
     if (uncompressed[0] !== 0x04 || uncompressed.length !== 65) {
       throw new Error("Expected uncompressed EC point (04||x||y)");
     }
@@ -254,8 +283,14 @@ export async function importSpkiPemVerifyKeyWithAlg(
     return { x, y, curve: "secp256k1" } as ParsedEcPublicKey;
   }
 
-  // Default to P-256 (ES256) via Web Crypto
-  return importSpkiPemEs256VerifyKey(pem);
+  // P-256 (ES256) via Web Crypto
+  return crypto.subtle.importKey(
+    "spki",
+    new Uint8Array(der),
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["verify"],
+  );
 }
 
 // Re-export types for convenience
