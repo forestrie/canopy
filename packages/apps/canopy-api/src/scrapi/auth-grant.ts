@@ -6,6 +6,7 @@
  * without queue bindings — not a public client concern.
  */
 
+import type { ParsedVerifyKey } from "@canopy/encoding";
 import type { GrantResult } from "../grant/types.js";
 import { decodeTransparentStatement } from "../grant/transparent-statement.js";
 import { verifyReceiptInclusionFromParsed } from "../grant/receipt-verify.js";
@@ -41,8 +42,8 @@ export interface AuthGrantAuthorizeEnv {
   /** When set, grant must pass receipt-based inclusion verification. */
   inclusionEnv?: InclusionEnv;
   /**
-   * Resolves ES256 verify key for receipt Sign1 (Custodian curator/log-key path).
-   * Required when `inclusionEnv` is set.
+   * Resolves ECDSA verify key for receipt Sign1 (Custodian curator/log-key path).
+   * Supports ES256 (P-256) and ES256K (secp256k1). Required when `inclusionEnv` is set.
    */
   resolveReceiptVerifyKey?: ReceiptVerifyKeyResolver;
 }
@@ -119,7 +120,7 @@ export async function grantAuthorize(
     );
   }
 
-  let receiptVerifyKey: CryptoKey;
+  let receiptVerifyKey: ParsedVerifyKey;
   try {
     receiptVerifyKey = await env.resolveReceiptVerifyKey(
       logIdBytesToCustodianLowerHex(grant.ownerLogId),

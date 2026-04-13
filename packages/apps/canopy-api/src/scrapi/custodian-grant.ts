@@ -6,7 +6,12 @@
  */
 
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
-import { type VerifyCoseSign1Options, verifyCoseSign1 } from "@canopy/encoding";
+import {
+  type ParsedEcPublicKey,
+  type ParsedVerifyKey,
+  type VerifyCoseSign1Options,
+  verifyCoseSign1,
+} from "@canopy/encoding";
 import {
   HEADER_FORESTRIE_GRANT_V0,
   HEADER_IDTIMESTAMP,
@@ -222,6 +227,39 @@ export async function importSpkiPemEs256VerifyKey(
     ["verify"],
   );
 }
+
+/**
+ * Import SPKI PEM as a ParsedVerifyKey based on the algorithm.
+ * For ES256 (P-256): returns a CryptoKey via Web Crypto.
+ * For ES256K (secp256k1): returns a ParsedEcPublicKey with x, y coordinates.
+ *
+ * @param pem - SPKI PEM-encoded public key
+ * @param alg - Algorithm string from Custodian ("ES256" or "ES256K"/"KS256")
+ */
+export async function importSpkiPemVerifyKeyWithAlg(
+  pem: string,
+  alg: string,
+): Promise<ParsedVerifyKey> {
+  const normalizedAlg = alg.toUpperCase().trim();
+  const isSecp256k1 = normalizedAlg === "ES256K" || normalizedAlg === "KS256";
+
+  if (isSecp256k1) {
+    // Extract x, y coordinates from PEM for secp256k1
+    const uncompressed = publicKeyPemToUncompressed65(pem);
+    if (uncompressed[0] !== 0x04 || uncompressed.length !== 65) {
+      throw new Error("Expected uncompressed EC point (04||x||y)");
+    }
+    const x = uncompressed.slice(1, 33);
+    const y = uncompressed.slice(33, 65);
+    return { x, y, curve: "secp256k1" } as ParsedEcPublicKey;
+  }
+
+  // Default to P-256 (ES256) via Web Crypto
+  return importSpkiPemEs256VerifyKey(pem);
+}
+
+// Re-export types for convenience
+export type { ParsedEcPublicKey, ParsedVerifyKey };
 
 /**
  * Verify RFC 8152 COSE Sign1 (ES256) using bootstrap/public key PEM from Custodian.

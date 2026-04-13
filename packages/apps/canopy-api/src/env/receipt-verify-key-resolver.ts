@@ -1,13 +1,15 @@
 /**
- * Resolves the ES256 public key used to verify SCITT receipt COSE Sign1 for a log,
+ * Resolves the public key used to verify SCITT receipt COSE Sign1 for a log,
  * via Custodian (curator/log-key + public) or a test-only fixed x‖y when pool mode.
+ * Supports both ES256 (P-256) and ES256K (secp256k1) custody keys.
  */
 
+import { type ParsedVerifyKey } from "@canopy/encoding";
 import {
   fetchCustodianCuratorLogKey,
   fetchCustodianPublicKey,
   importEs256PublicKeyFromGrantDataXy64,
-  importSpkiPemEs256VerifyKey,
+  importSpkiPemVerifyKeyWithAlg,
 } from "../scrapi/custodian-grant.js";
 import { isCanopyApiPoolTestMode } from "./runtime-mode.js";
 
@@ -30,14 +32,18 @@ function hexToBytes32Pair(hex: string): Uint8Array {
   return out;
 }
 
-/** @param ownerLogIdLowerHex32 — 32-char lowercase hex for the semantic 16-byte log id. */
+/**
+ * Resolves a ParsedVerifyKey for a log ID.
+ * @param ownerLogIdLowerHex32 — 32-char lowercase hex for the semantic 16-byte log id.
+ */
 export type ReceiptVerifyKeyResolver = (
   ownerLogIdLowerHex32: string,
-) => Promise<CryptoKey>;
+) => Promise<ParsedVerifyKey>;
 
 /**
  * Production / dev: fetches Custodian key id per owner log id (hex), then SPKI PEM → verify key.
  * Pool test with `testReceiptVerifyEs256XyHex`: static ES256 x‖y (no Custodian).
+ * Supports both ES256 (P-256) and ES256K (secp256k1) custody keys.
  */
 export function createReceiptVerifyKeyResolver(config: {
   custodianBaseUrl: string;
@@ -56,22 +62,19 @@ export function createReceiptVerifyKeyResolver(config: {
 
   const base = config.custodianBaseUrl.trim().replace(/\/$/, "");
   const token = config.custodianAppToken.trim();
-  const cache = new Map<string, Promise<CryptoKey>>();
+  const cache = new Map<string, Promise<ParsedVerifyKey>>();
 
   return async (ownerLogIdLowerHex32: string) => {
     let p = cache.get(ownerLogIdLowerHex32);
     if (!p) {
-      p = (async () => {
-        const pemToVerifyKey = async (publicKeyPem: string) =>
-          importSpkiPemEs256VerifyKey(publicKeyPem);
-
-        // 1) Custody keys: CryptoKey id is usually the 32-char log hex; /public is unauthenticated.
+      p = (async (): Promise<ParsedVerifyKey> => {
+        // 1) Custody keys: key id is usually the 32-char log hex; /public is unauthenticated.
         try {
-          const { publicKeyPem } = await fetchCustodianPublicKey(
+          const { publicKeyPem, alg } = await fetchCustodianPublicKey(
             base,
             ownerLogIdLowerHex32,
           );
-          return pemToVerifyKey(publicKeyPem);
+          return importSpkiPemVerifyKeyWithAlg(publicKeyPem, alg);
         } catch {
           // continue
         }
@@ -83,19 +86,22 @@ export function createReceiptVerifyKeyResolver(config: {
             token,
             ownerLogIdLowerHex32,
           );
-          const { publicKeyPem } = await fetchCustodianPublicKey(base, keyId);
-          return pemToVerifyKey(publicKeyPem);
+          const { publicKeyPem, alg } = await fetchCustodianPublicKey(
+            base,
+            keyId,
+          );
+          return importSpkiPemVerifyKeyWithAlg(publicKeyPem, alg);
         } catch {
           // continue
         }
 
         // 3) Legacy dev stacks: Ranger may still sign receipts with :bootstrap while grants
         // use per-log custody; grant bootstrap verification does not use this path.
-        const { publicKeyPem } = await fetchCustodianPublicKey(
+        const { publicKeyPem, alg } = await fetchCustodianPublicKey(
           base,
           CUSTODIAN_LEGACY_SIGNING_KEY_PUBLIC_SEGMENT,
         );
-        return pemToVerifyKey(publicKeyPem);
+        return importSpkiPemVerifyKeyWithAlg(publicKeyPem, alg);
       })();
 
       p = p.catch((err: unknown) => {

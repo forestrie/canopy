@@ -192,6 +192,9 @@ importers:
 
   packages/shared/encoding:
     dependencies:
+      '@noble/curves':
+        specifier: ^1.8.1
+        version: 1.9.7
       cbor-x:
         specifier: ^1.5.9
         version: 1.6.0

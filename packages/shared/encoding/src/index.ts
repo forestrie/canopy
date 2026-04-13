@@ -22,10 +22,18 @@ export {
 export { encodeCoseSign1Statement } from "./encode-cose-sign1-statement.js";
 export { signCoseSign1Statement } from "./sign-cose-sign1-statement.js";
 export {
+  algToCurve,
+  COSE_ALG_ES256,
+  COSE_ALG_ES256K,
+  type CoseAlgorithm,
   decodeCoseSign1,
   type DecodedCoseSign1,
+  extractAlgFromProtected,
+  type ParsedEcPublicKey,
+  type ParsedVerifyKey,
   type VerifyCoseSign1Options,
   verifyCoseSign1,
+  verifyCoseSign1WithParsedKey,
 } from "./verify-cose-sign1.js";
 export { coseUnprotectedToMap } from "./cose-unprotected-map.js";
 export { encodeCoseSign1Raw } from "./encode-cose-sign1-raw.js";

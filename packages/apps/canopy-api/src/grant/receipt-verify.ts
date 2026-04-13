@@ -9,7 +9,7 @@
  */
 
 import { decode as decodeCbor } from "cbor-x";
-import { verifyCoseSign1 } from "@canopy/encoding";
+import { type ParsedVerifyKey, verifyCoseSign1 } from "@canopy/encoding";
 import {
   calculateRoot,
   verifyInclusion,
@@ -212,8 +212,9 @@ export interface ReceiptInclusionVerifyOptions {
    * Log-operator custody key (from Custodian). When the receipt contains a
    * delegation cert (header 1000), this key is used to verify the delegation
    * chain, and the delegated key is extracted to verify the receipt signature.
+   * Supports both CryptoKey (P-256) and ParsedEcPublicKey (secp256k1).
    */
-  receiptVerifyKey: CryptoKey;
+  receiptVerifyKey: ParsedVerifyKey;
 }
 
 /**
@@ -237,9 +238,7 @@ export async function verifyReceiptInclusionFromParsed(
       receiptVerification.receiptVerifyKey,
     );
     if (!resolveResult) {
-      console.warn(
-        "grant-receipt-verify: delegation chain resolution failed",
-      );
+      console.warn("grant-receipt-verify: delegation chain resolution failed");
       return false;
     }
 

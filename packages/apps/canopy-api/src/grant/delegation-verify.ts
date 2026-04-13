@@ -17,8 +17,14 @@
  */
 
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
-import { verifyCoseSign1, decodeCoseSign1 } from "@canopy/encoding";
-import { coseUnprotectedToMap } from "@canopy/encoding";
+import {
+  coseUnprotectedToMap,
+  decodeCoseSign1,
+  type ParsedEcPublicKey,
+  type ParsedVerifyKey,
+  verifyCoseSign1,
+  verifyCoseSign1WithParsedKey,
+} from "@canopy/encoding";
 import { secp256k1 } from "@noble/curves/secp256k1";
 
 /** Unprotected header label for delegation certificate (per arc-delegation-signer-cose-cbor-scitt.md). */
@@ -39,16 +45,6 @@ const COSE_CRV_SECP256K1 = 8;
 
 /** Delegation payload label for delegated key. */
 const PAYLOAD_DELEGATED_KEY = 5;
-
-/** Parsed EC public key with curve type for dual-path verification. */
-export interface ParsedEcPublicKey {
-  /** X coordinate (32 bytes). */
-  x: Uint8Array;
-  /** Y coordinate (32 bytes). */
-  y: Uint8Array;
-  /** Curve: P-256 (Web Crypto) or secp256k1 (@noble/curves). */
-  curve: "P-256" | "secp256k1";
-}
 
 export interface DelegationVerifyResult {
   /**
@@ -185,8 +181,11 @@ async function verifySecp256k1Signature(
 ): Promise<boolean> {
   if (signature.length !== 64) return false;
 
-  // Hash the Sig_structure
-  const msgHash = await crypto.subtle.digest("SHA-256", sigStructure);
+  // Hash the Sig_structure (copy to ensure ArrayBuffer backing for strict types)
+  const msgHash = await crypto.subtle.digest(
+    "SHA-256",
+    new Uint8Array(sigStructure),
+  );
   const msgHashBytes = new Uint8Array(msgHash);
 
   // Build uncompressed public key: 04 || x || y
@@ -209,7 +208,9 @@ async function verifySecp256k1Signature(
  * The delegation cert payload is a CBOR map with integer keys. Label 5 contains
  * the delegated key as a COSE_Key (EC2).
  */
-export function extractDelegatedKeyFromPayload(payloadBytes: Uint8Array): unknown | null {
+export function extractDelegatedKeyFromPayload(
+  payloadBytes: Uint8Array,
+): unknown | null {
   if (payloadBytes.length === 0) return null;
 
   let payloadMap: unknown;
@@ -236,12 +237,13 @@ export function extractDelegatedKeyFromPayload(payloadBytes: Uint8Array): unknow
  * Verify the delegation certificate and extract the delegated public key.
  *
  * @param delegationCertBytes - The delegation certificate COSE Sign1 bytes
- * @param custodyKey - Optional custody key to verify the delegation cert signature
+ * @param custodyKey - Optional custody key to verify the delegation cert signature;
+ *                     supports both CryptoKey (P-256) and ParsedEcPublicKey (secp256k1)
  * @returns The delegated key and verification status, or null if parsing fails
  */
 export async function verifyDelegationCert(
   delegationCertBytes: Uint8Array,
-  custodyKey?: CryptoKey,
+  custodyKey?: ParsedVerifyKey,
 ): Promise<DelegationVerifyResult | null> {
   // Decode the delegation cert
   const decoded = decodeCoseSign1(delegationCertBytes);
@@ -253,10 +255,11 @@ export async function verifyDelegationCert(
   // Verify signature if custody key provided
   let signatureVerified = false;
   if (custodyKey) {
-    signatureVerified = await verifyCoseSign1(delegationCertBytes, custodyKey, {
-      logFailures: true,
-      logPrefix: "delegation-cert",
-    });
+    signatureVerified = await verifyCoseSign1WithParsedKey(
+      delegationCertBytes,
+      custodyKey,
+      { logFailures: true, logPrefix: "delegation-cert" },
+    );
     if (!signatureVerified) {
       console.warn("delegation-verify: delegation cert signature invalid");
       return null;
@@ -356,12 +359,13 @@ export interface ResolveReceiptResult {
  * using @noble/curves since Web Crypto doesn't support secp256k1.
  *
  * @param receiptCoseSign1Bytes - Full receipt COSE Sign1 bytes
- * @param custodyKey - The custody key (log operator's key from Custodian)
+ * @param custodyKey - The custody key (log operator's key from Custodian);
+ *                     supports both CryptoKey (P-256) and ParsedEcPublicKey (secp256k1)
  * @returns Resolution result with key and verification status, or null on failure
  */
 export async function resolveReceiptVerifyKey(
   receiptCoseSign1Bytes: Uint8Array,
-  custodyKey: CryptoKey,
+  custodyKey: ParsedVerifyKey,
 ): Promise<ResolveReceiptResult | null> {
   // Decode receipt to get unprotected header
   const decoded = decodeCoseSign1(receiptCoseSign1Bytes);
@@ -373,8 +377,23 @@ export async function resolveReceiptVerifyKey(
   // Check for delegation cert
   const delegationCertBytes = extractDelegationCertBytes(decoded.unprotected);
   if (!delegationCertBytes) {
-    // No delegation - use custody key directly
-    return { verifyKey: custodyKey, alreadyVerified: false };
+    // No delegation - use custody key directly (may be CryptoKey or ParsedEcPublicKey)
+    // Note: caller handles ParsedEcPublicKey case via verifyCoseSign1WithParsedKey
+    if (custodyKey instanceof CryptoKey) {
+      return { verifyKey: custodyKey, alreadyVerified: false };
+    }
+    // secp256k1 custody key without delegation - verify directly here
+    const receiptOk = await verifyReceiptWithParsedKey(
+      receiptCoseSign1Bytes,
+      custodyKey,
+    );
+    if (!receiptOk) {
+      console.warn(
+        "delegation-verify: receipt signature verification failed (secp256k1 custody, no delegation)",
+      );
+      return null;
+    }
+    return { verifyKey: null, alreadyVerified: true };
   }
 
   // Verify delegation chain and get delegated key
