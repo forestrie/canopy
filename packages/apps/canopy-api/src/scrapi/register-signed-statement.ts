@@ -39,7 +39,7 @@ import {
 } from "./grant-auth";
 import {
   importEs256PublicKeyFromGrantDataXy64,
-  verifyCustodianEs256GrantSign1WithGrantDataXy,
+  verifyGrantCoseSign1WithGrantDataXy,
 } from "./custodian-grant.js";
 import { isDataLogStatementGrantFlags } from "../grant/grant-flags.js";
 import {
@@ -140,10 +140,10 @@ export async function registerSignedStatement(
     const grantDataBytes = grantDataToBytes(grant.grantData);
     if (grantDataBytes.length !== 64) {
       return ClientErrors.forbidden(
-        "Forestrie-Grant verification requires 64-byte ES256 grantData (public key x||y).",
+        "Forestrie-Grant verification requires 64-byte grantData (public key x||y).",
       );
     }
-    const forestrieOk = await verifyCustodianEs256GrantSign1WithGrantDataXy(
+    const forestrieOk = await verifyGrantCoseSign1WithGrantDataXy(
       grantResult.bytes,
       grantDataBytes,
       { logFailures: true, logPrefix: "register-statement-forestrie-grant" },

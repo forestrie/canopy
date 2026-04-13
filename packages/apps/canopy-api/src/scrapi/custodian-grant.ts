@@ -7,10 +7,16 @@
 
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 import {
+  algToCurve,
+  COSE_ALG_ES256,
+  COSE_ALG_ES256K,
+  decodeCoseSign1,
+  extractAlgFromProtected,
   type ParsedEcPublicKey,
   type ParsedVerifyKey,
   type VerifyCoseSign1Options,
   verifyCoseSign1,
+  verifyCoseSign1WithParsedKey,
 } from "@canopy/encoding";
 import {
   HEADER_FORESTRIE_GRANT_V0,
@@ -333,6 +339,7 @@ export async function importEs256PublicKeyFromGrantDataXy64(
 
 /**
  * Child auth first grant: verify COSE Sign1 using the **subject** key in **`grantData`** (x‖y).
+ * @deprecated Use verifyGrantCoseSign1WithGrantDataXy for multi-curve support.
  */
 export async function verifyCustodianEs256GrantSign1WithGrantDataXy(
   coseSign1Bytes: Uint8Array,
@@ -341,6 +348,93 @@ export async function verifyCustodianEs256GrantSign1WithGrantDataXy(
 ): Promise<boolean> {
   const key = await importEs256PublicKeyFromGrantDataXy64(grantDataXy64);
   return verifyCoseSign1(coseSign1Bytes, key, verifyOpts);
+}
+
+/**
+ * Import verify key from 64-byte x||y based on COSE algorithm.
+ * For ES256 (P-256): returns CryptoKey via Web Crypto.
+ * For ES256K (secp256k1): returns ParsedEcPublicKey with x, y coordinates.
+ */
+export async function importVerifyKeyFromXy64WithAlg(
+  xy: Uint8Array,
+  alg: number,
+): Promise<ParsedVerifyKey> {
+  if (xy.length !== 64) {
+    throw new Error("grantData must be 64 bytes (x||y) for public key import");
+  }
+
+  const curve = algToCurve(alg);
+  if (curve === "secp256k1") {
+    const x = xy.slice(0, 32);
+    const y = xy.slice(32, 64);
+    return { x, y, curve: "secp256k1" } as ParsedEcPublicKey;
+  }
+
+  // Default to P-256 (ES256) via Web Crypto
+  const raw = new Uint8Array(65);
+  raw[0] = 0x04;
+  raw.set(xy, 1);
+  return crypto.subtle.importKey(
+    "raw",
+    new Uint8Array(raw),
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["verify"],
+  );
+}
+
+/**
+ * Verify grant COSE Sign1 using grantData x||y (64 bytes).
+ * Extracts `alg` from COSE protected header and uses appropriate curve.
+ * Supports both ES256 (P-256) and ES256K (secp256k1).
+ */
+export async function verifyGrantCoseSign1WithGrantDataXy(
+  coseSign1Bytes: Uint8Array,
+  grantDataXy64: Uint8Array,
+  verifyOpts?: VerifyCoseSign1Options,
+): Promise<boolean> {
+  // Decode to extract protected header
+  const decoded = decodeCoseSign1(coseSign1Bytes);
+  if (!decoded) {
+    return false;
+  }
+
+  // Extract alg from protected header, default to ES256
+  const alg = extractAlgFromProtected(decoded.protectedBstr) ?? COSE_ALG_ES256;
+
+  // Import key based on algorithm
+  const key = await importVerifyKeyFromXy64WithAlg(grantDataXy64, alg);
+
+  // Verify using curve-aware function
+  return verifyCoseSign1WithParsedKey(coseSign1Bytes, key, verifyOpts);
+}
+
+/**
+ * Verify grant COSE Sign1 using PEM-encoded public key.
+ * Extracts `alg` from COSE protected header and uses appropriate curve.
+ * Supports both ES256 (P-256) and ES256K (secp256k1).
+ */
+export async function verifyGrantCoseSign1WithPem(
+  coseSign1Bytes: Uint8Array,
+  publicKeyPem: string,
+  verifyOpts?: VerifyCoseSign1Options,
+): Promise<boolean> {
+  // Decode to extract protected header
+  const decoded = decodeCoseSign1(coseSign1Bytes);
+  if (!decoded) {
+    return false;
+  }
+
+  // Extract alg from protected header, default to ES256
+  const alg = extractAlgFromProtected(decoded.protectedBstr) ?? COSE_ALG_ES256;
+  const algName =
+    alg === COSE_ALG_ES256K ? "ES256K" : alg === COSE_ALG_ES256 ? "ES256" : "";
+
+  // Import key based on algorithm (importSpkiPemVerifyKeyWithAlg auto-detects from DER if needed)
+  const key = await importSpkiPemVerifyKeyWithAlg(publicKeyPem, algName);
+
+  // Verify using curve-aware function
+  return verifyCoseSign1WithParsedKey(coseSign1Bytes, key, verifyOpts);
 }
 
 /**

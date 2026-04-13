@@ -56,8 +56,8 @@ import {
   fetchCustodianCuratorLogKey,
   fetchCustodianPublicKey,
   publicKeyPemToUncompressed65,
-  verifyCustodianEs256GrantSign1,
-  verifyCustodianEs256GrantSign1WithGrantDataXy,
+  verifyGrantCoseSign1WithGrantDataXy,
+  verifyGrantCoseSign1WithPem,
 } from "./custodian-grant.js";
 import {
   firstMassifObjectKey,
@@ -187,7 +187,7 @@ export async function registerGrant(
       const gdRoot = grantDataToBytes(grant.grantData);
       if (gdRoot.length !== 64) {
         return ClientErrors.forbidden(
-          "Bootstrap grant requires 64-byte ES256 grantData (x||y).",
+          "Bootstrap grant requires 64-byte grantData (x||y).",
         );
       }
       for (let i = 0; i < 32; i++) {
@@ -216,7 +216,7 @@ export async function registerGrant(
           transparentStatementLen: grantResult.bytes.length,
         }),
       );
-      const ok = await verifyCustodianEs256GrantSign1WithGrantDataXy(
+      const ok = await verifyGrantCoseSign1WithGrantDataXy(
         grantResult.bytes,
         gdRoot,
         {
@@ -226,7 +226,7 @@ export async function registerGrant(
       );
       if (!ok) {
         return ClientErrors.forbidden(
-          "Bootstrap grant COSE signature did not verify against grantData public key (ES256).",
+          "Bootstrap grant COSE signature did not verify against grantData public key.",
         );
       }
       return await enqueueAndStoreGrant(
@@ -260,7 +260,7 @@ export async function registerGrant(
     const gd = grantDataToBytes(grant.grantData);
     if (gd.length !== 64) {
       return ClientErrors.forbidden(
-        "Child auth first grant requires 64-byte ES256 grantData (x||y).",
+        "Child auth first grant requires 64-byte grantData (x||y).",
       );
     }
     let parentUuid: string;
@@ -289,7 +289,7 @@ export async function registerGrant(
         "Parent authority log has no MMRS data yet; bootstrap the root before child auth grants.",
       );
     }
-    const ok = await verifyCustodianEs256GrantSign1WithGrantDataXy(
+    const ok = await verifyGrantCoseSign1WithGrantDataXy(
       grantResult.bytes,
       gd,
       {
@@ -299,7 +299,7 @@ export async function registerGrant(
     );
     if (!ok) {
       return ClientErrors.forbidden(
-        "Child auth first grant: COSE signature did not verify against grantData public key (ES256).",
+        "Child auth first grant: COSE signature did not verify against grantData public key.",
       );
     }
     try {
@@ -332,7 +332,7 @@ export async function registerGrant(
     const gd = grantDataToBytes(grant.grantData);
     if (gd.length !== 64) {
       return ClientErrors.forbidden(
-        "Child data first grant requires 64-byte ES256 grantData (x||y).",
+        "Child data first grant requires 64-byte grantData (x||y).",
       );
     }
     let parentUuid: string;
@@ -453,7 +453,7 @@ export async function registerGrant(
     }
 
     const ok = authorityCustodyPem
-      ? await verifyCustodianEs256GrantSign1(
+      ? await verifyGrantCoseSign1WithPem(
           grantResult.bytes,
           authorityCustodyPem,
           {
@@ -461,17 +461,13 @@ export async function registerGrant(
             logPrefix: "register-grant-child-data-first",
           },
         )
-      : await verifyCustodianEs256GrantSign1WithGrantDataXy(
-          grantResult.bytes,
-          gd,
-          {
-            logFailures: true,
-            logPrefix: "register-grant-child-data-first",
-          },
-        );
+      : await verifyGrantCoseSign1WithGrantDataXy(grantResult.bytes, gd, {
+          logFailures: true,
+          logPrefix: "register-grant-child-data-first",
+        });
     if (!ok) {
       return ClientErrors.forbidden(
-        "Child data first grant: COSE signature did not verify against grantData public key (ES256).",
+        "Child data first grant: COSE signature did not verify against grantData public key.",
       );
     }
     try {
