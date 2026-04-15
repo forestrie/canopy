@@ -85,7 +85,7 @@ Running a single Vitest file for the Worker:
 - `pnpm --filter @canopy/api test -- path/to/your.test.ts`
 
 Running a focused Playwright E2E test file (local; prefix with Doppler when secrets are not in `.env`):
-- `doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e exec playwright test --project=dev tests/path/to/spec.spec.ts`
+- `doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e exec playwright test --project=system tests/system/path/to/spec.spec.ts`
 
 > Prefer running these from the repository root so pnpm can correctly resolve workspace dependencies and scripts.
 

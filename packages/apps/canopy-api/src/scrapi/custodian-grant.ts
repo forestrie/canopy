@@ -105,10 +105,12 @@ export async function fetchCustodianCuratorLogKey(
 export async function fetchCustodianPublicKey(
   custodianBaseUrl: string,
   keyId: string,
+  options?: { logId?: boolean },
 ): Promise<CustodianPublicKeyResponse> {
   const base = trimBase(custodianBaseUrl);
   const enc = encodeURIComponent(keyId);
-  const res = await fetch(`${base}/api/keys/${enc}/public`, {
+  const queryParam = options?.logId ? "?log-id=true" : "";
+  const res = await fetch(`${base}/api/keys/${enc}/public${queryParam}`, {
     headers: { Accept: "application/cbor" },
   });
   if (!res.ok) {

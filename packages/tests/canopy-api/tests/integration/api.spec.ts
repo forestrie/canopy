@@ -1,4 +1,4 @@
-import { expectAPI as expect, test } from "./fixtures/auth";
+import { expectAPI as expect, test } from "@e2e-fixtures/auth";
 
 /**
  * Cross-cutting HTTP behavior that is not tied to a single product feature.

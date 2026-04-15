@@ -9,7 +9,6 @@ tasks:
     cmds:
       - task: :wrangler:deploy:forestrie-ingress
       - task: :wrangler:deploy:canopy-api
-      - task: :wrangler:deploy:delegation-signer
       - task: :wrangler:deploy:x402-settlement
 
   bootstrap:prod:
@@ -19,9 +18,6 @@ tasks:
         vars:
           ENV: prod
       - task: :wrangler:deploy:canopy-api
-        vars:
-          ENV: prod
-      - task: :wrangler:deploy:delegation-signer
         vars:
           ENV: prod
       - task: :wrangler:deploy:x402-settlement
@@ -35,9 +31,6 @@ tasks:
         vars:
           ENV: prod
       - task: :wrangler:deploy:canopy-api
-        vars:
-          ENV: prod
-      - task: :wrangler:deploy:delegation-signer
         vars:
           ENV: prod
       - task: :wrangler:deploy:x402-settlement

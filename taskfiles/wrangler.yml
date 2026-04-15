@@ -133,17 +133,6 @@ tasks:
     cmds:
       - pnpm dev
 
-  dev:delegation-signer:
-    desc: Start delegation-signer locally with test key (no GCP KMS). For bootstrap flow testing. Copy packages/apps/delegation-signer/.dev.vars.example to .dev.vars there if needed.
-    dir: packages/apps/delegation-signer
-    cmds:
-      - |
-        if [ ! -f .dev.vars ] && [ -f .dev.vars.example ]; then
-          cp .dev.vars.example .dev.vars
-          echo "Created .dev.vars from .dev.vars.example for test-key mode."
-        fi
-      - pnpm dev
-
   dev:debug:
     desc: Start canopy-api dev server with debugging enabled
     dir: packages/apps/canopy-api

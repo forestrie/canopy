@@ -4,13 +4,13 @@
 
 import { randomUUID } from "node:crypto";
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
-import { encodeGrantPayload } from "../../../../apps/canopy-api/src/grant/codec.js";
-import type { Grant } from "../../../../apps/canopy-api/src/grant/types.js";
+import { encodeGrantPayload } from "@e2e-canopy-api-src/grant/codec.js";
+import type { Grant } from "@e2e-canopy-api-src/grant/types.js";
 import {
   mergeGrantHeadersIntoCustodianSign1,
   postCustodianSignGrantPayload,
   publicKeyPemToUncompressed65,
-} from "../../../../apps/canopy-api/src/scrapi/custodian-grant.js";
+} from "@e2e-canopy-api-src/scrapi/custodian-grant.js";
 import { e2eCustodianKeyLabels } from "./e2e-custodian-labels.js";
 import { normalizeForestrieHexId32 } from "./forestrie-hex-id.js";
 import { assertUserLabelKeysNotOperatorPrefix } from "./forestrie-operator-labels.js";

@@ -27,7 +27,7 @@ import {
 } from "@canopy/encoding";
 import { secp256k1 } from "@noble/curves/secp256k1";
 
-/** Unprotected header label for delegation certificate (per arc-delegation-signer-cose-cbor-scitt.md). */
+/** Unprotected header label for delegation certificate (sealer embeds via Custodian per-log delegation). */
 export const DELEGATION_CERT_LABEL = 1000;
 
 /** COSE_Key labels per RFC 9052. */
@@ -67,6 +67,14 @@ export function extractDelegationCertBytes(
 ): Uint8Array | null {
   const umap = coseUnprotectedToMap(receiptUnprotected);
   const certRaw = umap.get(DELEGATION_CERT_LABEL);
+  console.log("extractDelegationCertBytes", {
+    rawType: Object.prototype.toString.call(receiptUnprotected),
+    isMap: receiptUnprotected instanceof Map,
+    mapKeys: umap.size > 0 ? Array.from(umap.keys()) : [],
+    hasCertLabel: umap.has(DELEGATION_CERT_LABEL),
+    certRawType: certRaw === undefined ? "undefined" : Object.prototype.toString.call(certRaw),
+    certRawLen: certRaw instanceof Uint8Array ? certRaw.length : "N/A",
+  });
   if (certRaw instanceof Uint8Array && certRaw.length > 0) {
     return certRaw;
   }
@@ -245,6 +253,13 @@ export async function verifyDelegationCert(
   delegationCertBytes: Uint8Array,
   custodyKey?: ParsedVerifyKey,
 ): Promise<DelegationVerifyResult | null> {
+  console.log("verifyDelegationCert: starting", {
+    delegationCertBytesLen: delegationCertBytes.length,
+    hasCustodyKey: !!custodyKey,
+    custodyKeyType: custodyKey instanceof CryptoKey ? "CryptoKey" : "ParsedKey",
+    custodyKeyCurve: custodyKey && !(custodyKey instanceof CryptoKey) ? (custodyKey as any).curve : "N/A",
+  });
+
   // Decode the delegation cert
   const decoded = decodeCoseSign1(delegationCertBytes);
   if (!decoded) {
@@ -252,14 +267,22 @@ export async function verifyDelegationCert(
     return null;
   }
 
+  console.log("verifyDelegationCert: decoded cert", {
+    protectedLen: decoded.protectedBstr.length,
+    payloadLen: decoded.payloadBstr.length,
+    signatureLen: decoded.signature.length,
+  });
+
   // Verify signature if custody key provided
   let signatureVerified = false;
   if (custodyKey) {
+    console.log("verifyDelegationCert: verifying signature against custody key");
     signatureVerified = await verifyCoseSign1WithParsedKey(
       delegationCertBytes,
       custodyKey,
       { logFailures: true, logPrefix: "delegation-cert" },
     );
+    console.log("verifyDelegationCert: signature result", { signatureVerified });
     if (!signatureVerified) {
       console.warn("delegation-verify: delegation cert signature invalid");
       return null;
@@ -376,6 +399,12 @@ export async function resolveReceiptVerifyKey(
 
   // Check for delegation cert
   const delegationCertBytes = extractDelegationCertBytes(decoded.unprotected);
+  console.log("delegation-verify: resolveReceiptVerifyKey", {
+    hasDelegationCert: !!delegationCertBytes,
+    delegationCertLen: delegationCertBytes?.length,
+    custodyKeyType: custodyKey instanceof CryptoKey ? "CryptoKey" : "ParsedKey",
+    custodyKeyCurve: custodyKey instanceof CryptoKey ? "(CryptoKey)" : (custodyKey as any)?.curve,
+  });
   if (!delegationCertBytes) {
     // No delegation - use custody key directly (may be CryptoKey or ParsedEcPublicKey)
     // Note: caller handles ParsedEcPublicKey case via verifyCoseSign1WithParsedKey
@@ -398,12 +427,19 @@ export async function resolveReceiptVerifyKey(
 
   // Verify delegation chain and get delegated key
   const result = await verifyDelegationCert(delegationCertBytes, custodyKey);
+  console.log("delegation-verify: verifyDelegationCert result", {
+    success: !!result,
+    signatureVerified: result?.signatureVerified,
+    hasDelegatedKey: !!result?.delegatedKey,
+    parsedKeyCurve: result?.parsedKey?.curve,
+  });
   if (!result) {
     return null;
   }
 
   // For P-256, return the CryptoKey for standard verification
   if (result.delegatedKey) {
+    console.log("delegation-verify: using P-256 delegated CryptoKey");
     return { verifyKey: result.delegatedKey, alreadyVerified: false };
   }
 

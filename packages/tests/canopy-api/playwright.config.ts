@@ -62,34 +62,35 @@ export default defineConfig({
     : "list",
   projects: [
     {
-      name: "health",
-      testMatch: ["**/api.spec.ts", "**/observability.spec.ts"],
+      name: "integration",
+      testMatch: ["**/integration/**/*.spec.ts"],
       use: {
         baseURL,
       },
     },
     {
-      name: "dev",
-      use: {
-        baseURL,
-      },
-    },
-    {
-      // Prod / release: excludes mutating bootstrap mint tests.
-      name: "prod",
-      testIgnore: [
-        "**/grants-bootstrap.spec.ts",
-        "**/bootstrap-log-first-entry.spec.ts",
-        "**/bootstrap-child-auth-grant.spec.ts",
-        "**/auth-data-log-chain.spec.ts",
-      ],
+      name: "system",
+      testMatch: ["**/system/**/*.spec.ts"],
       use: {
         baseURL,
       },
     },
     {
       name: "custodian",
-      testMatch: ["**/custodian-api.spec.ts"],
+      testMatch: ["**/custodian/**/*.spec.ts"],
+      use: {
+        baseURL,
+      },
+    },
+    {
+      // Prod / release: excludes mutating system tests.
+      name: "prod",
+      testIgnore: [
+        "**/system/grants-bootstrap.spec.ts",
+        "**/system/bootstrap-log-first-entry.spec.ts",
+        "**/system/bootstrap-child-auth-grant.spec.ts",
+        "**/system/auth-data-log-chain.spec.ts",
+      ],
       use: {
         baseURL,
       },

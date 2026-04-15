@@ -13,7 +13,7 @@ import {
   COSE_KEY_ALG,
   COSE_KEY_KTY,
   COSE_KTY_EC2,
-} from "../../../../apps/canopy-api/src/cose/cose-key.js";
+} from "@e2e-canopy-api-src/cose/cose-key.js";
 
 /**
  * Store forest genesis for e2e. Idempotent: **409** (already exists) is OK.

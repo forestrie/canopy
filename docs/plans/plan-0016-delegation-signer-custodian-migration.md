@@ -1,6 +1,8 @@
 ---
-Status: ACCEPTED
+Status: COMPLETE
 Date: 2026-03-28
+Completed: 2026-04-15 — delegation-signer worker removed from canopy repository.
+Sealer uses Custodian directly for per-log delegation.
 Related:
   - [plan-0011-custodian-integration-and-current-state.md](plan-0011-custodian-integration-and-current-state.md)
   - [plan-0014-register-grant-custodian-signing.md](plan-0014-register-grant-custodian-signing.md)

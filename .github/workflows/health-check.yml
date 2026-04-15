@@ -69,4 +69,4 @@ jobs:
             export CANOPY_BASE_URL="${CANOPY_BASE_URL%/}"
           fi
           pnpm --filter @canopy/api-e2e exec playwright install chromium
-          pnpm --filter @canopy/api-e2e exec playwright test --project=health
+          pnpm --filter @canopy/api-e2e exec playwright test --project=integration

@@ -2,8 +2,6 @@
  * Env guards for direct Custodian HTTP e2e (`CUSTODIAN_URL`, app tokens).
  */
 
-import type { TestInfo } from "@playwright/test";
-
 /** Trailing-slash–normalized Custodian URL from env (legacy / display). */
 export function custodianApiTrimBaseUrl(url: string): string {
   return url.trim().replace(/\/$/, "");
@@ -61,16 +59,4 @@ export function assertCustodianApiE2eEnv(): {
 
 export function hasCustodianApiE2eEnv(): boolean {
   return Boolean(custodianApiBaseUrl() && custodianApiAppToken());
-}
-
-/**
- * Skip the current test file when Custodian URL / app token are unset (CI without secrets, local partial env).
- */
-export function skipWithoutCustodianApi(testInfo: TestInfo): void {
-  if (!hasCustodianApiE2eEnv()) {
-    testInfo.skip(
-      true,
-      "Set CUSTODIAN_URL and CUSTODIAN_APP_TOKEN to run Custodian API e2e.",
-    );
-  }
 }

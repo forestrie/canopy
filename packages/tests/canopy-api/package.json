@@ -5,11 +5,11 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test:e2e": "pnpm exec playwright test --project=dev",
-    "test:e2e:dev": "pnpm exec playwright test --project=dev",
-    "test:e2e:health": "pnpm exec playwright test --project=health",
-    "test:e2e:prod": "pnpm exec playwright test --project=prod",
-    "test:e2e:custodian": "pnpm exec playwright test --project=custodian"
+    "test:e2e": "pnpm exec playwright test --project=integration --project=system --project=custodian",
+    "test:e2e:integration": "pnpm exec playwright test --project=integration",
+    "test:e2e:system": "pnpm exec playwright test --project=system",
+    "test:e2e:custodian": "pnpm exec playwright test --project=custodian",
+    "test:e2e:prod": "pnpm exec playwright test --project=prod"
   },
   "dependencies": {
     "@canopy/api": "workspace:*",

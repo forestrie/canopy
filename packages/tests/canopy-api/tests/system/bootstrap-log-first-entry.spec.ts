@@ -1,29 +1,25 @@
 import { encode as encodeCbor } from "cbor-x";
 import { signCoseSign1Statement } from "@canopy/encoding";
-import { expectAPI as expect, test } from "./fixtures/auth";
-import { sequencingBackoff } from "./utils/arithmetic-backoff-poll";
+import { expectAPI as expect, test } from "@e2e-fixtures/auth";
+import { sequencingBackoff } from "@e2e-utils/arithmetic-backoff-poll";
 import {
   buildCompletedGrantBase64,
   completeBootstrapGrantWithReceipt,
   mintBootstrapGrant,
-} from "./utils/bootstrap-grant-flow";
-import { custodianCustodySignEnv } from "./utils/custodian-custody-grant";
-import { postCustodianSignRawPayloadBytes } from "./utils/custodian-sign-payload";
-import {
-  e2eReceiptBootstrapRootLogId,
-  shouldSkipSequencingPoll,
-  skipSequencingPollIfDisabled,
-} from "./utils/e2e-env-guards";
+} from "@e2e-utils/bootstrap-grant-flow";
+import { custodianCustodySignEnv } from "@e2e-utils/custodian-custody-grant";
+import { postCustodianSignRawPayloadBytes } from "@e2e-utils/custodian-sign-payload";
+import { e2eReceiptBootstrapRootLogId } from "@e2e-utils/e2e-env-guards";
 import {
   assert303ContentHashLocation,
   postLogEntriesCoseSign1,
-} from "./utils/post-entries-e2e";
+} from "@e2e-utils/post-entries-e2e";
 import {
   formatProblemDetailsMessage,
   reportProblemDetails,
   responseTextPreview,
-} from "./utils/problem-details";
-import { sha256Hex } from "./utils/statement-sign-bytes";
+} from "@e2e-utils/problem-details";
+import { sha256Hex } from "@e2e-utils/statement-sign-bytes";
 
 function e2eFirstStatementPayload(): Uint8Array {
   const encoded = encodeCbor({
@@ -60,13 +56,6 @@ test.describe("Bootstrap log e2e — first signed entry", () => {
   };
 
   test.beforeAll(async ({ unauthorizedRequest }, testInfo) => {
-    if (shouldSkipSequencingPoll()) {
-      testInfo.skip(
-        true,
-        "E2E_SKIP_SEQUENCING_POLL: skip until SCITT / ingress",
-      );
-      return;
-    }
     const logId = e2eReceiptBootstrapRootLogId();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
@@ -97,9 +86,10 @@ test.describe("Bootstrap log e2e — first signed entry", () => {
   test("POST /register/entries returns 303 with content-hash Location", async ({
     unauthorizedRequest,
   }, testInfo) => {
-    if (skipSequencingPollIfDisabled(testInfo)) return;
-    if (!shared.logId) return;
-
+    expect(
+      shared.logId,
+      "beforeAll must complete bootstrap + receipt",
+    ).toBeTruthy();
     const custody = custodianCustodySignEnv()!;
     const statementPayload = e2eFirstStatementPayload();
     const sign1Bytes = await postCustodianSignRawPayloadBytes({
@@ -135,8 +125,10 @@ test.describe("Bootstrap log e2e — first signed entry", () => {
   test("POST /register/entries rejects valid Sign1 when kid is not bootstrap signer", async ({
     unauthorizedRequest,
   }, testInfo) => {
-    if (skipSequencingPollIfDisabled(testInfo)) return;
-    if (!shared.logId) return;
+    expect(
+      shared.logId,
+      "beforeAll must complete bootstrap + receipt",
+    ).toBeTruthy();
 
     // Ephemeral P-256 key: kid = 32-byte x from uncompressed raw public key (04||x||y).
     // Bootstrap grantData binds the root custody pubkey, so this must not match.

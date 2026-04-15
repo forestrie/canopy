@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { TestInfo } from "@playwright/test";
-import { custodianCustodySignEnv } from "./custodian-custody-grant";
+import { custodianCustodySignEnv } from "./custodian-custody-grant.js";
 
 /**
  * New bootstrap forest log id for e2e (runner-side genesis + custody mint + register).
@@ -13,29 +12,13 @@ export function e2eReceiptBootstrapRootLogId(): string {
   return randomUUID();
 }
 
-/** True when sequencing poll tests should be skipped (no ingress). */
-export function shouldSkipSequencingPoll(): boolean {
-  return (
-    process.env.E2E_SKIP_SEQUENCING_POLL === "1" ||
-    process.env.E2E_SKIP_SEQUENCING_POLL === "true"
-  );
-}
-
-export function skipSequencingPollIfDisabled(testInfo: TestInfo): boolean {
-  if (shouldSkipSequencingPoll()) {
-    testInfo.skip(true, "E2E_SKIP_SEQUENCING_POLL: skip until SCITT / ingress");
-    return true;
-  }
-  return false;
-}
-
 const BOOTSTRAP_MINT_E2E_HELP =
   "Hydrate repo-root .env (task test:e2e:preflight) or run task test:e2e:doppler. " +
   "See packages/tests/canopy-api/README.md.";
 
 /**
  * Runner-side bootstrap mint requires Custodian custody (`POST /api/keys` + sign) and curator genesis.
- * Call before minting; throws so the test **fails** (not skipped) when misconfigured.
+ * Call before minting; throws so the test **fails** when misconfigured.
  */
 export function assertBootstrapMintE2eEnv(): void {
   if (!process.env.CURATOR_ADMIN_TOKEN?.trim()) {
@@ -50,13 +33,9 @@ export function assertBootstrapMintE2eEnv(): void {
   }
 }
 
-export function skipWithoutCustodianCustody(testInfo: TestInfo): boolean {
-  if (!custodianCustodySignEnv()) {
-    testInfo.skip(
-      true,
-      "CUSTODIAN_URL and CUSTODIAN_APP_TOKEN required for custody keys",
-    );
-    return true;
-  }
-  return false;
+/**
+ * Full **system** e2e (SCRAPI + Custodian custody + curator): same requirements as bootstrap mint.
+ */
+export function assertSystemE2eEnv(): void {
+  assertBootstrapMintE2eEnv();
 }

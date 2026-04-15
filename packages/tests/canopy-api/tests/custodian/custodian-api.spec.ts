@@ -4,36 +4,35 @@
  * Does not use `:bootstrap` key routes; curator must not resolve our random log to `:bootstrap`.
  */
 
-import { expect, test, type TestInfo } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import {
   custodianKmsCryptoKeyIdFromLogUuid,
   e2eCustodianKeyOwnerId,
-} from "./utils/custodian-custody-grant.js";
+} from "@e2e-utils/custodian-custody-grant.js";
 import {
   assertCustodianApiE2eEnv,
   custodianApiBootstrapAppToken,
   custodianApiV1BaseUrl,
-  skipWithoutCustodianApi,
-} from "./utils/custodian-api-env.js";
-import { getCustodianApiCuratorLogKey } from "./utils/custodian-api-curator-log-key.js";
-import { postCustodianApiCreateEs256Key } from "./utils/custodian-api-create-key.js";
-import { postCustodianApiDeleteKey } from "./utils/custodian-api-delete-key.js";
+} from "@e2e-utils/custodian-api-env.js";
+import { getCustodianApiCuratorLogKey } from "@e2e-utils/custodian-api-curator-log-key.js";
+import { postCustodianApiCreateEs256Key } from "@e2e-utils/custodian-api-create-key.js";
+import { postCustodianApiDeleteKey } from "@e2e-utils/custodian-api-delete-key.js";
 import {
   getCustodianApiKeysListGet,
   postCustodianApiKeysList,
-} from "./utils/custodian-api-keys-list.js";
+} from "@e2e-utils/custodian-api-keys-list.js";
 import {
   getCustodianHealthz,
   getCustodianMetricsText,
   getCustodianReadyz,
   getCustodianVersionJson,
-} from "./utils/custodian-api-ops.js";
-import { getCustodianApiPublicKey } from "./utils/custodian-api-public-key.js";
+} from "@e2e-utils/custodian-api-ops.js";
+import { getCustodianApiPublicKey } from "@e2e-utils/custodian-api-public-key.js";
 import {
   postCustodianApiSignPayload,
   verifyCustodianApiSign1AgainstPem,
-} from "./utils/custodian-api-sign.js";
+} from "@e2e-utils/custodian-api-sign.js";
 
 test.describe.configure({ mode: "serial" });
 
@@ -47,22 +46,13 @@ type RunState = {
 
 let run: RunState | undefined;
 
-function skipIfNoBootstrap(testInfo: TestInfo): void {
-  if (!custodianApiBootstrapAppToken()) {
-    testInfo.skip(
-      true,
-      "Set CUSTODIAN_BOOTSTRAP_APP_TOKEN to run custody key teardown (POST /v1/api/keys/{id}/delete).",
-    );
-  }
-}
-
 async function sleep(ms: number): Promise<void> {
   await new Promise((r) => setTimeout(r, ms));
 }
 
 test.describe("Custodian HTTP API (deployed)", () => {
-  test.beforeEach(({}, testInfo) => {
-    skipWithoutCustodianApi(testInfo);
+  test.beforeEach(() => {
+    assertCustodianApiE2eEnv();
   });
 
   test("ops smoke, create, public, sign, curator, list, log-id public", async () => {
@@ -180,15 +170,20 @@ test.describe("Custodian HTTP API (deployed)", () => {
     };
   });
 
-  test("teardown: delete custody key (bootstrap app token)", async ({}, testInfo) => {
-    skipWithoutCustodianApi(testInfo);
-    skipIfNoBootstrap(testInfo);
+  test("teardown: delete custody key (bootstrap app token)", async () => {
+    assertCustodianApiE2eEnv();
+    const bootstrap = custodianApiBootstrapAppToken();
+    if (!bootstrap) {
+      throw new Error(
+        "CUSTODIAN_BOOTSTRAP_APP_TOKEN is required for custody key teardown (POST /v1/api/keys/{id}/delete).",
+      );
+    }
     const state = run;
     if (!state) {
-      testInfo.skip(true, "Previous Custodian API test did not complete.");
-      return;
+      throw new Error(
+        "Previous Custodian API test did not complete; cannot run teardown.",
+      );
     }
-    const bootstrap = custodianApiBootstrapAppToken()!;
 
     const del = await postCustodianApiDeleteKey({
       baseUrl: state.baseUrl,

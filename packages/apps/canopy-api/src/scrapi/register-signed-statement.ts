@@ -4,10 +4,14 @@
  * **Flow:** The client sends the signed statement (COSE Sign1 body) and
  * **`Authorization: Forestrie-Grant`** holding a **transparent statement** (embedded grant,
  * idtimestamp, receipt). The target transparency log is **`T = grant.logId`**. The handler
- * resolves and authorizes the grant, checks that it **allows statement registration** on **`T`**,
- * checks **`kid`** against **`grantData`**, verifies **Forestrie-Grant** and **statement** COSE Sign1
- * (for **64-byte x‖y** `grantData`), enqueues on **`T`**’s shard, and returns **303** to the entry
- * status URL.
+ * resolves and authorizes the grant via receipt inclusion ({@link grantAuthorize}), checks that
+ * it **allows statement registration** on **`T`**, checks **`kid`** against **`grantData`**,
+ * verifies the **statement** COSE Sign1 (for **64-byte x‖y** `grantData`), enqueues on **`T`**'s
+ * shard, and returns **303** to the entry status URL.
+ *
+ * **Note:** The grant itself is NOT verified against `grantData` because delegated grants are
+ * signed by the authority key (in `ownerLogId`), not the key embedded in `grantData`. The grant's
+ * authenticity is established via receipt inclusion in {@link grantAuthorize}.
  *
  * **Versus {@link registerGrant}:** This path does **not** mint or bootstrap grants; it only
  * appends **statements** to **`T`** using an already-supplied grant artifact.
@@ -37,10 +41,7 @@ import {
   GrantAuthErrors,
   signerMatchesStatementRegistrationGrant,
 } from "./grant-auth";
-import {
-  importEs256PublicKeyFromGrantDataXy64,
-  verifyGrantCoseSign1WithGrantDataXy,
-} from "./custodian-grant.js";
+import { importEs256PublicKeyFromGrantDataXy64 } from "./custodian-grant.js";
 import { isDataLogStatementGrantFlags } from "../grant/grant-flags.js";
 import {
   isStatementRegistrationGrant,
@@ -137,23 +138,6 @@ export async function registerSignedStatement(
       return ClientErrors.badRequest("Invalid logId in grant");
     }
 
-    const grantDataBytes = grantDataToBytes(grant.grantData);
-    if (grantDataBytes.length !== 64) {
-      return ClientErrors.forbidden(
-        "Forestrie-Grant verification requires 64-byte grantData (public key x||y).",
-      );
-    }
-    const forestrieOk = await verifyGrantCoseSign1WithGrantDataXy(
-      grantResult.bytes,
-      grantDataBytes,
-      { logFailures: true, logPrefix: "register-statement-forestrie-grant" },
-    );
-    if (!forestrieOk) {
-      return ClientErrors.forbidden(
-        "Forestrie-Grant COSE signature verification failed.",
-      );
-    }
-
     // --- Grant authorization — receipt-based inclusion only (no bootstrap path) ---
     // Same primitive as register-grant’s “initialized log” branch: proves the Forestrie-Grant is
     // already sequenced into a transparency log so header 396 verifies. Receipt from artifact only
@@ -219,6 +203,14 @@ export async function registerSignedStatement(
     if (!signerMatchesStatementRegistrationGrant(statementSigner, grant)) {
       logSignerMismatch(statementSigner, grantSignerBinding);
       return GrantAuthErrors.signerMismatch();
+    }
+
+    // Extract grantData for statement signature verification (x||y of the statement signer)
+    const grantDataBytes = grantDataToBytes(grant.grantData);
+    if (grantDataBytes.length !== 64) {
+      return ClientErrors.forbidden(
+        "Grant grantData must be 64 bytes (public key x||y) for statement signature verification.",
+      );
     }
 
     let statementVerifyKey: CryptoKey;

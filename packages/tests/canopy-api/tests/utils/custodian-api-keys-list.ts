@@ -1,5 +1,9 @@
 /**
  * GET /v1/api/keys/list (query labels) and POST /v1/api/keys/list (CBOR body).
+ *
+ * **Unfiltered listing:** Custodian requires at least one label on **GET** `/api/keys/list`.
+ * To list all CryptoKeys in the custody key ring, use **POST** with **`labels: {}`** (see
+ * {@link postCustodianApiKeysListAll}).
  */
 
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
@@ -87,6 +91,22 @@ export async function getCustodianApiKeysListGet(opts: {
     );
   }
   return parseListKeysResponse(buf);
+}
+
+/**
+ * POST /v1/api/keys/list with **empty** `labels` — lists all keys in the custody key ring
+ * (no KMS label filter). This is the HTTP counterpart to GET with label filters; GET cannot
+ * omit labels.
+ */
+export async function postCustodianApiKeysListAll(opts: {
+  baseUrl: string;
+  appToken: string;
+}): Promise<CustodianApiListKeysResponse> {
+  return postCustodianApiKeysList({
+    baseUrl: opts.baseUrl,
+    appToken: opts.appToken,
+    labels: {},
+  });
 }
 
 export async function postCustodianApiKeysList(opts: {

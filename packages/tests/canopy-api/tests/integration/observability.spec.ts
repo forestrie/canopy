@@ -1,8 +1,8 @@
-import { expectAPI as expect, test } from "./fixtures/auth";
+import { expectAPI as expect, test } from "@e2e-fixtures/auth";
 import {
   formatProblemDetailsMessage,
   reportProblemDetails,
-} from "./utils/problem-details";
+} from "@e2e-utils/problem-details";
 
 /**
  * Operational visibility: liveness and service discovery.

@@ -7,29 +7,28 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { expectAPI as expect, test } from "./fixtures/auth";
-import { sequencingBackoff } from "./utils/arithmetic-backoff-poll";
+import type { Grant } from "@e2e-canopy-api-src/grant/types.js";
+import { uuidToBytes } from "@e2e-canopy-api-src/grant/uuid-bytes.js";
+import { expectAPI as expect, test } from "@e2e-fixtures/auth";
+import { sequencingBackoff } from "@e2e-utils/arithmetic-backoff-poll";
 import {
   completeBootstrapGrantWithReceipt,
   mintBootstrapGrant,
-} from "./utils/bootstrap-grant-flow";
+} from "@e2e-utils/bootstrap-grant-flow";
 import {
-  e2eReceiptBootstrapRootLogId,
-  skipSequencingPollIfDisabled,
-  skipWithoutCustodianCustody,
-} from "./utils/e2e-env-guards";
-import {
-  authLogBootstrapShapedFlags,
   custodianCustodySignEnv,
   custodianKmsCryptoKeyIdFromLogUuid,
   e2eCustodianKeyOwnerId,
   grantData64FromCustodianPem,
   postCustodianCreateEs256Key,
   signGrantPayloadWithCustodyKey,
-} from "./utils/custodian-custody-grant";
-import type { Grant } from "../../../apps/canopy-api/src/grant/types.js";
-import { uuidToBytes } from "../../../apps/canopy-api/src/grant/uuid-bytes.js";
-import { completeGrantRegistrationThroughReceipt } from "./utils/register-grant-through-receipt";
+} from "@e2e-utils/custodian-custody-grant";
+import {
+  assertSystemE2eEnv,
+  e2eReceiptBootstrapRootLogId,
+} from "@e2e-utils/e2e-env-guards";
+import { authLogBootstrapShapedFlags } from "@e2e-utils/e2e-grant-flags";
+import { completeGrantRegistrationThroughReceipt } from "@e2e-utils/register-grant-through-receipt";
 
 test.describe("Bootstrap root + child auth grant e2e", () => {
   test.describe.configure({ mode: "serial" });
@@ -37,9 +36,7 @@ test.describe("Bootstrap root + child auth grant e2e", () => {
   test("POST /register/grants (child grant) returns 303 to parent entries; receipt polls", async ({
     unauthorizedRequest,
   }, testInfo) => {
-    if (skipSequencingPollIfDisabled(testInfo)) return;
-    if (skipWithoutCustodianCustody(testInfo)) return;
-
+    assertSystemE2eEnv();
     const custodyEnv = custodianCustodySignEnv()!;
 
     test.setTimeout(600_000);

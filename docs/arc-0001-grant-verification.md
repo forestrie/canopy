@@ -185,7 +185,7 @@ $$
 | Receipt $C_j$                                        | Unprotected header **396**; §5.                                                                                                                                                                                                                                                                                                                                                                          |
 | $G \vdash \operatorname{publish}(C, S)$              | Canopy does not call the contract; **issuance** of $G$ is still gated by §4 + §5 as below.                                                                                                                                                                                                                                                                                                               |
 
-**Bootstrap** (Subplan 08): log not yet initialised — **K(L)** is not yet on-chain; the configured **delegation-signer** acts as an **operational delegate** to sign the **root** transparent statement (current `verifyBootstrapCoseSign1`). After sequencing, **grantData** establishes **K(L)** for future §4 checks on grants whose **`ownerLogId`** is **L**.
+**Bootstrap** (Subplan 08): log not yet initialised — **K(L)** is not yet on-chain; the **Custodian** (via per-log delegation API) acts as an **operational delegate** to sign the **root** transparent statement (current `verifyBootstrapCoseSign1`). After sequencing, **grantData** establishes **K(L)** for future §4 checks on grants whose **`ownerLogId`** is **L**.
 
 ---
 
@@ -258,7 +258,7 @@ Let **L** be the authority log identified by **`ownerLogId`** of the **inner** g
 
 ### 4.3 Bootstrap branch
 
-When **L** is **uninitialised**, **$\mathcal{K}(L)$** is the **delegation-signer** / platform bootstrap key (current behaviour: `verifyBootstrapCoseSign1`). This is a **delegate** of the **root governance** model, not **K(L)** from **grantData** (which does not exist yet).
+When **L** is **uninitialised**, **$\mathcal{K}(L)$** is the **Custodian** / platform bootstrap key (current behaviour: `verifyBootstrapCoseSign1`). This is a **delegate** of the **root governance** model, not **K(L)** from **grantData** (which does not exist yet).
 
 ### 4.4 Relationship to §5
 
@@ -484,7 +484,7 @@ This section is **normative for engineering planning**. **Priority:**
 | Gap                               | Action                                                                                                                                                                                                         |
 | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Delegates not defined**         | Specify how a delegate proves authority: e.g. **x5c** chain in COSE protected header, **CWT** `delegation` claim, or **config-only** extra keys certified offline. Document in a short ADR or extend this ARC. |
-| **Bootstrap / platform delegate** | Formalise current **delegation-signer** as **$\mathcal{K}(L)$** when **L** uninitialised (**§4.3**); ensure env documents trust assumptions.                                                                   |
+| **Bootstrap / platform delegate** | Formalise current **Custodian** as **$\mathcal{K}(L)$** when **L** uninitialised (**§4.3**); ensure env documents trust assumptions.                                                                            |
 
 ### 9.4 register-grant control flow
 

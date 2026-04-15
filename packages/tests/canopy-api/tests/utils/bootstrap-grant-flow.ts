@@ -1,6 +1,6 @@
 import type { APIRequestContext } from "@playwright/test";
 import { decode } from "cbor-x";
-import { attachReceiptAndIdtimestampToTransparentStatement } from "../../../../apps/canopy-api/src/scrapi/attach-scitt-transparent-statement-receipt.js";
+import { attachReceiptAndIdtimestampToTransparentStatement } from "@e2e-canopy-api-src/scrapi/attach-scitt-transparent-statement-receipt.js";
 import { assertBootstrapMintE2eEnv } from "./e2e-env-guards";
 import { custodianCustodySignEnv } from "./custodian-custody-grant";
 import { entryIdHexToIdtimestampBe8 } from "./entry-id-e2e";
@@ -147,5 +147,3 @@ export function buildCompletedGrantBase64(
   );
   return bytesToForestrieGrantBase64(completedBytes);
 }
-
-export { shouldSkipSequencingPoll } from "./e2e-env-guards";

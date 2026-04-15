@@ -4,14 +4,14 @@
  */
 
 import type { APIRequestContext } from "@playwright/test";
-import { encodeGrantPayload } from "../../../../apps/canopy-api/src/grant/codec.js";
-import type { Grant } from "../../../../apps/canopy-api/src/grant/grant.js";
-import { uuidToBytes } from "../../../../apps/canopy-api/src/grant/uuid-bytes.js";
+import { encodeGrantPayload } from "@e2e-canopy-api-src/grant/codec.js";
+import type { Grant } from "@e2e-canopy-api-src/grant/grant.js";
+import { uuidToBytes } from "@e2e-canopy-api-src/grant/uuid-bytes.js";
 import {
   mergeGrantHeadersIntoCustodianSign1,
   postCustodianSignGrantPayload,
   publicKeyPemToUncompressed65,
-} from "../../../../apps/canopy-api/src/scrapi/custodian-grant.js";
+} from "@e2e-canopy-api-src/scrapi/custodian-grant.js";
 import { ensureForestGenesisE2e } from "./forest-genesis-e2e.js";
 import {
   custodianKmsCryptoKeyIdFromLogUuid,

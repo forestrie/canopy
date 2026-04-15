@@ -7,7 +7,13 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@e2e-utils/*": ["./tests/utils/*"],
+      "@e2e-fixtures/*": ["./tests/fixtures/*"],
+      "@e2e-canopy-api-src/*": ["../../apps/canopy-api/src/*"]
+    }
   },
-  "include": ["tests/**/*.ts", "playwright.config.ts"]
+  "include": ["tests/**/*.ts", "playwright.config.ts", "global-setup.ts"]
 }

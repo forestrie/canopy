@@ -27,6 +27,8 @@ import { getParsedGenesis } from "../forest/genesis-cache.js";
 // COSE / MMRIVER constants (mirrors go-merklelog/massifs/rootsigner.go)
 const VDS_COSE_RECEIPT_PROOFS_TAG = 396;
 const SEAL_PEAK_RECEIPTS_LABEL = -65931;
+/** Delegation certificate unprotected header label (sealer embeds via Custodian per-log delegation). */
+const DELEGATION_CERT_LABEL = 1000;
 
 function isUintDecimal(id: string): boolean {
   return /^[0-9]+$/.test(id);
@@ -150,6 +152,13 @@ export async function resolveReceipt(
     const checkpointSign1 = requireCoseSign1(checkpoint, "checkpoint");
 
     const checkpointUnprotected = toHeaderMap(checkpointSign1[1]);
+    console.log("[resolve-receipt] checkpoint unprotected header keys", {
+      rawType: typeof checkpointSign1[1],
+      isMap: checkpointSign1[1] instanceof Map,
+      keys: Array.from(checkpointUnprotected.keys()),
+      hasDelegationCert: checkpointUnprotected.has(DELEGATION_CERT_LABEL),
+      delegationCertType: typeof checkpointUnprotected.get(DELEGATION_CERT_LABEL),
+    });
     const peakReceiptsRaw = checkpointUnprotected.get(SEAL_PEAK_RECEIPTS_LABEL);
     if (!Array.isArray(peakReceiptsRaw)) {
       return ClientErrors.notFound(
@@ -243,6 +252,19 @@ export async function resolveReceipt(
     const receiptSign1 = requireCoseSign1(receipt, "peak receipt");
 
     const receiptUnprotected = toHeaderMap(receiptSign1[1]);
+
+    // Copy delegation certificate from checkpoint to receipt.
+    // The sealer embeds the delegation cert only in the checkpoint unprotected header, not in individual
+    // peak receipts. Receipt verification requires this cert to resolve the signing key chain.
+    const delegationCertBytes = checkpointUnprotected.get(DELEGATION_CERT_LABEL);
+    if (delegationCertBytes instanceof Uint8Array && delegationCertBytes.length > 0) {
+      receiptUnprotected.set(DELEGATION_CERT_LABEL, delegationCertBytes);
+      console.log("[resolve-receipt] copied delegation cert from checkpoint", {
+        certLen: delegationCertBytes.length,
+      });
+    } else {
+      console.log("[resolve-receipt] no delegation cert in checkpoint");
+    }
 
     // Attach the inclusion proof under 396.
     // Encodes as: {396: {-1: [{1: mmrIndex, 2: [h1, h2, ...]}]}}

@@ -3,7 +3,7 @@
  */
 
 import { encode as encodeCbor } from "cbor-x";
-import { verifyCustodianEs256GrantSign1 } from "../../../../apps/canopy-api/src/scrapi/custodian-grant.js";
+import { verifyCustodianEs256GrantSign1 } from "@e2e-canopy-api-src/scrapi/custodian-grant.js";
 import { custodianApiV1BaseUrl } from "./custodian-api-env.js";
 
 export async function postCustodianApiSignPayload(opts: {

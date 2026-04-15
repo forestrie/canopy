@@ -8,13 +8,15 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { expectAPI as expect, test } from "./fixtures/auth";
-import { sequencingBackoff } from "./utils/arithmetic-backoff-poll";
+import type { Grant } from "@e2e-canopy-api-src/grant/types.js";
+import { uuidToBytes } from "@e2e-canopy-api-src/grant/uuid-bytes.js";
+import { expectAPI as expect, test } from "@e2e-fixtures/auth";
+import { sequencingBackoff } from "@e2e-utils/arithmetic-backoff-poll";
 import {
   buildCompletedGrantBase64,
   completeBootstrapGrantWithReceipt,
   mintBootstrapGrant,
-} from "./utils/bootstrap-grant-flow";
+} from "@e2e-utils/bootstrap-grant-flow";
 import {
   custodianCustodySignEnv,
   custodianKmsCryptoKeyIdFromLogUuid,
@@ -22,32 +24,28 @@ import {
   grantData64FromCustodianPem,
   postCustodianCreateEs256Key,
   signGrantPayloadWithCustodyKey,
-} from "./utils/custodian-custody-grant";
-import { postCustodianSignRawPayloadBytes } from "./utils/custodian-sign-payload";
+} from "@e2e-utils/custodian-custody-grant";
+import { postCustodianSignRawPayloadBytes } from "@e2e-utils/custodian-sign-payload";
+import {
+  assertSystemE2eEnv,
+  e2eReceiptBootstrapRootLogId,
+} from "@e2e-utils/e2e-env-guards";
 import {
   authLogBootstrapShapedFlags,
   dataLogCreateExtendFlags,
-} from "./utils/e2e-grant-flags";
-import {
-  e2eReceiptBootstrapRootLogId,
-  shouldSkipSequencingPoll,
-  skipSequencingPollIfDisabled,
-  skipWithoutCustodianCustody,
-} from "./utils/e2e-env-guards";
-import { e2eDataLogDelegationStatementPayload } from "./utils/multi-log-grant-chain";
+} from "@e2e-utils/e2e-grant-flags";
+import { e2eDataLogDelegationStatementPayload } from "@e2e-utils/multi-log-grant-chain";
 import {
   assert303ContentHashLocation,
   postLogEntriesCoseSign1,
-} from "./utils/post-entries-e2e";
+} from "@e2e-utils/post-entries-e2e";
 import {
   formatProblemDetailsMessage,
   reportProblemDetails,
   responseTextPreview,
-} from "./utils/problem-details";
-import { completeGrantRegistrationThroughReceipt } from "./utils/register-grant-through-receipt";
-import { sha256Hex } from "./utils/statement-sign-bytes";
-import type { Grant } from "../../../apps/canopy-api/src/grant/types.js";
-import { uuidToBytes } from "../../../apps/canopy-api/src/grant/uuid-bytes.js";
+} from "@e2e-utils/problem-details";
+import { completeGrantRegistrationThroughReceipt } from "@e2e-utils/register-grant-through-receipt";
+import { sha256Hex } from "@e2e-utils/statement-sign-bytes";
 
 test.describe("Auth log → data log delegation chain", () => {
   test.describe.configure({ mode: "serial", timeout: 600_000 });
@@ -55,13 +53,7 @@ test.describe("Auth log → data log delegation chain", () => {
   const shared = { rootLogId: "", baseURL: "" };
 
   test.beforeAll(async ({ unauthorizedRequest }, testInfo) => {
-    if (shouldSkipSequencingPoll()) {
-      testInfo.skip(
-        true,
-        "E2E_SKIP_SEQUENCING_POLL: skip until SCITT / ingress",
-      );
-      return;
-    }
+    assertSystemE2eEnv();
     const rootLogId = e2eReceiptBootstrapRootLogId();
     const baseURL = testInfo.project.use.baseURL ?? "";
 
@@ -85,10 +77,10 @@ test.describe("Auth log → data log delegation chain", () => {
   test("delegated signer posts register-statement on data log with data-log grant auth", async ({
     unauthorizedRequest,
   }, testInfo) => {
-    if (skipSequencingPollIfDisabled(testInfo)) return;
-    if (skipWithoutCustodianCustody(testInfo)) return;
-    if (!shared.rootLogId) return;
-
+    expect(
+      shared.rootLogId,
+      "beforeAll must complete root bootstrap + receipt",
+    ).toBeTruthy();
     const rootLogId = shared.rootLogId;
     const baseURL = shared.baseURL;
     const authLogId = randomUUID();
@@ -207,10 +199,10 @@ test.describe("Auth log → data log delegation chain", () => {
   test("register-statement rejects delegated grant when statement signed by auth custody key", async ({
     unauthorizedRequest,
   }, testInfo) => {
-    if (skipSequencingPollIfDisabled(testInfo)) return;
-    if (skipWithoutCustodianCustody(testInfo)) return;
-    if (!shared.rootLogId) return;
-
+    expect(
+      shared.rootLogId,
+      "beforeAll must complete root bootstrap + receipt",
+    ).toBeTruthy();
     const rootLogId = shared.rootLogId;
     const baseURL = shared.baseURL;
     const authLogId = randomUUID();

@@ -149,4 +149,4 @@ jobs:
     secrets: inherit
     with:
       environment: dev
-      playwright_project: dev
+      playwright_project: system

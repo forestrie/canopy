@@ -65,17 +65,28 @@ export function createReceiptVerifyKeyResolver(config: {
   const cache = new Map<string, Promise<ParsedVerifyKey>>();
 
   return async (ownerLogIdLowerHex32: string) => {
+    console.log("receipt-verify-key-resolver: resolving key for", { ownerLogIdLowerHex32 });
     let p = cache.get(ownerLogIdLowerHex32);
     if (!p) {
       p = (async (): Promise<ParsedVerifyKey> => {
         // 1) Custody keys: key id is usually the 32-char log hex; /public is unauthenticated.
+        // The log-id=true param tells Custodian to resolve by log ID (same as sealer uses).
         try {
+          console.log("receipt-verify-key-resolver: trying direct custody key fetch");
           const { publicKeyPem, alg } = await fetchCustodianPublicKey(
             base,
             ownerLogIdLowerHex32,
+            { logId: true },
           );
-          return importSpkiPemVerifyKeyWithAlg(publicKeyPem, alg);
-        } catch {
+          console.log("receipt-verify-key-resolver: got custody key", { alg, pemLen: publicKeyPem.length });
+          const key = await importSpkiPemVerifyKeyWithAlg(publicKeyPem, alg);
+          console.log("receipt-verify-key-resolver: imported key", {
+            isCryptoKey: key instanceof CryptoKey,
+            curve: key instanceof CryptoKey ? "(CryptoKey)" : (key as any).curve,
+          });
+          return key;
+        } catch (e) {
+          console.log("receipt-verify-key-resolver: direct custody fetch failed", { error: e instanceof Error ? e.message : String(e) });
           // continue
         }
 

@@ -56,7 +56,7 @@ tasks:
     desc: Run Playwright e2e (@canopy/api-e2e; requires repo-root .env — see taskfiles/e2e-setup.md)
     cmds:
       - task vars:require-dotenv
-      - pnpm --filter @canopy/api-e2e exec playwright test
+      - pnpm --filter @canopy/api-e2e test:e2e
 
   test:e2e:doppler:
     desc: |
@@ -65,7 +65,7 @@ tasks:
     cmds:
       - |
         doppler run --project canopy --config {{.ENV}} -- \
-          pnpm --filter @canopy/api-e2e exec playwright test --project=dev
+          pnpm --filter @canopy/api-e2e test:e2e
 
   test:e2e:preflight:
     desc: |

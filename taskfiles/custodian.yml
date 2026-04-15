@@ -1,6 +1,17 @@
 ---
 # curl checks for Custodian behind Traefik (public /v1/api → /api, /healthz, /metrics).
 # After DNS + Flux ingress, run e.g. `task custodian:verify` or `CUSTODIAN_BASE_URL=... task custodian:healthz`.
+#
+# Key lifecycle tasks use repo-root Node + devDependency `cbor` (CBOR encode/decode). Run from the
+# canopy repo root with secrets via Doppler, e.g.:
+#   doppler run --project canopy --config dev -- task custodian:keys-list
+#   doppler run --project canopy --config dev -- task custodian:keys-delete-all
+#   CONFIRM=1 doppler run --project canopy --config dev -- task custodian:keys-delete-all
+#
+# Tokens: CUSTODIAN_APP_TOKEN lists keys; CUSTODIAN_BOOTSTRAP_APP_TOKEN deletes (CONFIRM=1 only).
+# The :bootstrap KMS key (BOOTSTRAP_KMS_CRYPTO_KEY_ID) is usually outside the custody ring and
+# does not appear in list-all; optional CUSTODIAN_KEYS_DELETE_ONLY_PREFIX and
+# CUSTODIAN_KEYS_DELETE_SKIP_PREFIXES filter delete targets.
 
 version: "3"
 
@@ -34,3 +45,232 @@ tasks:
       - task: metrics
       - task: bootstrap-public
       - echo "Custodian checks done. See bootstrap-public.cbor if HTTP 200."
+
+  keys-list:
+    desc: POST /v1/api/keys/list with empty labels — all CryptoKeys in custody ring (needs CUSTODIAN_APP_TOKEN)
+    cmds:
+      - |
+        set -euo pipefail
+        ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+        cd "$ROOT"
+        export CUSTODIAN_BASE_URL="${CUSTODIAN_BASE_URL:-{{.BASE_URL}}}"
+        node --input-type=module <<'NODE'
+        import cbor from "cbor";
+
+        function v1Base(raw) {
+          const u = new URL(raw.trim().replace(/\/$/, ""));
+          return `${u.protocol}//${u.host}/v1`;
+        }
+
+        function keysFrom(decoded) {
+          let keys;
+          if (decoded instanceof Map) keys = decoded.get("keys");
+          else keys = decoded?.keys;
+          return Array.isArray(keys) ? keys : [];
+        }
+
+        function entryFields(e) {
+          if (e instanceof Map) {
+            return {
+              keyId: e.get("keyId"),
+              version: e.get("version"),
+              count: e.get("count"),
+            };
+          }
+          return {
+            keyId: e.keyId,
+            version: e.version,
+            count: e.count,
+          };
+        }
+
+        const baseUrl = process.env.CUSTODIAN_BASE_URL;
+        const appToken = process.env.CUSTODIAN_APP_TOKEN;
+        if (!baseUrl || !appToken) {
+          console.error(
+            "custodian:keys-list requires CUSTODIAN_BASE_URL and CUSTODIAN_APP_TOKEN (e.g. doppler run -- task custodian:keys-list).",
+          );
+          process.exit(1);
+        }
+
+        const url = `${v1Base(baseUrl)}/api/keys/list`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${appToken}`,
+            "Content-Type": "application/cbor",
+            Accept: "application/cbor",
+          },
+          body: Buffer.from(cbor.encode({ labels: {} })),
+        });
+        const buf = Buffer.from(await res.arrayBuffer());
+        if (!res.ok) {
+          console.error(`custodian:keys-list HTTP ${res.status}:`, buf.subarray(0, 512).toString("hex"));
+          process.exit(1);
+        }
+        const decoded = cbor.decode(buf);
+        const rows = keysFrom(decoded).map(entryFields);
+        for (const row of rows) {
+          console.log(
+            JSON.stringify({
+              keyId: row.keyId,
+              version: row.version,
+              ...(row.count !== undefined && row.count !== null
+                ? { count: row.count }
+                : {}),
+            }),
+          );
+        }
+        console.error(`custodian:keys-list: ${rows.length} key(s) in custody ring.`);
+        NODE
+
+  keys-delete-all:
+    desc: List custody keys then dry-run deletes; set CONFIRM=1 to POST .../delete (needs both tokens)
+    cmds:
+      - |
+        set -euo pipefail
+        ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+        cd "$ROOT"
+        export CUSTODIAN_BASE_URL="${CUSTODIAN_BASE_URL:-{{.BASE_URL}}}"
+        node --input-type=module <<'NODE'
+        import cbor from "cbor";
+
+        function v1Base(raw) {
+          const u = new URL(raw.trim().replace(/\/$/, ""));
+          return `${u.protocol}//${u.host}/v1`;
+        }
+
+        function keysFrom(decoded) {
+          let keys;
+          if (decoded instanceof Map) keys = decoded.get("keys");
+          else keys = decoded?.keys;
+          return Array.isArray(keys) ? keys : [];
+        }
+
+        function entryFields(e) {
+          if (e instanceof Map) {
+            return {
+              keyId: e.get("keyId"),
+              version: e.get("version"),
+              count: e.get("count"),
+            };
+          }
+          return {
+            keyId: e.keyId,
+            version: e.version,
+            count: e.count,
+          };
+        }
+
+        function shouldSkip(keyId, onlyPrefix, skipPrefixes) {
+          if (onlyPrefix && !keyId.startsWith(onlyPrefix)) return true;
+          for (const p of skipPrefixes) {
+            if (p && keyId.startsWith(p)) return true;
+          }
+          return false;
+        }
+
+        const baseUrl = process.env.CUSTODIAN_BASE_URL;
+        const appToken = process.env.CUSTODIAN_APP_TOKEN;
+        if (!baseUrl || !appToken) {
+          console.error(
+            "custodian:keys-delete-all requires CUSTODIAN_BASE_URL and CUSTODIAN_APP_TOKEN.",
+          );
+          process.exit(1);
+        }
+
+        const onlyPrefix = (process.env.CUSTODIAN_KEYS_DELETE_ONLY_PREFIX ?? "").trim();
+        const skipPrefixes = (process.env.CUSTODIAN_KEYS_DELETE_SKIP_PREFIXES ?? "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const confirm = process.env.CONFIRM === "1";
+
+        const listUrl = `${v1Base(baseUrl)}/api/keys/list`;
+        const res = await fetch(listUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${appToken}`,
+            "Content-Type": "application/cbor",
+            Accept: "application/cbor",
+          },
+          body: Buffer.from(cbor.encode({ labels: {} })),
+        });
+        const buf = Buffer.from(await res.arrayBuffer());
+        if (!res.ok) {
+          console.error(`custodian:keys-delete-all list HTTP ${res.status}`);
+          process.exit(1);
+        }
+        const decoded = cbor.decode(buf);
+        const allRows = keysFrom(decoded).map(entryFields);
+        const targets = allRows.filter(
+          (r) => r.keyId && !shouldSkip(r.keyId, onlyPrefix, skipPrefixes),
+        );
+
+        console.error(
+          `custodian:keys-delete-all: ${allRows.length} key(s) listed, ${targets.length} after filters (ONLY_PREFIX / SKIP_PREFIXES).`,
+        );
+        if (onlyPrefix) {
+          console.error(`  CUSTODIAN_KEYS_DELETE_ONLY_PREFIX=${JSON.stringify(onlyPrefix)}`);
+        }
+        if (skipPrefixes.length) {
+          console.error(
+            `  CUSTODIAN_KEYS_DELETE_SKIP_PREFIXES=${JSON.stringify(skipPrefixes.join(","))}`,
+          );
+        }
+
+        if (!confirm) {
+          for (const row of targets) {
+            console.log(`[dry-run] would delete ${JSON.stringify(row.keyId)}`);
+          }
+          console.error(
+            "Dry-run only. Set CONFIRM=1 to call POST /v1/api/keys/{keyId}/delete for each id (requires CUSTODIAN_BOOTSTRAP_APP_TOKEN).",
+          );
+          process.exit(0);
+        }
+
+        const bootstrap = process.env.CUSTODIAN_BOOTSTRAP_APP_TOKEN;
+        if (!bootstrap) {
+          console.error(
+            "CONFIRM=1 requires CUSTODIAN_BOOTSTRAP_APP_TOKEN for POST .../delete.",
+          );
+          process.exit(1);
+        }
+
+        for (const row of targets) {
+          const seg = encodeURIComponent(row.keyId);
+          const delUrl = `${v1Base(baseUrl)}/api/keys/${seg}/delete`;
+          const dres = await fetch(delUrl, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${bootstrap}`,
+              Accept: "application/cbor",
+            },
+          });
+          const dbuf = Buffer.from(await dres.arrayBuffer());
+          if (!dres.ok) {
+            console.error(
+              `delete ${row.keyId} failed HTTP ${dres.status}:`,
+              dbuf.subarray(0, 256).toString("hex"),
+            );
+            process.exit(1);
+          }
+          const dout = cbor.decode(dbuf);
+          let destroyed;
+          let outKeyId;
+          if (dout instanceof Map) {
+            destroyed = dout.get("destroyedCount");
+            outKeyId = dout.get("keyId");
+          } else {
+            destroyed = dout?.destroyedCount;
+            outKeyId = dout?.keyId;
+          }
+          console.log(
+            JSON.stringify({
+              keyId: outKeyId ?? row.keyId,
+              destroyedCount: destroyed,
+            }),
+          );
+        }
+        console.error(`custodian:keys-delete-all: deleted ${targets.length} key(s).`);
+        NODE

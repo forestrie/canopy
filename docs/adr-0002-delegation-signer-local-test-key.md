@@ -1,7 +1,11 @@
 # ADR-0002: Delegation-signer local testing and test-only key
 
-**Status**: ACCEPTED  
+**Status**: SUPERSEDED  
 **Date**: 2026-03-14  
+**Superseded**: 2026-04-15 — delegation-signer has been removed. Sealer now obtains
+delegation certificates directly from Custodian via the per-log delegation API
+(`POST /api/keys/{logId}/sign?log-id=true`). See
+[Plan 0016](plans/plan-0016-delegation-signer-custodian-migration.md).  
 **Related**: [Plan 0010](plans/plan-0010-deploy-and-test-on-branch.md), [Subplan 04](docs/plans/plan-0004-log-bootstraping/subplan-04-delegation-signer-in-canopy.md)
 
 ## Context

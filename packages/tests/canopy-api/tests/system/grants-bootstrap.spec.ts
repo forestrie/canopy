@@ -1,23 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { decode } from "cbor-x";
-import { expectAPI as expect, test } from "./fixtures/auth";
-import { sequencingBackoff } from "./utils/arithmetic-backoff-poll";
+import { expectAPI as expect, test } from "@e2e-fixtures/auth";
+import { sequencingBackoff } from "@e2e-utils/arithmetic-backoff-poll";
 import {
   assertCustodianProfileTransparentStatement,
   buildCompletedGrantBase64,
   completeBootstrapGrantWithReceipt,
   mintBootstrapGrant,
-} from "./utils/bootstrap-grant-flow";
-import { decodeEntryIdHex } from "./utils/entry-id-e2e";
-import {
-  e2eReceiptBootstrapRootLogId,
-  skipSequencingPollIfDisabled,
-} from "./utils/e2e-env-guards";
+} from "@e2e-utils/bootstrap-grant-flow";
+import { decodeEntryIdHex } from "@e2e-utils/entry-id-e2e";
+import { e2eReceiptBootstrapRootLogId } from "@e2e-utils/e2e-env-guards";
 import {
   formatProblemDetailsMessage,
   reportProblemDetails,
   responseTextPreview,
-} from "./utils/problem-details";
+} from "@e2e-utils/problem-details";
 
 /**
  * End-to-end against a **deployed** worker: per-root Custodian custody key + curator genesis +
@@ -32,9 +29,7 @@ import {
  * expects receipt-based auth and this test will not get 303).
  *
  * The **sequencing → receipt** test needs **forestrie-ingress** (or equivalent)
- * running against the same env so enqueued grants are sequenced and MMRS is written.
- * Set **`E2E_SKIP_SEQUENCING_POLL=1`** to skip only that test when api-dev is up
- * without ingress.
+ * on the same env so enqueued grants are sequenced and MMRS is written.
  */
 test.describe("Bootstrap grant e2e — mint and register-grant", () => {
   test.describe.configure({ mode: "serial" });
@@ -105,8 +100,6 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
   test("Bootstrap mint + register, poll sequencing, SCITT receipt, mmrIndex 0", async ({
     unauthorizedRequest,
   }, testInfo) => {
-    if (skipSequencingPollIfDisabled(testInfo)) return;
-
     test.setTimeout(600_000);
     const logId = e2eReceiptBootstrapRootLogId();
     const baseURL = testInfo.project.use.baseURL ?? "";

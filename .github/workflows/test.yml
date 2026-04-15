@@ -29,7 +29,6 @@ jobs:
           filters: |
             deploy_workers:
               - "packages/apps/canopy-api/**"
-              - "packages/apps/delegation-signer/**"
               - "packages/apps/forestrie-ingress/**"
               - "packages/apps/x402-settlement/**"
               - "packages/shared/**"
@@ -78,4 +77,4 @@ jobs:
     secrets: inherit
     with:
       environment: dev
-      playwright_project: dev
+      playwright_project: system
