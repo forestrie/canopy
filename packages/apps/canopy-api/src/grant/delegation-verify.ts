@@ -311,150 +311,60 @@ export async function verifyDelegationCert(
 }
 
 /**
- * Verify a COSE Sign1 receipt signature using either Web Crypto (P-256) or
- * @noble/curves (secp256k1).
+ * Result of delegation chain resolution.
+ * Returns the candidate verify keys for the receipt signature.
+ * The caller is responsible for attempting verification with each key
+ * (supplying detachedPayload for peak receipts whose payload was cleared).
  */
-async function verifyReceiptWithParsedKey(
-  receiptCoseSign1Bytes: Uint8Array,
-  parsedKey: ParsedEcPublicKey,
-): Promise<boolean> {
-  const decoded = decodeCoseSign1(receiptCoseSign1Bytes);
-  if (!decoded) return false;
-
-  if (parsedKey.curve === "P-256") {
-    // Use Web Crypto for P-256
-    const uncompressed = new Uint8Array(65);
-    uncompressed[0] = 0x04;
-    uncompressed.set(parsedKey.x, 1);
-    uncompressed.set(parsedKey.y, 33);
-
-    try {
-      const cryptoKey = await crypto.subtle.importKey(
-        "raw",
-        uncompressed,
-        { name: "ECDSA", namedCurve: "P-256" },
-        true,
-        ["verify"],
-      );
-      return verifyCoseSign1(receiptCoseSign1Bytes, cryptoKey, {
-        logFailures: true,
-        logPrefix: "receipt-delegated-p256",
-      });
-    } catch {
-      return false;
-    }
-  } else {
-    // Use @noble/curves for secp256k1
-    const sigStructure = buildSigStructure(
-      decoded.protectedBstr,
-      decoded.payloadBstr,
-    );
-    return verifySecp256k1Signature(sigStructure, decoded.signature, parsedKey);
-  }
-}
-
-/** Result of delegation chain resolution and signature verification. */
 export interface ResolveReceiptResult {
-  /**
-   * The key to use for verifying the receipt. For secp256k1, this is null
-   * because verification was already done.
-   */
-  verifyKey: CryptoKey | null;
-  /**
-   * If true, signature verification was already performed (secp256k1 path).
-   * The caller should skip `verifyCoseSign1` and treat this as verified.
-   */
-  alreadyVerified: boolean;
+  /** Candidate keys in priority order (delegated key first, then custody key). */
+  verifyKeys: ParsedVerifyKey[];
 }
 
 /**
- * Extract and verify delegation chain from receipt, returning the key to use
- * for verifying the receipt signature.
+ * Resolve the delegation chain from a receipt, returning candidate verify keys.
  *
  * If the receipt has a delegation cert (header 1000):
  * - Verify delegation cert against custody key
- * - Return delegated key for receipt verification (or verify directly for secp256k1)
+ * - Return [delegated key, custody key] (peak receipts may be signed by either)
  *
  * If no delegation cert:
- * - Return custody key directly (direct signing without delegation)
+ * - Return [custody key]
  *
- * For secp256k1 delegated keys, this function verifies the receipt directly
- * using @noble/curves since Web Crypto doesn't support secp256k1.
- *
- * @param receiptCoseSign1Bytes - Full receipt COSE Sign1 bytes
- * @param custodyKey - The custody key (log operator's key from Custodian);
- *                     supports both CryptoKey (P-256) and ParsedEcPublicKey (secp256k1)
- * @returns Resolution result with key and verification status, or null on failure
+ * Does NOT verify the receipt signature itself — the caller must do that with
+ * the correct detachedPayload (the peak hash computed from the inclusion proof).
  */
 export async function resolveReceiptVerifyKey(
   receiptCoseSign1Bytes: Uint8Array,
   custodyKey: ParsedVerifyKey,
 ): Promise<ResolveReceiptResult | null> {
-  // Decode receipt to get unprotected header
   const decoded = decodeCoseSign1(receiptCoseSign1Bytes);
   if (!decoded) {
     console.warn("delegation-verify: failed to decode receipt");
     return null;
   }
 
-  // Check for delegation cert
   const delegationCertBytes = extractDelegationCertBytes(decoded.unprotected);
-  console.log("delegation-verify: resolveReceiptVerifyKey", {
-    hasDelegationCert: !!delegationCertBytes,
-    delegationCertLen: delegationCertBytes?.length,
-    custodyKeyType: custodyKey instanceof CryptoKey ? "CryptoKey" : "ParsedKey",
-    custodyKeyCurve: custodyKey instanceof CryptoKey ? "(CryptoKey)" : (custodyKey as any)?.curve,
-  });
   if (!delegationCertBytes) {
-    // No delegation - use custody key directly (may be CryptoKey or ParsedEcPublicKey)
-    // Note: caller handles ParsedEcPublicKey case via verifyCoseSign1WithParsedKey
-    if (custodyKey instanceof CryptoKey) {
-      return { verifyKey: custodyKey, alreadyVerified: false };
-    }
-    // secp256k1 custody key without delegation - verify directly here
-    const receiptOk = await verifyReceiptWithParsedKey(
-      receiptCoseSign1Bytes,
-      custodyKey,
-    );
-    if (!receiptOk) {
-      console.warn(
-        "delegation-verify: receipt signature verification failed (secp256k1 custody, no delegation)",
-      );
-      return null;
-    }
-    return { verifyKey: null, alreadyVerified: true };
+    // No delegation — custody key is the only candidate.
+    return { verifyKeys: [custodyKey] };
   }
 
-  // Verify delegation chain and get delegated key
+  // Verify delegation cert signature against custody key.
   const result = await verifyDelegationCert(delegationCertBytes, custodyKey);
-  console.log("delegation-verify: verifyDelegationCert result", {
-    success: !!result,
-    signatureVerified: result?.signatureVerified,
-    hasDelegatedKey: !!result?.delegatedKey,
-    parsedKeyCurve: result?.parsedKey?.curve,
-  });
   if (!result) {
     return null;
   }
 
-  // For P-256, return the CryptoKey for standard verification
+  // Return delegated key (preferred) then custody key as fallback.
+  // Peak receipts may be signed by the custody key directly while the
+  // delegation cert covers the checkpoint COSE Sign1.
+  const candidates: ParsedVerifyKey[] = [];
   if (result.delegatedKey) {
-    console.log("delegation-verify: using P-256 delegated CryptoKey");
-    return { verifyKey: result.delegatedKey, alreadyVerified: false };
+    candidates.push(result.delegatedKey);
+  } else {
+    candidates.push(result.parsedKey);
   }
-
-  // secp256k1 - verify receipt directly here
-  const receiptOk = await verifyReceiptWithParsedKey(
-    receiptCoseSign1Bytes,
-    result.parsedKey,
-  );
-  if (!receiptOk) {
-    console.warn(
-      "delegation-verify: receipt signature verification failed (secp256k1)",
-    );
-    return null;
-  }
-
-  // Return success with alreadyVerified=true so caller skips duplicate verification
-  return { verifyKey: null, alreadyVerified: true };
+  candidates.push(custodyKey);
+  return { verifyKeys: candidates };
 }

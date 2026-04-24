@@ -28,12 +28,8 @@
   "env": {
     "dev": {
       "name": "forestrie-ingress-dev",
-      "routes": [
-        {
-          "pattern": "api-dev.forestrie.dev/canopy/ingress-queue/*",
-          "zone_name": "forestrie.dev",
-        },
-      ],
+      // No zone routes: use `wrangler dev` locally. Cloud `forestrie-ingress-prod` owns api.*.<apex> (Strategy B).
+      "routes": [],
       "vars": {
         "NODE_ENV": "dev",
         "CANOPY_ID": "canopy-dev-1",
@@ -52,7 +48,7 @@
       "name": "forestrie-ingress-prod",
       "routes": [
         {
-          "pattern": "api.forestrie.dev/canopy/ingress-queue/*",
+          "pattern": "api.*.forestrie.dev/canopy/ingress-queue/*",
           "zone_name": "forestrie.dev",
         },
       ],

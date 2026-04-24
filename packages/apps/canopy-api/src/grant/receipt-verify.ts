@@ -9,7 +9,11 @@
  */
 
 import { decode as decodeCbor } from "cbor-x";
-import { type ParsedVerifyKey, verifyCoseSign1 } from "@canopy/encoding";
+import {
+  type ParsedVerifyKey,
+  verifyCoseSign1,
+  verifyCoseSign1WithParsedKey,
+} from "@canopy/encoding";
 import {
   calculateRoot,
   verifyInclusion,
@@ -219,7 +223,10 @@ export interface ReceiptInclusionVerifyOptions {
 
 /**
  * Verify inclusion using already-parsed root and proof (e.g. from GrantResult, Plan 0005).
- * When `receiptVerification` is set: verifies receipt COSE Sign1 first, then MMR inclusion.
+ * When `receiptVerification` is set: resolves the delegation chain, computes the
+ * peak from the inclusion proof, then verifies the receipt COSE Sign1 signature
+ * using the peak as detachedPayload (peak receipts have nil payload in storage
+ * but the signature was computed over the 32-byte peak hash).
  */
 export async function verifyReceiptInclusionFromParsed(
   grant: Grant,
@@ -228,44 +235,7 @@ export async function verifyReceiptInclusionFromParsed(
   proof: Proof,
   receiptVerification?: ReceiptInclusionVerifyOptions,
 ): Promise<boolean> {
-  if (receiptVerification) {
-    // Resolve the correct key for signature verification. If the receipt has
-    // a delegation cert (header 1000), this verifies the delegation chain and
-    // extracts the delegated key. For secp256k1 delegated keys, verification
-    // is done inline and alreadyVerified is set.
-    console.log("grant-receipt-verify: starting resolution", {
-      receiptBytesLen: receiptVerification.receiptCoseBytes?.length,
-      keyType: receiptVerification.receiptVerifyKey instanceof CryptoKey ? "CryptoKey" : "ParsedKey",
-    });
-    const resolveResult = await resolveReceiptVerifyKey(
-      receiptVerification.receiptCoseBytes,
-      receiptVerification.receiptVerifyKey,
-    );
-    if (!resolveResult) {
-      console.warn("grant-receipt-verify: delegation chain resolution failed");
-      return false;
-    }
-    console.log("grant-receipt-verify: resolution result", {
-      alreadyVerified: resolveResult.alreadyVerified,
-      hasVerifyKey: !!resolveResult.verifyKey,
-    });
-
-    // If verification was already done (secp256k1 path), skip verifyCoseSign1
-    if (!resolveResult.alreadyVerified) {
-      if (!resolveResult.verifyKey) {
-        console.warn("grant-receipt-verify: no verify key available");
-        return false;
-      }
-      const sigOk = await verifyCoseSign1(
-        receiptVerification.receiptCoseBytes,
-        resolveResult.verifyKey,
-        { logFailures: true, logPrefix: "grant-receipt-cose" },
-      );
-      console.log("grant-receipt-verify: signature check", { sigOk });
-      if (!sigOk) return false;
-    }
-  }
-
+  // --- 1. Compute leaf hash and peak (needed for both inclusion and sig verify) ---
   const inner = await grantCommitmentHashFromGrant(grant);
   if (!idtimestampBytes || idtimestampBytes.length < 8) {
     throw new Error("idtimestamp required for receipt verification (8 bytes)");
@@ -290,14 +260,41 @@ export async function verifyReceiptInclusionFromParsed(
     explicitPeak !== null
       ? explicitPeak
       : await calculateRoot(hasher, leafHash, proof, leafIdx);
+
+  // --- 2. Receipt COSE signature verification (with detached peak payload) ---
+  if (receiptVerification) {
+    const resolveResult = await resolveReceiptVerifyKey(
+      receiptVerification.receiptCoseBytes,
+      receiptVerification.receiptVerifyKey,
+    );
+    if (!resolveResult) {
+      console.warn("grant-receipt-verify: delegation chain resolution failed");
+      return false;
+    }
+
+    // The receipt payload may be detached (nil) but the signature was computed
+    // over the 32-byte peak hash. Supply it as detachedPayload so the
+    // Sig_structure matches what the signer produced.
+    const detachedPayload = explicitPeak === null ? peak : undefined;
+
+    // Try each candidate key (delegated key first, then custody key).
+    let sigOk = false;
+    for (const candidateKey of resolveResult.verifyKeys) {
+      sigOk = await verifyCoseSign1WithParsedKey(
+        receiptVerification.receiptCoseBytes,
+        candidateKey,
+        { logPrefix: "grant-receipt-cose", detachedPayload },
+      );
+      if (sigOk) break;
+    }
+    if (!sigOk) {
+      console.warn("grant-receipt-verify: receipt signature failed");
+      return false;
+    }
+  }
+
+  // --- 3. MMR inclusion verification ---
   const inclusionOk = await verifyInclusion(hasher, leafHash, proof, peak);
-  console.log("grant-receipt-verify: MMR inclusion", {
-    inclusionOk,
-    idtimestamp: idtimestamp.toString(),
-    leafIdx: leafIdx.toString(),
-    proofPathLen: proof.path.length,
-    hasExplicitPeak: explicitPeak !== null,
-  });
   return inclusionOk;
 }
 

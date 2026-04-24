@@ -32,6 +32,13 @@ export interface VerifyCoseSign1Options {
   logFailures?: boolean;
   /** Included in JSON log lines under `prefix`. */
   logPrefix?: string;
+  /**
+   * Payload bytes for detached-content verification. When the COSE Sign1 has a
+   * nil/detached payload but the signature was computed over the real content,
+   * supply the original payload here. It replaces the empty bstr in the
+   * Sig_structure so the signature can be verified.
+   */
+  detachedPayload?: Uint8Array;
 }
 
 function hexPreview(bytes: Uint8Array, maxBytes: number): string {
@@ -164,13 +171,13 @@ export async function verifyCoseSign1(
     return false;
   }
 
-  // Decode gives bstr *content* (serialized protected map). encodeSigStructure
-  // wraps it once as body_protected — same as go-cose / Custodian.
+  // Use detachedPayload when provided (re-attaches content for detached receipts).
+  const effectivePayload = opts?.detachedPayload ?? payloadBstr;
   const externalAad = new Uint8Array(0);
   const sigStructure = encodeSigStructure(
     protectedBstr,
     externalAad,
-    payloadBstr,
+    effectivePayload,
   );
 
   try {
@@ -234,11 +241,13 @@ export async function verifyCoseSign1WithParsedKey(
     return false;
   }
 
+  // Use detachedPayload when provided (re-attaches content for detached receipts).
+  const effectivePayload = opts?.detachedPayload ?? payloadBstr;
   const externalAad = new Uint8Array(0);
   const sigStructure = encodeSigStructure(
     protectedBstr,
     externalAad,
-    payloadBstr,
+    effectivePayload,
   );
 
   // Determine curve from key type

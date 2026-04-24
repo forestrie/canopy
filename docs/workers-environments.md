@@ -29,3 +29,12 @@ All three configs include the **R2_GRANTS** binding (and R2_MMRS, DOs, etc.).
 That deploys **canopy-api-dev** from your branch so that api-dev.forestrie.dev and the perf test use the branch code.
 
 If you deploy from the repo root with `task wrangler:deploy:canopy-api` **without** `ENV=dev`, you deploy the **canopy-api** (default) worker, which is **not** the one serving api-dev.forestrie.dev.
+
+## forestrie-ingress (ledger HTTP queue API)
+
+| Wrangler env | Worker name (dashboard) | Route(s) | Notes |
+|--------------|-------------------------|----------|--------|
+| **`dev`** | **forestrie-ingress-dev** | _(none — use `wrangler dev` locally)_ | Avoids overlapping zone routes with prod. |
+| **`prod`** | **forestrie-ingress-prod** | `api.*.forestrie.dev/canopy/ingress-queue/*` | **Strategy B**: matches Terraform / Doppler **`RANGER_INGRESS_QUEUE_URL`** `https://api.<DNS_SUB>.forestrie.dev/canopy/ingress-queue` for hosts under zone **`forestrie.dev`**. |
+
+Deploy **`prod`** after DNS for **`api.<DNS_SUB>.forestrie.dev`** exists (Terraform in **forest-1** publishes the hostname + URL to Doppler). Other apex domains require adjusting **`zone_name`** / **`pattern`** in [`packages/apps/forestrie-ingress/wrangler.jsonc`](../packages/apps/forestrie-ingress/wrangler.jsonc).
