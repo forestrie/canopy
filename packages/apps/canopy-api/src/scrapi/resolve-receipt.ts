@@ -157,7 +157,9 @@ export async function resolveReceipt(
       isMap: checkpointSign1[1] instanceof Map,
       keys: Array.from(checkpointUnprotected.keys()),
       hasDelegationCert: checkpointUnprotected.has(DELEGATION_CERT_LABEL),
-      delegationCertType: typeof checkpointUnprotected.get(DELEGATION_CERT_LABEL),
+      delegationCertType: typeof checkpointUnprotected.get(
+        DELEGATION_CERT_LABEL,
+      ),
     });
     const peakReceiptsRaw = checkpointUnprotected.get(SEAL_PEAK_RECEIPTS_LABEL);
     if (!Array.isArray(peakReceiptsRaw)) {
@@ -256,8 +258,13 @@ export async function resolveReceipt(
     // Copy delegation certificate from checkpoint to receipt.
     // The sealer embeds the delegation cert only in the checkpoint unprotected header, not in individual
     // peak receipts. Receipt verification requires this cert to resolve the signing key chain.
-    const delegationCertBytes = checkpointUnprotected.get(DELEGATION_CERT_LABEL);
-    if (delegationCertBytes instanceof Uint8Array && delegationCertBytes.length > 0) {
+    const delegationCertBytes = checkpointUnprotected.get(
+      DELEGATION_CERT_LABEL,
+    );
+    if (
+      delegationCertBytes instanceof Uint8Array &&
+      delegationCertBytes.length > 0
+    ) {
       receiptUnprotected.set(DELEGATION_CERT_LABEL, delegationCertBytes);
       console.log("[resolve-receipt] copied delegation cert from checkpoint", {
         certLen: delegationCertBytes.length,

@@ -72,7 +72,10 @@ export function extractDelegationCertBytes(
     isMap: receiptUnprotected instanceof Map,
     mapKeys: umap.size > 0 ? Array.from(umap.keys()) : [],
     hasCertLabel: umap.has(DELEGATION_CERT_LABEL),
-    certRawType: certRaw === undefined ? "undefined" : Object.prototype.toString.call(certRaw),
+    certRawType:
+      certRaw === undefined
+        ? "undefined"
+        : Object.prototype.toString.call(certRaw),
     certRawLen: certRaw instanceof Uint8Array ? certRaw.length : "N/A",
   });
   if (certRaw instanceof Uint8Array && certRaw.length > 0) {
@@ -257,7 +260,10 @@ export async function verifyDelegationCert(
     delegationCertBytesLen: delegationCertBytes.length,
     hasCustodyKey: !!custodyKey,
     custodyKeyType: custodyKey instanceof CryptoKey ? "CryptoKey" : "ParsedKey",
-    custodyKeyCurve: custodyKey && !(custodyKey instanceof CryptoKey) ? (custodyKey as any).curve : "N/A",
+    custodyKeyCurve:
+      custodyKey && !(custodyKey instanceof CryptoKey)
+        ? (custodyKey as any).curve
+        : "N/A",
   });
 
   // Decode the delegation cert
@@ -276,13 +282,17 @@ export async function verifyDelegationCert(
   // Verify signature if custody key provided
   let signatureVerified = false;
   if (custodyKey) {
-    console.log("verifyDelegationCert: verifying signature against custody key");
+    console.log(
+      "verifyDelegationCert: verifying signature against custody key",
+    );
     signatureVerified = await verifyCoseSign1WithParsedKey(
       delegationCertBytes,
       custodyKey,
       { logFailures: true, logPrefix: "delegation-cert" },
     );
-    console.log("verifyDelegationCert: signature result", { signatureVerified });
+    console.log("verifyDelegationCert: signature result", {
+      signatureVerified,
+    });
     if (!signatureVerified) {
       console.warn("delegation-verify: delegation cert signature invalid");
       return null;

@@ -45,6 +45,11 @@
       },
     },
     "prod": {
+      // Deploy this worker so each project hostname (e.g. api.forest-2.forestrie.dev) has
+      // a Workers route + edge certificate. If the route is missing, clients (e.g. ranger
+      // calling /canopy/ingress-queue/queue/shards) see TLS handshake failures or 5xx at
+      // the edge — fix by deploying forestrie-ingress-prod and verifying the pattern
+      // matches Strategy B (api.<project>.<apex>).
       "name": "forestrie-ingress-prod",
       "routes": [
         {
