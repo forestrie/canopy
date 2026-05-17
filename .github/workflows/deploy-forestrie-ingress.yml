@@ -1,0 +1,77 @@
+name: Deploy Forestrie Ingress
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: "Bootstrap project id requesting the shared ingress deploy"
+        required: false
+        default: ""
+      github_environment:
+        description: "GitHub Environment that provides Cloudflare deploy secrets"
+        required: true
+        default: "bootstrap-ingress"
+        type: choice
+        options:
+          - bootstrap-ingress
+          - prod
+
+run-name: Deploy forestrie-ingress prod route${{ inputs.project_id && format(' for {0}', inputs.project_id) || '' }}
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy forestrie-ingress
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.github_environment }}
+    concurrency:
+      group: forestrie-ingress-prod
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CANOPY_ID: ${{ vars.CANOPY_ID }}
+      FOREST_PROJECT_ID: ${{ vars.FOREST_PROJECT_ID }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.6.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install go-task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Wrangler
+        run: pnpm add -g wrangler
+
+      - name: Authenticate Wrangler
+        run: |
+          echo "Authenticating with Cloudflare..."
+          yes n | wrangler whoami
+
+      - name: Unit tests
+        run: pnpm --filter @canopy/forestrie-ingress run test
+
+      - name: Typecheck
+        run: pnpm --filter @canopy/forestrie-ingress run typecheck
+
+      - name: Deploy forestrie-ingress prod route
+        run: task wrangler:deploy:forestrie-ingress ENV=prod
