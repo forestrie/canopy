@@ -51,7 +51,7 @@
       // the edge — fix by deploying forestrie-ingress-prod. Cloudflare route
       // patterns only allow host wildcards at the beginning, so this route is
       // path-scoped but host-broad enough to cover Strategy B
-      // (api.<project>.<apex>).
+      // (api-<project>.<apex>).
       "name": "forestrie-ingress-prod",
       "routes": [
         {
