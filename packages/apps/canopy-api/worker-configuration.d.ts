@@ -7,7 +7,7 @@ declare namespace Cloudflare {
   }
   interface Env {
     CANOPY_ID: "canopy-dev-1" | "canopy-prod-1";
-    FOREST_PROJECT_ID: "forest-dev-1" | "forest-prod-1";
+    FOREST_PROJECT_ID: string;
     API_VERSION: "v1";
     NODE_ENV: "dev" | "prod";
     QUEUE_SHARD_COUNT: "4";
@@ -20,9 +20,7 @@ declare namespace Cloudflare {
     GRANT_STORAGE_PUBLIC_BASE:
       | "https://grants-dev.forestrie.dev"
       | "https://grants.forestrie.dev";
-    CUSTODIAN_URL:
-      | "https://custodian.dev-1.forestrie.dev/v1"
-      | "https://custodian.prod-1.forestrie.dev/v1";
+    CUSTODIAN_URL: string;
     DELEGATION_SIGNER_URL: string;
     DELEGATION_SIGNER_BEARER_TOKEN: string;
     SEQUENCING_QUEUE: DurableObjectNamespace /* SequencingQueue from forestrie-ingress */;

@@ -62,6 +62,9 @@ jobs:
       CANOPY_ID: ${{ vars.CANOPY_ID }}
       FOREST_PROJECT_ID: ${{ vars.FOREST_PROJECT_ID }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      CUSTODIAN_URL: ${{ vars.CUSTODIAN_URL }}
+      R2_MMRS_BUCKET_NAME: ${{ vars.R2_MMRS_BUCKET_NAME }}
+      SEQUENCING_QUEUE_SCRIPT_NAME: ${{ vars.SEQUENCING_QUEUE_SCRIPT_NAME }}
 
     steps:
       - name: Checkout
@@ -98,7 +101,7 @@ jobs:
       - name: Unit tests (@canopy/api)
         run: pnpm --filter @canopy/api run test
 
-      # CUSTODIAN_URL is set per env in wrangler.jsonc. CI only sets token secrets.
+      # Mutable deployment identity is injected from GitHub Environment vars below.
       - name: Configure Custodian secrets and deploy canopy-api (dev)
         working-directory: packages/apps/canopy-api
         env:
@@ -130,7 +133,14 @@ jobs:
             exit 1
           fi
           printf '%s' "$CURATOR" | wrangler secret put CURATOR_ADMIN_TOKEN --env dev
-          wrangler deploy --env dev
+          for key in FOREST_PROJECT_ID CUSTODIAN_URL R2_MMRS_BUCKET_NAME SEQUENCING_QUEUE_SCRIPT_NAME; do
+            if [ -z "$(trim_ws "${!key:-}")" ]; then
+              echo "::error::${key} is required in GitHub Environment dev."
+              exit 1
+            fi
+          done
+          node scripts/apply-runtime-contract.mjs --env dev --out wrangler.runtime.jsonc
+          wrangler deploy --config wrangler.runtime.jsonc --env dev
 
   health-after-deploy:
     name: Health check (dev)

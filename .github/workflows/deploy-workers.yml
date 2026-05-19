@@ -159,6 +159,9 @@ jobs:
       CANOPY_ID: ${{ vars.CANOPY_ID }}
       FOREST_PROJECT_ID: ${{ vars.FOREST_PROJECT_ID }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      CUSTODIAN_URL: ${{ vars.CUSTODIAN_URL }}
+      R2_MMRS_BUCKET_NAME: ${{ vars.R2_MMRS_BUCKET_NAME }}
+      SEQUENCING_QUEUE_SCRIPT_NAME: ${{ vars.SEQUENCING_QUEUE_SCRIPT_NAME }}
 
     steps:
       - name: Checkout
@@ -239,7 +242,14 @@ jobs:
             exit 1
           fi
           printf '%s' "$CURATOR" | wrangler secret put CURATOR_ADMIN_TOKEN --env "$ENV"
-          wrangler deploy --env "$ENV"
+          for key in FOREST_PROJECT_ID CUSTODIAN_URL R2_MMRS_BUCKET_NAME SEQUENCING_QUEUE_SCRIPT_NAME; do
+            if [ -z "$(trim_ws "${!key:-}")" ]; then
+              echo "::error::${key} is required in GitHub Environment ${ENV}."
+              exit 1
+            fi
+          done
+          node scripts/apply-runtime-contract.mjs --env "$ENV" --out wrangler.runtime.jsonc
+          wrangler deploy --config wrangler.runtime.jsonc --env "$ENV"
 
       - name: Deploy ${{ matrix.target.app }} (${{ env.DEPLOY_ENV }})
         if: matrix.target.app != 'canopy-api'

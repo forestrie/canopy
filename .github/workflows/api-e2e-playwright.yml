@@ -42,6 +42,7 @@ jobs:
           CANOPY_FQDN: ${{ vars.CANOPY_FQDN }}
           SCRAPI_API_KEY: ${{ secrets.SCRAPI_API_KEY }}
           CANOPY_BASE_URL: ${{ vars.CANOPY_BASE_URL }}
+          FOREST_PROJECT_ID: ${{ vars.FOREST_PROJECT_ID }}
           # Runner bootstrap mint + first-entry sign: POST /api/keys + /sign with APP_TOKEN.
           # Use the same base as the worker (`…/v1` per canopy-api wrangler.jsonc).
           CUSTODIAN_URL: ${{ vars.CUSTODIAN_URL }}
