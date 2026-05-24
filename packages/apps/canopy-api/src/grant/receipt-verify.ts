@@ -23,7 +23,6 @@ import {
 import type { Grant } from "./grant.js";
 import { grantCommitmentHashFromGrant } from "./grant-commitment.js";
 import { univocityLeafHash } from "./leaf-commitment.js";
-import { resolveReceiptVerifyKey } from "./delegation-verify.js";
 
 /**
  * Hasher for Workers: uses crypto.subtle.digest (no sync crypto in Workers).
@@ -213,12 +212,9 @@ export interface ReceiptInclusionVerifyOptions {
   /** Full receipt COSE Sign1 CBOR bytes (transparent statement header 396). */
   receiptCoseBytes: Uint8Array;
   /**
-   * Log-operator custody key (from Custodian). When the receipt contains a
-   * delegation cert (header 1000), this key is used to verify the delegation
-   * chain, and the delegated key is extracted to verify the receipt signature.
-   * Supports both CryptoKey (P-256) and ParsedEcPublicKey (secp256k1).
+   * Pre-resolved verify key candidates (delegated key first, then trust root).
    */
-  receiptVerifyKey: ParsedVerifyKey;
+  receiptVerifyKeys: ParsedVerifyKey[];
 }
 
 /**
@@ -263,12 +259,9 @@ export async function verifyReceiptInclusionFromParsed(
 
   // --- 2. Receipt COSE signature verification (with detached peak payload) ---
   if (receiptVerification) {
-    const resolveResult = await resolveReceiptVerifyKey(
-      receiptVerification.receiptCoseBytes,
-      receiptVerification.receiptVerifyKey,
-    );
-    if (!resolveResult) {
-      console.warn("grant-receipt-verify: delegation chain resolution failed");
+    const verifyKeys = receiptVerification.receiptVerifyKeys;
+    if (!verifyKeys?.length) {
+      console.warn("grant-receipt-verify: no verify keys supplied");
       return false;
     }
 
@@ -277,9 +270,9 @@ export async function verifyReceiptInclusionFromParsed(
     // Sig_structure matches what the signer produced.
     const detachedPayload = explicitPeak === null ? peak : undefined;
 
-    // Try each candidate key (delegated key first, then custody key).
+    // Try each candidate key (delegated key first, then trust root).
     let sigOk = false;
-    for (const candidateKey of resolveResult.verifyKeys) {
+    for (const candidateKey of verifyKeys) {
       sigOk = await verifyCoseSign1WithParsedKey(
         receiptVerification.receiptCoseBytes,
         candidateKey,

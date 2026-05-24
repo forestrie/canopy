@@ -68,7 +68,7 @@ import {
   verifyGrantIncluded,
   type InclusionEnv,
 } from "./verify-grant-inclusion.js";
-import type { ReceiptVerifyKeyResolver } from "../env/receipt-verify-key-resolver.js";
+import type { ReceiptAuthorityResolver } from "../env/receipt-authority-resolver.js";
 import { bytesEqual } from "../cbor-api/cbor-map-utils.js";
 import { getParsedGenesis } from "../forest/genesis-cache.js";
 
@@ -97,8 +97,8 @@ export interface RegisterGrantEnv {
     r2Mmrs: R2Bucket;
     massifHeight: number;
   };
-  /** Custodian (or pool-test) receipt Sign1 verify key; required when using receipt inclusion. */
-  resolveReceiptVerifyKey?: ReceiptVerifyKeyResolver;
+  /** Receipt authority resolver (trust root + delegation); required for receipt inclusion. */
+  resolveReceiptAuthority?: ReceiptAuthorityResolver;
 }
 
 /**
@@ -497,7 +497,7 @@ export async function registerGrant(
   // Log (T) has MMRS: grant must carry a valid receipt (same bar as register-signed-statement).
   const authError = await grantAuthorize(grantResult, {
     inclusionEnv: env.queueEnv as InclusionEnv,
-    resolveReceiptVerifyKey: env.resolveReceiptVerifyKey,
+    resolveReceiptAuthority: env.resolveReceiptAuthority,
   });
   if (authError) return authError;
   return await enqueueAndStoreGrant(

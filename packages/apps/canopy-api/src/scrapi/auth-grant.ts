@@ -11,7 +11,7 @@ import type { GrantResult } from "../grant/types.js";
 import { decodeTransparentStatement } from "../grant/transparent-statement.js";
 import { verifyReceiptInclusionFromParsed } from "../grant/receipt-verify.js";
 import { logIdBytesToCustodianLowerHex } from "../grant/uuid-bytes.js";
-import type { ReceiptVerifyKeyResolver } from "../env/receipt-verify-key-resolver.js";
+import type { ReceiptAuthorityResolver } from "../env/receipt-authority-resolver.js";
 import {
   verifyGrantIncluded,
   type InclusionEnv,
@@ -42,10 +42,10 @@ export interface AuthGrantAuthorizeEnv {
   /** When set, grant must pass receipt-based inclusion verification. */
   inclusionEnv?: InclusionEnv;
   /**
-   * Resolves ECDSA verify key for receipt Sign1 (Custodian curator/log-key path).
-   * Supports ES256 (P-256) and ES256K (secp256k1). Required when `inclusionEnv` is set.
+   * Resolves receipt signature verify key candidates (trust root + delegation).
+   * Required when `inclusionEnv` is set.
    */
-  resolveReceiptVerifyKey?: ReceiptVerifyKeyResolver;
+  resolveReceiptAuthority?: ReceiptAuthorityResolver;
 }
 
 /**
@@ -114,33 +114,40 @@ export async function grantAuthorize(
     );
   }
 
-  if (!env.resolveReceiptVerifyKey) {
+  if (!env.resolveReceiptAuthority) {
     return ServerErrors.serviceUnavailable(
-      "Receipt verification key resolver is not configured.",
-    );
-  }
-
-  let receiptVerifyKey: ParsedVerifyKey;
-  try {
-    receiptVerifyKey = await env.resolveReceiptVerifyKey(
-      logIdBytesToCustodianLowerHex(grant.ownerLogId),
-    );
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (/\b404\b/.test(msg)) {
-      return ClientErrors.forbidden(
-        "Cannot resolve receipt verification key for this log (Custodian).",
-      );
-    }
-    console.warn("resolveReceiptVerifyKey failed", e);
-    return ServerErrors.serviceUnavailable(
-      msg.length > 200 ? `${msg.slice(0, 200)}…` : msg,
+      "Receipt authority resolver is not configured.",
     );
   }
 
   if (!receipt.coseSign1Bytes?.length) {
     return ClientErrors.forbidden(
       "Grant receipt is missing raw COSE Sign1 bytes for verification.",
+    );
+  }
+
+  let receiptVerifyKeys: ParsedVerifyKey[];
+  try {
+    const keys = await env.resolveReceiptAuthority(
+      logIdBytesToCustodianLowerHex(grant.ownerLogId),
+      receipt.coseSign1Bytes,
+    );
+    if (!keys?.length) {
+      return ClientErrors.forbidden(
+        "Grant receipt delegation chain could not be verified.",
+      );
+    }
+    receiptVerifyKeys = keys;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/\b404\b/.test(msg)) {
+      return ClientErrors.forbidden(
+        "Cannot resolve receipt verification key for this log (trust root).",
+      );
+    }
+    console.warn("resolveReceiptAuthority failed", e);
+    return ServerErrors.serviceUnavailable(
+      msg.length > 200 ? `${msg.slice(0, 200)}…` : msg,
     );
   }
 
@@ -151,7 +158,7 @@ export async function grantAuthorize(
     receipt.proof,
     {
       receiptCoseBytes: receipt.coseSign1Bytes,
-      receiptVerifyKey,
+      receiptVerifyKeys,
     },
   );
   if (!valid) {
