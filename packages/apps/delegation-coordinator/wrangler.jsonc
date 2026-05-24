@@ -34,6 +34,11 @@
           "zone_name": "forestrie.dev",
         },
       ],
+      "custom_domains": [
+        {
+          "domain": "coordinator-dev.forestrie.dev",
+        },
+      ],
       "vars": {
         "NODE_ENV": "dev",
         "COORDINATOR_SHARD_COUNT": "4",

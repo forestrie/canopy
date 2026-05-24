@@ -66,8 +66,8 @@ test.describe("delegation-coordinator APIs", () => {
     );
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
-    expect(body.authLogId).toBe(authLogHex32);
-    expect(body.pending).toEqual([]);
+    expect(body.entries).toEqual([]);
+    expect(body.shardCount).toBe(4);
   });
 
   test("POST custody-keys — create custodian key for auth log", async ({
