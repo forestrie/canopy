@@ -100,7 +100,38 @@ jobs:
           SCRIPT="forestrie-ingress-${DNS_SUB}"
           echo "canopy_fqdn=${CANOPY_FQDN_VAL}" >> "$GITHUB_OUTPUT"
           echo "script_name=${SCRIPT}" >> "$GITHUB_OUTPUT"
+          echo "route_pattern=${CANOPY_FQDN_VAL}/canopy/ingress-queue/*" >> "$GITHUB_OUTPUT"
           echo "Deploy ${SCRIPT} with route ${CANOPY_FQDN_VAL}/canopy/ingress-queue/*"
+
+      - name: Unassign project route from other workers
+        env:
+          DNS_APEX: ${{ inputs.dns_apex }}
+          ROUTE_PATTERN: ${{ steps.contract.outputs.route_pattern }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ROUTE_PATTERN}" ] || [ -z "${DNS_APEX}" ]; then
+            echo "::error::route_pattern and dns_apex are required."
+            exit 1
+          fi
+          ZONE_ID="$(curl -sf -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/zones?name=${DNS_APEX}" \
+            | jq -r '.result[0].id // empty')"
+          if [ -z "${ZONE_ID}" ]; then
+            echo "::error::Could not resolve Cloudflare zone id for ${DNS_APEX}."
+            exit 1
+          fi
+          ROUTES_JSON="$(curl -sf -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/workers/routes")"
+          ROUTE_ID="$(printf '%s' "${ROUTES_JSON}" | jq -r --arg p "${ROUTE_PATTERN}" \
+            '.result[] | select(.pattern == $p) | .id' | head -1)"
+          if [ -z "${ROUTE_ID}" ] || [ "${ROUTE_ID}" = "null" ]; then
+            echo "No existing zone route for ${ROUTE_PATTERN}; continuing."
+            exit 0
+          fi
+          echo "Deleting zone route ${ROUTE_ID} (${ROUTE_PATTERN})..."
+          curl -sf -X DELETE -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/workers/routes/${ROUTE_ID}"
+          echo "Route unassigned."
 
       - name: Deploy per-project forestrie-ingress
         working-directory: packages/apps/forestrie-ingress
