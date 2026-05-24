@@ -1,6 +1,6 @@
 /**
  * Inject GitHub Environment / deploy-time vars into delegation-coordinator wrangler config.
- * Parity with canopy-api apply-runtime-contract (CUSTODIAN_URL only for v1).
+ * Coordinator hostname: Wrangler custom_domains only (ADR-0002 / Cloudflare best practice).
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -98,6 +98,54 @@ function setStringProperty(block, key, value) {
   return block.replace(/\n\s*}$/, `${insert}\n      }`);
 }
 
+function hostnameFromUrl(url) {
+  if (!url) return "";
+  try {
+    return new URL(url.trim()).hostname;
+  } catch {
+    fail(`Invalid DELEGATION_COORDINATOR_URL: ${url}`);
+  }
+}
+
+function removePropertyWithComma(text, property, openChar, closeChar) {
+  const prop = `"${property}"`;
+  const idx = text.indexOf(prop);
+  if (idx < 0) return text;
+  const open = text.indexOf(openChar, idx + prop.length);
+  if (open < 0) return text;
+  const close = findMatching(text, open, openChar, closeChar);
+  if (close < 0) return text;
+  let start = idx;
+  while (start > 0 && /[\s]/.test(text[start - 1])) start -= 1;
+  if (start > 0 && text[start - 1] === ",") start -= 1;
+  let end = close + 1;
+  while (end < text.length && /[\s]/.test(text[end])) end += 1;
+  if (text[end] === ",") end += 1;
+  return text.slice(0, start) + text.slice(end);
+}
+
+function insertAfterEnvName(envBlock, insertText) {
+  const re = /(\{\s*\n\s*"name"\s*:\s*"[^"]*",)/;
+  if (!re.test(envBlock)) fail("Could not find env name for injection.");
+  return envBlock.replace(re, `$1${insertText}`);
+}
+
+function setCustomDomains(envBlock, hostname) {
+  if (!hostname) fail("DELEGATION_COORDINATOR_URL hostname is required.");
+  envBlock = removePropertyWithComma(envBlock, "routes", "[", "]");
+  const body = `[
+        {
+          "domain": "${hostname}",
+        },
+      ]`;
+  const existing = blockForProperty(envBlock, "custom_domains", "[", "]");
+  if (existing) {
+    return replaceRange(envBlock, existing, body);
+  }
+  const insert = `\n      "custom_domains": ${body},`;
+  return insertAfterEnvName(envBlock, insert);
+}
+
 let config = readFileSync(inputPath, "utf8");
 const envs = blockForProperty(config, "env", "{", "}");
 if (!envs) fail("Could not find top-level env block in wrangler config.");
@@ -112,6 +160,12 @@ let varsBlock = vars.text;
 varsBlock = setStringProperty(varsBlock, "CUSTODIAN_URL", process.env.CUSTODIAN_URL);
 envBlock = replaceRange(envBlock, vars, varsBlock);
 
+const coordinatorHost = hostnameFromUrl(process.env.DELEGATION_COORDINATOR_URL);
+if (!coordinatorHost) {
+  fail("DELEGATION_COORDINATOR_URL is required for delegation-coordinator deploy.");
+}
+envBlock = setCustomDomains(envBlock, coordinatorHost);
+
 config = replaceRange(config, target, envBlock);
 writeFileSync(outputPath, config);
-console.log(`Wrote ${outputPath} for env ${envName}`);
+console.log(`Wrote ${outputPath} for env ${envName} (custom_domain ${coordinatorHost})`);

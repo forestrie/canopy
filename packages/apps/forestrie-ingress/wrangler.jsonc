@@ -45,20 +45,9 @@
       },
     },
     "prod": {
-      // Deploy this worker so each project hostname (e.g. api.forest-2.forestrie.dev) has
-      // a Workers route + edge certificate. If the route is missing, clients (e.g. ranger
-      // calling /canopy/ingress-queue/queue/shards) see TLS handshake failures or 5xx at
-      // the edge — fix by deploying forestrie-ingress-prod. Cloudflare route
-      // patterns only allow host wildcards at the beginning, so this route is
-      // path-scoped but host-broad enough to cover Strategy B
-      // (api-<project>.<apex>).
+      // Worker name and routes injected at deploy from consumer contract (apply-runtime-contract.mjs).
       "name": "forestrie-ingress-prod",
-      "routes": [
-        {
-          "pattern": "*.forestrie.dev/canopy/ingress-queue/*",
-          "zone_name": "forestrie.dev",
-        },
-      ],
+      "routes": [],
       "vars": {
         "NODE_ENV": "prod",
         "CANOPY_ID": "canopy-prod-1",

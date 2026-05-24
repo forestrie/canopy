@@ -4,9 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       project_id:
-        description: "Bootstrap project id requesting the shared ingress deploy"
+        description: "Bootstrap project id requesting the per-project ingress deploy"
         required: false
         default: ""
+      dns_sub:
+        description: "DNS_SUB from forest project infra (catalog hostnames)"
+        required: true
+      dns_apex:
+        description: "DNS_APEX from forest project infra"
+        required: true
       github_environment:
         description: "GitHub Environment that provides Cloudflare deploy secrets"
         required: true
@@ -14,9 +20,10 @@ on:
         type: choice
         options:
           - bootstrap-ingress
+          - dev
           - prod
 
-run-name: Deploy forestrie-ingress prod route${{ inputs.project_id && format(' for {0}', inputs.project_id) || '' }}
+run-name: Deploy forestrie-ingress${{ inputs.dns_sub && format(' ({0})', inputs.dns_sub) || '' }}${{ inputs.project_id && format(' for {0}', inputs.project_id) || '' }}
 
 permissions:
   contents: read
@@ -27,13 +34,15 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.github_environment }}
     concurrency:
-      group: forestrie-ingress-prod
+      group: forestrie-ingress-${{ inputs.dns_sub || 'shared' }}
       cancel-in-progress: false
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CANOPY_ID: ${{ vars.CANOPY_ID }}
       FOREST_PROJECT_ID: ${{ vars.FOREST_PROJECT_ID }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      CANOPY_FQDN: ${{ vars.CANOPY_FQDN }}
+      SEQUENCING_QUEUE_SCRIPT_NAME: ${{ vars.SEQUENCING_QUEUE_SCRIPT_NAME }}
 
     steps:
       - name: Checkout
@@ -73,5 +82,32 @@ jobs:
       - name: Typecheck
         run: pnpm --filter @canopy/forestrie-ingress run typecheck
 
-      - name: Deploy forestrie-ingress prod route
-        run: task wrangler:deploy:forestrie-ingress ENV=prod
+      - name: Resolve deploy contract
+        id: contract
+        env:
+          INPUT_DNS_SUB: ${{ inputs.dns_sub }}
+          INPUT_DNS_APEX: ${{ inputs.dns_apex }}
+        run: |
+          set -euo pipefail
+          trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+          DNS_SUB="$(trim_ws "${INPUT_DNS_SUB:-}")"
+          DNS_APEX="$(trim_ws "${INPUT_DNS_APEX:-}")"
+          if [ -z "${DNS_SUB}" ] || [ -z "${DNS_APEX}" ]; then
+            echo "::error::dns_sub and dns_apex workflow inputs are required."
+            exit 1
+          fi
+          CANOPY_FQDN_VAL="api-${DNS_SUB}.${DNS_APEX}"
+          SCRIPT="forestrie-ingress-${DNS_SUB}"
+          echo "canopy_fqdn=${CANOPY_FQDN_VAL}" >> "$GITHUB_OUTPUT"
+          echo "script_name=${SCRIPT}" >> "$GITHUB_OUTPUT"
+          echo "Deploy ${SCRIPT} with route ${CANOPY_FQDN_VAL}/canopy/ingress-queue/*"
+
+      - name: Deploy per-project forestrie-ingress
+        working-directory: packages/apps/forestrie-ingress
+        env:
+          CANOPY_FQDN: ${{ steps.contract.outputs.canopy_fqdn }}
+          SEQUENCING_QUEUE_SCRIPT_NAME: ${{ steps.contract.outputs.script_name }}
+        run: |
+          set -euo pipefail
+          node scripts/apply-runtime-contract.mjs --env prod --out wrangler.runtime.jsonc
+          wrangler deploy --config wrangler.runtime.jsonc --env prod

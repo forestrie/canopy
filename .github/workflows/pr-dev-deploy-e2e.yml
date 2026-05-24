@@ -83,6 +83,7 @@ jobs:
       FOREST_PROJECT_ID: ${{ vars.FOREST_PROJECT_ID }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       CUSTODIAN_URL: ${{ vars.CUSTODIAN_URL }}
+      CANOPY_FQDN: ${{ vars.CANOPY_FQDN }}
       R2_MMRS_BUCKET_NAME: ${{ vars.R2_MMRS_BUCKET_NAME }}
       SEQUENCING_QUEUE_SCRIPT_NAME: ${{ vars.SEQUENCING_QUEUE_SCRIPT_NAME }}
 
@@ -153,15 +154,12 @@ jobs:
             exit 1
           fi
           printf '%s' "$CURATOR" | wrangler secret put CURATOR_ADMIN_TOKEN --env dev
-          for key in FOREST_PROJECT_ID CUSTODIAN_URL R2_MMRS_BUCKET_NAME SEQUENCING_QUEUE_SCRIPT_NAME; do
+          for key in FOREST_PROJECT_ID CUSTODIAN_URL R2_MMRS_BUCKET_NAME SEQUENCING_QUEUE_SCRIPT_NAME CANOPY_FQDN; do
             if [ -z "$(trim_ws "${!key:-}")" ]; then
               echo "::error::${key} is required in GitHub Environment dev."
               exit 1
             fi
           done
-          node scripts/apply-runtime-contract.mjs --env dev --out wrangler.runtime.jsonc
-          wrangler deploy --config wrangler.runtime.jsonc --env dev
-
           node scripts/apply-runtime-contract.mjs --env dev --out wrangler.runtime.jsonc
           wrangler deploy --config wrangler.runtime.jsonc --env dev
 
@@ -178,6 +176,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       DEPLOY_ENV: dev
       CUSTODIAN_URL: ${{ vars.CUSTODIAN_URL }}
+      DELEGATION_COORDINATOR_URL: ${{ vars.DELEGATION_COORDINATOR_URL }}
 
     steps:
       - name: Checkout
@@ -228,6 +227,10 @@ jobs:
           printf '%s' "$CUST" | wrangler secret put CUSTODIAN_APP_TOKEN --env dev
           if [ -z "$(trim_ws "${CUSTODIAN_URL:-}")" ]; then
             echo "::error::CUSTODIAN_URL is required in GitHub Environment dev."
+            exit 1
+          fi
+          if [ -z "$(trim_ws "${DELEGATION_COORDINATOR_URL:-}")" ]; then
+            echo "::error::DELEGATION_COORDINATOR_URL is required in GitHub Environment dev."
             exit 1
           fi
           node scripts/apply-runtime-contract.mjs --env dev --out wrangler.runtime.jsonc

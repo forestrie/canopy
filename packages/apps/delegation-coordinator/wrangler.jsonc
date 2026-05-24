@@ -28,17 +28,6 @@
   "env": {
     "dev": {
       "name": "delegation-coordinator-dev",
-      "routes": [
-        {
-          "pattern": "coordinator-dev.forestrie.dev/*",
-          "zone_name": "forestrie.dev",
-        },
-      ],
-      "custom_domains": [
-        {
-          "domain": "coordinator-dev.forestrie.dev",
-        },
-      ],
       "vars": {
         "NODE_ENV": "dev",
         "COORDINATOR_SHARD_COUNT": "4",
@@ -55,12 +44,6 @@
     },
     "prod": {
       "name": "delegation-coordinator-prod",
-      "routes": [
-        {
-          "pattern": "coordinator.forestrie.dev/*",
-          "zone_name": "forestrie.dev",
-        },
-      ],
       "vars": {
         "NODE_ENV": "prod",
         "COORDINATOR_SHARD_COUNT": "4",

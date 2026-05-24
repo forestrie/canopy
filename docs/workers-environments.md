@@ -5,8 +5,8 @@
 | Wrangler config        | Worker name in dashboard | Route                                      | When it gets deployed                                                                       |
 | ---------------------- | ------------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------- |
 | Top-level (no `--env`) | **canopy-api**           | No route in wrangler (may use workers.dev) | Only when someone runs `wrangler deploy` without `ENV` from the app directory               |
-| `--env dev`            | **canopy-api-dev**       | `api-dev.forestrie.dev/*`                  | **Deploy Workers** workflow (push to main → dev, or workflow_dispatch with environment=dev) |
-| `--env prod`           | **canopy-api-prod**      | `api.forestrie.dev/*`                      | **Deploy Workers** workflow_dispatch with environment=prod                                  |
+| `--env dev`            | **canopy-api-dev**       | `api-{DNS_SUB}.{DNS_APEX}/*` (runtime)   | **Deploy Workers** workflow (push to main → dev, or workflow_dispatch with environment=dev) |
+| `--env prod`           | **canopy-api-prod**      | `api-{DNS_SUB}.{DNS_APEX}/*` (runtime)   | **Deploy Workers** workflow_dispatch with environment=prod                                  |
 
 All three configs include the **R2_GRANTS** binding (and R2_MMRS, DOs, etc.).
 
@@ -16,13 +16,12 @@ Two ideas are easy to confuse:
 
 | Idea | Meaning |
 |------|---------|
-| **Promotion lane** | **`dev`** → **canopy-api-dev** / `api-dev.forestrie.dev`; **`prod`** → **canopy-api-prod** / `api.forestrie.dev` |
-| **Edge ingress deployment** | Cloudflare Worker **forestrie-ingress-prod** (Wrangler **`env.prod`** on the **forestrie-ingress** app) |
+| **Promotion lane** | **`dev`** → **canopy-api-dev**; **`prod`** → **canopy-api-prod** (Worker script + secrets) |
+| **Project hostname** | **`CANOPY_FQDN`** from forest contract = `api-{DNS_SUB}.{DNS_APEX}` ([ADR-0002](../../forest-1/docs/adr-0002-dns-catalog-provisioning.md)) |
+| **Edge ingress deployment** | Per-project **`forestrie-ingress-{DNS_SUB}`** with host-scoped route on **`CANOPY_FQDN`** |
 
-**Both API lanes** bind `SEQUENCING_QUEUE` to script **`forestrie-ingress-prod`**. That is
-**shared** sequencing infrastructure at the edge, not “prod lane only.” The dev lane is
-**not incomplete** — it has its own API Worker; it does **not** use **forestrie-ingress-dev**
-in Cloudflare (**forestrie-ingress-dev** is local `wrangler dev` only).
+**Both API lanes** bind `SEQUENCING_QUEUE` to **`forestrie-ingress-{DNS_SUB}`** from the
+consumer contract (per-project isolation; see **forest-1** `docs/arc-0001-per-project-ingress-isolation.md`).
 
 Deployed **canopy-api-*** vars and bindings (including `R2_MMRS` bucket and ingress script
 name) come from the GitHub Environment (**`dev`** / **`prod`**) and
@@ -58,7 +57,7 @@ If you deploy from the repo root with `task wrangler:deploy:canopy-api` **withou
 | Wrangler env | Worker name (dashboard)    | Route(s)                                 | Notes                                                                                                                                                                                                                                                                             |
 | ------------ | -------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **`dev`**    | **forestrie-ingress-dev**  | _(none — use `wrangler dev` locally)_    | Avoids overlapping zone routes with prod.                                                                                                                                                                                                                                         |
-| **`prod`**   | **forestrie-ingress-prod** | `*.forestrie.dev/canopy/ingress-queue/*` | **Strategy B** shared **edge ingress** (not “prod promotion lane only”). Covers **`RANGER_INGRESS_QUEUE_URL`** `https://api-<DNS_SUB>.forestrie.dev/canopy/ingress-queue`. |
+| **`prod`**   | **`forestrie-ingress-{DNS_SUB}`** (runtime) | `{CANOPY_FQDN}/canopy/ingress-queue/*` | Per-project **Strategy B** edge ingress. Deploy via **`deploy-forestrie-ingress.yml`** or **`task bootstrap:canopy:deploy-ingress`**. |
 
 Deploy **`prod`** after DNS for **`api-<DNS_SUB>.forestrie.dev`** exists (Terraform in **forest-1** publishes the hostname + URL to Doppler). Other apex domains require adjusting **`zone_name`** / **`pattern`** in [`packages/apps/forestrie-ingress/wrangler.jsonc`](../packages/apps/forestrie-ingress/wrangler.jsonc).
 
@@ -66,8 +65,8 @@ Deploy **`prod`** after DNS for **`api-<DNS_SUB>.forestrie.dev`** exists (Terraf
 
 | Wrangler env | Worker name (dashboard)           | Route(s)                              | Notes |
 | ------------ | ------------------------------- | ------------------------------------- | ----- |
-| **`dev`**    | **delegation-coordinator-dev**  | `coordinator-dev.forestrie.dev/*`     | Sharded `DelegationStoreDO` (`shard-0` … `shard-{N-1}`). Local `wrangler dev` on port **8793**. |
-| **`prod`**   | **delegation-coordinator-prod** | `coordinator.forestrie.dev/*`         | Same shard model; `CUSTODIAN_URL` must match the active ledger slot. |
+| **`dev`**    | **delegation-coordinator-dev**  | **`coordinator.{DNS_SUB}.{DNS_APEX}`** (Wrangler **custom_domains**) | Sharded `DelegationStoreDO`. Local `wrangler dev` on port **8793**. |
+| **`prod`**   | **delegation-coordinator-prod** | same pattern (runtime from **`DELEGATION_COORDINATOR_URL`**)         | Cloudflare Custom Domain — no routes on coordinator hostname. |
 
 Secrets (per env): **`COORDINATOR_APP_TOKEN`** (management APIs + issuance auth), **`CUSTODIAN_APP_TOKEN`** (custody-keys orchestration only — coordinator never calls Custodian sign).
 
