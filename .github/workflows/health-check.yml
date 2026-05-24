@@ -74,15 +74,21 @@ jobs:
           COORD_URL="$(trim_ws "${DELEGATION_COORDINATOR_URL:-}")"
           if [ -n "$COORD_URL" ]; then
             COORD_HEALTH="${COORD_URL%/}/_delegation-coordinator/health"
-            echo "Checking ${COORD_HEALTH}..."
-            BODY="$(curl -sf "${COORD_HEALTH}" || true)"
-            if [ -z "${BODY}" ]; then
-              echo "::error::Coordinator health check failed: no response from ${COORD_HEALTH}"
-              exit 1
-            fi
-            if ! printf '%s' "${BODY}" | grep -q '"status"[[:space:]]*:[[:space:]]*"ok"'; then
-              echo "::error::Coordinator health check failed: ${BODY}"
-              exit 1
-            fi
-            echo "OK: coordinator health status=ok"
+            COORD_RETRIES="${COORD_HEALTH_RETRIES:-18}"
+            COORD_SLEEP="${COORD_HEALTH_SLEEP_SEC:-10}"
+            echo "Checking ${COORD_HEALTH} (up to ${COORD_RETRIES} attempts, ${COORD_SLEEP}s apart)..."
+            BODY=""
+            for attempt in $(seq 1 "${COORD_RETRIES}"); do
+              BODY="$(curl -sf "${COORD_HEALTH}" || true)"
+              if [ -n "${BODY}" ] && printf '%s' "${BODY}" | grep -q '"status"[[:space:]]*:[[:space:]]*"ok"'; then
+                echo "OK: coordinator health status=ok (attempt ${attempt}/${COORD_RETRIES})"
+                break
+              fi
+              if [ "${attempt}" -eq "${COORD_RETRIES}" ]; then
+                echo "::error::Coordinator health check failed: no ok response from ${COORD_HEALTH} after ${COORD_RETRIES} attempts"
+                exit 1
+              fi
+              echo "Coordinator not ready yet (${attempt}/${COORD_RETRIES}); waiting ${COORD_SLEEP}s for Custom Domain DNS..."
+              sleep "${COORD_SLEEP}"
+            done
           fi
