@@ -116,8 +116,12 @@ function hostnameFromFqdnOrUrl(value) {
   return trimmed.replace(/^https?:\/\//, "").split("/")[0];
 }
 
+function envWorkerNamePattern() {
+  return /(\{\s*(?:\/\/[^\n]*\n\s*)*"name"\s*:\s*)"[^"]*"/;
+}
+
 function insertAfterEnvName(envBlock, insertText) {
-  const re = /(\{\s*\n\s*"name"\s*:\s*"[^"]*",)/;
+  const re = /(\{\s*(?:\/\/[^\n]*\n\s*)?"name"\s*:\s*"[^"]*",)/;
   if (!re.test(envBlock)) fail("Could not find env name for injection.");
   return envBlock.replace(re, `$1${insertText}`);
 }
@@ -141,8 +145,8 @@ function setRoutes(envBlock, fqdn) {
 
 function setWorkerName(envBlock, scriptName) {
   if (!scriptName) return envBlock;
-  const re = /(\{\s*\n\s*"name"\s*:\s*)"[^"]*"/;
-  if (!re.test(envBlock)) fail("Could not find env name for script rename.");
+  const re = envWorkerNamePattern();
+  if (!re.test(envBlock)) fail("Could not find env worker name for script rename.");
   return envBlock.replace(re, `$1"${scriptName}"`);
 }
 
