@@ -18,6 +18,7 @@ import {
 } from "@e2e-utils/coordinator-delegation-helpers.js";
 import { assertCustodianApiE2eEnv } from "@e2e-utils/custodian-api-env.js";
 import { normalizeForestrieHexId32 } from "@e2e-utils/forestrie-hex-id.js";
+import { e2eCustodianKeyOwnerId } from "@e2e-utils/custodian-custody-grant.js";
 
 test.describe.configure({ mode: "serial" });
 
@@ -81,7 +82,7 @@ test.describe("delegation-coordinator APIs", () => {
           "Content-Type": "application/json",
         },
         data: {
-          keyOwnerId: `e2e-coordinator-auth-${authLogHex32.slice(0, 8)}`,
+          keyOwnerId: e2eCustodianKeyOwnerId(),
           alg: "ES256",
         },
       },
@@ -102,7 +103,7 @@ test.describe("delegation-coordinator APIs", () => {
           "Content-Type": "application/json",
         },
         data: {
-          keyOwnerId: `e2e-coordinator-${childLogHex32.slice(0, 8)}`,
+          keyOwnerId: e2eCustodianKeyOwnerId(),
           alg: "ES256",
         },
       },

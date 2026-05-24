@@ -18,6 +18,7 @@ import {
   postCustodianDelegationIssue,
 } from "@e2e-utils/coordinator-delegation-helpers.js";
 import { normalizeForestrieHexId32 } from "@e2e-utils/forestrie-hex-id.js";
+import { e2eCustodianKeyOwnerId } from "@e2e-utils/custodian-custody-grant.js";
 
 const stretchEnabled = process.env.E2E_COORDINATOR_SEALER_STRETCH === "1";
 
@@ -48,7 +49,7 @@ test.describe("coordinator delegation issuance (stretch)", () => {
           "Content-Type": "application/json",
         },
         data: {
-          keyOwnerId: `e2e-stretch-${logHex32.slice(0, 8)}`,
+          keyOwnerId: e2eCustodianKeyOwnerId(),
           alg: "ES256",
         },
       },
