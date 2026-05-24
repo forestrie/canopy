@@ -136,7 +136,7 @@ function setCoordinatorCustomDomain(envBlock, hostname) {
   const zone = hostname.split(".").slice(-2).join(".");
   const body = `[
         {
-          "pattern": "${hostname}/*",
+          "pattern": "${hostname}",
           "zone_name": "${zone}",
           "custom_domain": true,
         },
