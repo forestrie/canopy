@@ -10,6 +10,29 @@
 
 All three configs include the **R2_GRANTS** binding (and R2_MMRS, DOs, etc.).
 
+## Promotion lanes vs shared edge ingress
+
+Two ideas are easy to confuse:
+
+| Idea | Meaning |
+|------|---------|
+| **Promotion lane** | **`dev`** → **canopy-api-dev** / `api-dev.forestrie.dev`; **`prod`** → **canopy-api-prod** / `api.forestrie.dev` |
+| **Edge ingress deployment** | Cloudflare Worker **forestrie-ingress-prod** (Wrangler **`env.prod`** on the **forestrie-ingress** app) |
+
+**Both API lanes** bind `SEQUENCING_QUEUE` to script **`forestrie-ingress-prod`**. That is
+**shared** sequencing infrastructure at the edge, not “prod lane only.” The dev lane is
+**not incomplete** — it has its own API Worker; it does **not** use **forestrie-ingress-dev**
+in Cloudflare (**forestrie-ingress-dev** is local `wrangler dev` only).
+
+Deployed **canopy-api-*** vars and bindings (including `R2_MMRS` bucket and ingress script
+name) come from the GitHub Environment (**`dev`** / **`prod`**) and
+`packages/apps/canopy-api/scripts/apply-runtime-contract.mjs` at deploy time — not from
+`wrangler.jsonc` defaults alone.
+
+Forest bootstrap publishes and verifies the contract per lane; see **forest-1**
+`docs/bootstrap-canopy-contract.md`. Future per-project ingress isolation:
+`docs/arc-0001-per-project-ingress-isolation.md`.
+
 ## Perf test and dev traffic
 
 - The **Performance Tests** workflow uses GitHub Environment **`dev`**, **`stage`**, or **`prod`** (Doppler **`dev`** / **`stg`** / **`prd`** sync). Variables and secrets supply **`CANOPY_BASE_URL`**, **`FORESTRIE_INGRESS_URL`**, **`SCRAPI_API_KEY`**, etc. **Perf log IDs are not stored in GitHub**—each run generates shard-balanced UUIDs with `perf/scripts/generate-shard-balanced-ids.js` (no Doppler CLI or `.env` file in the job).
@@ -35,6 +58,19 @@ If you deploy from the repo root with `task wrangler:deploy:canopy-api` **withou
 | Wrangler env | Worker name (dashboard)    | Route(s)                                 | Notes                                                                                                                                                                                                                                                                             |
 | ------------ | -------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **`dev`**    | **forestrie-ingress-dev**  | _(none — use `wrangler dev` locally)_    | Avoids overlapping zone routes with prod.                                                                                                                                                                                                                                         |
-| **`prod`**   | **forestrie-ingress-prod** | `*.forestrie.dev/canopy/ingress-queue/*` | **Strategy B**: path-scoped wildcard route covering Terraform / Doppler **`RANGER_INGRESS_QUEUE_URL`** `https://api-<DNS_SUB>.forestrie.dev/canopy/ingress-queue` for hosts under zone **`forestrie.dev`**. Cloudflare route patterns allow host wildcards only at the beginning. |
+| **`prod`**   | **forestrie-ingress-prod** | `*.forestrie.dev/canopy/ingress-queue/*` | **Strategy B** shared **edge ingress** (not “prod promotion lane only”). Covers **`RANGER_INGRESS_QUEUE_URL`** `https://api-<DNS_SUB>.forestrie.dev/canopy/ingress-queue`. |
 
 Deploy **`prod`** after DNS for **`api-<DNS_SUB>.forestrie.dev`** exists (Terraform in **forest-1** publishes the hostname + URL to Doppler). Other apex domains require adjusting **`zone_name`** / **`pattern`** in [`packages/apps/forestrie-ingress/wrangler.jsonc`](../packages/apps/forestrie-ingress/wrangler.jsonc).
+
+## delegation-coordinator (Phase 3 management + issuance material store)
+
+| Wrangler env | Worker name (dashboard)           | Route(s)                              | Notes |
+| ------------ | ------------------------------- | ------------------------------------- | ----- |
+| **`dev`**    | **delegation-coordinator-dev**  | `coordinator-dev.forestrie.dev/*`     | Sharded `DelegationStoreDO` (`shard-0` … `shard-{N-1}`). Local `wrangler dev` on port **8793**. |
+| **`prod`**   | **delegation-coordinator-prod** | `coordinator.forestrie.dev/*`         | Same shard model; `CUSTODIAN_URL` must match the active ledger slot. |
+
+Secrets (per env): **`COORDINATOR_APP_TOKEN`** (management APIs + issuance auth), **`CUSTODIAN_APP_TOKEN`** (custody-keys orchestration only — coordinator never calls Custodian sign).
+
+Forest bootstrap publishes **`DELEGATION_COORDINATOR_URL`** into the Canopy consumer contract (`canopy-dev` / `canopy-prod` Doppler configs) and syncs it to GitHub Environment **`dev`** / **`prod`**. Custodian uses the same URL (arbor-flux `DELEGATION_COORDINATOR_URL`) to proxy wallet-managed logs and local-key misses.
+
+**Ops runbook:** [plan-0022](plans/plan-0022-delegation-coordinator-ops-parity.md), [forest-1 bootstrap-canopy-contract](../../forest-1/docs/bootstrap-canopy-contract.md) (coordinator token + deploy tasks).

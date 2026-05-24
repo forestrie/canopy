@@ -9,6 +9,7 @@
     "test:e2e:integration": "pnpm exec playwright test --project=integration",
     "test:e2e:system": "pnpm exec playwright test --project=system",
     "test:e2e:custodian": "pnpm exec playwright test --project=custodian",
+    "test:e2e:coordinator": "pnpm exec playwright test --project=coordinator",
     "test:e2e:prod": "pnpm exec playwright test --project=prod"
   },
   "dependencies": {

@@ -2,7 +2,7 @@
 
 **Status:** ACCEPTED  
 **Date:** 2026-05-23  
-**Related:** [plan-0016](plan-0016-delegation-signer-custodian-migration.md), [arbor plan-0003](../../arbor/docs/plan-0003-non-custodial-checkpoint-support.md), [receipt authority BYOK master plan](plan-0020-receipt-authority-delegation-coordinator.md)
+**Related:** [plan-0016](plan-0016-delegation-signer-custodian-migration.md), [arbor plan-0003](../../arbor/docs/plan-0003-non-custodial-checkpoint-support.md), [plan-0021 delegation coordinator APIs](plan-0021-delegation-coordinator-apis.md)
 
 ---
 

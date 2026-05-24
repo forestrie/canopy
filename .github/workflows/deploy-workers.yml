@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "packages/apps/canopy-api/**"
+      - "packages/apps/delegation-coordinator/**"
       - "packages/apps/forestrie-ingress/**"
       - "packages/apps/x402-settlement/**"
       - "packages/shared/**"
@@ -30,6 +31,7 @@ on:
         options:
           - ""
           - canopy-api
+          - delegation-coordinator
           - forestrie-ingress
           - x402-settlement
 
@@ -78,6 +80,9 @@ jobs:
               - 'packages/apps/forestrie-ingress/**'
               - 'packages/shared/**'
               - 'packages/merklelog/**'
+            delegation_coordinator:
+              - 'packages/apps/delegation-coordinator/**'
+              - 'packages/shared/**'
             x402_settlement:
               - 'packages/apps/x402-settlement/**'
               - 'packages/shared/**'
@@ -100,6 +105,9 @@ jobs:
                 forestrie-ingress)
                   apps+=("{\"app\":\"forestrie-ingress\",\"pkg\":\"@canopy/forestrie-ingress\"}")
                   ;;
+                delegation-coordinator)
+                  apps+=("{\"app\":\"delegation-coordinator\",\"pkg\":\"@canopy/delegation-coordinator\"}")
+                  ;;
                 x402-settlement)
                   apps+=("{\"app\":\"x402-settlement\",\"pkg\":\"@canopy/x402-settlement\"}")
                   ;;
@@ -107,6 +115,7 @@ jobs:
             else
               # No app selected - deploy all
               apps+=("{\"app\":\"canopy-api\",\"pkg\":\"@canopy/api\"}")
+              apps+=("{\"app\":\"delegation-coordinator\",\"pkg\":\"@canopy/delegation-coordinator\"}")
               apps+=("{\"app\":\"forestrie-ingress\",\"pkg\":\"@canopy/forestrie-ingress\"}")
               apps+=("{\"app\":\"x402-settlement\",\"pkg\":\"@canopy/x402-settlement\"}")
             fi
@@ -115,11 +124,15 @@ jobs:
             if [ "${{ steps.changes.outputs.deploy_workflow }}" = "true" ] || [ "${{ steps.changes.outputs.wrangler_tasks }}" = "true" ]; then
               # Workflow / shared deploy wiring changed: deploy all workers
               apps+=("{\"app\":\"canopy-api\",\"pkg\":\"@canopy/api\"}")
+              apps+=("{\"app\":\"delegation-coordinator\",\"pkg\":\"@canopy/delegation-coordinator\"}")
               apps+=("{\"app\":\"forestrie-ingress\",\"pkg\":\"@canopy/forestrie-ingress\"}")
               apps+=("{\"app\":\"x402-settlement\",\"pkg\":\"@canopy/x402-settlement\"}")
             else
               if [ "${{ steps.changes.outputs.canopy_api }}" = "true" ]; then
                 apps+=("{\"app\":\"canopy-api\",\"pkg\":\"@canopy/api\"}")
+              fi
+              if [ "${{ steps.changes.outputs.delegation_coordinator }}" = "true" ]; then
+                apps+=("{\"app\":\"delegation-coordinator\",\"pkg\":\"@canopy/delegation-coordinator\"}")
               fi
               if [ "${{ steps.changes.outputs.forestrie_ingress }}" = "true" ]; then
                 apps+=("{\"app\":\"forestrie-ingress\",\"pkg\":\"@canopy/forestrie-ingress\"}")
@@ -251,8 +264,39 @@ jobs:
           node scripts/apply-runtime-contract.mjs --env "$ENV" --out wrangler.runtime.jsonc
           wrangler deploy --config wrangler.runtime.jsonc --env "$ENV"
 
+      - name: Configure Coordinator secrets and deploy delegation-coordinator
+        if: matrix.target.app == 'delegation-coordinator'
+        working-directory: packages/apps/delegation-coordinator
+        env:
+          COORDINATOR_APP_TOKEN: ${{ secrets.COORDINATOR_APP_TOKEN }}
+          CUSTODIAN_APP_TOKEN: ${{ secrets.CUSTODIAN_APP_TOKEN }}
+        run: |
+          set -euo pipefail
+          trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+          ENV="${DEPLOY_ENV}"
+          COORD=$(trim_ws "${COORDINATOR_APP_TOKEN:-}")
+          if [ -z "$COORD" ]; then
+            echo "::error::COORDINATOR_APP_TOKEN is required for delegation-coordinator."
+            exit 1
+          fi
+          printf '%s' "$COORD" | wrangler secret put COORDINATOR_APP_TOKEN --env "$ENV"
+          CUST=$(trim_ws "${CUSTODIAN_APP_TOKEN:-}")
+          if [ -z "$CUST" ]; then
+            echo "::error::CUSTODIAN_APP_TOKEN is required for delegation-coordinator (custody-keys API)."
+            exit 1
+          fi
+          printf '%s' "$CUST" | wrangler secret put CUSTODIAN_APP_TOKEN --env "$ENV"
+          for key in CUSTODIAN_URL; do
+            if [ -z "$(trim_ws "${!key:-}")" ]; then
+              echo "::error::${key} is required in GitHub Environment ${ENV}."
+              exit 1
+            fi
+          done
+          node scripts/apply-runtime-contract.mjs --env "$ENV" --out wrangler.runtime.jsonc
+          wrangler deploy --config wrangler.runtime.jsonc --env "$ENV"
+
       - name: Deploy ${{ matrix.target.app }} (${{ env.DEPLOY_ENV }})
-        if: matrix.target.app != 'canopy-api'
+        if: matrix.target.app != 'canopy-api' && matrix.target.app != 'delegation-coordinator'
         run: task wrangler:deploy:${{ matrix.target.app }} ENV=${{ env.DEPLOY_ENV }}
 
   health-check:
@@ -273,3 +317,4 @@ jobs:
     with:
       environment: ${{ needs.changes.outputs.environment }}
       playwright_project: ${{ needs.changes.outputs.environment == 'prod' && 'prod' || 'system' }}
+      require_coordinator_e2e: ${{ needs.changes.outputs.environment != 'prod' }}

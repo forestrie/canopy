@@ -13,6 +13,7 @@ Canopy is a SCITT/SCRAPI transparency log built as a pnpm monorepo of Cloudflare
 | `@canopy/api` | 8789 | Main SCRAPI HTTP API |
 | `@canopy/forestrie-ingress` | 8791 | SequencingQueue Durable Object host |
 | `@canopy/x402-settlement` | 8792 | x402 payment settlement worker |
+| `@canopy/delegation-coordinator` | 8793 | Delegation coordinator (Phase 3 APIs, sharded DO) |
 
 ### Key commands
 

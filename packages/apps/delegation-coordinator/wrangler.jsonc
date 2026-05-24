@@ -1,0 +1,74 @@
+{
+  "name": "delegation-coordinator",
+  "main": "./src/index.ts",
+  "compatibility_date": "2024-10-01",
+  "compatibility_flags": ["nodejs_compat_v2"],
+  "dev": {
+    "port": 8793,
+    "local_protocol": "http",
+  },
+  "observability": {
+    "enabled": true,
+  },
+  // Top-level durable_objects needed for vitest (@cloudflare/vitest-pool-workers)
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "DELEGATION_STORE",
+        "class_name": "DelegationStoreDO",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["DelegationStoreDO"],
+    },
+  ],
+  "env": {
+    "dev": {
+      "name": "delegation-coordinator-dev",
+      "routes": [
+        {
+          "pattern": "coordinator-dev.forestrie.dev/*",
+          "zone_name": "forestrie.dev",
+        },
+      ],
+      "vars": {
+        "NODE_ENV": "dev",
+        "COORDINATOR_SHARD_COUNT": "4",
+        "CUSTODIAN_URL": "https://custodian.a.forest-2.forestrie.dev/v1",
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "DELEGATION_STORE",
+            "class_name": "DelegationStoreDO",
+          },
+        ],
+      },
+    },
+    "prod": {
+      "name": "delegation-coordinator-prod",
+      "routes": [
+        {
+          "pattern": "coordinator.forestrie.dev/*",
+          "zone_name": "forestrie.dev",
+        },
+      ],
+      "vars": {
+        "NODE_ENV": "prod",
+        "COORDINATOR_SHARD_COUNT": "4",
+        "CUSTODIAN_URL": "https://custodian.forestrie.dev/v1",
+      },
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "DELEGATION_STORE",
+            "class_name": "DelegationStoreDO",
+          },
+        ],
+      },
+    },
+  },
+}

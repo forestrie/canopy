@@ -67,17 +67,6 @@ export function extractDelegationCertBytes(
 ): Uint8Array | null {
   const umap = coseUnprotectedToMap(receiptUnprotected);
   const certRaw = umap.get(DELEGATION_CERT_LABEL);
-  console.log("extractDelegationCertBytes", {
-    rawType: Object.prototype.toString.call(receiptUnprotected),
-    isMap: receiptUnprotected instanceof Map,
-    mapKeys: umap.size > 0 ? Array.from(umap.keys()) : [],
-    hasCertLabel: umap.has(DELEGATION_CERT_LABEL),
-    certRawType:
-      certRaw === undefined
-        ? "undefined"
-        : Object.prototype.toString.call(certRaw),
-    certRawLen: certRaw instanceof Uint8Array ? certRaw.length : "N/A",
-  });
   if (certRaw instanceof Uint8Array && certRaw.length > 0) {
     return certRaw;
   }
@@ -256,43 +245,19 @@ export async function verifyDelegationCert(
   delegationCertBytes: Uint8Array,
   custodyKey?: ParsedVerifyKey,
 ): Promise<DelegationVerifyResult | null> {
-  console.log("verifyDelegationCert: starting", {
-    delegationCertBytesLen: delegationCertBytes.length,
-    hasCustodyKey: !!custodyKey,
-    custodyKeyType: custodyKey instanceof CryptoKey ? "CryptoKey" : "ParsedKey",
-    custodyKeyCurve:
-      custodyKey && !(custodyKey instanceof CryptoKey)
-        ? (custodyKey as any).curve
-        : "N/A",
-  });
-
-  // Decode the delegation cert
   const decoded = decodeCoseSign1(delegationCertBytes);
   if (!decoded) {
     console.warn("delegation-verify: failed to decode delegation cert");
     return null;
   }
 
-  console.log("verifyDelegationCert: decoded cert", {
-    protectedLen: decoded.protectedBstr.length,
-    payloadLen: decoded.payloadBstr.length,
-    signatureLen: decoded.signature.length,
-  });
-
-  // Verify signature if custody key provided
   let signatureVerified = false;
   if (custodyKey) {
-    console.log(
-      "verifyDelegationCert: verifying signature against custody key",
-    );
     signatureVerified = await verifyCoseSign1WithParsedKey(
       delegationCertBytes,
       custodyKey,
       { logFailures: true, logPrefix: "delegation-cert" },
     );
-    console.log("verifyDelegationCert: signature result", {
-      signatureVerified,
-    });
     if (!signatureVerified) {
       console.warn("delegation-verify: delegation cert signature invalid");
       return null;

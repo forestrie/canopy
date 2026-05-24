@@ -13,6 +13,7 @@ Specs live under `tests/` in three tiers (each tier is a Playwright **project** 
 | **integration** | `tests/integration/`  | Read-only / surface checks against **Canopy** only (CORS, health, SCRAPI discovery).                              |
 | **system**      | `tests/system/`       | Full deployed stack: SCRAPI grants, sequencing, receipts (needs **forestrie-ingress**, MMRS, Custodian mint env). |
 | **custodian**   | `tests/custodian/`    | Direct **Custodian** HTTP (`/v1/api/…`), not the SCRAPI grant path.                                               |
+| **coordinator** | `tests/coordinator/`  | **delegation-coordinator** Phase 3 APIs + custodian proxy issuance (`plan-0021`).                                 |
 | **prod**        | (same files, filters) | Release checks: **excludes** mutating `tests/system/*` specs via `testIgnore` in `playwright.config.ts`.          |
 
 Shared code: `tests/utils/`, `tests/fixtures/`. Imports use TypeScript path aliases (see `tsconfig.json`):
@@ -35,7 +36,7 @@ That installs Playwright/Chromium and runs **`task vars:doppler:{{ENV}}`** so **
 ## Scripts
 
 - **Default (integration → system → custodian):** `pnpm --filter @canopy/api-e2e test:e2e` or root `pnpm test:e2e`.
-- **Single tier:** `pnpm --filter @canopy/api-e2e test:e2e:integration` | `test:e2e:system` | `test:e2e:custodian` | `test:e2e:prod`.
+- **Single tier:** `pnpm --filter @canopy/api-e2e test:e2e:integration` | `test:e2e:system` | `test:e2e:custodian` | `test:e2e:coordinator` | `test:e2e:prod`.
 - **CI / env already set:** same as above; workflows run projects explicitly (see `.github/workflows/api-e2e-playwright.yml`).
 - **Local (Doppler):** do **not** use a Doppler-injected npm script — use **`task test:e2e:doppler`** from the repo root, or  
   `doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e test:e2e`  
@@ -71,6 +72,28 @@ Other keys:
 
 - **`SCRAPI_API_KEY`**: Bearer for authorized fixtures (optional for specs that use `unauthorizedRequest` only).
 
+**Delegation coordinator e2e** (`tests/coordinator/coordinator-api.spec.ts`, Playwright project **`coordinator`**):
+
+- **`DELEGATION_COORDINATOR_URL`**, **`COORDINATOR_APP_TOKEN`**: management APIs and direct coordinator checks.
+- **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**: custody-keys orchestration and **`POST /v1/api/delegations`** proxy issuance.
+- CI runs this project after **custodian** when both coordinator env vars are set (`.github/workflows/api-e2e-playwright.yml`); **`deploy-workers`** on **dev** sets **`require_coordinator_e2e: true`** (fails if vars/secrets missing).
+- Optional stretch (`tests/system/coordinator-delegation-issuance.spec.ts`): set **`E2E_COORDINATOR_SEALER_STRETCH=1`** — not part of default **`test:e2e:system`**.
+
+**Hydrating coordinator secrets locally**
+
+After forest bootstrap generates the token:
+
+```bash
+# forest-1 (once per lane)
+CANOPY_PROMOTION_LANE=dev task bootstrap:canopy:bootstrap-coordinator-token:PROJECT_ID
+CANOPY_PROMOTION_LANE=dev task bootstrap:canopy:sync-github-env:PROJECT_ID
+
+# canopy repo root
+task vars:doppler:dev   # copies DELEGATION_COORDINATOR_URL + COORDINATOR_APP_TOKEN into .env
+```
+
+Or set **`COORDINATOR_APP_TOKEN`** manually in Doppler **`canopy/dev`** (masked) and re-run **`task vars:doppler:dev`**.
+
 **Custodian API e2e** (`tests/custodian/custodian-api.spec.ts`, Playwright project **`custodian`**):
 
 - **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**: create key, public, sign, curator, list via **`/v1/api/…`** (ingress); ops probes use the URL **origin** only (`/healthz`, `/readyz`, …).
@@ -91,6 +114,8 @@ Other keys:
 | `system/bootstrap-child-auth-grant.spec.ts` | Root bootstrap + custody-key child auth grant; 303 Location under `/logs/{root}/{root}/entries/…`.                   |
 | `system/auth-data-log-chain.spec.ts`        | Root → child auth log → data log delegation chain (delegated `grantData`).                                           |
 | `custodian/custodian-api.spec.ts`           | Direct **`fetch`** to deployed Custodian: ops + **`/v1/api/…`** key routes. Does not use `:bootstrap` key paths.     |
+| `coordinator/coordinator-api.spec.ts`       | Phase 3 coordinator APIs + custodian **`POST /api/delegations`** proxy (stored material).                            |
+| `system/coordinator-delegation-issuance.spec.ts` | Opt-in stretch (`E2E_COORDINATOR_SEALER_STRETCH=1`); skipped in default CI.                                    |
 
 - Shared e2e utils: `e2e-env-guards.ts`, `e2e-grant-flags.ts`, `register-grant-through-receipt.ts`, `post-entries-e2e.ts`, `custodian-sign-payload.ts`, `custodian-api-*.ts`, `problem-details.ts`, `bootstrap-grant-flow.ts`, etc.
 - Worker unit/integration tests: `packages/apps/canopy-api/test`.

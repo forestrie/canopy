@@ -107,6 +107,7 @@
           {
             "name": "SEQUENCING_QUEUE",
             "class_name": "SequencingQueue",
+            // Shared edge ingress (not forestrie-ingress-dev). See docs/workers-environments.md.
             "script_name": "forestrie-ingress-prod",
           },
           {

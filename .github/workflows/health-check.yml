@@ -49,6 +49,7 @@ jobs:
         env:
           CANOPY_FQDN: ${{ vars.CANOPY_FQDN }}
           CANOPY_BASE_URL: ${{ vars.CANOPY_BASE_URL }}
+          DELEGATION_COORDINATOR_URL: ${{ vars.DELEGATION_COORDINATOR_URL }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
@@ -70,3 +71,18 @@ jobs:
           fi
           pnpm --filter @canopy/api-e2e exec playwright install chromium
           pnpm --filter @canopy/api-e2e exec playwright test --project=integration
+          COORD_URL="$(trim_ws "${DELEGATION_COORDINATOR_URL:-}")"
+          if [ -n "$COORD_URL" ]; then
+            COORD_HEALTH="${COORD_URL%/}/_delegation-coordinator/health"
+            echo "Checking ${COORD_HEALTH}..."
+            BODY="$(curl -sf "${COORD_HEALTH}" || true)"
+            if [ -z "${BODY}" ]; then
+              echo "::error::Coordinator health check failed: no response from ${COORD_HEALTH}"
+              exit 1
+            fi
+            if ! printf '%s' "${BODY}" | grep -q '"status"[[:space:]]*:[[:space:]]*"ok"'; then
+              echo "::error::Coordinator health check failed: ${BODY}"
+              exit 1
+            fi
+            echo "OK: coordinator health status=ok"
+          fi

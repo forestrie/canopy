@@ -1,0 +1,78 @@
+/**
+ * Handler for POST /api/delegations — lookup stored material and return CBOR cert.
+ */
+
+import type { Env } from "../env.js";
+import { checkBearerToken } from "../auth/check-bearer-token.js";
+import { logIdWireBytesToHex32 } from "../log-id.js";
+import type { DelegationIssueRequest } from "../types/delegation-issue-request.js";
+import {
+  forwardToStore,
+  getStoreStubForLogId,
+  internalError,
+  parseCborBody,
+  problemResponse,
+} from "./handler.js";
+
+async function issuerTokenForLog(
+  env: Env,
+  logIdHex32: string,
+): Promise<string | undefined> {
+  const routeResp = await forwardToStore(
+    env,
+    logIdHex32,
+    `/signing-route/${logIdHex32}`,
+    { method: "GET" },
+  );
+  if (!routeResp.ok) return undefined;
+  const route = (await routeResp.json()) as { issuerToken?: string };
+  return route.issuerToken?.trim() || undefined;
+}
+
+export async function handleIssueDelegation(
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  try {
+    const body = await parseCborBody<DelegationIssueRequest>(request);
+    if (body instanceof Response) return body;
+
+    if (!body.logId || !(body.logId instanceof Uint8Array)) {
+      return problemResponse(
+        400,
+        "about:blank",
+        "Invalid request",
+        "logId is required",
+      );
+    }
+
+    let logIdHex32: string;
+    try {
+      logIdHex32 = logIdWireBytesToHex32(body.logId);
+    } catch (error) {
+      return problemResponse(
+        400,
+        "about:blank",
+        "Invalid request",
+        error instanceof Error ? error.message : "Invalid logId",
+      );
+    }
+
+    const issuerToken = await issuerTokenForLog(env, logIdHex32);
+    const authErr = checkBearerToken(
+      request,
+      env.COORDINATOR_APP_TOKEN,
+      issuerToken,
+    );
+    if (authErr) return authErr;
+
+    const stub = getStoreStubForLogId(env, logIdHex32);
+    return stub.fetch("https://do.internal/issue", {
+      method: "POST",
+      headers: { "Content-Type": "application/cbor" },
+      body: await request.clone().arrayBuffer(),
+    });
+  } catch (error) {
+    return internalError(error);
+  }
+}

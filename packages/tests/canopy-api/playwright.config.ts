@@ -83,6 +83,13 @@ export default defineConfig({
       },
     },
     {
+      name: "coordinator",
+      testMatch: ["**/coordinator/**/*.spec.ts"],
+      use: {
+        baseURL,
+      },
+    },
+    {
       // Prod / release: excludes mutating system tests.
       name: "prod",
       testIgnore: [

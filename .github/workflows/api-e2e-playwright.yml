@@ -11,6 +11,11 @@ on:
         description: "Playwright mode (system = integration then system then custodian; prod = prod project)"
         required: true
         type: string
+      require_coordinator_e2e:
+        description: "Fail if coordinator env vars missing and run coordinator Playwright project (dev deploys)"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   api-e2e:
@@ -50,6 +55,8 @@ jobs:
           CUSTODIAN_BOOTSTRAP_APP_TOKEN: ${{ secrets.CUSTODIAN_BOOTSTRAP_APP_TOKEN }}
           # Bootstrap mint e2e: POST /api/forest/{log-id}/genesis (409 OK if exists).
           CURATOR_ADMIN_TOKEN: ${{ secrets.CURATOR_ADMIN_TOKEN }}
+          DELEGATION_COORDINATOR_URL: ${{ vars.DELEGATION_COORDINATOR_URL }}
+          COORDINATOR_APP_TOKEN: ${{ secrets.COORDINATOR_APP_TOKEN }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
@@ -88,4 +95,16 @@ jobs:
             pnpm --filter @canopy/api-e2e exec playwright test \
               --project=custodian \
               --forbid-only
+            COORD_URL="$(trim_ws "${DELEGATION_COORDINATOR_URL:-}")"
+            COORD_TOKEN="$(trim_ws "${COORDINATOR_APP_TOKEN:-}")"
+            if [ -n "$COORD_URL" ] && [ -n "$COORD_TOKEN" ]; then
+              pnpm --filter @canopy/api-e2e exec playwright test \
+                --project=coordinator \
+                --forbid-only
+            elif [ "${{ inputs.require_coordinator_e2e }}" = "true" ]; then
+              echo "::error::Coordinator e2e required but DELEGATION_COORDINATOR_URL or COORDINATOR_APP_TOKEN is unset in GitHub Environment **${{ inputs.environment }}**."
+              exit 1
+            else
+              echo "::warning::Skipping coordinator Playwright project (DELEGATION_COORDINATOR_URL or COORDINATOR_APP_TOKEN unset)."
+            fi
           fi
