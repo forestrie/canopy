@@ -6,9 +6,9 @@
 
 import { checkRequestEnv } from "./env/deployment-env";
 import {
-  createReceiptVerifyKeyResolver,
-  type ReceiptVerifyKeyResolver,
-} from "./env/receipt-verify-key-resolver";
+  createReceiptAuthorityResolver,
+  type ReceiptAuthorityResolver,
+} from "./env/receipt-authority-resolver.js";
 import { problemResponse } from "./cbor-api/cbor-response.js";
 import { handleForestRequest } from "./forest/handle-forest-request.js";
 import { registerGrant, type RegisterGrantEnv } from "./scrapi/register-grant";
@@ -67,6 +67,11 @@ export interface Env {
   X402_DO_SHARD_COUNT?: string;
   /** Base URL of arbor Custodian (no trailing slash). */
   CUSTODIAN_URL?: string;
+  /**
+   * Trust-root read URL (defaults to CUSTODIAN_URL in pilot).
+   * Future BYOK: Univocity trust-root service.
+   */
+  TRUST_ROOT_URL?: string;
   /** Maps to Custodian secret BOOTSTRAP_APP_TOKEN (Wrangler secret). */
   CUSTODIAN_BOOTSTRAP_APP_TOKEN?: string;
   /** Maps to Custodian secret APP_TOKEN; curator/log-key + receipt verification. */
@@ -103,33 +108,37 @@ function buildBootstrapEnvForRegisterGrant(
   };
 }
 
-let receiptVerifyResolverCache:
-  | { signature: string; resolver: ReceiptVerifyKeyResolver }
+let receiptAuthorityResolverCache:
+  | { signature: string; resolver: ReceiptAuthorityResolver }
   | undefined;
 
-function receiptVerifyResolverForEnv(env: Env): ReceiptVerifyKeyResolver {
+function trustRootUrlForEnv(env: Env): string {
+  const explicit = env.TRUST_ROOT_URL?.trim();
+  if (explicit) return explicit;
+  return env.CUSTODIAN_URL?.trim() ?? "";
+}
+
+function receiptAuthorityResolverForEnv(env: Env): ReceiptAuthorityResolver {
   const signature = [
     env.NODE_ENV,
-    env.CUSTODIAN_URL ?? "",
-    env.CUSTODIAN_APP_TOKEN ?? "",
+    trustRootUrlForEnv(env),
     env.FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX ?? "",
   ].join("\0");
   if (
-    !receiptVerifyResolverCache ||
-    receiptVerifyResolverCache.signature !== signature
+    !receiptAuthorityResolverCache ||
+    receiptAuthorityResolverCache.signature !== signature
   ) {
-    receiptVerifyResolverCache = {
+    receiptAuthorityResolverCache = {
       signature,
-      resolver: createReceiptVerifyKeyResolver({
-        custodianBaseUrl: env.CUSTODIAN_URL ?? "",
-        custodianAppToken: env.CUSTODIAN_APP_TOKEN ?? "",
+      resolver: createReceiptAuthorityResolver({
+        trustRootUrl: trustRootUrlForEnv(env),
         nodeEnv: env.NODE_ENV,
         testReceiptVerifyEs256XyHex:
           env.FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX,
       }),
     };
   }
-  return receiptVerifyResolverCache.resolver;
+  return receiptAuthorityResolverCache.resolver;
 }
 
 export default {
@@ -173,7 +182,7 @@ export default {
         return forestResponse;
       }
 
-      const resolveReceiptVerifyKey = receiptVerifyResolverForEnv(env);
+      const resolveReceiptAuthority = receiptAuthorityResolverForEnv(env);
 
       const x402Mode: X402Mode = env.X402_MODE ?? "verify-only";
       const x402FacilitatorUrl = env.X402_FACILITATOR_URL;
@@ -240,7 +249,7 @@ export default {
           const response = await registerGrant(request, {
             queueEnv: queueEnvForSequencing,
             bootstrapEnv: bootstrapEnvForGrant,
-            resolveReceiptVerifyKey,
+            resolveReceiptAuthority,
           });
           const headers = new Headers(response.headers);
           Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
@@ -263,7 +272,7 @@ export default {
             env.QUEUE_SHARD_COUNT,
             undefined,
             inclusionEnv,
-            resolveReceiptVerifyKey,
+            resolveReceiptAuthority,
             env.NODE_ENV,
             segments[1],
             env.R2_GRANTS,

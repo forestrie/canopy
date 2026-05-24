@@ -72,7 +72,7 @@ describe("verifyReceiptInclusionFromParsed + receipt COSE", () => {
       junkProof,
       {
         receiptCoseBytes: receiptBytes,
-        receiptVerifyKey: signerB.publicKey,
+        receiptVerifyKeys: [signerB.publicKey],
       },
     );
     expect(ok).toBe(false);
@@ -91,7 +91,7 @@ describe("verifyReceiptInclusionFromParsed + receipt COSE", () => {
       proof,
       {
         receiptCoseBytes: receiptBytes,
-        receiptVerifyKey: signerA.publicKey,
+        receiptVerifyKeys: [signerA.publicKey],
       },
     );
     expect(ok).toBe(false);

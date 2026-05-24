@@ -54,7 +54,7 @@ import {
   type AuthGrantAuthorizeEnv,
 } from "./auth-grant.js";
 import { isCanopyApiPoolTestMode } from "../env/runtime-mode.js";
-import type { ReceiptVerifyKeyResolver } from "../env/receipt-verify-key-resolver.js";
+import type { ReceiptAuthorityResolver } from "../env/receipt-authority-resolver.js";
 import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
 import { getMaxStatementSize } from "./transparency-configuration";
 import type { InclusionEnv } from "./verify-grant-inclusion.js";
@@ -91,7 +91,7 @@ export async function registerSignedStatement(
   shardCountStr: string,
   enqueueExtras: Parameters<SequencingQueueStub["enqueue"]>[2] | undefined,
   inclusionEnv: InclusionEnv | undefined,
-  resolveReceiptVerifyKey: ReceiptVerifyKeyResolver | undefined,
+  resolveReceiptAuthority: ReceiptAuthorityResolver | undefined,
   nodeEnv: string | undefined,
   bootstrapLogIdSegment: string,
   r2Grants: R2Bucket,
@@ -107,7 +107,7 @@ export async function registerSignedStatement(
     // Resolve Authorization first so missing **Forestrie-Grant** is **401** before genesis/R2 work.
     const authEnv: AuthGrantAuthorizeEnv = {
       inclusionEnv,
-      resolveReceiptVerifyKey,
+      resolveReceiptAuthority,
     };
     const grantResult = getGrantFromRequest(request);
     if (grantResult instanceof Response) return grantResult;
