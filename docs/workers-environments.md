@@ -65,7 +65,7 @@ Deploy **`prod`** after DNS for **`api-<DNS_SUB>.forestrie.dev`** exists (Terraf
 
 | Wrangler env | Worker name (dashboard)           | Route(s)                              | Notes |
 | ------------ | ------------------------------- | ------------------------------------- | ----- |
-| **`dev`**    | **delegation-coordinator-dev**  | **`coordinator.{DNS_SUB}.{DNS_APEX}`** (Wrangler **custom_domains**) | Sharded `DelegationStoreDO`. Local `wrangler dev` on port **8793**. |
+| **`dev`**    | **delegation-coordinator-dev**  | **`coordinator.{DNS_SUB}.{DNS_APEX}`** (Wrangler **custom_domain** route) | Sharded `DelegationStoreDO`. Local `wrangler dev` on port **8793**. |
 | **`prod`**   | **delegation-coordinator-prod** | same pattern (runtime from **`DELEGATION_COORDINATOR_URL`**)         | Cloudflare Custom Domain — no routes on coordinator hostname. |
 
 Secrets (per env): **`COORDINATOR_APP_TOKEN`** (management APIs + issuance auth), **`CUSTODIAN_APP_TOKEN`** (custody-keys orchestration only — coordinator never calls Custodian sign).

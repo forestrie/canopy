@@ -1,6 +1,6 @@
 /**
  * Inject GitHub Environment / deploy-time vars into delegation-coordinator wrangler config.
- * Coordinator hostname: Wrangler custom_domains only (ADR-0002 / Cloudflare best practice).
+ * Coordinator hostname: Wrangler route with custom_domain: true (ADR-0002).
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -125,24 +125,27 @@ function removePropertyWithComma(text, property, openChar, closeChar) {
 }
 
 function insertAfterEnvName(envBlock, insertText) {
-  const re = /(\{\s*\n\s*"name"\s*:\s*"[^"]*",)/;
+  const re = /(\{\s*(?:\/\/[^\n]*\n\s*)?"name"\s*:\s*"[^"]*",)/;
   if (!re.test(envBlock)) fail("Could not find env name for injection.");
   return envBlock.replace(re, `$1${insertText}`);
 }
 
-function setCustomDomains(envBlock, hostname) {
+function setCoordinatorCustomDomain(envBlock, hostname) {
   if (!hostname) fail("DELEGATION_COORDINATOR_URL hostname is required.");
-  envBlock = removePropertyWithComma(envBlock, "routes", "[", "]");
+  envBlock = removePropertyWithComma(envBlock, "custom_domains", "[", "]");
+  const zone = hostname.split(".").slice(-2).join(".");
   const body = `[
         {
-          "domain": "${hostname}",
+          "pattern": "${hostname}/*",
+          "zone_name": "${zone}",
+          "custom_domain": true,
         },
       ]`;
-  const existing = blockForProperty(envBlock, "custom_domains", "[", "]");
+  const existing = blockForProperty(envBlock, "routes", "[", "]");
   if (existing) {
     return replaceRange(envBlock, existing, body);
   }
-  const insert = `\n      "custom_domains": ${body},`;
+  const insert = `\n      "routes": ${body},`;
   return insertAfterEnvName(envBlock, insert);
 }
 
@@ -164,8 +167,8 @@ const coordinatorHost = hostnameFromUrl(process.env.DELEGATION_COORDINATOR_URL);
 if (!coordinatorHost) {
   fail("DELEGATION_COORDINATOR_URL is required for delegation-coordinator deploy.");
 }
-envBlock = setCustomDomains(envBlock, coordinatorHost);
+envBlock = setCoordinatorCustomDomain(envBlock, coordinatorHost);
 
 config = replaceRange(config, target, envBlock);
 writeFileSync(outputPath, config);
-console.log(`Wrote ${outputPath} for env ${envName} (custom_domain ${coordinatorHost})`);
+console.log(`Wrote ${outputPath} for env ${envName} (custom_domain route ${coordinatorHost})`);
