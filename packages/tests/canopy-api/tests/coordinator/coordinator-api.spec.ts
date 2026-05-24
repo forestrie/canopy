@@ -204,9 +204,14 @@ test.describe("delegation-coordinator APIs", () => {
         "Content-Type": "application/cbor",
         Accept: "application/cbor",
       },
-      data: u8,
+      data: Buffer.from(u8),
     });
-    expect(res.ok()).toBeTruthy();
+    if (!res.ok()) {
+      const detail = await res.text();
+      throw new Error(
+        `coordinator issue failed: ${res.status()} ${detail.slice(0, 500)}`,
+      );
+    }
     const issued = decodeCoordinatorDelegationIssue(
       new Uint8Array(await res.body()),
     );
