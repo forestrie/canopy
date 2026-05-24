@@ -6,6 +6,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { encode as encodeCbor } from "cbor-x";
 import { test, expect } from "@playwright/test";
 import {
   assertCoordinatorApiE2eEnv,
@@ -13,7 +14,9 @@ import {
 } from "@e2e-utils/coordinator-api-env.js";
 import {
   bytesToBase64,
+  decodeCoordinatorDelegationIssue,
   generateEphemeralDelegatedPublicKeyCbor,
+  hex32ToWireLogId,
   postCustodianDelegationIssue,
 } from "@e2e-utils/coordinator-delegation-helpers.js";
 import { assertCustodianApiE2eEnv } from "@e2e-utils/custodian-api-env.js";
@@ -177,17 +180,38 @@ test.describe("delegation-coordinator APIs", () => {
     expect(route.mode).toBe("wallet");
   });
 
-  test("POST /api/delegations via custodian — proxy returns stored material", async () => {
-    const proxied = await postCustodianDelegationIssue({
-      custodianBaseUrl: custodianUrl,
-      appToken: custodianToken,
-      logIdHex32: authLogHex32,
+  test("POST /api/delegations — returns stored material", async ({
+    request,
+  }) => {
+    const issueBody = {
+      version: 1,
+      logId: hex32ToWireLogId(authLogHex32),
       mmrStart,
       mmrEnd,
+      algorithm: "ES256",
       delegatedPublicKey,
+      requestedTtlSeconds: 3600,
+    };
+    const encoded = encodeCbor(issueBody);
+    const u8 =
+      encoded instanceof Uint8Array
+        ? encoded
+        : new Uint8Array(encoded as ArrayLike<number>);
+
+    const res = await request.post(`${coordinatorUrl}/api/delegations`, {
+      headers: {
+        Authorization: `Bearer ${coordinatorToken}`,
+        "Content-Type": "application/cbor",
+        Accept: "application/cbor",
+      },
+      data: u8,
     });
-    expect(proxied.certificate.byteLength).toBeGreaterThan(0);
-    expect(proxied.issuedAt).toBe(materialIssuedAt);
-    expect(proxied.expiresAt).toBe(materialExpiresAt);
+    expect(res.ok()).toBeTruthy();
+    const issued = decodeCoordinatorDelegationIssue(
+      new Uint8Array(await res.body()),
+    );
+    expect(issued.certificate.byteLength).toBeGreaterThan(0);
+    expect(issued.issuedAt).toBe(materialIssuedAt);
+    expect(issued.expiresAt).toBe(materialExpiresAt);
   });
 });
