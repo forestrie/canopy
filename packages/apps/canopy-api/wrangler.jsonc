@@ -13,7 +13,7 @@
   // Top-level bindings needed for vitest (@cloudflare/vitest-pool-workers)
   "vars": {
     "CANOPY_ID": "canopy-dev-1",
-    "FOREST_PROJECT_ID": "forest-dev-1",
+    "FOREST_PROJECT_ID": "forest-dev-5",
     "API_VERSION": "v1",
     "NODE_ENV": "dev",
     "QUEUE_SHARD_COUNT": "4",
@@ -27,7 +27,7 @@
     "GRANT_STORAGE_PUBLIC_BASE": "https://grants-dev.forestrie.dev",
     // Plan 0014: public Custodian (Traefik /v1/api → pod /api). Base must end
     // with /v1. Tokens: CUSTODIAN_BOOTSTRAP_APP_TOKEN, CUSTODIAN_APP_TOKEN (secrets).
-    "CUSTODIAN_URL": "https://custodian.dev-1.forestrie.dev/v1",
+    "CUSTODIAN_URL": "https://custodian.a.forest-2.forestrie.dev/v1",
     "ROOT_LOG_ID": "123e4567e89b12d3a456426614174000",
     // "UNIVOCITY_SERVICE_URL": "",
     // "UNIVOCITY_CONTRACT_RPC_URL": "",
@@ -36,7 +36,7 @@
   "r2_buckets": [
     {
       "binding": "R2_MMRS",
-      "bucket_name": "arbor-dev-1-logs",
+      "bucket_name": "forest-dev-5-logs",
     },
     {
       "binding": "R2_GRANTS",
@@ -77,7 +77,7 @@
       ],
       "vars": {
         "CANOPY_ID": "canopy-dev-1",
-        "FOREST_PROJECT_ID": "forest-dev-1",
+        "FOREST_PROJECT_ID": "forest-dev-5",
         "API_VERSION": "v1",
         "NODE_ENV": "dev",
         "QUEUE_SHARD_COUNT": "4",
@@ -89,13 +89,13 @@
         "X402_PRICE_EXACT": "$0.001",
         "X402_PRICE_UPTO_MAX": "$1.00",
         "GRANT_STORAGE_PUBLIC_BASE": "https://grants-dev.forestrie.dev",
-        "CUSTODIAN_URL": "https://custodian.dev-1.forestrie.dev/v1",
+        "CUSTODIAN_URL": "https://custodian.a.forest-2.forestrie.dev/v1",
         "ROOT_LOG_ID": "123e4567e89b12d3a456426614174000",
       },
       "r2_buckets": [
         {
           "binding": "R2_MMRS",
-          "bucket_name": "arbor-dev-1-logs",
+          "bucket_name": "forest-dev-5-logs",
         },
         {
           "binding": "R2_GRANTS",
@@ -107,7 +107,7 @@
           {
             "name": "SEQUENCING_QUEUE",
             "class_name": "SequencingQueue",
-            "script_name": "forestrie-ingress-dev",
+            "script_name": "forestrie-ingress-prod",
           },
           {
             "name": "X402_SETTLEMENT_DO",
