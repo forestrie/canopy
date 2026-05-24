@@ -3,6 +3,7 @@
  */
 
 import type { Env } from "../env.js";
+import { decode } from "cbor-x";
 import { checkBearerToken } from "../auth/check-bearer-token.js";
 import { logIdWireBytesToHex32 } from "../log-id.js";
 import type { DelegationIssueRequest } from "../types/delegation-issue-request.js";
@@ -10,9 +11,10 @@ import {
   forwardToStore,
   getStoreStubForLogId,
   internalError,
-  parseCborBody,
   problemResponse,
 } from "./handler.js";
+
+const CBOR_CONTENT_TYPE = "application/cbor";
 
 async function issuerTokenForLog(
   env: Env,
@@ -34,8 +36,18 @@ export async function handleIssueDelegation(
   env: Env,
 ): Promise<Response> {
   try {
-    const body = await parseCborBody<DelegationIssueRequest>(request);
-    if (body instanceof Response) return body;
+    const contentType = request.headers.get("Content-Type") ?? "";
+    if (!contentType.includes(CBOR_CONTENT_TYPE)) {
+      return problemResponse(
+        415,
+        "about:blank",
+        "Unsupported Media Type",
+        "Content-Type must be application/cbor",
+      );
+    }
+
+    const buffer = await request.arrayBuffer();
+    const body = decode(new Uint8Array(buffer)) as DelegationIssueRequest;
 
     if (!body.logId || !(body.logId instanceof Uint8Array)) {
       return problemResponse(
@@ -70,7 +82,7 @@ export async function handleIssueDelegation(
     return stub.fetch("https://do.internal/issue", {
       method: "POST",
       headers: { "Content-Type": "application/cbor" },
-      body: await request.clone().arrayBuffer(),
+      body: buffer,
     });
   } catch (error) {
     return internalError(error);
