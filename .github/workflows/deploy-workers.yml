@@ -173,6 +173,8 @@ jobs:
       FOREST_PROJECT_ID: ${{ vars.FOREST_PROJECT_ID }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       CUSTODIAN_URL: ${{ vars.CUSTODIAN_URL }}
+      CANOPY_FQDN: ${{ vars.CANOPY_FQDN }}
+      DELEGATION_COORDINATOR_URL: ${{ vars.DELEGATION_COORDINATOR_URL }}
       R2_MMRS_BUCKET_NAME: ${{ vars.R2_MMRS_BUCKET_NAME }}
       SEQUENCING_QUEUE_SCRIPT_NAME: ${{ vars.SEQUENCING_QUEUE_SCRIPT_NAME }}
 
@@ -255,7 +257,7 @@ jobs:
             exit 1
           fi
           printf '%s' "$CURATOR" | wrangler secret put CURATOR_ADMIN_TOKEN --env "$ENV"
-          for key in FOREST_PROJECT_ID CUSTODIAN_URL R2_MMRS_BUCKET_NAME SEQUENCING_QUEUE_SCRIPT_NAME; do
+          for key in FOREST_PROJECT_ID CUSTODIAN_URL R2_MMRS_BUCKET_NAME SEQUENCING_QUEUE_SCRIPT_NAME CANOPY_FQDN; do
             if [ -z "$(trim_ws "${!key:-}")" ]; then
               echo "::error::${key} is required in GitHub Environment ${ENV}."
               exit 1
@@ -286,7 +288,7 @@ jobs:
             exit 1
           fi
           printf '%s' "$CUST" | wrangler secret put CUSTODIAN_APP_TOKEN --env "$ENV"
-          for key in CUSTODIAN_URL; do
+          for key in CUSTODIAN_URL DELEGATION_COORDINATOR_URL; do
             if [ -z "$(trim_ws "${!key:-}")" ]; then
               echo "::error::${key} is required in GitHub Environment ${ENV}."
               exit 1

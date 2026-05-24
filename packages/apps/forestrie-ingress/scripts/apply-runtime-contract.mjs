@@ -1,3 +1,6 @@
+/**
+ * Inject per-project forestrie-ingress Worker name and host-scoped route (ARC-0001).
+ */
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -15,7 +18,7 @@ for (let i = 2; i < process.argv.length; i += 1) {
   }
 }
 
-const envName = args.get("env") ?? process.env.DEPLOY_ENV ?? "dev";
+const envName = args.get("env") ?? process.env.DEPLOY_ENV ?? "prod";
 const inputPath = resolve(args.get("input") ?? "wrangler.jsonc");
 const outputPath = resolve(args.get("out") ?? ".wrangler.runtime.jsonc");
 
@@ -44,11 +47,8 @@ function findMatching(text, openIndex, openChar, closeChar) {
       continue;
     }
     if (inString) {
-      if (c === "\\") {
-        i += 1;
-      } else if (c === '"') {
-        inString = false;
-      }
+      if (c === "\\") i += 1;
+      else if (c === '"') inString = false;
       continue;
     }
     if (c === "/" && n === "/") {
@@ -74,14 +74,7 @@ function findMatching(text, openIndex, openChar, closeChar) {
   return -1;
 }
 
-function blockForProperty(
-  text,
-  property,
-  openChar,
-  closeChar,
-  start = 0,
-  end = text.length,
-) {
+function blockForProperty(text, property, openChar, closeChar, start = 0, end = text.length) {
   const prop = `"${property}"`;
   const idx = text.indexOf(prop, start);
   if (idx < 0 || idx > end) return null;
@@ -123,23 +116,6 @@ function hostnameFromFqdnOrUrl(value) {
   return trimmed.replace(/^https?:\/\//, "").split("/")[0];
 }
 
-function removePropertyWithComma(text, property, openChar, closeChar) {
-  const prop = `"${property}"`;
-  const idx = text.indexOf(prop);
-  if (idx < 0) return text;
-  const open = text.indexOf(openChar, idx + prop.length);
-  if (open < 0) return text;
-  const close = findMatching(text, open, openChar, closeChar);
-  if (close < 0) return text;
-  let start = idx;
-  while (start > 0 && /[\s]/.test(text[start - 1])) start -= 1;
-  if (start > 0 && text[start - 1] === ",") start -= 1;
-  let end = close + 1;
-  while (end < text.length && /[\s]/.test(text[end])) end += 1;
-  if (text[end] === ",") end += 1;
-  return text.slice(0, start) + text.slice(end);
-}
-
 function insertAfterEnvName(envBlock, insertText) {
   const re = /(\{\s*\n\s*"name"\s*:\s*"[^"]*",)/;
   if (!re.test(envBlock)) fail("Could not find env name for injection.");
@@ -151,7 +127,7 @@ function setRoutes(envBlock, fqdn) {
   const zone = zoneFromFqdn(fqdn);
   const routesBody = `[
         {
-          "pattern": "${fqdn}/*",
+          "pattern": "${fqdn}/canopy/ingress-queue/*",
           "zone_name": "${zone}",
         },
       ]`;
@@ -163,75 +139,46 @@ function setRoutes(envBlock, fqdn) {
   return insertAfterEnvName(envBlock, insert);
 }
 
-function setR2BucketName(envBlock, bindingName, bucketName) {
-  if (!bucketName) return envBlock;
-  const re = new RegExp(
-    `("binding"\\s*:\\s*"${bindingName}"[\\s\\S]*?"bucket_name"\\s*:\\s*)"[^"]*"`,
-  );
-  return envBlock.replace(re, `$1"${bucketName}"`);
-}
-
-function setDurableObjectScript(envBlock, bindingName, scriptName) {
+function setWorkerName(envBlock, scriptName) {
   if (!scriptName) return envBlock;
-  const re = new RegExp(
-    `("name"\\s*:\\s*"${bindingName}"[\\s\\S]*?"script_name"\\s*:\\s*)"[^"]*"`,
-  );
-  if (re.test(envBlock)) return envBlock.replace(re, `$1"${scriptName}"`);
-  const classRe = new RegExp(
-    `("name"\\s*:\\s*"${bindingName}"[\\s\\S]*?"class_name"\\s*:\\s*"[^"]*")`,
-  );
-  return envBlock.replace(
-    classRe,
-    `$1,\n            "script_name": "${scriptName}"`,
-  );
+  const re = /(\{\s*\n\s*"name"\s*:\s*)"[^"]*"/;
+  if (!re.test(envBlock)) fail("Could not find env name for script rename.");
+  return envBlock.replace(re, `$1"${scriptName}"`);
 }
 
 let config = readFileSync(inputPath, "utf8");
 const envs = blockForProperty(config, "env", "{", "}");
 if (!envs) fail("Could not find top-level env block in wrangler config.");
-const target = blockForProperty(
-  config,
-  envName,
-  "{",
-  "}",
-  envs.start,
-  envs.end,
-);
+const target = blockForProperty(config, envName, "{", "}", envs.start, envs.end);
 if (!target) fail(`Could not find env.${envName} block in wrangler config.`);
 
 let envBlock = target.text;
-const vars = blockForProperty(envBlock, "vars", "{", "}");
-if (!vars) fail(`Could not find env.${envName}.vars block in wrangler config.`);
 
-let varsBlock = vars.text;
-varsBlock = setStringProperty(
-  varsBlock,
-  "FOREST_PROJECT_ID",
-  process.env.FOREST_PROJECT_ID,
-);
-varsBlock = setStringProperty(
-  varsBlock,
-  "CUSTODIAN_URL",
-  process.env.CUSTODIAN_URL,
-);
-envBlock = replaceRange(envBlock, vars, varsBlock);
-envBlock = setR2BucketName(
-  envBlock,
-  "R2_MMRS",
-  process.env.R2_MMRS_BUCKET_NAME,
-);
-envBlock = setDurableObjectScript(
-  envBlock,
-  "SEQUENCING_QUEUE",
-  process.env.SEQUENCING_QUEUE_SCRIPT_NAME,
-);
-
-const canopyFqdn = hostnameFromFqdnOrUrl(process.env.CANOPY_FQDN);
-if (!canopyFqdn) {
-  fail("CANOPY_FQDN is required for canopy-api deploy runtime config.");
+const scriptName = process.env.SEQUENCING_QUEUE_SCRIPT_NAME?.trim();
+if (!scriptName) {
+  fail("SEQUENCING_QUEUE_SCRIPT_NAME is required for forestrie-ingress deploy.");
 }
-envBlock = setRoutes(envBlock, canopyFqdn);
+envBlock = setWorkerName(envBlock, scriptName);
+
+const vars = blockForProperty(envBlock, "vars", "{", "}");
+if (vars) {
+  let varsBlock = vars.text;
+  varsBlock = setStringProperty(
+    varsBlock,
+    "FOREST_PROJECT_ID",
+    process.env.FOREST_PROJECT_ID,
+  );
+  envBlock = replaceRange(envBlock, vars, varsBlock);
+}
+
+const edgeFqdn = hostnameFromFqdnOrUrl(process.env.CANOPY_FQDN);
+if (!edgeFqdn) {
+  fail("CANOPY_FQDN is required for forestrie-ingress deploy runtime config.");
+}
+envBlock = setRoutes(envBlock, edgeFqdn);
 
 config = replaceRange(config, target, envBlock);
 writeFileSync(outputPath, config);
-console.log(`Wrote ${outputPath} for env ${envName} (routes on ${canopyFqdn})`);
+console.log(
+  `Wrote ${outputPath} for env ${envName} (${scriptName} route on ${edgeFqdn}/canopy/ingress-queue/*)`,
+);

@@ -69,12 +69,6 @@
   "env": {
     "dev": {
       "name": "canopy-api-dev",
-      "routes": [
-        {
-          "pattern": "api-dev.forestrie.dev/*",
-          "zone_name": "forestrie.dev",
-        },
-      ],
       "vars": {
         "CANOPY_ID": "canopy-dev-1",
         "FOREST_PROJECT_ID": "forest-dev-5",
@@ -128,12 +122,6 @@
     },
     "prod": {
       "name": "canopy-api-prod",
-      "routes": [
-        {
-          "pattern": "api.forestrie.dev/*",
-          "zone_name": "forestrie.dev",
-        },
-      ],
       "vars": {
         "CANOPY_ID": "canopy-prod-1",
         "FOREST_PROJECT_ID": "forest-prod-1",
