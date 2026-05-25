@@ -12,7 +12,7 @@ Deliver Delegation Coordinator Phase 3 **management APIs** (no frontend) on a ne
 
 ## Scope
 
-- **`delegation-coordinator`** Worker at `coordinator-dev.forestrie.dev` (prod: `coordinator.forestrie.dev`)
+- **`delegation-coordinator`** Worker at `coordinator.{DNS_SUB}.{DNS_APEX}` (catalog; prod: `coordinator.{DNS_APEX}` when bound)
 - Sharded **`DelegationStoreDO`** (`shard-0` … `shard-{N-1}`) via `@canopy/forestrie-sharding`
 - Phase 3 APIs: signing-route, material submit, pending list, custody-keys orchestration
 - Custodian **`DELEGATION_COORDINATOR_URL`** proxy on local-key miss and wallet-managed logs
@@ -23,11 +23,11 @@ Deliver Delegation Coordinator Phase 3 **management APIs** (no frontend) on a ne
 - Univocity trust-root adapter
 - Zero-Custodian receipt verify for BYOK logs
 - Wallet frontend
-- Per-project Worker cutover (ARC-0001 deferred; v1 shared dev script OK)
+- Per-project Worker cutover (ARC-0001) — pilot on forest-dev-5; see [forest-1 plan-0001](../../forest-1/docs/plans/plan-0001-dns-catalog-rollout-completion.md)
 
 ## Acceptance criteria
 
-- [ ] `delegation-coordinator-dev` deployed at `coordinator-dev.forestrie.dev`
+- [x] `delegation-coordinator-dev` deployed at catalog `coordinator.{DNS_SUB}.{DNS_APEX}`
 - [ ] Phase 3 four APIs with DO persistence and `COORDINATOR_APP_TOKEN` auth
 - [ ] Custodian proxies to coordinator on local-key miss and wallet-managed logs
 - [ ] Coordinator never calls Custodian sign endpoints

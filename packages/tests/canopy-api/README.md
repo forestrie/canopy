@@ -59,7 +59,7 @@ Resolved in **`playwright.config.ts`** from **repo-root `.env`** (after `task va
 
 **Worker origin** (one of):
 
-- **`CANOPY_BASE_URL`** — full origin, e.g. `https://api-dev.example.com` (no trailing slash), or
+- **`CANOPY_BASE_URL`** — full origin, e.g. `https://api-forest-2.forestrie.dev` or catalog `https://api-{DNS_SUB}.{DNS_APEX}` (no trailing slash), or
 - **`CANOPY_FQDN`** — host or URL; Playwright builds `https://{host}` the same way as `.github/workflows/test.yml` (Doppler `dev` often supplies only `CANOPY_FQDN`).
 
 **System / bootstrap e2e** (`tests/system/*.spec.ts`):
