@@ -48,9 +48,13 @@ Forest bootstrap publishes and verifies the contract per lane; see **forest-1**
 4. Set **Deployment environment** to **dev**.
 5. Run the workflow.
 
-That deploys **canopy-api-dev** from your branch so that api-dev.forestrie.dev and the perf test use the branch code.
+That deploys **canopy-api-dev** from your branch to the catalog **`CANOPY_FQDN`**
+(e.g. `api-forest-2.forestrie.dev` when **`DNS_SUB=forest-2`**) and the perf test
+uses the branch code.
 
-If you deploy from the repo root with `task wrangler:deploy:canopy-api` **without** `ENV=dev`, you deploy the **canopy-api** (default) worker, which is **not** the one serving api-dev.forestrie.dev.
+If you deploy from the repo root with `task wrangler:deploy:canopy-api` **without**
+`ENV=dev`, you deploy the **canopy-api** (default) worker, which is **not** the one
+serving the dev lane catalog hostname.
 
 ## forestrie-ingress (ledger HTTP queue API)
 
@@ -70,6 +74,13 @@ Deploy **`prod`** after DNS for **`api-<DNS_SUB>.forestrie.dev`** exists (Terraf
 
 Secrets (per env): **`COORDINATOR_APP_TOKEN`** (management APIs + issuance auth), **`CUSTODIAN_APP_TOKEN`** (custody-keys orchestration only — coordinator never calls Custodian sign).
 
-Forest bootstrap publishes **`DELEGATION_COORDINATOR_URL`** into the Canopy consumer contract (`canopy-dev` / `canopy-prod` Doppler configs) and syncs it to GitHub Environment **`dev`** / **`prod`**. Custodian uses the same URL (arbor-flux `DELEGATION_COORDINATOR_URL`) to proxy wallet-managed logs and local-key misses.
+Forest bootstrap publishes **`DELEGATION_COORDINATOR_URL`** into the Canopy consumer
+contract (`canopy_dev` / `canopy_prod` Doppler configs on the forest project) and
+syncs it to GitHub Environment **`dev`** / **`prod`**. Custodian uses the same URL
+(arbor-flux `DELEGATION_COORDINATOR_URL`) to proxy wallet-managed logs and local-key
+misses.
+
+Legacy lane globals **`api-dev`** / **`coordinator-dev`** are retired — use catalog
+FQDNs from **forest-1** [ADR-0002](../../forest-1/docs/adr-0002-dns-catalog-provisioning.md).
 
 **Ops runbook:** [plan-0022](plans/plan-0022-delegation-coordinator-ops-parity.md), [forest-1 bootstrap-canopy-contract](../../forest-1/docs/bootstrap-canopy-contract.md) (coordinator token + deploy tasks).

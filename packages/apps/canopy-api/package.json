@@ -34,6 +34,6 @@
     "@types/uuid": "^10.0.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4",
-    "wrangler": "^4.43.0"
+    "wrangler": "^4.94.0"
   }
 }

@@ -112,7 +112,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Wrangler
-        run: pnpm add -g wrangler
+        run: pnpm add -g wrangler@^4.94.0
 
       - name: Authenticate Wrangler
         run: |
@@ -197,7 +197,7 @@ jobs:
         run: pnpm install
 
       - name: Install Wrangler
-        run: pnpm add -g wrangler
+        run: pnpm add -g wrangler@^4.94.0
 
       - name: Authenticate Wrangler
         run: yes n | wrangler whoami

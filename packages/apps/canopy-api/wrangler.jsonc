@@ -101,8 +101,8 @@
           {
             "name": "SEQUENCING_QUEUE",
             "class_name": "SequencingQueue",
-            // Shared edge ingress (not forestrie-ingress-dev). See docs/workers-environments.md.
-            "script_name": "forestrie-ingress-prod",
+            // Per-project ingress (runtime: SEQUENCING_QUEUE_SCRIPT_NAME from contract).
+            "script_name": "forestrie-ingress-forest-2",
           },
           {
             "name": "X402_SETTLEMENT_DO",

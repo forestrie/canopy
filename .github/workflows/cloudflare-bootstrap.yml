@@ -52,7 +52,7 @@ jobs:
         run: pnpm install
 
       - name: Install Wrangler
-        run: pnpm add -g wrangler
+        run: pnpm add -g wrangler@^4.94.0
 
       - name: Authenticate Wrangler
         env:
