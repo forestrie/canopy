@@ -75,7 +75,14 @@ function findMatching(text, openIndex, openChar, closeChar) {
   return -1;
 }
 
-function blockForProperty(text, property, openChar, closeChar, start = 0, end = text.length) {
+function blockForProperty(
+  text,
+  property,
+  openChar,
+  closeChar,
+  start = 0,
+  end = text.length,
+) {
   const prop = `"${property}"`;
   const idx = text.indexOf(prop, start);
   if (idx < 0 || idx > end) return null;
@@ -152,7 +159,14 @@ function setCoordinatorCustomDomain(envBlock, hostname) {
 let config = readFileSync(inputPath, "utf8");
 const envs = blockForProperty(config, "env", "{", "}");
 if (!envs) fail("Could not find top-level env block in wrangler config.");
-const target = blockForProperty(config, envName, "{", "}", envs.start, envs.end);
+const target = blockForProperty(
+  config,
+  envName,
+  "{",
+  "}",
+  envs.start,
+  envs.end,
+);
 if (!target) fail(`Could not find env.${envName} block in wrangler config.`);
 
 let envBlock = target.text;
@@ -160,15 +174,23 @@ const vars = blockForProperty(envBlock, "vars", "{", "}");
 if (!vars) fail(`Could not find env.${envName}.vars block in wrangler config.`);
 
 let varsBlock = vars.text;
-varsBlock = setStringProperty(varsBlock, "CUSTODIAN_URL", process.env.CUSTODIAN_URL);
+varsBlock = setStringProperty(
+  varsBlock,
+  "CUSTODIAN_URL",
+  process.env.CUSTODIAN_URL,
+);
 envBlock = replaceRange(envBlock, vars, varsBlock);
 
 const coordinatorHost = hostnameFromUrl(process.env.DELEGATION_COORDINATOR_URL);
 if (!coordinatorHost) {
-  fail("DELEGATION_COORDINATOR_URL is required for delegation-coordinator deploy.");
+  fail(
+    "DELEGATION_COORDINATOR_URL is required for delegation-coordinator deploy.",
+  );
 }
 envBlock = setCoordinatorCustomDomain(envBlock, coordinatorHost);
 
 config = replaceRange(config, target, envBlock);
 writeFileSync(outputPath, config);
-console.log(`Wrote ${outputPath} for env ${envName} (custom_domain route ${coordinatorHost})`);
+console.log(
+  `Wrote ${outputPath} for env ${envName} (custom_domain route ${coordinatorHost})`,
+);

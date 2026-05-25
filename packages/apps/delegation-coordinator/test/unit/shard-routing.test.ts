@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { shardIndexForLog, shardNameForIndex } from "@canopy/forestrie-sharding";
+import {
+  shardIndexForLog,
+  shardNameForIndex,
+} from "@canopy/forestrie-sharding";
 import { hex32ToCanonicalUuid } from "../../src/log-id.js";
 
 describe("shard routing for coordinator logs", () => {

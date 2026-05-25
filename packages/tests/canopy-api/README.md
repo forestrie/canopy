@@ -105,17 +105,17 @@ Or set **`COORDINATOR_APP_TOKEN`** manually in Doppler **`canopy/dev`** (masked)
 
 ## Test layout (by file)
 
-| File                                        | Area                                                                                                                 |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `integration/api.spec.ts`                   | Cross-cutting HTTP (e.g. CORS OPTIONS).                                                                              |
-| `integration/observability.spec.ts`         | `/api/health`, `/.well-known/scitt-configuration`.                                                                   |
-| `system/grants-bootstrap.spec.ts`           | Bootstrap mint + register-grant (Custodian-profile Forestrie-Grant).                                                 |
-| `system/bootstrap-log-first-entry.spec.ts`  | `POST /register/{bootstrap}/entries` with completed bootstrap grant; rejects wrong signer (`403` `signer_mismatch`). |
-| `system/bootstrap-child-auth-grant.spec.ts` | Root bootstrap + custody-key child auth grant; 303 Location under `/logs/{root}/{root}/entries/…`.                   |
-| `system/auth-data-log-chain.spec.ts`        | Root → child auth log → data log delegation chain (delegated `grantData`).                                           |
-| `custodian/custodian-api.spec.ts`           | Direct **`fetch`** to deployed Custodian: ops + **`/v1/api/…`** key routes. Does not use `:bootstrap` key paths.     |
-| `coordinator/coordinator-api.spec.ts`       | Phase 3 coordinator APIs + custodian **`POST /api/delegations`** proxy (stored material).                            |
-| `system/coordinator-delegation-issuance.spec.ts` | Opt-in stretch (`E2E_COORDINATOR_SEALER_STRETCH=1`); skipped in default CI.                                    |
+| File                                             | Area                                                                                                                 |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `integration/api.spec.ts`                        | Cross-cutting HTTP (e.g. CORS OPTIONS).                                                                              |
+| `integration/observability.spec.ts`              | `/api/health`, `/.well-known/scitt-configuration`.                                                                   |
+| `system/grants-bootstrap.spec.ts`                | Bootstrap mint + register-grant (Custodian-profile Forestrie-Grant).                                                 |
+| `system/bootstrap-log-first-entry.spec.ts`       | `POST /register/{bootstrap}/entries` with completed bootstrap grant; rejects wrong signer (`403` `signer_mismatch`). |
+| `system/bootstrap-child-auth-grant.spec.ts`      | Root bootstrap + custody-key child auth grant; 303 Location under `/logs/{root}/{root}/entries/…`.                   |
+| `system/auth-data-log-chain.spec.ts`             | Root → child auth log → data log delegation chain (delegated `grantData`).                                           |
+| `custodian/custodian-api.spec.ts`                | Direct **`fetch`** to deployed Custodian: ops + **`/v1/api/…`** key routes. Does not use `:bootstrap` key paths.     |
+| `coordinator/coordinator-api.spec.ts`            | Phase 3 coordinator APIs + custodian **`POST /api/delegations`** proxy (stored material).                            |
+| `system/coordinator-delegation-issuance.spec.ts` | Opt-in stretch (`E2E_COORDINATOR_SEALER_STRETCH=1`); skipped in default CI.                                          |
 
 - Shared e2e utils: `e2e-env-guards.ts`, `e2e-grant-flags.ts`, `register-grant-through-receipt.ts`, `post-entries-e2e.ts`, `custodian-sign-payload.ts`, `custodian-api-*.ts`, `problem-details.ts`, `bootstrap-grant-flow.ts`, etc.
 - Worker unit/integration tests: `packages/apps/canopy-api/test`.

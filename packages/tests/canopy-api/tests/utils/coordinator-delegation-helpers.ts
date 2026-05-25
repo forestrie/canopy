@@ -103,11 +103,7 @@ export async function postCustodianDelegationIssue(opts: {
   if (cert instanceof Uint8Array) {
     certificate = cert;
   } else if (ArrayBuffer.isView(cert)) {
-    certificate = new Uint8Array(
-      cert.buffer,
-      cert.byteOffset,
-      cert.byteLength,
-    );
+    certificate = new Uint8Array(cert.buffer, cert.byteOffset, cert.byteLength);
   } else {
     throw new Error("Custodian delegation issue: missing certificate");
   }

@@ -6,11 +6,7 @@ import type { Env } from "../env.js";
 import { checkBearerToken } from "../auth/check-bearer-token.js";
 import { normalizeLogIdToHex32 } from "../log-id.js";
 import type { SubmitMaterialRequest } from "../types/submit-material-request.js";
-import {
-  forwardToStore,
-  internalError,
-  problemResponse,
-} from "./handler.js";
+import { forwardToStore, internalError, problemResponse } from "./handler.js";
 
 export async function handlePostMaterial(
   request: Request,

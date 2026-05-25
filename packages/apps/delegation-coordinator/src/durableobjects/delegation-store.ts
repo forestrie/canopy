@@ -128,10 +128,12 @@ export class DelegationStoreDO extends DurableObject<Env> {
   }
 
   private handleGetSigningRoute(logIdHex32: string): Response {
-    const rows = [...this.ctx.storage.sql.exec(
-      `SELECT mode, inherits_from, issuer_token FROM signing_routes WHERE log_id_hex32 = ?`,
-      logIdHex32,
-    )];
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT mode, inherits_from, issuer_token FROM signing_routes WHERE log_id_hex32 = ?`,
+        logIdHex32,
+      ),
+    ];
 
     if (rows.length === 0) {
       return Response.json(
@@ -237,13 +239,15 @@ export class DelegationStoreDO extends DurableObject<Env> {
       req.delegatedPublicKey,
     );
 
-    const rows = [...this.ctx.storage.sql.exec(
-      `SELECT certificate, issued_at, expires_at
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT certificate, issued_at, expires_at
        FROM materials
        WHERE log_id_hex32 = ? AND material_key = ?`,
-      logIdHex32,
-      key,
-    )];
+        logIdHex32,
+        key,
+      ),
+    ];
 
     if (rows.length === 0) {
       const pubkeyHash = await sha256Hex(req.delegatedPublicKey);
@@ -317,21 +321,26 @@ export class DelegationStoreDO extends DurableObject<Env> {
       );
     }
 
-    const offset = Math.max(0, parseInt(url.searchParams.get("offset") ?? "0", 10));
+    const offset = Math.max(
+      0,
+      parseInt(url.searchParams.get("offset") ?? "0", 10),
+    );
     const limitRaw = parseInt(url.searchParams.get("limit") ?? "100", 10);
     const limit = Math.min(Math.max(1, limitRaw), 500);
 
-    const rows = [...this.ctx.storage.sql.exec(
-      `SELECT id, auth_log_id_hex32, log_id_hex32, mmr_start, mmr_end,
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT id, auth_log_id_hex32, log_id_hex32, mmr_start, mmr_end,
               delegated_pubkey_hash, requested_at
        FROM pending
        WHERE auth_log_id_hex32 = ?
        ORDER BY requested_at DESC
        LIMIT ? OFFSET ?`,
-      authLogId,
-      limit,
-      offset,
-    )];
+        authLogId,
+        limit,
+        offset,
+      ),
+    ];
 
     const entries: PendingEntry[] = rows.map((row) => {
       const r = row as {
@@ -388,12 +397,14 @@ export class DelegationStoreDO extends DurableObject<Env> {
     materialKey: string,
   ): MaterialRecord | null {
     this.ensureSchema();
-    const rows = [...this.ctx.storage.sql.exec(
-      `SELECT certificate, issued_at, expires_at
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT certificate, issued_at, expires_at
        FROM materials WHERE log_id_hex32 = ? AND material_key = ?`,
-      logIdHex32,
-      materialKey,
-    )];
+        logIdHex32,
+        materialKey,
+      ),
+    ];
     if (rows.length === 0) return null;
     const row = rows[0] as {
       certificate: ArrayBuffer;

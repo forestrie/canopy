@@ -4,10 +4,7 @@
 
 import { decode, encode } from "cbor-x";
 import type { Env } from "../env.js";
-import {
-  hex32ToCanonicalUuid,
-  normalizeLogIdToHex32,
-} from "../log-id.js";
+import { hex32ToCanonicalUuid, normalizeLogIdToHex32 } from "../log-id.js";
 import {
   shardIndexForLog,
   shardNameForIndex,

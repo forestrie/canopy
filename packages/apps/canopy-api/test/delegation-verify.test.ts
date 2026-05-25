@@ -12,7 +12,9 @@ import {
 describe("extractDelegationCertBytes", () => {
   it("returns cert bytes from unprotected header label 1000", () => {
     const cert = new Uint8Array([1, 2, 3, 4]);
-    const unprotected = new Map<number, unknown>([[DELEGATION_CERT_LABEL, cert]]);
+    const unprotected = new Map<number, unknown>([
+      [DELEGATION_CERT_LABEL, cert],
+    ]);
     expect(extractDelegationCertBytes(unprotected)).toEqual(cert);
   });
 

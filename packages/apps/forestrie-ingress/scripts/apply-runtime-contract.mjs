@@ -74,7 +74,14 @@ function findMatching(text, openIndex, openChar, closeChar) {
   return -1;
 }
 
-function blockForProperty(text, property, openChar, closeChar, start = 0, end = text.length) {
+function blockForProperty(
+  text,
+  property,
+  openChar,
+  closeChar,
+  start = 0,
+  end = text.length,
+) {
   const prop = `"${property}"`;
   const idx = text.indexOf(prop, start);
   if (idx < 0 || idx > end) return null;
@@ -146,21 +153,31 @@ function setRoutes(envBlock, fqdn) {
 function setWorkerName(envBlock, scriptName) {
   if (!scriptName) return envBlock;
   const re = envWorkerNamePattern();
-  if (!re.test(envBlock)) fail("Could not find env worker name for script rename.");
+  if (!re.test(envBlock))
+    fail("Could not find env worker name for script rename.");
   return envBlock.replace(re, `$1"${scriptName}"`);
 }
 
 let config = readFileSync(inputPath, "utf8");
 const envs = blockForProperty(config, "env", "{", "}");
 if (!envs) fail("Could not find top-level env block in wrangler config.");
-const target = blockForProperty(config, envName, "{", "}", envs.start, envs.end);
+const target = blockForProperty(
+  config,
+  envName,
+  "{",
+  "}",
+  envs.start,
+  envs.end,
+);
 if (!target) fail(`Could not find env.${envName} block in wrangler config.`);
 
 let envBlock = target.text;
 
 const scriptName = process.env.SEQUENCING_QUEUE_SCRIPT_NAME?.trim();
 if (!scriptName) {
-  fail("SEQUENCING_QUEUE_SCRIPT_NAME is required for forestrie-ingress deploy.");
+  fail(
+    "SEQUENCING_QUEUE_SCRIPT_NAME is required for forestrie-ingress deploy.",
+  );
 }
 envBlock = setWorkerName(envBlock, scriptName);
 

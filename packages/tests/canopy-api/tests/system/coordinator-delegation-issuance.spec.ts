@@ -86,16 +86,13 @@ test.describe("coordinator delegation issuance (stretch)", () => {
     );
     expect(materialRes.ok()).toBeTruthy();
 
-    await request.post(
-      `${coordinatorUrl}/api/logs/${logUuid}/signing-route`,
-      {
-        headers: {
-          Authorization: `Bearer ${coordinatorToken}`,
-          "Content-Type": "application/json",
-        },
-        data: { mode: "wallet" },
+    await request.post(`${coordinatorUrl}/api/logs/${logUuid}/signing-route`, {
+      headers: {
+        Authorization: `Bearer ${coordinatorToken}`,
+        "Content-Type": "application/json",
       },
-    );
+      data: { mode: "wallet" },
+    });
 
     const proxied = await postCustodianDelegationIssue({
       custodianBaseUrl: custodianUrl,
