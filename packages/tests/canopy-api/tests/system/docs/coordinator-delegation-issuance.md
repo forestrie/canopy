@@ -101,15 +101,31 @@ key and force the local signing path instead of the proxy.
 | Gap                                                                | Future work                                                                                                                                   |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | SCRAPI register-grant with non-Custodian grant signer              | [arbor plan-0003](../../../../../../arbor/docs/plan-0003-non-custodial-checkpoint-support.md)                                                 |
-| Sealer consumes coordinator `public-root` on deployed stack        | [arbor plan-0005](../../../../../../arbor/docs/plan-0005-sealer-trust-root-end-to-end.md)                                                     |
-| Canopy receipt verify against non-Custodian root in Playwright     | plan-0003 receipt-authority phase; [arbor plan-0004](../../../../../../arbor/docs/plan-0004-coordinator-backed-byok-lease-proof.md) follow-up |
-| Full checkpoint seal (Ranger + Sealer + MMRS) with BYOK delegation | plan-0005                                                                                                                                     |
+| Sealer lease verify via coordinator `public-root` on deployed stack | **Done** — arbor `TestRequestLogDelegationLease_BYOKCoordinatorStretch` (same env as this spec) |
+| Canopy receipt verify against non-Custodian root in Playwright     | plan-0003 receipt-authority phase; suggested canopy plan-0024 |
+| Full checkpoint seal (Ranger + Sealer + MMRS) with BYOK delegation | Next arbor plan (plan-0003 north-star) |
 
 Coordinator `GET …/public-root` is covered by
 [`coordinator-byok-public-root.spec.ts`](../../coordinator/coordinator-byok-public-root.spec.ts)
 ([canopy plan-0023](../../../../../../docs/plans/plan-0023-coordinator-public-root.md)).
 
 ---
+
+## Sealer lease verify (Go)
+
+After sealer rollout with `TRUST_ROOT_URL` pointing at the coordinator, the same
+BYOK setup (public-root + material + custodian proxy issue) can be exercised from
+arbor without Playwright:
+
+```bash
+cd arbor/services/sealer/src
+E2E_COORDINATOR_SEALER_STRETCH=1 \
+  TRUST_ROOT_URL=https://coordinator.forest-2.forestrie.dev \
+  TRUST_ROOT_TOKEN=<COORDINATOR_APP_TOKEN> \
+  DELEGATION_ISSUER_URL=<custodian /v1 base> \
+  DELEGATION_ISSUER_TOKEN=<CUSTODIAN_APP_TOKEN> \
+  go test -race -v ./... -run 'BYOKCoordinatorStretch'
+```
 
 ## How to run
 
