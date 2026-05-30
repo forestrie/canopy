@@ -15,10 +15,7 @@ import {
   exportEs256RootXy,
   verifyByokDelegationCertificate,
 } from "./coordinator-delegation-helpers.js";
-import {
-  sequencingBackoff,
-  sleepMs,
-} from "./arithmetic-backoff-poll.js";
+import { sequencingBackoff, sleepMs } from "./arithmetic-backoff-poll.js";
 import { bytesToForestrieGrantBase64 } from "./bootstrap-grant-flow.js";
 
 const RECEIPT_LOCATION_RE =
@@ -350,10 +347,7 @@ async function pollByokResolveReceiptUntil200(opts: {
   );
 }
 
-function formatByokPollTimeout(
-  message: string,
-  stats?: ByokPollStats,
-): Error {
+function formatByokPollTimeout(message: string, stats?: ByokPollStats): Error {
   const pending = stats?.pendingEntriesSeen ?? 0;
   const signed = stats?.materialSigned ?? 0;
   let hint =

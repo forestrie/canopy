@@ -76,13 +76,16 @@ function normalizeIntKeyedMap(raw: unknown): Map<number, unknown> {
   throw new ByokMaterialValidationError("delegated COSE_Key is not a map");
 }
 
-function parseDelegatedCoseKeyFromPayload(
-  raw: unknown,
-): { x: Uint8Array; y: Uint8Array } {
+function parseDelegatedCoseKeyFromPayload(raw: unknown): {
+  x: Uint8Array;
+  y: Uint8Array;
+} {
   const m = normalizeIntKeyedMap(raw);
   const kty = Number(m.get(COSE_KTY));
   if (kty !== COSE_KTY_EC2) {
-    throw new ByokMaterialValidationError("delegated public key: expected kty EC2");
+    throw new ByokMaterialValidationError(
+      "delegated public key: expected kty EC2",
+    );
   }
   const crv = Number(m.get(COSE_CRV));
   if (crv !== COSE_CRV_P256) {
@@ -108,7 +111,10 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return true;
 }
 
-async function importEs256PublicKey(x: Uint8Array, y: Uint8Array): Promise<CryptoKey> {
+async function importEs256PublicKey(
+  x: Uint8Array,
+  y: Uint8Array,
+): Promise<CryptoKey> {
   const raw = new Uint8Array(65);
   raw[0] = 0x04;
   raw.set(x, 1);
@@ -189,10 +195,7 @@ export async function validateByokDelegationMaterial(opts: {
   const submitted = parseDelegatedCoseKeyFromPayload(
     decode(opts.delegatedPublicKey),
   );
-  if (
-    !bytesEqual(x, submitted.x) ||
-    !bytesEqual(y, submitted.y)
-  ) {
+  if (!bytesEqual(x, submitted.x) || !bytesEqual(y, submitted.y)) {
     throw new ByokMaterialValidationError(
       "delegatedPublicKey does not match certificate payload",
     );

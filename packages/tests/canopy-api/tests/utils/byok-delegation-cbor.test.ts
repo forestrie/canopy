@@ -57,7 +57,7 @@ describe("BYOK delegation CBOR contract", () => {
     const kty =
       roundTrip instanceof Map
         ? roundTrip.get(1)
-        : roundTrip[1] ?? roundTrip["1"];
+        : (roundTrip[1] ?? roundTrip["1"]);
     expect(kty).toBe(2);
   });
 });

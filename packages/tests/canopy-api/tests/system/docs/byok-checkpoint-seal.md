@@ -37,11 +37,11 @@ sequenceDiagram
 
 ## Differences from coordinator BYOK specs
 
-| Aspect | `coordinator-byok-material` | This stretch |
-|--------|------------------------------|--------------|
-| Pending creation | Explicit `POST /api/delegations` | Sealer-driven |
-| Checkpoint / receipt | No | Full SCRAPI poll |
-| Custodian | None | Genesis + grants via Custodian |
+| Aspect               | `coordinator-byok-material`      | This stretch                   |
+| -------------------- | -------------------------------- | ------------------------------ |
+| Pending creation     | Explicit `POST /api/delegations` | Sealer-driven                  |
+| Checkpoint / receipt | No                               | Full SCRAPI poll               |
+| Custodian            | None                             | Genesis + grants via Custodian |
 
 ## Operational notes
 

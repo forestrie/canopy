@@ -43,9 +43,10 @@ export async function buildTestByokMaterial(opts: {
   );
   const x = raw.slice(1, 33);
   const y = raw.slice(33, 65);
-  const kid = new Uint8Array(
-    await crypto.subtle.digest("SHA-256", raw),
-  ).slice(0, 16);
+  const kid = new Uint8Array(await crypto.subtle.digest("SHA-256", raw)).slice(
+    0,
+    16,
+  );
   const delegated = decodeDelegatedKey(opts.delegatedPublicKey);
   const issuedAt = 1_700_000_000;
   const expiresAt = issuedAt + 3600;
@@ -95,9 +96,7 @@ export async function buildTestByokMaterial(opts: {
 function decodeDelegatedKey(bytes: Uint8Array): Map<number, unknown> {
   const raw = decode(bytes) as unknown;
   if (raw instanceof Map) {
-    return new Map(
-      [...raw.entries()].map(([k, v]) => [Number(k), v] as const),
-    );
+    return new Map([...raw.entries()].map(([k, v]) => [Number(k), v] as const));
   }
   if (raw && typeof raw === "object" && !ArrayBuffer.isView(raw)) {
     const out = new Map<number, unknown>();
