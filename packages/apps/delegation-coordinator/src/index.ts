@@ -8,10 +8,12 @@
 import type { Env } from "./env.js";
 import {
   handleGetPending,
+  handleGetPublicRoot,
   handleGetSigningRoute,
   handleIssueDelegation,
   handlePostCustodyKeys,
   handlePostMaterial,
+  handlePostPublicRoot,
   handlePostSigningRoute,
 } from "./handlers/index.js";
 
@@ -65,6 +67,19 @@ export default {
     if (custodyKeysMatch && method === "POST") {
       const logId = decodeURIComponent(custodyKeysMatch[1]!);
       return handlePostCustodyKeys(logId, request, env);
+    }
+
+    const publicRootMatch = /^\/api\/logs\/([^/]+)\/public-root$/.exec(
+      pathname,
+    );
+    if (publicRootMatch) {
+      const logId = decodeURIComponent(publicRootMatch[1]!);
+      if (method === "GET") {
+        return handleGetPublicRoot(logId, request, env);
+      }
+      if (method === "POST") {
+        return handlePostPublicRoot(logId, request, env);
+      }
     }
 
     if (pathname.startsWith("/api/")) {

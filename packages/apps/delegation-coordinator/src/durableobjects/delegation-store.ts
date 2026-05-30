@@ -7,7 +7,10 @@ import { DurableObject } from "cloudflare:workers";
 import { decode, encode } from "cbor-x";
 import type { Env } from "../env.js";
 import { materialKeyFor, sha256Hex } from "../material-key.js";
-import { logIdWireBytesToHex32 } from "../log-id.js";
+import { hex32ToWireLogIdBytes, logIdWireBytesToHex32 } from "../log-id.js";
+import type { PutPublicRootBody } from "../types/put-public-root-body.js";
+import type { TrustRootResponseCbor } from "../types/trust-root-response.js";
+import { base64ToBytes } from "../encoding.js";
 import type { DelegationIssueRequest } from "../types/delegation-issue-request.js";
 import type { DelegationIssueResponse } from "../types/delegation-issue-response.js";
 import type { MaterialRecord } from "../types/material-record.js";
@@ -15,7 +18,6 @@ import type { PendingEntry } from "../types/pending-entry.js";
 import type { PendingHintRequest } from "../types/pending-hint-request.js";
 import type { SigningRoute } from "../types/signing-route.js";
 import type { SubmitMaterialRequest } from "../types/submit-material-request.js";
-import { base64ToBytes } from "../encoding.js";
 
 export class DelegationStoreDO extends DurableObject<Env> {
   private initialized = false;
@@ -42,6 +44,17 @@ export class DelegationStoreDO extends DurableObject<Env> {
         }
         if (method === "PUT") {
           return this.handlePutSigningRoute(logIdHex32, request);
+        }
+      }
+
+      const publicRootMatch = /^\/public-root\/([0-9a-f]{32})$/.exec(pathname);
+      if (publicRootMatch) {
+        const logIdHex32 = publicRootMatch[1]!;
+        if (method === "GET") {
+          return this.handleGetPublicRoot(logIdHex32);
+        }
+        if (method === "PUT") {
+          return this.handlePutPublicRoot(logIdHex32, request);
         }
       }
 
@@ -124,6 +137,16 @@ export class DelegationStoreDO extends DurableObject<Env> {
       ON pending (auth_log_id_hex32, requested_at DESC)
     `);
 
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS public_roots (
+        log_id_hex32 TEXT PRIMARY KEY,
+        alg TEXT NOT NULL,
+        x BLOB NOT NULL,
+        y BLOB NOT NULL,
+        uploaded_at INTEGER NOT NULL
+      )
+    `);
+
     this.initialized = true;
   }
 
@@ -188,6 +211,115 @@ export class DelegationStoreDO extends DurableObject<Env> {
     );
 
     return Response.json({ ok: true });
+  }
+
+  private async handlePutPublicRoot(
+    logIdHex32: string,
+    request: Request,
+  ): Promise<Response> {
+    const body = (await request.json()) as PutPublicRootBody;
+    if (body.logIdHex32 !== logIdHex32) {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Invalid request",
+          status: 400,
+          detail: "logIdHex32 in body must match path",
+        },
+        { status: 400 },
+      );
+    }
+    if (body.alg !== "ES256") {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Invalid request",
+          status: 400,
+          detail: "alg must be ES256",
+        },
+        { status: 400 },
+      );
+    }
+
+    const x = base64ToBytes(body.x);
+    const y = base64ToBytes(body.y);
+    if (x.length !== 32 || y.length !== 32) {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Invalid request",
+          status: 400,
+          detail: "x and y must each decode to 32 bytes",
+        },
+        { status: 400 },
+      );
+    }
+
+    this.ctx.storage.sql.exec(
+      `INSERT INTO public_roots (log_id_hex32, alg, x, y, uploaded_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(log_id_hex32) DO UPDATE SET
+         alg = excluded.alg,
+         x = excluded.x,
+         y = excluded.y,
+         uploaded_at = excluded.uploaded_at`,
+      logIdHex32,
+      body.alg,
+      x,
+      y,
+      Date.now(),
+    );
+
+    return Response.json({ ok: true });
+  }
+
+  private handleGetPublicRoot(logIdHex32: string): Response {
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT alg, x, y FROM public_roots WHERE log_id_hex32 = ?`,
+        logIdHex32,
+      ),
+    ];
+
+    if (rows.length === 0) {
+      const problem = encode({
+        type: "about:blank",
+        title: "Not Found",
+        status: 404,
+        detail: "public root not uploaded for log",
+      });
+      const bytes =
+        problem instanceof Uint8Array
+          ? problem
+          : new Uint8Array(problem as ArrayLike<number>);
+      return new Response(bytes, {
+        status: 404,
+        headers: { "Content-Type": "application/problem+cbor" },
+      });
+    }
+
+    const row = rows[0] as {
+      alg: string;
+      x: ArrayBuffer;
+      y: ArrayBuffer;
+    };
+
+    const resp: TrustRootResponseCbor = {
+      logId: hex32ToWireLogIdBytes(logIdHex32),
+      alg: row.alg,
+      x: new Uint8Array(row.x),
+      y: new Uint8Array(row.y),
+    };
+
+    const encoded = encode(resp);
+    const out =
+      encoded instanceof Uint8Array
+        ? encoded
+        : new Uint8Array(encoded as ArrayLike<number>);
+    return new Response(out, {
+      status: 200,
+      headers: { "Content-Type": "application/cbor" },
+    });
   }
 
   private async handlePutMaterial(request: Request): Promise<Response> {

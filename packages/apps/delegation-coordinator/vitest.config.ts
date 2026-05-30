@@ -11,6 +11,8 @@ export default defineWorkersConfig({
     poolOptions: {
       workers: {
         singleWorker: true,
+        // DO sqlite can leave .sqlite-shm during teardown; shared storage is fine here.
+        isolatedStorage: false,
         wrangler: {
           configPath: "./wrangler.jsonc",
         },

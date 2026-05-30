@@ -8,7 +8,8 @@
  * Opt-in via E2E_COORDINATOR_SEALER_STRETCH=1 (skipped in default test:e2e:system).
  * Coordinator-only twin: tests/coordinator/coordinator-byok-material.spec.ts
  *
- * Does not prove: SCRAPI register-grant, Sealer defer/recover, public-root proxy.
+ * Does not prove: SCRAPI register-grant, Sealer defer/recover. Public-root:
+ * coordinator-byok-public-root.spec.ts.
  */
 
 import { randomUUID } from "node:crypto";

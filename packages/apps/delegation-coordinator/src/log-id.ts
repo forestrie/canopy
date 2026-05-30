@@ -19,6 +19,16 @@ export function normalizeLogIdToHex32(logId: string): string {
   throw new Error("logId must be a UUID or 32 hex characters");
 }
 
+/** 16-byte wire log id from normalized 32-char hex (Sealer trust-root CBOR). */
+export function hex32ToWireLogIdBytes(hex32: string): Uint8Array {
+  const h = normalizeLogIdToHex32(hex32);
+  const out = new Uint8Array(16);
+  for (let i = 0; i < 16; i++) {
+    out[i] = parseInt(h.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+}
+
 /** Canonical UUID string for shard routing (djb2 hash input). */
 export function hex32ToCanonicalUuid(hex32: string): string {
   const h = normalizeLogIdToHex32(hex32);

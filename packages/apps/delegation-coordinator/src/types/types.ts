@@ -7,3 +7,7 @@ export type { PendingEntry } from "./pending-entry.js";
 export type { PendingHintRequest } from "./pending-hint-request.js";
 export type { CustodyKeysRequest } from "./custody-keys-request.js";
 export type { CustodyKeysResponse } from "./custody-keys-response.js";
+export type { PublicRootRecord } from "./public-root-record.js";
+export type { SubmitPublicRootRequest } from "./submit-public-root-request.js";
+export type { TrustRootResponseCbor } from "./trust-root-response.js";
+export type { PutPublicRootBody } from "./put-public-root-body.js";
