@@ -59,19 +59,20 @@ The **deployed** worker needs **`R2_MMRS`**, sequencing queue bindings, and `boo
 the delegated checkpoint signer in `grantData`. Default `pnpm test:e2e` /
 `task test:e2e:doppler` does **not** cover non-Custodian log-root signing.
 
-| Spec                                             | Project     | Opt-in?                                  | Role                                                                                             |
-| ------------------------------------------------ | ----------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `coordinator/coordinator-byok-material.spec.ts`  | coordinator | No                                       | Runner-owned root; coordinator 503 pending → material → issue; `verifyByokDelegationCertificate` |
-| `system/coordinator-delegation-issuance.spec.ts` | system      | Yes — `E2E_COORDINATOR_SEALER_STRETCH=1` | Same runner-signed material; **Custodian proxy** on KMS miss                                     |
+| Spec                                               | Project     | Opt-in?                                  | Role                                                                                             |
+| -------------------------------------------------- | ----------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `coordinator/coordinator-byok-material.spec.ts`    | coordinator | No                                       | Runner-owned root; coordinator 503 pending → material → issue; `verifyByokDelegationCertificate` |
+| `coordinator/coordinator-byok-public-root.spec.ts` | coordinator | No                                       | Upload root + GET CBOR `public-root`; cert verifies against rehydrated coordinator root          |
+| `system/coordinator-delegation-issuance.spec.ts`   | system      | Yes — `E2E_COORDINATOR_SEALER_STRETCH=1` | Same runner-signed material; **Custodian proxy** on KMS miss                                     |
 
 **Not BYOK:** `coordinator-api.spec.ts` (custodial pre-mint before wallet route);
 all other `tests/system/*` (Custodian grant/statement keys).
 
 **Not yet in e2e:** SCRAPI register-grant with non-Custodian grant signer
 ([arbor plan-0003](https://github.com/forestrie/arbor/blob/main/docs/plan-0003-non-custodial-checkpoint-support.md));
-Sealer + non-Custodian trust root on deployed stack
+Sealer consuming coordinator `public-root` on deployed stack
 ([arbor plan-0005](https://github.com/forestrie/arbor/blob/main/docs/plan-0005-sealer-trust-root-end-to-end.md));
-Canopy receipt verify BYOK in Playwright; coordinator `GET …/public-root`.
+Canopy receipt verify BYOK in Playwright.
 
 ```bash
 # Primary BYOK (coordinator tier, CI when env set)

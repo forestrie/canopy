@@ -134,6 +134,113 @@ export function decodeCoordinatorDelegationIssue(
   };
 }
 
+/** P-256 root public key coordinates from a CryptoKeyPair (64-byte x||y). */
+export async function exportEs256RootXy(
+  keyPair: CryptoKeyPair,
+): Promise<{ x: Uint8Array; y: Uint8Array }> {
+  const raw = new Uint8Array(
+    await crypto.subtle.exportKey("raw", keyPair.publicKey),
+  );
+  if (raw.length !== 65 || raw[0] !== 0x04) {
+    throw new Error("expected uncompressed P-256 public key");
+  }
+  return { x: raw.slice(1, 33), y: raw.slice(33, 65) };
+}
+
+export async function importEs256PublicKeyFromXy(
+  x: Uint8Array,
+  y: Uint8Array,
+): Promise<CryptoKey> {
+  if (x.length !== 32 || y.length !== 32) {
+    throw new Error("x and y must be 32 bytes");
+  }
+  const raw = new Uint8Array(65);
+  raw[0] = 0x04;
+  raw.set(x, 1);
+  raw.set(y, 33);
+  return crypto.subtle.importKey(
+    "raw",
+    toArrayBuffer(raw),
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["verify"],
+  );
+}
+
+export interface CoordinatorTrustRootCbor {
+  logId: Uint8Array;
+  alg: string;
+  x: Uint8Array;
+  y: Uint8Array;
+  chainId?: string;
+  contractAddress?: string;
+  domain?: string;
+}
+
+export async function uploadByokRootPublicKey(opts: {
+  coordinatorUrl: string;
+  token: string;
+  logId: string;
+  x: Uint8Array;
+  y: Uint8Array;
+}): Promise<Response> {
+  return fetch(`${opts.coordinatorUrl}/api/logs/${opts.logId}/public-root`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${opts.token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      alg: "ES256",
+      x: bytesToBase64(opts.x),
+      y: bytesToBase64(opts.y),
+    }),
+  });
+}
+
+export async function fetchCoordinatorPublicRoot(opts: {
+  coordinatorUrl: string;
+  token: string;
+  logId: string;
+}): Promise<CoordinatorTrustRootCbor> {
+  const res = await fetch(
+    `${opts.coordinatorUrl}/api/logs/${opts.logId}/public-root`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${opts.token}`,
+        Accept: "application/cbor",
+      },
+    },
+  );
+  const buf = new Uint8Array(await res.arrayBuffer());
+  if (!res.ok) {
+    throw new Error(`GET public-root: ${res.status} (${buf.byteLength} bytes)`);
+  }
+  const raw = decode(buf) as Record<string, unknown>;
+  const logId = raw.logId;
+  const x = raw.x;
+  const y = raw.y;
+  if (!(logId instanceof Uint8Array)) {
+    throw new Error("public-root response missing logId bytes");
+  }
+  if (!(x instanceof Uint8Array) || !(y instanceof Uint8Array)) {
+    throw new Error("public-root response missing x or y bytes");
+  }
+  return {
+    logId,
+    alg: String(raw.alg ?? ""),
+    x,
+    y,
+    chainId: raw.chainId !== undefined ? String(raw.chainId) : undefined,
+    contractAddress:
+      raw.contractAddress !== undefined
+        ? String(raw.contractAddress)
+        : undefined,
+    domain: raw.domain !== undefined ? String(raw.domain) : undefined,
+  };
+}
+
 export async function generateEs256RootKeyPair(): Promise<CryptoKeyPair> {
   return crypto.subtle.generateKey(
     { name: "ECDSA", namedCurve: "P-256" },

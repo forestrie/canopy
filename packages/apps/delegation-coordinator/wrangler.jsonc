@@ -10,6 +10,13 @@
   "observability": {
     "enabled": true,
   },
+  // Top-level vars for vitest (@cloudflare/vitest-pool-workers)
+  "vars": {
+    "NODE_ENV": "test",
+    "COORDINATOR_SHARD_COUNT": "4",
+    "CUSTODIAN_URL": "https://custodian.example/v1",
+    "COORDINATOR_APP_TOKEN": "test-coordinator-token",
+  },
   // Top-level durable_objects needed for vitest (@cloudflare/vitest-pool-workers)
   "durable_objects": {
     "bindings": [

@@ -34,3 +34,6 @@ Deliver Delegation Coordinator Phase 3 **management APIs** (no frontend) on a ne
 - [x] Playwright coordinator project green in CI (`coordinator-api` + `coordinator-byok-material`)
 - [x] Custodian proxy issuance e2e: `POST /api/delegations` returns cert from stored material (`coordinator-delegation-issuance.spec.ts` stretch with `E2E_COORDINATOR_SEALER_STRETCH=1`)
 - [x] Existing system e2e remain green
+
+Follow-up: BYOK trust-root surface — [plan-0023](plan-0023-coordinator-public-root.md)
+(`GET /api/logs/{logId}/public-root`).
