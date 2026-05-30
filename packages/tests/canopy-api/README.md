@@ -115,7 +115,7 @@ Or set **`COORDINATOR_APP_TOKEN`** manually in Doppler **`canopy/dev`** (masked)
 | `system/auth-data-log-chain.spec.ts`             | Root → child auth log → data log delegation chain (delegated `grantData`). [Doc](tests/system/docs/auth-data-log-chain.md). |
 | `custodian/custodian-api.spec.ts`                | Direct **`fetch`** to deployed Custodian: ops + **`/v1/api/…`** key routes. Does not use `:bootstrap` key paths.     |
 | `coordinator/coordinator-api.spec.ts`            | Phase 3 coordinator APIs + custodian **`POST /api/delegations`** proxy (stored material).                            |
-| `system/coordinator-delegation-issuance.spec.ts` | Opt-in stretch (`E2E_COORDINATOR_SEALER_STRETCH=1`); skipped in default CI.                                          |
+| `system/coordinator-delegation-issuance.spec.ts` | Opt-in stretch (`E2E_COORDINATOR_SEALER_STRETCH=1`); skipped in default CI. [Doc](tests/system/docs/coordinator-delegation-issuance.md). |
 
 - Shared e2e utils: `e2e-env-guards.ts`, `e2e-grant-flags.ts`, `register-grant-through-receipt.ts`, `post-entries-e2e.ts`, `custodian-sign-payload.ts`, `custodian-api-*.ts`, `problem-details.ts`, `bootstrap-grant-flow.ts`, etc.
 - Worker unit/integration tests: `packages/apps/canopy-api/test`.
