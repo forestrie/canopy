@@ -232,6 +232,7 @@ jobs:
           BOOTSTRAP_APP_TOKEN: ${{ secrets.BOOTSTRAP_APP_TOKEN }}
           CUSTODIAN_APP_TOKEN: ${{ secrets.CUSTODIAN_APP_TOKEN }}
           CURATOR_ADMIN_TOKEN: ${{ secrets.CURATOR_ADMIN_TOKEN }}
+          COORDINATOR_APP_TOKEN: ${{ secrets.COORDINATOR_APP_TOKEN }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
@@ -251,13 +252,19 @@ jobs:
             exit 1
           fi
           printf '%s' "$APP" | wrangler secret put CUSTODIAN_APP_TOKEN --env "$ENV"
+          COORD=$(trim_ws "${COORDINATOR_APP_TOKEN:-}")
+          if [ -z "$COORD" ]; then
+            echo "::error::COORDINATOR_APP_TOKEN is required for canopy-api BYOK receipt verification."
+            exit 1
+          fi
+          printf '%s' "$COORD" | wrangler secret put COORDINATOR_APP_TOKEN --env "$ENV"
           CURATOR=$(trim_ws "${CURATOR_ADMIN_TOKEN:-}")
           if [ -z "$CURATOR" ]; then
             echo "::error::CURATOR_ADMIN_TOKEN is required for canopy-api (POST /api/forest/.../genesis)."
             exit 1
           fi
           printf '%s' "$CURATOR" | wrangler secret put CURATOR_ADMIN_TOKEN --env "$ENV"
-          for key in FOREST_PROJECT_ID CUSTODIAN_URL R2_MMRS_BUCKET_NAME SEQUENCING_QUEUE_SCRIPT_NAME CANOPY_FQDN; do
+          for key in FOREST_PROJECT_ID CUSTODIAN_URL DELEGATION_COORDINATOR_URL R2_MMRS_BUCKET_NAME SEQUENCING_QUEUE_SCRIPT_NAME CANOPY_FQDN; do
             if [ -z "$(trim_ws "${!key:-}")" ]; then
               echo "::error::${key} is required in GitHub Environment ${ENV}."
               exit 1
