@@ -11,7 +11,7 @@ Specs live under `tests/` in three tiers (each tier is a Playwright **project** 
 | Project         | Directory             | Role                                                                                                              |
 | --------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | **integration** | `tests/integration/`  | Read-only / surface checks against **Canopy** only (CORS, health, SCRAPI discovery).                              |
-| **system**      | `tests/system/`       | Full deployed stack: SCRAPI grants, sequencing, receipts (needs **forestrie-ingress**, MMRS, Custodian mint env). |
+| **system**      | `tests/system/`       | Full deployed stack: SCRAPI grants, sequencing, receipts (needs **forestrie-ingress**, MMRS, Custodian mint env). **Flow docs:** [`tests/system/docs/`](tests/system/docs/README.md). |
 | **custodian**   | `tests/custodian/`    | Direct **Custodian** HTTP (`/v1/api/…`), not the SCRAPI grant path.                                               |
 | **coordinator** | `tests/coordinator/`  | **delegation-coordinator** Phase 3 APIs + custodian proxy issuance (`plan-0021`).                                 |
 | **prod**        | (same files, filters) | Release checks: **excludes** mutating `tests/system/*` specs via `testIgnore` in `playwright.config.ts`.          |
@@ -109,13 +109,13 @@ Or set **`COORDINATOR_APP_TOKEN`** manually in Doppler **`canopy/dev`** (masked)
 | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
 | `integration/api.spec.ts`                        | Cross-cutting HTTP (e.g. CORS OPTIONS).                                                                              |
 | `integration/observability.spec.ts`              | `/api/health`, `/.well-known/scitt-configuration`.                                                                   |
-| `system/grants-bootstrap.spec.ts`                | Bootstrap mint + register-grant (Custodian-profile Forestrie-Grant).                                                 |
-| `system/bootstrap-log-first-entry.spec.ts`       | `POST /register/{bootstrap}/entries` with completed bootstrap grant; rejects wrong signer (`403` `signer_mismatch`). |
-| `system/bootstrap-child-auth-grant.spec.ts`      | Root bootstrap + custody-key child auth grant; 303 Location under `/logs/{root}/{root}/entries/…`.                   |
-| `system/auth-data-log-chain.spec.ts`             | Root → child auth log → data log delegation chain (delegated `grantData`).                                           |
+| `system/grants-bootstrap.spec.ts`                | Bootstrap mint + register-grant (Custodian-profile Forestrie-Grant). [Doc](tests/system/docs/grants-bootstrap.md).   |
+| `system/bootstrap-log-first-entry.spec.ts`       | `POST /register/{bootstrap}/entries` with completed bootstrap grant; rejects wrong signer (`403` `signer_mismatch`). [Doc](tests/system/docs/bootstrap-log-first-entry.md). |
+| `system/bootstrap-child-auth-grant.spec.ts`      | Root bootstrap + custody-key child auth grant; 303 Location under `/logs/{root}/{root}/entries/…`. [Doc](tests/system/docs/bootstrap-child-auth-grant.md). |
+| `system/auth-data-log-chain.spec.ts`             | Root → child auth log → data log delegation chain (delegated `grantData`). [Doc](tests/system/docs/auth-data-log-chain.md). |
 | `custodian/custodian-api.spec.ts`                | Direct **`fetch`** to deployed Custodian: ops + **`/v1/api/…`** key routes. Does not use `:bootstrap` key paths.     |
 | `coordinator/coordinator-api.spec.ts`            | Phase 3 coordinator APIs + custodian **`POST /api/delegations`** proxy (stored material).                            |
-| `system/coordinator-delegation-issuance.spec.ts` | Opt-in stretch (`E2E_COORDINATOR_SEALER_STRETCH=1`); skipped in default CI.                                          |
+| `system/coordinator-delegation-issuance.spec.ts` | Opt-in stretch (`E2E_COORDINATOR_SEALER_STRETCH=1`); skipped in default CI. [Doc](tests/system/docs/coordinator-delegation-issuance.md). |
 
 - Shared e2e utils: `e2e-env-guards.ts`, `e2e-grant-flags.ts`, `register-grant-through-receipt.ts`, `post-entries-e2e.ts`, `custodian-sign-payload.ts`, `custodian-api-*.ts`, `problem-details.ts`, `bootstrap-grant-flow.ts`, etc.
 - Worker unit/integration tests: `packages/apps/canopy-api/test`.
