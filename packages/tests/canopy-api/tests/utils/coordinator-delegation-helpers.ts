@@ -3,6 +3,7 @@
  */
 
 import { decode, encode as encodeCbor } from "cbor-x";
+import { encodeSigStructure } from "@canopy/encoding";
 import { custodianApiV1BaseUrl } from "./custodian-api-env.js";
 import { custodianDecodeCbor } from "./custodian-api-cbor.js";
 import { normalizeForestrieHexId32 } from "./forestrie-hex-id.js";
@@ -48,6 +49,12 @@ export function bytesToBase64(bytes: Uint8Array): string {
 }
 
 export interface CustodianDelegationIssueResult {
+  certificate: Uint8Array;
+  issuedAt: number;
+  expiresAt: number;
+}
+
+export interface ByokDelegationMaterial {
   certificate: Uint8Array;
   issuedAt: number;
   expiresAt: number;
@@ -125,4 +132,122 @@ export function decodeCoordinatorDelegationIssue(
     issuedAt: Number(raw.issuedAt ?? 0),
     expiresAt: Number(raw.expiresAt ?? 0),
   };
+}
+
+export async function generateEs256RootKeyPair(): Promise<CryptoKeyPair> {
+  return crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+}
+
+export async function buildByokDelegationMaterial(opts: {
+  rootKeyPair: CryptoKeyPair;
+  logIdHex32: string;
+  mmrStart: number;
+  mmrEnd: number;
+  delegatedPublicKey: Uint8Array;
+  ttlSeconds?: number;
+}): Promise<ByokDelegationMaterial> {
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const expiresAt = issuedAt + (opts.ttlSeconds ?? 3600);
+  const rawRoot = new Uint8Array(
+    await crypto.subtle.exportKey("raw", opts.rootKeyPair.publicKey),
+  );
+  const kid = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", rawRoot),
+  ).slice(0, 16);
+  const delegatedKey = decode(opts.delegatedPublicKey) as unknown;
+
+  const protectedBytes = cborBytes(
+    new Map<number, unknown>([
+      [1, -7],
+      [3, "application/forestrie.delegation+cbor"],
+      [4, kid],
+    ]),
+  );
+  const payloadBytes = cborBytes(
+    new Map<number, unknown>([
+      [1, normalizeForestrieHexId32(opts.logIdHex32)],
+      [3, opts.mmrStart],
+      [4, opts.mmrEnd],
+      [5, delegatedKey],
+      [6, new Map<string, unknown>()],
+      [7, 1],
+      [8, issuedAt],
+      [9, expiresAt],
+      [10, crypto.getRandomValues(new Uint8Array(16))],
+    ]),
+  );
+  const sigStructure = encodeSigStructure(
+    protectedBytes,
+    new Uint8Array(),
+    payloadBytes,
+  );
+  const signature = new Uint8Array(
+    await crypto.subtle.sign(
+      { name: "ECDSA", hash: "SHA-256" },
+      opts.rootKeyPair.privateKey,
+      toArrayBuffer(sigStructure),
+    ),
+  );
+  if (signature.byteLength !== 64) {
+    throw new Error(
+      `expected P-256 signature to be 64 bytes, got ${signature.byteLength}`,
+    );
+  }
+  const certificate = cborBytes([
+    protectedBytes,
+    new Map<string, unknown>(),
+    payloadBytes,
+    signature,
+  ]);
+  return { certificate, issuedAt, expiresAt };
+}
+
+export async function verifyByokDelegationCertificate(opts: {
+  certificate: Uint8Array;
+  rootPublicKey: CryptoKey;
+}): Promise<boolean> {
+  const cert = decode(opts.certificate) as unknown[];
+  if (!Array.isArray(cert) || cert.length !== 4) {
+    throw new Error("delegation certificate must be COSE_Sign1 array");
+  }
+  const protectedBytes = bytesFromUnknown(cert[0], "protected");
+  const payloadBytes = bytesFromUnknown(cert[2], "payload");
+  const signature = bytesFromUnknown(cert[3], "signature");
+  const sigStructure = encodeSigStructure(
+    protectedBytes,
+    new Uint8Array(),
+    payloadBytes,
+  );
+  return crypto.subtle.verify(
+    { name: "ECDSA", hash: "SHA-256" },
+    opts.rootPublicKey,
+    toArrayBuffer(signature),
+    toArrayBuffer(sigStructure),
+  );
+}
+
+function cborBytes(value: unknown): Uint8Array {
+  const encoded = encodeCbor(value);
+  return encoded instanceof Uint8Array
+    ? encoded
+    : new Uint8Array(encoded as ArrayLike<number>);
+}
+
+function bytesFromUnknown(value: unknown, label: string): Uint8Array {
+  if (value instanceof Uint8Array) return value;
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  throw new Error(`${label} is not bytes`);
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
 }
