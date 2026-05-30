@@ -21,9 +21,24 @@ For the **test index** (happy / negative paths and auth-focused summaries), see
 | **Sealer** | Arbor `services/sealer` | Signs checkpoints into R2 (async; required for receipts) |
 
 **Not used by default system specs:** `delegation-coordinator` (see
-[coordinator-delegation-issuance.md](./coordinator-delegation-issuance.md)),
+[coordinator-delegation-issuance.md](./coordinator-delegation-issuance.md) and
+[README § BYOK delegation](./README.md#non-custodian-log-root-signing-key-byok-delegation)),
 direct Custodian-only suite (`tests/custodian/`), integration-only Canopy checks
 (`tests/integration/`).
+
+### SCRAPI vs BYOK delegation e2e
+
+Three layers — do not conflate them:
+
+1. **SCRAPI system specs** (`grants-bootstrap`, `auth-data-log-chain`, …) — grants
+   and statements signed with **Custodian KMS custody keys**; full forest hierarchy
+   through register-grant, sequencing, and receipts.
+2. **BYOK delegation e2e** — **runner-held log root** signs delegation certificates;
+   covered by [`coordinator-byok-material.spec.ts`](../../coordinator/coordinator-byok-material.spec.ts)
+   (coordinator tier) and opt-in [`coordinator-delegation-issuance.spec.ts`](../coordinator-delegation-issuance.spec.ts)
+   (system tier + Custodian proxy). See [README § BYOK](./README.md#non-custodian-log-root-signing-key-byok-delegation).
+3. **Future** — Sealer and SCRAPI flows with non-Custodian roots on deployed stack
+   ([arbor plan-0005](https://github.com/forestrie/arbor/blob/main/docs/plan-0005-sealer-trust-root-end-to-end.md)).
 
 ## Authorization hierarchy (ARC-0017)
 

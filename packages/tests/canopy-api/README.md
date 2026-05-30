@@ -13,7 +13,7 @@ Specs live under `tests/` in three tiers (each tier is a Playwright **project** 
 | **integration** | `tests/integration/`  | Read-only / surface checks against **Canopy** only (CORS, health, SCRAPI discovery).                              |
 | **system**      | `tests/system/`       | Full deployed stack: SCRAPI grants, sequencing, receipts (needs **forestrie-ingress**, MMRS, Custodian mint env). **Flow docs:** [`tests/system/docs/`](tests/system/docs/README.md). |
 | **custodian**   | `tests/custodian/`    | Direct **Custodian** HTTP (`/v1/api/…`), not the SCRAPI grant path.                                               |
-| **coordinator** | `tests/coordinator/`  | **delegation-coordinator** Phase 3 APIs + custodian proxy issuance (`plan-0021`).                                 |
+| **coordinator** | `tests/coordinator/`  | **delegation-coordinator** Phase 3 APIs + BYOK material path (`plan-0021`).                                 |
 | **prod**        | (same files, filters) | Release checks: **excludes** mutating `tests/system/*` specs via `testIgnore` in `playwright.config.ts`.          |
 
 Shared code: `tests/utils/`, `tests/fixtures/`. Imports use TypeScript path aliases (see `tsconfig.json`):
@@ -53,6 +53,39 @@ The **deployed** worker needs **`R2_MMRS`**, sequencing queue bindings, and `boo
 
 **Child auth grant** (`tests/system/bootstrap-child-auth-grant.spec.ts`): root bootstrap mint plus an additional custody key for the child grant. Helpers: `@e2e-utils/custodian-custody-grant`.
 
+### Non-Custodian log-root signing key (BYOK)
+
+**Terminology:** the **log root key** that signs **delegation certificates** — not
+the delegated checkpoint signer in `grantData`. Default `pnpm test:e2e` /
+`task test:e2e:doppler` does **not** cover non-Custodian log-root signing.
+
+| Spec | Project | Opt-in? | Role |
+|------|---------|---------|------|
+| `coordinator/coordinator-byok-material.spec.ts` | coordinator | No | Runner-owned root; coordinator 503 pending → material → issue; `verifyByokDelegationCertificate` |
+| `system/coordinator-delegation-issuance.spec.ts` | system | Yes — `E2E_COORDINATOR_SEALER_STRETCH=1` | Same runner-signed material; **Custodian proxy** on KMS miss |
+
+**Not BYOK:** `coordinator-api.spec.ts` (custodial pre-mint before wallet route);
+all other `tests/system/*` (Custodian grant/statement keys).
+
+**Not yet in e2e:** SCRAPI register-grant with non-Custodian grant signer
+([arbor plan-0003](https://github.com/forestrie/arbor/blob/main/docs/plan-0003-non-custodial-checkpoint-support.md));
+Sealer + non-Custodian trust root on deployed stack
+([arbor plan-0005](https://github.com/forestrie/arbor/blob/main/docs/plan-0005-sealer-trust-root-end-to-end.md));
+Canopy receipt verify BYOK in Playwright; coordinator `GET …/public-root`.
+
+```bash
+# Primary BYOK (coordinator tier, CI when env set)
+doppler run --project canopy --config dev -- \
+  pnpm --filter @canopy/api-e2e test:e2e:coordinator
+
+# System tier + Custodian proxy (opt-in)
+E2E_COORDINATOR_SEALER_STRETCH=1 doppler run --project canopy --config dev -- \
+  pnpm --filter @canopy/api-e2e exec playwright test \
+    tests/system/coordinator-delegation-issuance.spec.ts
+```
+
+Flow docs: [`tests/system/docs/README.md`](tests/system/docs/README.md).
+
 ## Environment variables
 
 Resolved in **`playwright.config.ts`** from **repo-root `.env`** (after `task vars:doppler:dev`) **and** the process environment. If `.env` is missing locally, Playwright throws (unless `CI` is set).
@@ -72,12 +105,13 @@ Other keys:
 
 - **`SCRAPI_API_KEY`**: Bearer for authorized fixtures (optional for specs that use `unauthorizedRequest` only).
 
-**Delegation coordinator e2e** (`tests/coordinator/coordinator-api.spec.ts`, Playwright project **`coordinator`**):
+**Delegation coordinator e2e** (`tests/coordinator/`, Playwright project **`coordinator`**):
 
-- **`DELEGATION_COORDINATOR_URL`**, **`COORDINATOR_APP_TOKEN`**: management APIs and direct coordinator checks.
-- **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**: custody-keys orchestration and **`POST /v1/api/delegations`** proxy issuance.
+- **`DELEGATION_COORDINATOR_URL`**, **`COORDINATOR_APP_TOKEN`**: coordinator management APIs and direct coordinator issue.
+- **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**: required by `coordinator-api.spec.ts` for custodial pre-wallet mint and custody-keys orchestration.
+- Deployed **Custodian** must have **`DELEGATION_COORDINATOR_URL`** configured for the stretch spec’s proxy path (ledger env; not a Playwright env var).
 - CI runs this project after **custodian** when both coordinator env vars are set (`.github/workflows/api-e2e-playwright.yml`); **`deploy-workers`** on **dev** sets **`require_coordinator_e2e: true`** (fails if vars/secrets missing).
-- Optional stretch (`tests/system/coordinator-delegation-issuance.spec.ts`): set **`E2E_COORDINATOR_SEALER_STRETCH=1`** — not part of default **`test:e2e:system`**.
+- Opt-in stretch (`tests/system/coordinator-delegation-issuance.spec.ts`): set **`E2E_COORDINATOR_SEALER_STRETCH=1`** — Custodian proxy on KMS miss; not part of default **`test:e2e:system`**.
 
 **Hydrating coordinator secrets locally**
 
@@ -114,8 +148,9 @@ Or set **`COORDINATOR_APP_TOKEN`** manually in Doppler **`canopy/dev`** (masked)
 | `system/bootstrap-child-auth-grant.spec.ts`      | Root bootstrap + custody-key child auth grant; 303 Location under `/logs/{root}/{root}/entries/…`. [Doc](tests/system/docs/bootstrap-child-auth-grant.md). |
 | `system/auth-data-log-chain.spec.ts`             | Root → child auth log → data log delegation chain (delegated `grantData`). [Doc](tests/system/docs/auth-data-log-chain.md). |
 | `custodian/custodian-api.spec.ts`                | Direct **`fetch`** to deployed Custodian: ops + **`/v1/api/…`** key routes. Does not use `:bootstrap` key paths.     |
-| `coordinator/coordinator-api.spec.ts`            | Phase 3 coordinator APIs + custodian **`POST /api/delegations`** proxy (stored material).                            |
-| `system/coordinator-delegation-issuance.spec.ts` | Opt-in stretch (`E2E_COORDINATOR_SEALER_STRETCH=1`); skipped in default CI. [Doc](tests/system/docs/coordinator-delegation-issuance.md). |
+| `coordinator/coordinator-api.spec.ts`            | Phase 3 coordinator APIs; **coordinator** direct issue of stored material (custodial pre-mint).                        |
+| `coordinator/coordinator-byok-material.spec.ts`  | **BYOK:** runner-owned log root; pending → material → coordinator issue. [System doc](tests/system/docs/README.md#non-custodian-log-root-signing-key-byok-delegation). |
+| `system/coordinator-delegation-issuance.spec.ts` | Opt-in stretch: **Custodian proxy** on KMS miss with runner-signed BYOK material (`E2E_COORDINATOR_SEALER_STRETCH=1`). [Doc](tests/system/docs/coordinator-delegation-issuance.md). |
 
 - Shared e2e utils: `e2e-env-guards.ts`, `e2e-grant-flags.ts`, `register-grant-through-receipt.ts`, `post-entries-e2e.ts`, `custodian-sign-payload.ts`, `custodian-api-*.ts`, `problem-details.ts`, `bootstrap-grant-flow.ts`, etc.
 - Worker unit/integration tests: `packages/apps/canopy-api/test`.

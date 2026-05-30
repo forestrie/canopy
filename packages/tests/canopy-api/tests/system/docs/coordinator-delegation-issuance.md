@@ -3,180 +3,134 @@
 **Spec:** `tests/system/coordinator-delegation-issuance.spec.ts`  
 **Index:** [README.md](./README.md)
 
-**Opt-in:** `E2E_COORDINATOR_SEALER_STRETCH=1` and coordinator env vars. Skipped in
-default `test:e2e:system` / CI system project.
+**Opt-in:** `E2E_COORDINATOR_SEALER_STRETCH=1` plus coordinator and custodian env vars.
+Skipped in default `test:e2e:system` / CI system project via `test.skip` inside the
+spec (the file also matches the **prod** project but still skips unless the env is set).
 
 This spec is **not** part of the SCRAPI register-grant / forest hierarchy flows in
-[overview.md](./overview.md). It lives under `tests/system/` for manual stretch runs
-only.
+[overview.md](./overview.md). It is the **system-tier** e2e for **log root keys not
+held by Custodian** on the **delegation issuance** path.
 
 ---
 
-## Incremental development context (BYOK / Phase 3)
+## Purpose
 
-Delegation work is landing in slices documented in
-[plan-0021-delegation-coordinator-apis.md](../../../../docs/plans/plan-0021-delegation-coordinator-apis.md)
-(Phase 3 **management APIs** on `@canopy/delegation-coordinator`, custodial trust
-root first; wallet UI and full BYOK verification deferred).
+Prove that a runner-owned log root can authorize delegation material stored on the
+Delegation Coordinator, and that **Custodian** `POST /v1/api/delegations` returns
+that material by **proxying** to the coordinator when Custodian KMS has **no key**
+for the log id.
 
-**Target production shape (not fully wired yet):**
+The coordinator-only twin (503 pending → material → coordinator direct issue) lives in
+[`coordinator-byok-material.spec.ts`](../../coordinator/coordinator-byok-material.spec.ts).
 
-```text
-Client / Sealer  ──►  Custodian  POST /api/delegations
-                           │
-                           ├─► local KMS custody key exists AND log is custodial?
-                           │       └── sign delegation cert locally (today: only path implemented)
-                           │
-                           └─► else: wallet-managed and/or local-key miss
-                                   └── HTTP to Delegation coordinator
-                                         └── return stored material (no Custodian sign)
+---
+
+## Production Custodian routing
+
+Custodian routes `POST /api/delegations` from **local KMS presence only** — it does
+not consult coordinator `signing-route.mode`:
+
+```mermaid
+flowchart TD
+  req["POST /api/delegations"] --> local["issueDelegationForLog: KMS lookup"]
+  local -->|key found| signLocal["Sign locally, return cert"]
+  local -->|ErrNoCustodianKeyForLogID| coordCfg{DELEGATION_COORDINATOR_URL set?}
+  coordCfg -->|yes| proxy["proxyAndWriteDelegation → coordinator POST /api/delegations"]
+  coordCfg -->|no| notFound["404 not found"]
 ```
 
-**Coordinator → Custodian** appears today only as a **management convenience**:
-`POST /api/logs/{logId}/custody-keys` on the coordinator is a **create-only proxy**
-to Custodian `POST /v1/api/keys` (see
-`delegation-coordinator/src/handlers/post-custody-keys.ts`). That is **orchestration**
-for ops/tests that want a single coordinator token to provision keys — **not** the
-BYOK trust model, where the root key never lives in Custodian.
+Implementation: [`arbor/services/custodian/src/handle_delegations.go`](../../../../../../arbor/services/custodian/src/handle_delegations.go).
 
-**Coordinator → Custodian for issuance** is explicitly **out of scope** for the
-coordinator worker (plan 0021: coordinator must not call Custodian sign endpoints).
-
-So yes: reading this stretch spec as “the coordinator creates custody keys” reflects
-**incremental Phase 3 scaffolding**, not the end-state BYOK loop.
+Deployed custodian (ledger-a) must have `DELEGATION_COORDINATOR_URL` set for the
+proxy path to succeed. Outbound coordinator calls use `DELEGATION_COORDINATOR_TOKEN`
+(or `AppToken` fallback) — not the caller's inbound bearer.
 
 ---
 
-## Why this stretch spec does not exercise Custodian → Coordinator
+## Non-Custodian log-root coverage
 
-The stretch test does the following (see spec source):
+| Spec | Tier | Custodian role |
+|------|------|----------------|
+| [`coordinator-byok-material.spec.ts`](../../coordinator/coordinator-byok-material.spec.ts) | coordinator (default CI) | None — coordinator direct issue |
+| **This stretch spec** | system (opt-in) | Proxy on KMS miss |
 
-1. **`POST …/custody-keys` on the coordinator** → Custodian creates a **local** KMS
-   key for the log.
-2. **`POST /v1/api/delegations` on Custodian** → today always
-   **`issueDelegationForLog` (local custody sign only)** —
-   `arbor/services/custodian/src/handle_delegations.go`.
-3. Runner uploads the resulting cert to the coordinator (`POST …/delegations/material`).
-4. Runner sets **`signing-route: wallet`** on the coordinator.
-5. **`POST /v1/api/delegations` on Custodian again** (comment: “proxy again”).
-
-**Problem for the intended loop:** once step 1 has run, Custodian’s store **already**
-has a custody key for that `logId`. The **planned** Custodian behavior is to consult
-**local store first**, then delegate to the coordinator only on **miss** or for
-**wallet-managed** logs (plan 0021 acceptance criteria — **not implemented** in
-Custodian at the time of this writing; no `DELEGATION_COORDINATOR_URL` usage in
-`services/custodian`).
-
-Therefore:
-
-- Steps 2 and 5 both hit the **same local KMS issuance path**, not
-  Custodian → Coordinator → stored material.
-- Step 5 does **not** prove “Custodian proxies to coordinator when wallet-managed,”
-  even after step 4, **unless** future Custodian code **skips** local signing for
-  wallet-managed logs (or keys are never created in Custodian for those logs).
-- Creating the key via **coordinator custody-keys** before testing wallet mode
-  **actively prevents** observing a local-key **miss** on the Custodian side.
-
-This is a **test-design limitation** aligned with an **incomplete vertical slice**,
-not evidence that the final architecture prefers coordinator-provisioned keys for
-BYOK.
-
-**Intended smaller slice before full wallet signing:** the stretch spec was meant to
-validate that coordinator **material storage**, **signing-route**, and **Custodian
-local delegation issuance** can be composed manually in one env — and (when Sealer
-work lands) to reserve headroom for defer/recover polling. The spec comment “proves
-proxy issuance only” describes **aspirational** Custodian proxy behavior; **current**
-Custodian code does not call the coordinator for issuance.
+Both use `generateEs256RootKeyPair`, `buildByokDelegationMaterial`, and
+`verifyByokDelegationCertificate` from
+[`coordinator-delegation-helpers.ts`](../../utils/coordinator-delegation-helpers.ts).
 
 ---
 
-## What this spec actually proves today
+## What the stretch spec runs
 
-| Step | What is exercised | What is *not* exercised |
-|------|-------------------|-------------------------|
-| Coordinator `custody-keys` | Coordinator → Custodian **create key** proxy | BYOK (no custodial root) |
-| Custodian `POST /api/delegations` | Local delegation cert signing (KMS) | Coordinator proxy on miss / wallet |
-| Coordinator `material` + `signing-route` | DO persistence + wallet route API | Sealer defer/recover |
-| Second Custodian `delegations` | Another **local** cert (same code path) | Custodian → Coordinator loop |
-
-**Out of scope (by design in spec):** Sealer defer/recover polling; SCRAPI receipts;
-Ranger; forest genesis / Forestrie-Grant hierarchy.
-
----
-
-## Where to test the real BYOK / coordinator-issue paths
-
-Use the **`coordinator`** Playwright project (`tests/coordinator/`), not this
-stretch spec.
-
-| Spec | What it targets |
-|------|-----------------|
-| [`coordinator-api.spec.ts`](../../coordinator/coordinator-api.spec.ts) | Phase 3 APIs: custody-keys proxy, **custodian mint before wallet route**, material upload, wallet route, then **`POST /api/delegations` on the coordinator** (reads stored material — **no** Custodian proxy loop). |
-| [`coordinator-byok-material.spec.ts`](../../coordinator/coordinator-byok-material.spec.ts) | **BYOK:** wallet route **without** Custodian custody key; coordinator issue → **503 pending**; runner-signed material; coordinator issue succeeds; pending cleared. Root key owned by test runner, not Custodian. |
-
-Those specs match the in-flight design: **material enters via coordinator** (runner
-or pre-wallet custodian mint + upload); **coordinator** serves issue requests;
-**future** Custodian `POST /api/delegations` becomes a façade that forwards to the
-coordinator when appropriate.
-
----
-
-## Sequence diagram (what the stretch spec runs today)
-
-Accurate for **current** code paths (local Custodian issuance both times):
+1. Runner generates ES256 root key pair + delegated public key CBOR.
+2. `POST …/signing-route { mode: wallet }` on coordinator (coordinator-internal record).
+3. Runner signs delegation cert with **non-Custodian root** (`buildByokDelegationMaterial`).
+4. `POST …/delegations/material` on coordinator.
+5. `POST /v1/api/delegations` on **Custodian** — KMS miss → proxy → stored cert returned.
+6. Assert cert bytes and timestamps match uploaded material; `verifyByokDelegationCertificate`.
 
 ```mermaid
 sequenceDiagram
     participant PT as Playwright
     participant COO as Delegation coordinator
-    participant CUS as Custodian (local sign only)
+    participant CUS as Custodian
     participant KMS as GCP KMS
 
-    PT->>COO: POST /api/logs/{L}/custody-keys
-    COO->>CUS: proxy POST /v1/api/keys
-    CUS->>KMS: create CryptoKey
-    CUS-->>COO: keyId, publicKey
-    COO-->>PT: 200
-
-    Note over PT,CUS: Custodian now has local key — miss path unavailable
-
-    PT->>CUS: POST /v1/api/delegations
-    CUS->>KMS: sign delegation (local)
-    CUS-->>PT: certificate
-
+    PT->>PT: generateEs256RootKeyPair
+    PT->>COO: POST signing-route mode wallet
+    PT->>PT: buildByokDelegationMaterial runner signs
     PT->>COO: POST /api/delegations/material
-    PT->>COO: POST signing-route { mode: wallet }
 
-    PT->>CUS: POST /v1/api/delegations (again)
-    Note over CUS: Still local issueDelegationForLog;<br/>does not call coordinator
-    CUS->>KMS: sign delegation (local)
-    CUS-->>PT: certificate
-```
-
-**Target diagram (plan 0021, not fully implemented)** for wallet-managed logs **without**
-a Custodian custody key:
-
-```mermaid
-sequenceDiagram
-    participant PT as Playwright / Sealer
-    participant CUS as Custodian
-    participant COO as Delegation coordinator
-
-    PT->>COO: POST signing-route { mode: wallet }
-    PT->>COO: POST /api/delegations/material (external root signature)
     PT->>CUS: POST /v1/api/delegations
-    CUS->>CUS: no local key / wallet route
-    CUS->>COO: proxy issue (planned)
+    CUS->>KMS: lookup key for logId
+    KMS-->>CUS: ErrNoCustodianKeyForLogID
+    CUS->>COO: proxy POST /api/delegations
     COO-->>CUS: stored certificate
     CUS-->>PT: certificate
+    PT->>PT: verifyByokDelegationCertificate
+```
+
+**Important:** The stretch spec must **not** call coordinator `custody-keys` or
+Custodian local mint for the same log id before step 5 — that would create a KMS
+key and force the local signing path instead of the proxy.
+
+---
+
+## What this spec does not prove
+
+| Gap | Future work |
+|-----|-------------|
+| SCRAPI register-grant with non-Custodian grant signer | [arbor plan-0003](../../../../../../arbor/docs/plan-0003-non-custodial-checkpoint-support.md) |
+| Sealer obtains delegation using non-Custodian trust root on deployed stack | [arbor plan-0005](../../../../../../arbor/docs/plan-0005-sealer-trust-root-end-to-end.md) |
+| Canopy receipt verify against non-Custodian root in Playwright | plan-0003 receipt-authority phase; [arbor plan-0004](../../../../../../arbor/docs/plan-0004-coordinator-backed-byok-lease-proof.md) follow-up |
+| Full checkpoint seal (Ranger + Sealer + MMRS) with BYOK delegation | plan-0005 |
+| Coordinator `GET …/public-root` | plan-0005 scope item 1 |
+
+---
+
+## How to run
+
+```bash
+E2E_COORDINATOR_SEALER_STRETCH=1 \
+  CANOPY_FQDN=api-forest-2.forestrie.dev \
+  CANOPY_BASE_URL=https://api-forest-2.forestrie.dev \
+  doppler run --project canopy --config dev -- \
+  pnpm --filter @canopy/api-e2e exec playwright test \
+    tests/system/coordinator-delegation-issuance.spec.ts
+```
+
+Primary BYOK coordinator lifecycle (no Custodian hop):
+
+```bash
+doppler run --project canopy --config dev -- \
+  pnpm --filter @canopy/api-e2e test:e2e:coordinator
 ```
 
 ---
 
 ## Related docs
 
-- [plan-0021](../../../../docs/plans/plan-0021-delegation-coordinator-apis.md) —
-  scope, acceptance criteria (Custodian proxy on miss + wallet-managed).
-- [package README — coordinator e2e](../../../README.md#delegation-coordinator-e2e).
-- Default coordinator CI: `coordinator-api` + `coordinator-byok-material` projects;
-  **not** this stretch file.
+- [plan-0021](../../../../docs/plans/plan-0021-delegation-coordinator-apis.md) — Phase 3 coordinator APIs
+- [arbor plan-0004 (ACCEPTED)](../../../../../../arbor/docs/plan-0004-coordinator-backed-byok-lease-proof.md)
+- [arbor plan-0003 § Custodian routing](../../../../../../arbor/docs/plan-0003-non-custodial-checkpoint-support.md)
+- [package README — coordinator e2e](../../../README.md)
