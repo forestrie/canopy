@@ -151,9 +151,13 @@ Sign with auth custody kid (not in D.grantData) ──► signer_mismatch
 
 ## `coordinator-delegation-issuance.spec.ts`
 
-**Focus:** Opt-in stretch (`E2E_COORDINATOR_SEALER_STRETCH=1`). **Wallet**
-signing route + Custodian delegation certificate — **not** the SCRAPI
-register-grant chain. Default CI **does not** run this file in `test:e2e:system`.
+**Focus:** Opt-in stretch (`E2E_COORDINATOR_SEALER_STRETCH=1`). Manual slice for
+coordinator material + signing-route APIs composed with **Custodian local**
+`POST /api/delegations` — **not** the SCRAPI register-grant chain and **not** the
+planned Custodian → Coordinator proxy loop (see doc for BYOK / in-flight limitations).
+Default CI **does not** run this file in `test:e2e:system`.
+
+**BYOK / coordinator issue:** use `tests/coordinator/coordinator-byok-material.spec.ts`.
 
 See [coordinator-delegation-issuance.md](./coordinator-delegation-issuance.md).
 
