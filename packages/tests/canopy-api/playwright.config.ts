@@ -1,4 +1,5 @@
 import { defineConfig } from "@playwright/test";
+import { E2E_SYSTEM_TEST_TIMEOUT_MS } from "./tests/utils/arithmetic-backoff-poll.js";
 import dotenv from "dotenv";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -71,6 +72,7 @@ export default defineConfig({
     {
       name: "system",
       testMatch: ["**/system/**/*.spec.ts"],
+      timeout: E2E_SYSTEM_TEST_TIMEOUT_MS,
       use: {
         baseURL,
       },

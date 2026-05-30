@@ -52,14 +52,14 @@ export async function completeGrantRegistrationThroughReceipt(
       statusUrlAbsolute,
       baseURL: opts.baseURL,
       ladderMs: ladder,
-      maxWaitMs: opts.pollRegistrationMaxMs ?? 180_000,
+      maxWaitMs: opts.pollRegistrationMaxMs,
     });
 
   const receiptRes = await pollResolveReceiptUntil200({
     request: opts.unauthorizedRequest,
     receiptUrlAbsolute,
     ladderMs: ladder,
-    maxWaitMs: opts.resolveReceiptMaxMs ?? 420_000,
+    maxWaitMs: opts.resolveReceiptMaxMs,
   });
 
   return {

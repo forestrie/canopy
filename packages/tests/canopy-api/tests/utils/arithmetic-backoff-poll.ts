@@ -1,6 +1,16 @@
 import type { APIRequestContext } from "@playwright/test";
 
 /**
+ * Max wall-clock for one poll-until-done loop (registration status redirect,
+ * receipt 200, MMRS retry, etc.). Per-attempt backoff stays sub-second; this
+ * caps total polling only.
+ */
+export const E2E_POLL_MAX_WAIT_MS = 30_000;
+
+/** Playwright harness for serial suites with several 30s poll stages in one test. */
+export const E2E_SYSTEM_TEST_TIMEOUT_MS = E2E_POLL_MAX_WAIT_MS * 8 + 15_000;
+
+/**
  * Per-attempt wait (milliseconds) before the next query-registration-status GET
  * after a pending 303. Index advances each poll; the **last** entry is reused for
  * further polls (arithmetic-style ladder: e.g. 100,200,… then stay at 1000).
@@ -62,7 +72,7 @@ export async function pollQueryRegistrationUntilReceiptRedirect(
     throw new Error("sequencingBackoff / ladderMs must be non-empty");
   }
 
-  const maxWaitMs = opts.maxWaitMs ?? 120_000;
+  const maxWaitMs = opts.maxWaitMs ?? E2E_POLL_MAX_WAIT_MS;
   const accept = opts.accept ?? "application/cbor";
   const start = Date.now();
   let attempt = 0;
@@ -133,7 +143,7 @@ export async function pollResolveReceiptUntil200(
   body: Uint8Array;
 }> {
   const ladder = opts.ladderMs ?? sequencingBackoff;
-  const maxWaitMs = opts.maxWaitMs ?? 120_000;
+  const maxWaitMs = opts.maxWaitMs ?? E2E_POLL_MAX_WAIT_MS;
   const accept = opts.accept ?? "application/cbor";
   const start = Date.now();
   let attempt = 0;

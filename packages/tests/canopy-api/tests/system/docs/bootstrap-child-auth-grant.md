@@ -4,7 +4,7 @@
 **Index:** [README.md](./README.md)  
 **Prerequisites:** [overview.md](./overview.md) — flows A, B
 
-Single serial test; long timeout (600s) for receipt polling.
+Single serial test; polls use the shared 30s wait ceiling per stage.
 
 ## What this spec proves
 

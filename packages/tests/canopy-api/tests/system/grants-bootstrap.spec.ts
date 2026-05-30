@@ -100,7 +100,6 @@ test.describe("Bootstrap grant e2e — mint and register-grant", () => {
   test("Bootstrap mint + register, poll sequencing, SCITT receipt, mmrIndex 0", async ({
     unauthorizedRequest,
   }, testInfo) => {
-    test.setTimeout(600_000);
     const logId = e2eReceiptBootstrapRootLogId();
     const baseURL = testInfo.project.use.baseURL ?? "";
 

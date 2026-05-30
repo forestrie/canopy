@@ -46,7 +46,7 @@ function e2eFirstStatementPayload(): Uint8Array {
  * for the whole describe (via `e2eReceiptBootstrapRootLogId()` once in `beforeAll`).
  */
 test.describe("Bootstrap log e2e — first signed entry", () => {
-  test.describe.configure({ mode: "serial", timeout: 600_000 });
+  test.describe.configure({ mode: "serial" });
 
   const shared = {
     logId: "",

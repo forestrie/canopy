@@ -48,7 +48,7 @@ import { completeGrantRegistrationThroughReceipt } from "@e2e-utils/register-gra
 import { sha256Hex } from "@e2e-utils/statement-sign-bytes";
 
 test.describe("Auth log → data log delegation chain", () => {
-  test.describe.configure({ mode: "serial", timeout: 600_000 });
+  test.describe.configure({ mode: "serial" });
 
   const shared = { rootLogId: "", baseURL: "" };
 

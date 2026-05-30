@@ -1,4 +1,5 @@
 import type { APIRequestContext } from "@playwright/test";
+import { E2E_POLL_MAX_WAIT_MS } from "./arithmetic-backoff-poll.js";
 import { custodianCustodySignEnv } from "./custodian-custody-grant";
 import { mintTransparentBootstrapGrantBase64 } from "./mint-bootstrap-grant-e2e.js";
 
@@ -107,7 +108,7 @@ export async function postRegisterGrantExpect303RetryParentMmrs(
     "./arithmetic-backoff-poll.js"
   );
   const ladder = opts.ladderMs ?? sequencingBackoff;
-  const maxWaitMs = opts.maxWaitMs ?? 300_000;
+  const maxWaitMs = opts.maxWaitMs ?? E2E_POLL_MAX_WAIT_MS;
   const start = Date.now();
   let attempt = 0;
   while (Date.now() - start < maxWaitMs) {

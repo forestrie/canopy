@@ -15,15 +15,16 @@ import {
   exportEs256RootXy,
   verifyByokDelegationCertificate,
 } from "./coordinator-delegation-helpers.js";
-import { sequencingBackoff, sleepMs } from "./arithmetic-backoff-poll.js";
+import {
+  E2E_POLL_MAX_WAIT_MS,
+  sequencingBackoff,
+  sleepMs,
+} from "./arithmetic-backoff-poll.js";
 import { bytesToForestrieGrantBase64 } from "./bootstrap-grant-flow.js";
 
 const RECEIPT_LOCATION_RE =
   /\/logs\/[^/]+\/[^/]+\/\d+\/entries\/[0-9a-f]{32}\/receipt(?:\?|$)/i;
 const cborEncoder = new Encoder({ mapsAsObjects: false });
-
-/** Fail status polling if Sealer never creates pending within this window. */
-const PENDING_STALL_MS = 180_000;
 
 export interface ByokPollStats {
   pendingEntriesSeen: number;
@@ -247,7 +248,7 @@ export async function pollRegistrationThroughByokReceipt(opts: {
     body: Uint8Array;
   };
 }> {
-  const maxWaitMs = opts.maxWaitMs ?? 600_000;
+  const maxWaitMs = opts.maxWaitMs ?? E2E_POLL_MAX_WAIT_MS;
   const start = Date.now();
   let attempt = 0;
   let lastPendingSeenAt = start;
@@ -255,11 +256,11 @@ export async function pollRegistrationThroughByokReceipt(opts: {
     const { pendingCount } = await signPendingDelegations(opts);
     if (pendingCount > 0) lastPendingSeenAt = Date.now();
     if (
-      Date.now() - lastPendingSeenAt >= PENDING_STALL_MS &&
+      Date.now() - lastPendingSeenAt >= E2E_POLL_MAX_WAIT_MS &&
       (opts.stats?.materialSigned ?? 0) === 0
     ) {
       throw new Error(
-        `BYOK: no coordinator pending entries for ${PENDING_STALL_MS}ms ` +
+        `BYOK: no coordinator pending entries for ${E2E_POLL_MAX_WAIT_MS}ms ` +
           "(Sealer may not be issuing). Check sealer queue and R2 notifications.",
       );
     }
@@ -285,7 +286,7 @@ export async function pollRegistrationThroughByokReceipt(opts: {
         receiptRes: await pollByokResolveReceiptUntil200({
           ...opts,
           receiptUrlAbsolute,
-          maxWaitMs: 420_000,
+          maxWaitMs: E2E_POLL_MAX_WAIT_MS,
         }),
       };
     }
@@ -316,7 +317,7 @@ async function pollByokResolveReceiptUntil200(opts: {
   headers: { [key: string]: string };
   body: Uint8Array;
 }> {
-  const maxWaitMs = opts.maxWaitMs ?? 420_000;
+  const maxWaitMs = opts.maxWaitMs ?? E2E_POLL_MAX_WAIT_MS;
   const start = Date.now();
   let attempt = 0;
   while (Date.now() - start < maxWaitMs) {

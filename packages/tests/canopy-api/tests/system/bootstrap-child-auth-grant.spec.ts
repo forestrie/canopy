@@ -39,7 +39,6 @@ test.describe("Bootstrap root + child auth grant e2e", () => {
     assertSystemE2eEnv();
     const custodyEnv = custodianCustodySignEnv()!;
 
-    test.setTimeout(600_000);
     const rootLogId = e2eReceiptBootstrapRootLogId();
     const childLogId = randomUUID();
     const baseURL = testInfo.project.use.baseURL ?? "";

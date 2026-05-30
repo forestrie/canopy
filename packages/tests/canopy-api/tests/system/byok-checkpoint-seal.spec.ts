@@ -36,7 +36,7 @@ import { sha256Hex } from "@e2e-utils/statement-sign-bytes";
 const enabled = process.env.E2E_BYOK_SEAL_STRETCH === "1";
 
 test.describe("BYOK checkpoint seal e2e", () => {
-  test.describe.configure({ mode: "serial", timeout: 900_000 });
+  test.describe.configure({ mode: "serial" });
 
   test.skip(
     !enabled,
