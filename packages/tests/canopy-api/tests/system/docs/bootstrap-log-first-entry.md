@@ -23,10 +23,10 @@ R  (root)
    statement: COSE Sign1 kid MUST match grantData (root signer binding)
 ```
 
-| Check | Mechanism |
-|-------|-----------|
-| Grant authorization | `grantAuthorize` — completed Forestrie-Grant + receipt |
-| Statement signer | Compare Sign1 protected `kid` to `grantData` uncompressed x‖y |
+| Check               | Mechanism                                                     |
+| ------------------- | ------------------------------------------------------------- |
+| Grant authorization | `grantAuthorize` — completed Forestrie-Grant + receipt        |
+| Statement signer    | Compare Sign1 protected `kid` to `grantData` uncompressed x‖y |
 
 ## Test cases
 

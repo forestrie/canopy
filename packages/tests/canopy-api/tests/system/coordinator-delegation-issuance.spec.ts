@@ -1,8 +1,14 @@
 /**
- * Stretch: wallet-managed delegation material + custodian proxy on a dedicated log.
+ * System-tier e2e for log root keys not held by Custodian (BYOK delegation path).
  *
- * Opt-in via E2E_COORDINATOR_SEALER_STRETCH=1 (does not run in default CI system suite).
- * Full sealer defer/recover polling is deferred; this proves proxy issuance only.
+ * Runner generates the log root, signs delegation material, uploads it to the
+ * coordinator, then obtains the cert through Custodian POST /api/delegations
+ * (proxy to coordinator when KMS has no key for the log id).
+ *
+ * Opt-in via E2E_COORDINATOR_SEALER_STRETCH=1 (skipped in default test:e2e:system).
+ * Coordinator-only twin: tests/coordinator/coordinator-byok-material.spec.ts
+ *
+ * Does not prove: SCRAPI register-grant, Sealer defer/recover, public-root proxy.
  */
 
 import { randomUUID } from "node:crypto";
@@ -13,12 +19,14 @@ import {
   hasCoordinatorApiE2eEnv,
 } from "@e2e-utils/coordinator-api-env.js";
 import {
+  buildByokDelegationMaterial,
   bytesToBase64,
   generateEphemeralDelegatedPublicKeyCbor,
+  generateEs256RootKeyPair,
   postCustodianDelegationIssue,
+  verifyByokDelegationCertificate,
 } from "@e2e-utils/coordinator-delegation-helpers.js";
 import { normalizeForestrieHexId32 } from "@e2e-utils/forestrie-hex-id.js";
-import { e2eCustodianKeyOwnerId } from "@e2e-utils/custodian-custody-grant.js";
 
 const stretchEnabled = process.env.E2E_COORDINATOR_SEALER_STRETCH === "1";
 
@@ -28,7 +36,7 @@ test.describe("coordinator delegation issuance (stretch)", () => {
     "Set E2E_COORDINATOR_SEALER_STRETCH=1 and coordinator env vars to run",
   );
 
-  test("wallet-managed log: material + custodian proxy issuance", async ({
+  test("BYOK root: custodian proxies runner-signed delegation material", async ({
     request,
   }) => {
     const { baseUrl: coordinatorUrl, appToken: coordinatorToken } =
@@ -41,30 +49,34 @@ test.describe("coordinator delegation issuance (stretch)", () => {
     const mmrStart = 0;
     const mmrEnd = 2048;
 
-    const keyRes = await request.post(
-      `${coordinatorUrl}/api/logs/${logUuid}/custody-keys`,
+    const rootKeyPair = await generateEs256RootKeyPair();
+    const delegatedPublicKey = await generateEphemeralDelegatedPublicKeyCbor();
+
+    const routeRes = await request.post(
+      `${coordinatorUrl}/api/logs/${logUuid}/signing-route`,
       {
         headers: {
           Authorization: `Bearer ${coordinatorToken}`,
           "Content-Type": "application/json",
         },
-        data: {
-          keyOwnerId: e2eCustodianKeyOwnerId(),
-          alg: "ES256",
-        },
+        data: { mode: "wallet" },
       },
     );
-    expect(keyRes.ok()).toBeTruthy();
+    expect(routeRes.status()).toBe(200);
 
-    const delegatedPublicKey = await generateEphemeralDelegatedPublicKeyCbor();
-    const issued = await postCustodianDelegationIssue({
-      custodianBaseUrl: custodianUrl,
-      appToken: custodianToken,
+    const material = await buildByokDelegationMaterial({
+      rootKeyPair,
       logIdHex32: logHex32,
       mmrStart,
       mmrEnd,
       delegatedPublicKey,
     });
+    expect(
+      await verifyByokDelegationCertificate({
+        certificate: material.certificate,
+        rootPublicKey: rootKeyPair.publicKey,
+      }),
+    ).toBe(true);
 
     const materialRes = await request.post(
       `${coordinatorUrl}/api/delegations/material`,
@@ -78,21 +90,13 @@ test.describe("coordinator delegation issuance (stretch)", () => {
           mmrStart,
           mmrEnd,
           delegatedPublicKey: bytesToBase64(delegatedPublicKey),
-          certificate: bytesToBase64(issued.certificate),
-          issuedAt: issued.issuedAt,
-          expiresAt: issued.expiresAt,
+          certificate: bytesToBase64(material.certificate),
+          issuedAt: material.issuedAt,
+          expiresAt: material.expiresAt,
         },
       },
     );
     expect(materialRes.ok()).toBeTruthy();
-
-    await request.post(`${coordinatorUrl}/api/logs/${logUuid}/signing-route`, {
-      headers: {
-        Authorization: `Bearer ${coordinatorToken}`,
-        "Content-Type": "application/json",
-      },
-      data: { mode: "wallet" },
-    });
 
     const proxied = await postCustodianDelegationIssue({
       custodianBaseUrl: custodianUrl,
@@ -102,6 +106,17 @@ test.describe("coordinator delegation issuance (stretch)", () => {
       mmrEnd,
       delegatedPublicKey,
     });
-    expect(proxied.certificate.byteLength).toBeGreaterThan(0);
+
+    expect(proxied.issuedAt).toBe(material.issuedAt);
+    expect(proxied.expiresAt).toBe(material.expiresAt);
+    expect(bytesToBase64(proxied.certificate)).toBe(
+      bytesToBase64(material.certificate),
+    );
+    expect(
+      await verifyByokDelegationCertificate({
+        certificate: proxied.certificate,
+        rootPublicKey: rootKeyPair.publicKey,
+      }),
+    ).toBe(true);
   });
 });

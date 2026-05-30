@@ -7,13 +7,60 @@ Spec files: `tests/system/*.spec.ts`. Shared flows:
 
 ## Spec map
 
-| Spec file | Doc | Depends on base flow |
-|-----------|-----|----------------------|
-| `grants-bootstrap.spec.ts` | [grants-bootstrap.md](./grants-bootstrap.md) | A, B |
-| `bootstrap-log-first-entry.spec.ts` | [bootstrap-log-first-entry.md](./bootstrap-log-first-entry.md) | A, B, C |
-| `bootstrap-child-auth-grant.spec.ts` | [bootstrap-child-auth-grant.md](./bootstrap-child-auth-grant.md) | A, B |
-| `auth-data-log-chain.spec.ts` | [auth-data-log-chain.md](./auth-data-log-chain.md) | A, B, C |
-| `coordinator-delegation-issuance.spec.ts` | [coordinator-delegation-issuance.md](./coordinator-delegation-issuance.md) | *(opt-in; not SCRAPI)* |
+| Spec file                                 | Doc                                                                        | Depends on base flow   |
+| ----------------------------------------- | -------------------------------------------------------------------------- | ---------------------- |
+| `grants-bootstrap.spec.ts`                | [grants-bootstrap.md](./grants-bootstrap.md)                               | A, B                   |
+| `bootstrap-log-first-entry.spec.ts`       | [bootstrap-log-first-entry.md](./bootstrap-log-first-entry.md)             | A, B, C                |
+| `bootstrap-child-auth-grant.spec.ts`      | [bootstrap-child-auth-grant.md](./bootstrap-child-auth-grant.md)           | A, B                   |
+| `auth-data-log-chain.spec.ts`             | [auth-data-log-chain.md](./auth-data-log-chain.md)                         | A, B, C                |
+| `coordinator-delegation-issuance.spec.ts` | [coordinator-delegation-issuance.md](./coordinator-delegation-issuance.md) | _(opt-in; not SCRAPI)_ |
+
+---
+
+## Non-Custodian log-root signing key (BYOK delegation)
+
+**Terminology:** “Signing key not held by Custodian” here means the **log root key**
+that signs **delegation certificates** (BYOK checkpoint authority), **not** the
+delegated checkpoint signer in `grantData`. All SCRAPI specs below mint and sign
+grants/statements via **Custodian KMS custody keys**.
+
+Default `task test:e2e:doppler` / `test:e2e:system` does **not** exercise
+non-Custodian log-root signing. For BYOK delegation e2e, run the coordinator tier
+(always) and optionally the stretch spec (Custodian proxy hop).
+
+### E2e coverage
+
+| Spec                                                                                              | Playwright project | Opt-in?                                  | Non-Custodian key signs                      | Custodian role                                          |
+| ------------------------------------------------------------------------------------------------- | ------------------ | ---------------------------------------- | -------------------------------------------- | ------------------------------------------------------- |
+| [`coordinator-byok-material.spec.ts`](../../coordinator/coordinator-byok-material.spec.ts)        | **coordinator**    | No (`test:e2e:coordinator`)              | Delegation cert (`generateEs256RootKeyPair`) | None — coordinator direct issue                         |
+| [`coordinator-delegation-issuance.spec.ts`](../../system/coordinator-delegation-issuance.spec.ts) | **system**         | Yes — `E2E_COORDINATOR_SEALER_STRETCH=1` | Same runner-signed delegation cert           | **Proxy only** — `POST /v1/api/delegations` on KMS miss |
+
+Both assert crypto via `verifyByokDelegationCertificate` in
+[`coordinator-delegation-helpers.ts`](../../utils/coordinator-delegation-helpers.ts).
+
+**Not BYOK:** `coordinator-api.spec.ts` (custodial pre-mint); all other
+`tests/system/*.spec.ts`; `bootstrap-log-first-entry` negative (ephemeral key → **403** only).
+
+### Not yet covered in e2e
+
+| Gap                                                   | Future work                                                                                                        |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| SCRAPI register-grant with non-Custodian grant signer | [arbor plan-0003](https://github.com/forestrie/arbor/blob/main/docs/plan-0003-non-custodial-checkpoint-support.md) |
+| Sealer + non-Custodian trust root on deployed stack   | [arbor plan-0005](https://github.com/forestrie/arbor/blob/main/docs/plan-0005-sealer-trust-root-end-to-end.md)     |
+| Canopy receipt verify BYOK in Playwright              | plan-0003 receipt-authority phase                                                                                  |
+| Full checkpoint seal with BYOK delegation             | plan-0005                                                                                                          |
+| Coordinator `GET …/public-root`                       | plan-0005                                                                                                          |
+
+```bash
+# Primary BYOK (coordinator tier)
+doppler run --project canopy --config dev -- \
+  pnpm --filter @canopy/api-e2e test:e2e:coordinator
+
+# System tier + Custodian proxy (opt-in)
+E2E_COORDINATOR_SEALER_STRETCH=1 doppler run --project canopy --config dev -- \
+  pnpm --filter @canopy/api-e2e exec playwright test \
+    tests/system/coordinator-delegation-issuance.spec.ts
+```
 
 ---
 
@@ -30,11 +77,11 @@ R (root)  —  O = T = R, genesis-bound grantData, create+extend flags
 
 ### Cases
 
-| Case | Path | Expected |
-|------|------|----------|
-| Happy | Mint only | Custodian-profile transparent statement (COSE + grant v0 header) |
-| Happy | `POST /register/{R}/grants` (fresh UUID) | **303** Location under `/logs/{R}/{R}/entries/{innerHex}` |
-| Happy | Mint + poll + `GET` receipt | **200** SCITT receipt CBOR; `mmrIndex === 0`; second register **303** with same inner in Location |
+| Case  | Path                                     | Expected                                                                                          |
+| ----- | ---------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Happy | Mint only                                | Custodian-profile transparent statement (COSE + grant v0 header)                                  |
+| Happy | `POST /register/{R}/grants` (fresh UUID) | **303** Location under `/logs/{R}/{R}/entries/{innerHex}`                                         |
+| Happy | Mint + poll + `GET` receipt              | **200** SCITT receipt CBOR; `mmrIndex === 0`; second register **303** with same inner in Location |
 
 ### Logical flow (auth)
 
@@ -61,11 +108,11 @@ R  —  completed grant (receipt on R); statement kid must match grantData (root
 
 ### Cases
 
-| Case | Path | Expected |
-|------|------|----------|
-| Happy | `beforeAll`: bootstrap + receipt | Shared completed grant |
-| Happy | Custodian sign statement + `POST /register/{R}/entries` | **303** Location with **content-hash** |
-| Negative | Ephemeral P-256 Sign1 (wrong kid) + same completed grant | **403** `signer_mismatch` |
+| Case     | Path                                                     | Expected                               |
+| -------- | -------------------------------------------------------- | -------------------------------------- |
+| Happy    | `beforeAll`: bootstrap + receipt                         | Shared completed grant                 |
+| Happy    | Custodian sign statement + `POST /register/{R}/entries`  | **303** Location with **content-hash** |
+| Negative | Ephemeral P-256 Sign1 (wrong kid) + same completed grant | **403** `signer_mismatch`              |
 
 ### Logical flow (auth)
 
@@ -92,8 +139,8 @@ R (root, MMRS-hot)
 
 ### Cases
 
-| Case | Path | Expected |
-|------|------|----------|
+| Case  | Path                                                      | Expected                             |
+| ----- | --------------------------------------------------------- | ------------------------------------ |
 | Happy | Root bootstrap + receipt, then child auth register + poll | **303** parent path; receipt **200** |
 
 ### Logical flow (auth)
@@ -123,11 +170,11 @@ R
 
 ### Cases
 
-| Case | Path | Expected |
-|------|------|----------|
-| Happy | `beforeAll`: root bootstrap + receipt | Shared `rootLogId` |
-| Happy | Register auth grant on R, data grant on A, delegated sign + entries | **303** content-hash on **D** |
-| Negative | Same chain but statement signed by **auth** custody key | **403** `signer_mismatch` |
+| Case     | Path                                                                | Expected                      |
+| -------- | ------------------------------------------------------------------- | ----------------------------- |
+| Happy    | `beforeAll`: root bootstrap + receipt                               | Shared `rootLogId`            |
+| Happy    | Register auth grant on R, data grant on A, delegated sign + entries | **303** content-hash on **D** |
+| Negative | Same chain but statement signed by **auth** custody key             | **403** `signer_mismatch`     |
 
 ### Logical flow (auth) — happy
 
@@ -151,13 +198,13 @@ Sign with auth custody kid (not in D.grantData) ──► signer_mismatch
 
 ## `coordinator-delegation-issuance.spec.ts`
 
-**Focus:** Opt-in stretch (`E2E_COORDINATOR_SEALER_STRETCH=1`). Manual slice for
-coordinator material + signing-route APIs composed with **Custodian local**
-`POST /api/delegations` — **not** the SCRAPI register-grant chain and **not** the
-planned Custodian → Coordinator proxy loop (see doc for BYOK / in-flight limitations).
-Default CI **does not** run this file in `test:e2e:system`.
+**Focus:** Opt-in stretch (`E2E_COORDINATOR_SEALER_STRETCH=1`). **System-tier e2e**
+for **log root keys not held by Custodian**: runner signs delegation material,
+coordinator stores it, **Custodian proxies** `POST /v1/api/delegations` on KMS miss.
+Not the SCRAPI register-grant chain.
 
-**BYOK / coordinator issue:** use `tests/coordinator/coordinator-byok-material.spec.ts`.
+Coordinator-only twin (503 pending → material → coordinator direct issue):
+[`coordinator-byok-material.spec.ts`](../../coordinator/coordinator-byok-material.spec.ts).
 
 See [coordinator-delegation-issuance.md](./coordinator-delegation-issuance.md).
 
@@ -165,10 +212,10 @@ See [coordinator-delegation-issuance.md](./coordinator-delegation-issuance.md).
 
 ## Other e2e tiers (not in `tests/system/docs/` per spec)
 
-| Project | Directory | Role |
-|---------|-----------|------|
-| integration | `tests/integration/` | Canopy-only health / SCRAPI discovery / CORS |
-| custodian | `tests/custodian/` | Direct Custodian `/v1/api/…` |
-| coordinator | `tests/coordinator/` | Phase 3 coordinator + Custodian delegations |
+| Project     | Directory            | Role                                                                                                            |
+| ----------- | -------------------- | --------------------------------------------------------------------------------------------------------------- |
+| integration | `tests/integration/` | Canopy-only health / SCRAPI discovery / CORS                                                                    |
+| custodian   | `tests/custodian/`   | Direct Custodian `/v1/api/…`                                                                                    |
+| coordinator | `tests/coordinator/` | Phase 3 coordinator APIs; **BYOK** (`coordinator-byok-material`); custodial pre-wallet flow (`coordinator-api`) |
 
 Package index: [../../../README.md](../../../README.md).

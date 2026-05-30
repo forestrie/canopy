@@ -26,11 +26,11 @@ R  root (MMRS-hot after bootstrap receipt)
         sequencing owner O = R  →  status /logs/{R}/{R}/entries/…
 ```
 
-| Verification branch | When |
-|---------------------|------|
-| Bootstrap (genesis) | Root only, cold MMRS |
-| Child-auth-first | Parent `R` MMRS-hot; COSE vs child `grantData`; curator paths |
-| Receipt | Later grants on hot logs |
+| Verification branch | When                                                          |
+| ------------------- | ------------------------------------------------------------- |
+| Bootstrap (genesis) | Root only, cold MMRS                                          |
+| Child-auth-first    | Parent `R` MMRS-hot; COSE vs child `grantData`; curator paths |
+| Receipt             | Later grants on hot logs                                      |
 
 ## Test case
 
