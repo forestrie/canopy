@@ -1,6 +1,6 @@
 # Plan 0023: Coordinator public-root endpoint
 
-**Status:** DRAFT  
+**Status:** ACCEPTED  
 **Date:** 2026-05-30  
 **Related:** [plan-0021](plan-0021-delegation-coordinator-apis.md),
 [plan-0022](plan-0022-delegation-coordinator-ops-parity.md),
