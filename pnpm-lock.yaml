@@ -108,6 +108,9 @@ importers:
 
   packages/apps/delegation-coordinator:
     dependencies:
+      '@canopy/encoding':
+        specifier: workspace:*
+        version: link:../../shared/encoding
       '@canopy/forestrie-sharding':
         specifier: workspace:*
         version: link:../../shared/forestrie-sharding
@@ -254,6 +257,9 @@ importers:
       typescript:
         specifier: ^5.9.2
         version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@24.8.1)(tsx@4.21.0)
 
   perf:
     dependencies:

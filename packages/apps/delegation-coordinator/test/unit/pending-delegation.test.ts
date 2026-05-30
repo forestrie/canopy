@@ -7,6 +7,11 @@ import {
   normalizeLogIdToHex32,
 } from "../../src/log-id.js";
 import type { PendingEntry } from "../../src/types/pending-entry.js";
+import {
+  buildTestByokMaterial,
+  generateTestRootKeyPair,
+  testDelegatedCoseKey,
+} from "./byok-material-fixture.js";
 
 const TEST_TOKEN = "test-coordinator-token";
 
@@ -82,7 +87,8 @@ describe("GET /api/logs/{logId}/pending-delegation", () => {
       mmrEnd: 7,
       delegatedPublicKey: firstKey,
     });
-    expect(firstMiss.status).toBe(503);
+    expect(firstMiss.status).toBe(202);
+    expect(firstMiss.headers.get("Retry-After")).toBe("5");
 
     const duplicateMiss = await postIssue({
       logHex32,
@@ -90,7 +96,7 @@ describe("GET /api/logs/{logId}/pending-delegation", () => {
       mmrEnd: 7,
       delegatedPublicKey: firstKey,
     });
-    expect(duplicateMiss.status).toBe(503);
+    expect(duplicateMiss.status).toBe(202);
 
     const secondMiss = await postIssue({
       logHex32,
@@ -98,7 +104,7 @@ describe("GET /api/logs/{logId}/pending-delegation", () => {
       mmrEnd: 7,
       delegatedPublicKey: secondKey,
     });
-    expect(secondMiss.status).toBe(503);
+    expect(secondMiss.status).toBe(202);
 
     const pendingRes = await SELF.fetch(
       `http://localhost/api/logs/${logUuid}/pending-delegation`,
@@ -125,8 +131,8 @@ describe("GET /api/logs/{logId}/pending-delegation", () => {
   it("material submission clears only the matching key", async () => {
     const logUuid = "41234567-89ab-cdef-0123-456789abcdef";
     const logHex32 = normalizeLogIdToHex32(logUuid);
-    const firstKey = delegatedKey(11);
-    const secondKey = delegatedKey(121);
+    const firstKey = testDelegatedCoseKey(11);
+    const secondKey = testDelegatedCoseKey(121);
 
     expect(
       (
@@ -137,7 +143,7 @@ describe("GET /api/logs/{logId}/pending-delegation", () => {
           delegatedPublicKey: firstKey,
         })
       ).status,
-    ).toBe(503);
+    ).toBe(202);
     expect(
       (
         await postIssue({
@@ -147,7 +153,30 @@ describe("GET /api/logs/{logId}/pending-delegation", () => {
           delegatedPublicKey: secondKey,
         })
       ).status,
-    ).toBe(503);
+    ).toBe(202);
+
+    const rootKeyPair = await generateTestRootKeyPair();
+    const { x, y, certificate, issuedAt, expiresAt } =
+      await buildTestByokMaterial({
+        rootKeyPair,
+        logIdHex32: logHex32,
+        mmrStart: 2,
+        mmrEnd: 9,
+        delegatedPublicKey: firstKey,
+      });
+    const rootRes = await SELF.fetch(
+      `http://localhost/api/logs/${logUuid}/public-root`,
+      {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          alg: "ES256",
+          x: bytesToBase64(x),
+          y: bytesToBase64(y),
+        }),
+      },
+    );
+    expect(rootRes.status).toBe(200);
 
     const materialRes = await SELF.fetch(
       "http://localhost/api/delegations/material",
@@ -159,9 +188,9 @@ describe("GET /api/logs/{logId}/pending-delegation", () => {
           mmrStart: 2,
           mmrEnd: 9,
           delegatedPublicKey: bytesToBase64(firstKey),
-          certificate: bytesToBase64(new Uint8Array([1, 2, 3])),
-          issuedAt: 1,
-          expiresAt: 999999,
+          certificate: bytesToBase64(certificate),
+          issuedAt,
+          expiresAt,
         }),
       },
     );

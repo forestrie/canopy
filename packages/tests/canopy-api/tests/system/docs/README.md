@@ -35,6 +35,7 @@ non-Custodian log-root signing. For BYOK delegation e2e, run the coordinator tie
 | [`coordinator-byok-material.spec.ts`](../../coordinator/coordinator-byok-material.spec.ts)        | **coordinator**    | No (`test:e2e:coordinator`)              | Delegation cert (`generateEs256RootKeyPair`) | None — coordinator direct issue                         |
 | [`coordinator-byok-public-root.spec.ts`](../../coordinator/coordinator-byok-public-root.spec.ts)  | **coordinator**    | No (`test:e2e:coordinator`)              | Root + delegation cert                       | None — `GET …/public-root` CBOR trust root              |
 | [`coordinator-delegation-issuance.spec.ts`](../../system/coordinator-delegation-issuance.spec.ts) | **system**         | Yes — `E2E_COORDINATOR_SEALER_STRETCH=1` | Same runner-signed delegation cert           | **Proxy only** — `POST /v1/api/delegations` on KMS miss |
+| [`byok-checkpoint-seal.spec.ts`](../../system/byok-checkpoint-seal.spec.ts) | **system** | Yes — `E2E_BYOK_SEAL_STRETCH=1` | Runner root + wallet material + full checkpoint receipt | Coordinator + Sealer on deployed stack |
 
 Both assert crypto via `verifyByokDelegationCertificate` in
 [`coordinator-delegation-helpers.ts`](../../utils/coordinator-delegation-helpers.ts).

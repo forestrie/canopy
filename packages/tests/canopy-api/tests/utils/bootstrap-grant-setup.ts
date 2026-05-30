@@ -85,3 +85,58 @@ export async function postRegisterGrantExpect303(
   }
   return { statusUrlAbsolute: toAbsoluteUrl(opts.baseURL, loc) };
 }
+
+const PARENT_MMRS_403_RE =
+  /MMRS|initialize the owner log|Authority log has no MMRS/i;
+
+/**
+ * POST register-grant expecting 303; retry on 403 when parent authority log is
+ * not MMRS-hot yet (child data grant after auth grant receipt).
+ */
+export async function postRegisterGrantExpect303RetryParentMmrs(
+  unauthorizedRequest: APIRequestContext,
+  opts: {
+    bootstrapLogId: string;
+    baseURL: string;
+    grantBase64: string;
+    maxWaitMs?: number;
+    ladderMs?: number[];
+  },
+): Promise<{ statusUrlAbsolute: string }> {
+  const { sequencingBackoff, sleepMs } = await import(
+    "./arithmetic-backoff-poll.js"
+  );
+  const ladder = opts.ladderMs ?? sequencingBackoff;
+  const maxWaitMs = opts.maxWaitMs ?? 300_000;
+  const start = Date.now();
+  let attempt = 0;
+  while (Date.now() - start < maxWaitMs) {
+    const registerRes = await unauthorizedRequest.post(
+      `/register/${opts.bootstrapLogId}/grants`,
+      {
+        headers: {
+          Authorization: `Forestrie-Grant ${opts.grantBase64}`,
+        },
+        maxRedirects: 0,
+      },
+    );
+    if (registerRes.status() === 303) {
+      const loc = registerRes.headers()["location"];
+      if (!loc) throw new Error("register-grant: 303 without Location");
+      return { statusUrlAbsolute: toAbsoluteUrl(opts.baseURL, loc) };
+    }
+    const preview = (await registerRes.text()).slice(0, 400);
+    if (registerRes.status() === 403 && PARENT_MMRS_403_RE.test(preview)) {
+      const step = ladder[Math.min(attempt, ladder.length - 1)]!;
+      await sleepMs(step);
+      attempt++;
+      continue;
+    }
+    throw new Error(
+      `register-grant: expected 303, got ${registerRes.status()} (body: ${preview})`,
+    );
+  }
+  throw new Error(
+    `register-grant: parent authority log not MMRS-ready within ${maxWaitMs}ms`,
+  );
+}

@@ -1,5 +1,5 @@
 import type { APIRequestContext } from "@playwright/test";
-import { decode, encode as encodeCbor } from "cbor-x";
+import { decode, Encoder } from "cbor-x";
 import { encodeSigStructure } from "@canopy/encoding";
 import { encodeGrantPayload } from "@e2e-canopy-api-src/grant/codec.js";
 import type { Grant } from "@e2e-canopy-api-src/grant/grant.js";
@@ -16,7 +16,6 @@ import {
   verifyByokDelegationCertificate,
 } from "./coordinator-delegation-helpers.js";
 import {
-  pollResolveReceiptUntil200,
   sequencingBackoff,
   sleepMs,
 } from "./arithmetic-backoff-poll.js";
@@ -24,9 +23,18 @@ import { bytesToForestrieGrantBase64 } from "./bootstrap-grant-flow.js";
 
 const RECEIPT_LOCATION_RE =
   /\/logs\/[^/]+\/[^/]+\/\d+\/entries\/[0-9a-f]{32}\/receipt(?:\?|$)/i;
+const cborEncoder = new Encoder({ mapsAsObjects: false });
+
+/** Fail status polling if Sealer never creates pending within this window. */
+const PENDING_STALL_MS = 180_000;
+
+export interface ByokPollStats {
+  pendingEntriesSeen: number;
+  materialSigned: number;
+}
 
 function cborBytes(value: unknown): Uint8Array {
-  const encoded = encodeCbor(value);
+  const encoded = cborEncoder.encode(value);
   return encoded instanceof Uint8Array
     ? encoded
     : new Uint8Array(encoded as ArrayLike<number>);
@@ -147,7 +155,8 @@ export async function signPendingDelegations(opts: {
   logIdHex32: string;
   rootKeyPair: CryptoKeyPair;
   signedMaterialKeys: Set<string>;
-}): Promise<number> {
+  stats?: ByokPollStats;
+}): Promise<{ signed: number; pendingCount: number }> {
   const pending = await opts.request.get(
     `${opts.coordinatorUrl}/api/logs/${opts.logId}/pending-delegation`,
     {
@@ -166,6 +175,9 @@ export async function signPendingDelegations(opts: {
       delegatedPublicKey: string;
     }>;
   };
+  if (opts.stats && body.entries.length > 0) {
+    opts.stats.pendingEntriesSeen += body.entries.length;
+  }
   let signed = 0;
   for (const entry of body.entries) {
     const key = `${entry.mmrStart}:${entry.mmrEnd}:${entry.delegatedPublicKey}`;
@@ -212,8 +224,9 @@ export async function signPendingDelegations(opts: {
     }
     opts.signedMaterialKeys.add(key);
     signed++;
+    if (opts.stats) opts.stats.materialSigned++;
   }
-  return signed;
+  return { signed, pendingCount: body.entries.length };
 }
 
 export async function pollRegistrationThroughByokReceipt(opts: {
@@ -226,17 +239,33 @@ export async function pollRegistrationThroughByokReceipt(opts: {
   logIdHex32: string;
   rootKeyPair: CryptoKeyPair;
   signedMaterialKeys: Set<string>;
+  stats?: ByokPollStats;
   maxWaitMs?: number;
 }): Promise<{
   receiptUrlAbsolute: string;
   entryIdHex: string;
-  receiptRes: Awaited<ReturnType<typeof pollResolveReceiptUntil200>>;
+  receiptRes: {
+    status: number;
+    headers: { [key: string]: string };
+    body: Uint8Array;
+  };
 }> {
   const maxWaitMs = opts.maxWaitMs ?? 600_000;
   const start = Date.now();
   let attempt = 0;
+  let lastPendingSeenAt = start;
   while (Date.now() - start < maxWaitMs) {
-    await signPendingDelegations(opts);
+    const { pendingCount } = await signPendingDelegations(opts);
+    if (pendingCount > 0) lastPendingSeenAt = Date.now();
+    if (
+      Date.now() - lastPendingSeenAt >= PENDING_STALL_MS &&
+      (opts.stats?.materialSigned ?? 0) === 0
+    ) {
+      throw new Error(
+        `BYOK: no coordinator pending entries for ${PENDING_STALL_MS}ms ` +
+          "(Sealer may not be issuing). Check sealer queue and R2 notifications.",
+      );
+    }
     const res = await opts.request.get(opts.statusUrlAbsolute, {
       maxRedirects: 0,
       headers: { Accept: "application/cbor" },
@@ -256,10 +285,9 @@ export async function pollRegistrationThroughByokReceipt(opts: {
       return {
         receiptUrlAbsolute,
         entryIdHex,
-        receiptRes: await pollResolveReceiptUntil200({
-          request: opts.request,
+        receiptRes: await pollByokResolveReceiptUntil200({
+          ...opts,
           receiptUrlAbsolute,
-          ladderMs: sequencingBackoff,
           maxWaitMs: 420_000,
         }),
       };
@@ -269,9 +297,75 @@ export async function pollRegistrationThroughByokReceipt(opts: {
     await sleepMs(ladderStep);
     attempt++;
   }
-  throw new Error(
+  throw formatByokPollTimeout(
     `BYOK registration did not reach receipt redirect within ${maxWaitMs}ms`,
+    opts.stats,
   );
+}
+
+async function pollByokResolveReceiptUntil200(opts: {
+  request: APIRequestContext;
+  receiptUrlAbsolute: string;
+  coordinatorUrl: string;
+  coordinatorToken: string;
+  logId: string;
+  logIdHex32: string;
+  rootKeyPair: CryptoKeyPair;
+  signedMaterialKeys: Set<string>;
+  stats?: ByokPollStats;
+  maxWaitMs?: number;
+}): Promise<{
+  status: number;
+  headers: { [key: string]: string };
+  body: Uint8Array;
+}> {
+  const maxWaitMs = opts.maxWaitMs ?? 420_000;
+  const start = Date.now();
+  let attempt = 0;
+  while (Date.now() - start < maxWaitMs) {
+    await signPendingDelegations(opts);
+    const res = await opts.request.get(opts.receiptUrlAbsolute, {
+      headers: { Accept: "application/cbor" },
+    });
+    if (res.status() === 200) {
+      return {
+        status: res.status(),
+        headers: res.headers(),
+        body: new Uint8Array(await res.body()),
+      };
+    }
+    if (res.status() !== 404) {
+      throw new Error(
+        `resolve-receipt: expected 200 or retryable 404, got ${res.status()} for ${opts.receiptUrlAbsolute}`,
+      );
+    }
+    const ladderStep =
+      sequencingBackoff[Math.min(attempt, sequencingBackoff.length - 1)]!;
+    await sleepMs(ladderStep);
+    attempt++;
+  }
+  throw formatByokPollTimeout(
+    `resolve-receipt: 404 until timeout ${maxWaitMs}ms (${opts.receiptUrlAbsolute})`,
+    opts.stats,
+  );
+}
+
+function formatByokPollTimeout(
+  message: string,
+  stats?: ByokPollStats,
+): Error {
+  const pending = stats?.pendingEntriesSeen ?? 0;
+  const signed = stats?.materialSigned ?? 0;
+  let hint =
+    " BYOK delegation material may still be pending or Sealer may still be sealing.";
+  if (signed > 0 && pending === 0) {
+    hint +=
+      " Material was submitted but pending is empty: check Sealer logs for " +
+      "verify delegation lease errors (poison cert / wrong CBOR).";
+  } else if (pending === 0) {
+    hint += " No pending entries were observed during the poll.";
+  }
+  return new Error(message + hint);
 }
 
 export function extractDelegationCertFromReceipt(

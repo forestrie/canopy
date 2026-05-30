@@ -18,6 +18,11 @@ import type { PendingEntry } from "../types/pending-entry.js";
 import type { PendingHintRequest } from "../types/pending-hint-request.js";
 import type { SigningRoute } from "../types/signing-route.js";
 import type { SubmitMaterialRequest } from "../types/submit-material-request.js";
+import { delegationPendingResponse } from "../delegation-pending-response.js";
+import {
+  ByokMaterialValidationError,
+  validateByokDelegationMaterial,
+} from "../validate-byok-material.js";
 
 const PENDING_TTL_SECONDS = 60 * 60;
 const PENDING_CAP_PER_LOG = 32;
@@ -380,6 +385,60 @@ export class DelegationStoreDO extends DurableObject<Env> {
     const logIdHex32 = body.logId;
     const delegatedPublicKey = base64ToBytes(body.delegatedPublicKey);
     const certificate = base64ToBytes(body.certificate);
+
+    const rootRows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT alg, x, y FROM public_roots WHERE log_id_hex32 = ?`,
+        logIdHex32,
+      ),
+    ];
+    if (rootRows.length === 0) {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Not Found",
+          status: 404,
+          detail: "public root not uploaded for log",
+        },
+        { status: 404 },
+      );
+    }
+    const rootRow = rootRows[0] as {
+      alg: string;
+      x: ArrayBuffer;
+      y: ArrayBuffer;
+    };
+    try {
+      await validateByokDelegationMaterial({
+        logIdHex32,
+        mmrStart: body.mmrStart,
+        mmrEnd: body.mmrEnd,
+        delegatedPublicKey,
+        certificate,
+        publicRoot: {
+          alg: rootRow.alg,
+          x: new Uint8Array(rootRow.x),
+          y: new Uint8Array(rootRow.y),
+        },
+      });
+    } catch (error) {
+      const detail =
+        error instanceof ByokMaterialValidationError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "invalid delegation material";
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Invalid request",
+          status: 400,
+          detail,
+        },
+        { status: 400 },
+      );
+    }
+
     const key = await materialKeyFor(
       body.mmrStart,
       body.mmrEnd,
@@ -459,20 +518,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
       );
       this.prunePending(logIdHex32, now);
 
-      const problem = encode({
-        type: "about:blank",
-        title: "Service Unavailable",
-        status: 503,
-        detail: "delegation material not found for requested range and key",
-      });
-      const bytes =
-        problem instanceof Uint8Array
-          ? problem
-          : new Uint8Array(problem as ArrayLike<number>);
-      return new Response(bytes, {
-        status: 503,
-        headers: { "Content-Type": "application/problem+cbor" },
-      });
+      return delegationPendingResponse(202);
     }
 
     const row = rows[0] as {

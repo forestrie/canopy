@@ -64,6 +64,10 @@ test.describe("BYOK checkpoint seal e2e", () => {
     const baseURL = testInfo.project.use.baseURL ?? "";
     const rootKeyPair = await generateEs256RootKeyPair();
     const signedMaterialKeys = new Set<string>();
+    const byokPollStats = {
+      pendingEntriesSeen: 0,
+      materialSigned: 0,
+    };
 
     const { x, y } = await exportEs256RootXy(rootKeyPair);
     const publicRoot = await uploadByokRootPublicKey({
@@ -114,6 +118,7 @@ test.describe("BYOK checkpoint seal e2e", () => {
       logIdHex32: rootLogHex32,
       rootKeyPair,
       signedMaterialKeys,
+      stats: byokPollStats,
     });
     expect(grantComplete.receiptRes.status).toBe(200);
     expect(
@@ -166,6 +171,7 @@ test.describe("BYOK checkpoint seal e2e", () => {
       logIdHex32: rootLogHex32,
       rootKeyPair,
       signedMaterialKeys,
+      stats: byokPollStats,
     });
     expect(entryComplete.receiptRes.status).toBe(200);
     expect(

@@ -156,6 +156,7 @@ test.describe("Auth log → data log delegation chain", () => {
       baseURL,
       grantBase64: dataGrantB64,
       ladderMs: sequencingBackoff,
+      retryParentMmrsOn403: true,
     });
     expect(dataComplete.receiptRes.status).toBe(200);
 
@@ -270,6 +271,7 @@ test.describe("Auth log → data log delegation chain", () => {
       baseURL,
       grantBase64: dataGrantB64,
       ladderMs: sequencingBackoff,
+      retryParentMmrsOn403: true,
     });
 
     const completedDataB64 = buildCompletedGrantBase64(

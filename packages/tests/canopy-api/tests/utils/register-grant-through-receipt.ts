@@ -4,7 +4,10 @@ import {
   pollResolveReceiptUntil200,
   sequencingBackoff,
 } from "./arithmetic-backoff-poll";
-import { postRegisterGrantExpect303 } from "./bootstrap-grant-setup";
+import {
+  postRegisterGrantExpect303,
+  postRegisterGrantExpect303RetryParentMmrs,
+} from "./bootstrap-grant-setup";
 
 export interface CompleteGrantRegistrationThroughReceiptOptions {
   unauthorizedRequest: APIRequestContext;
@@ -15,6 +18,8 @@ export interface CompleteGrantRegistrationThroughReceiptOptions {
   ladderMs?: number[];
   pollRegistrationMaxMs?: number;
   resolveReceiptMaxMs?: number;
+  /** Retry register-grant 403 until parent authority log is MMRS-hot. */
+  retryParentMmrsOn403?: boolean;
 }
 
 export interface CompleteGrantRegistrationThroughReceiptResult {
@@ -31,14 +36,14 @@ export interface CompleteGrantRegistrationThroughReceiptResult {
 export async function completeGrantRegistrationThroughReceipt(
   opts: CompleteGrantRegistrationThroughReceiptOptions,
 ): Promise<CompleteGrantRegistrationThroughReceiptResult> {
-  const { statusUrlAbsolute } = await postRegisterGrantExpect303(
-    opts.unauthorizedRequest,
-    {
-      bootstrapLogId: opts.bootstrapLogId,
-      baseURL: opts.baseURL,
-      grantBase64: opts.grantBase64,
-    },
-  );
+  const postRegister = opts.retryParentMmrsOn403
+    ? postRegisterGrantExpect303RetryParentMmrs
+    : postRegisterGrantExpect303;
+  const { statusUrlAbsolute } = await postRegister(opts.unauthorizedRequest, {
+    bootstrapLogId: opts.bootstrapLogId,
+    baseURL: opts.baseURL,
+    grantBase64: opts.grantBase64,
+  });
 
   const ladder = opts.ladderMs ?? sequencingBackoff;
   const { receiptUrlAbsolute, entryIdHex } =

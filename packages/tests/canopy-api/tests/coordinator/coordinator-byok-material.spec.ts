@@ -77,7 +77,7 @@ test.describe("delegation-coordinator BYOK material", () => {
       },
       data: issueBody(),
     });
-    expect(res.status()).toBe(503);
+    expect(res.status()).toBe(202);
 
     const pending = await request.get(
       `${coordinatorUrl}/api/delegations/pending?authLogId=${logUuid}`,

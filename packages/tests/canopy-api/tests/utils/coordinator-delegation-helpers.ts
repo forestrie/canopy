@@ -2,11 +2,13 @@
  * Delegation issuance helpers for coordinator e2e (custodial trust root).
  */
 
-import { decode, encode as encodeCbor } from "cbor-x";
+import { decode, Encoder } from "cbor-x";
 import { encodeSigStructure } from "@canopy/encoding";
 import { custodianApiV1BaseUrl } from "./custodian-api-env.js";
 import { custodianDecodeCbor } from "./custodian-api-cbor.js";
 import { normalizeForestrieHexId32 } from "./forestrie-hex-id.js";
+
+const cborEncoder = new Encoder({ mapsAsObjects: false });
 
 export function hex32ToWireLogId(hex32: string): Uint8Array {
   const h = normalizeForestrieHexId32(hex32);
@@ -38,10 +40,7 @@ export async function generateEphemeralDelegatedPublicKeyCbor(): Promise<Uint8Ar
     [-2, x],
     [-3, y],
   ]);
-  const encoded = encodeCbor(coseMap);
-  return encoded instanceof Uint8Array
-    ? encoded
-    : new Uint8Array(encoded as ArrayLike<number>);
+  return cborBytes(coseMap);
 }
 
 export function bytesToBase64(bytes: Uint8Array): string {
@@ -80,7 +79,7 @@ export async function postCustodianDelegationIssue(opts: {
     delegatedPublicKey: opts.delegatedPublicKey,
     requestedTtlSeconds: opts.requestedTtlSeconds ?? 3600,
   };
-  const encoded = encodeCbor(body);
+  const encoded = cborBytes(body);
   const u8 =
     encoded instanceof Uint8Array
       ? encoded
@@ -265,7 +264,7 @@ export async function buildByokDelegationMaterial(opts: {
   const kid = new Uint8Array(
     await crypto.subtle.digest("SHA-256", rawRoot),
   ).slice(0, 16);
-  const delegatedKey = decode(opts.delegatedPublicKey) as unknown;
+  const delegatedKey = decodeDelegatedCoseKey(opts.delegatedPublicKey);
 
   const protectedBytes = cborBytes(
     new Map<number, unknown>([
@@ -338,10 +337,31 @@ export async function verifyByokDelegationCertificate(opts: {
 }
 
 function cborBytes(value: unknown): Uint8Array {
-  const encoded = encodeCbor(value);
+  const encoded = cborEncoder.encode(value);
   return encoded instanceof Uint8Array
     ? encoded
     : new Uint8Array(encoded as ArrayLike<number>);
+}
+
+function decodeDelegatedCoseKey(bytes: Uint8Array): Map<number, unknown> {
+  const raw = decode(bytes) as unknown;
+  if (raw instanceof Map) {
+    return new Map(
+      [...raw.entries()].map(([key, value]) => [Number(key), value]),
+    );
+  }
+  if (raw && typeof raw === "object") {
+    const out = new Map<number, unknown>();
+    for (const [key, value] of Object.entries(raw)) {
+      const numericKey = Number(key);
+      if (!Number.isInteger(numericKey)) {
+        throw new Error(`delegated COSE_Key has non-integer key ${key}`);
+      }
+      out.set(numericKey, value);
+    }
+    return out;
+  }
+  throw new Error("delegated COSE_Key is not a map");
 }
 
 function bytesFromUnknown(value: unknown, label: string): Uint8Array {
