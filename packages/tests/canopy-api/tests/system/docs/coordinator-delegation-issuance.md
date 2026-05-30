@@ -49,10 +49,10 @@ proxy path to succeed. Outbound coordinator calls use `DELEGATION_COORDINATOR_TO
 
 ## Non-Custodian log-root coverage
 
-| Spec | Tier | Custodian role |
-|------|------|----------------|
+| Spec                                                                                       | Tier                     | Custodian role                  |
+| ------------------------------------------------------------------------------------------ | ------------------------ | ------------------------------- |
 | [`coordinator-byok-material.spec.ts`](../../coordinator/coordinator-byok-material.spec.ts) | coordinator (default CI) | None — coordinator direct issue |
-| **This stretch spec** | system (opt-in) | Proxy on KMS miss |
+| **This stretch spec**                                                                      | system (opt-in)          | Proxy on KMS miss               |
 
 Both use `generateEs256RootKeyPair`, `buildByokDelegationMaterial`, and
 `verifyByokDelegationCertificate` from
@@ -98,13 +98,13 @@ key and force the local signing path instead of the proxy.
 
 ## What this spec does not prove
 
-| Gap | Future work |
-|-----|-------------|
-| SCRAPI register-grant with non-Custodian grant signer | [arbor plan-0003](../../../../../../arbor/docs/plan-0003-non-custodial-checkpoint-support.md) |
-| Sealer obtains delegation using non-Custodian trust root on deployed stack | [arbor plan-0005](../../../../../../arbor/docs/plan-0005-sealer-trust-root-end-to-end.md) |
-| Canopy receipt verify against non-Custodian root in Playwright | plan-0003 receipt-authority phase; [arbor plan-0004](../../../../../../arbor/docs/plan-0004-coordinator-backed-byok-lease-proof.md) follow-up |
-| Full checkpoint seal (Ranger + Sealer + MMRS) with BYOK delegation | plan-0005 |
-| Coordinator `GET …/public-root` | plan-0005 scope item 1 |
+| Gap                                                                        | Future work                                                                                                                                   |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| SCRAPI register-grant with non-Custodian grant signer                      | [arbor plan-0003](../../../../../../arbor/docs/plan-0003-non-custodial-checkpoint-support.md)                                                 |
+| Sealer obtains delegation using non-Custodian trust root on deployed stack | [arbor plan-0005](../../../../../../arbor/docs/plan-0005-sealer-trust-root-end-to-end.md)                                                     |
+| Canopy receipt verify against non-Custodian root in Playwright             | plan-0003 receipt-authority phase; [arbor plan-0004](../../../../../../arbor/docs/plan-0004-coordinator-backed-byok-lease-proof.md) follow-up |
+| Full checkpoint seal (Ranger + Sealer + MMRS) with BYOK delegation         | plan-0005                                                                                                                                     |
+| Coordinator `GET …/public-root`                                            | plan-0005 scope item 1                                                                                                                        |
 
 ---
 

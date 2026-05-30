@@ -18,12 +18,12 @@ Serial suite; uses a **fresh UUID** per test except the long poll test which use
 
 ## Auth under test
 
-| Field | Value |
-|-------|--------|
-| Bootstrap log `R` | `logId === ownerLogId === R` |
-| Trust | `grantData` x‖y **equals** curator genesis for `R` |
-| Flags | create + extend (bootstrap bitmap) |
-| Signer | Per-root Custodian custody ES256 key (not `:bootstrap` alias) |
+| Field             | Value                                                         |
+| ----------------- | ------------------------------------------------------------- |
+| Bootstrap log `R` | `logId === ownerLogId === R`                                  |
+| Trust             | `grantData` x‖y **equals** curator genesis for `R`            |
+| Flags             | create + extend (bootstrap bitmap)                            |
+| Signer            | Per-root Custodian custody ES256 key (not `:bootstrap` alias) |
 
 ## Test cases
 
@@ -110,9 +110,9 @@ sequenceDiagram
 
 ## Failure modes (operational)
 
-| Symptom | Typical cause |
-|---------|----------------|
-| 503 on register | Missing `CUSTODIAN_APP_TOKEN` / queue binding on worker |
-| Not 303 on register | MMRS already has massif for `R` (not cold) |
-| Poll timeout | forestrie-ingress or Ranger not running on env |
-| `mmrIndex !== 0` | Concurrent bootstrap on same `R` |
+| Symptom             | Typical cause                                           |
+| ------------------- | ------------------------------------------------------- |
+| 503 on register     | Missing `CUSTODIAN_APP_TOKEN` / queue binding on worker |
+| Not 303 on register | MMRS already has massif for `R` (not cold)              |
+| Poll timeout        | forestrie-ingress or Ranger not running on env          |
+| `mmrIndex !== 0`    | Concurrent bootstrap on same `R`                        |

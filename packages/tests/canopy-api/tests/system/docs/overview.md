@@ -9,16 +9,16 @@ For the **test index** (happy / negative paths and auth-focused summaries), see
 
 ## Components
 
-| Component | Repository / package | Role in system e2e |
-|-----------|----------------------|--------------------|
-| **Playwright** | `@canopy/api-e2e` | Runner: mints grants, polls SCRAPI, calls Custodian |
-| **Canopy API** | `@canopy/api` | SCRAPI, forest genesis admin, register-grant/entries, status, receipts |
-| **SequencingQueue DO** | `@canopy/forestrie-ingress` | Enqueue + resolve; Ranger pulls via HTTP |
-| **R2_MMRS** | Cloudflare R2 | Massifs + signed checkpoints (`.sth`) |
-| **R2_GRANTS** | Cloudflare R2 | Forest genesis per bootstrap log id |
-| **Custodian** | Arbor `services/custodian` | ES256 custody keys (KMS), sign, `curator/log-key` |
-| **Ranger** | Arbor `services/ranger` | `queue/pull` → commit MMR leaves to MMRS |
-| **Sealer** | Arbor `services/sealer` | Signs checkpoints into R2 (async; required for receipts) |
+| Component              | Repository / package        | Role in system e2e                                                     |
+| ---------------------- | --------------------------- | ---------------------------------------------------------------------- |
+| **Playwright**         | `@canopy/api-e2e`           | Runner: mints grants, polls SCRAPI, calls Custodian                    |
+| **Canopy API**         | `@canopy/api`               | SCRAPI, forest genesis admin, register-grant/entries, status, receipts |
+| **SequencingQueue DO** | `@canopy/forestrie-ingress` | Enqueue + resolve; Ranger pulls via HTTP                               |
+| **R2_MMRS**            | Cloudflare R2               | Massifs + signed checkpoints (`.sth`)                                  |
+| **R2_GRANTS**          | Cloudflare R2               | Forest genesis per bootstrap log id                                    |
+| **Custodian**          | Arbor `services/custodian`  | ES256 custody keys (KMS), sign, `curator/log-key`                      |
+| **Ranger**             | Arbor `services/ranger`     | `queue/pull` → commit MMR leaves to MMRS                               |
+| **Sealer**             | Arbor `services/sealer`     | Signs checkpoints into R2 (async; required for receipts)               |
 
 **Not used by default system specs:** `delegation-coordinator` (see
 [coordinator-delegation-issuance.md](./coordinator-delegation-issuance.md) and
@@ -54,11 +54,11 @@ Bootstrap / root log R          ownerLogId = logId = R
             └── Statements on D signed by key in grantData (delegated signer)
 ```
 
-| Log | Typical `ownerLogId` (sequencing) | What gets sequenced |
-|-----|-----------------------------------|---------------------|
-| Root `R` | `R` | Root bootstrap grant; later grants when `O === R` |
-| Auth `A` | `R` | Auth grant (child-first on parent MMR) |
-| Data `D` | `A` | Data grant; statements on `D` |
+| Log      | Typical `ownerLogId` (sequencing) | What gets sequenced                               |
+| -------- | --------------------------------- | ------------------------------------------------- |
+| Root `R` | `R`                               | Root bootstrap grant; later grants when `O === R` |
+| Auth `A` | `R`                               | Auth grant (child-first on parent MMR)            |
+| Data `D` | `A`                               | Data grant; statements on `D`                     |
 
 **Trust anchors**
 

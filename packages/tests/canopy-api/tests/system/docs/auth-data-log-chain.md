@@ -27,11 +27,11 @@ R  root
                       statements on D must use delegated kid
 ```
 
-| Step | Authorization interaction |
-|------|---------------------------|
-| Auth grant | Child-auth-first on `R`; `O=R`, `T=A` |
+| Step       | Authorization interaction                                    |
+| ---------- | ------------------------------------------------------------ |
+| Auth grant | Child-auth-first on `R`; `O=R`, `T=A`                        |
 | Data grant | Child-data-first on `A`; `O=A`, `T=D`; signer = auth custody |
-| Statement | Completed grant on `D` + Sign1 kid = `grantData` delegate |
+| Statement  | Completed grant on `D` + Sign1 kid = `grantData` delegate    |
 
 ## Test cases
 
