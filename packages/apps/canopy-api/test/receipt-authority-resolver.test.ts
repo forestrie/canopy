@@ -4,7 +4,7 @@
 
 import { encode as encodeCbor } from "cbor-x";
 import { encodeSigStructure } from "@canopy/encoding";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createReceiptAuthorityResolver } from "../src/env/receipt-authority-resolver.js";
 import { DELEGATION_CERT_LABEL } from "../src/grant/delegation-verify.js";
 
@@ -27,21 +27,16 @@ describe("createReceiptAuthorityResolver", () => {
   });
 
   it("resolves delegated receipt keys from injected non-Custodian root material", async () => {
-    const root = await crypto.subtle.generateKey(
-      { name: "ECDSA", namedCurve: "P-256" },
-      true,
-      ["sign", "verify"],
-    );
-    const delegated = await crypto.subtle.generateKey(
-      { name: "ECDSA", namedCurve: "P-256" },
-      true,
-      ["sign", "verify"],
-    );
+    const root = await generateP256KeyPair();
+    const delegated = await generateP256KeyPair();
     const rootRaw = new Uint8Array(
-      await crypto.subtle.exportKey("raw", root.publicKey),
+      (await crypto.subtle.exportKey("raw", root.publicKey)) as ArrayBuffer,
     );
     const delegatedRaw = new Uint8Array(
-      await crypto.subtle.exportKey("raw", delegated.publicKey),
+      (await crypto.subtle.exportKey(
+        "raw",
+        delegated.publicKey,
+      )) as ArrayBuffer,
     );
     const rootXy = rootRaw.slice(1);
     const delegationCert = await buildDelegationCert(root, delegatedRaw);
@@ -57,6 +52,57 @@ describe("createReceiptAuthorityResolver", () => {
     expect(keys).not.toBeNull();
     expect(keys).toHaveLength(2);
   });
+
+  it("resolves delegated receipt keys from coordinator public-root before Custodian fallback", async () => {
+    const root = await generateP256KeyPair();
+    const delegated = await generateP256KeyPair();
+    const rootRaw = new Uint8Array(
+      (await crypto.subtle.exportKey("raw", root.publicKey)) as ArrayBuffer,
+    );
+    const delegatedRaw = new Uint8Array(
+      (await crypto.subtle.exportKey(
+        "raw",
+        delegated.publicKey,
+      )) as ArrayBuffer,
+    );
+    const rootX = rootRaw.slice(1, 33);
+    const rootY = rootRaw.slice(33, 65);
+    const delegationCert = await buildDelegationCert(root, delegatedRaw);
+    const receipt = buildReceiptWithDelegation(delegationCert);
+    let coordinatorRequests = 0;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (!url.endsWith("/public-root")) {
+        return new Response(null, { status: 404 });
+      }
+      coordinatorRequests++;
+      const body = cborBytes({
+        logId: new Uint8Array(16),
+        alg: "ES256",
+        x: rootX,
+        y: rootY,
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { "Content-Type": "application/cbor" },
+      });
+    });
+    try {
+      const resolve = createReceiptAuthorityResolver({
+        trustRootUrl: "https://custodian.invalid/v1",
+        coordinatorTrustRootUrl: "https://coordinator.example",
+        coordinatorToken: "coordinator-token",
+        nodeEnv: "dev",
+      });
+
+      const keys = await resolve("0123456789abcdef0123456789abcdef", receipt);
+      expect(keys).not.toBeNull();
+      expect(keys).toHaveLength(2);
+      expect(coordinatorRequests).toBe(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 async function buildDelegationCert(
@@ -66,7 +112,9 @@ async function buildDelegationCert(
   const kid = new Uint8Array(
     await crypto.subtle.digest(
       "SHA-256",
-      new Uint8Array(await crypto.subtle.exportKey("raw", root.publicKey)),
+      new Uint8Array(
+        (await crypto.subtle.exportKey("raw", root.publicKey)) as ArrayBuffer,
+      ),
     ),
   ).slice(0, 16);
   const delegatedKey = new Map<number, unknown>([
@@ -129,4 +177,12 @@ function cborBytes(value: unknown): Uint8Array {
 
 function bytesToHex(bytes: Uint8Array): string {
   return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function generateP256KeyPair(): Promise<CryptoKeyPair> {
+  return (await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  )) as CryptoKeyPair;
 }

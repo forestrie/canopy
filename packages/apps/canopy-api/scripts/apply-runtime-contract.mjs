@@ -214,6 +214,11 @@ varsBlock = setStringProperty(
   "CUSTODIAN_URL",
   process.env.CUSTODIAN_URL,
 );
+varsBlock = setStringProperty(
+  varsBlock,
+  "DELEGATION_COORDINATOR_URL",
+  process.env.DELEGATION_COORDINATOR_URL,
+);
 envBlock = replaceRange(envBlock, vars, varsBlock);
 envBlock = setR2BucketName(
   envBlock,

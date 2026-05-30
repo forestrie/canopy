@@ -6,5 +6,7 @@ export interface PendingEntry {
   mmrStart: number;
   mmrEnd: number;
   delegatedPublicKeyHash: string;
+  /** Base64-encoded delegated public key CBOR bytes. */
+  delegatedPublicKey: string;
   requestedAt: number;
 }

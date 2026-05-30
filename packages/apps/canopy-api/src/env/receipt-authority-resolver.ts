@@ -6,7 +6,9 @@ import type { ParsedVerifyKey } from "@canopy/encoding";
 import { resolveReceiptVerifyKey } from "../grant/delegation-verify.js";
 import { isCanopyApiPoolTestMode } from "./runtime-mode.js";
 import {
+  createCoordinatorPublicTrustRootClient,
   createCustodianPublicTrustRootClient,
+  createSelectingTrustRootClient,
   type TrustRootClient,
 } from "./trust-root-client.js";
 import { importEs256PublicKeyFromGrantDataXy64 } from "../scrapi/custodian-grant.js";
@@ -34,6 +36,8 @@ export type ReceiptAuthorityResolver = (
 
 export function createReceiptAuthorityResolver(config: {
   trustRootUrl: string;
+  coordinatorTrustRootUrl?: string;
+  coordinatorToken?: string;
   nodeEnv: string;
   testReceiptVerifyEs256XyHex?: string;
 }): ReceiptAuthorityResolver {
@@ -48,9 +52,22 @@ export function createReceiptAuthorityResolver(config: {
       logSigningKey: async () => keyPromise,
     };
   } else {
-    trustRootClient = createCustodianPublicTrustRootClient({
+    const custodian = createCustodianPublicTrustRootClient({
       custodianBaseUrl: config.trustRootUrl,
     });
+    const coordinatorUrl = config.coordinatorTrustRootUrl?.trim();
+    const coordinatorToken = config.coordinatorToken?.trim();
+    if (coordinatorUrl && coordinatorToken) {
+      trustRootClient = createSelectingTrustRootClient({
+        primary: createCoordinatorPublicTrustRootClient({
+          coordinatorBaseUrl: coordinatorUrl,
+          token: coordinatorToken,
+        }),
+        fallback: custodian,
+      });
+    } else {
+      trustRootClient = custodian;
+    }
   }
 
   const cache = new Map<string, Promise<ParsedVerifyKey[] | null>>();

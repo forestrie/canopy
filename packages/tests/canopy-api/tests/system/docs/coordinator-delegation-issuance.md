@@ -98,12 +98,16 @@ key and force the local signing path instead of the proxy.
 
 ## What this spec does not prove
 
-| Gap                                                                | Future work                                                                                                                                   |
-| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| SCRAPI register-grant with non-Custodian grant signer              | [arbor plan-0003](../../../../../../arbor/docs/plan-0003-non-custodial-checkpoint-support.md)                                                 |
-| Sealer lease verify via coordinator `public-root` on deployed stack | **Done** — arbor `TestRequestLogDelegationLease_BYOKCoordinatorStretch` (same env as this spec) |
-| Canopy receipt verify against non-Custodian root in Playwright     | plan-0003 receipt-authority phase; suggested canopy plan-0024 |
-| Full checkpoint seal (Ranger + Sealer + MMRS) with BYOK delegation | Next arbor plan (plan-0003 north-star) |
+- SCRAPI register-grant with non-Custodian grant signer:
+  [arbor plan-0003](../../../../../../arbor/docs/plan-0003-non-custodial-checkpoint-support.md).
+- Sealer lease verify via coordinator `public-root` on deployed stack:
+  **Done** — arbor `TestRequestLogDelegationLease_BYOKCoordinatorStretch`
+  (same env as this spec).
+- Canopy receipt verify against non-Custodian root in Playwright:
+  **Done** — coordinator-first receipt authority resolver.
+- Full checkpoint seal (Ranger + Sealer + MMRS) with BYOK delegation:
+  **Done/opt-in** — `E2E_BYOK_SEAL_STRETCH=1`
+  `byok-checkpoint-seal.spec.ts`.
 
 Coordinator `GET …/public-root` is covered by
 [`coordinator-byok-public-root.spec.ts`](../../coordinator/coordinator-byok-public-root.spec.ts)
@@ -143,6 +147,15 @@ Primary BYOK coordinator lifecycle (no Custodian hop):
 ```bash
 doppler run --project canopy --config dev -- \
   pnpm --filter @canopy/api-e2e test:e2e:coordinator
+```
+
+Full BYOK checkpoint seal (SCRAPI → ingress → Ranger → Sealer → receipt):
+
+```bash
+E2E_BYOK_SEAL_STRETCH=1 \
+  doppler run --project canopy --config dev -- \
+  pnpm --filter @canopy/api-e2e exec playwright test \
+    tests/system/byok-checkpoint-seal.spec.ts
 ```
 
 ---

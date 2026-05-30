@@ -7,6 +7,7 @@
 
 import type { Env } from "./env.js";
 import {
+  handleGetPendingDelegation,
   handleGetPending,
   handleGetPublicRoot,
   handleGetSigningRoute,
@@ -46,6 +47,13 @@ export default {
 
     if (pathname === "/api/delegations/pending" && method === "GET") {
       return handleGetPending(request, env);
+    }
+
+    const pendingDelegationMatch =
+      /^\/api\/logs\/([^/]+)\/pending-delegation$/.exec(pathname);
+    if (pendingDelegationMatch && method === "GET") {
+      const logId = decodeURIComponent(pendingDelegationMatch[1]!);
+      return handleGetPendingDelegation(logId, request, env);
     }
 
     const signingRouteMatch = /^\/api\/logs\/([^/]+)\/signing-route$/.exec(

@@ -76,6 +76,10 @@ export interface Env {
   CUSTODIAN_BOOTSTRAP_APP_TOKEN?: string;
   /** Maps to Custodian secret APP_TOKEN; curator/log-key + receipt verification. */
   CUSTODIAN_APP_TOKEN?: string;
+  /** Delegation Coordinator base URL for BYOK public-root receipt verification. */
+  DELEGATION_COORDINATOR_URL?: string;
+  /** Delegation Coordinator bearer token for public-root receipt verification. */
+  COORDINATOR_APP_TOKEN?: string;
   /**
    * Pool-test only: 128 hex chars = ES256 public x‖y (64 bytes) for receipt Sign1 verify
    * when Custodian is not used. Forbidden when NODE_ENV !== "test" (503).
@@ -122,6 +126,8 @@ function receiptAuthorityResolverForEnv(env: Env): ReceiptAuthorityResolver {
   const signature = [
     env.NODE_ENV,
     trustRootUrlForEnv(env),
+    env.DELEGATION_COORDINATOR_URL?.trim() ?? "",
+    env.COORDINATOR_APP_TOKEN?.trim() ?? "",
     env.FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX ?? "",
   ].join("\0");
   if (
@@ -132,6 +138,8 @@ function receiptAuthorityResolverForEnv(env: Env): ReceiptAuthorityResolver {
       signature,
       resolver: createReceiptAuthorityResolver({
         trustRootUrl: trustRootUrlForEnv(env),
+        coordinatorTrustRootUrl: env.DELEGATION_COORDINATOR_URL,
+        coordinatorToken: env.COORDINATOR_APP_TOKEN,
         nodeEnv: env.NODE_ENV,
         testReceiptVerifyEs256XyHex:
           env.FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX,

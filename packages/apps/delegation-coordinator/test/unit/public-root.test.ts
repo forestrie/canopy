@@ -27,13 +27,29 @@ function sampleXy(): { x: Uint8Array; y: Uint8Array } {
   return { x, y };
 }
 
+async function fetchWithDoRetry(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await SELF.fetch(input, init);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes("invalidating this Durable Object")) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+  return SELF.fetch(input, init);
+}
+
 describe("GET /api/logs/{logId}/public-root", () => {
   it("POST then GET round-trips CBOR trust root with 16-byte logId", async () => {
     const logUuid = "01234567-89ab-cdef-0123-456789abcdef";
     const logHex32 = normalizeLogIdToHex32(logUuid);
     const { x, y } = sampleXy();
 
-    const postRes = await SELF.fetch(
+    const postRes = await fetchWithDoRetry(
       `http://localhost/api/logs/${logUuid}/public-root`,
       {
         method: "POST",
@@ -50,7 +66,7 @@ describe("GET /api/logs/{logId}/public-root", () => {
     );
     expect(postRes.status).toBe(200);
 
-    const getRes = await SELF.fetch(
+    const getRes = await fetchWithDoRetry(
       `http://localhost/api/logs/${logUuid}/public-root`,
       {
         method: "GET",
@@ -72,7 +88,7 @@ describe("GET /api/logs/{logId}/public-root", () => {
 
   it("GET before POST returns 404 application/problem+cbor", async () => {
     const missingLog = "ffffffff-ffff-ffff-ffff-ffffffffffff";
-    const getRes = await SELF.fetch(
+    const getRes = await fetchWithDoRetry(
       `http://localhost/api/logs/${missingLog}/public-root`,
       {
         method: "GET",
@@ -91,7 +107,7 @@ describe("GET /api/logs/{logId}/public-root", () => {
       y: new Uint8Array(32).fill(8),
     };
 
-    const postFirst = await SELF.fetch(
+    const postFirst = await fetchWithDoRetry(
       `http://localhost/api/logs/${logUuid}/public-root`,
       {
         method: "POST",
@@ -108,7 +124,7 @@ describe("GET /api/logs/{logId}/public-root", () => {
     );
     expect(postFirst.status).toBe(200);
 
-    const postSecond = await SELF.fetch(
+    const postSecond = await fetchWithDoRetry(
       `http://localhost/api/logs/${logUuid}/public-root`,
       {
         method: "POST",
@@ -125,7 +141,7 @@ describe("GET /api/logs/{logId}/public-root", () => {
     );
     expect(postSecond.status).toBe(200);
 
-    const getRes = await SELF.fetch(
+    const getRes = await fetchWithDoRetry(
       `http://localhost/api/logs/${logUuid}/public-root`,
       {
         method: "GET",
@@ -145,7 +161,7 @@ describe("POST /api/logs/{logId}/public-root validation", () => {
 
   it("rejects alg other than ES256 with 400 problem+json", async () => {
     const { x, y } = sampleXy();
-    const res = await SELF.fetch(
+    const res = await fetchWithDoRetry(
       `http://localhost/api/logs/${logUuid}/public-root`,
       {
         method: "POST",
@@ -169,7 +185,7 @@ describe("POST /api/logs/{logId}/public-root validation", () => {
   it("rejects x length other than 32 bytes with 400 problem+json", async () => {
     const shortX = new Uint8Array(16).fill(1);
     const y = new Uint8Array(32).fill(2);
-    const res = await SELF.fetch(
+    const res = await fetchWithDoRetry(
       `http://localhost/api/logs/${logUuid}/public-root`,
       {
         method: "POST",

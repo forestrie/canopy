@@ -10,7 +10,7 @@ import { materialKeyFor, sha256Hex } from "../material-key.js";
 import { hex32ToWireLogIdBytes, logIdWireBytesToHex32 } from "../log-id.js";
 import type { PutPublicRootBody } from "../types/put-public-root-body.js";
 import type { TrustRootResponseCbor } from "../types/trust-root-response.js";
-import { base64ToBytes } from "../encoding.js";
+import { base64ToBytes, bytesToBase64 } from "../encoding.js";
 import type { DelegationIssueRequest } from "../types/delegation-issue-request.js";
 import type { DelegationIssueResponse } from "../types/delegation-issue-response.js";
 import type { MaterialRecord } from "../types/material-record.js";
@@ -18,6 +18,9 @@ import type { PendingEntry } from "../types/pending-entry.js";
 import type { PendingHintRequest } from "../types/pending-hint-request.js";
 import type { SigningRoute } from "../types/signing-route.js";
 import type { SubmitMaterialRequest } from "../types/submit-material-request.js";
+
+const PENDING_TTL_SECONDS = 60 * 60;
+const PENDING_CAP_PER_LOG = 32;
 
 export class DelegationStoreDO extends DurableObject<Env> {
   private initialized = false;
@@ -68,6 +71,10 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
       if (pathname === "/pending" && method === "GET") {
         return this.handleGetPending(url);
+      }
+
+      if (pathname === "/pending-delegation" && method === "GET") {
+        return this.handleGetPendingDelegation(url);
       }
 
       if (pathname === "/pending-hint" && method === "POST") {
@@ -128,8 +135,19 @@ export class DelegationStoreDO extends DurableObject<Env> {
         mmr_start INTEGER NOT NULL,
         mmr_end INTEGER NOT NULL,
         delegated_pubkey_hash TEXT NOT NULL,
+        delegated_public_key BLOB NOT NULL,
         requested_at INTEGER NOT NULL
       )
+    `);
+
+    this.ensurePendingDelegatedPublicKeyColumn();
+    this.ctx.storage.sql.exec(
+      `DELETE FROM pending WHERE length(delegated_public_key) = 0`,
+    );
+
+    this.ctx.storage.sql.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_log_range_pubkey
+      ON pending (log_id_hex32, mmr_start, mmr_end, delegated_pubkey_hash)
     `);
 
     this.ctx.storage.sql.exec(`
@@ -148,6 +166,41 @@ export class DelegationStoreDO extends DurableObject<Env> {
     `);
 
     this.initialized = true;
+  }
+
+  private ensurePendingDelegatedPublicKeyColumn(): void {
+    try {
+      [
+        ...this.ctx.storage.sql.exec(
+          `SELECT delegated_public_key FROM pending LIMIT 0`,
+        ),
+      ];
+    } catch {
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE pending ADD COLUMN delegated_public_key BLOB NOT NULL DEFAULT X''`,
+      );
+    }
+  }
+
+  private prunePending(logIdHex32: string, nowSeconds: number): void {
+    const cutoff = nowSeconds - PENDING_TTL_SECONDS;
+    this.ctx.storage.sql.exec(
+      `DELETE FROM pending WHERE requested_at < ?`,
+      cutoff,
+    );
+    this.ctx.storage.sql.exec(
+      `DELETE FROM pending
+       WHERE log_id_hex32 = ?
+         AND id NOT IN (
+           SELECT id FROM pending
+           WHERE log_id_hex32 = ?
+           ORDER BY requested_at DESC
+           LIMIT ?
+         )`,
+      logIdHex32,
+      logIdHex32,
+      PENDING_CAP_PER_LOG,
+    );
   }
 
   private handleGetSigningRoute(logIdHex32: string): Response {
@@ -386,17 +439,25 @@ export class DelegationStoreDO extends DurableObject<Env> {
       const now = Math.floor(Date.now() / 1000);
       const id = crypto.randomUUID();
       this.ctx.storage.sql.exec(
-        `INSERT OR IGNORE INTO pending
-         (id, auth_log_id_hex32, log_id_hex32, mmr_start, mmr_end, delegated_pubkey_hash, requested_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO pending
+         (id, auth_log_id_hex32, log_id_hex32, mmr_start, mmr_end,
+          delegated_pubkey_hash, delegated_public_key, requested_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(log_id_hex32, mmr_start, mmr_end, delegated_pubkey_hash)
+         DO UPDATE SET
+           auth_log_id_hex32 = excluded.auth_log_id_hex32,
+           delegated_public_key = excluded.delegated_public_key,
+           requested_at = excluded.requested_at`,
         id,
         logIdHex32,
         logIdHex32,
         req.mmrStart,
         req.mmrEnd,
         pubkeyHash,
+        req.delegatedPublicKey,
         now,
       );
+      this.prunePending(logIdHex32, now);
 
       const problem = encode({
         type: "about:blank",
@@ -460,10 +521,13 @@ export class DelegationStoreDO extends DurableObject<Env> {
     const limitRaw = parseInt(url.searchParams.get("limit") ?? "100", 10);
     const limit = Math.min(Math.max(1, limitRaw), 500);
 
+    const now = Math.floor(Date.now() / 1000);
+    this.prunePending(authLogId, now);
+
     const rows = [
       ...this.ctx.storage.sql.exec(
         `SELECT id, auth_log_id_hex32, log_id_hex32, mmr_start, mmr_end,
-              delegated_pubkey_hash, requested_at
+              delegated_pubkey_hash, delegated_public_key, requested_at
        FROM pending
        WHERE auth_log_id_hex32 = ?
        ORDER BY requested_at DESC
@@ -482,6 +546,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
         mmr_start: number;
         mmr_end: number;
         delegated_pubkey_hash: string;
+        delegated_public_key: ArrayBuffer;
         requested_at: number;
       };
       return {
@@ -491,11 +556,72 @@ export class DelegationStoreDO extends DurableObject<Env> {
         mmrStart: r.mmr_start,
         mmrEnd: r.mmr_end,
         delegatedPublicKeyHash: r.delegated_pubkey_hash,
+        delegatedPublicKey: bytesToBase64(
+          new Uint8Array(r.delegated_public_key),
+        ),
         requestedAt: r.requested_at,
       };
     });
 
     return Response.json({ entries, offset, limit });
+  }
+
+  private handleGetPendingDelegation(url: URL): Response {
+    const logIdHex32 = url.searchParams.get("logId");
+    if (!logIdHex32) {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Invalid request",
+          status: 400,
+          detail: "logId query parameter is required",
+        },
+        { status: 400 },
+      );
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    this.prunePending(logIdHex32, now);
+
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT id, auth_log_id_hex32, log_id_hex32, mmr_start, mmr_end,
+              delegated_pubkey_hash, delegated_public_key, requested_at
+       FROM pending
+       WHERE log_id_hex32 = ?
+       ORDER BY requested_at DESC
+       LIMIT ?`,
+        logIdHex32,
+        PENDING_CAP_PER_LOG,
+      ),
+    ];
+
+    const entries: PendingEntry[] = rows.map((row) => {
+      const r = row as {
+        id: string;
+        auth_log_id_hex32: string;
+        log_id_hex32: string;
+        mmr_start: number;
+        mmr_end: number;
+        delegated_pubkey_hash: string;
+        delegated_public_key: ArrayBuffer;
+        requested_at: number;
+      };
+      return {
+        id: r.id,
+        authLogIdHex32: r.auth_log_id_hex32,
+        logIdHex32: r.log_id_hex32,
+        mmrStart: r.mmr_start,
+        mmrEnd: r.mmr_end,
+        delegatedPublicKeyHash: r.delegated_pubkey_hash,
+        delegatedPublicKey: bytesToBase64(
+          new Uint8Array(r.delegated_public_key),
+        ),
+        requestedAt: r.requested_at,
+      };
+    });
+
+    return Response.json({ entries, limit: PENDING_CAP_PER_LOG });
   }
 
   private async handlePendingHint(request: Request): Promise<Response> {
@@ -509,16 +635,24 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
     this.ctx.storage.sql.exec(
       `INSERT INTO pending
-       (id, auth_log_id_hex32, log_id_hex32, mmr_start, mmr_end, delegated_pubkey_hash, requested_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       (id, auth_log_id_hex32, log_id_hex32, mmr_start, mmr_end,
+        delegated_pubkey_hash, delegated_public_key, requested_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(log_id_hex32, mmr_start, mmr_end, delegated_pubkey_hash)
+       DO UPDATE SET
+         auth_log_id_hex32 = excluded.auth_log_id_hex32,
+         delegated_public_key = excluded.delegated_public_key,
+         requested_at = excluded.requested_at`,
       id,
       authLogIdHex32,
       logIdHex32,
       body.mmrStart,
       body.mmrEnd,
       pubkeyHash,
+      delegatedPublicKey,
       now,
     );
+    this.prunePending(logIdHex32, now);
 
     return Response.json({ ok: true, id });
   }

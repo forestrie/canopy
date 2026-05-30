@@ -96,6 +96,8 @@ export function responseIfSequencingQueueIncomplete(
 export interface CanopyReceiptVerifierEnv {
   NODE_ENV: string;
   CUSTODIAN_APP_TOKEN?: string;
+  DELEGATION_COORDINATOR_URL?: string;
+  COORDINATOR_APP_TOKEN?: string;
   /** Test-only; must not be set outside pool mode (footgun guard). */
   FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX?: string;
 }
@@ -122,6 +124,16 @@ export function responseIfReceiptVerifierMisconfigured(
     return problemResponse(503, "Service Unavailable", "about:blank", {
       detail:
         "Canopy API is misconfigured (missing CUSTODIAN_APP_TOKEN; required for SCITT receipt verification).",
+      headers: corsHeaders,
+    });
+  }
+  if (
+    env.DELEGATION_COORDINATOR_URL?.trim() &&
+    !env.COORDINATOR_APP_TOKEN?.trim()
+  ) {
+    return problemResponse(503, "Service Unavailable", "about:blank", {
+      detail:
+        "Canopy API is misconfigured (missing COORDINATOR_APP_TOKEN; required when DELEGATION_COORDINATOR_URL is set for BYOK receipt verification).",
       headers: corsHeaders,
     });
   }

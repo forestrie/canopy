@@ -1,4 +1,5 @@
 export { handleIssueDelegation } from "./issue-delegation.js";
+export { handleGetPendingDelegation } from "./get-pending-delegation.js";
 export { handleGetSigningRoute } from "./get-signing-route.js";
 export { handlePostSigningRoute } from "./post-signing-route.js";
 export { handlePostMaterial } from "./post-material.js";
