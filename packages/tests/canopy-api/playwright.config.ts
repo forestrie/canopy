@@ -1,31 +1,11 @@
 import { defineConfig } from "@playwright/test";
 import { E2E_SYSTEM_TEST_TIMEOUT_MS } from "./tests/utils/arithmetic-backoff-poll.js";
-import dotenv from "dotenv";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(__dirname, "../../..");
-const envPath = resolve(repoRoot, ".env");
-
-function stripExportPrefixes(raw: string) {
-  return raw.replace(/^\s*export\s+/gm, "");
-}
-
-if (existsSync(envPath)) {
-  const parsed = dotenv.parse(
-    stripExportPrefixes(readFileSync(envPath, "utf8")),
-  );
-  for (const [k, v] of Object.entries(parsed)) {
-    process.env[k] = v;
-  }
-} else if (!process.env.CI) {
-  throw new Error(
-    "Missing repo-root .env. Run `task vars:doppler:dev` (or vars:doppler:prod), " +
-      "or create .env at the repository root before running Playwright.",
-  );
-}
+const DOPPLER_E2E_HINT =
+  "Inject secrets with Doppler (project canopy, config dev or prod), e.g.\n" +
+  "  task test:e2e\n" +
+  "  doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e test:e2e\n" +
+  "See taskfiles/e2e-setup.md and packages/tests/canopy-api/README.md.";
 
 /**
  * Match `.github/workflows/test.yml` API e2e step: prefer CANOPY_BASE_URL, else https://CANOPY_FQDN.
@@ -40,9 +20,13 @@ function resolveCanopyBaseUrl(): string {
   fq = fq.replace(/^https?:\/\//i, "");
   fq = (fq.split("/")[0] ?? "").replace(/\/$/, "");
   if (!fq) {
+    if (!process.env.CI) {
+      throw new Error(
+        `Set CANOPY_BASE_URL or CANOPY_FQDN via Doppler before running Playwright locally.\n${DOPPLER_E2E_HINT}`,
+      );
+    }
     throw new Error(
-      "Set CANOPY_BASE_URL or CANOPY_FQDN in repo-root .env (e.g. task vars:doppler:dev) " +
-        "or export them in CI — same as .github/workflows/test.yml API e2e job.",
+      "Set CANOPY_BASE_URL or CANOPY_FQDN in CI — same as .github/workflows/api-e2e-playwright.yml.",
     );
   }
   return `https://${fq}`.replace(/\/$/, "");

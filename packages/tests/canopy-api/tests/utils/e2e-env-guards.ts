@@ -13,7 +13,7 @@ export function e2eReceiptBootstrapRootLogId(): string {
 }
 
 const BOOTSTRAP_MINT_E2E_HELP =
-  "Hydrate repo-root .env (task test:e2e:preflight) or run task test:e2e:doppler. " +
+  "Run via Doppler (project canopy, config dev or prod), e.g. task test:e2e. " +
   "See packages/tests/canopy-api/README.md.";
 
 /**

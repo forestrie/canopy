@@ -24,11 +24,10 @@ Run `task tools:check` to verify installation.
 2. Enable R2 in your account
 3. Create API tokens with specific permissions (see [docs/CLOUDFLARE_TOKENS.md](docs/CLOUDFLARE_TOKENS.md)):
 
-4. Hydrate **repo-root `.env`** (gitignored) from Doppler (see `taskfiles/vars.yml`), e.g.:
+4. Store tokens such as **`R2_ADMIN`**, **`R2_WRITER`**, **`R2_READER`**, **`QUEUE_ADMIN`** in Doppler project **`canopy`**, config **`dev`** (or **`prod`**). Run local tasks with:
    ```bash
-   task vars:doppler:dev
+   doppler run --project canopy --config dev -- task cloudflare:bootstrap
    ```
-   Include tokens such as **`R2_ADMIN`**, **`R2_WRITER`**, **`R2_READER`**, **`QUEUE_ADMIN`** in that Doppler config (or add them to `.env` if you maintain it by hand).
 
 ### 2. Infrastructure Bootstrap
 
@@ -47,9 +46,13 @@ task cloudflare:status --summary
 
 ## Environment Variables
 
-Local automation and Task read **repo-root `.env` only** (`Taskfile.dist.yml` → `dotenv: [".env"]`; file is gitignored). Hydrate it with **`task vars:doppler:dev`** / **`vars:doppler:prod`** or edit by hand.
+Local automation injects secrets via **Doppler CLI** (project **`canopy`**, config **`dev`** or **`prod`**). Example:
 
-Key variables:
+```bash
+doppler run --project canopy --config dev -- task <task-name>
+```
+
+Key variables (in Doppler or exported for CI):
 
 - `CANOPY_ID` - Canopy instance identifier for resource naming
 - `FOREST_PROJECT_ID` - External Forest project reference for integration

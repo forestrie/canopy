@@ -15,6 +15,19 @@ import { importEs256PublicKeyFromGrantDataXy64 } from "../scrapi/custodian-grant
 
 const MAX_OWNER_LOG_CACHE = 64;
 
+/** Cache key suffix: first 16 bytes of SHA-256(receipt) so distinct receipts are not conflated. */
+export async function receiptResolverCacheKeySuffix(
+  receiptCoseBytes: Uint8Array,
+): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", receiptCoseBytes);
+  const u8 = new Uint8Array(digest);
+  let hex = "";
+  for (let i = 0; i < 16; i++) {
+    hex += u8[i]!.toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+
 function hexToBytes32Pair(hex: string): Uint8Array {
   const s = hex.replace(/^0x/i, "").trim();
   if (s.length !== 128 || !/^[0-9a-fA-F]+$/.test(s)) {
@@ -76,7 +89,8 @@ export function createReceiptAuthorityResolver(config: {
     ownerLogIdLowerHex32: string,
     receiptCoseBytes: Uint8Array,
   ): Promise<ParsedVerifyKey[] | null> => {
-    const cacheKey = `${ownerLogIdLowerHex32}\0${receiptCoseBytes.byteLength}`;
+    const receiptSuffix = await receiptResolverCacheKeySuffix(receiptCoseBytes);
+    const cacheKey = `${ownerLogIdLowerHex32}\0${receiptSuffix}`;
     let p = cache.get(cacheKey);
     if (!p) {
       p = (async (): Promise<ParsedVerifyKey[] | null> => {

@@ -24,24 +24,21 @@ Shared code: `tests/utils/`, `tests/fixtures/`. Imports use TypeScript path alia
 
 ## Prerequisites
 
-From the **repo root**, run:
+From the **repo root**:
 
 ```bash
-task test:e2e:preflight
+task test:e2e:preflight   # install deps + Playwright Chromium (no secrets)
+task test:e2e             # run suite with Doppler project canopy, config ENV (default dev)
 ```
 
-That installs Playwright/Chromium and runs **`task vars:doppler:{{ENV}}`** so **repo-root `.env`**
-(gitignored) is hydrated from Doppler (default **`ENV=dev`**). See **`taskfiles/e2e-setup.md`**.
+See **`taskfiles/e2e-setup.md`**.
 
 ## Scripts
 
-- **Default (integration → system → custodian):** `pnpm --filter @canopy/api-e2e test:e2e` or root `pnpm test:e2e`.
-- **Single tier:** `pnpm --filter @canopy/api-e2e test:e2e:integration` | `test:e2e:system` | `test:e2e:custodian` | `test:e2e:coordinator` | `test:e2e:prod`.
-- **CI / env already set:** same as above; workflows run projects explicitly (see `.github/workflows/api-e2e-playwright.yml`).
-- **Local (Doppler):** do **not** use a Doppler-injected npm script — use **`task test:e2e:doppler`** from the repo root, or  
-  `doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e test:e2e`  
-  (see **`.cursor/rules/e2e-local-doppler.mdc`**). Use `ENV=prod` with the task when targeting prod Doppler config.
-- **Local (hydrated `.env`):** `task test:e2e:preflight` then `task test:e2e` or root `pnpm test:e2e`.
+- **Local (default):** `task test:e2e` — wraps `doppler run --project canopy --config <ENV> -- pnpm --filter @canopy/api-e2e test:e2e`. Use `ENV=prod` for prod config.
+- **Local (explicit):** `doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e test:e2e` (see **`.cursor/rules/e2e-local-doppler.mdc`**). Do **not** add `doppler run` to package.json scripts.
+- **Single tier:** prefix the same `doppler run` with `test:e2e:integration` | `test:e2e:system` | `test:e2e:custodian` | `test:e2e:coordinator` | `test:e2e:prod`.
+- **CI:** workflows export env on the step; run `pnpm --filter @canopy/api-e2e exec playwright test` (see `.github/workflows/api-e2e-playwright.yml`). Plain `pnpm test:e2e` without env is for CI only.
 
 ### Bootstrap grant (mint + register-grant)
 
@@ -56,8 +53,7 @@ The **deployed** worker needs **`R2_MMRS`**, sequencing queue bindings, and `boo
 ### Non-Custodian log-root signing key (BYOK)
 
 **Terminology:** the **log root key** that signs **delegation certificates** — not
-the delegated checkpoint signer in `grantData`. Default `pnpm test:e2e` /
-`task test:e2e:doppler` does **not** cover non-Custodian log-root signing.
+the delegated checkpoint signer in `grantData`. Default `task test:e2e` does **not** cover non-Custodian log-root signing.
 
 | Spec                                               | Project     | Opt-in?                                  | Role                                                                                             |
 | -------------------------------------------------- | ----------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------ |
@@ -89,7 +85,7 @@ Flow docs: [`tests/system/docs/README.md`](tests/system/docs/README.md).
 
 ## Environment variables
 
-Resolved in **`playwright.config.ts`** from **repo-root `.env`** (after `task vars:doppler:dev`) **and** the process environment. If `.env` is missing locally, Playwright throws (unless `CI` is set).
+Resolved in **`playwright.config.ts`** from the **process environment** (Doppler-injected locally, GitHub Environment in CI). Locally, run via **`task test:e2e`** or **`doppler run --project canopy --config dev -- …`**.
 
 **Worker origin** (one of):
 
@@ -123,11 +119,11 @@ After forest bootstrap generates the token:
 CANOPY_PROMOTION_LANE=dev task bootstrap:canopy:bootstrap-coordinator-token:PROJECT_ID
 CANOPY_PROMOTION_LANE=dev task bootstrap:canopy:sync-github-env:PROJECT_ID
 
-# canopy repo root
-task vars:doppler:dev   # copies DELEGATION_COORDINATOR_URL + COORDINATOR_APP_TOKEN into .env
+# canopy repo root — coordinator vars must be in Doppler canopy/dev (or prod)
+doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e test:e2e:coordinator
 ```
 
-Or set **`COORDINATOR_APP_TOKEN`** manually in Doppler **`canopy/dev`** (masked) and re-run **`task vars:doppler:dev`**.
+Set **`COORDINATOR_APP_TOKEN`** in Doppler **`canopy/dev`** (masked) after forest bootstrap sync.
 
 **Custodian API e2e** (`tests/custodian/custodian-api.spec.ts`, Playwright project **`custodian`**):
 

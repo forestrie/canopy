@@ -217,6 +217,13 @@ export interface ReceiptInclusionVerifyOptions {
   receiptVerifyKeys: ParsedVerifyKey[];
 }
 
+/** Outcome of {@link verifyReceiptInclusionFromParsed} when receipt verification is enabled. */
+export type ReceiptInclusionVerifyOutcome =
+  | "ok"
+  | "no-verify-keys"
+  | "signature-failed"
+  | "inclusion-failed";
+
 /**
  * Verify inclusion using already-parsed root and proof (e.g. from GrantResult, Plan 0005).
  * When `receiptVerification` is set: resolves the delegation chain, computes the
@@ -230,7 +237,7 @@ export async function verifyReceiptInclusionFromParsed(
   explicitPeak: Uint8Array | null,
   proof: Proof,
   receiptVerification?: ReceiptInclusionVerifyOptions,
-): Promise<boolean> {
+): Promise<ReceiptInclusionVerifyOutcome> {
   // --- 1. Compute leaf hash and peak (needed for both inclusion and sig verify) ---
   const inner = await grantCommitmentHashFromGrant(grant);
   if (!idtimestampBytes || idtimestampBytes.length < 8) {
@@ -262,7 +269,7 @@ export async function verifyReceiptInclusionFromParsed(
     const verifyKeys = receiptVerification.receiptVerifyKeys;
     if (!verifyKeys?.length) {
       console.warn("grant-receipt-verify: no verify keys supplied");
-      return false;
+      return "no-verify-keys";
     }
 
     // The receipt payload may be detached (nil) but the signature was computed
@@ -282,13 +289,13 @@ export async function verifyReceiptInclusionFromParsed(
     }
     if (!sigOk) {
       console.warn("grant-receipt-verify: receipt signature failed");
-      return false;
+      return "signature-failed";
     }
   }
 
   // --- 3. MMR inclusion verification ---
   const inclusionOk = await verifyInclusion(hasher, leafHash, proof, peak);
-  return inclusionOk;
+  return inclusionOk ? "ok" : "inclusion-failed";
 }
 
 /**

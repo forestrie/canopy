@@ -277,7 +277,7 @@ export async function grantAuthorize(
     );
   }
 
-  const valid = await verifyReceiptInclusionFromParsed(
+  const outcome = await verifyReceiptInclusionFromParsed(
     grant,
     idtimestamp,
     receipt.explicitPeak,
@@ -287,10 +287,14 @@ export async function grantAuthorize(
       receiptVerifyKeys,
     },
   );
-  if (!valid) {
-    return ClientErrors.forbidden(
-      "Grant receipt verification failed (receipt signature or inclusion proof).",
-    );
+  if (outcome !== "ok") {
+    const detail =
+      outcome === "signature-failed"
+        ? "Grant receipt COSE signature did not verify against the owner-log receipt authority (check delegation cert on the receipt and trust-root configuration)."
+        : outcome === "inclusion-failed"
+          ? "Grant receipt MMR inclusion proof does not bind this grant commitment to the signed peak (idtimestamp, grant payload, or proof path mismatch)."
+          : "Grant receipt verification could not resolve signing keys.";
+    return ClientErrors.forbidden(detail);
   }
 
   // Authorization is complete: the receipt's MMR inclusion proof binds this exact

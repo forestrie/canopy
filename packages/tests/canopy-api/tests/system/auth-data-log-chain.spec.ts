@@ -45,6 +45,7 @@ import {
   responseTextPreview,
 } from "@e2e-utils/problem-details";
 import { completeGrantRegistrationThroughReceipt } from "@e2e-utils/register-grant-through-receipt";
+import { diagnoseCompletedParentGrant } from "@e2e-utils/parent-grant-receipt-diagnostics";
 import { sha256Hex } from "@e2e-utils/statement-sign-bytes";
 
 test.describe("Auth log → data log delegation chain", () => {
@@ -159,14 +160,33 @@ test.describe("Auth log → data log delegation chain", () => {
       grant: dataGrant,
     });
 
-    const dataComplete = await completeGrantRegistrationThroughReceipt({
-      unauthorizedRequest,
-      bootstrapLogId: rootLogId,
-      baseURL,
-      grantBase64: dataGrantB64,
-      ladderMs: sequencingBackoff,
-      parentGrantBase64: completedAuthB64,
-    });
+    let dataComplete: Awaited<
+      ReturnType<typeof completeGrantRegistrationThroughReceipt>
+    >;
+    try {
+      dataComplete = await completeGrantRegistrationThroughReceipt({
+        unauthorizedRequest,
+        bootstrapLogId: rootLogId,
+        baseURL,
+        grantBase64: dataGrantB64,
+        ladderMs: sequencingBackoff,
+        parentGrantBase64: completedAuthB64,
+      });
+    } catch (error) {
+      await testInfo.attach("parent-grant-rca.json", {
+        body: JSON.stringify(
+          diagnoseCompletedParentGrant({
+            completedGrantBase64: completedAuthB64,
+            resolveReceiptBody: authRegComplete.receiptRes.body,
+            entryIdHex: authRegComplete.entryIdHex,
+          }),
+          null,
+          2,
+        ),
+        contentType: "application/json",
+      });
+      throw error;
+    }
     expect(dataComplete.receiptRes.status).toBe(200);
 
     const completedDataB64 = buildCompletedGrantBase64(

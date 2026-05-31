@@ -60,12 +60,12 @@ function minimalGrant(): Grant {
 }
 
 describe("verifyReceiptInclusionFromParsed + receipt COSE", () => {
-  it("returns false when receipt Sign1 key does not match trust anchor", async () => {
+  it("returns signature-failed when receipt Sign1 key does not match trust anchor", async () => {
     const receiptBytes = await detachedEs256Sign1(signerA.privateKey);
     const grant = minimalGrant();
     const junkProof: Proof = { path: [], mmrIndex: 0n };
 
-    const ok = await verifyReceiptInclusionFromParsed(
+    const outcome = await verifyReceiptInclusionFromParsed(
       grant,
       new Uint8Array(8),
       null,
@@ -75,16 +75,16 @@ describe("verifyReceiptInclusionFromParsed + receipt COSE", () => {
         receiptVerifyKeys: [signerB.publicKey],
       },
     );
-    expect(ok).toBe(false);
+    expect(outcome).toBe("signature-failed");
   });
 
-  it("returns false after COSE passes when explicit peak does not match proof", async () => {
+  it("returns inclusion-failed after COSE passes when explicit peak does not match proof", async () => {
     const receiptBytes = await detachedEs256Sign1(signerA.privateKey);
     const grant = minimalGrant();
     const proof: Proof = { path: [], mmrIndex: 0n };
     const wrongPeak = new Uint8Array(32).fill(0xfe);
 
-    const ok = await verifyReceiptInclusionFromParsed(
+    const outcome = await verifyReceiptInclusionFromParsed(
       grant,
       new Uint8Array(8),
       wrongPeak,
@@ -94,6 +94,6 @@ describe("verifyReceiptInclusionFromParsed + receipt COSE", () => {
         receiptVerifyKeys: [signerA.publicKey],
       },
     );
-    expect(ok).toBe(false);
+    expect(outcome).toBe("inclusion-failed");
   });
 });

@@ -10,61 +10,52 @@ Playwright projects are **integration** (Canopy surface only), **system** (full 
 
 From the **repository root**:
 
-| Task                              | Purpose                                                                                                                          |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| **`task test:e2e:preflight`**     | `pnpm install`, Playwright + Chromium, then **`task vars:doppler:{{ENV}}`** to hydrate **repo-root `.env`** (default `ENV=dev`). |
-| **`task test:e2e:preflight:env`** | Fail if **`.env`** is missing (no installs). Used in CI after the workflow writes `.env`.                                        |
+| Task | Purpose |
+| ---- | ------- |
+| **`task test:e2e:preflight`** | `pnpm install` and Playwright + Chromium only. Does **not** download secrets. |
+| **`task test:e2e`** | Run the default e2e suite with secrets from **Doppler** (see below). |
 
-Use **`ENV=prod task test:e2e:preflight`** when Doppler config should be **`prod`**.
+Use **`ENV=prod task test:e2e`** when the Doppler config should be **`prod`** (project stays **`canopy`**).
 
-## Repo-root `.env` (gitignored)
+## Secrets and environment variables (local)
 
-Playwright and root Taskfile **`dotenv: [".env"]`** use **only** this file. There is no `.env.test`, `.env.secrets`, or `.env.{ENV}` chain.
+Do **not** hydrate a repo-root **`.env`** file. Inject secrets at runtime with the Doppler CLI:
 
-Required keys for e2e include at least:
-
-- **`CANOPY_BASE_URL`** _or_ **`CANOPY_FQDN`** — worker origin. Playwright resolves `CANOPY_BASE_URL` first; if unset, it builds `https://…` from `CANOPY_FQDN` (same logic as `.github/workflows/test.yml`). Doppler `dev` may only define **`CANOPY_FQDN`**.
-- **`SCRAPI_API_KEY`** — bearer token for authorized fixtures (when used)
-
-The **worker** must have **`CUSTODIAN_APP_TOKEN`** (Wrangler secret) for SCITT receipt verification on register-grant / register-statement; the **runner** uses the same token for per-root bootstrap mint (`POST /api/keys` + sign). Misconfiguration or missing env for **system** tests surfaces as **failures**, not skipped tests.
-
-**Child auth grant** (`tests/system/bootstrap-child-auth-grant.spec.ts`): after root bootstrap + receipt, creates a Custodian custody key (`POST /api/keys` with **`CUSTODIAN_APP_TOKEN`**), signs a child-shaped Forestrie-Grant (`logId` = new child UUID, `ownerLogId` = root), and registers it on **`POST /register/grants`**. The 303 **`Location`** must target the **parent** log’s `/entries/…` (sequencing by `ownerLogId`). Without **`CUSTODIAN_APP_TOKEN`**, the run **fails** at env guard.
-
-If **`.env`** is missing, `task vars:require-dotenv`, smoke tasks, and Playwright fail immediately with a short error.
-
-## Running tests
+- **Project:** `canopy`
+- **Config:** `dev` (default) or `prod` (set `ENV=prod` on Task invocations)
 
 ```bash
-task test:e2e:preflight   # tooling + hydrate .env from Doppler
-task test:e2e             # integration → system → custodian (@canopy/api-e2e test:e2e)
-```
+# Install tooling once (no secrets):
+task test:e2e:preflight
 
-Inject secrets locally (no `.env` file) using the same Doppler project as `taskfiles/vars.yml` (**`canopy`**). **Do not** put `doppler run` in `@canopy/api-e2e` `package.json` scripts — CI runs Playwright without the Doppler CLI.
+# Default suite (integration → system → custodian):
+task test:e2e
 
-```bash
+# Equivalent explicit invocation:
 doppler run --project canopy --config dev -- \
   pnpm --filter @canopy/api-e2e test:e2e
-
-# Or from repo root (`ENV=prod` selects Doppler config prod):
-task test:e2e:doppler
 ```
 
-**System only** (full stack; requires Doppler secrets for Custodian + curator):
+**System only** (full stack; requires Custodian + curator secrets in Doppler):
 
 ```bash
 doppler run --project canopy --config dev -- \
   pnpm --filter @canopy/api-e2e test:e2e:system
 ```
 
-When the environment is already set (e.g. CI):
+Required keys in the Doppler config include at least:
 
-```bash
-pnpm --filter @canopy/api-e2e test:e2e
-```
+- **`CANOPY_BASE_URL`** _or_ **`CANOPY_FQDN`** — worker origin. Playwright resolves `CANOPY_BASE_URL` first; if unset, it builds `https://…` from `CANOPY_FQDN` (same logic as `.github/workflows/api-e2e-playwright.yml`). Doppler `dev` may only define **`CANOPY_FQDN`**.
+- **`SCRAPI_API_KEY`** — bearer token for authorized fixtures (when used)
+- **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**, **`CURATOR_ADMIN_TOKEN`** — for **system** bootstrap mint (runner-side `POST /api/keys` + genesis)
+
+The **worker** must have **`CUSTODIAN_APP_TOKEN`** (Wrangler secret) for SCITT receipt verification on register-grant / register-statement; the **runner** uses the same token for per-root bootstrap mint. Misconfiguration surfaces as **failures**, not skipped tests.
+
+**Do not** put `doppler run` in `@canopy/api-e2e` `package.json` scripts — CI runs Playwright without the Doppler CLI.
 
 ## CI
 
-The **Tests** workflow (`.github/workflows/test.yml`) runs the job in GitHub Environment **`dev`** (Doppler **`dev`** sync). It exports **`CANOPY_BASE_URL`** (from variable **`CANOPY_BASE_URL`** or derived from **`CANOPY_FQDN`**) and secret **`SCRAPI_API_KEY`** into the step environment, then runs Playwright via **`api-e2e-playwright.yml`**: **integration**, then **system**, then **custodian** (no Doppler CLI).
+The **Tests** and **Deploy Workers** workflows call **`.github/workflows/api-e2e-playwright.yml`**. They use GitHub Environment **`dev`** or **`prod`** (Doppler sync): `secrets.*` and `vars.*` on the Playwright step — **no** repo-root `.env` and **no** Doppler CLI in the job.
 
 ## Optional variables
 

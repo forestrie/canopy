@@ -24,7 +24,7 @@ that signs **delegation certificates** (BYOK checkpoint authority), **not** the
 delegated checkpoint signer in `grantData`. All SCRAPI specs below mint and sign
 grants/statements via **Custodian KMS custody keys**.
 
-Default `task test:e2e:doppler` / `test:e2e:system` does **not** exercise
+Default `task test:e2e` / `test:e2e:system` does **not** exercise
 non-Custodian log-root signing. For BYOK delegation e2e, run the coordinator tier
 (always) and optionally the stretch spec (Custodian proxy hop).
 

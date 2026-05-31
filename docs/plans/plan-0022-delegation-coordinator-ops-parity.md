@@ -59,7 +59,7 @@ SKIP_CANOPY_HEALTH=0 SKIP_COORDINATOR_HEALTH=0 CANOPY_PROMOTION_LANE=dev \
 Local coordinator e2e:
 
 ```bash
-cd canopy && task vars:doppler:dev
+cd canopy && doppler run --project canopy --config dev --
 doppler run --project canopy --config dev -- \
   pnpm --filter @canopy/api-e2e test:e2e:coordinator
 ```

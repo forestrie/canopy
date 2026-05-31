@@ -2,14 +2,18 @@
 # curl examples that excercise the scrapi endpoints
 #
 # Log-scoped base URL is built from CANOPY_FQDN (host only, optional scheme) and
-# TEST_SCRAPI_LOG_PATH (e.g. /logs/<logId>). Passed in from Taskfile.dist.yml via repo-root `.env`.
+# TEST_SCRAPI_LOG_PATH (e.g. /logs/<logId>). Set via Doppler when running locally:
+#   doppler run --project canopy --config dev -- task scrapi:smoke:3
 
 version: "3"
 
 vars:
-  CANOPY_FQDN: '{{.CANOPY_FQDN | default ""}}'
-  TEST_SCRAPI_LOG_PATH: '{{.TEST_SCRAPI_LOG_PATH | default ""}}'
-  API_KEY: "{{.API_KEY}}"
+  CANOPY_FQDN:
+    sh: printf '%s' "${CANOPY_FQDN:-}"
+  TEST_SCRAPI_LOG_PATH:
+    sh: printf '%s' "${TEST_SCRAPI_LOG_PATH:-}"
+  API_KEY:
+    sh: printf '%s' "${SCRAPI_API_KEY:-${API_KEY:-}}"
   BASE_URL: 'https://{{ .CANOPY_FQDN | default "" | trim | trimPrefix "https://" | trimPrefix "http://" | trimSuffix "/" }}{{ $p := .TEST_SCRAPI_LOG_PATH | default "" | trim }}{{ if hasPrefix "/" $p }}{{ $p }}{{ else if ne $p "" }}/{{ $p }}{{ end }}'
 
 tasks:
@@ -324,8 +328,6 @@ tasks:
   smoke:3:
     desc: "Smoke test: 3 statements in parallel, report throughput"
     silent: true
-    deps:
-      - task: :vars:require-dotenv
     cmds:
       - cmd: |
           set -euo pipefail
@@ -360,8 +362,6 @@ tasks:
   smoke:5:
     desc: "Smoke test: 5 statements in parallel, report throughput"
     silent: true
-    deps:
-      - task: :vars:require-dotenv
     cmds:
       - cmd: |
           set -euo pipefail
@@ -396,8 +396,6 @@ tasks:
   smoke:10:
     desc: "Smoke test: 10 statements in parallel, report throughput"
     silent: true
-    deps:
-      - task: :vars:require-dotenv
     cmds:
       - cmd: |
           set -euo pipefail
@@ -432,8 +430,6 @@ tasks:
   smoke:25:
     desc: "Smoke test: 25 statements in parallel, report throughput"
     silent: true
-    deps:
-      - task: :vars:require-dotenv
     cmds:
       - cmd: |
           set -euo pipefail
@@ -468,8 +464,6 @@ tasks:
   smoke:50:
     desc: "Smoke test: 50 statements in parallel, report throughput"
     silent: true
-    deps:
-      - task: :vars:require-dotenv
     cmds:
       - cmd: |
           set -euo pipefail
@@ -504,8 +498,6 @@ tasks:
   smoke:75:
     desc: "Smoke test: 75 statements in parallel, report throughput"
     silent: true
-    deps:
-      - task: :vars:require-dotenv
     cmds:
       - cmd: |
           set -euo pipefail
@@ -540,8 +532,6 @@ tasks:
   smoke:100:
     desc: "Smoke test: 100 statements in parallel, report throughput"
     silent: true
-    deps:
-      - task: :vars:require-dotenv
     cmds:
       - cmd: |
           set -euo pipefail
@@ -576,8 +566,6 @@ tasks:
   smoke:150:
     desc: "Smoke test: 150 statements in parallel, report throughput"
     silent: true
-    deps:
-      - task: :vars:require-dotenv
     cmds:
       - cmd: |
           set -euo pipefail
@@ -612,8 +600,6 @@ tasks:
   smoke:500:
     desc: "Smoke test: 500 statements in parallel, report throughput"
     silent: true
-    deps:
-      - task: :vars:require-dotenv
     cmds:
       - cmd: |
           set -euo pipefail

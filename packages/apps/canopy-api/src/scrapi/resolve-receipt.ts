@@ -801,6 +801,15 @@ export async function buildReceiptForEntry(
     const receipt = unwrapCoseSign1Tag(receiptDecoded, "peak receipt");
     const receiptSign1 = requireCoseSign1(receipt, "peak receipt");
     const receiptUnprotected = toHeaderMap(receiptSign1[1]);
+    const delegationCertBytes = checkpointUnprotected.get(
+      DELEGATION_CERT_LABEL,
+    );
+    if (
+      delegationCertBytes instanceof Uint8Array &&
+      delegationCertBytes.length > 0
+    ) {
+      receiptUnprotected.set(DELEGATION_CERT_LABEL, delegationCertBytes);
+    }
     const inclusionProofEntry = new Map<number, unknown>([
       [1, mmrIndex],
       [2, proof],
