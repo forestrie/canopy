@@ -91,11 +91,14 @@ signed by Custodian failed.
 trust roots in [`receipt-authority-resolver.ts`](../packages/apps/canopy-api/src/env/receipt-authority-resolver.ts)
 (`resolveReceiptVerifyKeysFromTrustRoots`).
 
-**Remediation §3 (A/B RCA, 2026-05-31):** `hydrateGrantReceiptFromMmrs` used
-`grant.ownerLogId` for R2 MMRS paths; child auth grants seal on **`grant.logId`**
-(auth log **A**) while `ownerLogId` is root **R**. Hydration no-op’d → parent
-receipt verify used stale embedded bytes. Fixed to use `grant.logId` in
-[`hydrate-grant-receipt.ts`](../packages/apps/canopy-api/src/scrapi/hydrate-grant-receipt.ts).
+**Remediation §3 (A/B RCA, 2026-05-31):** Hydration must use **`grant.ownerLogId`**
+for MMRS (auth grant leaf is on root **R**'s tree; `logId` is child **A** only).
+A mistaken `logId` lookup could rebuild from the wrong log's massif.
+
+**Remediation §4:** Receipt verify tries **detached peak** signing first (sealer
+path), then embedded payload when a 32-byte peak is present — fixes
+`signature-failed` / `signature-failed-inclusion-ok` when payload copy does not
+match the Sig_structure the signer used.
 
 **Diagnostics shipped:** e2e `parent-grant-ab-split.json` + worker 403 `extensions`
 (`hasDelegationCertBeforeHydrate`, `hasDelegationCertAfterHydrate`,

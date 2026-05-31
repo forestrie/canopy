@@ -224,31 +224,23 @@ describe("buildReceiptForEntry + hydrateGrantReceiptFromMmrs (R2_MMRS)", () => {
     ).toBeNull();
   });
 
-  it("hydrate uses grant.logId (seal log) not ownerLogId for MMRS lookup", async () => {
+  it("hydrate uses ownerLogId for child auth grant (leaf on parent MMR)", async () => {
     proveEnvHasMMRSBucket(env);
-    const sealLog = "d4444444-4444-4444-8444-444444444444";
-    const rootOwner = "c5555555-5555-4555-8555-555555555555";
+    const rootOwner = "d4444444-4444-4444-8444-444444444444";
+    const childAuthLog = "c5555555-5555-4555-8555-555555555555";
     const pIdx = peakIndexForLeafProof(MMR_SIZE, 1);
     const peakSlots = buildPeakReceiptSlots(pIdx, signedPeakReceipt);
     await putMmrsFixture(env.R2_MMRS, {
-      logId: sealLog,
+      logId: rootOwner,
       massifHeight: MASSIF_HEIGHT,
       mmrSize: MMR_SIZE,
       logHashes: [leaf0Hash, authLeafHash, new Uint8Array(32).fill(0xcc)],
       peakReceipts: peakSlots,
       delegationCert,
     });
-    await putMmrsFixture(env.R2_MMRS, {
-      logId: rootOwner,
-      massifHeight: MASSIF_HEIGHT,
-      mmrSize: 1n,
-      logHashes: [leaf0Hash],
-      peakReceipts: [signedPeakReceipt],
-      delegationCert: undefined,
-    });
 
     const childAuthGrant: Grant = {
-      logId: uuidToBytes(sealLog),
+      logId: uuidToBytes(childAuthLog),
       ownerLogId: uuidToBytes(rootOwner),
       grant: authGrant.grant,
       maxHeight: 0,
@@ -275,13 +267,13 @@ describe("buildReceiptForEntry + hydrateGrantReceiptFromMmrs (R2_MMRS)", () => {
         parseReceipt(hydrated.receipt!.coseSign1Bytes).coseSign1[1],
       ),
     ).not.toBeNull();
-    const wrongOwnerRebuild = await buildReceiptForEntry(
-      rootOwner,
+    const wrongTargetLogRebuild = await buildReceiptForEntry(
+      childAuthLog,
       MASSIF_HEIGHT,
       MMR_INDEX_AUTH,
       env.R2_MMRS,
     );
-    expect(wrongOwnerRebuild).toBeNull();
+    expect(wrongTargetLogRebuild).toBeNull();
   });
 
   it("hydrateGrantReceiptFromMmrs preserves cert and grantAuthorize accepts auth leaf", async () => {

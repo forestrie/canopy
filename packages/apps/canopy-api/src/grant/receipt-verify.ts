@@ -274,20 +274,25 @@ export async function verifyReceiptInclusionFromParsed(
       return "no-verify-keys";
     }
 
-    // The receipt payload may be detached (nil) but the signature was computed
-    // over the 32-byte peak hash. Supply it as detachedPayload so the
-    // Sig_structure matches what the signer produced.
-    const detachedPayload = explicitPeak === null ? peak : undefined;
-
-    // Try each candidate key (delegated key first, then trust root).
+    // Peak receipts from the sealer are signed with a detached 32-byte peak hash
+    // (nil COSE payload). Try detached peak first; if the receipt still carries an
+    // explicit payload copy, fall back to verifying against the embedded bytes.
     let sigOk = false;
     for (const candidateKey of verifyKeys) {
       sigOk = await verifyCoseSign1WithParsedKey(
         receiptVerification.receiptCoseBytes,
         candidateKey,
-        { logPrefix: "grant-receipt-cose", detachedPayload },
+        { logPrefix: "grant-receipt-cose", detachedPayload: peak },
       );
       if (sigOk) break;
+      if (explicitPeak !== null) {
+        sigOk = await verifyCoseSign1WithParsedKey(
+          receiptVerification.receiptCoseBytes,
+          candidateKey,
+          { logPrefix: "grant-receipt-cose" },
+        );
+        if (sigOk) break;
+      }
     }
     if (!sigOk) {
       console.warn("grant-receipt-verify: receipt signature failed");
