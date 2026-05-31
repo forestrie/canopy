@@ -46,6 +46,22 @@ const MAX_PARENT_GRANT_BODY_SIZE = 16 * 1024;
 /** Key of the parent-grant field in the register-grant CBOR request body (see §11 above). */
 const PARENT_GRANT_BODY_KEY = "parentGrant";
 
+/** Read `parentGrant` from a decoded CBOR map (plain object or `Map`). */
+function readParentGrantField(body: unknown): unknown {
+  if (body instanceof Map) {
+    return body.get(PARENT_GRANT_BODY_KEY);
+  }
+  if (
+    body &&
+    typeof body === "object" &&
+    !(body instanceof Uint8Array) &&
+    !ArrayBuffer.isView(body)
+  ) {
+    return (body as Record<string, unknown>)[PARENT_GRANT_BODY_KEY];
+  }
+  return undefined;
+}
+
 /** Raw transparent-statement bytes → GrantResult; Response (400) on decode failure. */
 function decodeForestrieGrantBytes(bytes: Uint8Array): GrantResult | Response {
   try {
@@ -182,10 +198,7 @@ export async function getParentGrantFromRequest(
       "register-grant body must be a CBOR map (e.g. { parentGrant: <bytes> }).",
     );
   }
-  const parentGrant =
-    body && typeof body === "object"
-      ? (body as Record<string, unknown>)[PARENT_GRANT_BODY_KEY]
-      : undefined;
+  const parentGrant = readParentGrantField(body);
   if (parentGrant == null) return null; // body without parentGrant: evidence absent
   if (!(parentGrant instanceof Uint8Array) || parentGrant.length === 0) {
     return ClientErrors.badRequest(

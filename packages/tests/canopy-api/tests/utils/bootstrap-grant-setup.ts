@@ -2,6 +2,7 @@ import type { APIRequestContext } from "@playwright/test";
 import { encode as encodeCbor } from "cbor-x";
 import { custodianCustodySignEnv } from "./custodian-custody-grant";
 import { mintTransparentBootstrapGrantBase64 } from "./mint-bootstrap-grant-e2e.js";
+import { decodeProblemDetails } from "./problem-details.js";
 
 export interface BootstrapMintAndRegisterResult {
   grantBase64: string;
@@ -99,8 +100,12 @@ export async function postRegisterGrantExpect303(
     post,
   );
   if (registerRes.status() !== 303) {
+    const problem = await decodeProblemDetails(registerRes);
+    const detail =
+      problem?.detail ??
+      ((await registerRes.text()).slice(0, 200) || "(empty body)");
     throw new Error(
-      `register-grant: expected 303, got ${registerRes.status()} (body preview: ${(await registerRes.text()).slice(0, 200)})`,
+      `register-grant: expected 303, got ${registerRes.status()} (${detail})`,
     );
   }
   const loc = registerRes.headers()["location"];
