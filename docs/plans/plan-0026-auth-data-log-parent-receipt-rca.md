@@ -56,12 +56,28 @@ receipt signature verification failed.
 4. **Regression tests** — `receipt-authority-resolver-cache.test.ts`.
 5. **E2e attach** — `parent-grant-rca.json` on data-grant failure via
    [`parent-grant-receipt-diagnostics.ts`](../packages/tests/canopy-api/tests/utils/parent-grant-receipt-diagnostics.ts).
+6. **Dual trust-root merge** — when coordinator is configured, resolve verify keys
+   against both coordinator `public-root` and Custodian curator trust roots and
+   merge candidates (fixes post-deploy `signature-failed` on custodial dev).
 
 ## Verification
 
-- [ ] Deploy `canopy-api` with cache-key + split-403 changes to **dev**.
-- [ ] Re-run: `task test:e2e` or CI **Deploy Workers** → `auth-data-log-chain` green.
-- [ ] Optional: confirm 403 detail no longer appears; if failure persists, use new detail string.
+- [x] Deploy `canopy-api` with cache-key + split-403 changes to **dev** (CI run `26712925739`).
+- [ ] Re-run CI **Deploy Workers** after dual trust-root merge (see remediation §2).
+- [x] Post-deploy 403 detail: `signature-failed` (not inclusion) — cache fix alone insufficient.
+
+## Post-deploy follow-up (2026-05-31)
+
+CI on commit `d2ccb42` still failed with **signature-failed** after the cache-key
+fix. **H5 (revised):** `createSelectingTrustRootClient` used coordinator
+`public-root` when present, but Custodian curator keys still seal checkpoints on
+dev custodial forests. Receipts without a verifiable delegation cert against the
+coordinator key returned only `[coordinator]` candidates, so peak signatures
+signed by Custodian failed.
+
+**Remediation §2:** merge verify-key candidates from coordinator **and** Custodian
+trust roots in [`receipt-authority-resolver.ts`](../packages/apps/canopy-api/src/env/receipt-authority-resolver.ts)
+(`resolveReceiptVerifyKeysFromTrustRoots`).
 
 ## Local blocker (investigation only)
 

@@ -5,7 +5,12 @@
 import { encode as encodeCbor } from "cbor-x";
 import { encodeSigStructure } from "@canopy/encoding";
 import { describe, expect, it, vi } from "vitest";
-import { createReceiptAuthorityResolver } from "../src/env/receipt-authority-resolver.js";
+import {
+  createReceiptAuthorityResolver,
+  resolveReceiptVerifyKeysFromTrustRoots,
+} from "../src/env/receipt-authority-resolver.js";
+import { importEs256PublicKeyFromGrantDataXy64 } from "../src/scrapi/custodian-grant.js";
+import { verifyCoseSign1WithParsedKey } from "@canopy/encoding";
 import { DELEGATION_CERT_LABEL } from "../src/grant/delegation-verify.js";
 
 describe("createReceiptAuthorityResolver", () => {
@@ -69,23 +74,45 @@ describe("createReceiptAuthorityResolver", () => {
     const rootY = rootRaw.slice(33, 65);
     const delegationCert = await buildDelegationCert(root, delegatedRaw);
     const receipt = buildReceiptWithDelegation(delegationCert);
+    const rootPem = await exportSpkiPem(root.publicKey);
     let coordinatorRequests = 0;
     vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (!url.endsWith("/public-root")) {
-        return new Response(null, { status: 404 });
+      if (url.endsWith("/public-root")) {
+        coordinatorRequests++;
+        const body = cborBytes({
+          logId: new Uint8Array(16),
+          alg: "ES256",
+          x: rootX,
+          y: rootY,
+        });
+        return new Response(body, {
+          status: 200,
+          headers: { "Content-Type": "application/cbor" },
+        });
       }
-      coordinatorRequests++;
-      const body = cborBytes({
-        logId: new Uint8Array(16),
-        alg: "ES256",
-        x: rootX,
-        y: rootY,
-      });
-      return new Response(body, {
-        status: 200,
-        headers: { "Content-Type": "application/cbor" },
-      });
+      if (url.includes("custodian.invalid")) {
+        if (url.includes("curator/log-key")) {
+          return new Response(cborBytes({ keyId: "test-key" }), {
+            status: 200,
+            headers: { "Content-Type": "application/cbor" },
+          });
+        }
+        if (url.includes("/public")) {
+          return new Response(
+            cborBytes({
+              keyId: "test-key",
+              publicKey: rootPem,
+              alg: "ES256",
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/cbor" },
+            },
+          );
+        }
+      }
+      return new Response(null, { status: 404 });
     });
     try {
       const resolve = createReceiptAuthorityResolver({
@@ -97,13 +124,105 @@ describe("createReceiptAuthorityResolver", () => {
 
       const keys = await resolve("0123456789abcdef0123456789abcdef", receipt);
       expect(keys).not.toBeNull();
-      expect(keys).toHaveLength(2);
+      expect(keys!.length).toBeGreaterThanOrEqual(2);
       expect(coordinatorRequests).toBe(1);
     } finally {
       vi.unstubAllGlobals();
     }
   });
+
+  it("merges custodian keys when coordinator public-root does not sign the peak", async () => {
+    const coordinatorRoot = await generateP256KeyPair();
+    const custodyRoot = await generateP256KeyPair();
+    const coordinatorRaw = new Uint8Array(
+      (await crypto.subtle.exportKey(
+        "raw",
+        coordinatorRoot.publicKey,
+      )) as ArrayBuffer,
+    );
+    const custodyRaw = new Uint8Array(
+      (await crypto.subtle.exportKey(
+        "raw",
+        custodyRoot.publicKey,
+      )) as ArrayBuffer,
+    );
+    const peak = new Uint8Array(32).fill(0x22);
+    const receipt = await buildSignedPeakReceiptNoDelegation(custodyRoot, peak);
+
+    const coordinatorKey = await importEs256PublicKeyFromGrantDataXy64(
+      coordinatorRaw.slice(1),
+    );
+    const custodyKey = await importEs256PublicKeyFromGrantDataXy64(
+      custodyRaw.slice(1),
+    );
+
+    const keys = await resolveReceiptVerifyKeysFromTrustRoots(
+      "0123456789abcdef0123456789abcdef",
+      receipt,
+      [
+        { logSigningKey: async () => coordinatorKey },
+        { logSigningKey: async () => custodyKey },
+      ],
+    );
+    expect(keys).not.toBeNull();
+    const sigWithCoordinatorOnly = await verifyCoseSign1WithParsedKey(
+      receipt,
+      coordinatorKey,
+      { detachedPayload: peak },
+    );
+    const sigWithMerged = await verifyCoseSign1WithParsedKey(
+      receipt,
+      keys![0]!,
+      { detachedPayload: peak },
+    );
+    let sigOk = sigWithMerged;
+    if (!sigOk) {
+      for (const k of keys!) {
+        sigOk = await verifyCoseSign1WithParsedKey(receipt, k, {
+          detachedPayload: peak,
+        });
+        if (sigOk) break;
+      }
+    }
+    expect(sigWithCoordinatorOnly).toBe(false);
+    expect(sigOk).toBe(true);
+  });
 });
+
+async function buildSignedPeakReceiptNoDelegation(
+  signer: CryptoKeyPair,
+  peak: Uint8Array,
+): Promise<Uint8Array> {
+  const protectedInner = cborBytes(new Map<number, unknown>([[1, -7]]));
+  const sigStructure = encodeSigStructure(
+    protectedInner,
+    new Uint8Array(0),
+    peak,
+  );
+  const sig = new Uint8Array(
+    await crypto.subtle.sign(
+      { name: "ECDSA", hash: "SHA-256" },
+      signer.privateKey,
+      sigStructure.buffer.slice(
+        sigStructure.byteOffset,
+        sigStructure.byteOffset + sigStructure.byteLength,
+      ) as ArrayBuffer,
+    ),
+  );
+  const proofs = new Map<number, unknown>([
+    [
+      -1,
+      [
+        new Map<number, unknown>([
+          [1, 0n],
+          [2, []],
+        ]),
+      ],
+    ],
+  ]);
+  const unprot = new Map<number, unknown>([[396, proofs]]);
+  return cborBytes([protectedInner, unprot, peak, sig]);
+}
 
 async function buildDelegationCert(
   root: CryptoKeyPair,
@@ -185,4 +304,13 @@ async function generateP256KeyPair(): Promise<CryptoKeyPair> {
     true,
     ["sign", "verify"],
   )) as CryptoKeyPair;
+}
+
+async function exportSpkiPem(publicKey: CryptoKey): Promise<string> {
+  const spki = new Uint8Array(
+    (await crypto.subtle.exportKey("spki", publicKey)) as ArrayBuffer,
+  );
+  const b64 = btoa(String.fromCharCode(...spki));
+  const lines = b64.match(/.{1,64}/g) ?? [];
+  return `-----BEGIN PUBLIC KEY-----\n${lines.join("\n")}\n-----END PUBLIC KEY-----`;
 }

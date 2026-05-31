@@ -8,7 +8,7 @@ import { isCanopyApiPoolTestMode } from "./runtime-mode.js";
 import {
   createCoordinatorPublicTrustRootClient,
   createCustodianPublicTrustRootClient,
-  createSelectingTrustRootClient,
+  isTrustRootNotFound,
   type TrustRootClient,
 } from "./trust-root-client.js";
 import { importEs256PublicKeyFromGrantDataXy64 } from "../scrapi/custodian-grant.js";
@@ -47,6 +47,34 @@ export type ReceiptAuthorityResolver = (
   receiptCoseBytes: Uint8Array,
 ) => Promise<ParsedVerifyKey[] | null>;
 
+/**
+ * Resolve verify-key candidates from each trust-root client. When coordinator
+ * public-root differs from Custodian curator signing (dev custodial forests),
+ * merging keys lets receipt signature verify against the key that actually
+ * sealed the peak.
+ */
+export async function resolveReceiptVerifyKeysFromTrustRoots(
+  ownerLogIdLowerHex32: string,
+  receiptCoseBytes: Uint8Array,
+  trustRootClients: TrustRootClient[],
+): Promise<ParsedVerifyKey[] | null> {
+  const merged: ParsedVerifyKey[] = [];
+  for (const client of trustRootClients) {
+    let trustRoot: ParsedVerifyKey;
+    try {
+      trustRoot = await client.logSigningKey(ownerLogIdLowerHex32);
+    } catch (error) {
+      if (isTrustRootNotFound(error)) continue;
+      throw error;
+    }
+    const resolved = await resolveReceiptVerifyKey(receiptCoseBytes, trustRoot);
+    if (resolved?.verifyKeys?.length) {
+      merged.push(...resolved.verifyKeys);
+    }
+  }
+  return merged.length > 0 ? merged : null;
+}
+
 export function createReceiptAuthorityResolver(config: {
   trustRootUrl: string;
   coordinatorTrustRootUrl?: string;
@@ -57,13 +85,15 @@ export function createReceiptAuthorityResolver(config: {
   const pool = isCanopyApiPoolTestMode({ NODE_ENV: config.nodeEnv });
   const testHex = config.testReceiptVerifyEs256XyHex?.trim();
 
-  let trustRootClient: TrustRootClient;
+  let trustRootClients: TrustRootClient[];
   if (pool && testHex) {
     const xy = hexToBytes32Pair(testHex);
     const keyPromise = importEs256PublicKeyFromGrantDataXy64(xy);
-    trustRootClient = {
-      logSigningKey: async () => keyPromise,
-    };
+    trustRootClients = [
+      {
+        logSigningKey: async () => keyPromise,
+      },
+    ];
   } else {
     const custodian = createCustodianPublicTrustRootClient({
       custodianBaseUrl: config.trustRootUrl,
@@ -71,15 +101,15 @@ export function createReceiptAuthorityResolver(config: {
     const coordinatorUrl = config.coordinatorTrustRootUrl?.trim();
     const coordinatorToken = config.coordinatorToken?.trim();
     if (coordinatorUrl && coordinatorToken) {
-      trustRootClient = createSelectingTrustRootClient({
-        primary: createCoordinatorPublicTrustRootClient({
+      trustRootClients = [
+        createCoordinatorPublicTrustRootClient({
           coordinatorBaseUrl: coordinatorUrl,
           token: coordinatorToken,
         }),
-        fallback: custodian,
-      });
+        custodian,
+      ];
     } else {
-      trustRootClient = custodian;
+      trustRootClients = [custodian];
     }
   }
 
@@ -93,15 +123,11 @@ export function createReceiptAuthorityResolver(config: {
     const cacheKey = `${ownerLogIdLowerHex32}\0${receiptSuffix}`;
     let p = cache.get(cacheKey);
     if (!p) {
-      p = (async (): Promise<ParsedVerifyKey[] | null> => {
-        const trustRoot =
-          await trustRootClient.logSigningKey(ownerLogIdLowerHex32);
-        const resolved = await resolveReceiptVerifyKey(
-          receiptCoseBytes,
-          trustRoot,
-        );
-        return resolved?.verifyKeys ?? null;
-      })();
+      p = resolveReceiptVerifyKeysFromTrustRoots(
+        ownerLogIdLowerHex32,
+        receiptCoseBytes,
+        trustRootClients,
+      );
 
       p = p.catch((err: unknown) => {
         cache.delete(cacheKey);

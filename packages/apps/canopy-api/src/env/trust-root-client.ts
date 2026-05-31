@@ -24,7 +24,7 @@ class TrustRootNotFoundError extends Error {
   }
 }
 
-function isTrustRootNotFound(error: unknown): boolean {
+export function isTrustRootNotFound(error: unknown): boolean {
   return error instanceof TrustRootNotFoundError;
 }
 
