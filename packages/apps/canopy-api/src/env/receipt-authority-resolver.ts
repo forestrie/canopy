@@ -101,12 +101,14 @@ export function createReceiptAuthorityResolver(config: {
     const coordinatorUrl = config.coordinatorTrustRootUrl?.trim();
     const coordinatorToken = config.coordinatorToken?.trim();
     if (coordinatorUrl && coordinatorToken) {
+      // Custodian first: dev custodial forests seal peaks with curator keys even
+      // when coordinator public-root is present.
       trustRootClients = [
+        custodian,
         createCoordinatorPublicTrustRootClient({
           coordinatorBaseUrl: coordinatorUrl,
           token: coordinatorToken,
         }),
-        custodian,
       ];
     } else {
       trustRootClients = [custodian];

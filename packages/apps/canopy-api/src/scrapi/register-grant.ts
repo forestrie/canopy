@@ -69,6 +69,7 @@ import type { LogShardEnv } from "../sequeue/logshard.js";
 import type { ReceiptAuthorityResolver } from "../env/receipt-authority-resolver.js";
 import { bytesEqual } from "../cbor-api/cbor-map-utils.js";
 import { getParsedGenesis } from "../forest/genesis-cache.js";
+import { hydrateGrantReceiptFromMmrs } from "./hydrate-grant-receipt.js";
 
 export interface RegisterGrantEnv {
   /**
@@ -413,9 +414,16 @@ export async function registerGrant(
           "Parent grant in the request body does not create this grant's owner authority log (logId mismatch).",
         );
       }
+      // Rebuild parent receipt from MMRS so delegation cert + inclusion proof match
+      // resolve-receipt (caller-supplied bytes may omit checkpoint cert label 1000).
+      const parentForAuthorize = await hydrateGrantReceiptFromMmrs(
+        parentGrantResult,
+        env.bootstrapEnv.r2Mmrs,
+        env.bootstrapEnv.massifHeight,
+      );
       // grantAuthorize verifies the parent grant's receipt (MMR inclusion + signature)
       // against the receipt authority for the parent grant's own ownerLogId (R).
-      const parentAuthError = await grantAuthorize(parentGrantResult, {
+      const parentAuthError = await grantAuthorize(parentForAuthorize, {
         enforceInclusion: Boolean(env.queueEnv),
         resolveReceiptAuthority: env.resolveReceiptAuthority,
       });

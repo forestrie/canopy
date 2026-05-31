@@ -59,6 +59,8 @@ receipt signature verification failed.
 6. **Dual trust-root merge** — when coordinator is configured, resolve verify keys
    against both coordinator `public-root` and Custodian curator trust roots and
    merge candidates (fixes post-deploy `signature-failed` on custodial dev).
+7. **Parent receipt hydrate** — before `grantAuthorize` on `parentGrant`, rebuild
+   receipt from MMRS via `hydrateGrantReceiptFromMmrs` (same as resolve-receipt).
 
 ## Verification
 
