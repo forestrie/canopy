@@ -432,13 +432,17 @@ export async function registerGrant(
       }
       const hasDelegationCertBeforeHydrate =
         hasDelegationCertOnGrantResult(parentGrantResult);
-      // Rebuild parent receipt from MMRS so delegation cert + inclusion proof match
-      // resolve-receipt (caller-supplied bytes may omit checkpoint cert label 1000).
-      const parentForAuthorize = await hydrateGrantReceiptFromMmrs(
-        parentGrantResult,
-        env.bootstrapEnv.r2Mmrs,
-        env.bootstrapEnv.massifHeight,
-      );
+      // Rebuild from MMRS when the embedded receipt lacks checkpoint cert (label 1000).
+      // Callers that completed via GET resolve-receipt usually already have cert; skip
+      // hydration to avoid replacing a good receipt with a stale checkpoint read.
+      let parentForAuthorize = parentGrantResult;
+      if (!hasDelegationCertBeforeHydrate) {
+        parentForAuthorize = await hydrateGrantReceiptFromMmrs(
+          parentGrantResult,
+          env.bootstrapEnv.r2Mmrs,
+          env.bootstrapEnv.massifHeight,
+        );
+      }
       const hasDelegationCertAfterHydrate =
         hasDelegationCertOnGrantResult(parentForAuthorize);
       // grantAuthorize verifies the parent grant's receipt (MMR inclusion + signature)

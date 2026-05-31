@@ -192,6 +192,10 @@ test.describe("Auth log → data log delegation chain", () => {
           ladderMs: sequencingBackoff,
         });
         await attachParentGrantAbSplit(testInfo, split, error.registerRes);
+        console.error(
+          "[auth-data-log-chain] parent-grant-ab-split",
+          JSON.stringify(split),
+        );
       }
       throw error;
     }
