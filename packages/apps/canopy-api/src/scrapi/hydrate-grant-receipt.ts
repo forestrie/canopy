@@ -24,15 +24,17 @@ export async function hydrateGrantReceiptFromMmrs(
       : undefined);
   if (mmrIndex === undefined) return grantResult;
 
-  let ownerUuid: string;
+  // MMRS checkpoint/massif paths use the grant target log (logId), not ownerLogId.
+  // Child auth grants seal on log A while ownerLogId remains root R.
+  let sealLogUuid: string;
   try {
-    ownerUuid = bytesToUuid(grantResult.grant.ownerLogId);
+    sealLogUuid = bytesToUuid(grantResult.grant.logId);
   } catch {
     return grantResult;
   }
 
   const rebuilt = await buildReceiptForEntry(
-    ownerUuid,
+    sealLogUuid,
     massifHeight,
     mmrIndex,
     r2Mmrs,

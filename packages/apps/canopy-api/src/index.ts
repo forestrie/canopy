@@ -258,6 +258,7 @@ export default {
             queueEnv: queueEnvForSequencing,
             bootstrapEnv: bootstrapEnvForGrant,
             resolveReceiptAuthority,
+            nodeEnv: env.NODE_ENV,
           });
           const headers = new Headers(response.headers);
           Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));

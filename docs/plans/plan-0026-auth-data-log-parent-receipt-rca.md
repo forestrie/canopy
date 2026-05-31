@@ -62,11 +62,21 @@ receipt signature verification failed.
 7. **Parent receipt hydrate** — before `grantAuthorize` on `parentGrant`, rebuild
    receipt from MMRS via `hydrateGrantReceiptFromMmrs` (same as resolve-receipt).
 
+## A/B evidence (CI forensics, 2026-05-31)
+
+| Run ID | Commit | Deploy | E2e detail (data grant 403) | Inferred |
+|--------|--------|--------|-------------------------------|----------|
+| `26711640692` | `739d7b2` | success | Generic *receipt signature or inclusion proof* | legacy-generic (pre split-403) |
+| `26712925739` | `d2ccb42` | success | *signature did not verify* (delegation cert message) | **B** or **A** (client-only diagnostics) |
+| `26713274032` | `cbabc6b` | success | *signature-failed-inclusion-ok* (inclusion matches, sig fails) | **B**-leaning (cert likely present on explicit peak path) |
+
+Deploy job **succeeded** on all rows; failures are **API e2e (dev, system)** only. Coordinator worker deploy is often **skipped** when only `canopy-api` changes; `COORDINATOR_APP_TOKEN` is still configured on canopy-api deploy.
+
 ## Verification
 
 - [x] Deploy `canopy-api` with cache-key + split-403 changes to **dev** (CI run `26712925739`).
-- [ ] Re-run CI **Deploy Workers** after dual trust-root merge (see remediation §2).
-- [x] Post-deploy 403 detail: `signature-failed` (not inclusion) — cache fix alone insufficient.
+- [x] Dual trust-root merge + parent hydrate deployed (runs through `26713274032`; still red).
+- [x] Post-deploy 403 detail: `signature-failed` / `signature-failed-inclusion-ok` — cache + trust-root merge insufficient alone.
 
 ## Post-deploy follow-up (2026-05-31)
 
@@ -81,8 +91,26 @@ signed by Custodian failed.
 trust roots in [`receipt-authority-resolver.ts`](../packages/apps/canopy-api/src/env/receipt-authority-resolver.ts)
 (`resolveReceiptVerifyKeysFromTrustRoots`).
 
+**Remediation §3 (A/B RCA, 2026-05-31):** `hydrateGrantReceiptFromMmrs` used
+`grant.ownerLogId` for R2 MMRS paths; child auth grants seal on **`grant.logId`**
+(auth log **A**) while `ownerLogId` is root **R**. Hydration no-op’d → parent
+receipt verify used stale embedded bytes. Fixed to use `grant.logId` in
+[`hydrate-grant-receipt.ts`](../packages/apps/canopy-api/src/scrapi/hydrate-grant-receipt.ts).
+
+**Diagnostics shipped:** e2e `parent-grant-ab-split.json` + worker 403 `extensions`
+(`hasDelegationCertBeforeHydrate`, `hasDelegationCertAfterHydrate`,
+`parentReceiptVerify`); Playwright report artifacts on CI failure.
+
 ## Local blocker (investigation only)
 
 Runner **Custodian 401** (`valid app token required`) prevents local Playwright from
 reaching Canopy in this environment; CI remains the integration source of truth when
 Doppler tokens are invalid locally.
+
+## Verification checklist (A/B plan)
+
+- [x] CI forensics recorded (runs `26711640692`, `26712925739`, `26713274032`).
+- [x] E2e `parent-grant-ab-split.json` + `parent-grant-403.cbor.b64` on data-grant failure.
+- [x] Worker 403 `extensions` on non-prod parent-grant verify failure.
+- [x] Playwright report/results artifacts on CI failure.
+- [ ] `auth-data-log-chain` green on **Deploy Workers** after remediation §3 deploy.

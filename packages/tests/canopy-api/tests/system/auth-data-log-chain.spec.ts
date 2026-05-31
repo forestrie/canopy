@@ -45,7 +45,13 @@ import {
   responseTextPreview,
 } from "@e2e-utils/problem-details";
 import { completeGrantRegistrationThroughReceipt } from "@e2e-utils/register-grant-through-receipt";
-import { diagnoseCompletedParentGrant } from "@e2e-utils/parent-grant-receipt-diagnostics";
+import {
+  RegisterGrantHttpError,
+} from "@e2e-utils/bootstrap-grant-setup";
+import {
+  attachParentGrantAbSplit,
+  buildParentGrantAbSplit,
+} from "@e2e-utils/parent-grant-ab-split";
 import { sha256Hex } from "@e2e-utils/statement-sign-bytes";
 
 test.describe("Auth log → data log delegation chain", () => {
@@ -173,18 +179,20 @@ test.describe("Auth log → data log delegation chain", () => {
         parentGrantBase64: completedAuthB64,
       });
     } catch (error) {
-      await testInfo.attach("parent-grant-rca.json", {
-        body: JSON.stringify(
-          diagnoseCompletedParentGrant({
-            completedGrantBase64: completedAuthB64,
-            resolveReceiptBody: authRegComplete.receiptRes.body,
-            entryIdHex: authRegComplete.entryIdHex,
-          }),
-          null,
-          2,
-        ),
-        contentType: "application/json",
-      });
+      if (error instanceof RegisterGrantHttpError) {
+        const split = await buildParentGrantAbSplit({
+          registerRes: error.registerRes,
+          completedGrantBase64: completedAuthB64,
+          resolveReceiptBody: authRegComplete.receiptRes.body,
+          entryIdHex: authRegComplete.entryIdHex,
+          receiptUrlAbsolute: authRegComplete.receiptUrlAbsolute,
+          rootLogId,
+          authLogId,
+          unauthorizedRequest,
+          ladderMs: sequencingBackoff,
+        });
+        await attachParentGrantAbSplit(testInfo, split, error.registerRes);
+      }
       throw error;
     }
     expect(dataComplete.receiptRes.status).toBe(200);

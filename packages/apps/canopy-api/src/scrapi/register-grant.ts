@@ -55,7 +55,10 @@ import {
   getGrantFromRequest,
   getParentGrantFromRequest,
   grantAuthorize,
+  grantAuthorizeDetailed,
 } from "./auth-grant.js";
+import { extractDelegationCertBytes } from "../grant/delegation-verify.js";
+import { parseReceipt } from "../grant/receipt-verify.js";
 import { QueueFullError } from "@canopy/forestrie-ingress-types";
 import { seeOtherResponse } from "../cbor-api/cbor-response.js";
 import {
@@ -96,6 +99,19 @@ export interface RegisterGrantEnv {
   };
   /** Receipt authority resolver (trust root + delegation); required for receipt inclusion. */
   resolveReceiptAuthority?: ReceiptAuthorityResolver;
+  /** Worker NODE_ENV; non-prod parent-grant 403 responses may include RCA extensions. */
+  nodeEnv?: string;
+}
+
+function hasDelegationCertOnGrantResult(grantResult: GrantResult): boolean {
+  const bytes = grantResult.receipt?.coseSign1Bytes;
+  if (!bytes?.length) return false;
+  try {
+    const { coseSign1 } = parseReceipt(bytes);
+    return extractDelegationCertBytes(coseSign1[1]) != null;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -414,6 +430,8 @@ export async function registerGrant(
           "Parent grant in the request body does not create this grant's owner authority log (logId mismatch).",
         );
       }
+      const hasDelegationCertBeforeHydrate =
+        hasDelegationCertOnGrantResult(parentGrantResult);
       // Rebuild parent receipt from MMRS so delegation cert + inclusion proof match
       // resolve-receipt (caller-supplied bytes may omit checkpoint cert label 1000).
       const parentForAuthorize = await hydrateGrantReceiptFromMmrs(
@@ -421,13 +439,26 @@ export async function registerGrant(
         env.bootstrapEnv.r2Mmrs,
         env.bootstrapEnv.massifHeight,
       );
+      const hasDelegationCertAfterHydrate =
+        hasDelegationCertOnGrantResult(parentForAuthorize);
       // grantAuthorize verifies the parent grant's receipt (MMR inclusion + signature)
       // against the receipt authority for the parent grant's own ownerLogId (R).
-      const parentAuthError = await grantAuthorize(parentForAuthorize, {
-        enforceInclusion: Boolean(env.queueEnv),
-        resolveReceiptAuthority: env.resolveReceiptAuthority,
-      });
-      if (parentAuthError) return parentAuthError;
+      const parentAuth = await grantAuthorizeDetailed(
+        parentForAuthorize,
+        {
+          enforceInclusion: Boolean(env.queueEnv),
+          resolveReceiptAuthority: env.resolveReceiptAuthority,
+        },
+        env.nodeEnv !== "prod"
+          ? {
+              problemExtensions: {
+                hasDelegationCertBeforeHydrate,
+                hasDelegationCertAfterHydrate,
+              },
+            }
+          : undefined,
+      );
+      if (!parentAuth.ok) return parentAuth.response;
 
       authorityKeyXy = grantDataToBytes(parentGrantResult.grant.grantData);
       if (authorityKeyXy.length !== 64) {

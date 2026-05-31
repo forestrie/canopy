@@ -149,5 +149,12 @@ Set **`COORDINATOR_APP_TOKEN`** in Doppler **`canopy/dev`** (masked) after fores
 | `coordinator/coordinator-byok-material.spec.ts`  | **BYOK:** runner-owned log root; pending → material → coordinator issue. [System doc](tests/system/docs/README.md#non-custodian-log-root-signing-key-byok-delegation).              |
 | `system/coordinator-delegation-issuance.spec.ts` | Opt-in stretch: **Custodian proxy** on KMS miss with runner-signed BYOK material (`E2E_COORDINATOR_SEALER_STRETCH=1`). [Doc](tests/system/docs/coordinator-delegation-issuance.md). |
 
-- Shared e2e utils: `e2e-env-guards.ts`, `e2e-grant-flags.ts`, `register-grant-through-receipt.ts`, `post-entries-e2e.ts`, `custodian-sign-payload.ts`, `custodian-api-*.ts`, `problem-details.ts`, `bootstrap-grant-flow.ts`, etc.
+- Shared e2e utils: `e2e-env-guards.ts`, `e2e-grant-flags.ts`, `register-grant-through-receipt.ts`, `post-entries-e2e.ts`, `custodian-sign-payload.ts`, `custodian-api-*.ts`, `problem-details.ts`, `bootstrap-grant-flow.ts`, `parent-grant-ab-split.ts`, etc.
+
+**CI failure artifacts:** When the Playwright job fails, download the HTML report and attachments (e.g. `parent-grant-ab-split.json`):
+
+```bash
+gh run download <RUN_ID> -n playwright-report-dev-<RUN_ID> --repo forestrie/canopy
+gh run download <RUN_ID> -n playwright-results-dev-<RUN_ID> --repo forestrie/canopy
+```
 - Worker unit/integration tests: `packages/apps/canopy-api/test`.

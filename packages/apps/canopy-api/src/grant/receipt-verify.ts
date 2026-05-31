@@ -291,8 +291,22 @@ export async function verifyReceiptInclusionFromParsed(
     }
     if (!sigOk) {
       console.warn("grant-receipt-verify: receipt signature failed");
-      const inclusionOk = await verifyInclusion(hasher, leafHash, proof, peak);
-      return inclusionOk ? "signature-failed-inclusion-ok" : "signature-failed";
+      // Detached peak receipts (nil payload): peak was derived from leaf+proof, so
+      // verifyInclusion against that peak is tautological — do not report
+      // "inclusion-ok". Only when the receipt carries an explicit 32-byte peak can
+      // we meaningfully split signature vs inclusion failure.
+      if (explicitPeak !== null) {
+        const inclusionOk = await verifyInclusion(
+          hasher,
+          leafHash,
+          proof,
+          explicitPeak,
+        );
+        return inclusionOk
+          ? "signature-failed-inclusion-ok"
+          : "signature-failed";
+      }
+      return "signature-failed";
     }
   }
 

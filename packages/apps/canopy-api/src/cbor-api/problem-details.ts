@@ -14,7 +14,18 @@ export const ClientErrors = {
       401,
       headers,
     ),
-  forbidden: (detail?: string) => pd(403, "Forbidden", detail),
+  forbidden: (detail?: string, extensions?: Record<string, unknown>) => {
+    const body: Record<string, unknown> = {
+      type: "about:blank",
+      title: "Forbidden",
+      status: 403,
+    };
+    if (detail) body.detail = detail;
+    if (extensions && Object.keys(extensions).length > 0) {
+      body.extensions = extensions;
+    }
+    return cborResponse(body, 403);
+  },
   notFound: (what?: string, detail?: string) =>
     pd(404, `${what ?? "Not Found"}`, detail),
   notAcceptable: (detail?: string) => pd(406, "Not Acceptable", detail),

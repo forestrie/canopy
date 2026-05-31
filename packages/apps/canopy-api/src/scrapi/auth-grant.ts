@@ -26,7 +26,12 @@ import type { ParsedVerifyKey } from "@canopy/encoding";
 import { decode as decodeCbor } from "cbor-x";
 import type { GrantResult } from "../grant/types.js";
 import { decodeTransparentStatement } from "../grant/transparent-statement.js";
-import { verifyReceiptInclusionFromParsed } from "../grant/receipt-verify.js";
+import { parseReceipt } from "../grant/receipt-verify.js";
+import {
+  verifyReceiptInclusionFromParsed,
+  type ReceiptInclusionVerifyOutcome,
+} from "../grant/receipt-verify.js";
+import { extractDelegationCertBytes } from "../grant/delegation-verify.js";
 import { logIdBytesToCustodianLowerHex } from "../grant/uuid-bytes.js";
 import type { ReceiptAuthorityResolver } from "../env/receipt-authority-resolver.js";
 import { CBOR_CONTENT_TYPES } from "../cbor-api/cbor-content-types.js";
@@ -208,6 +213,41 @@ export async function getParentGrantFromRequest(
   return decodeForestrieGrantBytes(parentGrant);
 }
 
+export interface GrantAuthorizeFailure {
+  response: Response;
+  outcome: ReceiptInclusionVerifyOutcome;
+  verifyKeyCount: number;
+  hasDelegationCert: boolean;
+}
+
+export type GrantAuthorizeResult =
+  | { ok: true }
+  | ({ ok: false } & GrantAuthorizeFailure);
+
+function hasDelegationCertOnReceiptBytes(receiptCoseBytes: Uint8Array): boolean {
+  try {
+    const { coseSign1 } = parseReceipt(receiptCoseBytes);
+    return extractDelegationCertBytes(coseSign1[1]) != null;
+  } catch {
+    return false;
+  }
+}
+
+function forbiddenForReceiptOutcome(
+  outcome: ReceiptInclusionVerifyOutcome,
+  extensions?: Record<string, unknown>,
+): Response {
+  const detail =
+    outcome === "signature-failed-inclusion-ok"
+      ? "Grant receipt COSE signature did not verify against the owner-log receipt authority, but the MMR inclusion proof matches (check delegation cert, trust-root, and detached peak signing)."
+      : outcome === "signature-failed"
+        ? "Grant receipt COSE signature did not verify against the owner-log receipt authority (check delegation cert on the receipt and trust-root configuration)."
+        : outcome === "inclusion-failed"
+          ? "Grant receipt MMR inclusion proof does not bind this grant commitment to the signed peak (idtimestamp, grant payload, or proof path mismatch)."
+          : "Grant receipt verification could not resolve signing keys.";
+  return ClientErrors.forbidden(detail, extensions);
+}
+
 /**
  * Verify that a grant's embedded SCITT receipt is valid when `enforceInclusion` is true.
  * Uses `grantResult.grant` and `grantResult.receipt` only; no request, no fetch, and no
@@ -221,36 +261,65 @@ export async function getParentGrantFromRequest(
  * @returns null if valid (or when `enforceInclusion` is false — pool-test mode without
  * bindings); otherwise a Response (403/503) to return.
  */
-export async function grantAuthorize(
+export async function grantAuthorizeDetailed(
   grantResult: GrantResult,
   env: AuthGrantAuthorizeEnv,
-): Promise<Response | null> {
-  if (!env.enforceInclusion) return null;
+  options?: { problemExtensions?: Record<string, unknown> },
+): Promise<GrantAuthorizeResult> {
+  if (!env.enforceInclusion) return { ok: true };
 
   if (grantResult.receipt == null) {
-    return ClientErrors.forbidden(
-      "Grant artifact must be a SCITT transparent statement with receipt (unprotected header 396) when inclusion is required.",
-    );
+    return {
+      ok: false,
+      response: ClientErrors.forbidden(
+        "Grant artifact must be a SCITT transparent statement with receipt (unprotected header 396) when inclusion is required.",
+      ),
+      outcome: "no-verify-keys",
+      verifyKeyCount: 0,
+      hasDelegationCert: false,
+    };
   }
 
   const { grant, idtimestamp, receipt } = grantResult;
   if (!idtimestamp || idtimestamp.length < 8) {
-    return ClientErrors.forbidden(
-      "Grant must be completed (idtimestamp required for receipt verification).",
-    );
+    return {
+      ok: false,
+      response: ClientErrors.forbidden(
+        "Grant must be completed (idtimestamp required for receipt verification).",
+      ),
+      outcome: "no-verify-keys",
+      verifyKeyCount: 0,
+      hasDelegationCert: false,
+    };
   }
 
   if (!env.resolveReceiptAuthority) {
-    return ServerErrors.serviceUnavailable(
-      "Receipt authority resolver is not configured.",
-    );
+    return {
+      ok: false,
+      response: ServerErrors.serviceUnavailable(
+        "Receipt authority resolver is not configured.",
+      ),
+      outcome: "no-verify-keys",
+      verifyKeyCount: 0,
+      hasDelegationCert: false,
+    };
   }
 
   if (!receipt.coseSign1Bytes?.length) {
-    return ClientErrors.forbidden(
-      "Grant receipt is missing raw COSE Sign1 bytes for verification.",
-    );
+    return {
+      ok: false,
+      response: ClientErrors.forbidden(
+        "Grant receipt is missing raw COSE Sign1 bytes for verification.",
+      ),
+      outcome: "no-verify-keys",
+      verifyKeyCount: 0,
+      hasDelegationCert: false,
+    };
   }
+
+  const hasDelegationCert = hasDelegationCertOnReceiptBytes(
+    receipt.coseSign1Bytes,
+  );
 
   let receiptVerifyKeys: ParsedVerifyKey[];
   try {
@@ -259,22 +328,40 @@ export async function grantAuthorize(
       receipt.coseSign1Bytes,
     );
     if (!keys?.length) {
-      return ClientErrors.forbidden(
-        "Grant receipt delegation chain could not be verified.",
-      );
+      return {
+        ok: false,
+        response: ClientErrors.forbidden(
+          "Grant receipt delegation chain could not be verified.",
+        ),
+        outcome: "no-verify-keys",
+        verifyKeyCount: 0,
+        hasDelegationCert,
+      };
     }
     receiptVerifyKeys = keys;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (/\b404\b/.test(msg)) {
-      return ClientErrors.forbidden(
-        "Cannot resolve receipt verification key for this log (trust root).",
-      );
+      return {
+        ok: false,
+        response: ClientErrors.forbidden(
+          "Cannot resolve receipt verification key for this log (trust root).",
+        ),
+        outcome: "no-verify-keys",
+        verifyKeyCount: 0,
+        hasDelegationCert,
+      };
     }
     console.warn("resolveReceiptAuthority failed", e);
-    return ServerErrors.serviceUnavailable(
-      msg.length > 200 ? `${msg.slice(0, 200)}…` : msg,
-    );
+    return {
+      ok: false,
+      response: ServerErrors.serviceUnavailable(
+        msg.length > 200 ? `${msg.slice(0, 200)}…` : msg,
+      ),
+      outcome: "no-verify-keys",
+      verifyKeyCount: 0,
+      hasDelegationCert,
+    };
   }
 
   const outcome = await verifyReceiptInclusionFromParsed(
@@ -288,20 +375,29 @@ export async function grantAuthorize(
     },
   );
   if (outcome !== "ok") {
-    const detail =
-      outcome === "signature-failed-inclusion-ok"
-        ? "Grant receipt COSE signature did not verify against the owner-log receipt authority, but the MMR inclusion proof matches (check delegation cert, trust-root, and detached peak signing)."
-        : outcome === "signature-failed"
-          ? "Grant receipt COSE signature did not verify against the owner-log receipt authority (check delegation cert on the receipt and trust-root configuration)."
-          : outcome === "inclusion-failed"
-            ? "Grant receipt MMR inclusion proof does not bind this grant commitment to the signed peak (idtimestamp, grant payload, or proof path mismatch)."
-            : "Grant receipt verification could not resolve signing keys.";
-    return ClientErrors.forbidden(detail);
+    const extensions = options?.problemExtensions
+      ? {
+          ...options.problemExtensions,
+          parentReceiptVerify: outcome,
+          verifyKeyCount: receiptVerifyKeys.length,
+        }
+      : undefined;
+    return {
+      ok: false,
+      response: forbiddenForReceiptOutcome(outcome, extensions),
+      outcome,
+      verifyKeyCount: receiptVerifyKeys.length,
+      hasDelegationCert,
+    };
   }
 
-  // Authorization is complete: the receipt's MMR inclusion proof binds this exact
-  // grant commitment to a leaf sealed under a checkpoint signed by the owner-log
-  // receipt authority. No SequencingQueue lookup — authorization must not depend on
-  // ephemeral Durable Object queue state.
-  return null;
+  return { ok: true };
+}
+
+export async function grantAuthorize(
+  grantResult: GrantResult,
+  env: AuthGrantAuthorizeEnv,
+): Promise<Response | null> {
+  const result = await grantAuthorizeDetailed(grantResult, env);
+  return result.ok ? null : result.response;
 }

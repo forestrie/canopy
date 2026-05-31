@@ -10,9 +10,6 @@ import {
 import type { ParsedVerifyKey } from "@canopy/encoding";
 import { decode } from "cbor-x";
 
-/** Last-resort trust root when curator lacks an index but Ranger still uses legacy key. */
-const CUSTODIAN_LEGACY_SIGNING_KEY_PUBLIC_SEGMENT = ":bootstrap";
-
 export interface TrustRootClient {
   logSigningKey(ownerLogIdLowerHex32: string): Promise<ParsedVerifyKey>;
 }
@@ -135,21 +132,30 @@ export function createCustodianPublicTrustRootClient(config: {
       let p = cache.get(ownerLogIdLowerHex32);
       if (!p) {
         p = (async (): Promise<ParsedVerifyKey> => {
+          // `?log-id=true` lets the Custodian resolve the per-log custody key, or
+          // its :bootstrap key server-side when this log is the configured root.
+          // There is no client-side :bootstrap fallback: a 404 means the Custodian
+          // has no trust root for this log (callers may try other roots), and any
+          // other failure is surfaced so a broken per-log lookup cannot be silently
+          // masked by signing-key substitution.
+          let publicKeyPem: string;
+          let alg: string;
           try {
-            const { publicKeyPem, alg } = await fetchCustodianPublicKey(
+            ({ publicKeyPem, alg } = await fetchCustodianPublicKey(
               base,
               ownerLogIdLowerHex32,
               { logId: true },
-            );
-            return importSpkiPemVerifyKeyWithAlg(publicKeyPem, alg);
-          } catch {
-            // continue
+            ));
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            if (/public key fetch failed: 404\b/.test(message)) {
+              throw new TrustRootNotFoundError(
+                `custodian has no signing key for log ${ownerLogIdLowerHex32}`,
+              );
+            }
+            throw error;
           }
-
-          const { publicKeyPem, alg } = await fetchCustodianPublicKey(
-            base,
-            CUSTODIAN_LEGACY_SIGNING_KEY_PUBLIC_SEGMENT,
-          );
           return importSpkiPemVerifyKeyWithAlg(publicKeyPem, alg);
         })();
 

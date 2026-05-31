@@ -2,7 +2,24 @@ import type { APIRequestContext } from "@playwright/test";
 import { encode as encodeCbor } from "cbor-x";
 import { custodianCustodySignEnv } from "./custodian-custody-grant";
 import { mintTransparentBootstrapGrantBase64 } from "./mint-bootstrap-grant-e2e.js";
-import { decodeProblemDetails } from "./problem-details.js";
+import {
+  decodeProblemDetails,
+  type ProblemDetails,
+} from "./problem-details.js";
+
+/** Thrown when register-grant returns a non-303 status (carries CBOR problem + raw response). */
+export class RegisterGrantHttpError extends Error {
+  readonly problem?: ProblemDetails;
+  constructor(
+    message: string,
+    readonly registerRes: import("@playwright/test").APIResponse,
+    problem?: ProblemDetails,
+  ) {
+    super(message);
+    this.name = "RegisterGrantHttpError";
+    this.problem = problem;
+  }
+}
 
 export interface BootstrapMintAndRegisterResult {
   grantBase64: string;
@@ -104,8 +121,10 @@ export async function postRegisterGrantExpect303(
     const detail =
       problem?.detail ??
       ((await registerRes.text()).slice(0, 200) || "(empty body)");
-    throw new Error(
+    throw new RegisterGrantHttpError(
       `register-grant: expected 303, got ${registerRes.status()} (${detail})`,
+      registerRes,
+      problem,
     );
   }
   const loc = registerRes.headers()["location"];
