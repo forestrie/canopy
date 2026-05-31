@@ -117,3 +117,16 @@ Doppler tokens are invalid locally.
 - [x] Worker 403 `extensions` on non-prod parent-grant verify failure.
 - [x] Playwright report/results artifacts on CI failure.
 - [ ] `auth-data-log-chain` green on **Deploy Workers** after remediation §3 deploy.
+
+### A/B conclusion (run `26715288649`, commit `d6626e0`)
+
+Worker `extensions` + e2e `parent-grant-ab-split` on three retries:
+
+| Signal | Value |
+|--------|--------|
+| `hasDelegationCertBeforeHydrate` / resolve-receipt | **true** |
+| `parentReceiptVerify` | **signature-failed** |
+| `verifyKeyCount` | **2** (custodian delegation chain only; coordinator public-root **404**) |
+| `receiptMatchesResolveReceiptBody` | **true** |
+
+**Verdict: B** — cert is present on client and worker paths; two custodian verify keys are tried; COSE peak signature still fails. Not hypothesis A (missing cert). Remaining work is likely **sealer peak signer vs delegation cert key** or **grant–leaf binding** on forest-dev-5 (compare Arbor `signEmptyPeakReceipt` lease with cert label 5).
