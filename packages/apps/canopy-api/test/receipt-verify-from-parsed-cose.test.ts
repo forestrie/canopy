@@ -60,7 +60,7 @@ function minimalGrant(): Grant {
 }
 
 describe("verifyReceiptInclusionFromParsed + receipt COSE", () => {
-  it("returns signature-failed when receipt Sign1 key does not match trust anchor", async () => {
+  it("returns signature-failed-inclusion-ok when COSE key mismatches but inclusion passes", async () => {
     const receiptBytes = await detachedEs256Sign1(signerA.privateKey);
     const grant = minimalGrant();
     const junkProof: Proof = { path: [], mmrIndex: 0n };
@@ -75,7 +75,7 @@ describe("verifyReceiptInclusionFromParsed + receipt COSE", () => {
         receiptVerifyKeys: [signerB.publicKey],
       },
     );
-    expect(outcome).toBe("signature-failed");
+    expect(outcome).toBe("signature-failed-inclusion-ok");
   });
 
   it("returns inclusion-failed after COSE passes when explicit peak does not match proof", async () => {
