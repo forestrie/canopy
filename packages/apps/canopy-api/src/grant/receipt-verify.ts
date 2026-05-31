@@ -222,6 +222,8 @@ export type ReceiptInclusionVerifyOutcome =
   | "ok"
   | "no-verify-keys"
   | "signature-failed"
+  /** Signature failed but MMR inclusion would succeed (trust-root / detached peak). */
+  | "signature-failed-inclusion-ok"
   | "inclusion-failed";
 
 /**
@@ -289,7 +291,8 @@ export async function verifyReceiptInclusionFromParsed(
     }
     if (!sigOk) {
       console.warn("grant-receipt-verify: receipt signature failed");
-      return "signature-failed";
+      const inclusionOk = await verifyInclusion(hasher, leafHash, proof, peak);
+      return inclusionOk ? "signature-failed-inclusion-ok" : "signature-failed";
     }
   }
 

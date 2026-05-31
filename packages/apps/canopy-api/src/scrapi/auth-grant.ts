@@ -289,11 +289,13 @@ export async function grantAuthorize(
   );
   if (outcome !== "ok") {
     const detail =
-      outcome === "signature-failed"
-        ? "Grant receipt COSE signature did not verify against the owner-log receipt authority (check delegation cert on the receipt and trust-root configuration)."
-        : outcome === "inclusion-failed"
-          ? "Grant receipt MMR inclusion proof does not bind this grant commitment to the signed peak (idtimestamp, grant payload, or proof path mismatch)."
-          : "Grant receipt verification could not resolve signing keys.";
+      outcome === "signature-failed-inclusion-ok"
+        ? "Grant receipt COSE signature did not verify against the owner-log receipt authority, but the MMR inclusion proof matches (check delegation cert, trust-root, and detached peak signing)."
+        : outcome === "signature-failed"
+          ? "Grant receipt COSE signature did not verify against the owner-log receipt authority (check delegation cert on the receipt and trust-root configuration)."
+          : outcome === "inclusion-failed"
+            ? "Grant receipt MMR inclusion proof does not bind this grant commitment to the signed peak (idtimestamp, grant payload, or proof path mismatch)."
+            : "Grant receipt verification could not resolve signing keys.";
     return ClientErrors.forbidden(detail);
   }
 

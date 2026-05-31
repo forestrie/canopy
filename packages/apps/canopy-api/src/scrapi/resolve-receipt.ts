@@ -284,10 +284,12 @@ export async function resolveReceipt(
     ]);
     receiptUnprotected.set(VDS_COSE_RECEIPT_PROOFS_TAG, verifiableProofs);
 
+    // Peak receipts are signed with detached payload (nil in storage). Always
+    // emit nil so verify uses the peak hash derived from the inclusion proof.
     const assembled: CoseSign1 = [
       receiptSign1[0],
       receiptUnprotected,
-      receiptSign1[2],
+      null,
       receiptSign1[3],
     ];
 
@@ -821,7 +823,7 @@ export async function buildReceiptForEntry(
     const assembled: CoseSign1 = [
       receiptSign1[0],
       receiptUnprotected,
-      receiptSign1[2],
+      null,
       receiptSign1[3],
     ];
     return encodeCbor(assembled) as Uint8Array;
