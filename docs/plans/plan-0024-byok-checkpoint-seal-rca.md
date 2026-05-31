@@ -16,12 +16,12 @@ receipt **404** (`checkpoint missing`), which looked like an e2e timing bug.
 
 ## Evidence (forest-dev-5 / `forestrie-a`)
 
-| Layer | Observation |
-|-------|-------------|
-| Ranger | `committed` for test log ids (massif written) |
-| Sealer | `verify delegation lease: delegated public key: expected kty EC2` and `delegated key is not a map` after material upload |
-| Coordinator | Pending cleared after `POST /api/delegations/material`; poison cert remained in `materials` |
-| Playwright | Receipt redirect reached; `GET …/receipt` timed out on 404 |
+| Layer       | Observation                                                                                                              |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Ranger      | `committed` for test log ids (massif written)                                                                            |
+| Sealer      | `verify delegation lease: delegated public key: expected kty EC2` and `delegated key is not a map` after material upload |
+| Coordinator | Pending cleared after `POST /api/delegations/material`; poison cert remained in `materials`                              |
+| Playwright  | Receipt redirect reached; `GET …/receipt` timed out on 404                                                               |
 
 ## Design issues addressed in remediation
 
@@ -32,6 +32,13 @@ receipt **404** (`checkpoint missing`), which looked like an e2e timing bug.
 - **E** E2e diagnostics: pending seen / material signed counts.
 - **F** Sealer accepts 202 as `ErrDelegationPending`; structured verify-failure logs.
 - **G** `auth-data-log-chain`: retry data grant until parent auth log MMRS-ready.
+  **Superseded by [plan-0025](plan-0025-queue-independent-grant-authorization.md).**
+  The MMRS-readiness retry was a symptom of authorizing the child-data grant from
+  Durable Object queue state / `isLogInitializedMmrs(A)`. plan-0025 removes that:
+  the child-data gate now verifies the parent auth log's **completed creation grant
+  receipt** (later moved from the `Forestrie-Parent-Grant` header to the register-grant
+  POST body; see [grants.md §11](../grants.md#11-evidence-transport-parent-grant-post-body)),
+  so there is no readiness race and the retry crutch is gone.
 
 ## Out of scope (follow-up)
 

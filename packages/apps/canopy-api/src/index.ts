@@ -268,18 +268,11 @@ export default {
           });
         }
         if (segments.length === 3 && segments[2] === "entries" && segments[1]) {
-          const inclusionEnv = env.SEQUENCING_QUEUE
-            ? {
-                sequencingQueue: env.SEQUENCING_QUEUE,
-                shardCountStr: env.QUEUE_SHARD_COUNT,
-              }
-            : undefined;
           const response = await registerSignedStatement(
             request,
             env.SEQUENCING_QUEUE,
             env.QUEUE_SHARD_COUNT,
             undefined,
-            inclusionEnv,
             resolveReceiptAuthority,
             env.NODE_ENV,
             segments[1],

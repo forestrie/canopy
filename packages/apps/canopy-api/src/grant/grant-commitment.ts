@@ -1,11 +1,11 @@
 /**
- * Grant commitment (Plan 0004 subplan 01/03, Plan 0007).
- * Implements the grant commitment formula specified by the Univocity smart
+ * Grant commitment hash. Implements the formula specified by the Univocity smart
  * contracts: preimage = logId(32) || grant(32) || maxHeight_be(8) ||
  * minGrowth_be(8) || ownerLogId(32) || grantData; hash = SHA-256(preimage).
  * Idtimestamp is not part of the grant commitment; it is combined only at
  * leaf level (see leaf-commitment.ts). ContentHash enqueued for
- * grant-sequencing = grant commitment hash.
+ * grant-sequencing = grant commitment hash. Documented in grants.md §3.3:
+ * https://github.com/forestrie/canopy/blob/main/docs/grants.md#33-grant-commitment-what-the-chain-commits
  */
 
 import { grantDataToBytes } from "./grant-data.js";

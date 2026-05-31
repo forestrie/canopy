@@ -165,34 +165,8 @@ describe("registerGrant child auth first grant", () => {
     expect(res.status).toBe(403);
   });
 
-  it("returns 303 for GF_DATA_LOG child first grant (child data path)", async () => {
-    const flags = new Uint8Array(8);
-    flags[4] = 0x03;
-    flags[7] = 0x02;
-    const grant = childAuthGrant({ grant: flags });
-    const request = new Request(`http://test/register/${PARENT}/grants`, {
-      method: "POST",
-      headers: { Authorization: await forestrieAuth(grant, subjectPriv) },
-    });
-    const res = await registerGrant(request, baseEnv());
-    expect(res.status).toBe(303);
-    expect(res.headers.get("Location")).toContain(
-      `/logs/${PARENT}/${PARENT}/entries/`,
-    );
-  });
-
-  it("returns 403 for child data first grant when signer does not match grantData", async () => {
-    const flags = new Uint8Array(8);
-    flags[4] = 0x03;
-    flags[7] = 0x02;
-    const grant = childAuthGrant({ grant: flags });
-    const request = new Request(`http://test/register/${PARENT}/grants`, {
-      method: "POST",
-      headers: { Authorization: await forestrieAuth(grant, otherPriv) },
-    });
-    const res = await registerGrant(request, baseEnv());
-    expect(res.status).toBe(403);
-  });
+  // Child *data* first-grant paths (both parent kinds) are covered by
+  // register-grant-child-data.test.ts (plan-0025 queue-independent gate).
 });
 
 describe("registerGrant child auth first grant parent not initialized", () => {

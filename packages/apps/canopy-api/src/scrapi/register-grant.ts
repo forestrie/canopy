@@ -1,6 +1,10 @@
 /**
- * Grant registration (`POST /register/{bootstrap-logid}/grants`). Enqueues a caller-supplied grant for sequencing;
- * no server-side grant storage.
+ * Grant registration (`POST /register/{bootstrap-logid}/grants`). Admits a *new* grant into
+ * the transparency system by enqueuing it for sequencing; there is no server-side grant
+ * storage. The full authorization and evidence model for this endpoint lives in
+ * [grants.md §10 Authorization and evidence model](https://github.com/forestrie/canopy/blob/main/docs/grants.md#10-authorization-and-evidence-model);
+ * the per-shape creation paths are tabulated in
+ * [grants.md §6 Register-grant creation paths](https://github.com/forestrie/canopy/blob/main/docs/grants.md#6-register-grant-creation-paths).
  *
  * ## Logs (T vs O) and hierarchy
  *
@@ -9,19 +13,27 @@
  * - **Owner / authority log `O`** — `grant.ownerLogId`: the parent authority log that sequences
  *   grants for this operation. The sequencing queue shard is keyed by **`O`** (last 16 bytes),
  *   not `T`. For a root bootstrap grant, `O === T`; for a child-first grant, `O` is the parent
- *   auth log and `T` is the new child log.
+ *   auth log and `T` is the new child log. See
+ *   [grants.md §2 logId vs ownerLogId](https://github.com/forestrie/canopy/blob/main/docs/grants.md#2-logid-vs-ownerlogid-authorized-vs-owning).
+ *
+ * ## Credential vs evidence
+ *
+ * The grant in `Authorization: Forestrie-Grant` is the **credential**: it is signed by the
+ * authority of its owner log `O` and, by that signature, both authorizes the operation and
+ * is the new resource being created. A **creation** grant has no receipt yet (it is being
+ * submitted to be sealed for the first time), so {@link grantAuthorize} cannot authenticate
+ * it by inclusion. Instead its COSE signature is verified against the authority key of its
+ * owner `O`, and `O`'s legitimacy is chained to the trust anchor (forest genesis). For an
+ * **intermediate** owner that is not the anchor, the caller supplies `O`'s completed creation
+ * grant as **public verification evidence** in the request body (see the child-data branch
+ * and [grants.md §11 Evidence transport](https://github.com/forestrie/canopy/blob/main/docs/grants.md#11-evidence-transport-parent-grant-post-body)).
  *
  * ## Pairing with {@link registerSignedStatement}
  *
- * **register-grant** admits *new* grants into the transparency system. When the relevant log (or,
- * for child-first grants, the **parent** log) still has **no MMRS tile**, a SCITT receipt cannot
- * exist yet, so {@link grantAuthorize} cannot be used. This module implements **bootstrap /
- * first-grant** verification instead (COSE vs grantData x‖y matching forest genesis for root;
- * statement-signer binding in `grantData` for child auth/data logs once the parent is MMRS-initialized). After the log has
- * MMRS state, **every** accepted grant goes through {@link grantAuthorize} (receipt inclusion) —
- * the same primitive **register-signed-statement** always uses for grant auth. In other words:
- * hierarchical logs are opened with register-grant; ongoing minted grants and statement append
- * both prove authority via completed, included grants.
+ * Once a log has MMRS state, **every** accepted grant goes through {@link grantAuthorize}
+ * (receipt inclusion) — the same single, self-authenticating check **register-signed-statement**
+ * always uses. In other words: hierarchical logs are *opened* here with first-grant verification;
+ * steady-state grants and statement append both prove authority via completed, included grants.
  *
  * ## Auth-critical branches (when `bootstrapEnv` is set)
  *
@@ -32,19 +44,18 @@
 
 import { grantDataToBytes } from "../grant/grant-data.js";
 import {
-  authLogBootstrapShapedFlags,
   hasAuthLogClass,
   hasCreateAndExtend,
   hasDataLogClass,
 } from "../grant/grant-flags.js";
 import { grantCommitmentHashFromGrant } from "../grant/grant-commitment.js";
 import type { Grant, GrantResult } from "../grant/types.js";
+import { bytesToUuid } from "../grant/uuid-bytes.js";
 import {
-  bytesToUuid,
-  logIdBytesToCustodianLowerHex,
-  uuidToBytes,
-} from "../grant/uuid-bytes.js";
-import { getGrantFromRequest, grantAuthorize } from "./auth-grant.js";
+  getGrantFromRequest,
+  getParentGrantFromRequest,
+  grantAuthorize,
+} from "./auth-grant.js";
 import { QueueFullError } from "@canopy/forestrie-ingress-types";
 import { seeOtherResponse } from "../cbor-api/cbor-response.js";
 import {
@@ -52,39 +63,24 @@ import {
   type GrantSequencingEnv,
 } from "./grant-sequencing.js";
 import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
-import {
-  fetchCustodianCuratorLogKey,
-  fetchCustodianPublicKey,
-  publicKeyPemToUncompressed65,
-  verifyGrantCoseSign1WithGrantDataXy,
-  verifyGrantCoseSign1WithPem,
-} from "./custodian-grant.js";
-import {
-  firstMassifObjectKey,
-  isLogInitializedMmrs,
-} from "./log-initialized-mmrs.js";
+import { verifyGrantCoseSign1WithGrantDataXy } from "./custodian-grant.js";
+import { isLogInitializedMmrs } from "./log-initialized-mmrs.js";
 import type { LogShardEnv } from "../sequeue/logshard.js";
-import {
-  verifyGrantIncluded,
-  type InclusionEnv,
-} from "./verify-grant-inclusion.js";
 import type { ReceiptAuthorityResolver } from "../env/receipt-authority-resolver.js";
 import { bytesEqual } from "../cbor-api/cbor-map-utils.js";
 import { getParsedGenesis } from "../forest/genesis-cache.js";
 
-const MAX_GRANT_BODY_SIZE = 4 * 1024; // 4 KiB
-
 export interface RegisterGrantEnv {
   /**
-   * When set: enqueue grants for sequencing (Subplan 03). With queue alone or initialized log,
-   * {@link grantAuthorize} always runs (receipt + MMR inclusion) except the one-time bootstrap
-   * success path (Subplan 08). Same DO namespace as register-signed-statement.
+   * When set: enqueue grants for sequencing. With a queue and an initialized log,
+   * {@link grantAuthorize} always runs (receipt + MMR inclusion) except the one-time
+   * first-grant paths. Same Durable Object namespace as register-signed-statement.
    */
   queueEnv?: LogShardEnv;
   /**
-   * Subplan 08 / Plan 0014: Custodian bootstrap verification + MMRS "log exists" check
-   * (first massif tile in R2_MMRS). From index on validated workers; absent only in pool tests
-   * with incomplete bindings.
+   * Bootstrap / first-grant verification context: forest genesis (in R2_GRANTS) and the
+   * MMRS "log exists" check (first massif tile in R2_MMRS). Present on validated workers;
+   * absent only in pool tests with incomplete bindings.
    */
   /** Bootstrap log id from URL + storage; genesis must exist in R2_GRANTS. */
   bootstrapEnv: {
@@ -320,7 +316,27 @@ export async function registerGrant(
     }
   }
 
-  // Child *data* log first grant: O!==T, data-log flags only — same parent/MMRS and grantData verify pattern as auth child.
+  // Child *data* log first grant: O!==T, data-log flags only. The data grant is the
+  // credential (signed by O's authority); O's legitimacy must be established without
+  // reading ephemeral SequencingQueue state. The two-grants-only-here rationale and the
+  // trust chain (genesis anchor -> R seals A -> A signs D) are documented in
+  // grants.md §10:
+  //   https://github.com/forestrie/canopy/blob/main/docs/grants.md#10-authorization-and-evidence-model
+  //
+  //  - Parent is the root genesis log R (parentUuid === bootstrapUrlUuid): R legitimately
+  //    owns its own first massif via the self-referential bootstrap grant, so readiness is
+  //    `isLogInitializedMmrs(R)` and the data grant must be signed by R's authority key
+  //    (the forest genesis x||y) — R is the trust anchor, so no parent evidence is needed.
+  //    Cheap (one R2 head), queue-free.
+  //  - Parent is an intermediate auth log A (parentUuid !== bootstrapUrlUuid): A has no own
+  //    massif (its creation-grant leaf is sealed on R), so `isLogInitializedMmrs(A)` is
+  //    meaningless. A is not the anchor, so the caller must supply A's completed creation
+  //    grant as public verification evidence in the request body ({ parentGrant: <bytes> },
+  //    grants.md §11:
+  //    https://github.com/forestrie/canopy/blob/main/docs/grants.md#11-evidence-transport-parent-grant-post-body).
+  //    We verify that grant's receipt against R's receipt authority (grantAuthorize),
+  //    confirm it created A (logId === parentUuid), then require the data grant to be signed
+  //    by the authority key A's creation grant established (its grantData x||y).
   if (
     !logInitialized &&
     !ownerMatchesTargetUuid(grant, targetLogUuid) &&
@@ -342,132 +358,88 @@ export async function registerGrant(
       return ClientErrors.badRequest("Invalid ownerLogId in grant");
     }
 
-    const custodianBase = env.bootstrapEnv.custodianUrl.trim();
-    const custodianAppTok = env.bootstrapEnv.custodianAppToken.trim();
-    let parentInitialized = false;
-    let authorityCustodyPem: string | null = null;
-    let parentInclusionFromQueue: boolean | undefined;
-    let parentInclusionFromMmrs: boolean | undefined;
-    let parentAnchorCuratorError: string | undefined;
+    // The public key that must have signed this data grant (the parent authority key).
+    let authorityKeyXy: Uint8Array;
 
-    if (custodianBase && custodianAppTok && env.queueEnv) {
+    if (parentUuid === bootstrapUrlUuid) {
+      // Root-owned data log: the root R owns its own first massif. Readiness is the R2
+      // head of R's first massif; the authority key is the forest genesis x||y.
+      let rootInitialized: boolean;
       try {
-        const parentHex = logIdBytesToCustodianLowerHex(
-          uuidToBytes(parentUuid),
-        );
-        const keyId = await fetchCustodianCuratorLogKey(
-          custodianBase,
-          custodianAppTok,
-          parentHex,
-        );
-        const { publicKeyPem } = await fetchCustodianPublicKey(
-          custodianBase,
-          keyId,
-        );
-        authorityCustodyPem = publicKeyPem;
-        const u65 = publicKeyPemToUncompressed65(publicKeyPem);
-        const xy =
-          u65.length === 65 && u65[0] === 0x04 ? u65.subarray(1, 65) : u65;
-        const openingChildAuth: Grant = {
-          logId: uuidToBytes(parentUuid),
-          ownerLogId: genesis.wire,
-          grant: authLogBootstrapShapedFlags(),
-          maxHeight: 0,
-          minGrowth: 0,
-          grantData: xy,
-        };
-        parentInclusionFromQueue = await verifyGrantIncluded(
-          openingChildAuth,
-          env.queueEnv as InclusionEnv,
-        );
-        parentInitialized = parentInclusionFromQueue;
-      } catch (e) {
-        parentAnchorCuratorError = e instanceof Error ? e.message : String(e);
-        console.warn(
-          "child data parent anchor (Custodian / inclusion) failed",
-          e,
-        );
-        parentInitialized = false;
-      }
-    }
-
-    if (!parentInitialized) {
-      try {
-        parentInclusionFromMmrs = await isLogInitializedMmrs(
+        rootInitialized = await isLogInitializedMmrs(
           parentUuid,
           env.bootstrapEnv.r2Mmrs,
           env.bootstrapEnv.massifHeight,
         );
-        parentInitialized = parentInclusionFromMmrs;
       } catch (e) {
-        console.warn("isLogInitializedMmrs (parent, child data) failed", e);
+        console.warn(
+          "isLogInitializedMmrs (root parent, child data) failed",
+          e,
+        );
         return ServerErrors.serviceUnavailable(
           e instanceof Error
             ? e.message
             : "Failed to read merklelog storage for parent initialization check",
         );
       }
-    }
-
-    if (!parentInitialized) {
-      const mh = env.bootstrapEnv.massifHeight;
-      const firstMassifR2Key = firstMassifObjectKey(parentUuid, mh);
-      let mmrsHeadExists: boolean | null = null;
-      try {
-        mmrsHeadExists =
-          (await env.bootstrapEnv.r2Mmrs.head(firstMassifR2Key)) !== null;
-      } catch (headErr) {
-        console.warn(
-          "registerGrantChildDataParentNotInitialized: R2 head failed",
-          headErr,
+      if (!rootInitialized) {
+        return ClientErrors.forbidden(
+          "Root log has no MMRS data yet; bootstrap the root before root-owned data grants.",
         );
       }
-      console.warn(
-        JSON.stringify({
-          tag: "registerGrantChildDataParentNotInitialized",
-          parentUuid,
-          parentLogIdHex32: logIdBytesToCustodianLowerHex(
-            uuidToBytes(parentUuid),
-          ),
-          targetLogUuid,
-          massifHeight: mh,
-          firstMassifR2Key,
-          mmrsHeadExists,
-          parentAnchorPathConfigured: Boolean(
-            custodianBase && custodianAppTok && env.queueEnv,
-          ),
-          parentInclusionFromQueue:
-            parentInclusionFromQueue === undefined
-              ? null
-              : parentInclusionFromQueue,
-          parentInclusionFromMmrs:
-            parentInclusionFromMmrs === undefined
-              ? null
-              : parentInclusionFromMmrs,
-          parentAnchorCuratorError: parentAnchorCuratorError ?? null,
-        }),
-      );
-      return ClientErrors.forbidden(
-        "Authority log has no MMRS data yet; initialize the owner log before child data grants.",
-      );
+      authorityKeyXy = new Uint8Array(64);
+      authorityKeyXy.set(genesis.x.subarray(0, 32), 0);
+      authorityKeyXy.set(genesis.y.subarray(0, 32), 32);
+    } else {
+      // Intermediate auth log A: prove A's creation grant is sealed on R from the receipt
+      // the caller supplies in the request body — no queue read, no isLogInitializedMmrs(A),
+      // no Custodian fetch. The parent grant is public, replayable evidence (not a
+      // credential); possession conveys no authority, so the server re-verifies it here.
+      const parentGrantResult = await getParentGrantFromRequest(request);
+      if (parentGrantResult instanceof Response) return parentGrantResult;
+      if (!parentGrantResult) {
+        return ClientErrors.forbidden(
+          "Child data grant under an intermediate authority log requires the parent's completed creation grant in the request body ({ parentGrant: <bytes> }) so its seal can be verified.",
+        );
+      }
+      let parentGrantLogUuid: string;
+      try {
+        parentGrantLogUuid = bytesToUuid(parentGrantResult.grant.logId);
+      } catch {
+        return ClientErrors.badRequest("Invalid logId in parent grant");
+      }
+      if (parentGrantLogUuid !== parentUuid) {
+        return ClientErrors.forbidden(
+          "Parent grant in the request body does not create this grant's owner authority log (logId mismatch).",
+        );
+      }
+      // grantAuthorize verifies the parent grant's receipt (MMR inclusion + signature)
+      // against the receipt authority for the parent grant's own ownerLogId (R).
+      const parentAuthError = await grantAuthorize(parentGrantResult, {
+        enforceInclusion: Boolean(env.queueEnv),
+        resolveReceiptAuthority: env.resolveReceiptAuthority,
+      });
+      if (parentAuthError) return parentAuthError;
+
+      authorityKeyXy = grantDataToBytes(parentGrantResult.grant.grantData);
+      if (authorityKeyXy.length !== 64) {
+        return ClientErrors.forbidden(
+          "Parent creation grant grantData must be 64-byte ES256 x||y (authority key).",
+        );
+      }
     }
 
-    const ok = authorityCustodyPem
-      ? await verifyGrantCoseSign1WithPem(
-          grantResult.bytes,
-          authorityCustodyPem,
-          {
-            logFailures: true,
-            logPrefix: "register-grant-child-data-first",
-          },
-        )
-      : await verifyGrantCoseSign1WithGrantDataXy(grantResult.bytes, gd, {
-          logFailures: true,
-          logPrefix: "register-grant-child-data-first",
-        });
+    const ok = await verifyGrantCoseSign1WithGrantDataXy(
+      grantResult.bytes,
+      authorityKeyXy,
+      {
+        logFailures: true,
+        logPrefix: "register-grant-child-data-first",
+      },
+    );
     if (!ok) {
       return ClientErrors.forbidden(
-        "Child data first grant: COSE signature did not verify against grantData public key.",
+        "Child data first grant: COSE signature did not verify against the parent authority key.",
       );
     }
     try {
@@ -495,8 +467,9 @@ export async function registerGrant(
   }
 
   // Log (T) has MMRS: grant must carry a valid receipt (same bar as register-signed-statement).
+  // Reached only when queueEnv is configured (503 earlier otherwise), so enforce inclusion.
   const authError = await grantAuthorize(grantResult, {
-    inclusionEnv: env.queueEnv as InclusionEnv,
+    enforceInclusion: Boolean(env.queueEnv),
     resolveReceiptAuthority: env.resolveReceiptAuthority,
   });
   if (authError) return authError;

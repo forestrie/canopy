@@ -1,9 +1,11 @@
 /**
- * On-chain grant content aligned with univocity `PublishGrant` (types.sol):
+ * On-chain grant content aligned with univocity `PublishGrant`:
  * `logId`, `grant`, `request`, `maxHeight`, `minGrowth`, `ownerLogId`, `grantData`.
  *
  * Idtimestamp is always separate (header / leaf). The Forestrie-Grant v0 CBOR map carries
- * only these fields (keys 1–6); issuer attestation uses **`grantData`** in the commitment preimage.
+ * only these fields (keys 1–6); issuer attestation uses **`grantData`** in the commitment
+ * preimage. The inner-grant wire format is documented in grants.md §3.1:
+ * https://github.com/forestrie/canopy/blob/main/docs/grants.md#31-inner-grant-payload-cbor
  */
 
 import type { GrantData } from "./grant-data.js";

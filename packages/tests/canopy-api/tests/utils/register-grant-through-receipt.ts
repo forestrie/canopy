@@ -4,10 +4,7 @@ import {
   pollResolveReceiptUntil200,
   sequencingBackoff,
 } from "./arithmetic-backoff-poll";
-import {
-  postRegisterGrantExpect303,
-  postRegisterGrantExpect303RetryParentMmrs,
-} from "./bootstrap-grant-setup";
+import { postRegisterGrantExpect303 } from "./bootstrap-grant-setup";
 
 export interface CompleteGrantRegistrationThroughReceiptOptions {
   unauthorizedRequest: APIRequestContext;
@@ -18,8 +15,13 @@ export interface CompleteGrantRegistrationThroughReceiptOptions {
   ladderMs?: number[];
   pollRegistrationMaxMs?: number;
   resolveReceiptMaxMs?: number;
-  /** Retry register-grant 403 until parent authority log is MMRS-hot. */
-  retryParentMmrsOn403?: boolean;
+  /**
+   * For a child-**data** grant under an intermediate authority log A: A's completed
+   * creation grant (base64). Sent in the CBOR request body as `{ parentGrant: <bytes> }`
+   * (grants.md §11) so the worker verifies A's seal from the receipt — no SequencingQueue
+   * dependence.
+   */
+  parentGrantBase64?: string;
 }
 
 export interface CompleteGrantRegistrationThroughReceiptResult {
@@ -36,14 +38,15 @@ export interface CompleteGrantRegistrationThroughReceiptResult {
 export async function completeGrantRegistrationThroughReceipt(
   opts: CompleteGrantRegistrationThroughReceiptOptions,
 ): Promise<CompleteGrantRegistrationThroughReceiptResult> {
-  const postRegister = opts.retryParentMmrsOn403
-    ? postRegisterGrantExpect303RetryParentMmrs
-    : postRegisterGrantExpect303;
-  const { statusUrlAbsolute } = await postRegister(opts.unauthorizedRequest, {
-    bootstrapLogId: opts.bootstrapLogId,
-    baseURL: opts.baseURL,
-    grantBase64: opts.grantBase64,
-  });
+  const { statusUrlAbsolute } = await postRegisterGrantExpect303(
+    opts.unauthorizedRequest,
+    {
+      bootstrapLogId: opts.bootstrapLogId,
+      baseURL: opts.baseURL,
+      grantBase64: opts.grantBase64,
+      parentGrantBase64: opts.parentGrantBase64,
+    },
+  );
 
   const ladder = opts.ladderMs ?? sequencingBackoff;
   const { receiptUrlAbsolute, entryIdHex } =

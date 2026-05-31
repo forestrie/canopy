@@ -1,5 +1,5 @@
 import type { APIRequestContext } from "@playwright/test";
-import { E2E_POLL_MAX_WAIT_MS } from "./arithmetic-backoff-poll.js";
+import { encode as encodeCbor } from "cbor-x";
 import { custodianCustodySignEnv } from "./custodian-custody-grant";
 import { mintTransparentBootstrapGrantBase64 } from "./mint-bootstrap-grant-e2e.js";
 
@@ -61,19 +61,42 @@ export async function bootstrapMintAndRegisterEnqueued(
   return { grantBase64, statusUrlAbsolute };
 }
 
-/** POST /register/{bootstrap}/grants with Forestrie-Grant; expects 303 + registration status Location. */
+/**
+ * POST /register/{bootstrap}/grants with Forestrie-Grant; expects 303 + registration
+ * status Location.
+ *
+ * For a child-**data** grant under an intermediate authority log A, pass
+ * `parentGrantBase64` (A's completed creation grant). It is decoded to bytes and sent in
+ * the CBOR request body as `{ parentGrant: <bytes> }` (grants.md §11) so the worker can
+ * verify A's seal from the receipt, with no dependence on SequencingQueue state.
+ */
 export async function postRegisterGrantExpect303(
   unauthorizedRequest: APIRequestContext,
-  opts: { bootstrapLogId: string; baseURL: string; grantBase64: string },
+  opts: {
+    bootstrapLogId: string;
+    baseURL: string;
+    grantBase64: string;
+    parentGrantBase64?: string;
+  },
 ): Promise<{ statusUrlAbsolute: string }> {
+  const headers: Record<string, string> = {
+    Authorization: `Forestrie-Grant ${opts.grantBase64}`,
+  };
+  const post: {
+    headers: Record<string, string>;
+    maxRedirects: number;
+    data?: Buffer;
+  } = { headers, maxRedirects: 0 };
+  if (opts.parentGrantBase64) {
+    const parentBytes = new Uint8Array(
+      Buffer.from(opts.parentGrantBase64, "base64"),
+    );
+    headers["Content-Type"] = "application/cbor";
+    post.data = Buffer.from(encodeCbor({ parentGrant: parentBytes }));
+  }
   const registerRes = await unauthorizedRequest.post(
     `/register/${opts.bootstrapLogId}/grants`,
-    {
-      headers: {
-        Authorization: `Forestrie-Grant ${opts.grantBase64}`,
-      },
-      maxRedirects: 0,
-    },
+    post,
   );
   if (registerRes.status() !== 303) {
     throw new Error(
@@ -85,59 +108,4 @@ export async function postRegisterGrantExpect303(
     throw new Error("register-grant: 303 without Location");
   }
   return { statusUrlAbsolute: toAbsoluteUrl(opts.baseURL, loc) };
-}
-
-const PARENT_MMRS_403_RE =
-  /MMRS|initialize the owner log|Authority log has no MMRS/i;
-
-/**
- * POST register-grant expecting 303; retry on 403 when parent authority log is
- * not MMRS-hot yet (child data grant after auth grant receipt).
- */
-export async function postRegisterGrantExpect303RetryParentMmrs(
-  unauthorizedRequest: APIRequestContext,
-  opts: {
-    bootstrapLogId: string;
-    baseURL: string;
-    grantBase64: string;
-    maxWaitMs?: number;
-    ladderMs?: number[];
-  },
-): Promise<{ statusUrlAbsolute: string }> {
-  const { sequencingBackoff, sleepMs } = await import(
-    "./arithmetic-backoff-poll.js"
-  );
-  const ladder = opts.ladderMs ?? sequencingBackoff;
-  const maxWaitMs = opts.maxWaitMs ?? E2E_POLL_MAX_WAIT_MS;
-  const start = Date.now();
-  let attempt = 0;
-  while (Date.now() - start < maxWaitMs) {
-    const registerRes = await unauthorizedRequest.post(
-      `/register/${opts.bootstrapLogId}/grants`,
-      {
-        headers: {
-          Authorization: `Forestrie-Grant ${opts.grantBase64}`,
-        },
-        maxRedirects: 0,
-      },
-    );
-    if (registerRes.status() === 303) {
-      const loc = registerRes.headers()["location"];
-      if (!loc) throw new Error("register-grant: 303 without Location");
-      return { statusUrlAbsolute: toAbsoluteUrl(opts.baseURL, loc) };
-    }
-    const preview = (await registerRes.text()).slice(0, 400);
-    if (registerRes.status() === 403 && PARENT_MMRS_403_RE.test(preview)) {
-      const step = ladder[Math.min(attempt, ladder.length - 1)]!;
-      await sleepMs(step);
-      attempt++;
-      continue;
-    }
-    throw new Error(
-      `register-grant: expected 303, got ${registerRes.status()} (body: ${preview})`,
-    );
-  }
-  throw new Error(
-    `register-grant: parent authority log not MMRS-ready within ${maxWaitMs}ms`,
-  );
 }

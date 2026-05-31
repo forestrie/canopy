@@ -1,9 +1,9 @@
 /**
  * Grant flags (univocity alignment). 8-byte wire `grant` bitmap; GF_CREATE and GF_EXTEND
- * are bits in byte index 4 (brainstorm-0001 / univocity).
- *
- * Low byte (index 7): **GF_AUTH_LOG** = 0x01, **GF_DATA_LOG** = 0x02 (mutually exclusive
- * for statement-registration grants; see univocity `constants.sol` when in-repo).
+ * are bits in byte index 4. Low byte (index 7): **GF_AUTH_LOG** = 0x01,
+ * **GF_DATA_LOG** = 0x02 (mutually exclusive for statement-registration grants). Flag
+ * shapes and how they select register-grant branches are documented in grants.md §5:
+ * https://github.com/forestrie/canopy/blob/main/docs/grants.md#5-flag-shapes-statement-registration-vs-other-grants
  */
 
 /** 8-byte `grant` field; byte 4: GF_CREATE (bit 0), GF_EXTEND (bit 1) in lower bits of that byte. */

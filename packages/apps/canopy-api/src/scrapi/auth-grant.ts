@@ -1,26 +1,76 @@
 /**
- * Grant auth primitives: get grant from request (Authorization: Forestrie-Grant) and
- * authorize (receipt MMR + {@link verifyGrantIncluded} on **`grant.ownerLogId`** when
- * `inclusionEnv` is passed; the HTTP worker passes it whenever **`SEQUENCING_QUEUE`** is bound). Plan 0005:
- * caller supplies transparent statement only; receipt from artifact. Optional env exists for direct tests
- * without queue bindings — not a public client concern.
+ * Grant auth primitives. Two distinct artifacts flow through these helpers, and they
+ * have different security types — see the model in
+ * [grants.md §10 Authorization and evidence model](https://github.com/forestrie/canopy/blob/main/docs/grants.md#10-authorization-and-evidence-model):
+ *
+ *  - {@link getGrantFromRequest} reads `Authorization: Forestrie-Grant <base64>`. This is
+ *    the **signed, self-credentialing** grant: its COSE signature proves the caller holds
+ *    the issuing authority's private key. It is both the credential and (for register-grant)
+ *    the resource being created.
+ *  - {@link getParentGrantFromRequest} reads the optional **request body** carrying a
+ *    parent authority log's completed creation grant. That artifact is **public and
+ *    replayable** (its receipt is published); it is verification *context*, not a
+ *    credential — see
+ *    [grants.md §11 Evidence transport](https://github.com/forestrie/canopy/blob/main/docs/grants.md#11-evidence-transport-parent-grant-post-body).
+ *
+ * {@link grantAuthorize} authorizes purely from the SCITT receipt embedded in a grant
+ * (MMR inclusion proof + checkpoint signature against the owner-log receipt authority)
+ * when `enforceInclusion` is true. The HTTP worker sets `enforceInclusion` whenever
+ * sequencing/inclusion is configured; it is false only in pool-test mode with incomplete
+ * bindings. The caller supplies the transparent statement only (receipt from the artifact);
+ * authorization makes **no** call to the SequencingQueue Durable Object and has no
+ * dependency on ephemeral queue state.
  */
 
 import type { ParsedVerifyKey } from "@canopy/encoding";
+import { decode as decodeCbor } from "cbor-x";
 import type { GrantResult } from "../grant/types.js";
 import { decodeTransparentStatement } from "../grant/transparent-statement.js";
 import { verifyReceiptInclusionFromParsed } from "../grant/receipt-verify.js";
 import { logIdBytesToCustodianLowerHex } from "../grant/uuid-bytes.js";
 import type { ReceiptAuthorityResolver } from "../env/receipt-authority-resolver.js";
-import {
-  verifyGrantIncluded,
-  type InclusionEnv,
-} from "./verify-grant-inclusion.js";
 import { CBOR_CONTENT_TYPES } from "../cbor-api/cbor-content-types.js";
 import { cborResponse } from "../cbor-api/cbor-response.js";
+import { getContentSize } from "../cbor-api/cbor-request.js";
 import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
 
 const FORESTRIE_GRANT_SCHEME = "Forestrie-Grant";
+
+/**
+ * Maximum size of the register-grant request body that carries parent evidence. A
+ * completed grant plus its inclusion receipt (with the MMR proof path) is small; 16 KiB
+ * leaves generous headroom for tall trees while bounding work for unauthenticated callers.
+ */
+const MAX_PARENT_GRANT_BODY_SIZE = 16 * 1024;
+
+/** Key of the parent-grant field in the register-grant CBOR request body (see §11 above). */
+const PARENT_GRANT_BODY_KEY = "parentGrant";
+
+/** Raw transparent-statement bytes → GrantResult; Response (400) on decode failure. */
+function decodeForestrieGrantBytes(bytes: Uint8Array): GrantResult | Response {
+  try {
+    return decodeTransparentStatement(bytes);
+  } catch (e) {
+    const msg =
+      e instanceof Error ? e.message : "Invalid transparent statement";
+    return ClientErrors.badRequest(msg);
+  }
+}
+
+/** base64 (std or url) → transparent statement → GrantResult; Response on failure. */
+function decodeForestrieGrantToken(token: string): GrantResult | Response {
+  let bytes: Uint8Array;
+  try {
+    const binary = atob(token.replace(/-/g, "+").replace(/_/g, "/"));
+    bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+  } catch {
+    return ClientErrors.badRequest("Grant value is not valid base64.");
+  }
+  return decodeForestrieGrantBytes(bytes);
+}
 
 function unauthorizedGrantRequired(): Response {
   return cborResponse(
@@ -39,19 +89,30 @@ function unauthorizedGrantRequired(): Response {
 
 /** Env for receipt-based authorization (inclusion verification). */
 export interface AuthGrantAuthorizeEnv {
-  /** When set, grant must pass receipt-based inclusion verification. */
-  inclusionEnv?: InclusionEnv;
+  /**
+   * When true, the grant must pass receipt-based inclusion verification.
+   * Set by callers whenever sequencing/inclusion is configured; false only in
+   * pool-test mode with incomplete bindings (auth skipped). This is a
+   * configuration flag, not Durable Object queue state.
+   */
+  enforceInclusion: boolean;
   /**
    * Resolves receipt signature verify key candidates (trust root + delegation).
-   * Required when `inclusionEnv` is set.
+   * Required when `enforceInclusion` is true.
    */
   resolveReceiptAuthority?: ReceiptAuthorityResolver;
 }
 
 /**
- * Get grant from request (Plan 0005).
- * Reads Authorization: Forestrie-Grant <base64>; base64-decode → COSE-decode → GrantResult
- * (grant from payload, idtimestamp from header -65537, receipt from header 396). No fetch.
+ * Read the signed grant from `Authorization: Forestrie-Grant <base64>`:
+ * base64-decode → COSE-decode → GrantResult (grant from payload, idtimestamp from
+ * unprotected header -65537, receipt from header 396). No fetch.
+ *
+ * This is the **credential** for the request — the COSE signature proves possession of the
+ * issuing authority's key. See
+ * [grants.md §10 Authorization and evidence model](https://github.com/forestrie/canopy/blob/main/docs/grants.md#10-authorization-and-evidence-model)
+ * and the wire format in
+ * [grants.md §3 Wire format](https://github.com/forestrie/canopy/blob/main/docs/grants.md#3-wire-format-forestrie-grant-v0-and-transparent-statement).
  *
  * @returns GrantResult or a Response to return (401 missing/wrong scheme, 400/403 invalid).
  */
@@ -69,37 +130,89 @@ export function getGrantFromRequest(request: Request): GrantResult | Response {
   if (!token) {
     return unauthorizedGrantRequired();
   }
-  let bytes: Uint8Array;
-  try {
-    const binary = atob(token.replace(/-/g, "+").replace(/_/g, "/"));
-    bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-  } catch {
-    return ClientErrors.badRequest("Grant value is not valid base64.");
-  }
-  try {
-    return decodeTransparentStatement(bytes);
-  } catch (e) {
-    const msg =
-      e instanceof Error ? e.message : "Invalid transparent statement";
-    return ClientErrors.badRequest(msg);
-  }
+  return decodeForestrieGrantToken(token);
 }
 
 /**
- * Verify that the grant receipt is valid when inclusionEnv is set (Plan 0005).
- * Uses grantResult.grant and grantResult.receipt only; no request; no fetch.
+ * Read the parent authority log's completed creation grant from the optional
+ * **register-grant request body** — a CBOR map `{ parentGrant: <bstr> }` whose value is
+ * the raw COSE Sign1 bytes of the parent's completed transparent statement. This is the
+ * public verification *evidence* for a child-data grant under an intermediate authority
+ * log; the wire format and rationale (public, immutable, registration-only — so carried
+ * by copy rather than embedded into the signed child statement) are documented in
+ * [grants.md §11 Evidence transport](https://github.com/forestrie/canopy/blob/main/docs/grants.md#11-evidence-transport-parent-grant-post-body).
  *
- * @returns null if valid (or when inclusionEnv is omitted — callers such as Vitest without queue stubs);
- * otherwise a Response (403) to return.
+ * Only register-grant's intermediate child-data branch consumes the body, so reading the
+ * stream here does not race any other consumer. The receipt the parent grant carries is
+ * verified by the caller via {@link grantAuthorize}, proving the parent is sealed without
+ * any SequencingQueue Durable Object read.
+ *
+ * @returns `null` when there is no body / no `parentGrant` field (parent evidence absent);
+ * a {@link GrantResult} when present and decodable; otherwise a Response — 413 when the
+ * body exceeds {@link MAX_PARENT_GRANT_BODY_SIZE}, or 400 when the body or the embedded
+ * transparent statement cannot be decoded.
+ */
+export async function getParentGrantFromRequest(
+  request: Request,
+): Promise<GrantResult | Response | null> {
+  const declared = getContentSize(request);
+  if (declared !== undefined && declared > MAX_PARENT_GRANT_BODY_SIZE) {
+    return ClientErrors.payloadTooLarge(declared, MAX_PARENT_GRANT_BODY_SIZE);
+  }
+
+  let bytes: Uint8Array;
+  try {
+    bytes = new Uint8Array(await request.arrayBuffer());
+  } catch {
+    return ClientErrors.badRequest("Failed to read register-grant body.");
+  }
+  if (bytes.length === 0) return null; // no body: parent evidence absent
+  if (bytes.length > MAX_PARENT_GRANT_BODY_SIZE) {
+    return ClientErrors.payloadTooLarge(
+      bytes.length,
+      MAX_PARENT_GRANT_BODY_SIZE,
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = decodeCbor(bytes);
+  } catch {
+    return ClientErrors.badRequest(
+      "register-grant body must be a CBOR map (e.g. { parentGrant: <bytes> }).",
+    );
+  }
+  const parentGrant =
+    body && typeof body === "object"
+      ? (body as Record<string, unknown>)[PARENT_GRANT_BODY_KEY]
+      : undefined;
+  if (parentGrant == null) return null; // body without parentGrant: evidence absent
+  if (!(parentGrant instanceof Uint8Array) || parentGrant.length === 0) {
+    return ClientErrors.badRequest(
+      "register-grant body parentGrant must be non-empty transparent-statement bytes.",
+    );
+  }
+  return decodeForestrieGrantBytes(parentGrant);
+}
+
+/**
+ * Verify that a grant's embedded SCITT receipt is valid when `enforceInclusion` is true.
+ * Uses `grantResult.grant` and `grantResult.receipt` only; no request, no fetch, and no
+ * SequencingQueue Durable Object read. A receipt is self-authenticating: it binds this
+ * exact grant commitment to a leaf sealed under a checkpoint signed by the owner-log
+ * receipt authority. This is the single check a steady-state grant needs — see
+ * [grants.md §7 Register-signed-statement](https://github.com/forestrie/canopy/blob/main/docs/grants.md#7-register-signed-statement-verification-summary)
+ * and the receipt-backed row in
+ * [grants.md §6 Register-grant creation paths](https://github.com/forestrie/canopy/blob/main/docs/grants.md#6-register-grant-creation-paths).
+ *
+ * @returns null if valid (or when `enforceInclusion` is false — pool-test mode without
+ * bindings); otherwise a Response (403/503) to return.
  */
 export async function grantAuthorize(
   grantResult: GrantResult,
   env: AuthGrantAuthorizeEnv,
 ): Promise<Response | null> {
-  if (!env.inclusionEnv) return null;
+  if (!env.enforceInclusion) return null;
 
   if (grantResult.receipt == null) {
     return ClientErrors.forbidden(
@@ -167,12 +280,9 @@ export async function grantAuthorize(
     );
   }
 
-  const onOwnerQueue = await verifyGrantIncluded(grant, env.inclusionEnv);
-  if (!onOwnerQueue) {
-    return ClientErrors.forbidden(
-      "Grant commitment is not recorded on the owner log sequencing queue.",
-    );
-  }
-
+  // Authorization is complete: the receipt's MMR inclusion proof binds this exact
+  // grant commitment to a leaf sealed under a checkpoint signed by the owner-log
+  // receipt authority. No SequencingQueue lookup — authorization must not depend on
+  // ephemeral Durable Object queue state.
   return null;
 }

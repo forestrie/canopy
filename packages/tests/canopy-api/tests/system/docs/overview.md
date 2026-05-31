@@ -68,6 +68,11 @@ Bootstrap / root log R          ownerLogId = logId = R
   first successful register-grant poll).
 - **Receipt branch** (log MMRS-hot): register-grant / entries require valid
   inclusion receipt on the **owner** log’s MMR.
+- **Queue-independent authorization**: no authorization decision reads
+  SequencingQueue Durable Object state. A child-**data** first grant under an
+  intermediate auth log `A` is gated on `A`'s **completed creation-grant receipt**
+  (supplied in the CBOR request body `{ parentGrant }`), not on `isLogInitializedMmrs(A)`
+  or queue inclusion. The DO is still used for sequencing, status polling, and enqueue dedupe.
 
 ## Base flow A — runner-side mint (bootstrap grant)
 

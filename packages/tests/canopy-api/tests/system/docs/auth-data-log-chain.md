@@ -27,11 +27,18 @@ R  root
                       statements on D must use delegated kid
 ```
 
-| Step       | Authorization interaction                                    |
-| ---------- | ------------------------------------------------------------ |
-| Auth grant | Child-auth-first on `R`; `O=R`, `T=A`                        |
-| Data grant | Child-data-first on `A`; `O=A`, `T=D`; signer = auth custody |
-| Statement  | Completed grant on `D` + Sign1 kid = `grantData` delegate    |
+| Step       | Authorization interaction                                                                                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Auth grant | Child-auth-first on `R`; `O=R`, `T=A`                                                                                                            |
+| Data grant | Child-data-first on `A`; `O=A`, `T=D`; signer = auth custody; supplies `A`'s completed creation grant in the CBOR request body `{ parentGrant }` |
+| Statement  | Completed grant on `D` + Sign1 kid = `grantData` delegate                                                                                        |
+
+**Queue-independent parent gate.** The child-data grant does not depend on
+SequencingQueue state or `isLogInitializedMmrs(A)`. The runner sends `A`'s
+**completed creation grant** in the CBOR request body (`{ parentGrant: <bytes> }`);
+the worker verifies that grant's **receipt** against `R`'s receipt authority, confirms
+it created `A`, and requires the data grant to be signed by the authority key `A`'s
+creation grant established. There is no MMRS-readiness retry.
 
 ## Test cases
 

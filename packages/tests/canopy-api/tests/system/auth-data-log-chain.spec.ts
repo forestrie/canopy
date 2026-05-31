@@ -123,6 +123,15 @@ test.describe("Auth log → data log delegation chain", () => {
     });
     expect(authRegComplete.receiptRes.status).toBe(200);
 
+    // A's completed creation grant — supplied in the CBOR request body when registering the
+    // child-data grant (grants.md §11) so the worker can verify A's seal from the receipt,
+    // with no queue dependence.
+    const completedAuthB64 = buildCompletedGrantBase64(
+      authGrantB64,
+      authRegComplete.receiptRes.body,
+      authRegComplete.entryIdHex,
+    );
+
     const { keyId: delKeyId, publicKeyPem: delPubPem } =
       await postCustodianCreateEs256Key({
         baseUrl: custody.baseUrl,
@@ -156,7 +165,7 @@ test.describe("Auth log → data log delegation chain", () => {
       baseURL,
       grantBase64: dataGrantB64,
       ladderMs: sequencingBackoff,
-      retryParentMmrsOn403: true,
+      parentGrantBase64: completedAuthB64,
     });
     expect(dataComplete.receiptRes.status).toBe(200);
 
@@ -235,13 +244,18 @@ test.describe("Auth log → data log delegation chain", () => {
       grant: authGrant,
     });
 
-    await completeGrantRegistrationThroughReceipt({
+    const authRegComplete = await completeGrantRegistrationThroughReceipt({
       unauthorizedRequest,
       bootstrapLogId: rootLogId,
       baseURL,
       grantBase64: authGrantB64,
       ladderMs: sequencingBackoff,
     });
+    const completedAuthB64 = buildCompletedGrantBase64(
+      authGrantB64,
+      authRegComplete.receiptRes.body,
+      authRegComplete.entryIdHex,
+    );
 
     const { publicKeyPem: delPubPem } = await postCustodianCreateEs256Key({
       baseUrl: custody.baseUrl,
@@ -271,7 +285,7 @@ test.describe("Auth log → data log delegation chain", () => {
       baseURL,
       grantBase64: dataGrantB64,
       ladderMs: sequencingBackoff,
-      retryParentMmrsOn403: true,
+      parentGrantBase64: completedAuthB64,
     });
 
     const completedDataB64 = buildCompletedGrantBase64(

@@ -1,5 +1,12 @@
 # Register-grant API
 
+> **Out of date.** This page describes an earlier request shape (grant content in the body,
+> `201 Created` with a `Location`). The current endpoint takes the grant in
+> `Authorization: Forestrie-Grant <base64>`, returns `303`, and (for a child-data grant under
+> an intermediate authority) takes the parent grant evidence in the CBOR request body
+> `{ parentGrant: <bytes> }`. The authoritative description is
+> [grants.md](../grants.md) (§6 creation paths, §10 the auth/evidence model, §11 evidence transport).
+
 **Status**: DRAFT  
 **Date**: 2026-03-07  
 **Related**: [Plan 0005 grant and receipt as single artifact](../plans/plan-0005-grant-receipt-unified-resolve.md), [ARC-0001 grant verification](../arc-0001-grant-verification.md) (**§4** grant transparent-statement signature; **§5** receipt inclusion; **§9** implementation gaps), [Plan 0001](../plans/plan-0001-register-grant-and-grant-auth-phase.md), [canopy-api](canopy-api.md), [Subplan 08](../plans/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md)

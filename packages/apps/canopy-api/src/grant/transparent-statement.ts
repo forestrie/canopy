@@ -1,8 +1,9 @@
 /**
- * Decode SCITT transparent statement (Plan 0005, Plan 0014).
- * Custodian profile: COSE payload = 32-byte SHA-256(grant payload); full grant
- * v0 CBOR in unprotected HEADER_FORESTRIE_GRANT_V0. Unprotected 396 = receipt;
- * -65537 = idtimestamp (8-byte bstr).
+ * Decode a SCITT transparent statement (the Custodian profile). The wire format is
+ * documented in grants.md §3.2:
+ * https://github.com/forestrie/canopy/blob/main/docs/grants.md#32-custodian-transparent-statement-profile
+ * COSE payload = 32-byte SHA-256(grant payload); full grant v0 CBOR in unprotected
+ * HEADER_FORESTRIE_GRANT_V0. Unprotected 396 = receipt; -65537 = idtimestamp (8-byte bstr).
  */
 
 import { sha256 } from "@noble/hashes/sha256";
@@ -12,10 +13,10 @@ import type { ParsedReceipt } from "./parsed-receipt.js";
 import { decodeGrantPayload } from "./codec.js";
 import { parseReceipt } from "./receipt-verify.js";
 
-/** Full SCITT receipt (COSE Sign1 bytes) in transparent statement unprotected (Plan 0005). */
+/** Full SCITT receipt (COSE Sign1 bytes) in transparent statement unprotected (grants.md §3.2). */
 export const HEADER_RECEIPT = 396;
 export const HEADER_IDTIMESTAMP = -65537;
-/** Full grant v0 CBOR when COSE payload is Custodian digest attestation (Plan 0014). */
+/** Full grant v0 CBOR when COSE payload is the Custodian digest attestation (grants.md §3.2). */
 export const HEADER_FORESTRIE_GRANT_V0 = -65538;
 const IDTIMESTAMP_BYTES = 8;
 

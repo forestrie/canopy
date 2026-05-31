@@ -1,29 +1,32 @@
 /**
  * Statement registration — **`POST /register/{bootstrap-logid}/entries`**.
  *
+ * Unlike {@link registerGrant}, this path never *opens* a log; it only appends **statements**
+ * to an existing target log **`T = grant.logId`** using an already-supplied grant. That grant
+ * is a **single, self-authenticating credential**: it carries its own SCITT receipt, so
+ * {@link grantAuthorize} authorizes it by inclusion alone — no parent evidence is ever needed
+ * here (contrast register-grant's creation paths). See
+ * [grants.md §7 Register-signed-statement](https://github.com/forestrie/canopy/blob/main/docs/grants.md#7-register-signed-statement-verification-summary)
+ * and the credential/evidence model in
+ * [grants.md §10](https://github.com/forestrie/canopy/blob/main/docs/grants.md#10-authorization-and-evidence-model).
+ *
  * **Flow:** The client sends the signed statement (COSE Sign1 body) and
  * **`Authorization: Forestrie-Grant`** holding a **transparent statement** (embedded grant,
- * idtimestamp, receipt). The target transparency log is **`T = grant.logId`**. The handler
- * resolves and authorizes the grant via receipt inclusion ({@link grantAuthorize}), checks that
- * it **allows statement registration** on **`T`**, checks **`kid`** against **`grantData`**,
- * verifies the **statement** COSE Sign1 (for **64-byte x‖y** `grantData`), enqueues on **`T`**'s
- * shard, and returns **303** to the entry status URL.
+ * idtimestamp, receipt). The handler resolves and authorizes the grant via receipt inclusion
+ * ({@link grantAuthorize}), checks that it **allows statement registration** on **`T`**, checks
+ * **`kid`** against **`grantData`**, verifies the **statement** COSE Sign1 (for **64-byte x‖y**
+ * `grantData`), enqueues on **`T`**'s shard, and returns **303** to the entry status URL.
  *
  * **Note:** The grant itself is NOT verified against `grantData` because delegated grants are
- * signed by the authority key (in `ownerLogId`), not the key embedded in `grantData`. The grant's
+ * signed by the authority key (of `ownerLogId`), not the key embedded in `grantData`. The grant's
  * authenticity is established via receipt inclusion in {@link grantAuthorize}.
- *
- * **Versus {@link registerGrant}:** This path does **not** mint or bootstrap grants; it only
- * appends **statements** to **`T`** using an already-supplied grant artifact.
  *
  * **`O` and `T`:** `ownerLogId` is **`O`**, `logId` is **`T`**. Receipts witness inclusion of this
  * **grant leaf** in the transparency log that **sequenced** the grant — **`O`**. Statements are
  * sequenced on **`T`** (this handler) while {@link registerGrant} enqueues grant leaves on **`O`**.
  * **GF_DATA_LOG** statement grants require **`O ≠ T`** (see in-body check). The **first** statement
- * on an empty **`T`** is allowed once auth succeeds; **`T`** need not already contain entries.
- *
- * **Receipt path:** {@link grantAuthorize} verifies the receipt COSE Sign1 against the Custodian
- * key for **`O`**, then MMR inclusion and owner-queue resolution (see architecture docs).
+ * on an empty **`T`** is allowed once auth succeeds; **`T`** need not already contain entries. See
+ * [grants.md §2 logId vs ownerLogId](https://github.com/forestrie/canopy/blob/main/docs/grants.md#2-logid-vs-ownerlogid-authorized-vs-owning).
  */
 
 import {
@@ -57,10 +60,7 @@ import { isCanopyApiPoolTestMode } from "../env/runtime-mode.js";
 import type { ReceiptAuthorityResolver } from "../env/receipt-authority-resolver.js";
 import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
 import { getMaxStatementSize } from "./transparency-configuration";
-import type { InclusionEnv } from "./verify-grant-inclusion.js";
 import { getParsedGenesis } from "../forest/genesis-cache.js";
-
-export type InclusionVerificationEnv = InclusionEnv;
 
 /**
  * Statement Registration Request
@@ -90,7 +90,6 @@ export async function registerSignedStatement(
   sequencingQueue: DurableObjectNamespace,
   shardCountStr: string,
   enqueueExtras: Parameters<SequencingQueueStub["enqueue"]>[2] | undefined,
-  inclusionEnv: InclusionEnv | undefined,
   resolveReceiptAuthority: ReceiptAuthorityResolver | undefined,
   nodeEnv: string | undefined,
   bootstrapLogIdSegment: string,
@@ -98,15 +97,17 @@ export async function registerSignedStatement(
 ): Promise<Response> {
   try {
     const nenv = nodeEnv ?? "production";
-    if (!inclusionEnv && !isCanopyApiPoolTestMode({ NODE_ENV: nenv })) {
+    if (!sequencingQueue && !isCanopyApiPoolTestMode({ NODE_ENV: nenv })) {
       return ServerErrors.serviceUnavailable(
         "Statement registration requires sequencing and inclusion verification (SEQUENCING_QUEUE).",
       );
     }
 
     // Resolve Authorization first so missing **Forestrie-Grant** is **401** before genesis/R2 work.
+    // enforceInclusion is true whenever sequencing is configured; in pool-test mode (no queue)
+    // it is false and grantAuthorize skips. Authorization reads no SequencingQueue state.
     const authEnv: AuthGrantAuthorizeEnv = {
-      inclusionEnv,
+      enforceInclusion: Boolean(sequencingQueue),
       resolveReceiptAuthority,
     };
     const grantResult = getGrantFromRequest(request);
@@ -139,9 +140,9 @@ export async function registerSignedStatement(
     }
 
     // --- Grant authorization — receipt-based inclusion only (no bootstrap path) ---
-    // Same primitive as register-grant’s “initialized log” branch: proves the Forestrie-Grant is
-    // already sequenced into a transparency log so header 396 verifies. Receipt from artifact only
-    // (Plan 0005); no X-Grant-Receipt-Location or server-built receipt.
+    // Same primitive as register-grant's "initialized log" branch: proves the Forestrie-Grant is
+    // already sequenced into a transparency log so the embedded receipt (unprotected header 396)
+    // verifies. The receipt travels in the artifact; the server builds or fetches nothing.
     const authError = await grantAuthorize(grantResult, authEnv);
     if (authError) return authError;
 
@@ -173,7 +174,10 @@ export async function registerSignedStatement(
       return ClientErrors.unsupportedMediaType(contentType);
     }
 
-    // --- Statement structure and signer binding (ARC-0001 §6) ---
+    // --- Statement structure and signer binding ---
+    // grantData (committed in the grant) is the issuer's attestation of who may sign entries;
+    // the statement COSE `kid` must match it. See grants.md §4:
+    //   https://github.com/forestrie/canopy/blob/main/docs/grants.md#4-signer-commitments-vs-actual-grant-envelope-signer
     if (!isStatementRegistrationGrant(grant)) {
       return ClientErrors.forbidden(
         "Grant must authorize statement registration (data-log flags + extend, or auth-log bootstrap with create|extend).",
@@ -239,7 +243,7 @@ export async function registerSignedStatement(
       );
     }
 
-    // --- Enqueue for sequencing (Subplan 03; SCRAPI 2.1.3.2) ---
+    // --- Enqueue for sequencing ---
     // Shard by target T = grant.logId (contrast: register-grant shards by owner O). Content hash
     // identifies the statement until sequencing completes. Response is 303 See Other to the entry
     // status URL; client polls until sequenced.
