@@ -5,7 +5,10 @@
  */
 
 import { encode as encodeCbor } from "cbor-x";
-import { encodeSigStructure, verifyCoseSign1WithParsedKey } from "@canopy/encoding";
+import {
+  encodeSigStructure,
+  verifyCoseSign1WithParsedKey,
+} from "@canopy/encoding";
 import { describe, expect, it } from "vitest";
 import {
   createReceiptAuthorityResolver,
@@ -22,7 +25,8 @@ describe("receipt authority resolver cache", () => {
     const suffixA = await receiptResolverCacheKeySuffix(a);
     const suffixB = await receiptResolverCacheKeySuffix(b);
     expect(suffixA).not.toBe(suffixB);
-    const legacyLengthOnlyKey = (r: Uint8Array) => `${OWNER_HEX}\0${r.byteLength}`;
+    const legacyLengthOnlyKey = (r: Uint8Array) =>
+      `${OWNER_HEX}\0${r.byteLength}`;
     expect(legacyLengthOnlyKey(a)).toBe(legacyLengthOnlyKey(b));
   });
 
@@ -57,17 +61,25 @@ describe("receipt authority resolver cache", () => {
     expect(keysA).not.toBeNull();
     expect(keysB).not.toBeNull();
 
-    const sigOkAWithA = await verifyCoseSign1WithParsedKey(receiptA, keysA![0]!, {
-      detachedPayload: await peakFromReceipt(receiptA),
-    });
+    const sigOkAWithA = await verifyCoseSign1WithParsedKey(
+      receiptA,
+      keysA![0]!,
+      {
+        detachedPayload: await peakFromReceipt(receiptA),
+      },
+    );
     const sigOkBWithBCachedWrong = await verifyCoseSign1WithParsedKey(
       receiptB,
       keysA![0]!,
       { detachedPayload: await peakFromReceipt(receiptB) },
     );
-    const sigOkBWithB = await verifyCoseSign1WithParsedKey(receiptB, keysB![0]!, {
-      detachedPayload: await peakFromReceipt(receiptB),
-    });
+    const sigOkBWithB = await verifyCoseSign1WithParsedKey(
+      receiptB,
+      keysB![0]!,
+      {
+        detachedPayload: await peakFromReceipt(receiptB),
+      },
+    );
 
     expect(sigOkAWithA).toBe(true);
     expect(sigOkBWithB).toBe(true);
@@ -110,15 +122,21 @@ async function buildSignedPeakReceipt(
   );
   const delegationCert = await buildDelegationCert(custody, delegateRaw);
   const proofs = new Map<number, unknown>([
-    [-1, [new Map<number, unknown>([[1, 0n], [2, []]])]],
+    [
+      -1,
+      [
+        new Map<number, unknown>([
+          [1, 0n],
+          [2, []],
+        ]),
+      ],
+    ],
   ]);
   const unprot = new Map<number, unknown>([
     [396, proofs],
     [DELEGATION_CERT_LABEL, delegationCert],
   ]);
-  return new Uint8Array(
-    encodeCbor([protectedInner, unprot, peak, sig]),
-  );
+  return new Uint8Array(encodeCbor([protectedInner, unprot, peak, sig]));
 }
 
 async function buildDelegationCert(

@@ -45,10 +45,8 @@ export function diagnoseCompletedParentGrant(opts: {
         );
   const receiptVal = unprot.get(HEADER_RECEIPT);
   const idtsVal = unprot.get(HEADER_IDTIMESTAMP);
-  const hasReceipt =
-    receiptVal instanceof Uint8Array && receiptVal.length > 0;
-  const hasIdts =
-    idtsVal instanceof Uint8Array && idtsVal.length >= 8;
+  const hasReceipt = receiptVal instanceof Uint8Array && receiptVal.length > 0;
+  const hasIdts = idtsVal instanceof Uint8Array && idtsVal.length >= 8;
 
   let hasDelegationCert = false;
   let proofMmrIndex: string | null = null;
@@ -56,8 +54,7 @@ export function diagnoseCompletedParentGrant(opts: {
 
   if (hasReceipt) {
     const parsed = parseReceipt(receiptVal);
-    hasDelegationCert =
-      extractDelegationCertBytes(parsed.coseSign1[1]) != null;
+    hasDelegationCert = extractDelegationCertBytes(parsed.coseSign1[1]) != null;
     proofMmrIndex = parsed.proof.mmrIndex?.toString() ?? null;
     if (receiptVal.length === opts.resolveReceiptBody.length) {
       receiptMatchesResolveReceiptBody = receiptVal.every(
@@ -90,8 +87,7 @@ export function diagnoseCompletedParentGrant(opts: {
     hasIdtimestampHeader: hasIdts,
     receiptByteLength: hasReceipt ? receiptVal.length : 0,
     hasDelegationCert,
-    proofMmrIndex:
-      proofMmrIndex ?? mmrIndex.toString(),
+    proofMmrIndex: proofMmrIndex ?? mmrIndex.toString(),
     idtimestampMatchesEntryId,
     receiptMatchesResolveReceiptBody,
   };
