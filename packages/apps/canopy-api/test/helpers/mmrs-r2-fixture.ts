@@ -51,8 +51,7 @@ export function buildV2MassifBytes(opts: {
   const leafCount = 1 << (massifHeight - 1);
   const mBits = BLOOM_BITS_PER_ELEMENT_V1 * leafCount;
   const bitsetBytes = Math.ceil(mBits / 8);
-  const bloomRegionBytes =
-    BLOOM_HEADER_BYTES_V1 + BLOOM_FILTERS * bitsetBytes;
+  const bloomRegionBytes = BLOOM_HEADER_BYTES_V1 + BLOOM_FILTERS * bitsetBytes;
   const bloomBitsetsBytes = bloomRegionBytes - BLOOM_HEADER_BYTES_V1;
   const leafTableBytes = leafCount * URKLE_LEAF_RECORD_BYTES;
   const nodeStoreBytes = (2 * leafCount - 1) * URKLE_NODE_RECORD_BYTES;

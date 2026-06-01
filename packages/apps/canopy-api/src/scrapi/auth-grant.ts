@@ -224,7 +224,9 @@ export type GrantAuthorizeResult =
   | { ok: true }
   | ({ ok: false } & GrantAuthorizeFailure);
 
-function hasDelegationCertOnReceiptBytes(receiptCoseBytes: Uint8Array): boolean {
+function hasDelegationCertOnReceiptBytes(
+  receiptCoseBytes: Uint8Array,
+): boolean {
   try {
     const { coseSign1 } = parseReceipt(receiptCoseBytes);
     return extractDelegationCertBytes(coseSign1[1]) != null;

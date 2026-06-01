@@ -157,4 +157,5 @@ Set **`COORDINATOR_APP_TOKEN`** in Doppler **`canopy/dev`** (masked) after fores
 gh run download <RUN_ID> -n playwright-report-dev-<RUN_ID> --repo forestrie/canopy
 gh run download <RUN_ID> -n playwright-results-dev-<RUN_ID> --repo forestrie/canopy
 ```
+
 - Worker unit/integration tests: `packages/apps/canopy-api/test`.

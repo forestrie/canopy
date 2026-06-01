@@ -18,11 +18,11 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 }
 
 export async function generateTestRootKeyPair(): Promise<CryptoKeyPair> {
-  return crypto.subtle.generateKey(
+  return (await crypto.subtle.generateKey(
     { name: "ECDSA", namedCurve: "P-256" },
     true,
     ["sign", "verify"],
-  );
+  )) as CryptoKeyPair;
 }
 
 export async function buildTestByokMaterial(opts: {
@@ -39,7 +39,10 @@ export async function buildTestByokMaterial(opts: {
   y: Uint8Array;
 }> {
   const raw = new Uint8Array(
-    await crypto.subtle.exportKey("raw", opts.rootKeyPair.publicKey),
+    (await crypto.subtle.exportKey(
+      "raw",
+      opts.rootKeyPair.publicKey,
+    )) as ArrayBuffer,
   );
   const x = raw.slice(1, 33);
   const y = raw.slice(33, 65);

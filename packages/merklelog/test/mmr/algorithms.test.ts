@@ -4,35 +4,8 @@ import {
   calculateRoot,
   verifyInclusion,
 } from "../../src/mmr/algorithms.js";
-import type { Proof, Hasher } from "../../src/mmr/types.js";
-
-// Test hasher: same algorithm as before, digest returns Promise (single async Hasher).
-class TestHasher implements Hasher {
-  private data: Uint8Array[] = [];
-
-  reset(): void {
-    this.data = [];
-  }
-
-  update(data: Uint8Array): void {
-    this.data.push(data);
-  }
-
-  digest(): Promise<Uint8Array> {
-    const result = new Uint8Array(32);
-    let hash = 0;
-    for (const arr of this.data) {
-      for (let i = 0; i < arr.length; i++) {
-        hash ^= arr[i];
-        result[i % 32] ^= arr[i];
-      }
-    }
-    for (let i = 0; i < 32; i++) {
-      result[i] = (result[i] + hash + i) & 0xff;
-    }
-    return Promise.resolve(result);
-  }
-}
+import type { Proof } from "../../src/mmr/types.js";
+import { Sha256Hasher as TestHasher } from "../helpers/sha256-hasher.js";
 
 describe("MMR Algorithms", () => {
   describe("bagPeaks", () => {

@@ -130,3 +130,45 @@ Worker `extensions` + e2e `parent-grant-ab-split` on three retries:
 | `receiptMatchesResolveReceiptBody` | **true** |
 
 **Verdict: B** — cert is present on client and worker paths; two custodian verify keys are tried; COSE peak signature still fails. Not hypothesis A (missing cert). Remaining work is likely **sealer peak signer vs delegation cert key** or **grant–leaf binding** on forest-dev-5 (compare Arbor `signEmptyPeakReceipt` lease with cert label 5).
+
+## TRUE root cause (CONFIRMED 2026-05-31 — supersedes the above)
+
+The B-verdict pointed at the COSE peak signature, but the signature was never the
+problem: the **detached peak the verifier reconstructed was wrong** for any
+multi-leaf MMR. [`@canopy/merklelog`](../../packages/merklelog/src/mmr/algorithms.ts)
+`calculateRoot` hashed interior MMR nodes as `H(left ‖ right)`, omitting the
+1-based node **position** prefix that the deployed log (go-merklelog Ranger +
+sealer) and the MMRIVER profile require: interior nodes are
+`H(pos_BE8 ‖ left ‖ right)` (see go `HashPosPair64` / `IncludedRoot` and the
+reference `algorithms.py` `hash_pospair64`). `calculateRoot` even tracked
+`currentPos` but never hashed it.
+
+Consequences:
+
+- `mmrIndex 0` (single leaf, empty proof, peak == leaf) needs **no** interior
+  hash, so the BYOK stretch (`byok-checkpoint-seal`) and all single-leaf paths
+  verified — masking the bug.
+- `mmrIndex ≥ 1` (the **auth** grant leaf on root **R**, sibling = bootstrap
+  leaf) reconstructed peak `H(l0 ‖ l1)` while the sealer signed
+  `H(3_BE8 ‖ l0 ‖ l1)`. The detached-payload COSE verify therefore failed with
+  exactly the observed **signature-failed** — independent of the delegation cert
+  or trust-root resolution.
+
+This means the earlier H2 (cache key) and the dual trust-root / hydrate
+remediations, while individually reasonable hardening, were **not** the cause of
+the `auth-data-log-chain` 403. The earlier "CONFIRMED H2" verdict is **superseded**:
+H1 (crypto primitive) was correct after all, but at the MMR interior-node layer,
+not the COSE layer.
+
+**Why prior tests missed it:** every `calculateRoot`/receipt test built the
+signed peak via `peakForLeafProof` → `calculateRoot` and then verified with
+`calculateRoot` — i.e. circular. They agreed with themselves regardless of the
+position prefix.
+
+**Fix + verification:** see
+[plan-0027](plan-0027-mmr-interior-node-position-commitment.md). Interior hashing
+now commits the position; a non-circular SHA-256 KAT, a go-derived receipt-level
+test, and the full go-merklelog **KAT39** parity suite pin the behaviour. The
+audit also fixed `leafCount` (was `(n+1)/2`; now `PeaksBitmap`, spec-correct) and
+flagged `bagPeaks` (not position-committed, unused by the receipt path) and the
+`verifyConsistency` stub (always true; not implemented).

@@ -45,9 +45,7 @@ import {
   responseTextPreview,
 } from "@e2e-utils/problem-details";
 import { completeGrantRegistrationThroughReceipt } from "@e2e-utils/register-grant-through-receipt";
-import {
-  RegisterGrantHttpError,
-} from "@e2e-utils/bootstrap-grant-setup";
+import { RegisterGrantHttpError } from "@e2e-utils/bootstrap-grant-setup";
 import {
   attachParentGrantAbSplit,
   buildParentGrantAbSplit,

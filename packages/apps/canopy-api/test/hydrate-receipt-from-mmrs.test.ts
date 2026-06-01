@@ -118,7 +118,10 @@ describe("buildReceiptForEntry + hydrateGrantReceiptFromMmrs (R2_MMRS)", () => {
     custodyRoot = await generateP256KeyPair();
     delegated = await generateP256KeyPair();
     const custodyRaw = new Uint8Array(
-      (await crypto.subtle.exportKey("raw", custodyRoot.publicKey)) as ArrayBuffer,
+      (await crypto.subtle.exportKey(
+        "raw",
+        custodyRoot.publicKey,
+      )) as ArrayBuffer,
     );
     custodyVerifyKey = await importEs256PublicKeyFromGrantDataXy64(
       custodyRaw.slice(1),
@@ -161,14 +164,14 @@ describe("buildReceiptForEntry + hydrateGrantReceiptFromMmrs (R2_MMRS)", () => {
     const peak = await peakForLeafProof(authLeafHash, parsedDraft.proof);
     signedPeakReceipt = await signPeakReceipt(peak, delegated);
     const delegatedRaw = new Uint8Array(
-      (await crypto.subtle.exportKey("raw", delegated.publicKey)) as ArrayBuffer,
+      (await crypto.subtle.exportKey(
+        "raw",
+        delegated.publicKey,
+      )) as ArrayBuffer,
     );
     delegationCert = await buildDelegationCert(custodyRoot, delegatedRaw);
 
-    const pIdx = peakIndexForLeafProof(
-      MMR_SIZE,
-      parsedDraft.proof.path.length,
-    );
+    const pIdx = peakIndexForLeafProof(MMR_SIZE, parsedDraft.proof.path.length);
     const peakSlots = buildPeakReceiptSlots(pIdx, signedPeakReceipt);
 
     await putMmrsFixture(bucket, {
@@ -332,7 +335,10 @@ describe("buildReceiptForEntry + hydrateGrantReceiptFromMmrs (R2_MMRS)", () => {
       _ownerHex: string,
       receiptCoseBytes: Uint8Array,
     ) => {
-      const r = await resolveReceiptVerifyKey(receiptCoseBytes, custodyVerifyKey);
+      const r = await resolveReceiptVerifyKey(
+        receiptCoseBytes,
+        custodyVerifyKey,
+      );
       return r?.verifyKeys ?? null;
     };
 
@@ -418,7 +424,10 @@ describe("buildReceiptForEntry + hydrateGrantReceiptFromMmrs (R2_MMRS)", () => {
       _ownerHex: string,
       receiptCoseBytes: Uint8Array,
     ) => {
-      const r = await resolveReceiptVerifyKey(receiptCoseBytes, custodyVerifyKey);
+      const r = await resolveReceiptVerifyKey(
+        receiptCoseBytes,
+        custodyVerifyKey,
+      );
       return r?.verifyKeys ?? null;
     };
 

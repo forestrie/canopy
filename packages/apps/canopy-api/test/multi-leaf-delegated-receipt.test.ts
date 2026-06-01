@@ -29,6 +29,7 @@ import {
   buildDelegatedDetachedPeakReceipt,
   generateP256KeyPair,
   peakForLeafProof,
+  positionCommittedInteriorHash,
 } from "./helpers/delegated-receipt-fixtures.js";
 import { inclusionProofForIndex } from "./helpers/mmr-inclusion-proof.js";
 
@@ -49,7 +50,10 @@ beforeAll(async () => {
   custodyRoot = await generateP256KeyPair();
   delegated = await generateP256KeyPair();
   const custodyRaw = new Uint8Array(
-    (await crypto.subtle.exportKey("raw", custodyRoot.publicKey)) as ArrayBuffer,
+    (await crypto.subtle.exportKey(
+      "raw",
+      custodyRoot.publicKey,
+    )) as ArrayBuffer,
   );
   custodyVerifyKey = await importEs256PublicKeyFromGrantDataXy64(
     custodyRaw.slice(1),
@@ -130,6 +134,49 @@ describe("multi-leaf delegated detached receipt (mmrIndex=1)", () => {
     expect(outcome).toBe("ok");
   });
 
+  it("verifies a peak built the go way H(pos=3 || leaf0 || leaf1) (non-circular)", async () => {
+    // Build the signed detached peak independently of calculateRoot, mirroring
+    // go-merklelog / the MMR profile: interior node = H(pos_BE8 || left || right).
+    // For the size-3 MMR the peak node's 1-based position is 3. This fails
+    // before the position-commitment fix (calculateRoot omitted pos) and passes
+    // only after it.
+    const grant = grantWithData(new Uint8Array(64).fill(0xbb));
+    const proof: Proof = { path: proofLeaf1, mmrIndex: 1n };
+    const goPeak = await positionCommittedInteriorHash(
+      3n,
+      leaf0Hash,
+      leaf1Hash,
+    );
+
+    // The fixture peak (via calculateRoot) must agree with the go-derived peak.
+    expect(Buffer.from(peakForLeaf1).toString("hex")).toBe(
+      Buffer.from(goPeak).toString("hex"),
+    );
+
+    const receipt = await buildDelegatedDetachedPeakReceipt({
+      delegated,
+      custodyRoot,
+      peak: goPeak,
+      proof,
+      includeDelegationCert: true,
+    });
+
+    const resolved = await resolveReceiptVerifyKey(receipt, custodyVerifyKey);
+    expect(resolved).not.toBeNull();
+
+    const outcome = await verifyReceiptInclusionFromParsed(
+      grant,
+      IDTIMESTAMP_LEAF1,
+      null,
+      proof,
+      {
+        receiptCoseBytes: receipt,
+        receiptVerifyKeys: resolved!.verifyKeys,
+      },
+    );
+    expect(outcome).toBe("ok");
+  });
+
   it("(A) fails signature when delegation cert is omitted (hydrate without cert copy)", async () => {
     const grant = grantWithData(new Uint8Array(64).fill(0xbb));
     const proof: Proof = { path: proofLeaf1, mmrIndex: 1n };
@@ -141,7 +188,9 @@ describe("multi-leaf delegated detached receipt (mmrIndex=1)", () => {
       includeDelegationCert: false,
     });
 
-    expect(extractDelegationCertBytes(parseReceipt(receipt).coseSign1[1])).toBeNull();
+    expect(
+      extractDelegationCertBytes(parseReceipt(receipt).coseSign1[1]),
+    ).toBeNull();
 
     const resolved = await resolveReceiptVerifyKey(receipt, custodyVerifyKey);
     expect(resolved?.verifyKeys).toEqual([custodyVerifyKey]);
@@ -202,7 +251,10 @@ describe("multi-leaf delegated detached receipt (mmrIndex=1)", () => {
       _ownerLogIdLowerHex32: string,
       receiptCoseBytes: Uint8Array,
     ) => {
-      const r = await resolveReceiptVerifyKey(receiptCoseBytes, custodyVerifyKey);
+      const r = await resolveReceiptVerifyKey(
+        receiptCoseBytes,
+        custodyVerifyKey,
+      );
       return r?.verifyKeys ?? null;
     };
 
@@ -231,7 +283,10 @@ describe("multi-leaf delegated detached receipt (mmrIndex=1)", () => {
       _ownerLogIdLowerHex32: string,
       receiptCoseBytes: Uint8Array,
     ) => {
-      const r = await resolveReceiptVerifyKey(receiptCoseBytes, custodyVerifyKey);
+      const r = await resolveReceiptVerifyKey(
+        receiptCoseBytes,
+        custodyVerifyKey,
+      );
       return r?.verifyKeys ?? null;
     };
 
@@ -269,7 +324,9 @@ describe("multi-leaf delegated detached receipt (mmrIndex=1)", () => {
       includeDelegationCert: false,
     });
 
-    expect(extractDelegationCertBytes(parseReceipt(withCert).coseSign1[1])).not.toBeNull();
+    expect(
+      extractDelegationCertBytes(parseReceipt(withCert).coseSign1[1]),
+    ).not.toBeNull();
     expect(
       extractDelegationCertBytes(parseReceipt(withoutCert).coseSign1[1]),
     ).toBeNull();

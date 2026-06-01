@@ -27,7 +27,10 @@ describe("validateByokDelegationMaterial", () => {
     const rootKeyPair = await generateTestRootKeyPair();
     const delegatedPublicKey = testDelegatedCoseKey(42);
     const raw = new Uint8Array(
-      await crypto.subtle.exportKey("raw", rootKeyPair.publicKey),
+      (await crypto.subtle.exportKey(
+        "raw",
+        rootKeyPair.publicKey,
+      )) as ArrayBuffer,
     );
     const x = raw.slice(1, 33);
     const y = raw.slice(33, 65);

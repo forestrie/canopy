@@ -144,12 +144,40 @@ export function mmrSizeFromHeightIndex(heightIndex: number): Uint64 {
 }
 
 /**
- * Returns the number of leaves given an MMR size
+ * Returns the number of leaves in the largest valid MMR whose size is
+ * <= `mmrSize`.
  *
- * f = (n + 1) / 2
+ * Mirrors go-merklelog `LeafCount`, which is defined as `PeaksBitmap(mmrSize)`:
+ * the leaf count's binary representation maps directly onto the peak structure
+ * (each set bit is a perfect subtree). The naive `(n + 1) / 2` is only correct
+ * for single-peak (perfect) sizes — e.g. size 4 (3 leaves) gives 2 with the
+ * naive form but 3 here — so it must not be used. When `mmrSize` is not a valid
+ * MMR size this returns the leaf count of the highest valid size <= `mmrSize`.
  */
 export function leafCount(mmrSize: Uint64): Uint64 {
-  return mmrSize.add(new Uint64(1)).shr(1);
+  return new Uint64(peaksBitmap(mmrSize.toBigInt()));
+}
+
+/**
+ * Returns the peaks bitmap for an MMR size (go-merklelog `PeaksBitmap`).
+ *
+ * The numeric value equals the leaf count of the largest valid MMR with size
+ * <= `mmrSize`; each set bit marks a perfect subtree (peak) at that height.
+ */
+function peaksBitmap(mmrSize: bigint): bigint {
+  if (mmrSize === 0n) return 0n;
+  let pos = mmrSize;
+  let peakSize = (1n << BigInt(bitLength(new Uint64(mmrSize)))) - 1n;
+  let peakMap = 0n;
+  while (peakSize > 0n) {
+    peakMap <<= 1n;
+    if (pos >= peakSize) {
+      pos -= peakSize;
+      peakMap |= 1n;
+    }
+    peakSize >>= 1n;
+  }
+  return peakMap;
 }
 
 /**

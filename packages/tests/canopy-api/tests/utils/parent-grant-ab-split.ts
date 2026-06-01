@@ -51,7 +51,8 @@ function inferOutcomeFromDetail(
   detail: string | null | undefined,
 ): InferredParentReceiptOutcome {
   if (!detail) return "unknown";
-  if (detail.includes("inclusion proof does not bind")) return "inclusion-failed";
+  if (detail.includes("inclusion proof does not bind"))
+    return "inclusion-failed";
   if (detail.includes("but the MMR inclusion proof matches")) {
     return "signature-failed-inclusion-ok";
   }
@@ -61,7 +62,8 @@ function inferOutcomeFromDetail(
   ) {
     return "signature-failed";
   }
-  if (detail.includes("could not resolve signing keys")) return "no-verify-keys";
+  if (detail.includes("could not resolve signing keys"))
+    return "no-verify-keys";
   if (detail.includes("receipt signature or inclusion proof")) {
     return "legacy-generic";
   }
@@ -149,7 +151,12 @@ export async function buildParentGrantAbSplit(opts: {
 }
 
 export async function attachParentGrantAbSplit(
-  testInfo: { attach: (name: string, opts: { body: string; contentType: string }) => Promise<void> },
+  testInfo: {
+    attach: (
+      name: string,
+      opts: { body: string; contentType: string },
+    ) => Promise<void>;
+  },
   split: ParentGrantAbSplit,
   registerRes: APIResponse,
 ): Promise<void> {
