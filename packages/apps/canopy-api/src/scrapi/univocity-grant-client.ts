@@ -35,6 +35,32 @@ export type UnivocityGrantResult =
   | { kind: "rejected"; status: number; detail: string }
   | { kind: "unavailable"; detail: string };
 
+/**
+ * Seam for creation-grant validation. register-grant depends only on this
+ * interface, so unit tests can inject a mock and exercise the whole flow without
+ * HTTP or local crypto. The production implementation forwards to univocity.
+ */
+export interface CreationGrantValidator {
+  /**
+   * @param rootWire 32-byte forest root `R` (bootstrap-logid wire bytes).
+   * @param statementBytes raw transparent statement (COSE Sign1) credential.
+   */
+  validate(
+    rootWire: Uint8Array,
+    statementBytes: Uint8Array,
+  ): Promise<UnivocityGrantResult>;
+}
+
+/** Builds the univocity-backed {@link CreationGrantValidator}. */
+export function createUnivocityGrantValidator(
+  client: UnivocityGrantClient,
+): CreationGrantValidator {
+  return {
+    validate: (rootWire, statementBytes) =>
+      postCreationGrantToUnivocity(client, rootWire, statementBytes),
+  };
+}
+
 function joinUrl(base: string, path: string): string {
   return `${base.replace(/\/+$/, "")}${path}`;
 }

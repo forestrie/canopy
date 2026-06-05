@@ -29,30 +29,35 @@ root key instead.
 
 ### register-grant (`src/scrapi/register-grant.ts`)
 
-- New env seam `univocity?: { serviceUrl, token }` (from `UNIVOCITY_SERVICE_URL`
-  - `UNIVOCITY_API_TOKEN`).
-- When configured, **every** creation grant (any first-grant shape: root
-  bootstrap, child-auth, child-data) is forwarded to univocity
-  `POST /api/grants` with `{ rootLogId: R(wire), statement }`. Univocity performs
-  the authoritative chain verification + atomic `logId → R` index create. Status
-  maps to the edge decision:
+- New env seam `creationGrantValidator?: CreationGrantValidator` — a small
+  interface (`validate(rootWire, statementBytes) → result`) whose production
+  implementation posts to univocity `POST /api/grants` (built from
+  `UNIVOCITY_SERVICE_URL` + `UNIVOCITY_API_TOKEN`). Unit tests inject a mock
+  implementation, so the register-grant flow is exercised without HTTP or local
+  crypto.
+- **Every** creation grant (any first-grant shape: root bootstrap, child-auth,
+  child-data) is forwarded with `{ rootLogId: R(wire), statement }`. Univocity
+  performs the authoritative chain verification + atomic `logId → R` index
+  create. Status maps to the edge decision:
   - `201`/`200` → enqueue for sequencing → `303`
   - `409` → `409` (cross-forest `logId` reuse)
   - `4xx` → `403` (invalid signature chain)
   - other → `503`
-- When **not** configured, the legacy local first-grant verification paths run
-  unchanged (so unit tests and un-wired environments still work). This makes the
-  delegation an additive, transitional switch.
+- There is **no** local fallback. When the validator is not configured a
+  creation grant returns `503` (misconfiguration), never silent local
+  verification. The per-shape local crypto paths are removed; that verification
+  now lives only in univocity (covered by arbor `grant_test.go`).
 
 ### Genesis (`src/forest/post-genesis.ts`, `get-forest-genesis.ts`)
 
 - `POST /api/forest/{R}/genesis` forwards the canonical v1 genesis CBOR to
   univocity `POST /api/forest/{R}/genesis` (curator token → univocity token).
   Univocity anchors `genesis.key == bootstrapConfig()`; canopy maps `409 → conflict`,
-  `4xx → 400`, transient → `503`. The R2 copy is a transitional compat shim.
-- `GET /api/forest/{R}/genesis` falls back to univocity on an R2 miss.
-- Existing R2 genesis is migrated by curator re-POST/import; plan-0028's
-  genesis-in-canopy becomes the compat shim.
+  `4xx → 400`, transient → `503`. Canopy keeps a local R2 copy that is
+  authoritative for reads until the subject log's first checkpoint; after that it
+  may be expired (there is no long-term backup/recovery requirement for it).
+- `GET /api/forest/{R}/genesis` falls back to univocity on an R2 miss (i.e. once
+  the local copy has been expired).
 
 ### Receipt authority (`src/env/receipt-authority-resolver.ts`, `trust-root-client.ts`)
 
@@ -77,7 +82,6 @@ root key instead.
 
 ## Out of scope
 
-- Removing the local first-grant paths entirely (kept as the un-wired fallback).
 - KS256 delegated checkpoints (ES256-only delegated path).
 
 ## Verification

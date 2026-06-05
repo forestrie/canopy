@@ -12,6 +12,7 @@ import {
 import { problemResponse } from "./cbor-api/cbor-response.js";
 import { handleForestRequest } from "./forest/handle-forest-request.js";
 import { registerGrant, type RegisterGrantEnv } from "./scrapi/register-grant";
+import { createUnivocityGrantValidator } from "./scrapi/univocity-grant-client.js";
 import { registerSignedStatement } from "./scrapi/register-signed-statement";
 import { queryRegistrationStatus } from "./scrapi/query-registration-status";
 import { resolveReceipt } from "./scrapi/resolve-receipt";
@@ -106,9 +107,6 @@ function buildBootstrapEnvForRegisterGrant(
   return {
     bootstrapLogId,
     r2Grants: env.R2_GRANTS,
-    custodianUrl: env.CUSTODIAN_URL?.trim() ?? "",
-    custodianAppToken: env.CUSTODIAN_APP_TOKEN?.trim() ?? "",
-    bootstrapAlg: env.BOOTSTRAP_ALG as "ES256" | "KS256" | undefined,
     r2Mmrs: env.R2_MMRS,
     massifHeight,
   };
@@ -262,18 +260,18 @@ export default {
           );
           const univocityServiceUrl = env.UNIVOCITY_SERVICE_URL?.trim();
           const univocityApiToken = env.UNIVOCITY_API_TOKEN?.trim();
-          const univocityGrantClient =
+          const creationGrantValidator =
             univocityServiceUrl && univocityApiToken
-              ? {
+              ? createUnivocityGrantValidator({
                   serviceUrl: univocityServiceUrl,
                   token: univocityApiToken,
-                }
+                })
               : undefined;
           const response = await registerGrant(request, {
             queueEnv: queueEnvForSequencing,
             bootstrapEnv: bootstrapEnvForGrant,
             resolveReceiptAuthority,
-            univocity: univocityGrantClient,
+            creationGrantValidator,
             nodeEnv: env.NODE_ENV,
           });
           const headers = new Headers(response.headers);
