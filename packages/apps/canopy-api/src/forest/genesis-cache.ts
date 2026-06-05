@@ -22,9 +22,19 @@ import {
 } from "../cbor-api/cbor-map-utils.js";
 import {
   FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID,
+  FOREST_GENESIS_LABEL_CHAIN_ID,
+  FOREST_GENESIS_LABEL_GENESIS_VERSION,
   FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
   FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS,
+  FOREST_GENESIS_SCHEMA_V1,
 } from "./forest-genesis-labels.js";
+import {
+  asGenesisUint8Array,
+  parseChainIdString,
+  parseLegacyChainIds,
+  parseUnivocityAddrOptional,
+  type ForestGenesisChainBinding,
+} from "./genesis-wire.js";
 
 export interface GenesisCacheEnv {
   R2_GRANTS: R2Bucket;
@@ -34,46 +44,42 @@ export interface ParsedForestGenesis {
   wire: Uint8Array;
   x: Uint8Array;
   y: Uint8Array;
-  univocityAddr: Uint8Array | null;
-  chainIds: number[] | null;
+  schemaVersion: 0 | 1;
+  chainBinding: ForestGenesisChainBinding | null;
 }
 
 const cache = new Map<string, ParsedForestGenesis>();
 
-function asUint8Array(v: unknown): Uint8Array | null {
-  if (v instanceof Uint8Array) return v;
-  if (v instanceof ArrayBuffer) return new Uint8Array(v);
-  return null;
-}
+const COSE_KEYS = new Set([
+  COSE_KEY_KTY,
+  COSE_EC2_CRV,
+  COSE_EC2_X,
+  COSE_EC2_Y,
+  COSE_KEY_ALG,
+  FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID,
+]);
 
-function parseUnivocityAddr(v: unknown): Uint8Array | null | "invalid" {
-  if (v === null || v === undefined) return null;
-  const b = asUint8Array(v);
-  if (!b) return "invalid";
-  if (b.length !== 20) return "invalid";
-  return b;
-}
+const V0_EXTRA_KEYS = new Set([
+  ...COSE_KEYS,
+  FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
+  FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS,
+]);
 
-function parseChainIds(v: unknown): number[] | null | "invalid" {
-  if (v === null || v === undefined) return null;
-  if (!Array.isArray(v)) return "invalid";
-  if (v.length === 0) return "invalid";
-  const out: number[] = [];
-  for (const item of v) {
-    const n =
-      typeof item === "bigint"
-        ? Number(item)
-        : typeof item === "number"
-          ? item
-          : Number(item);
-    if (!Number.isInteger(n) || n < 0 || n > 0xffffffff) return "invalid";
-    out.push(n);
-  }
-  return out;
+const V1_EXTRA_KEYS = new Set([
+  ...COSE_KEYS,
+  FOREST_GENESIS_LABEL_GENESIS_VERSION,
+  FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
+  FOREST_GENESIS_LABEL_CHAIN_ID,
+]);
+
+/** True when genesis was written with schema v1 (chain binding present). */
+export function isGenesisV1(genesis: ParsedForestGenesis): boolean {
+  return genesis.schemaVersion === 1;
 }
 
 /**
- * Parse and validate genesis CBOR bytes as stored by {@link postForestGenesis}.
+ * Parse and validate genesis CBOR bytes from R2.
+ * Accepts v0 (plan-0018, optional null chain fields) and v1 (required binding).
  * @returns null if the map is invalid.
  */
 export function parseGenesisCborBytes(
@@ -91,48 +97,74 @@ export function parseGenesisCborBytes(
 
   const kty = m.get(COSE_KEY_KTY);
   const crv = m.get(COSE_EC2_CRV);
-  const x = asUint8Array(m.get(COSE_EC2_X));
-  const y = asUint8Array(m.get(COSE_EC2_Y));
+  const x = asGenesisUint8Array(m.get(COSE_EC2_X));
+  const y = asGenesisUint8Array(m.get(COSE_EC2_Y));
   if (kty !== COSE_KTY_EC2 || crv !== COSE_CRV_P256) return null;
   if (!x || x.length !== 32 || !y || y.length !== 32) return null;
 
   const alg = m.get(COSE_KEY_ALG);
   if (alg !== undefined && alg !== COSE_ALG_ES256) return null;
 
-  const boot = asUint8Array(m.get(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID));
+  const boot = asGenesisUint8Array(m.get(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID));
   if (!boot || boot.length !== 32 || !bytesEqual(boot, expectedWire)) {
     return null;
   }
 
-  const addrRes = parseUnivocityAddr(
+  const versionRaw = m.get(FOREST_GENESIS_LABEL_GENESIS_VERSION);
+  const isV1 = versionRaw === FOREST_GENESIS_SCHEMA_V1;
+
+  if (versionRaw !== undefined && !isV1) return null;
+
+  if (isV1) {
+    for (const k of m.keys()) {
+      if (!V1_EXTRA_KEYS.has(k)) return null;
+    }
+    if (m.has(FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS)) return null;
+
+    const addr = parseUnivocityAddrOptional(
+      m.get(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR),
+    );
+    if (addr === null || addr === "invalid") return null;
+
+    const chainId = parseChainIdString(m.get(FOREST_GENESIS_LABEL_CHAIN_ID));
+    if (chainId === "invalid") return null;
+
+    return {
+      wire: expectedWire,
+      x,
+      y,
+      schemaVersion: 1,
+      chainBinding: { address: addr, chainId },
+    };
+  }
+
+  for (const k of m.keys()) {
+    if (!V0_EXTRA_KEYS.has(k)) return null;
+  }
+
+  const addrRes = parseUnivocityAddrOptional(
     m.get(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR),
   );
   if (addrRes === "invalid") return null;
-  const chainRes = parseChainIds(
+  const legacyChains = parseLegacyChainIds(
     m.get(FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS),
   );
-  if (chainRes === "invalid") return null;
+  if (legacyChains === "invalid") return null;
 
-  const allowed = new Set([
-    COSE_KEY_KTY,
-    COSE_EC2_CRV,
-    COSE_EC2_X,
-    COSE_EC2_Y,
-    COSE_KEY_ALG,
-    FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID,
-    FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
-    FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS,
-  ]);
-  for (const k of m.keys()) {
-    if (!allowed.has(k)) return null;
+  let chainBinding: ForestGenesisChainBinding | null = null;
+  if (addrRes !== null && legacyChains !== null && legacyChains.length > 0) {
+    chainBinding = {
+      address: addrRes,
+      chainId: String(legacyChains[0]),
+    };
   }
 
   return {
     wire: expectedWire,
     x,
     y,
-    univocityAddr: addrRes,
-    chainIds: chainRes,
+    schemaVersion: 0,
+    chainBinding,
   };
 }
 

@@ -54,8 +54,8 @@ vi.mock("../src/forest/genesis-cache.js", () => ({
         wire: logIdToWireBytes(segment),
         x: genesisHolder.x,
         y: genesisHolder.y,
-        univocityAddr: null,
-        chainIds: null,
+        schemaVersion: 0 as const,
+        chainBinding: null,
       };
     } catch {
       return { kind: "bad_segment" as const };

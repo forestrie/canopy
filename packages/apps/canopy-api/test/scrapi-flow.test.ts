@@ -10,16 +10,7 @@ import { uuidToBytes } from "../src/grant";
 import type { Grant } from "../src/grant";
 import { custodianStatementKidFromXyGrantData } from "../src/grant/custodian-statement-kid.js";
 import { forestrieGrantAuthorizationHeader } from "./helpers/custodian-transparent-grant";
-import {
-  COSE_ALG_ES256,
-  COSE_CRV_P256,
-  COSE_EC2_CRV,
-  COSE_EC2_X,
-  COSE_EC2_Y,
-  COSE_KEY_ALG,
-  COSE_KEY_KTY,
-  COSE_KTY_EC2,
-} from "../src/cose/cose-key.js";
+import { validGenesisV1CborMap } from "./helpers/genesis-v1-body.js";
 
 const FLOW_CURATOR = "scrapi-flow-curator-token";
 /** Set in beforeAll: genesis for this id is stored in R2_GRANTS. */
@@ -48,16 +39,8 @@ beforeAll(async () => {
 
   flowBootstrapLogId = crypto.randomUUID();
 
-  const x = new Uint8Array(32).fill(0x3a);
-  const y = new Uint8Array(32).fill(0x4b);
   const genesisBody = encodeCbor(
-    new Map<number, unknown>([
-      [COSE_KEY_KTY, COSE_KTY_EC2],
-      [COSE_EC2_CRV, COSE_CRV_P256],
-      [COSE_EC2_X, x],
-      [COSE_EC2_Y, y],
-      [COSE_KEY_ALG, COSE_ALG_ES256],
-    ]),
+    validGenesisV1CborMap({ x: flowGrantData64.subarray(0, 32), y: flowGrantData64.subarray(32, 64) }),
   ) as Uint8Array;
   const res = await worker.fetch(
     new Request(`http://localhost/api/forest/${flowBootstrapLogId}/genesis`, {

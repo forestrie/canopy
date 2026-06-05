@@ -28,44 +28,20 @@ import {
 } from "../cbor-api/cbor-map-utils.js";
 import {
   FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID,
+  FOREST_GENESIS_LABEL_CHAIN_ID,
+  FOREST_GENESIS_LABEL_GENESIS_VERSION,
   FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
   FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS,
+  FOREST_GENESIS_SCHEMA_V1,
 } from "./forest-genesis-labels.js";
+import {
+  asGenesisUint8Array,
+  parseChainIdString,
+  parseUnivocityAddrRequired,
+} from "./genesis-wire.js";
 
 export interface PostGenesisEnv {
   R2_GRANTS: R2Bucket;
-}
-
-function asUint8Array(v: unknown): Uint8Array | null {
-  if (v instanceof Uint8Array) return v;
-  if (v instanceof ArrayBuffer) return new Uint8Array(v);
-  return null;
-}
-
-function parseUnivocityAddr(v: unknown): Uint8Array | null | "invalid" {
-  if (v === null || v === undefined) return null;
-  const b = asUint8Array(v);
-  if (!b) return "invalid";
-  if (b.length !== 20) return "invalid";
-  return b;
-}
-
-function parseChainIds(v: unknown): number[] | null | "invalid" {
-  if (v === null || v === undefined) return null;
-  if (!Array.isArray(v)) return "invalid";
-  if (v.length === 0) return "invalid";
-  const out: number[] = [];
-  for (const item of v) {
-    const n =
-      typeof item === "bigint"
-        ? Number(item)
-        : typeof item === "number"
-          ? item
-          : Number(item);
-    if (!Number.isInteger(n) || n < 0 || n > 0xffffffff) return "invalid";
-    out.push(n);
-  }
-  return out;
 }
 
 export async function postForestGenesis(
@@ -93,10 +69,23 @@ export async function postForestGenesis(
   const m = decodeBodyAsIntKeyMap(raw);
   if (!m) return ClientErrors.badRequest("Genesis body must be a CBOR map");
 
+  if (m.has(FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS)) {
+    return ClientErrors.badRequest(
+      "univocity-chainids (-68012) is legacy; use chain-id (-68013)",
+    );
+  }
+
+  const version = m.get(FOREST_GENESIS_LABEL_GENESIS_VERSION);
+  if (version !== FOREST_GENESIS_SCHEMA_V1) {
+    return ClientErrors.badRequest(
+      "genesis-version must be 1 (-68009)",
+    );
+  }
+
   const kty = m.get(COSE_KEY_KTY);
   const crv = m.get(COSE_EC2_CRV);
-  const x = asUint8Array(m.get(COSE_EC2_X));
-  const y = asUint8Array(m.get(COSE_EC2_Y));
+  const x = asGenesisUint8Array(m.get(COSE_EC2_X));
+  const y = asGenesisUint8Array(m.get(COSE_EC2_Y));
   if (kty !== COSE_KTY_EC2 || crv !== COSE_CRV_P256) {
     return ClientErrors.badRequest("COSE_Key must use EC2 / P-256");
   }
@@ -111,7 +100,7 @@ export async function postForestGenesis(
 
   const clientBoot = m.get(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID);
   if (clientBoot !== undefined) {
-    const b = asUint8Array(clientBoot);
+    const b = asGenesisUint8Array(clientBoot);
     if (!b || b.length !== 32 || !bytesEqual(b, wire)) {
       return ClientErrors.badRequest(
         "bootstrap-logid must match path log-id when provided",
@@ -119,21 +108,19 @@ export async function postForestGenesis(
     }
   }
 
-  const addrRes = parseUnivocityAddr(
+  const addrRes = parseUnivocityAddrRequired(
     m.get(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR),
   );
   if (addrRes === "invalid") {
     return ClientErrors.badRequest(
-      "univocity-addr must be null or a 20-byte bstr",
+      "univocity-addr must be a 20-byte bstr",
     );
   }
 
-  const chainRes = parseChainIds(
-    m.get(FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS),
-  );
-  if (chainRes === "invalid") {
+  const chainId = parseChainIdString(m.get(FOREST_GENESIS_LABEL_CHAIN_ID));
+  if (chainId === "invalid") {
     return ClientErrors.badRequest(
-      "univocity-chainids must be null or a non-empty array of uint32",
+      "chain-id must be a non-empty decimal EIP-155 id string (-68013)",
     );
   }
 
@@ -143,9 +130,10 @@ export async function postForestGenesis(
     COSE_EC2_X,
     COSE_EC2_Y,
     COSE_KEY_ALG,
+    FOREST_GENESIS_LABEL_GENESIS_VERSION,
     FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID,
     FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
-    FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS,
+    FOREST_GENESIS_LABEL_CHAIN_ID,
   ]);
   for (const k of m.keys()) {
     if (!allowed.has(k)) {
@@ -159,15 +147,10 @@ export async function postForestGenesis(
   out.set(COSE_EC2_X, x);
   out.set(COSE_EC2_Y, y);
   out.set(COSE_KEY_ALG, COSE_ALG_ES256);
+  out.set(FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V1);
   out.set(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID, wire);
-  out.set(
-    FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
-    addrRes === null ? null : addrRes,
-  );
-  out.set(
-    FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS,
-    chainRes === null ? null : chainRes,
-  );
+  out.set(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, addrRes);
+  out.set(FOREST_GENESIS_LABEL_CHAIN_ID, chainId);
 
   const key = `forest/${wireLogIdToHex64(wire)}/genesis.cbor`;
   const head = await env.R2_GRANTS.head(key);

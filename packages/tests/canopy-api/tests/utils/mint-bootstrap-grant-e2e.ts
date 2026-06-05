@@ -37,6 +37,9 @@ export async function mintTransparentBootstrapGrantBase64(opts: {
   curatorToken: string;
   custodianUrl: string;
   custodianAppToken: string;
+  /** Optional real chain binding for the genesis (defaults to e2e dummy). */
+  univocityAddr?: Uint8Array;
+  chainId?: string;
 }): Promise<{ grantBase64: string; rootCustodySignKeyId: string }> {
   const { keyId, publicKeyPem } = await postCustodianCreateEs256Key({
     baseUrl: opts.custodianUrl,
@@ -54,6 +57,8 @@ export async function mintTransparentBootstrapGrantBase64(opts: {
     curatorToken: opts.curatorToken,
     x,
     y,
+    univocityAddr: opts.univocityAddr,
+    chainId: opts.chainId,
   });
 
   const grantData = publicKeyToGrantData64(uncompressed);

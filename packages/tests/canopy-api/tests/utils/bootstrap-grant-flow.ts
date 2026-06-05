@@ -89,6 +89,7 @@ export function bytesToForestrieGrantBase64(bytes: Uint8Array): string {
 export async function mintBootstrapGrant(
   unauthorizedRequest: APIRequestContext,
   rootLogId: string,
+  binding?: { univocityAddr?: Uint8Array; chainId?: string },
 ): Promise<{ grantBase64: string; rootCustodySignKeyId: string }> {
   assertBootstrapMintE2eEnv();
   const curator = process.env.CURATOR_ADMIN_TOKEN!.trim();
@@ -100,6 +101,8 @@ export async function mintBootstrapGrant(
     curatorToken: curator,
     custodianUrl: custody.baseUrl,
     custodianAppToken: custody.token,
+    univocityAddr: binding?.univocityAddr,
+    chainId: binding?.chainId,
   });
 }
 

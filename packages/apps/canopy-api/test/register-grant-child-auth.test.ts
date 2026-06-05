@@ -28,8 +28,8 @@ vi.mock("../src/forest/genesis-cache.js", () => ({
         wire,
         x: new Uint8Array(32),
         y: new Uint8Array(32),
-        univocityAddr: null,
-        chainIds: null,
+        schemaVersion: 0 as const,
+        chainBinding: null,
       };
     } catch {
       return { kind: "bad_segment" as const };

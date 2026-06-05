@@ -7,16 +7,9 @@
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import {
-  COSE_CRV_P256,
-  COSE_EC2_CRV,
-  COSE_EC2_X,
-  COSE_EC2_Y,
-  COSE_KEY_KTY,
-  COSE_KTY_EC2,
-} from "../src/cose/cose-key.js";
 import worker from "../src/index";
 import type { Env } from "../src/index";
+import { validGenesisV1CborMap } from "./helpers/genesis-v1-body.js";
 
 const poolEnv = env as unknown as Env;
 
@@ -122,16 +115,7 @@ describe("Forest admin env (non-pool NODE_ENV)", () => {
   const forestUrl = `http://localhost/api/forest/${forestLogId}/genesis`;
 
   function minimalGenesisBody(): Uint8Array {
-    const x = new Uint8Array(32).fill(0x01);
-    const y = new Uint8Array(32).fill(0x02);
-    return encodeCbor(
-      new Map<number, unknown>([
-        [COSE_KEY_KTY, COSE_KTY_EC2],
-        [COSE_EC2_CRV, COSE_CRV_P256],
-        [COSE_EC2_X, x],
-        [COSE_EC2_Y, y],
-      ]),
-    ) as Uint8Array;
+    return encodeCbor(validGenesisV1CborMap()) as Uint8Array;
   }
 
   it("returns 503 on forest route when CURATOR_ADMIN_TOKEN is missing", async () => {

@@ -208,7 +208,7 @@ This section is the conceptual core: it explains _what authorizes a register-gra
 
 ### 10.1 One trust anchor, a chain of delegations
 
-There is exactly **one** trust anchor per forest: the **genesis** key `x‖y`, provisioned by the curator and stored in `R2_GRANTS`. It is also the authority key of the root auth log `R`. Every other log's authority is a signed, sealed delegation from its parent:
+There is exactly **one** trust anchor per forest: the **genesis** key `x‖y`, provisioned by the curator and stored in `R2_GRANTS`. It is also the authority key of the root auth log `R`. The same **forest genesis document** also carries **chain binding** (Univocity contract address and EIP-155 chain id); new forests require both on `POST /api/forest/{R}/genesis`. SCRAPI bootstrap verification still uses x‖y only until downstream consumers read chain binding ([plan-0028](plans/plan-0028-forest-genesis-chain-binding.md)). Every other log's authority is a signed, sealed delegation from its parent:
 
 ```mermaid
 graph TD

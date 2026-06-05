@@ -300,6 +300,78 @@ tasks:
             --queue "{{.QUEUE_NAME}}" \
             --prefix "{{.PREFIX}}" || echo "Notification may already be configured"
 
+  genesis:delete:
+    desc: Delete a forest genesis doc from R2_GRANTS (DESTRUCTIVE!) — LOG_ID=<uuid|64-hex>
+    requires:
+      vars: [LOG_ID]
+    cmds:
+      - cmd: |
+          set -euo pipefail
+          HEX64=$(
+            LOG_ID="{{.LOG_ID}}" python3 <<'PY'
+          import os, re, sys
+          raw = os.environ["LOG_ID"].strip().lower()
+          if raw.startswith("0x"):
+              raw = raw[2:]
+          raw = raw.replace("-", "")
+          if not re.fullmatch(r"[0-9a-f]+", raw or ""):
+              sys.exit(f"LOG_ID must be hex (uuid or 64-hex); got {raw!r}")
+          if len(raw) == 32:
+              raw = "0" * 32 + raw
+          if len(raw) != 64:
+              sys.exit(f"LOG_ID must resolve to 32 or 64 hex chars; got {len(raw)}")
+          print(raw)
+          PY
+          )
+          KEY="forest/${HEX64}/genesis.cbor"
+          echo "Deleting ${KEY} from {{.R2_BUCKET_NAME_GRANTS}}"
+          yes n | wrangler r2 object delete "{{.R2_BUCKET_NAME_GRANTS}}" "${KEY}"
+
+  mmr:delete:
+    desc: Delete a single log's massif/checkpoint tiles from merklelogs (DESTRUCTIVE!) — LOG_ID=<uuid|64-hex>
+    requires:
+      vars: [LOG_ID]
+    cmds:
+      - cmd: |
+          set -euo pipefail
+          UUID=$(
+            LOG_ID="{{.LOG_ID}}" python3 <<'PY'
+          import os, re, sys
+          raw = os.environ["LOG_ID"].strip().lower()
+          if raw.startswith("0x"):
+              raw = raw[2:]
+          raw = raw.replace("-", "")
+          if not re.fullmatch(r"[0-9a-f]+", raw or ""):
+              sys.exit(f"LOG_ID must be hex (uuid or 64-hex); got {raw!r}")
+          if len(raw) == 64:
+              raw = raw[32:]
+          if len(raw) != 32:
+              sys.exit(f"LOG_ID must resolve to a 32-hex uuid; got {len(raw)} hex")
+          print(f"{raw[0:8]}-{raw[8:12]}-{raw[12:16]}-{raw[16:20]}-{raw[20:32]}")
+          PY
+          )
+          BUCKET="{{.R2_BUCKET_NAME_MERKLELOGS}}"
+          echo "Deleting massif/checkpoint tiles for log ${UUID} from ${BUCKET}"
+          for PREFIX in "{{.BUCKET_PREFIX_MASSIFS}}" "{{.BUCKET_PREFIX_CHECKPOINTS}}"; do
+            OBJECTS=$(yes n | wrangler r2 object list "$BUCKET" --prefix "$PREFIX" 2>/dev/null)
+            if [ $? -ne 0 ]; then
+              echo "ERROR: Failed to list objects under $PREFIX" >&2
+              exit 1
+            fi
+            KEYS=$(echo "$OBJECTS" | jq -r --arg seg "/${UUID}/" '.[] | select(.key | contains($seg)) | .key' 2>/dev/null)
+            if [ -z "$KEYS" ]; then
+              echo "  no objects under $PREFIX for ${UUID}"
+              continue
+            fi
+            echo "$KEYS" | while IFS= read -r key; do
+              [ -z "$key" ] && continue
+              echo "  delete ${key}"
+              if ! yes n | wrangler r2 object delete "$BUCKET" "$key" >/dev/null 2>&1; then
+                echo "ERROR: Failed to delete object $key" >&2
+              fi
+            done
+          done
+
   r2notification:delete:*:
     desc: Delete R2 event notifications
     vars:

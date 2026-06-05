@@ -1,5 +1,5 @@
 /**
- * Plan 0018: POST /api/forest/{log-id}/genesis — CBOR COSE_Key + R2_GRANTS.
+ * Plan 0018 / 0028: POST /api/forest/{log-id}/genesis — v1 chain binding + v0 read.
  */
 
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
@@ -16,9 +16,16 @@ import {
   COSE_KTY_EC2,
 } from "../src/cose/cose-key.js";
 import {
+  isGenesisV1,
+  parseGenesisCborBytes,
+} from "../src/forest/genesis-cache.js";
+import {
   FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID,
+  FOREST_GENESIS_LABEL_CHAIN_ID,
+  FOREST_GENESIS_LABEL_GENESIS_VERSION,
   FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
   FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS,
+  FOREST_GENESIS_SCHEMA_V1,
 } from "../src/forest/forest-genesis-labels.js";
 import {
   logIdToWireBytes,
@@ -26,6 +33,11 @@ import {
 } from "../src/grant/log-id-wire.js";
 import worker from "../src/index";
 import type { Env } from "../src/index";
+import {
+  FOREST_GENESIS_E2E_DUMMY_CHAIN_ID,
+  FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR,
+  validGenesisV1CborMap,
+} from "./helpers/genesis-v1-body.js";
 
 const poolEnv = env as unknown as Env;
 const CURATOR = "vitest-curator-admin-token";
@@ -35,16 +47,7 @@ function envWithCurator(): Env {
 }
 
 function validGenesisCborMap(): Map<number, unknown> {
-  const x = new Uint8Array(32);
-  const y = new Uint8Array(32);
-  x.fill(0x3a);
-  y.fill(0x4b);
-  return new Map<number, unknown>([
-    [COSE_KEY_KTY, COSE_KTY_EC2],
-    [COSE_EC2_CRV, COSE_CRV_P256],
-    [COSE_EC2_X, x],
-    [COSE_EC2_Y, y],
-  ]);
+  return validGenesisV1CborMap();
 }
 
 function genesisRequest(
@@ -68,8 +71,61 @@ function genesisRequest(
   );
 }
 
+describe("parseGenesisCborBytes", () => {
+  it("accepts v0 legacy objects with null chain fields", () => {
+    const logId = crypto.randomUUID();
+    const wire = logIdToWireBytes(logId);
+    const x = new Uint8Array(32).fill(0x11);
+    const y = new Uint8Array(32).fill(0x22);
+    const bytes = encodeCbor(
+      new Map<number, unknown>([
+        [COSE_KEY_KTY, COSE_KTY_EC2],
+        [COSE_EC2_CRV, COSE_CRV_P256],
+        [COSE_EC2_X, x],
+        [COSE_EC2_Y, y],
+        [COSE_KEY_ALG, COSE_ALG_ES256],
+        [FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID, wire],
+        [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, null],
+        [FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS, null],
+      ]),
+    ) as Uint8Array;
+
+    const parsed = parseGenesisCborBytes(bytes, wire);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.schemaVersion).toBe(0);
+    expect(parsed!.chainBinding).toBeNull();
+    expect(isGenesisV1(parsed!)).toBe(false);
+  });
+
+  it("accepts v1 stored objects with chain binding", () => {
+    const logId = crypto.randomUUID();
+    const wire = logIdToWireBytes(logId);
+    const x = new Uint8Array(32).fill(0x11);
+    const y = new Uint8Array(32).fill(0x22);
+    const addr = new Uint8Array(20).fill(0xcc);
+    const bytes = encodeCbor(
+      new Map<number, unknown>([
+        [COSE_KEY_KTY, COSE_KTY_EC2],
+        [COSE_EC2_CRV, COSE_CRV_P256],
+        [COSE_EC2_X, x],
+        [COSE_EC2_Y, y],
+        [COSE_KEY_ALG, COSE_ALG_ES256],
+        [FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V1],
+        [FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID, wire],
+        [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, addr],
+        [FOREST_GENESIS_LABEL_CHAIN_ID, "84532"],
+      ]),
+    ) as Uint8Array;
+
+    const parsed = parseGenesisCborBytes(bytes, wire);
+    expect(parsed?.schemaVersion).toBe(1);
+    expect(parsed?.chainBinding?.chainId).toBe("84532");
+    expect(isGenesisV1(parsed!)).toBe(true);
+  });
+});
+
 describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
-  it("returns 201 and stores a map with COSE_Key + bootstrap-logid wire bytes", async () => {
+  it("returns 201 and stores v1 map with chain binding", async () => {
     const logId = crypto.randomUUID();
     const wire = logIdToWireBytes(logId);
     const hex64 = wireLogIdToHex64(wire);
@@ -92,14 +148,68 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
     expect(map.get(COSE_KEY_KTY)).toBe(COSE_KTY_EC2);
     expect(map.get(COSE_EC2_CRV)).toBe(COSE_CRV_P256);
     expect(map.get(COSE_KEY_ALG)).toBe(COSE_ALG_ES256);
+    expect(map.get(FOREST_GENESIS_LABEL_GENESIS_VERSION)).toBe(1);
     const boot = map.get(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID) as Uint8Array;
     expect(boot).toBeInstanceOf(Uint8Array);
     expect(boot.length).toBe(32);
     expect([...boot]).toEqual([...wire]);
-    expect(map.get(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR)).toBeNull();
-    expect(map.get(FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS)).toBeNull();
+    expect(map.get(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR)).toEqual(
+      FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR,
+    );
+    expect(map.get(FOREST_GENESIS_LABEL_CHAIN_ID)).toBe(
+      FOREST_GENESIS_E2E_DUMMY_CHAIN_ID,
+    );
+    expect(map.has(FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS)).toBe(false);
 
     expect(hex64).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("returns 400 when genesis-version is missing", async () => {
+    const logId = crypto.randomUUID();
+    const m = validGenesisCborMap();
+    m.delete(FOREST_GENESIS_LABEL_GENESIS_VERSION);
+    const res = await worker.fetch(
+      genesisRequest(logId, m, `Bearer ${CURATOR}`),
+      envWithCurator(),
+      {} as ExecutionContext,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when univocity-addr is missing", async () => {
+    const logId = crypto.randomUUID();
+    const m = validGenesisCborMap();
+    m.delete(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR);
+    const res = await worker.fetch(
+      genesisRequest(logId, m, `Bearer ${CURATOR}`),
+      envWithCurator(),
+      {} as ExecutionContext,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when chain-id is missing", async () => {
+    const logId = crypto.randomUUID();
+    const m = validGenesisCborMap();
+    m.delete(FOREST_GENESIS_LABEL_CHAIN_ID);
+    const res = await worker.fetch(
+      genesisRequest(logId, m, `Bearer ${CURATOR}`),
+      envWithCurator(),
+      {} as ExecutionContext,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when legacy univocity-chainids (-68012) is sent", async () => {
+    const logId = crypto.randomUUID();
+    const m = validGenesisCborMap();
+    m.set(FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS, [84532]);
+    const res = await worker.fetch(
+      genesisRequest(logId, m, `Bearer ${CURATOR}`),
+      envWithCurator(),
+      {} as ExecutionContext,
+    );
+    expect(res.status).toBe(400);
   });
 
   it("returns 401 when Authorization is missing", async () => {
@@ -200,5 +310,6 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
       new Uint8Array(await hit.arrayBuffer()),
     ) as Map<number, unknown>;
     expect(roundTrip.get(COSE_KEY_KTY)).toBe(COSE_KTY_EC2);
+    expect(roundTrip.get(FOREST_GENESIS_LABEL_GENESIS_VERSION)).toBe(1);
   });
 });
