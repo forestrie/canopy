@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "doppler run --project canopy --config dev -- sh -c 'exec wrangler dev --env dev --inspector-port 9234 --var COORDINATOR_APP_TOKEN:${COORDINATOR_APP_TOKEN} --var CUSTODIAN_APP_TOKEN:${CUSTODIAN_APP_TOKEN} --var CUSTODIAN_URL:${CUSTODIAN_URL}'",
     "build": "tsc --noEmit && wrangler deploy --dry-run --outdir=dist",
     "deploy": "wrangler deploy",
     "deploy:prod": "wrangler deploy --env prod",
