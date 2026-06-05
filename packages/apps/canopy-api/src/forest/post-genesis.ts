@@ -47,10 +47,11 @@ import {
 export interface PostGenesisEnv {
   R2_GRANTS: R2Bucket;
   /**
-   * When set, the canonical genesis is forwarded to the univocity owned store
-   * (authoritative; anchors genesis.key to on-chain bootstrapConfig()). The R2
-   * copy remains a transitional compat shim. Sourced from UNIVOCITY_SERVICE_URL
-   * + UNIVOCITY_API_TOKEN.
+   * When set, the canonical genesis is forwarded to the univocity owned store,
+   * which anchors genesis.key to the on-chain bootstrapConfig(). Canopy also
+   * keeps a local R2 copy: it is authoritative for reads until the subject
+   * log's first checkpoint is published, after which it may be expired. Sourced
+   * from UNIVOCITY_SERVICE_URL + UNIVOCITY_API_TOKEN.
    */
   UNIVOCITY_SERVICE_URL?: string;
   UNIVOCITY_API_TOKEN?: string;
@@ -174,7 +175,8 @@ export async function postForestGenesis(
 
   // Forward to the univocity owned store first when configured: it is the
   // authority and verifies genesis.key == on-chain bootstrapConfig(). The local
-  // R2 copy below is a transitional compat shim (plan-0029).
+  // R2 copy below stays authoritative for reads until the subject log's first
+  // checkpoint, after which it may be expired (plan-0029).
   const univocity = univocityGenesisClientFromEnv(env);
   if (univocity) {
     const fwd = await postGenesisToUnivocity(univocity, hex64, body);

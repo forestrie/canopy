@@ -9,9 +9,10 @@ import type { GenesisCacheEnv } from "./genesis-cache.js";
 
 export interface GetGenesisEnv extends GenesisCacheEnv {
   /**
-   * When set, a R2 miss falls back to the univocity owned store (authoritative).
-   * Lets canopy serve genesis after storage moves to univocity while the R2
-   * compat shim is phased out (plan-0029).
+   * When set, a R2 miss falls back to the univocity owned store. The local R2
+   * copy is authoritative for reads until the subject log's first checkpoint;
+   * once it is expired, canopy serves genesis from univocity instead
+   * (plan-0029).
    */
   UNIVOCITY_SERVICE_URL?: string;
   UNIVOCITY_API_TOKEN?: string;

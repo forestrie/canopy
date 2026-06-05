@@ -3,7 +3,8 @@
  * (`POST /api/forest/{R}/genesis`). Univocity owns genesis storage and anchors
  * each genesis key to the on-chain `bootstrapConfig()` for its forest's chain /
  * contract. Canopy forwards the canonical v1 genesis CBOR it built (curator
- * token -> univocity token); the R2 copy is a transitional compat shim.
+ * token -> univocity token) and keeps a local R2 copy that is authoritative for
+ * reads until the subject log's first checkpoint, after which it may be expired.
  *
  * Status mapping (mirrors univocity handlePostGenesis):
  *   - 201 -> created
