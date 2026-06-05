@@ -269,12 +269,12 @@ jobs:
           fi
           printf '%s' "$CURATOR" | wrangler secret put CURATOR_ADMIN_TOKEN --env "$ENV"
           UNIV=$(trim_ws "${UNIVOCITY_API_TOKEN:-}")
-          if [ -n "$UNIV" ]; then
-            printf '%s' "$UNIV" | wrangler secret put UNIVOCITY_API_TOKEN --env "$ENV"
-          else
-            echo "UNIVOCITY_API_TOKEN not set; skipping (optional; enables univocity delegation)."
+          if [ -z "$UNIV" ]; then
+            echo "::error::UNIVOCITY_API_TOKEN is required for canopy-api (creation-grant validation)."
+            exit 1
           fi
-          for key in FOREST_PROJECT_ID CUSTODIAN_URL DELEGATION_COORDINATOR_URL R2_MMRS_BUCKET_NAME SEQUENCING_QUEUE_SCRIPT_NAME CANOPY_FQDN; do
+          printf '%s' "$UNIV" | wrangler secret put UNIVOCITY_API_TOKEN --env "$ENV"
+          for key in FOREST_PROJECT_ID CUSTODIAN_URL DELEGATION_COORDINATOR_URL R2_MMRS_BUCKET_NAME SEQUENCING_QUEUE_SCRIPT_NAME CANOPY_FQDN UNIVOCITY_SERVICE_URL; do
             if [ -z "$(trim_ws "${!key:-}")" ]; then
               echo "::error::${key} is required in GitHub Environment ${ENV}."
               exit 1

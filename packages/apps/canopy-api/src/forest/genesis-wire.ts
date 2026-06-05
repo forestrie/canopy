@@ -20,18 +20,14 @@ export function parseUnivocityAddrOptional(
 }
 
 /** v1 POST: required 20-byte address. */
-export function parseUnivocityAddrRequired(
-  v: unknown,
-): Uint8Array | "invalid" {
+export function parseUnivocityAddrRequired(v: unknown): Uint8Array | "invalid" {
   const res = parseUnivocityAddrOptional(v);
   if (res === null) return "invalid";
   return res;
 }
 
 /** Legacy v0 read: optional uint32 array. */
-export function parseLegacyChainIds(
-  v: unknown,
-): number[] | null | "invalid" {
+export function parseLegacyChainIds(v: unknown): number[] | null | "invalid" {
   if (v === null || v === undefined) return null;
   if (!Array.isArray(v)) return "invalid";
   if (v.length === 0) return "invalid";

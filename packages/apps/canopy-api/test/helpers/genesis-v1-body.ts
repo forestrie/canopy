@@ -46,6 +46,9 @@ export function validGenesisV1CborMap(opts?: {
       FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
       opts?.univocityAddr ?? FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR,
     ],
-    [FOREST_GENESIS_LABEL_CHAIN_ID, opts?.chainId ?? FOREST_GENESIS_E2E_DUMMY_CHAIN_ID],
+    [
+      FOREST_GENESIS_LABEL_CHAIN_ID,
+      opts?.chainId ?? FOREST_GENESIS_E2E_DUMMY_CHAIN_ID,
+    ],
   ]);
 }

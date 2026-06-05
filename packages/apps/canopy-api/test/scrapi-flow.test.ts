@@ -40,7 +40,10 @@ beforeAll(async () => {
   flowBootstrapLogId = crypto.randomUUID();
 
   const genesisBody = encodeCbor(
-    validGenesisV1CborMap({ x: flowGrantData64.subarray(0, 32), y: flowGrantData64.subarray(32, 64) }),
+    validGenesisV1CborMap({
+      x: flowGrantData64.subarray(0, 32),
+      y: flowGrantData64.subarray(32, 64),
+    }),
   ) as Uint8Array;
   const res = await worker.fetch(
     new Request(`http://localhost/api/forest/${flowBootstrapLogId}/genesis`, {

@@ -105,7 +105,9 @@ export function parseGenesisCborBytes(
   const alg = m.get(COSE_KEY_ALG);
   if (alg !== undefined && alg !== COSE_ALG_ES256) return null;
 
-  const boot = asGenesisUint8Array(m.get(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID));
+  const boot = asGenesisUint8Array(
+    m.get(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID),
+  );
   if (!boot || boot.length !== 32 || !bytesEqual(boot, expectedWire)) {
     return null;
   }
