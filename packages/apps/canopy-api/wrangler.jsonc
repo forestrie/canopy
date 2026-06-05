@@ -30,6 +30,8 @@
     "CUSTODIAN_URL": "https://custodian.a.forest-2.forestrie.dev/v1",
     "ROOT_LOG_ID": "123e4567e89b12d3a456426614174000",
     // "UNIVOCITY_SERVICE_URL": "",
+    // UNIVOCITY_API_TOKEN (secret): bearer for canopy -> univocity owned-store
+    // calls (POST /api/forest/{R}/genesis, POST /api/grants, public-root reads).
     // "UNIVOCITY_CONTRACT_RPC_URL": "",
     // "UNIVOCITY_CONTRACT_ADDRESS": "",
   },

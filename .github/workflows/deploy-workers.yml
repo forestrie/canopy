@@ -175,6 +175,9 @@ jobs:
       CUSTODIAN_URL: ${{ vars.CUSTODIAN_URL }}
       CANOPY_FQDN: ${{ vars.CANOPY_FQDN }}
       DELEGATION_COORDINATOR_URL: ${{ vars.DELEGATION_COORDINATOR_URL }}
+      # Optional: univocity owned grant store + authority resolver. When set, the
+      # worker delegates creation-grant validation and genesis storage to it.
+      UNIVOCITY_SERVICE_URL: ${{ vars.UNIVOCITY_SERVICE_URL }}
       R2_MMRS_BUCKET_NAME: ${{ vars.R2_MMRS_BUCKET_NAME }}
       SEQUENCING_QUEUE_SCRIPT_NAME: ${{ vars.SEQUENCING_QUEUE_SCRIPT_NAME }}
 
@@ -233,6 +236,7 @@ jobs:
           CUSTODIAN_APP_TOKEN: ${{ secrets.CUSTODIAN_APP_TOKEN }}
           CURATOR_ADMIN_TOKEN: ${{ secrets.CURATOR_ADMIN_TOKEN }}
           COORDINATOR_APP_TOKEN: ${{ secrets.COORDINATOR_APP_TOKEN }}
+          UNIVOCITY_API_TOKEN: ${{ secrets.UNIVOCITY_API_TOKEN }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
@@ -264,6 +268,12 @@ jobs:
             exit 1
           fi
           printf '%s' "$CURATOR" | wrangler secret put CURATOR_ADMIN_TOKEN --env "$ENV"
+          UNIV=$(trim_ws "${UNIVOCITY_API_TOKEN:-}")
+          if [ -n "$UNIV" ]; then
+            printf '%s' "$UNIV" | wrangler secret put UNIVOCITY_API_TOKEN --env "$ENV"
+          else
+            echo "UNIVOCITY_API_TOKEN not set; skipping (optional; enables univocity delegation)."
+          fi
           for key in FOREST_PROJECT_ID CUSTODIAN_URL DELEGATION_COORDINATOR_URL R2_MMRS_BUCKET_NAME SEQUENCING_QUEUE_SCRIPT_NAME CANOPY_FQDN; do
             if [ -z "$(trim_ws "${!key:-}")" ]; then
               echo "::error::${key} is required in GitHub Environment ${ENV}."

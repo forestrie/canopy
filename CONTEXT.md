@@ -40,6 +40,24 @@ The on-chain transaction that sets `rootLogId` on the contract. Runs after fores
 genesis POST and the root bootstrap grant.
 _Avoid_: forest genesis.
 
+**Owner root key vs target root key**:
+A creation grant is signed by the **owner authority log's root key**
+(`grantData_O`) and establishes the **target log's root key** (`grantData_T`).
+They coincide only at the root (`T = O = R`). Child-auth and child-data envelopes
+verify against the **owner's** key, not their own (no self-signing).
+_Avoid_: verifying a child grant against its own `grantData`.
+
+**Delegated grant validation (univocity)**:
+When `UNIVOCITY_SERVICE_URL` + `UNIVOCITY_API_TOKEN` are set, register-grant
+forwards each creation grant to univocity `POST /api/grants` (authoritative chain
+verification + global `logId → R` uniqueness), surfacing 201/200 → 303,
+409 → 409, 4xx → 403. Otherwise the legacy local first-grant checks run.
+_Avoid_: treating local genesis x‖y match as the authority for cold child grants.
+
+**Forest uniqueness (`logId → R`)**:
+Each subject `logId` belongs to exactly one forest `R` globally; univocity's
+atomic index enforces it and canopy surfaces 409 at the edge.
+
 ## Example dialogue
 
 **Dev:** We mint a grant on data log `D` — how do we know which Univocity contract
@@ -57,4 +75,6 @@ grant is the first leaf on `R`'s authority MMR.
 ## Related
 
 - [plan-0028](docs/plans/plan-0028-forest-genesis-chain-binding.md) — v1 POST wire format and chain binding
+- [plan-0029](docs/plans/plan-0029-delegate-grant-validation-to-univocity.md) — delegate grant validation + genesis to univocity
 - [ADR-0004](docs/adr-0004-forest-genesis-chain-binding-required.md) — POST requires chain binding; read accepts v0/v1
+- [arbor plan-0008](../arbor/docs/plan-0008-univocity-grant-store-and-authority-resolver.md) — univocity owned store + resolver

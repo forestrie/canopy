@@ -73,6 +73,10 @@ import type { ReceiptAuthorityResolver } from "../env/receipt-authority-resolver
 import { bytesEqual } from "../cbor-api/cbor-map-utils.js";
 import { getParsedGenesis } from "../forest/genesis-cache.js";
 import { hydrateGrantReceiptFromMmrs } from "./hydrate-grant-receipt.js";
+import {
+  postCreationGrantToUnivocity,
+  type UnivocityGrantClient,
+} from "./univocity-grant-client.js";
 
 export interface RegisterGrantEnv {
   /**
@@ -99,6 +103,14 @@ export interface RegisterGrantEnv {
   };
   /** Receipt authority resolver (trust root + delegation); required for receipt inclusion. */
   resolveReceiptAuthority?: ReceiptAuthorityResolver;
+  /**
+   * When set, creation-grant validation is delegated to the univocity service
+   * (owned grant store + authority resolver). Univocity verifies the grant
+   * signature chain against the owner's root key (anchored to the on-chain
+   * bootstrap key) and enforces global `logId -> R` uniqueness. When unset,
+   * canopy falls back to the legacy local first-grant verification paths below.
+   */
+  univocity?: UnivocityGrantClient;
   /** Worker NODE_ENV; non-prod parent-grant 403 responses may include RCA extensions. */
   nodeEnv?: string;
 }
@@ -181,6 +193,57 @@ export async function registerGrant(
         ? e.message
         : "Failed to read merklelog storage for log initialization check",
     );
+  }
+
+  // Delegated authority (preferred): when univocity is wired, every creation
+  // grant (any first-grant shape) is validated + stored by the univocity owned
+  // grant store. It verifies the grant signature chain against the owner's root
+  // key (anchored to the on-chain bootstrap key) — removing canopy's local
+  // self-signing acceptance for child-auth grants — and enforces global
+  // logId -> R uniqueness atomically (201 new / 200 idempotent / 409 conflict).
+  if (
+    !logInitialized &&
+    hasCreateAndExtend(grant.grant as Uint8Array) &&
+    grantResult.bytes &&
+    env.univocity
+  ) {
+    const decision = await postCreationGrantToUnivocity(
+      env.univocity,
+      genesis.wire,
+      grantResult.bytes,
+    );
+    switch (decision.kind) {
+      case "accepted":
+        try {
+          return await enqueueAndStoreGrant(
+            request,
+            grant,
+            env,
+            targetLogUuid,
+            bootstrapUrlUuid,
+          );
+        } catch (e) {
+          console.warn("Creation grant (univocity ok, enqueue failed)", e);
+          return ServerErrors.serviceUnavailable(
+            e instanceof Error
+              ? e.message
+              : "Grant sequencing failed after univocity validation",
+          );
+        }
+      case "conflict":
+        return ClientErrors.conflict(
+          "logId already registered to a different forest (global uniqueness).",
+        );
+      case "rejected":
+        return ClientErrors.forbidden(
+          decision.detail ||
+            "Univocity rejected the creation grant (invalid signature chain).",
+        );
+      case "unavailable":
+        return ServerErrors.serviceUnavailable(
+          decision.detail || "Univocity grant validation is unavailable.",
+        );
+    }
   }
 
   // Root authority log: first grant on T where O===T — COSE verifies against grantData x‖y

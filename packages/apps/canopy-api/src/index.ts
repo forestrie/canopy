@@ -90,6 +90,8 @@ export interface Env {
   /** Bearer secret for `POST /api/forest/**` admin routes (Wrangler secret). */
   CURATOR_ADMIN_TOKEN?: string;
   UNIVOCITY_SERVICE_URL?: string;
+  /** Bearer token authorizing canopy -> univocity owned-store calls. */
+  UNIVOCITY_API_TOKEN?: string;
   UNIVOCITY_CONTRACT_RPC_URL?: string;
   UNIVOCITY_CONTRACT_ADDRESS?: string;
   /** Optional: base URL for checkpoint fetch (storage source when R2 not used). */
@@ -128,6 +130,8 @@ function receiptAuthorityResolverForEnv(env: Env): ReceiptAuthorityResolver {
     trustRootUrlForEnv(env),
     env.DELEGATION_COORDINATOR_URL?.trim() ?? "",
     env.COORDINATOR_APP_TOKEN?.trim() ?? "",
+    env.UNIVOCITY_SERVICE_URL?.trim() ?? "",
+    env.UNIVOCITY_API_TOKEN?.trim() ?? "",
     env.FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX ?? "",
   ].join("\0");
   if (
@@ -140,6 +144,8 @@ function receiptAuthorityResolverForEnv(env: Env): ReceiptAuthorityResolver {
         trustRootUrl: trustRootUrlForEnv(env),
         coordinatorTrustRootUrl: env.DELEGATION_COORDINATOR_URL,
         coordinatorToken: env.COORDINATOR_APP_TOKEN,
+        univocityTrustRootUrl: env.UNIVOCITY_SERVICE_URL,
+        univocityToken: env.UNIVOCITY_API_TOKEN,
         nodeEnv: env.NODE_ENV,
         testReceiptVerifyEs256XyHex:
           env.FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX,
@@ -254,10 +260,20 @@ export default {
             massifHeight,
             bootstrapSeg,
           );
+          const univocityServiceUrl = env.UNIVOCITY_SERVICE_URL?.trim();
+          const univocityApiToken = env.UNIVOCITY_API_TOKEN?.trim();
+          const univocityGrantClient =
+            univocityServiceUrl && univocityApiToken
+              ? {
+                  serviceUrl: univocityServiceUrl,
+                  token: univocityApiToken,
+                }
+              : undefined;
           const response = await registerGrant(request, {
             queueEnv: queueEnvForSequencing,
             bootstrapEnv: bootstrapEnvForGrant,
             resolveReceiptAuthority,
+            univocity: univocityGrantClient,
             nodeEnv: env.NODE_ENV,
           });
           const headers = new Headers(response.headers);

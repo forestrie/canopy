@@ -25,19 +25,26 @@ export function isTrustRootNotFound(error: unknown): boolean {
   return error instanceof TrustRootNotFoundError;
 }
 
-interface CoordinatorTrustRootResponse {
+interface CborTrustRootResponse {
   logId: Uint8Array;
   alg: string;
   x: Uint8Array;
   y: Uint8Array;
 }
 
-export function createCoordinatorPublicTrustRootClient(config: {
-  coordinatorBaseUrl: string;
+/**
+ * Generic CBOR public-root client: `GET {base}/api/logs/{id}/public-root` with a
+ * Bearer token, decoding the `{ logId, alg, x, y }` CBOR `TrustRootResponse`.
+ * Shared by the coordinator and univocity authority resolvers (same wire shape).
+ */
+function createBearerCborTrustRootClient(config: {
+  baseUrl: string;
   token: string;
+  label: string;
 }): TrustRootClient {
-  const base = config.coordinatorBaseUrl.trim().replace(/\/$/, "");
+  const base = config.baseUrl.trim().replace(/\/$/, "");
   const token = config.token.trim();
+  const { label } = config;
   const cache = new Map<string, Promise<ParsedVerifyKey>>();
 
   return {
@@ -47,8 +54,8 @@ export function createCoordinatorPublicTrustRootClient(config: {
       let p = cache.get(ownerLogIdLowerHex32);
       if (!p) {
         p = (async (): Promise<ParsedVerifyKey> => {
-          if (!base) throw new Error("coordinator trust-root URL is empty");
-          if (!token) throw new Error("coordinator trust-root token is empty");
+          if (!base) throw new Error(`${label} trust-root URL is empty`);
+          if (!token) throw new Error(`${label} trust-root token is empty`);
 
           const resp = await fetch(
             `${base}/api/logs/${ownerLogIdLowerHex32}/public-root`,
@@ -62,18 +69,18 @@ export function createCoordinatorPublicTrustRootClient(config: {
           );
           const body = new Uint8Array(await resp.arrayBuffer());
           if (resp.status === 404) {
-            throw new TrustRootNotFoundError("coordinator public root missing");
+            throw new TrustRootNotFoundError(`${label} public root missing`);
           }
           if (!resp.ok) {
             throw new Error(
-              `coordinator public root returned ${resp.status} (${body.byteLength} bytes)`,
+              `${label} public root returned ${resp.status} (${body.byteLength} bytes)`,
             );
           }
 
-          const decoded = decode(body) as CoordinatorTrustRootResponse;
+          const decoded = decode(body) as CborTrustRootResponse;
           if (decoded.alg !== "ES256") {
             throw new Error(
-              `unsupported coordinator trust-root alg ${decoded.alg}`,
+              `unsupported ${label} trust-root alg ${decoded.alg}`,
             );
           }
           if (
@@ -82,7 +89,7 @@ export function createCoordinatorPublicTrustRootClient(config: {
             !(decoded.y instanceof Uint8Array) ||
             decoded.y.byteLength !== 32
           ) {
-            throw new Error("coordinator trust-root x/y must be 32 bytes each");
+            throw new Error(`${label} trust-root x/y must be 32 bytes each`);
           }
           const xy = new Uint8Array(64);
           xy.set(decoded.x, 0);
@@ -99,6 +106,33 @@ export function createCoordinatorPublicTrustRootClient(config: {
       return p;
     },
   };
+}
+
+export function createCoordinatorPublicTrustRootClient(config: {
+  coordinatorBaseUrl: string;
+  token: string;
+}): TrustRootClient {
+  return createBearerCborTrustRootClient({
+    baseUrl: config.coordinatorBaseUrl,
+    token: config.token,
+    label: "coordinator",
+  });
+}
+
+/**
+ * Univocity authority resolver client: reads the chain/grant-derived public root
+ * from the univocity owned store (`GET /api/logs/{id}/public-root`). Same anchor
+ * the sealer authorizes against (plan-0029).
+ */
+export function createUnivocityPublicTrustRootClient(config: {
+  univocityBaseUrl: string;
+  token: string;
+}): TrustRootClient {
+  return createBearerCborTrustRootClient({
+    baseUrl: config.univocityBaseUrl,
+    token: config.token,
+    label: "univocity",
+  });
 }
 
 export function createSelectingTrustRootClient(config: {

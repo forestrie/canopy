@@ -219,6 +219,11 @@ varsBlock = setStringProperty(
   "DELEGATION_COORDINATOR_URL",
   process.env.DELEGATION_COORDINATOR_URL,
 );
+varsBlock = setStringProperty(
+  varsBlock,
+  "UNIVOCITY_SERVICE_URL",
+  process.env.UNIVOCITY_SERVICE_URL,
+);
 envBlock = replaceRange(envBlock, vars, varsBlock);
 envBlock = setR2BucketName(
   envBlock,

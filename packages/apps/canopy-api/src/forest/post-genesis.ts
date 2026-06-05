@@ -39,9 +39,30 @@ import {
   parseChainIdString,
   parseUnivocityAddrRequired,
 } from "./genesis-wire.js";
+import {
+  postGenesisToUnivocity,
+  type UnivocityGenesisClient,
+} from "./univocity-genesis-client.js";
 
 export interface PostGenesisEnv {
   R2_GRANTS: R2Bucket;
+  /**
+   * When set, the canonical genesis is forwarded to the univocity owned store
+   * (authoritative; anchors genesis.key to on-chain bootstrapConfig()). The R2
+   * copy remains a transitional compat shim. Sourced from UNIVOCITY_SERVICE_URL
+   * + UNIVOCITY_API_TOKEN.
+   */
+  UNIVOCITY_SERVICE_URL?: string;
+  UNIVOCITY_API_TOKEN?: string;
+}
+
+function univocityGenesisClientFromEnv(
+  env: PostGenesisEnv,
+): UnivocityGenesisClient | undefined {
+  const serviceUrl = env.UNIVOCITY_SERVICE_URL?.trim();
+  const token = env.UNIVOCITY_API_TOKEN?.trim();
+  if (!serviceUrl || !token) return undefined;
+  return { serviceUrl, token };
 }
 
 export async function postForestGenesis(
@@ -77,9 +98,7 @@ export async function postForestGenesis(
 
   const version = m.get(FOREST_GENESIS_LABEL_GENESIS_VERSION);
   if (version !== FOREST_GENESIS_SCHEMA_V1) {
-    return ClientErrors.badRequest(
-      "genesis-version must be 1 (-68009)",
-    );
+    return ClientErrors.badRequest("genesis-version must be 1 (-68009)");
   }
 
   const kty = m.get(COSE_KEY_KTY);
@@ -112,9 +131,7 @@ export async function postForestGenesis(
     m.get(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR),
   );
   if (addrRes === "invalid") {
-    return ClientErrors.badRequest(
-      "univocity-addr must be a 20-byte bstr",
-    );
+    return ClientErrors.badRequest("univocity-addr must be a 20-byte bstr");
   }
 
   const chainId = parseChainIdString(m.get(FOREST_GENESIS_LABEL_CHAIN_ID));
@@ -152,13 +169,41 @@ export async function postForestGenesis(
   out.set(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, addrRes);
   out.set(FOREST_GENESIS_LABEL_CHAIN_ID, chainId);
 
-  const key = `forest/${wireLogIdToHex64(wire)}/genesis.cbor`;
+  const hex64 = wireLogIdToHex64(wire);
+  const body = encodeCbor(out) as Uint8Array;
+
+  // Forward to the univocity owned store first when configured: it is the
+  // authority and verifies genesis.key == on-chain bootstrapConfig(). The local
+  // R2 copy below is a transitional compat shim (plan-0029).
+  const univocity = univocityGenesisClientFromEnv(env);
+  if (univocity) {
+    const fwd = await postGenesisToUnivocity(univocity, hex64, body);
+    if (fwd.kind === "exists") {
+      return ClientErrors.conflict("genesis already exists for this log");
+    }
+    if (fwd.kind === "rejected") {
+      return ClientErrors.badRequest(
+        fwd.detail || "univocity rejected the genesis document",
+      );
+    }
+    if (fwd.kind === "unavailable") {
+      return ServerErrors.serviceUnavailable(
+        fwd.detail || "univocity genesis store is unavailable",
+      );
+    }
+  }
+
+  const key = `forest/${hex64}/genesis.cbor`;
   const head = await env.R2_GRANTS.head(key);
   if (head) {
+    if (univocity) {
+      // Univocity accepted (created) but R2 already has a copy: idempotent, the
+      // authoritative store is consistent. Report success.
+      return cborResponse({}, 201);
+    }
     return ClientErrors.conflict("genesis.cbor already exists for this log");
   }
 
-  const body = encodeCbor(out) as Uint8Array;
   try {
     await env.R2_GRANTS.put(key, body);
   } catch (e) {

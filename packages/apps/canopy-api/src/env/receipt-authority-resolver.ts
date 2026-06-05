@@ -8,6 +8,7 @@ import { isCanopyApiPoolTestMode } from "./runtime-mode.js";
 import {
   createCoordinatorPublicTrustRootClient,
   createCustodianPublicTrustRootClient,
+  createUnivocityPublicTrustRootClient,
   isTrustRootNotFound,
   type TrustRootClient,
 } from "./trust-root-client.js";
@@ -79,6 +80,8 @@ export function createReceiptAuthorityResolver(config: {
   trustRootUrl: string;
   coordinatorTrustRootUrl?: string;
   coordinatorToken?: string;
+  univocityTrustRootUrl?: string;
+  univocityToken?: string;
   nodeEnv: string;
   testReceiptVerifyEs256XyHex?: string;
 }): ReceiptAuthorityResolver {
@@ -95,23 +98,34 @@ export function createReceiptAuthorityResolver(config: {
       },
     ];
   } else {
-    const custodian = createCustodianPublicTrustRootClient({
-      custodianBaseUrl: config.trustRootUrl,
-    });
+    trustRootClients = [];
+    // Univocity first: it is the authoritative chain/grant-derived anchor (the
+    // same root the sealer authorizes against). Custodian/coordinator remain as
+    // transitional fallbacks for dev custodial forests (plan-0029).
+    const univocityUrl = config.univocityTrustRootUrl?.trim();
+    const univocityToken = config.univocityToken?.trim();
+    if (univocityUrl && univocityToken) {
+      trustRootClients.push(
+        createUnivocityPublicTrustRootClient({
+          univocityBaseUrl: univocityUrl,
+          token: univocityToken,
+        }),
+      );
+    }
+    trustRootClients.push(
+      createCustodianPublicTrustRootClient({
+        custodianBaseUrl: config.trustRootUrl,
+      }),
+    );
     const coordinatorUrl = config.coordinatorTrustRootUrl?.trim();
     const coordinatorToken = config.coordinatorToken?.trim();
     if (coordinatorUrl && coordinatorToken) {
-      // Custodian first: dev custodial forests seal peaks with curator keys even
-      // when coordinator public-root is present.
-      trustRootClients = [
-        custodian,
+      trustRootClients.push(
         createCoordinatorPublicTrustRootClient({
           coordinatorBaseUrl: coordinatorUrl,
           token: coordinatorToken,
         }),
-      ];
-    } else {
-      trustRootClients = [custodian];
+      );
     }
   }
 
