@@ -11,17 +11,17 @@ import {
   DEFAULT_UNIVOCITY_KS256_SAFE_ADDR,
   fetchOnChainBootstrapConfig,
   getForestGenesisParsed,
+  ks256BootstrapContractAddr,
+  ks256BootstrapContractAddrBytes,
   ks256ChainBindingSkipReason,
-  univocityContractAddrBytes,
+  ks256GenesisLogId,
   univocityGenesisChainId,
-  univocityGenesisLogId,
 } from "@e2e-utils/univocity-genesis-e2e";
 
 /**
  * Forest genesis with KS256 bootstrap (default Base Sepolia Safe deployment).
  *
- * Uses genesis v2 (genesisAlg -65799 + 20-byte Safe address). The default
- * contract at {@link DEFAULT_UNIVOCITY_CONTRACT_ADDR} matches {@link DEFAULT_UNIVOCITY_KS256_SAFE_ADDR}.
+ * Uses genesis v2 (genesisAlg -65799 + 20-byte Safe address).
  */
 test.describe("Univocity KS256 genesis chain binding (Base Sepolia)", () => {
   test.describe.configure({ mode: "serial" });
@@ -39,11 +39,11 @@ test.describe("Univocity KS256 genesis chain binding (Base Sepolia)", () => {
     assertBootstrapMintE2eEnv();
     const curatorToken = process.env.CURATOR_ADMIN_TOKEN!.trim();
 
-    const rootLogId = univocityGenesisLogId();
+    const rootLogId = ks256GenesisLogId();
     const chainId = univocityGenesisChainId();
-    const univocityAddr = univocityContractAddrBytes();
+    const univocityAddr = ks256BootstrapContractAddrBytes();
 
-    const boot = await fetchOnChainBootstrapConfig();
+    const boot = await fetchOnChainBootstrapConfig(ks256BootstrapContractAddr());
     expect(boot.alg).toBe(COSE_ALG_KS256);
     expect(boot.key.length).toBe(20);
 

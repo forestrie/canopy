@@ -10,7 +10,7 @@ import { uuidToBytes } from "../src/grant";
 import type { Grant } from "../src/grant";
 import { custodianStatementKidFromXyGrantData } from "../src/grant/custodian-statement-kid.js";
 import { forestrieGrantAuthorizationHeader } from "./helpers/custodian-transparent-grant";
-import { validGenesisV1CborMap } from "./helpers/genesis-v1-body.js";
+import { validGenesisV2Es256CborMap } from "./helpers/genesis-v2-body.js";
 
 const FLOW_CURATOR = "scrapi-flow-curator-token";
 /** Set in beforeAll: genesis for this id is stored in R2_GRANTS. */
@@ -40,9 +40,8 @@ beforeAll(async () => {
   flowBootstrapLogId = crypto.randomUUID();
 
   const genesisBody = encodeCbor(
-    validGenesisV1CborMap({
-      x: flowGrantData64.subarray(0, 32),
-      y: flowGrantData64.subarray(32, 64),
+    validGenesisV2Es256CborMap({
+      bootstrapKey: flowGrantData64,
     }),
   ) as Uint8Array;
   const res = await worker.fetch(

@@ -57,11 +57,16 @@ jobs:
           CURATOR_ADMIN_TOKEN: ${{ secrets.CURATOR_ADMIN_TOKEN }}
           DELEGATION_COORDINATOR_URL: ${{ vars.DELEGATION_COORDINATOR_URL }}
           COORDINATOR_APP_TOKEN: ${{ secrets.COORDINATOR_APP_TOKEN }}
-          # Univocity genesis chain-binding (KS256 Safe bootstrap on Base Sepolia).
-          E2E_UNIVOCITY_CONTRACT_ADDR: ${{ vars.E2E_UNIVOCITY_CONTRACT_ADDR }}
+          # Univocity genesis chain-binding (KS256 + ES256 on Base Sepolia).
+          E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP: ${{ vars.E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP }}
+          E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP: ${{ vars.E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP }}
           E2E_UNIVOCITY_RPC_URL: ${{ vars.E2E_UNIVOCITY_RPC_URL }}
           E2E_UNIVOCITY_CHAIN_ID: ${{ vars.E2E_UNIVOCITY_CHAIN_ID }}
-          E2E_UNIVOCITY_GENESIS_LOG_ID: ${{ vars.E2E_UNIVOCITY_GENESIS_LOG_ID }}
+          E2E_UNIVOCITY_GENESIS_LOG_ID_KS256: ${{ vars.E2E_UNIVOCITY_GENESIS_LOG_ID_KS256 }}
+          E2E_UNIVOCITY_GENESIS_LOG_ID_ES256: ${{ vars.E2E_UNIVOCITY_GENESIS_LOG_ID_ES256 }}
+          # ES256 Univocity bootstrap private key (PEM) signs the root creation
+          # grant for the chain-binding register-grant test (secret, not a var).
+          BOOTSTRAP_PEM_ES256: ${{ secrets.BOOTSTRAP_PEM_ES256 }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }

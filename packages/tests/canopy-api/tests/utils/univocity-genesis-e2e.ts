@@ -1,8 +1,8 @@
 /**
- * Univocity genesis chain-binding e2e helpers (plan-0007 scenario).
+ * Univocity genesis chain-binding e2e helpers (plan-0007 / plan-0032).
  *
- * Supports ES256 (v1 EC2 COSE_Key) and KS256 (v2 genesisAlg + bootstrapKey)
- * forest genesis anchors matching on-chain `bootstrapConfig()`.
+ * Supports ES256 and KS256 forest genesis anchors (v2) matching on-chain
+ * `bootstrapConfig()`.
  */
 
 import { decode as decodeCbor } from "cbor-x";
@@ -16,17 +16,24 @@ import {
   FOREST_GENESIS_LABEL_GENESIS_ALG,
   FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
 } from "@e2e-canopy-api-src/forest/forest-genesis-labels.js";
-import { E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID } from "./e2e-static-log-ids.js";
+import {
+  E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID_ES256,
+  E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID_KS256,
+} from "./e2e-static-log-ids.js";
 
-/**
- * Default Base Sepolia ImutableUnivocity (Safe KS256 bootstrap). Used when
- * `E2E_UNIVOCITY_CONTRACT_ADDR` is unset. KS256 chain-binding e2e uses this
- * deployment with genesis v2 (alg -65799 + 20-byte Safe address).
- */
-export const DEFAULT_UNIVOCITY_CONTRACT_ADDR =
+/** Default Base Sepolia KS256 ImutableUnivocity (Safe bootstrap). */
+export const DEFAULT_KS256_BOOTSTRAP_CONTRACT_ADDR =
   "0x7A4E8ad88D6Df29FEBEc0d546d148Ed4bea8Cb94";
 
-/** Safe multisig used as KS256 bootstrap for {@link DEFAULT_UNIVOCITY_CONTRACT_ADDR}. */
+/** Default Base Sepolia ES256 ImutableUnivocity (PEM bootstrap). */
+export const DEFAULT_ES256_BOOTSTRAP_CONTRACT_ADDR =
+  "0xb5906A91eF30dA435Ff13d27619Bc6F76282d19D";
+
+/** @deprecated Use {@link DEFAULT_KS256_BOOTSTRAP_CONTRACT_ADDR}. */
+export const DEFAULT_UNIVOCITY_CONTRACT_ADDR =
+  DEFAULT_KS256_BOOTSTRAP_CONTRACT_ADDR;
+
+/** Safe multisig used as KS256 bootstrap for {@link DEFAULT_KS256_BOOTSTRAP_CONTRACT_ADDR}. */
 export const DEFAULT_UNIVOCITY_KS256_SAFE_ADDR =
   "0x1528b86ff561f617602356efdbD05908a07AA788";
 
@@ -49,12 +56,59 @@ export function univocityRpcUrlForE2e(): string {
   ).trim();
 }
 
+function parseContractAddrBytes(rawEnv: string | undefined, fallback: string): Uint8Array {
+  const raw = (rawEnv ?? fallback).trim().toLowerCase().replace(/^0x/, "");
+  if (!/^[0-9a-f]{40}$/.test(raw)) {
+    throw new Error(
+      `Univocity contract env must be a 20-byte (40 hex) address; got ${raw.length} hex chars`,
+    );
+  }
+  return hexToBytes(raw);
+}
+
+/** `E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP` (or KS256 default). */
+export function ks256BootstrapContractAddr(): string {
+  return (
+    process.env.E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP ??
+    DEFAULT_KS256_BOOTSTRAP_CONTRACT_ADDR
+  ).trim();
+}
+
+/** `E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP` (or ES256 default). */
+export function es256BootstrapContractAddr(): string {
+  return (
+    process.env.E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP ??
+    DEFAULT_ES256_BOOTSTRAP_CONTRACT_ADDR
+  ).trim();
+}
+
+/** Parse KS256 bootstrap contract address into 20 bytes. */
+export function ks256BootstrapContractAddrBytes(): Uint8Array {
+  return parseContractAddrBytes(
+    process.env.E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP,
+    DEFAULT_KS256_BOOTSTRAP_CONTRACT_ADDR,
+  );
+}
+
+/** Parse ES256 bootstrap contract address into 20 bytes. */
+export function es256BootstrapContractAddrBytes(): Uint8Array {
+  return parseContractAddrBytes(
+    process.env.E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP,
+    DEFAULT_ES256_BOOTSTRAP_CONTRACT_ADDR,
+  );
+}
+
+/** @deprecated Use {@link ks256BootstrapContractAddrBytes} or {@link es256BootstrapContractAddrBytes}. */
+export function univocityContractAddrBytes(): Uint8Array {
+  return ks256BootstrapContractAddrBytes();
+}
+
 /** `eth_call` `bootstrapConfig()` on a Univocity deployment. */
 export async function fetchOnChainBootstrapConfig(
   contractAddr?: string,
   rpcUrl?: string,
 ): Promise<OnChainBootstrapConfig> {
-  const addr = (contractAddr ?? DEFAULT_UNIVOCITY_CONTRACT_ADDR).trim();
+  const addr = (contractAddr ?? ks256BootstrapContractAddr()).trim();
   const rpc = rpcUrl ?? univocityRpcUrlForE2e();
   const res = await fetch(rpc, {
     method: "POST",
@@ -112,37 +166,15 @@ function decodeInt256Word(word64Hex: string): number {
   return n;
 }
 
-/**
- * Returns a skip reason when the contract bootstrap is unsupported or unreadable.
- * ES256 (64-byte x‖y) and KS256 (20-byte address) are both supported.
- */
-export async function es256ChainBindingSkipReason(
-  contractAddr?: string,
-): Promise<string | null> {
-  return univocityChainBindingSkipReason(contractAddr, COSE_ALG_ES256);
-}
-
-/** KS256 chain-binding skip gate (default Safe deployment). */
-export async function ks256ChainBindingSkipReason(
-  contractAddr?: string,
-): Promise<string | null> {
-  return univocityChainBindingSkipReason(contractAddr, COSE_ALG_KS256);
-}
-
 async function univocityChainBindingSkipReason(
-  contractAddr: string | undefined,
+  contractAddr: string,
   requiredAlg: number,
 ): Promise<string | null> {
-  const addr = (
-    contractAddr ??
-    process.env.E2E_UNIVOCITY_CONTRACT_ADDR ??
-    DEFAULT_UNIVOCITY_CONTRACT_ADDR
-  ).trim();
   let boot: OnChainBootstrapConfig;
   try {
-    boot = await fetchOnChainBootstrapConfig(addr);
+    boot = await fetchOnChainBootstrapConfig(contractAddr);
   } catch (e) {
-    return `Could not read bootstrapConfig() for ${addr}: ${
+    return `Could not read bootstrapConfig() for ${contractAddr}: ${
       e instanceof Error ? e.message : String(e)
     }`;
   }
@@ -161,44 +193,41 @@ async function univocityChainBindingSkipReason(
       ? `0x${Buffer.from(boot.key).toString("hex")} (20-byte address)`
       : `${boot.key.length}-byte key`;
   return (
-    `Univocity ${addr} bootstrap is alg=${boot.alg} key=${keyDesc}; ` +
+    `Univocity ${contractAddr} bootstrap is alg=${boot.alg} key=${keyDesc}; ` +
     "expected ES256 (-7) with 64-byte x‖y or KS256 (-65799) with 20-byte address."
+  );
+}
+
+export async function es256ChainBindingSkipReason(
+  contractAddr?: string,
+): Promise<string | null> {
+  return univocityChainBindingSkipReason(
+    (contractAddr ?? es256BootstrapContractAddr()).trim(),
+    COSE_ALG_ES256,
+  );
+}
+
+export async function ks256ChainBindingSkipReason(
+  contractAddr?: string,
+): Promise<string | null> {
+  return univocityChainBindingSkipReason(
+    (contractAddr ?? ks256BootstrapContractAddr()).trim(),
+    COSE_ALG_KS256,
   );
 }
 
 /** Default Base Sepolia EIP-155 chain id. */
 export const DEFAULT_UNIVOCITY_CHAIN_ID = "84532";
 
-/**
- * Default fixed root log id (R) for the chain-binding scenario. Stable so the
- * genesis persists across runs; delete via `task cf:genesis:delete` to reset.
- */
+/** @deprecated Use {@link DEFAULT_UNIVOCITY_GENESIS_LOG_ID_KS256}. */
 export const DEFAULT_UNIVOCITY_GENESIS_LOG_ID =
-  E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID;
+  E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID_KS256;
 
-function hexToBytes(hex: string): Uint8Array {
-  const out = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < out.length; i++) {
-    out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return out;
-}
+export const DEFAULT_UNIVOCITY_GENESIS_LOG_ID_KS256 =
+  E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID_KS256;
 
-/** Parse `E2E_UNIVOCITY_CONTRACT_ADDR` (or default) into 20 address bytes. */
-export function univocityContractAddrBytes(): Uint8Array {
-  const raw = (
-    process.env.E2E_UNIVOCITY_CONTRACT_ADDR ?? DEFAULT_UNIVOCITY_CONTRACT_ADDR
-  )
-    .trim()
-    .toLowerCase()
-    .replace(/^0x/, "");
-  if (!/^[0-9a-f]{40}$/.test(raw)) {
-    throw new Error(
-      `E2E_UNIVOCITY_CONTRACT_ADDR must be a 20-byte (40 hex) address; got ${raw.length} hex chars`,
-    );
-  }
-  return hexToBytes(raw);
-}
+export const DEFAULT_UNIVOCITY_GENESIS_LOG_ID_ES256 =
+  E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID_ES256;
 
 /** `E2E_UNIVOCITY_CHAIN_ID` (or default Base Sepolia 84532). */
 export function univocityGenesisChainId(): string {
@@ -207,11 +236,25 @@ export function univocityGenesisChainId(): string {
   ).trim();
 }
 
-/** `E2E_UNIVOCITY_GENESIS_LOG_ID` (or default fixed UUID). */
-export function univocityGenesisLogId(): string {
+/** `E2E_UNIVOCITY_GENESIS_LOG_ID_KS256` (or KS256 static default). */
+export function ks256GenesisLogId(): string {
   return (
-    process.env.E2E_UNIVOCITY_GENESIS_LOG_ID ?? DEFAULT_UNIVOCITY_GENESIS_LOG_ID
+    process.env.E2E_UNIVOCITY_GENESIS_LOG_ID_KS256 ??
+    E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID_KS256
   ).trim();
+}
+
+/** `E2E_UNIVOCITY_GENESIS_LOG_ID_ES256` (or ES256 static default). */
+export function es256GenesisLogId(): string {
+  return (
+    process.env.E2E_UNIVOCITY_GENESIS_LOG_ID_ES256 ??
+    E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID_ES256
+  ).trim();
+}
+
+/** @deprecated Use {@link ks256GenesisLogId} or {@link es256GenesisLogId}. */
+export function univocityGenesisLogId(): string {
+  return ks256GenesisLogId();
 }
 
 export interface ParsedForestGenesisE2e {
@@ -231,6 +274,14 @@ function asBytes(v: unknown): Uint8Array | null {
   if (v instanceof ArrayBuffer) return new Uint8Array(v);
   if (Buffer.isBuffer(v)) return new Uint8Array(v);
   return null;
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
 }
 
 /**

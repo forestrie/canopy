@@ -8,13 +8,6 @@ import { encode as encodeCbor } from "cbor-x";
 import {
   COSE_ALG_ES256,
   COSE_ALG_KS256,
-  COSE_CRV_P256,
-  COSE_EC2_CRV,
-  COSE_EC2_X,
-  COSE_EC2_Y,
-  COSE_KEY_ALG,
-  COSE_KEY_KTY,
-  COSE_KTY_EC2,
 } from "../cose/cose-key.js";
 import {
   logIdToStorageSegment,
@@ -39,7 +32,6 @@ import {
   FOREST_GENESIS_LABEL_GENESIS_VERSION,
   FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
   FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS,
-  FOREST_GENESIS_SCHEMA_V1,
   FOREST_GENESIS_SCHEMA_V2,
 } from "./forest-genesis-labels.js";
 import {
@@ -73,18 +65,6 @@ function univocityGenesisClientFromEnv(
   if (!serviceUrl || !token) return undefined;
   return { serviceUrl, token };
 }
-
-const V1_COSE_KEYS = new Set([
-  COSE_KEY_KTY,
-  COSE_EC2_CRV,
-  COSE_EC2_X,
-  COSE_EC2_Y,
-  COSE_KEY_ALG,
-  FOREST_GENESIS_LABEL_GENESIS_VERSION,
-  FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID,
-  FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
-  FOREST_GENESIS_LABEL_CHAIN_ID,
-]);
 
 const V2_KEYS = new Set([
   FOREST_GENESIS_LABEL_GENESIS_VERSION,
@@ -139,43 +119,6 @@ function validateChainBinding(m: Map<number, unknown>):
     );
   }
   return { addr: addrRes, chainId };
-}
-
-function buildV1GenesisOut(
-  m: Map<number, unknown>,
-  paddedWire: Uint8Array,
-  binding: { addr: Uint8Array; chainId: string },
-): Map<number, unknown> | Response {
-  const kty = m.get(COSE_KEY_KTY);
-  const crv = m.get(COSE_EC2_CRV);
-  const x = asGenesisUint8Array(m.get(COSE_EC2_X));
-  const y = asGenesisUint8Array(m.get(COSE_EC2_Y));
-  if (kty !== COSE_KTY_EC2 || crv !== COSE_CRV_P256) {
-    return ClientErrors.badRequest("COSE_Key must use EC2 / P-256");
-  }
-  if (!x || x.length !== 32 || !y || y.length !== 32) {
-    return ClientErrors.badRequest("Invalid COSE EC2 coordinate lengths");
-  }
-  const alg = m.get(COSE_KEY_ALG);
-  if (alg !== undefined && alg !== COSE_ALG_ES256) {
-    return ClientErrors.badRequest("COSE alg must be ES256 (-7) if present");
-  }
-  for (const k of m.keys()) {
-    if (!V1_COSE_KEYS.has(k)) {
-      return ClientErrors.badRequest(`Unknown genesis map key ${k}`);
-    }
-  }
-  const out = new Map<number, unknown>();
-  out.set(COSE_KEY_KTY, COSE_KTY_EC2);
-  out.set(COSE_EC2_CRV, COSE_CRV_P256);
-  out.set(COSE_EC2_X, x);
-  out.set(COSE_EC2_Y, y);
-  out.set(COSE_KEY_ALG, COSE_ALG_ES256);
-  out.set(FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V1);
-  out.set(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID, paddedWire);
-  out.set(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, binding.addr);
-  out.set(FOREST_GENESIS_LABEL_CHAIN_ID, binding.chainId);
-  return out;
 }
 
 function buildV2GenesisOut(
@@ -260,11 +203,8 @@ export async function postForestGenesis(
   }
 
   const version = m.get(FOREST_GENESIS_LABEL_GENESIS_VERSION);
-  if (
-    version !== FOREST_GENESIS_SCHEMA_V1 &&
-    version !== FOREST_GENESIS_SCHEMA_V2
-  ) {
-    return ClientErrors.badRequest("genesis-version must be 1 or 2 (-68009)");
+  if (version !== FOREST_GENESIS_SCHEMA_V2) {
+    return ClientErrors.badRequest("genesis-version must be 2 (-68009)");
   }
 
   const bootErr = validateBootstrapLogId(m, paddedWire);
@@ -273,12 +213,7 @@ export async function postForestGenesis(
   const binding = validateChainBinding(m);
   if (binding instanceof Response) return binding;
 
-  let out: Map<number, unknown> | Response;
-  if (version === FOREST_GENESIS_SCHEMA_V1) {
-    out = buildV1GenesisOut(m, paddedWire, binding);
-  } else {
-    out = buildV2GenesisOut(m, paddedWire, binding);
-  }
+  const out = buildV2GenesisOut(m, paddedWire, binding);
   if (out instanceof Response) return out;
 
   const storageSeg = logIdToStorageSegment(logId);

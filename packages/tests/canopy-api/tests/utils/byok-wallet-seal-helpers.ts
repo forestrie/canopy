@@ -8,7 +8,11 @@ import {
   HEADER_FORESTRIE_GRANT_V0,
   HEADER_IDTIMESTAMP,
 } from "@e2e-canopy-api-src/grant/transparent-statement.js";
-import { ensureForestGenesisE2e } from "./forest-genesis-e2e.js";
+import { ensureForestGenesisEs256E2e } from "./forest-genesis-e2e.js";
+import {
+  FOREST_GENESIS_E2E_DUMMY_CHAIN_ID,
+  FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR,
+} from "@e2e-canopy-api-src/forest/forest-genesis-labels.js";
 import {
   buildByokDelegationMaterial,
   bytesToBase64,
@@ -98,16 +102,16 @@ export async function mintByokBootstrapGrant(opts: {
   rootKeyPair: CryptoKeyPair;
 }): Promise<{ grantBase64: string; grantData: Uint8Array }> {
   const { x, y } = await exportEs256RootXy(opts.rootKeyPair);
-  await ensureForestGenesisE2e(opts.request, {
-    logId: opts.rootLogId,
-    curatorToken: opts.curatorToken,
-    x,
-    y,
-  });
-
   const grantData = new Uint8Array(64);
   grantData.set(x, 0);
   grantData.set(y, 32);
+  await ensureForestGenesisEs256E2e(opts.request, {
+    logId: opts.rootLogId,
+    curatorToken: opts.curatorToken,
+    bootstrapKey: grantData,
+    univocityAddr: FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR,
+    chainId: FOREST_GENESIS_E2E_DUMMY_CHAIN_ID,
+  });
   const grantBitmap = new Uint8Array(8);
   grantBitmap[4] = 0x03;
   grantBitmap[7] = 0x01;

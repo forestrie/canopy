@@ -12,7 +12,13 @@ import {
   postCustodianSignGrantPayload,
   publicKeyPemToUncompressed65,
 } from "@e2e-canopy-api-src/scrapi/custodian-grant.js";
-import { ensureForestGenesisE2e } from "./forest-genesis-e2e.js";
+import {
+  ensureForestGenesisEs256E2e,
+} from "./forest-genesis-e2e.js";
+import {
+  FOREST_GENESIS_E2E_DUMMY_CHAIN_ID,
+  FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR,
+} from "@e2e-canopy-api-src/forest/forest-genesis-labels.js";
 import {
   custodianKmsCryptoKeyIdFromLogUuid,
   postCustodianEnsureEs256Key,
@@ -37,10 +43,14 @@ export async function mintTransparentBootstrapGrantBase64(opts: {
   curatorToken: string;
   custodianUrl: string;
   custodianAppToken: string;
-  /** Optional real chain binding for the genesis (defaults to e2e dummy). */
+  /** Optional real chain binding (defaults to KS256 contract + Base Sepolia). */
   univocityAddr?: Uint8Array;
   chainId?: string;
 }): Promise<{ grantBase64: string; rootCustodySignKeyId: string }> {
+  const univocityAddr =
+    opts.univocityAddr ?? FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR;
+  const chainId = opts.chainId ?? FOREST_GENESIS_E2E_DUMMY_CHAIN_ID;
+
   const { keyId, publicKeyPem } = await postCustodianEnsureEs256Key({
     baseUrl: opts.custodianUrl,
     appToken: opts.custodianAppToken,
@@ -50,18 +60,16 @@ export async function mintTransparentBootstrapGrantBase64(opts: {
   const kmsSegment = keyId.split("/cryptoKeys/").pop() ?? keyId;
 
   const uncompressed = publicKeyPemToUncompressed65(publicKeyPem);
-  const x = uncompressed.subarray(1, 33);
-  const y = uncompressed.subarray(33, 65);
-  await ensureForestGenesisE2e(opts.request, {
+  const grantData = publicKeyToGrantData64(uncompressed);
+  // Bootstrap register-grant verifies the grant against genesis bootstrapKey (ES256
+  // x‖y from this Custodian key). Chain binding uses the real KS256 contract address.
+  await ensureForestGenesisEs256E2e(opts.request, {
     logId: opts.rootLogId,
     curatorToken: opts.curatorToken,
-    x,
-    y,
-    univocityAddr: opts.univocityAddr,
-    chainId: opts.chainId,
+    bootstrapKey: grantData,
+    univocityAddr,
+    chainId,
   });
-
-  const grantData = publicKeyToGrantData64(uncompressed);
   const id16 = uuidToBytes(opts.rootLogId);
   const grantBitmap = new Uint8Array(8);
   grantBitmap[4] = 0x03;

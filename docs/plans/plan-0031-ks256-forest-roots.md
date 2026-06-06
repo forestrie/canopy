@@ -79,8 +79,11 @@ pnpm --filter @canopy/delegation-coordinator test
 
 KS256 chain-binding e2e against the Base Sepolia Safe deployment at
 `0x7A4E8ad88D6Df29FEBEc0d546d148Ed4bea8Cb94` (genesis v2 POST + on-chain
-`bootstrapConfig()` read). Set **`E2E_UNIVOCITY_CONTRACT_ADDR`** in Doppler
-**`canopy/dev`** (sync to GitHub **`dev`** vars for CI).
+`bootstrapConfig()` read). Set **`E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP`** and
+**`E2E_UNIVOCITY_GENESIS_LOG_ID_KS256`** in Doppler **`canopy/dev`** (sync to GitHub
+**`dev`** vars for CI). ES256 chain-binding uses
+**`E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP`** / **`E2E_UNIVOCITY_GENESIS_LOG_ID_ES256`**
+(see [univocity plan-0032](../../univocity/docs/plans/plan-0032-es256-immutable-deploy.md)).
 
 ```sh
 pnpm install

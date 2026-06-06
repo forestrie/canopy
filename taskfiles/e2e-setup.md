@@ -51,12 +51,14 @@ Required keys in the Doppler config include at least:
 
 **Univocity genesis chain-binding** (`tests/system/univocity-genesis-*-chain-binding.spec.ts`):
 
-- **`E2E_UNIVOCITY_CONTRACT_ADDR`** — ImutableUnivocity on Base Sepolia (default in code:
+- **`E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP`** — KS256 ImutableUnivocity on Base Sepolia (default
   `0x7A4E8ad88D6Df29FEBEc0d546d148Ed4bea8Cb94`). Set in Doppler **`canopy/dev`** and sync to GitHub **`dev`** Environment **`vars`** for CI.
+- **`E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP`** — ES256 ImutableUnivocity (default
+  `0xb5906A91eF30dA435Ff13d27619Bc6F76282d19D`).
 - **`E2E_UNIVOCITY_RPC_URL`** — optional; default `https://sepolia.base.org` (runner reads `bootstrapConfig()`).
 - **`E2E_UNIVOCITY_CHAIN_ID`** — optional; default `84532`.
-- **`E2E_UNIVOCITY_GENESIS_LOG_ID`** — optional; default static UUID in
-  `tests/utils/e2e-static-log-ids.ts` (`7a4e8ad8-…`, mnemonic for the new contract).
+- **`E2E_UNIVOCITY_GENESIS_LOG_ID_KS256`** — optional; default `7a4e8ad8-…` in `e2e-static-log-ids.ts`.
+- **`E2E_UNIVOCITY_GENESIS_LOG_ID_ES256`** — optional; default `b5906a91-…` in `e2e-static-log-ids.ts`.
 - **`CURATOR_ADMIN_TOKEN`** — required (POST `/api/forest/{log-id}/genesis`).
 - Reset persisted genesis: `task cf:genesis:delete LOG_ID=<uuid>` (see spec comments).
 

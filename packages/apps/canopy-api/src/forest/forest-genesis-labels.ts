@@ -3,13 +3,13 @@
  * Standard COSE_Key map keys live in `cose/cose-key.ts`; Forestrie Sign1 uses -65538 elsewhere.
  */
 
-/** `genesis-version`: uint; v1 is the only supported write schema today. */
+/** `genesis-version`: uint; v2 is the only supported write schema today. */
 export const FOREST_GENESIS_LABEL_GENESIS_VERSION = -68009;
 
 /** `bootstrap-logid`: bstr 32, same wire as grant CBOR key 1. */
 export const FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID = -68010;
 
-/** `univocity-addr`: bstr 20 (required on v1 POST). */
+/** `univocity-addr`: bstr 20 (required on v2 POST). */
 export const FOREST_GENESIS_LABEL_UNIVOCITY_ADDR = -68011;
 
 /**
@@ -18,7 +18,7 @@ export const FOREST_GENESIS_LABEL_UNIVOCITY_ADDR = -68011;
  */
 export const FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS = -68012;
 
-/** `chain-id`: tstr decimal EIP-155 id (required on v1 POST). */
+/** `chain-id`: tstr decimal EIP-155 id (required on v2 POST). */
 export const FOREST_GENESIS_LABEL_CHAIN_ID = -68013;
 
 /** `genesisAlg`: int COSE alg (-7 ES256 or -65799 KS256); v2 POST. */

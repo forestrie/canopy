@@ -1,79 +1,38 @@
 /**
- * POST /api/forest/{log-id}/genesis from Playwright (Plan 0018 / 0019 / 0028).
+ * POST /api/forest/{log-id}/genesis from Playwright (Plan 0018 / 0028 / 0032).
  */
 
 import { encode as encodeCbor } from "cbor-x";
 import type { APIRequestContext } from "@playwright/test";
 import {
-  FOREST_GENESIS_E2E_DUMMY_CHAIN_ID,
-  FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR,
   FOREST_GENESIS_LABEL_CHAIN_ID,
   FOREST_GENESIS_LABEL_GENESIS_ALG,
   FOREST_GENESIS_LABEL_BOOTSTRAP_KEY,
   FOREST_GENESIS_LABEL_GENESIS_VERSION,
   FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
-  FOREST_GENESIS_SCHEMA_V1,
   FOREST_GENESIS_SCHEMA_V2,
 } from "@e2e-canopy-api-src/forest/forest-genesis-labels.js";
 import {
   COSE_ALG_ES256,
   COSE_ALG_KS256,
-  COSE_CRV_P256,
-  COSE_EC2_CRV,
-  COSE_EC2_X,
-  COSE_EC2_Y,
-  COSE_KEY_ALG,
-  COSE_KEY_KTY,
-  COSE_KTY_EC2,
 } from "@e2e-canopy-api-src/cose/cose-key.js";
 
-export {
-  FOREST_GENESIS_E2E_DUMMY_CHAIN_ID,
-  FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR,
-};
-
-/**
- * Store forest genesis for e2e. Idempotent: **409** (already exists) is OK.
- */
-export async function ensureForestGenesisE2e(
+async function postGenesisWithRetry(
   request: APIRequestContext,
-  opts: {
-    logId: string;
-    curatorToken: string;
-    x: Uint8Array;
-    y: Uint8Array;
-    univocityAddr?: Uint8Array;
-    chainId?: string;
-  },
+  logId: string,
+  curatorToken: string,
+  body: Uint8Array,
+  label: string,
 ): Promise<void> {
-  const map = new Map<number, unknown>([
-    [COSE_KEY_KTY, COSE_KTY_EC2],
-    [COSE_EC2_CRV, COSE_CRV_P256],
-    [COSE_EC2_X, opts.x],
-    [COSE_EC2_Y, opts.y],
-    [COSE_KEY_ALG, COSE_ALG_ES256],
-    [FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V1],
-    [
-      FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
-      opts.univocityAddr ?? FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR,
-    ],
-    [
-      FOREST_GENESIS_LABEL_CHAIN_ID,
-      opts.chainId ?? FOREST_GENESIS_E2E_DUMMY_CHAIN_ID,
-    ],
-  ]);
-  const body = encodeCbor(map) as Uint8Array;
   const headers = {
-    Authorization: `Bearer ${opts.curatorToken}`,
+    Authorization: `Bearer ${curatorToken}`,
     "Content-Type": "application/cbor",
   };
-
-  // Worker→univocity genesis forward can transiently 502 at Traefik; backoff and retry.
   const maxAttempts = 6;
   let lastStatus = 0;
   let lastBody = "";
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const res = await request.post(`/api/forest/${opts.logId}/genesis`, {
+    const res = await request.post(`/api/forest/${logId}/genesis`, {
       headers,
       data: Buffer.from(body),
     });
@@ -91,7 +50,7 @@ export async function ensureForestGenesisE2e(
     break;
   }
   throw new Error(
-    `genesis POST for ${opts.logId}: expected 201 or 409, got ${lastStatus}: ${lastBody}`,
+    `${label} genesis POST for ${logId}: expected 201 or 409, got ${lastStatus}: ${lastBody}`,
   );
 }
 
@@ -102,8 +61,8 @@ export async function ensureForestGenesisKs256E2e(
     logId: string;
     curatorToken: string;
     ks256Address: Uint8Array;
-    univocityAddr?: Uint8Array;
-    chainId?: string;
+    univocityAddr: Uint8Array;
+    chainId: string;
   },
 ): Promise<void> {
   if (opts.ks256Address.length !== 20) {
@@ -113,42 +72,46 @@ export async function ensureForestGenesisKs256E2e(
     [FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V2],
     [FOREST_GENESIS_LABEL_GENESIS_ALG, COSE_ALG_KS256],
     [FOREST_GENESIS_LABEL_BOOTSTRAP_KEY, opts.ks256Address],
-    [
-      FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
-      opts.univocityAddr ?? FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR,
-    ],
-    [
-      FOREST_GENESIS_LABEL_CHAIN_ID,
-      opts.chainId ?? FOREST_GENESIS_E2E_DUMMY_CHAIN_ID,
-    ],
+    [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, opts.univocityAddr],
+    [FOREST_GENESIS_LABEL_CHAIN_ID, opts.chainId],
   ]);
   const body = encodeCbor(map) as Uint8Array;
-  const headers = {
-    Authorization: `Bearer ${opts.curatorToken}`,
-    "Content-Type": "application/cbor",
-  };
-  const maxAttempts = 6;
-  let lastStatus = 0;
-  let lastBody = "";
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const res = await request.post(`/api/forest/${opts.logId}/genesis`, {
-      headers,
-      data: Buffer.from(body),
-    });
-    lastStatus = res.status();
-    if (lastStatus === 201 || lastStatus === 409) return;
-    lastBody = (await res.text()).slice(0, 500);
-    const transient =
-      lastStatus >= 500 ||
-      (lastStatus === 503 &&
-        lastBody.includes("univocity genesis returned 502"));
-    if (attempt < maxAttempts && transient) {
-      await new Promise((r) => setTimeout(r, 2000));
-      continue;
-    }
-    break;
+  await postGenesisWithRetry(
+    request,
+    opts.logId,
+    opts.curatorToken,
+    body,
+    "KS256",
+  );
+}
+
+/** Store ES256 forest genesis (v2 alg + 64-byte x‖y bootstrapKey). Idempotent. */
+export async function ensureForestGenesisEs256E2e(
+  request: APIRequestContext,
+  opts: {
+    logId: string;
+    curatorToken: string;
+    bootstrapKey: Uint8Array;
+    univocityAddr: Uint8Array;
+    chainId: string;
+  },
+): Promise<void> {
+  if (opts.bootstrapKey.length !== 64) {
+    throw new Error("ES256 bootstrapKey must be 64 bytes (x||y)");
   }
-  throw new Error(
-    `KS256 genesis POST for ${opts.logId}: expected 201 or 409, got ${lastStatus}: ${lastBody}`,
+  const map = new Map<number, unknown>([
+    [FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V2],
+    [FOREST_GENESIS_LABEL_GENESIS_ALG, COSE_ALG_ES256],
+    [FOREST_GENESIS_LABEL_BOOTSTRAP_KEY, opts.bootstrapKey],
+    [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, opts.univocityAddr],
+    [FOREST_GENESIS_LABEL_CHAIN_ID, opts.chainId],
+  ]);
+  const body = encodeCbor(map) as Uint8Array;
+  await postGenesisWithRetry(
+    request,
+    opts.logId,
+    opts.curatorToken,
+    body,
+    "ES256",
   );
 }

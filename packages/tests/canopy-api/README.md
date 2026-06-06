@@ -104,13 +104,15 @@ Other keys:
 
 - **`SCRAPI_API_KEY`**: Bearer for authorized fixtures (optional for specs that use `unauthorizedRequest` only).
 
-**Univocity genesis chain-binding** (`tests/system/univocity-genesis-chain-binding.spec.ts` ES256 skip gate;
-`tests/system/univocity-genesis-ks256-chain-binding.spec.ts` KS256 default):
+**Univocity genesis chain-binding** (`tests/system/univocity-genesis-chain-binding.spec.ts` ES256;
+`tests/system/univocity-genesis-ks256-chain-binding.spec.ts` KS256):
 
-- **`E2E_UNIVOCITY_CONTRACT_ADDR`**: ImutableUnivocity address (Doppler **`canopy/dev`**; CI **`vars.E2E_UNIVOCITY_CONTRACT_ADDR`**). Code default: `0x7A4E8ad88D6Df29FEBEc0d546d148Ed4bea8Cb94`.
+- **`E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP`**: KS256 ImutableUnivocity (Doppler **`canopy/dev`**; CI **`vars`**). Default: `0x7A4E8ad88D6Df29FEBEc0d546d148Ed4bea8Cb94`.
+- **`E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP`**: ES256 ImutableUnivocity. Default: `0xb5906A91eF30dA435Ff13d27619Bc6F76282d19D`.
 - **`E2E_UNIVOCITY_RPC_URL`**: optional RPC for runner `bootstrapConfig()` eth_call (default Base Sepolia).
 - **`E2E_UNIVOCITY_CHAIN_ID`**: optional EIP-155 id (default `84532`).
-- **`E2E_UNIVOCITY_GENESIS_LOG_ID`**: optional forest log UUID (default `E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID`).
+- **`E2E_UNIVOCITY_GENESIS_LOG_ID_KS256`**: optional KS256 forest log UUID (default `E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID_KS256`).
+- **`E2E_UNIVOCITY_GENESIS_LOG_ID_ES256`**: optional ES256 forest log UUID (default `E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID_ES256`).
 - **`CURATOR_ADMIN_TOKEN`**: POST genesis (same as other system bootstrap specs).
 - Static log id reset: `task cf:genesis:delete LOG_ID=<R>`.
 
