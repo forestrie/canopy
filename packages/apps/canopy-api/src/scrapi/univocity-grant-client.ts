@@ -42,11 +42,11 @@ export type UnivocityGrantResult =
  */
 export interface CreationGrantValidator {
   /**
-   * @param rootWire 32-byte forest root `R` (bootstrap-logid wire bytes).
+   * @param rootLogId 16-byte forest root `R` (bootstrap log id).
    * @param statementBytes raw transparent statement (COSE Sign1) credential.
    */
   validate(
-    rootWire: Uint8Array,
+    rootLogId: Uint8Array,
     statementBytes: Uint8Array,
   ): Promise<UnivocityGrantResult>;
 }
@@ -56,8 +56,8 @@ export function createUnivocityGrantValidator(
   client: UnivocityGrantClient,
 ): CreationGrantValidator {
   return {
-    validate: (rootWire, statementBytes) =>
-      postCreationGrantToUnivocity(client, rootWire, statementBytes),
+    validate: (rootLogId, statementBytes) =>
+      postCreationGrantToUnivocity(client, rootLogId, statementBytes),
   };
 }
 
@@ -78,16 +78,16 @@ async function readProblemDetail(res: Response): Promise<string> {
  * Posts a creation grant to univocity for authoritative validation + storage.
  *
  * @param client univocity service URL + bearer token.
- * @param rootWire 32-byte forest root `R` (bootstrap-logid wire bytes).
+ * @param rootLogId 16-byte forest root `R` (bootstrap log id).
  * @param statementBytes raw transparent statement (COSE Sign1) credential.
  */
 export async function postCreationGrantToUnivocity(
   client: UnivocityGrantClient,
-  rootWire: Uint8Array,
+  rootLogId: Uint8Array,
   statementBytes: Uint8Array,
 ): Promise<UnivocityGrantResult> {
   const body = encodeCbor({
-    rootLogId: rootWire,
+    rootLogId,
     statement: statementBytes,
   }) as Uint8Array;
 

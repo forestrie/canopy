@@ -1,6 +1,9 @@
 import { expectAPI as expect, test } from "@e2e-fixtures/auth";
 import { bytesEqual } from "@e2e-canopy-api-src/cbor-api/cbor-map-utils.js";
-import { logIdToWireBytes } from "@e2e-canopy-api-src/grant/log-id-wire.js";
+import {
+  logIdToWireBytes,
+  toPaddedWire32,
+} from "@e2e-canopy-api-src/grant/log-id-wire.js";
 import { publicKeyPemToUncompressed65 } from "@e2e-canopy-api-src/scrapi/custodian-grant.js";
 import { assertBootstrapMintE2eEnv } from "@e2e-utils/e2e-env-guards";
 import {
@@ -83,8 +86,11 @@ test.describe("Univocity genesis chain binding (Base Sepolia)", () => {
       "univocity-addr is a 20-byte address",
     ).toBe(20);
     expect(
-      bytesEqual(parsed.bootstrapLogId, logIdToWireBytes(rootLogId)),
-      "stored bootstrap-logid equals wire(R)",
+      bytesEqual(
+        parsed.bootstrapLogId,
+        toPaddedWire32(logIdToWireBytes(rootLogId)),
+      ),
+      "stored bootstrap-logid equals padded wire(R)",
     ).toBe(true);
     expect(parsed.x.length, "COSE x is 32 bytes").toBe(32);
     expect(parsed.y.length, "COSE y is 32 bytes").toBe(32);

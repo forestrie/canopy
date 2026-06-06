@@ -11,7 +11,7 @@ Related:
 
 ## Summary
 
-Per–log administration under `/api/forest/**` with deployment checks that do **not** require `ROOT_LOG_ID` for those routes. Step 1 adds **POST `/api/forest/{log-id}/genesis`**, which writes a **COSE_Key**-shaped CBOR document (plus Forestrie private labels) to **R2_GRANTS** at `forest/{wire-log-id-hex64}/genesis.cbor`.
+Per–log administration under `/api/forest/**` with deployment checks that do **not** require `ROOT_LOG_ID` for those routes. Step 1 adds **POST `/api/forest/{log-id}/genesis`**, which writes a **COSE_Key**-shaped CBOR document (plus Forestrie private labels) to **R2_GRANTS** at `forests/forest/{uuid}/genesis.cbor` (see [plan-0030](plan-0030-forests-storage-and-uuid-logid.md)).
 
 ## Prerequisites by route (`checkRequestEnv`)
 

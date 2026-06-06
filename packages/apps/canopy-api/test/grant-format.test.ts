@@ -47,8 +47,8 @@ describe("Grant format (encode/decode)", () => {
     expect(bytes.length).toBeGreaterThan(0);
     const { grant: decoded, idtimestamp: decodedIdts } =
       decodeGrantResponse(bytes);
-    expect(decoded.logId.length).toBe(32);
-    expect(decoded.ownerLogId.length).toBe(32);
+    expect(decoded.logId.length).toBe(16);
+    expect(decoded.ownerLogId.length).toBe(16);
     expect(decoded.grant.length).toBe(8);
     expect(new Uint8Array(decodedIdts)).toEqual(new Uint8Array(idtimestamp));
     expect(decoded.maxHeight).toBe(0);

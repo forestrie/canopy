@@ -10,19 +10,10 @@
 
 import { grantDataToBytes } from "./grant-data.js";
 import type { Grant } from "./grant.js";
+import { toPaddedWire32 } from "./uuid-bytes.js";
 
-const LOG_ID_BYTES = 32;
 const GRANT_FLAGS_32_BYTES = 32;
 const U64_BYTES = 8;
-
-function leftPad(b: Uint8Array, length: number): Uint8Array {
-  if (b.length >= length) {
-    return b.length === length ? b : b.slice(-length);
-  }
-  const out = new Uint8Array(length);
-  out.set(b, length - b.length);
-  return out;
-}
 
 function u64Be(n: number): Uint8Array {
   const out = new Uint8Array(U64_BYTES);
@@ -50,11 +41,11 @@ function grantFlags32(flags: Uint8Array): Uint8Array {
  * grant commitment hash for grant-sequencing. Matches contract formula.
  */
 function grantCommitmentPreimage(grant: Grant): Uint8Array {
-  const logId = leftPad(grant.logId as Uint8Array, LOG_ID_BYTES);
+  const logId = toPaddedWire32(grant.logId as Uint8Array);
   const flags32 = grantFlags32(grant.grant as Uint8Array);
   const maxHeight = grant.maxHeight ?? 0;
   const minGrowth = grant.minGrowth ?? 0;
-  const ownerLogId = leftPad(grant.ownerLogId as Uint8Array, LOG_ID_BYTES);
+  const ownerLogId = toPaddedWire32(grant.ownerLogId as Uint8Array);
   const grantData = grantDataToBytes(grant.grantData ?? new Uint8Array(0));
 
   const total =

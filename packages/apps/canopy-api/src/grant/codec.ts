@@ -10,6 +10,7 @@
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 import type { Grant } from "./grant.js";
 import { grantDataToBytes } from "./grant-data.js";
+import { fromPaddedWire32, toPaddedWire32 } from "./uuid-bytes.js";
 
 const CBOR_KEY_IDTIMESTAMP = 0;
 const CBOR_KEY_LOG_ID = 1;
@@ -57,14 +58,8 @@ export function encodeGrantForResponse(
     idtimestamp.length === IDTIMESTAMP_BYTES
       ? idtimestamp
       : leftPad(idtimestamp, IDTIMESTAMP_BYTES);
-  const logId32 = leftPad(
-    grant.logId as Uint8Array,
-    WIRE_LOG_ID_OWNER_LOG_ID_BYTES,
-  );
-  const ownerLogId32 = leftPad(
-    grant.ownerLogId as Uint8Array,
-    WIRE_LOG_ID_OWNER_LOG_ID_BYTES,
-  );
+  const logId32 = toPaddedWire32(grant.logId as Uint8Array);
+  const ownerLogId32 = toPaddedWire32(grant.ownerLogId as Uint8Array);
   const flags8 = leftPad(grant.grant as Uint8Array, WIRE_GRANT_FLAGS_BYTES);
   const maxHeight = grant.maxHeight ?? 0;
   const minGrowth = grant.minGrowth ?? 0;
@@ -133,14 +128,8 @@ export function decodeGrantResponse(bytes: Uint8Array): {
  * Encode grant as payload only (CBOR map keys 1–6, no idtimestamp).
  */
 export function encodeGrantPayload(grant: Grant): Uint8Array {
-  const logId32 = leftPad(
-    grant.logId as Uint8Array,
-    WIRE_LOG_ID_OWNER_LOG_ID_BYTES,
-  );
-  const ownerLogId32 = leftPad(
-    grant.ownerLogId as Uint8Array,
-    WIRE_LOG_ID_OWNER_LOG_ID_BYTES,
-  );
+  const logId32 = toPaddedWire32(grant.logId as Uint8Array);
+  const ownerLogId32 = toPaddedWire32(grant.ownerLogId as Uint8Array);
   const flags8 = leftPad(grant.grant as Uint8Array, WIRE_GRANT_FLAGS_BYTES);
   const grantData = grantDataToBytes(grant.grantData ?? new Uint8Array(0));
   const map = new Map<number, unknown>([
@@ -181,14 +170,8 @@ function mapToGrant(m: Map<number, unknown> | Record<number, unknown>): Grant {
     throw new Error("Grant payload: expected uint");
   };
 
-  const logId = leftPad(
-    requireBstr(get(CBOR_KEY_LOG_ID)),
-    WIRE_LOG_ID_OWNER_LOG_ID_BYTES,
-  );
-  const ownerLogId = leftPad(
-    requireBstr(get(CBOR_KEY_OWNER_LOG_ID)),
-    WIRE_LOG_ID_OWNER_LOG_ID_BYTES,
-  );
+  const logId = fromPaddedWire32(requireBstr(get(CBOR_KEY_LOG_ID)));
+  const ownerLogId = fromPaddedWire32(requireBstr(get(CBOR_KEY_OWNER_LOG_ID)));
   const grant = leftPad(
     requireBstr(get(CBOR_KEY_GRANT_FLAGS)),
     WIRE_GRANT_FLAGS_BYTES,

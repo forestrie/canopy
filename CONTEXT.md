@@ -15,9 +15,14 @@ The first authority log in a forest. Its bootstrap grant has `ownerLogId === log
 After on-chain bootstrap, `R` matches Univocity `rootLogId` / `authorityLogId`.
 _Avoid_: bootstrap log alone (conflicts with bootstrap grant or bootstrap transaction).
 
+**Log ID**:
+16-byte UUID — canonical off-chain identity for a transparency or authority log.
+_Avoid_: wire log id, hex64, padded path segment.
+
 **Forest genesis document**:
-Curator-written CBOR stored at `forest/{hex64(R)}/genesis.cbor` in `R2_GRANTS`.
-Binds `R`, the root trust-anchor public key, and Univocity chain binding.
+Curator-written CBOR stored at `forests/forest/{uuid-R}/genesis.cbor` in
+`R2_GRANTS`. Binds `R`, the root trust-anchor public key, and Univocity chain
+binding.
 _Avoid_: genesis grant, on-chain genesis.
 
 **Chain binding**:
@@ -78,3 +83,5 @@ grant is the first leaf on `R`'s authority MMR.
 - [plan-0029](docs/plans/plan-0029-delegate-grant-validation-to-univocity.md) — delegate grant validation + genesis to univocity
 - [ADR-0004](docs/adr-0004-forest-genesis-chain-binding-required.md) — POST requires chain binding; read accepts v0/v1
 - [arbor plan-0008](../arbor/docs/plan-0008-univocity-grant-store-and-authority-resolver.md) — univocity owned store + resolver
+- [plan-0030](docs/plans/plan-0030-forests-storage-and-uuid-logid.md) — forests layout + UUID log IDs
+- [arbor ADR-0004](../arbor/docs/adr/adr-0004-forests-storage-and-uuid-log-ids.md)

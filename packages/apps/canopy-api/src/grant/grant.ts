@@ -15,7 +15,7 @@ import type { GrantData } from "./grant-data.js";
  * form; preimage pads to 32 bytes). `request` is not included in the grant commitment preimage.
  */
 export interface Grant {
-  /** Target log id (32-byte wire). */
+  /** Target log id (16-byte UUID). */
   logId: Uint8Array;
   /** Grant flags `uint256` / 8-byte wire bitmap (GF_*). */
   grant: Uint8Array;
@@ -23,7 +23,7 @@ export interface Grant {
   request?: bigint;
   maxHeight?: number;
   minGrowth?: number;
-  /** Owner (authority) log id (32-byte wire). */
+  /** Owner (authority) log id (16-byte UUID). */
   ownerLogId: Uint8Array;
   /** Opaque committed bytes, or a structured {@link GrantData} until normalized. */
   grantData: Uint8Array | GrantData;

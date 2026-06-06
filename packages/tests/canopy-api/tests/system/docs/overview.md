@@ -62,8 +62,9 @@ Bootstrap / root log R          ownerLogId = logId = R
 
 **Trust anchors**
 
-- **Genesis** (`POST /api/forest/{R}/genesis`, curator token) → stored in R2_GRANTS;
-  bootstrap grants must match `grantData` x‖y to genesis.
+- **Genesis** (`POST /api/forest/{R}/genesis`, curator token) → stored in R2_GRANTS
+  at `forests/forest/{uuid-R}/genesis.cbor`; bootstrap grants must match
+  `grantData` x‖y to genesis.
 - **Completed grant** = transparent grant + SCITT receipt + idtimestamp (after
   first successful register-grant poll).
 - **Receipt branch** (log MMRS-hot): register-grant / entries require valid

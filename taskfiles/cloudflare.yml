@@ -301,13 +301,13 @@ tasks:
             --prefix "{{.PREFIX}}" || echo "Notification may already be configured"
 
   genesis:delete:
-    desc: Delete a forest genesis doc from R2_GRANTS (DESTRUCTIVE!) — LOG_ID=<uuid|64-hex>
+    desc: Delete a forest genesis doc from R2_GRANTS (DESTRUCTIVE!) — LOG_ID=<uuid|32-hex>
     requires:
       vars: [LOG_ID]
     cmds:
       - cmd: |
           set -euo pipefail
-          HEX64=$(
+          UUID=$(
             LOG_ID="{{.LOG_ID}}" python3 <<'PY'
           import os, re, sys
           raw = os.environ["LOG_ID"].strip().lower()
@@ -315,15 +315,15 @@ tasks:
               raw = raw[2:]
           raw = raw.replace("-", "")
           if not re.fullmatch(r"[0-9a-f]+", raw or ""):
-              sys.exit(f"LOG_ID must be hex (uuid or 64-hex); got {raw!r}")
-          if len(raw) == 32:
-              raw = "0" * 32 + raw
-          if len(raw) != 64:
-              sys.exit(f"LOG_ID must resolve to 32 or 64 hex chars; got {len(raw)}")
-          print(raw)
+              sys.exit(f"LOG_ID must be hex (uuid or 32-hex); got {raw!r}")
+          if len(raw) == 64:
+              raw = raw[-32:]
+          if len(raw) != 32:
+              sys.exit(f"LOG_ID must resolve to 32 hex chars; got {len(raw)}")
+          print(f"{raw[0:8]}-{raw[8:12]}-{raw[12:16]}-{raw[16:20]}-{raw[20:32]}")
           PY
           )
-          KEY="forest/${HEX64}/genesis.cbor"
+          KEY="forests/forest/${UUID}/genesis.cbor"
           echo "Deleting ${KEY} from {{.R2_BUCKET_NAME_GRANTS}}"
           yes n | wrangler r2 object delete "{{.R2_BUCKET_NAME_GRANTS}}" "${KEY}"
 

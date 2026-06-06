@@ -51,11 +51,12 @@ root key instead.
 ### Genesis (`src/forest/post-genesis.ts`, `get-forest-genesis.ts`)
 
 - `POST /api/forest/{R}/genesis` forwards the canonical v1 genesis CBOR to
-  univocity `POST /api/forest/{R}/genesis` (curator token → univocity token).
+  univocity `POST /api/forest/{uuid-R}/genesis` (curator token → univocity token).
   Univocity anchors `genesis.key == bootstrapConfig()`; canopy maps `409 → conflict`,
-  `4xx → 400`, transient → `503`. Canopy keeps a local R2 copy that is
-  authoritative for reads until the subject log's first checkpoint; after that it
-  may be expired (there is no long-term backup/recovery requirement for it).
+  `4xx → 400`, transient → `503`. Canopy keeps a local R2 copy at
+  `forests/forest/{uuid-R}/genesis.cbor` that is authoritative for reads until the
+  subject log's first checkpoint; after that it may be expired (there is no
+  long-term backup/recovery requirement for it).
 - `GET /api/forest/{R}/genesis` falls back to univocity on an R2 miss (i.e. once
   the local copy has been expired).
 

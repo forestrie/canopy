@@ -3,6 +3,10 @@
  */
 
 import {
+  logIdToStorageSegment,
+  parseLogIdSegment,
+} from "../grant/log-id-wire.js";
+import {
   fetchCustodianPublicKey,
   importEs256PublicKeyFromGrantDataXy64,
   importSpkiPemVerifyKeyWithAlg,
@@ -37,6 +41,11 @@ interface CborTrustRootResponse {
  * Bearer token, decoding the `{ logId, alg, x, y }` CBOR `TrustRootResponse`.
  * Shared by the coordinator and univocity authority resolvers (same wire shape).
  */
+/** Canonical dashed UUID for univocity/coordinator `/api/logs/{id}/…` paths. */
+function ownerLogIdToApiSegment(ownerLogIdLowerHex32: string): string {
+  return logIdToStorageSegment(parseLogIdSegment(ownerLogIdLowerHex32));
+}
+
 function createBearerCborTrustRootClient(config: {
   baseUrl: string;
   token: string;
@@ -57,16 +66,14 @@ function createBearerCborTrustRootClient(config: {
           if (!base) throw new Error(`${label} trust-root URL is empty`);
           if (!token) throw new Error(`${label} trust-root token is empty`);
 
-          const resp = await fetch(
-            `${base}/api/logs/${ownerLogIdLowerHex32}/public-root`,
-            {
-              method: "GET",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                Accept: "application/cbor",
-              },
+          const apiLogId = ownerLogIdToApiSegment(ownerLogIdLowerHex32);
+          const resp = await fetch(`${base}/api/logs/${apiLogId}/public-root`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: "application/cbor",
             },
-          );
+          });
           const body = new Uint8Array(await resp.arrayBuffer());
           if (resp.status === 404) {
             throw new TrustRootNotFoundError(`${label} public root missing`);

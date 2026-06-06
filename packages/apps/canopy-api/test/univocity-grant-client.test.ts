@@ -16,8 +16,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function rootWire(): Uint8Array {
-  return new Uint8Array(32).fill(0x11);
+function rootLogId(): Uint8Array {
+  return new Uint8Array(16).fill(0x11);
 }
 
 function statementBytes(): Uint8Array {
@@ -34,7 +34,7 @@ describe("createUnivocityGrantValidator", () => {
   it("posts CBOR {rootLogId, statement} with bearer auth to /api/grants", async () => {
     const fetchSpy = spyFetch(201);
     await createUnivocityGrantValidator(CLIENT).validate(
-      rootWire(),
+      rootLogId(),
       statementBytes(),
     );
     expect(fetchSpy).toHaveBeenCalledOnce();
@@ -48,14 +48,14 @@ describe("createUnivocityGrantValidator", () => {
       rootLogId: Uint8Array;
       statement: Uint8Array;
     };
-    expect(Array.from(decoded.rootLogId)).toEqual(Array.from(rootWire()));
+    expect(Array.from(decoded.rootLogId)).toEqual(Array.from(rootLogId()));
     expect(Array.from(decoded.statement)).toEqual(Array.from(statementBytes()));
   });
 
   it("201 -> accepted (created)", async () => {
     spyFetch(201);
     const r = await createUnivocityGrantValidator(CLIENT).validate(
-      rootWire(),
+      rootLogId(),
       statementBytes(),
     );
     expect(r).toEqual({ kind: "accepted", created: true });
@@ -64,7 +64,7 @@ describe("createUnivocityGrantValidator", () => {
   it("200 -> accepted (idempotent, not created)", async () => {
     spyFetch(200);
     const r = await createUnivocityGrantValidator(CLIENT).validate(
-      rootWire(),
+      rootLogId(),
       statementBytes(),
     );
     expect(r).toEqual({ kind: "accepted", created: false });
@@ -73,7 +73,7 @@ describe("createUnivocityGrantValidator", () => {
   it("409 -> conflict", async () => {
     spyFetch(409);
     const r = await createUnivocityGrantValidator(CLIENT).validate(
-      rootWire(),
+      rootLogId(),
       statementBytes(),
     );
     expect(r.kind).toBe("conflict");
@@ -82,7 +82,7 @@ describe("createUnivocityGrantValidator", () => {
   it("422 -> rejected with status", async () => {
     spyFetch(422);
     const r = await createUnivocityGrantValidator(CLIENT).validate(
-      rootWire(),
+      rootLogId(),
       statementBytes(),
     );
     expect(r).toMatchObject({ kind: "rejected", status: 422 });
@@ -91,7 +91,7 @@ describe("createUnivocityGrantValidator", () => {
   it("503 -> unavailable", async () => {
     spyFetch(503);
     const r = await createUnivocityGrantValidator(CLIENT).validate(
-      rootWire(),
+      rootLogId(),
       statementBytes(),
     );
     expect(r.kind).toBe("unavailable");
@@ -100,7 +100,7 @@ describe("createUnivocityGrantValidator", () => {
   it("network error -> unavailable", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("boom"));
     const r = await createUnivocityGrantValidator(CLIENT).validate(
-      rootWire(),
+      rootLogId(),
       statementBytes(),
     );
     expect(r.kind).toBe("unavailable");

@@ -15,7 +15,11 @@ import {
   COSE_KEY_KTY,
   COSE_KTY_EC2,
 } from "../cose/cose-key.js";
-import { logIdToWireBytes, wireLogIdToHex64 } from "../grant/log-id-wire.js";
+import {
+  logIdToStorageSegment,
+  logIdToWireBytes,
+  toPaddedWire32,
+} from "../grant/log-id-wire.js";
 import {
   decodeBodyAsIntKeyMap,
   bytesEqual,
@@ -41,6 +45,7 @@ export interface GenesisCacheEnv {
 }
 
 export interface ParsedForestGenesis {
+  /** Forest root log id (16-byte UUID). */
   wire: Uint8Array;
   x: Uint8Array;
   y: Uint8Array;
@@ -84,7 +89,7 @@ export function isGenesisV1(genesis: ParsedForestGenesis): boolean {
  */
 export function parseGenesisCborBytes(
   bytes: Uint8Array,
-  expectedWire: Uint8Array,
+  expectedLogId: Uint8Array,
 ): ParsedForestGenesis | null {
   let raw: unknown;
   try {
@@ -108,7 +113,8 @@ export function parseGenesisCborBytes(
   const boot = asGenesisUint8Array(
     m.get(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID),
   );
-  if (!boot || boot.length !== 32 || !bytesEqual(boot, expectedWire)) {
+  const expectedPadded = toPaddedWire32(expectedLogId);
+  if (!boot || boot.length !== 32 || !bytesEqual(boot, expectedPadded)) {
     return null;
   }
 
@@ -132,7 +138,7 @@ export function parseGenesisCborBytes(
     if (chainId === "invalid") return null;
 
     return {
-      wire: expectedWire,
+      wire: expectedLogId,
       x,
       y,
       schemaVersion: 1,
@@ -162,7 +168,7 @@ export function parseGenesisCborBytes(
   }
 
   return {
-    wire: expectedWire,
+    wire: expectedLogId,
     x,
     y,
     schemaVersion: 0,
@@ -183,25 +189,25 @@ export async function getParsedGenesis(
   logIdRouteSegment: string,
   env: GenesisCacheEnv,
 ): Promise<GenesisLookupResult> {
-  let wire: Uint8Array;
+  let logId: Uint8Array;
   try {
-    wire = logIdToWireBytes(logIdRouteSegment);
+    logId = logIdToWireBytes(logIdRouteSegment);
   } catch {
     return { kind: "bad_segment" };
   }
-  const hex64 = wireLogIdToHex64(wire);
-  const hit = cache.get(hex64);
+  const storageSeg = logIdToStorageSegment(logId);
+  const hit = cache.get(storageSeg);
   if (hit) return hit;
 
-  const key = `forest/${hex64}/genesis.cbor`;
+  const key = `forests/forest/${storageSeg}/genesis.cbor`;
   const obj = await env.R2_GRANTS.get(key);
   if (!obj) return { kind: "not_found" };
 
   const bytes = new Uint8Array(await obj.arrayBuffer());
-  const parsed = parseGenesisCborBytes(bytes, wire);
+  const parsed = parseGenesisCborBytes(bytes, logId);
   if (!parsed) return { kind: "corrupt" };
 
-  cache.set(hex64, parsed);
+  cache.set(storageSeg, parsed);
   return parsed;
 }
 

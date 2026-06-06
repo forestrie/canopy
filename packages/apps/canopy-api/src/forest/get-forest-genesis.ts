@@ -4,7 +4,10 @@
 
 import { CBOR_CONTENT_TYPES } from "../cbor-api/cbor-content-types.js";
 import { ClientErrors } from "../cbor-api/problem-details.js";
-import { logIdToWireBytes, wireLogIdToHex64 } from "../grant/log-id-wire.js";
+import {
+  logIdToStorageSegment,
+  logIdToWireBytes,
+} from "../grant/log-id-wire.js";
 import type { GenesisCacheEnv } from "./genesis-cache.js";
 
 export interface GetGenesisEnv extends GenesisCacheEnv {
@@ -20,14 +23,14 @@ export interface GetGenesisEnv extends GenesisCacheEnv {
 
 async function proxyGenesisFromUnivocity(
   env: GetGenesisEnv,
-  hex64: string,
+  storageSeg: string,
 ): Promise<Response | null> {
   const serviceUrl = env.UNIVOCITY_SERVICE_URL?.trim();
   if (!serviceUrl) return null;
   const token = env.UNIVOCITY_API_TOKEN?.trim();
   try {
     const res = await fetch(
-      `${serviceUrl.replace(/\/+$/, "")}/api/forest/${hex64}/genesis`,
+      `${serviceUrl.replace(/\/+$/, "")}/api/forest/${storageSeg}/genesis`,
       {
         method: "GET",
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -48,18 +51,18 @@ export async function getForestGenesis(
   logIdRouteSegment: string,
   env: GetGenesisEnv,
 ): Promise<Response> {
-  let wire: Uint8Array;
+  let logId: Uint8Array;
   try {
-    wire = logIdToWireBytes(logIdRouteSegment);
+    logId = logIdToWireBytes(logIdRouteSegment);
   } catch {
     return ClientErrors.badRequest("Invalid log-id in path");
   }
 
-  const hex64 = wireLogIdToHex64(wire);
-  const key = `forest/${hex64}/genesis.cbor`;
+  const storageSeg = logIdToStorageSegment(logId);
+  const key = `forests/forest/${storageSeg}/genesis.cbor`;
   const obj = await env.R2_GRANTS.get(key);
   if (!obj) {
-    const proxied = await proxyGenesisFromUnivocity(env, hex64);
+    const proxied = await proxyGenesisFromUnivocity(env, storageSeg);
     if (proxied) return proxied;
     return ClientErrors.notFound(
       "Not Found",

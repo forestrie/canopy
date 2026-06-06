@@ -28,8 +28,9 @@ import {
   FOREST_GENESIS_SCHEMA_V1,
 } from "../src/forest/forest-genesis-labels.js";
 import {
+  logIdToStorageSegment,
   logIdToWireBytes,
-  wireLogIdToHex64,
+  toPaddedWire32,
 } from "../src/grant/log-id-wire.js";
 import worker from "../src/index";
 import type { Env } from "../src/index";
@@ -84,7 +85,7 @@ describe("parseGenesisCborBytes", () => {
         [COSE_EC2_X, x],
         [COSE_EC2_Y, y],
         [COSE_KEY_ALG, COSE_ALG_ES256],
-        [FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID, wire],
+        [FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID, toPaddedWire32(wire)],
         [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, null],
         [FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS, null],
       ]),
@@ -111,7 +112,7 @@ describe("parseGenesisCborBytes", () => {
         [COSE_EC2_Y, y],
         [COSE_KEY_ALG, COSE_ALG_ES256],
         [FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V1],
-        [FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID, wire],
+        [FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID, toPaddedWire32(wire)],
         [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, addr],
         [FOREST_GENESIS_LABEL_CHAIN_ID, "84532"],
       ]),
@@ -128,7 +129,7 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
   it("returns 201 and stores v1 map with chain binding", async () => {
     const logId = crypto.randomUUID();
     const wire = logIdToWireBytes(logId);
-    const hex64 = wireLogIdToHex64(wire);
+    const storageSeg = logIdToStorageSegment(wire);
     const e = envWithCurator();
 
     const res = await worker.fetch(
@@ -138,7 +139,7 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
     );
     expect(res.status).toBe(201);
 
-    const key = `forest/${hex64}/genesis.cbor`;
+    const key = `forests/forest/${storageSeg}/genesis.cbor`;
     const obj = await e.R2_GRANTS.get(key);
     expect(obj).not.toBeNull();
     const map = decodeCbor(new Uint8Array(await obj!.arrayBuffer())) as Map<
@@ -152,7 +153,7 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
     const boot = map.get(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID) as Uint8Array;
     expect(boot).toBeInstanceOf(Uint8Array);
     expect(boot.length).toBe(32);
-    expect([...boot]).toEqual([...wire]);
+    expect([...boot]).toEqual([...toPaddedWire32(wire)]);
     expect(map.get(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR)).toEqual(
       FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR,
     );
@@ -161,7 +162,9 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
     );
     expect(map.has(FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS)).toBe(false);
 
-    expect(hex64).toMatch(/^[0-9a-f]{64}$/);
+    expect(storageSeg).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
   });
 
   it("returns 400 when genesis-version is missing", async () => {

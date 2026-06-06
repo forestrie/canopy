@@ -167,7 +167,7 @@ describe("registerGrant creation-grant delegation", () => {
     expect(res.status).toBe(303);
     expect(calls).toHaveLength(1);
     // rootWire is the forest root R derived from the bootstrap-logid path segment.
-    expect(calls[0]!.rootWire.length).toBe(32);
+    expect(calls[0]!.rootWire.length).toBe(16);
     expect(calls[0]!.statementBytes.length).toBeGreaterThan(0);
   });
 

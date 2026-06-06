@@ -15,7 +15,11 @@ import {
   COSE_KEY_KTY,
   COSE_KTY_EC2,
 } from "../cose/cose-key.js";
-import { logIdToWireBytes, wireLogIdToHex64 } from "../grant/log-id-wire.js";
+import {
+  logIdToStorageSegment,
+  logIdToWireBytes,
+  toPaddedWire32,
+} from "../grant/log-id-wire.js";
 import { parseCborBody } from "../cbor-api/cbor-request.js";
 import {
   cborResponse,
@@ -74,12 +78,13 @@ export async function postForestGenesis(
   const ctErr = requireContentTypeCbor(request);
   if (ctErr) return ctErr;
 
-  let wire: Uint8Array;
+  let logId: Uint8Array;
   try {
-    wire = logIdToWireBytes(logIdRouteSegment);
+    logId = logIdToWireBytes(logIdRouteSegment);
   } catch {
     return ClientErrors.badRequest("Invalid log-id in path");
   }
+  const paddedWire = toPaddedWire32(logId);
 
   let raw: unknown;
   try {
@@ -121,7 +126,7 @@ export async function postForestGenesis(
   const clientBoot = m.get(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID);
   if (clientBoot !== undefined) {
     const b = asGenesisUint8Array(clientBoot);
-    if (!b || b.length !== 32 || !bytesEqual(b, wire)) {
+    if (!b || b.length !== 32 || !bytesEqual(b, paddedWire)) {
       return ClientErrors.badRequest(
         "bootstrap-logid must match path log-id when provided",
       );
@@ -166,11 +171,11 @@ export async function postForestGenesis(
   out.set(COSE_EC2_Y, y);
   out.set(COSE_KEY_ALG, COSE_ALG_ES256);
   out.set(FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V1);
-  out.set(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID, wire);
+  out.set(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID, paddedWire);
   out.set(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, addrRes);
   out.set(FOREST_GENESIS_LABEL_CHAIN_ID, chainId);
 
-  const hex64 = wireLogIdToHex64(wire);
+  const storageSeg = logIdToStorageSegment(logId);
   const body = encodeCbor(out) as Uint8Array;
 
   // Forward to the univocity owned store first when configured: it is the
@@ -179,7 +184,7 @@ export async function postForestGenesis(
   // checkpoint, after which it may be expired (plan-0029).
   const univocity = univocityGenesisClientFromEnv(env);
   if (univocity) {
-    const fwd = await postGenesisToUnivocity(univocity, hex64, body);
+    const fwd = await postGenesisToUnivocity(univocity, storageSeg, body);
     if (fwd.kind === "exists") {
       return ClientErrors.conflict("genesis already exists for this log");
     }
@@ -195,7 +200,7 @@ export async function postForestGenesis(
     }
   }
 
-  const key = `forest/${hex64}/genesis.cbor`;
+  const key = `forests/forest/${storageSeg}/genesis.cbor`;
   const head = await env.R2_GRANTS.head(key);
   if (head) {
     if (univocity) {

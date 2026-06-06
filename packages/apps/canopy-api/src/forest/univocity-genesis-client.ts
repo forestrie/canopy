@@ -45,18 +45,18 @@ async function readDetail(res: Response): Promise<string> {
  * Forwards the canonical genesis CBOR for forest root `R` to univocity.
  *
  * @param client univocity service URL + bearer token.
- * @param rootHex64 64-char hex of the forest root `R` (no `0x` prefix).
+ * @param rootStorageSeg canonical dashed UUID of forest root `R`.
  * @param genesisCbor canonical v1 genesis document bytes.
  */
 export async function postGenesisToUnivocity(
   client: UnivocityGenesisClient,
-  rootHex64: string,
+  rootStorageSeg: string,
   genesisCbor: Uint8Array,
 ): Promise<UnivocityGenesisResult> {
   let res: Response;
   try {
     res = await fetch(
-      joinUrl(client.serviceUrl, `/api/forest/${rootHex64}/genesis`),
+      joinUrl(client.serviceUrl, `/api/forest/${rootStorageSeg}/genesis`),
       {
         method: "POST",
         headers: {
