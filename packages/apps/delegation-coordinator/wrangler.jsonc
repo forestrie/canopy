@@ -39,9 +39,7 @@
         "NODE_ENV": "dev",
         "COORDINATOR_SHARD_COUNT": "4",
         "CUSTODIAN_URL": "https://custodian.a.forest-2.forestrie.dev/v1",
-        // Overridden at local dev via `pnpm dev` (doppler run + wrangler --var).
-        "COORDINATOR_APP_TOKEN": "",
-        "CUSTODIAN_APP_TOKEN": "",
+        // COORDINATOR_APP_TOKEN, CUSTODIAN_APP_TOKEN: wrangler secrets (deploy + local via doppler --var).
       },
       "durable_objects": {
         "bindings": [

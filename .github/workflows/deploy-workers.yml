@@ -240,13 +240,30 @@ jobs:
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+          put_wrangler_secret() {
+            local name="$1" value="$2"
+            local err_file
+            err_file="$(mktemp)"
+            if printf '%s' "$value" | wrangler secret put "$name" --env "$ENV" 2>"$err_file"; then
+              rm -f "$err_file"
+              return 0
+            fi
+            if grep -qE '10053|already in use' "$err_file"; then
+              echo "Secret binding ${name} already exists; skipping put."
+              rm -f "$err_file"
+              return 0
+            fi
+            cat "$err_file" >&2
+            rm -f "$err_file"
+            return 1
+          }
           ENV="${DEPLOY_ENV}"
           BOOT=$(trim_ws "${CUSTODIAN_BOOTSTRAP_APP_TOKEN:-}")
           if [ -z "$BOOT" ]; then
             BOOT=$(trim_ws "${BOOTSTRAP_APP_TOKEN:-}")
           fi
           if [ -n "$BOOT" ]; then
-            printf '%s' "$BOOT" | wrangler secret put CUSTODIAN_BOOTSTRAP_APP_TOKEN --env "$ENV"
+            put_wrangler_secret CUSTODIAN_BOOTSTRAP_APP_TOKEN "$BOOT"
           else
             echo "CUSTODIAN_BOOTSTRAP_APP_TOKEN not set; skipping (optional for canopy-api)."
           fi
@@ -255,25 +272,25 @@ jobs:
             echo "::error::CUSTODIAN_APP_TOKEN is required for canopy-api (receipt verification)."
             exit 1
           fi
-          printf '%s' "$APP" | wrangler secret put CUSTODIAN_APP_TOKEN --env "$ENV"
+          put_wrangler_secret CUSTODIAN_APP_TOKEN "$APP"
           COORD=$(trim_ws "${COORDINATOR_APP_TOKEN:-}")
           if [ -z "$COORD" ]; then
             echo "::error::COORDINATOR_APP_TOKEN is required for canopy-api BYOK receipt verification."
             exit 1
           fi
-          printf '%s' "$COORD" | wrangler secret put COORDINATOR_APP_TOKEN --env "$ENV"
+          put_wrangler_secret COORDINATOR_APP_TOKEN "$COORD"
           CURATOR=$(trim_ws "${CURATOR_ADMIN_TOKEN:-}")
           if [ -z "$CURATOR" ]; then
             echo "::error::CURATOR_ADMIN_TOKEN is required for canopy-api (POST /api/forest/.../genesis)."
             exit 1
           fi
-          printf '%s' "$CURATOR" | wrangler secret put CURATOR_ADMIN_TOKEN --env "$ENV"
+          put_wrangler_secret CURATOR_ADMIN_TOKEN "$CURATOR"
           UNIV=$(trim_ws "${UNIVOCITY_API_TOKEN:-}")
           if [ -z "$UNIV" ]; then
             echo "::error::UNIVOCITY_API_TOKEN is required for canopy-api (creation-grant validation)."
             exit 1
           fi
-          printf '%s' "$UNIV" | wrangler secret put UNIVOCITY_API_TOKEN --env "$ENV"
+          put_wrangler_secret UNIVOCITY_API_TOKEN "$UNIV"
           for key in FOREST_PROJECT_ID CUSTODIAN_URL DELEGATION_COORDINATOR_URL R2_MMRS_BUCKET_NAME SEQUENCING_QUEUE_SCRIPT_NAME CANOPY_FQDN UNIVOCITY_SERVICE_URL; do
             if [ -z "$(trim_ws "${!key:-}")" ]; then
               echo "::error::${key} is required in GitHub Environment ${ENV}."
@@ -292,19 +309,36 @@ jobs:
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+          put_wrangler_secret() {
+            local name="$1" value="$2"
+            local err_file
+            err_file="$(mktemp)"
+            if printf '%s' "$value" | wrangler secret put "$name" --env "$ENV" 2>"$err_file"; then
+              rm -f "$err_file"
+              return 0
+            fi
+            if grep -qE '10053|already in use' "$err_file"; then
+              echo "Secret binding ${name} already exists; skipping put."
+              rm -f "$err_file"
+              return 0
+            fi
+            cat "$err_file" >&2
+            rm -f "$err_file"
+            return 1
+          }
           ENV="${DEPLOY_ENV}"
           COORD=$(trim_ws "${COORDINATOR_APP_TOKEN:-}")
           if [ -z "$COORD" ]; then
             echo "::error::COORDINATOR_APP_TOKEN is required for delegation-coordinator."
             exit 1
           fi
-          printf '%s' "$COORD" | wrangler secret put COORDINATOR_APP_TOKEN --env "$ENV"
+          put_wrangler_secret COORDINATOR_APP_TOKEN "$COORD"
           CUST=$(trim_ws "${CUSTODIAN_APP_TOKEN:-}")
           if [ -z "$CUST" ]; then
             echo "::error::CUSTODIAN_APP_TOKEN is required for delegation-coordinator (custody-keys API)."
             exit 1
           fi
-          printf '%s' "$CUST" | wrangler secret put CUSTODIAN_APP_TOKEN --env "$ENV"
+          put_wrangler_secret CUSTODIAN_APP_TOKEN "$CUST"
           for key in CUSTODIAN_URL DELEGATION_COORDINATOR_URL; do
             if [ -z "$(trim_ws "${!key:-}")" ]; then
               echo "::error::${key} is required in GitHub Environment ${ENV}."
