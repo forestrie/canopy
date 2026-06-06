@@ -58,6 +58,8 @@ export default defineConfig({
       name: "system",
       testMatch: ["**/system/**/*.spec.ts"],
       timeout: E2E_SYSTEM_TEST_TIMEOUT_MS,
+      // Serial in CI: parallel genesis POSTs stress Worker→univocity and flake 502.
+      workers: process.env.CI ? 1 : undefined,
       use: {
         baseURL,
       },

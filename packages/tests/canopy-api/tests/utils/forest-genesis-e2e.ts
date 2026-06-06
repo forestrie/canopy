@@ -59,17 +59,34 @@ export async function ensureForestGenesisE2e(
     ],
   ]);
   const body = encodeCbor(map) as Uint8Array;
-  const res = await request.post(`/api/forest/${opts.logId}/genesis`, {
-    headers: {
-      Authorization: `Bearer ${opts.curatorToken}`,
-      "Content-Type": "application/cbor",
-    },
-    data: Buffer.from(body),
-  });
-  const st = res.status();
-  if (st !== 201 && st !== 409) {
-    throw new Error(
-      `genesis POST for ${opts.logId}: expected 201 or 409, got ${st}: ${(await res.text()).slice(0, 500)}`,
-    );
+  const headers = {
+    Authorization: `Bearer ${opts.curatorToken}`,
+    "Content-Type": "application/cbor",
+  };
+
+  // Worker→univocity genesis forward can transiently 502 at Traefik; backoff and retry.
+  const maxAttempts = 6;
+  let lastStatus = 0;
+  let lastBody = "";
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const res = await request.post(`/api/forest/${opts.logId}/genesis`, {
+      headers,
+      data: Buffer.from(body),
+    });
+    lastStatus = res.status();
+    if (lastStatus === 201 || lastStatus === 409) return;
+    lastBody = (await res.text()).slice(0, 500);
+    const transient =
+      lastStatus >= 500 ||
+      (lastStatus === 503 &&
+        lastBody.includes("univocity genesis returned 502"));
+    if (attempt < maxAttempts && transient) {
+      await new Promise((r) => setTimeout(r, 2000));
+      continue;
+    }
+    break;
   }
+  throw new Error(
+    `genesis POST for ${opts.logId}: expected 201 or 409, got ${lastStatus}: ${lastBody}`,
+  );
 }
