@@ -93,8 +93,6 @@ export interface Env {
   UNIVOCITY_SERVICE_URL?: string;
   /** Bearer token authorizing canopy -> univocity owned-store calls. */
   UNIVOCITY_API_TOKEN?: string;
-  /** GKE ingress IP for Worker cf.resolveOverride to univocity. */
-  UNIVOCITY_RESOLVE_OVERRIDE?: string;
   UNIVOCITY_CONTRACT_RPC_URL?: string;
   UNIVOCITY_CONTRACT_ADDRESS?: string;
   /** Optional: base URL for checkpoint fetch (storage source when R2 not used). */
@@ -132,7 +130,6 @@ function receiptAuthorityResolverForEnv(env: Env): ReceiptAuthorityResolver {
     env.COORDINATOR_APP_TOKEN?.trim() ?? "",
     env.UNIVOCITY_SERVICE_URL?.trim() ?? "",
     env.UNIVOCITY_API_TOKEN?.trim() ?? "",
-    env.UNIVOCITY_RESOLVE_OVERRIDE?.trim() ?? "",
     env.FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX ?? "",
   ].join("\0");
   if (
@@ -147,7 +144,6 @@ function receiptAuthorityResolverForEnv(env: Env): ReceiptAuthorityResolver {
         coordinatorToken: env.COORDINATOR_APP_TOKEN,
         univocityTrustRootUrl: env.UNIVOCITY_SERVICE_URL,
         univocityToken: env.UNIVOCITY_API_TOKEN,
-        univocityResolveOverride: env.UNIVOCITY_RESOLVE_OVERRIDE,
         nodeEnv: env.NODE_ENV,
         testReceiptVerifyEs256XyHex:
           env.FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX,
@@ -269,7 +265,6 @@ export default {
               ? createUnivocityGrantValidator({
                   serviceUrl: univocityServiceUrl,
                   token: univocityApiToken,
-                  resolveOverride: env.UNIVOCITY_RESOLVE_OVERRIDE?.trim(),
                 })
               : undefined;
           const response = await registerGrant(request, {

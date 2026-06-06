@@ -178,7 +178,6 @@ jobs:
       # Optional: univocity owned grant store + authority resolver. When set, the
       # worker delegates creation-grant validation and genesis storage to it.
       UNIVOCITY_SERVICE_URL: ${{ vars.UNIVOCITY_SERVICE_URL }}
-      UNIVOCITY_RESOLVE_OVERRIDE: ${{ vars.UNIVOCITY_RESOLVE_OVERRIDE }}
       R2_MMRS_BUCKET_NAME: ${{ vars.R2_MMRS_BUCKET_NAME }}
       SEQUENCING_QUEUE_SCRIPT_NAME: ${{ vars.SEQUENCING_QUEUE_SCRIPT_NAME }}
 

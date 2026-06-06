@@ -9,7 +9,6 @@ import {
   logIdToWireBytes,
 } from "../grant/log-id-wire.js";
 import type { GenesisCacheEnv } from "./genesis-cache.js";
-import { univocityFetch } from "./univocity-fetch.js";
 
 export interface GetGenesisEnv extends GenesisCacheEnv {
   /**
@@ -20,7 +19,6 @@ export interface GetGenesisEnv extends GenesisCacheEnv {
    */
   UNIVOCITY_SERVICE_URL?: string;
   UNIVOCITY_API_TOKEN?: string;
-  UNIVOCITY_RESOLVE_OVERRIDE?: string;
 }
 
 async function proxyGenesisFromUnivocity(
@@ -31,13 +29,12 @@ async function proxyGenesisFromUnivocity(
   if (!serviceUrl) return null;
   const token = env.UNIVOCITY_API_TOKEN?.trim();
   try {
-    const res = await univocityFetch(
+    const res = await fetch(
       `${serviceUrl.replace(/\/+$/, "")}/api/forest/${storageSeg}/genesis`,
       {
         method: "GET",
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       },
-      env.UNIVOCITY_RESOLVE_OVERRIDE?.trim(),
     );
     if (!res.ok) return null;
     const body = new Uint8Array(await res.arrayBuffer());

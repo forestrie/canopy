@@ -21,16 +21,12 @@
 
 import { encode as encodeCbor } from "cbor-x";
 
-import { univocityFetch } from "../forest/univocity-fetch.js";
-
 /** Configuration for reaching the univocity grants endpoint. */
 export interface UnivocityGrantClient {
   /** Base service URL, e.g. `https://univocity.example`. */
   serviceUrl: string;
   /** Bearer token authorizing canopy -> univocity calls. */
   token: string;
-  /** Optional GKE ingress IP for Worker cf.resolveOverride. */
-  resolveOverride?: string;
 }
 
 export type UnivocityGrantResult =
@@ -97,18 +93,14 @@ export async function postCreationGrantToUnivocity(
 
   let res: Response;
   try {
-    res = await univocityFetch(
-      joinUrl(client.serviceUrl, "/api/grants"),
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/cbor",
-          Authorization: `Bearer ${client.token}`,
-        },
-        body,
+    res = await fetch(joinUrl(client.serviceUrl, "/api/grants"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/cbor",
+        Authorization: `Bearer ${client.token}`,
       },
-      client.resolveOverride,
-    );
+      body,
+    });
   } catch (e) {
     return {
       kind: "unavailable",

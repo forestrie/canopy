@@ -59,7 +59,6 @@ export interface PostGenesisEnv {
    */
   UNIVOCITY_SERVICE_URL?: string;
   UNIVOCITY_API_TOKEN?: string;
-  UNIVOCITY_RESOLVE_OVERRIDE?: string;
 }
 
 function univocityGenesisClientFromEnv(
@@ -68,11 +67,7 @@ function univocityGenesisClientFromEnv(
   const serviceUrl = env.UNIVOCITY_SERVICE_URL?.trim();
   const token = env.UNIVOCITY_API_TOKEN?.trim();
   if (!serviceUrl || !token) return undefined;
-  return {
-    serviceUrl,
-    token,
-    resolveOverride: env.UNIVOCITY_RESOLVE_OVERRIDE?.trim(),
-  };
+  return { serviceUrl, token };
 }
 
 export async function postForestGenesis(

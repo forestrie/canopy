@@ -15,16 +15,12 @@
  * See plan-0029 (canopy) / plan-0008 (arbor).
  */
 
-import { univocityFetch } from "./univocity-fetch.js";
-
 /** Configuration for reaching the univocity genesis endpoint. */
 export interface UnivocityGenesisClient {
   /** Base service URL, e.g. `https://univocity.example`. */
   serviceUrl: string;
   /** Bearer token authorizing canopy -> univocity calls. */
   token: string;
-  /** Optional GKE ingress IP for Worker cf.resolveOverride. */
-  resolveOverride?: string;
 }
 
 export type UnivocityGenesisResult =
@@ -59,7 +55,7 @@ export async function postGenesisToUnivocity(
 ): Promise<UnivocityGenesisResult> {
   let res: Response;
   try {
-    res = await univocityFetch(
+    res = await fetch(
       joinUrl(client.serviceUrl, `/api/forest/${rootStorageSeg}/genesis`),
       {
         method: "POST",
@@ -69,7 +65,6 @@ export async function postGenesisToUnivocity(
         },
         body: genesisCbor,
       },
-      client.resolveOverride,
     );
   } catch (e) {
     return {
