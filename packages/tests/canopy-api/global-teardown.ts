@@ -49,7 +49,9 @@ function keysFrom(decoded: unknown): Array<Record<string, unknown>> {
  */
 export default async function globalTeardown(): Promise<void> {
   if (process.env.E2E_SKIP_CUSTODIAN_KEY_CLEANUP === "1") {
-    console.warn("[e2e teardown] skipping custodian key cleanup (E2E_SKIP_CUSTODIAN_KEY_CLEANUP=1)");
+    console.warn(
+      "[e2e teardown] skipping custodian key cleanup (E2E_SKIP_CUSTODIAN_KEY_CLEANUP=1)",
+    );
     return;
   }
 

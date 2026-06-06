@@ -29,7 +29,8 @@ export const DEFAULT_UNIVOCITY_CHAIN_ID = "84532";
  * Default fixed root log id (R) for the chain-binding scenario. Stable so the
  * genesis persists across runs; delete via `task cf:genesis:delete` to reset.
  */
-export const DEFAULT_UNIVOCITY_GENESIS_LOG_ID = E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID;
+export const DEFAULT_UNIVOCITY_GENESIS_LOG_ID =
+  E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID;
 
 function hexToBytes(hex: string): Uint8Array {
   const out = new Uint8Array(hex.length / 2);
