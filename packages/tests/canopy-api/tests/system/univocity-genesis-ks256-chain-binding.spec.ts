@@ -68,10 +68,8 @@ test.describe("Univocity KS256 genesis chain binding (Base Sepolia)", () => {
     expect(parsed.bootstrapKey?.length).toBe(20);
     expect(bytesEqual(parsed.bootstrapKey!, boot.key)).toBe(true);
 
-    const expectedSafe = DEFAULT_UNIVOCITY_KS256_SAFE_ADDR.toLowerCase().replace(
-      /^0x/,
-      "",
-    );
+    const expectedSafe =
+      DEFAULT_UNIVOCITY_KS256_SAFE_ADDR.toLowerCase().replace(/^0x/, "");
     const actualHex = Buffer.from(parsed.bootstrapKey!).toString("hex");
     expect(actualHex).toBe(expectedSafe);
   });

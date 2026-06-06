@@ -1,0 +1,33 @@
+---
+description: Linear MCP must use robinbryce@gmail.com in the forestrie workspace
+alwaysApply: true
+---
+
+# Linear MCP (Forestrie repos)
+
+Applies when using the **Linear MCP server** (`plugin-linear-linear`) for work in:
+
+- `canopy`, `arbor`, `arbor-flux`, `forest-1`
+- any other repository under `~/Dev/personal/forestrie`
+
+## Required identity
+
+| Setting | Expected value |
+|---------|----------------|
+| Login user | `robinbryce@gmail.com` |
+| Workspace | `forestrie` (Linear org/team **Forestrie**, key `FOR`) |
+
+## Before the first Linear MCP call
+
+1. Confirm the active git/workspace path is under `~/Dev/personal/forestrie` (or one of the named repos above).
+2. Call **`get_user`** with `query: "me"`.
+3. Verify **`email`** is exactly **`robinbryce@gmail.com`**.
+4. Verify the user belongs to the **Forestrie** workspace (team key **`FOR`**).
+
+If either check fails, **stop** — do not create, update, or query Linear issues, projects, or documents.
+
+## Wrong account or workspace
+
+Tell the user Linear MCP is authenticated as the wrong user or workspace. Ask them to re-authenticate in Cursor (**Settings → MCP → Linear**) as **`robinbryce@gmail.com`** on the **`forestrie`** workspace, then retry after calling **`get_user`** with `"me"` again.
+
+Do not guess issue IDs, team keys, or project names from another workspace.

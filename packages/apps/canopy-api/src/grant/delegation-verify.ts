@@ -215,7 +215,11 @@ export async function resolveReceiptVerifyKey(
     return { verifyKeys: [custodyKey] };
   }
 
-  const result = await verifyDelegationCert(delegationCertBytes, custodyKey, opts);
+  const result = await verifyDelegationCert(
+    delegationCertBytes,
+    custodyKey,
+    opts,
+  );
   if (!result) {
     return null;
   }

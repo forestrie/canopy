@@ -120,10 +120,12 @@ function validateBootstrapLogId(
   return null;
 }
 
-function validateChainBinding(m: Map<number, unknown>): {
-  addr: Uint8Array;
-  chainId: string;
-} | Response {
+function validateChainBinding(m: Map<number, unknown>):
+  | {
+      addr: Uint8Array;
+      chainId: string;
+    }
+  | Response {
   const addrRes = parseUnivocityAddrRequired(
     m.get(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR),
   );
@@ -262,9 +264,7 @@ export async function postForestGenesis(
     version !== FOREST_GENESIS_SCHEMA_V1 &&
     version !== FOREST_GENESIS_SCHEMA_V2
   ) {
-    return ClientErrors.badRequest(
-      "genesis-version must be 1 or 2 (-68009)",
-    );
+    return ClientErrors.badRequest("genesis-version must be 1 or 2 (-68009)");
   }
 
   const bootErr = validateBootstrapLogId(m, paddedWire);

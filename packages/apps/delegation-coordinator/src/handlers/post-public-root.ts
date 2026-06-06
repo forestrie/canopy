@@ -17,7 +17,9 @@ import {
   problemResponse,
 } from "./handler.js";
 
-function parseAlg(raw: SubmitPublicRootRequest["alg"]): number | "ES256" | null {
+function parseAlg(
+  raw: SubmitPublicRootRequest["alg"],
+): number | "ES256" | null {
   if (raw === "ES256") return "ES256";
   if (typeof raw === "number" && Number.isInteger(raw)) return raw;
   return null;
@@ -107,7 +109,8 @@ export async function handlePostPublicRoot(
         "key must be valid base64",
       );
     }
-    const expectedLen = alg === COSE_ALG_KS256 ? 20 : alg === COSE_ALG_ES256 ? 64 : 0;
+    const expectedLen =
+      alg === COSE_ALG_KS256 ? 20 : alg === COSE_ALG_ES256 ? 64 : 0;
     if (expectedLen === 0) {
       return problemResponse(
         400,

@@ -32,9 +32,7 @@ function ks256RootFromAddress(address: Uint8Array): ParsedKs256RootKey {
   return { kind: "KS256", alg: COSE_ALG_KS256, address };
 }
 
-function recordToTrustRootFields(
-  decoded: unknown,
-): Record<string, unknown> {
+function recordToTrustRootFields(decoded: unknown): Record<string, unknown> {
   if (decoded instanceof Map) {
     const out: Record<string, unknown> = {};
     for (const [k, v] of decoded.entries()) {

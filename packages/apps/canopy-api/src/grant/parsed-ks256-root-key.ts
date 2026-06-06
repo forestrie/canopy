@@ -12,9 +12,7 @@ export interface ParsedKs256RootKey {
   address: Uint8Array;
 }
 
-export function isParsedKs256RootKey(
-  key: unknown,
-): key is ParsedKs256RootKey {
+export function isParsedKs256RootKey(key: unknown): key is ParsedKs256RootKey {
   return (
     typeof key === "object" &&
     key !== null &&

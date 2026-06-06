@@ -147,10 +147,14 @@ async function univocityChainBindingSkipReason(
     }`;
   }
   if (boot.alg === COSE_ALG_ES256 && boot.key.length === 64) {
-    return requiredAlg === COSE_ALG_ES256 ? null : "contract bootstrap is ES256, spec requires KS256";
+    return requiredAlg === COSE_ALG_ES256
+      ? null
+      : "contract bootstrap is ES256, spec requires KS256";
   }
   if (boot.alg === COSE_ALG_KS256 && boot.key.length === 20) {
-    return requiredAlg === COSE_ALG_KS256 ? null : "contract bootstrap is KS256, spec requires ES256";
+    return requiredAlg === COSE_ALG_KS256
+      ? null
+      : "contract bootstrap is KS256, spec requires ES256";
   }
   const keyDesc =
     boot.key.length === 20
@@ -284,7 +288,9 @@ export async function getForestGenesisParsed(
     parsed.y = y;
   }
   if (!parsed.bootstrapKey && (!parsed.x || !parsed.y)) {
-    throw new Error("genesis missing bootstrap key (v1 x/y or v2 bootstrapKey)");
+    throw new Error(
+      "genesis missing bootstrap key (v1 x/y or v2 bootstrapKey)",
+    );
   }
   return parsed;
 }

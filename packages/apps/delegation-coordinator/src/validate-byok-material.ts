@@ -209,8 +209,8 @@ async function verifyKs256DelegationSignature(
       }).then((r) => r.json())) as { result?: string };
       const code = codeResult.result?.replace(/^0x/i, "") ?? "";
       if (code.length > 0 && !/^0+$/.test(code)) {
-        const hashHex = (`0x${bytesToHex(hash)}`) as `0x${string}`;
-        const sigHex = (`0x${bytesToHex(signature)}`) as `0x${string}`;
+        const hashHex = `0x${bytesToHex(hash)}` as `0x${string}`;
+        const sigHex = `0x${bytesToHex(signature)}` as `0x${string}`;
         const data = encodeFunctionData({
           abi: ERC1271_ABI,
           functionName: "isValidSignature",
@@ -228,7 +228,9 @@ async function verifyKs256DelegationSignature(
         }).then((r) => r.json())) as { result?: string };
         return (
           typeof callResult.result === "string" &&
-          callResult.result.toLowerCase().startsWith(ERC1271_MAGIC.toLowerCase())
+          callResult.result
+            .toLowerCase()
+            .startsWith(ERC1271_MAGIC.toLowerCase())
         );
       }
     } catch {

@@ -49,9 +49,7 @@ function createBearerCborTrustRootClient(config: {
   const cache = new Map<string, Promise<RootVerifyKey>>();
 
   return {
-    async logSigningKey(
-      ownerLogIdLowerHex32: string,
-    ): Promise<RootVerifyKey> {
+    async logSigningKey(ownerLogIdLowerHex32: string): Promise<RootVerifyKey> {
       let p = cache.get(ownerLogIdLowerHex32);
       if (!p) {
         p = (async (): Promise<RootVerifyKey> => {
@@ -131,9 +129,7 @@ export function createSelectingTrustRootClient(config: {
   fallback: TrustRootClient;
 }): TrustRootClient {
   return {
-    async logSigningKey(
-      ownerLogIdLowerHex32: string,
-    ): Promise<RootVerifyKey> {
+    async logSigningKey(ownerLogIdLowerHex32: string): Promise<RootVerifyKey> {
       try {
         return await config.primary.logSigningKey(ownerLogIdLowerHex32);
       } catch (error) {
@@ -151,9 +147,7 @@ export function createCustodianPublicTrustRootClient(config: {
   const cache = new Map<string, Promise<RootVerifyKey>>();
 
   return {
-    async logSigningKey(
-      ownerLogIdLowerHex32: string,
-    ): Promise<RootVerifyKey> {
+    async logSigningKey(ownerLogIdLowerHex32: string): Promise<RootVerifyKey> {
       let p = cache.get(ownerLogIdLowerHex32);
       if (!p) {
         p = (async (): Promise<RootVerifyKey> => {

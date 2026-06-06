@@ -106,8 +106,8 @@ function encodeIsValidSignatureCall(
   hash: Uint8Array,
   signature: Uint8Array,
 ): `0x${string}` {
-  const hashHex = (`0x${bytesToHex(hash)}`) as `0x${string}`;
-  const sigHex = (`0x${bytesToHex(signature)}`) as `0x${string}`;
+  const hashHex = `0x${bytesToHex(hash)}` as `0x${string}`;
+  const sigHex = `0x${bytesToHex(signature)}` as `0x${string}`;
   return encodeFunctionData({
     abi: ERC1271_ABI,
     functionName: "isValidSignature",
