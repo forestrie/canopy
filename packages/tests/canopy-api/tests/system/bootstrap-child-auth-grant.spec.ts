@@ -20,7 +20,7 @@ import {
   custodianKmsCryptoKeyIdFromLogUuid,
   e2eCustodianKeyOwnerId,
   grantData64FromCustodianPem,
-  postCustodianCreateEs256Key,
+  postCustodianEnsureEs256Key,
   signGrantPayloadWithCustodyKey,
 } from "@e2e-utils/custodian-custody-grant";
 import {
@@ -57,7 +57,7 @@ test.describe("Bootstrap root + child auth grant e2e", () => {
     });
     expect(receiptRes.status).toBe(200);
 
-    const { keyId, publicKeyPem } = await postCustodianCreateEs256Key({
+    const { keyId, publicKeyPem } = await postCustodianEnsureEs256Key({
       baseUrl: custodyEnv.baseUrl,
       appToken: custodyEnv.token,
       keyOwnerId: e2eCustodianKeyOwnerId(),

@@ -274,3 +274,116 @@ tasks:
         }
         console.error(`custodian:keys-delete-all: deleted ${targets.length} key(s).`);
         NODE
+
+  keys-delete-by-label:
+    desc: >-
+      POST /v1/api/keys/list with LABEL_KEY + LABEL_VALUE (predicate and), then dry-run or delete
+      (CONFIRM=1, CUSTODIAN_BOOTSTRAP_APP_TOKEN). Example:
+      LABEL_KEY=e2e-run-id LABEL_VALUE=<uuid> CONFIRM=1 doppler run -- task custodian:keys-delete-by-label
+    cmds:
+      - |
+        set -euo pipefail
+        ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+        cd "$ROOT"
+        export CUSTODIAN_BASE_URL="${CUSTODIAN_BASE_URL:-{{.BASE_URL}}}"
+        node --input-type=module <<'NODE'
+        import cbor from "cbor";
+
+        function v1Base(raw) {
+          const u = new URL(raw.trim().replace(/\/$/, ""));
+          return `${u.protocol}//${u.host}/v1`;
+        }
+
+        function keysFrom(decoded) {
+          let keys;
+          if (decoded instanceof Map) keys = decoded.get("keys");
+          else keys = decoded?.keys;
+          return Array.isArray(keys) ? keys : [];
+        }
+
+        function entryFields(e) {
+          if (e instanceof Map) {
+            return { keyId: e.get("keyId") };
+          }
+          return { keyId: e.keyId };
+        }
+
+        const labelKey = (process.env.LABEL_KEY ?? "").trim();
+        const labelValue = (process.env.LABEL_VALUE ?? "").trim();
+        const predicate = (process.env.LABEL_PREDICATE ?? "and").trim();
+        const confirm = process.env.CONFIRM === "1";
+
+        if (!labelKey || !labelValue) {
+          console.error(
+            "custodian:keys-delete-by-label requires LABEL_KEY and LABEL_VALUE.",
+          );
+          process.exit(1);
+        }
+
+        const baseUrl = process.env.CUSTODIAN_BASE_URL;
+        const appToken = process.env.CUSTODIAN_APP_TOKEN;
+        if (!baseUrl || !appToken) {
+          console.error(
+            "custodian:keys-delete-by-label requires CUSTODIAN_BASE_URL and CUSTODIAN_APP_TOKEN.",
+          );
+          process.exit(1);
+        }
+
+        const listUrl = `${v1Base(baseUrl)}/api/keys/list`;
+        const res = await fetch(listUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${appToken}`,
+            "Content-Type": "application/cbor",
+            Accept: "application/cbor",
+          },
+          body: Buffer.from(
+            cbor.encode({
+              labels: { [labelKey]: labelValue },
+              predicate,
+            }),
+          ),
+        });
+        const buf = Buffer.from(await res.arrayBuffer());
+        if (!res.ok) {
+          console.error(`custodian:keys-delete-by-label list HTTP ${res.status}`);
+          process.exit(1);
+        }
+        const targets = keysFrom(cbor.decode(buf)).map(entryFields).filter((r) => r.keyId);
+
+        console.error(
+          `custodian:keys-delete-by-label: ${targets.length} key(s) for labels.${labelKey}=${labelValue}`,
+        );
+
+        if (!confirm) {
+          for (const row of targets) {
+            console.log(`[dry-run] would delete ${JSON.stringify(row.keyId)}`);
+          }
+          console.error("Dry-run only. Set CONFIRM=1 to delete.");
+          process.exit(0);
+        }
+
+        const bootstrap = process.env.CUSTODIAN_BOOTSTRAP_APP_TOKEN;
+        if (!bootstrap) {
+          console.error("CONFIRM=1 requires CUSTODIAN_BOOTSTRAP_APP_TOKEN.");
+          process.exit(1);
+        }
+
+        for (const row of targets) {
+          const seg = encodeURIComponent(row.keyId);
+          const delUrl = `${v1Base(baseUrl)}/api/keys/${seg}/delete`;
+          const dres = await fetch(delUrl, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${bootstrap}`,
+              Accept: "application/cbor",
+            },
+          });
+          if (!dres.ok) {
+            console.error(`delete ${row.keyId} failed HTTP ${dres.status}`);
+            process.exit(1);
+          }
+          console.log(JSON.stringify({ keyId: row.keyId, status: dres.status }));
+        }
+        console.error(`custodian:keys-delete-by-label: deleted ${targets.length} key(s).`);
+        NODE

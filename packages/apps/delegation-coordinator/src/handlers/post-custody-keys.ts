@@ -1,5 +1,5 @@
 /**
- * Handler for POST /api/logs/{logId}/custody-keys — Custodian create-only proxy.
+ * Handler for POST /api/logs/{logId}/custody-keys — Custodian ensure proxy.
  */
 
 import { decode, encode as encodeCbor } from "cbor-x";
@@ -53,6 +53,7 @@ export async function handlePostCustodyKeys(
       keyOwnerId: body.keyOwnerId.trim(),
       selfLogId: logIdHex32,
       alg: body.alg?.trim() || "ES256",
+      protectionLevel: "SOFTWARE",
       labels: body.labels ?? {},
     };
 
@@ -77,7 +78,7 @@ export async function handlePostCustodyKeys(
       return problemResponse(
         res.status,
         "about:blank",
-        "Custodian create key failed",
+        "Custodian ensure key failed",
         `Custodian returned ${res.status}`,
       );
     }

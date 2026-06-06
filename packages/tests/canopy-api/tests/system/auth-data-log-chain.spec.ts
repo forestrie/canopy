@@ -22,7 +22,7 @@ import {
   custodianKmsCryptoKeyIdFromLogUuid,
   e2eCustodianKeyOwnerId,
   grantData64FromCustodianPem,
-  postCustodianCreateEs256Key,
+  postCustodianEnsureEs256Key,
   signGrantPayloadWithCustodyKey,
 } from "@e2e-utils/custodian-custody-grant";
 import { postCustodianSignRawPayloadBytes } from "@e2e-utils/custodian-sign-payload";
@@ -94,7 +94,7 @@ test.describe("Auth log → data log delegation chain", () => {
     const custody = custodianCustodySignEnv()!;
 
     const { keyId: authKeyId, publicKeyPem: authPubPem } =
-      await postCustodianCreateEs256Key({
+      await postCustodianEnsureEs256Key({
         baseUrl: custody.baseUrl,
         appToken: custody.token,
         keyOwnerId: e2eCustodianKeyOwnerId(),
@@ -138,7 +138,7 @@ test.describe("Auth log → data log delegation chain", () => {
     );
 
     const { keyId: delKeyId, publicKeyPem: delPubPem } =
-      await postCustodianCreateEs256Key({
+      await postCustodianEnsureEs256Key({
         baseUrl: custody.baseUrl,
         appToken: custody.token,
         keyOwnerId: e2eCustodianKeyOwnerId(),
@@ -251,7 +251,7 @@ test.describe("Auth log → data log delegation chain", () => {
     const custody = custodianCustodySignEnv()!;
 
     const { keyId: authKeyId, publicKeyPem: authPubPem } =
-      await postCustodianCreateEs256Key({
+      await postCustodianEnsureEs256Key({
         baseUrl: custody.baseUrl,
         appToken: custody.token,
         keyOwnerId: e2eCustodianKeyOwnerId(),
@@ -287,7 +287,7 @@ test.describe("Auth log → data log delegation chain", () => {
       authRegComplete.entryIdHex,
     );
 
-    const { publicKeyPem: delPubPem } = await postCustodianCreateEs256Key({
+    const { publicKeyPem: delPubPem } = await postCustodianEnsureEs256Key({
       baseUrl: custody.baseUrl,
       appToken: custody.token,
       keyOwnerId: e2eCustodianKeyOwnerId(),

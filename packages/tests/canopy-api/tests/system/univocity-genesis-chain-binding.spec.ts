@@ -9,7 +9,7 @@ import { assertBootstrapMintE2eEnv } from "@e2e-utils/e2e-env-guards";
 import {
   custodianCustodySignEnv,
   custodianKmsCryptoKeyIdFromLogUuid,
-  postCustodianCreateEs256Key,
+  postCustodianEnsureEs256Key,
 } from "@e2e-utils/custodian-custody-grant";
 import { ensureForestGenesisE2e } from "@e2e-utils/forest-genesis-e2e";
 import { mintBootstrapGrant } from "@e2e-utils/bootstrap-grant-flow";
@@ -18,6 +18,7 @@ import {
   reportProblemDetails,
   responseTextPreview,
 } from "@e2e-utils/problem-details";
+import { e2eStaticCustodianKeyLabels } from "@e2e-utils/e2e-static-log-ids";
 import {
   getForestGenesisParsed,
   univocityContractAddrBytes,
@@ -54,11 +55,12 @@ test.describe("Univocity genesis chain binding (Base Sepolia)", () => {
 
     // Stable keypair for the fixed R: Custodian key id is deterministic from the
     // log id, so the genesis pubkey keeps matching across runs.
-    const { publicKeyPem } = await postCustodianCreateEs256Key({
+    const { publicKeyPem } = await postCustodianEnsureEs256Key({
       baseUrl: custody.baseUrl,
       appToken: custody.token,
       keyOwnerId: custodianKmsCryptoKeyIdFromLogUuid(rootLogId),
       selfLogId: rootLogId,
+      labels: e2eStaticCustodianKeyLabels(),
     });
     const uncompressed = publicKeyPemToUncompressed65(publicKeyPem);
     const x = uncompressed.subarray(1, 33);
@@ -109,11 +111,12 @@ test.describe("Univocity genesis chain binding (Base Sepolia)", () => {
     const chainId = univocityGenesisChainId();
     const univocityAddr = univocityContractAddrBytes();
 
-    const { publicKeyPem } = await postCustodianCreateEs256Key({
+    const { publicKeyPem } = await postCustodianEnsureEs256Key({
       baseUrl: custody.baseUrl,
       appToken: custody.token,
       keyOwnerId: custodianKmsCryptoKeyIdFromLogUuid(rootLogId),
       selfLogId: rootLogId,
+      labels: e2eStaticCustodianKeyLabels(),
     });
     const uncompressed = publicKeyPemToUncompressed65(publicKeyPem);
     const x = uncompressed.subarray(1, 33);

@@ -94,9 +94,11 @@ Resolved in **`playwright.config.ts`** from the **process environment** (Doppler
 
 **System / bootstrap e2e** (`tests/system/*.spec.ts`):
 
-- **Runner:** **`CURATOR_ADMIN_TOKEN`** (genesis), **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`** (create key + sign). The **Worker** must expose SCRAPI **`/register/{bootstrap}/…`** with queue/MMRS configured.
+- **Runner:** **`CURATOR_ADMIN_TOKEN`** (genesis), **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`** (ensure custody key + sign). The **Worker** must expose SCRAPI **`/register/{bootstrap}/…`** with queue/MMRS configured.
 - If bootstrap mint env is missing, tests **fail** immediately with a clear error.
-- **`E2E_RUN_ID`**: optional disambiguator for key labels (when used by helpers).
+- **`E2E_RUN_ID`**: written by `globalSetup` to `.e2e-run-id`; labels per-run custody keys for teardown.
+- **`globalTeardown`**: best-effort delete of keys labeled `e2e-run-id` + `e2e-test-key` (needs **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`**). Set **`E2E_SKIP_CUSTODIAN_KEY_CLEANUP=1`** to skip. Static keys (`e2e-static-key: true`) are never auto-deleted.
+- E2e helpers pass **`protectionLevel: "SOFTWARE"`** — do not use HSM keys in automated tests.
 
 Other keys:
 
@@ -127,12 +129,12 @@ Set **`COORDINATOR_APP_TOKEN`** in Doppler **`canopy/dev`** (masked) after fores
 
 **Custodian API e2e** (`tests/custodian/custodian-api.spec.ts`, Playwright project **`custodian`**):
 
-- **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**: create key, public, sign, curator, list via **`/v1/api/…`** (ingress); ops probes use the URL **origin** only (`/healthz`, `/readyz`, …).
-- **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`**: required for teardown (`POST /v1/api/keys/{keyId}/delete`). If unset, the suite **fails** in `beforeAll` / teardown (no skip).
+- **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**: ensure key, public, sign, curator, list via **`/v1/api/…`** (ingress); ops probes use the URL **origin** only (`/healthz`, `/readyz`, …).
+- Uses a **static** log id (`E2E_STATIC_CUSTODIAN_API_LOG_ID` in `tests/utils/e2e-static-log-ids.ts`); no per-spec key delete.
 
 **Listing all custody keys:** **`GET /api/keys/list`** requires at least one label query parameter. To list **every** key in the custody ring, use **`POST /api/keys/list`** with CBOR **`labels: {}`** (see `postCustodianApiKeysListAll` in `tests/utils/custodian-api-keys-list.ts`). The dedicated bootstrap KMS key (`BOOTSTRAP_KMS_CRYPTO_KEY_ID` / `:bootstrap`) is not part of that ring unless you also created it there.
 
-**Ops tasks (repo root):** `task custodian:keys-list` (needs **`CUSTODIAN_APP_TOKEN`** and **`CUSTODIAN_BASE_URL`** or default from `Taskfile.dist.yml`). `task custodian:keys-delete-all` lists keys then **dry-runs** deletes; set **`CONFIRM=1`** to call **`POST /v1/api/keys/{keyId}/delete`** per id (**`CUSTODIAN_BOOTSTRAP_APP_TOKEN`** required). Prefer **`doppler run -- …`** when injecting tokens locally.
+**Ops tasks (repo root):** `task custodian:keys-list` (needs **`CUSTODIAN_APP_TOKEN`** and **`CUSTODIAN_BASE_URL`** or default from `Taskfile.dist.yml`). `task custodian:keys-delete-all` lists keys then **dry-runs** deletes; set **`CONFIRM=1`** to call **`POST /v1/api/keys/{keyId}/delete`** per id (**`CUSTODIAN_BOOTSTRAP_APP_TOKEN`** required). `task custodian:keys-delete-by-label` with **`LABEL_KEY`** + **`LABEL_VALUE`** (e.g. `e2e-run-id` + run uuid). Prefer **`doppler run -- …`** when injecting tokens locally.
 
 ## Test layout (by file)
 

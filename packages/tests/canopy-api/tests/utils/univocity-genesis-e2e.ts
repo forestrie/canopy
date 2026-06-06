@@ -16,6 +16,7 @@ import {
   FOREST_GENESIS_LABEL_CHAIN_ID,
   FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
 } from "@e2e-canopy-api-src/forest/forest-genesis-labels.js";
+import { E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID } from "./e2e-static-log-ids.js";
 
 /** Default Base Sepolia Univocity deployment under test (BaseScan-verified). */
 export const DEFAULT_UNIVOCITY_CONTRACT_ADDR =
@@ -28,8 +29,7 @@ export const DEFAULT_UNIVOCITY_CHAIN_ID = "84532";
  * Default fixed root log id (R) for the chain-binding scenario. Stable so the
  * genesis persists across runs; delete via `task cf:genesis:delete` to reset.
  */
-export const DEFAULT_UNIVOCITY_GENESIS_LOG_ID =
-  "b1a50611-dd70-42d3-9c87-611dd70b2441";
+export const DEFAULT_UNIVOCITY_GENESIS_LOG_ID = E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID;
 
 function hexToBytes(hex: string): Uint8Array {
   const out = new Uint8Array(hex.length / 2);

@@ -15,7 +15,7 @@ import {
 import { ensureForestGenesisE2e } from "./forest-genesis-e2e.js";
 import {
   custodianKmsCryptoKeyIdFromLogUuid,
-  postCustodianCreateEs256Key,
+  postCustodianEnsureEs256Key,
 } from "./custodian-custody-grant.js";
 
 function bytesToForestrieGrantBase64(bytes: Uint8Array): string {
@@ -41,7 +41,7 @@ export async function mintTransparentBootstrapGrantBase64(opts: {
   univocityAddr?: Uint8Array;
   chainId?: string;
 }): Promise<{ grantBase64: string; rootCustodySignKeyId: string }> {
-  const { keyId, publicKeyPem } = await postCustodianCreateEs256Key({
+  const { keyId, publicKeyPem } = await postCustodianEnsureEs256Key({
     baseUrl: opts.custodianUrl,
     appToken: opts.custodianAppToken,
     keyOwnerId: custodianKmsCryptoKeyIdFromLogUuid(opts.rootLogId),

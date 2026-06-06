@@ -1,23 +1,18 @@
 /**
  * Direct Custodian HTTP API e2e (`CUSTODIAN_URL` = ingress origin; ops at `/healthz`…,
  * API at `/v1/api/…` per Traefik stripPrefix).
- * Does not use `:bootstrap` key routes; curator must not resolve our random log to `:bootstrap`.
+ * Uses a static log id (reuse-safe); static custody key is not deleted on teardown.
  */
 
 import { expect, test } from "@playwright/test";
 import { randomUUID } from "node:crypto";
-import {
-  custodianKmsCryptoKeyIdFromLogUuid,
-  e2eCustodianKeyOwnerId,
-} from "@e2e-utils/custodian-custody-grant.js";
+import { custodianKmsCryptoKeyIdFromLogUuid } from "@e2e-utils/custodian-custody-grant.js";
 import {
   assertCustodianApiE2eEnv,
-  custodianApiBootstrapAppToken,
   custodianApiV1BaseUrl,
 } from "@e2e-utils/custodian-api-env.js";
+import { postCustodianApiEnsureEs256Key } from "@e2e-utils/custodian-api-ensure-key.js";
 import { getCustodianApiCuratorLogKey } from "@e2e-utils/custodian-api-curator-log-key.js";
-import { postCustodianApiCreateEs256Key } from "@e2e-utils/custodian-api-create-key.js";
-import { postCustodianApiDeleteKey } from "@e2e-utils/custodian-api-delete-key.js";
 import {
   getCustodianApiKeysListGet,
   postCustodianApiKeysList,
@@ -33,18 +28,12 @@ import {
   postCustodianApiSignPayload,
   verifyCustodianApiSign1AgainstPem,
 } from "@e2e-utils/custodian-api-sign.js";
+import {
+  E2E_STATIC_CUSTODIAN_API_LOG_ID,
+  e2eStaticCustodianKeyLabels,
+} from "@e2e-utils/e2e-static-log-ids.js";
 
 test.describe.configure({ mode: "serial" });
-
-type RunState = {
-  baseUrl: string;
-  appToken: string;
-  /** KMS CryptoKey id segment (32 lowercase hex); safe in URL paths (no `/`). */
-  cryptoKeyShortId: string;
-  logHex32: string;
-};
-
-let run: RunState | undefined;
 
 async function sleep(ms: number): Promise<void> {
   await new Promise((r) => setTimeout(r, ms));
@@ -55,7 +44,7 @@ test.describe("Custodian HTTP API (deployed)", () => {
     assertCustodianApiE2eEnv();
   });
 
-  test("ops smoke, create, public, sign, curator, list, log-id public", async () => {
+  test("ops smoke, ensure, public, sign, curator, list", async () => {
     const { baseUrl, appToken } = assertCustodianApiE2eEnv();
 
     const hz = await getCustodianHealthz(baseUrl);
@@ -74,29 +63,30 @@ test.describe("Custodian HTTP API (deployed)", () => {
     expect(met.status).toBe(200);
     expect(met.text.length).toBeGreaterThan(0);
 
-    const selfLogId = randomUUID();
+    const selfLogId = E2E_STATIC_CUSTODIAN_API_LOG_ID;
     const logHex32 = custodianKmsCryptoKeyIdFromLogUuid(selfLogId);
-    const keyOwnerId = e2eCustodianKeyOwnerId();
+    const keyOwnerId = logHex32;
 
-    const created = await postCustodianApiCreateEs256Key({
+    const ensured = await postCustodianApiEnsureEs256Key({
       baseUrl,
       appToken,
       body: {
         keyOwnerId,
         selfLogId,
         alg: "ES256",
+        protectionLevel: "SOFTWARE",
+        labels: e2eStaticCustodianKeyLabels(),
       },
     });
-    expect(created.alg).toBe("ES256");
-    expect(created.keyId).not.toBe(":bootstrap");
-    expect(created.publicKeyPem).toContain("BEGIN PUBLIC KEY");
+    expect(ensured.alg).toBe("ES256");
+    expect(ensured.keyId).not.toBe(":bootstrap");
+    expect(ensured.publicKeyPem).toContain("BEGIN PUBLIC KEY");
 
     const pub = await getCustodianApiPublicKey({
       baseUrl,
-      // KMS CryptoKey id is selfLogId (32 hex), same segment as sign — not keyOwnerId.
       keyIdSegment: logHex32,
     });
-    expect(pub.publicKeyPem.trim()).toBe(created.publicKeyPem.trim());
+    expect(pub.publicKeyPem.trim()).toBe(ensured.publicKeyPem.trim());
     expect(pub.alg).toBe("ES256");
 
     const payloadBytes = new TextEncoder().encode(
@@ -110,7 +100,7 @@ test.describe("Custodian HTTP API (deployed)", () => {
     });
     expect(sign1.length).toBeGreaterThan(32);
     await expect(
-      verifyCustodianApiSign1AgainstPem(sign1, created.publicKeyPem),
+      verifyCustodianApiSign1AgainstPem(sign1, ensured.publicKeyPem),
     ).resolves.toBe(true);
 
     let curatorKeyId: string | null = null;
@@ -133,7 +123,6 @@ test.describe("Custodian HTTP API (deployed)", () => {
     }
     expect(curatorKeyId).toBeTruthy();
     expect(curatorKeyId).not.toBe(":bootstrap");
-    // Curator CBOR returns short CryptoKey id; create response keyId may be full GCP resource name.
     expect(curatorKeyId).toBe(logHex32);
 
     const listedGet = await getCustodianApiKeysListGet({
@@ -144,7 +133,7 @@ test.describe("Custodian HTTP API (deployed)", () => {
     });
     expect(
       listedGet.keys.some(
-        (e) => e.keyId === created.keyId || e.keyId.endsWith(logHex32),
+        (e) => e.keyId === ensured.keyId || e.keyId.endsWith(logHex32),
       ),
     ).toBeTruthy();
 
@@ -156,52 +145,10 @@ test.describe("Custodian HTTP API (deployed)", () => {
     });
     expect(
       listedPost.keys.some(
-        (e) => e.keyId === created.keyId || e.keyId.endsWith(logHex32),
+        (e) => e.keyId === ensured.keyId || e.keyId.endsWith(logHex32),
       ),
     ).toBeTruthy();
 
-    // Curator/log-key exercises `?log-id=true`; public above uses the KMS short id (selfLogId).
-
-    run = {
-      baseUrl,
-      appToken,
-      cryptoKeyShortId: logHex32,
-      logHex32,
-    };
-  });
-
-  test("teardown: delete custody key (bootstrap app token)", async () => {
-    assertCustodianApiE2eEnv();
-    const bootstrap = custodianApiBootstrapAppToken();
-    if (!bootstrap) {
-      throw new Error(
-        "CUSTODIAN_BOOTSTRAP_APP_TOKEN is required for custody key teardown (POST /v1/api/keys/{id}/delete).",
-      );
-    }
-    const state = run;
-    if (!state) {
-      throw new Error(
-        "Previous Custodian API test did not complete; cannot run teardown.",
-      );
-    }
-
-    const del = await postCustodianApiDeleteKey({
-      baseUrl: state.baseUrl,
-      bootstrapAppToken: bootstrap,
-      keyIdSegment: state.cryptoKeyShortId,
-    });
-    expect(del.destroyedCount).toBeGreaterThanOrEqual(1);
-
-    const v1 = custodianApiV1BaseUrl(state.baseUrl);
-    const gone = await fetch(
-      `${v1}/api/keys/${encodeURIComponent(state.cryptoKeyShortId)}/public`,
-      { headers: { Accept: "application/cbor" } },
-    );
-    expect(gone.status).toBe(404);
-
-    // KMS list-by-label can still include a CryptoKey while versions are
-    // DESTROY_SCHEDULED; do not assert immediate absence from list.
-
-    run = undefined;
+    void custodianApiV1BaseUrl(baseUrl);
   });
 });

@@ -1,5 +1,5 @@
 /**
- * Custodian custody key: POST /api/keys, sign grant payload with APP_TOKEN (Plan 0015).
+ * Custodian custody key: POST /api/keys (ensure), sign grant payload with APP_TOKEN.
  */
 
 import { randomUUID } from "node:crypto";
@@ -12,6 +12,7 @@ import {
   publicKeyPemToUncompressed65,
 } from "@e2e-canopy-api-src/scrapi/custodian-grant.js";
 import { e2eCustodianKeyLabels } from "./e2e-custodian-labels.js";
+import { e2eStaticCustodianKeyLabels } from "./e2e-static-log-ids.js";
 import { normalizeForestrieHexId32 } from "./forestrie-hex-id.js";
 import { assertUserLabelKeysNotOperatorPrefix } from "./forestrie-operator-labels.js";
 
@@ -56,7 +57,7 @@ export function grantData64FromCustodianPem(publicKeyPem: string): Uint8Array {
   return grantData64FromUncompressed(u65);
 }
 
-export async function postCustodianCreateEs256Key(opts: {
+export async function postCustodianEnsureEs256Key(opts: {
   baseUrl: string;
   appToken: string;
   /** Normalized by server; UUID or 32-hex accepted. */
@@ -67,11 +68,13 @@ export async function postCustodianCreateEs256Key(opts: {
   selfLogId: string;
   /** Merged after e2e labels; must not use `fo-` prefix. */
   labels?: Record<string, string>;
-}): Promise<{ keyId: string; publicKeyPem: string }> {
+}): Promise<{ keyId: string; publicKeyPem: string; created?: boolean }> {
   const keyOwnerId = normalizeForestrieHexId32(opts.keyOwnerId);
   const selfLogId = normalizeForestrieHexId32(opts.selfLogId);
   const labels = {
-    ...e2eCustodianKeyLabels(),
+    ...(opts.labels?.["e2e-static-key"] === "true"
+      ? e2eStaticCustodianKeyLabels()
+      : e2eCustodianKeyLabels()),
     ...opts.labels,
   };
   assertUserLabelKeysNotOperatorPrefix(labels);
@@ -81,6 +84,7 @@ export async function postCustodianCreateEs256Key(opts: {
     keyOwnerId,
     selfLogId,
     alg: "ES256",
+    protectionLevel: "SOFTWARE",
     labels,
   };
   const encoded = encodeCbor(body);
@@ -103,7 +107,7 @@ export async function postCustodianCreateEs256Key(opts: {
   });
   if (!res.ok) {
     throw new Error(
-      `Custodian create key: ${res.status} ${(await res.text()).slice(0, 200)}`,
+      `Custodian ensure key: ${res.status} ${(await res.text()).slice(0, 200)}`,
     );
   }
   const raw = decodeCbor(new Uint8Array(await res.arrayBuffer())) as unknown;
@@ -114,9 +118,11 @@ export async function postCustodianCreateEs256Key(opts: {
   const keyId = fields.keyId;
   const publicKey = fields.publicKey;
   if (typeof keyId !== "string" || typeof publicKey !== "string") {
-    throw new Error("Custodian create key: missing keyId or publicKey");
+    throw new Error("Custodian ensure key: missing keyId or publicKey");
   }
-  return { keyId, publicKeyPem: publicKey };
+  const created =
+    typeof fields.created === "boolean" ? fields.created : undefined;
+  return { keyId, publicKeyPem: publicKey, created };
 }
 
 /** Forestrie-Grant **base64** (Authorization value without prefix) for `Grant`. */

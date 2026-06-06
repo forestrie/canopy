@@ -36,6 +36,7 @@ const baseURL = resolveCanopyBaseUrl();
 
 export default defineConfig({
   globalSetup: "./global-setup.ts",
+  globalTeardown: "./global-teardown.ts",
   testDir: "./tests",
   timeout: 30_000,
   retries: process.env.CI ? 2 : 0,
