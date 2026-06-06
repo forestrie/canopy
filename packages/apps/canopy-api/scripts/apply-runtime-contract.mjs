@@ -224,6 +224,11 @@ varsBlock = setStringProperty(
   "UNIVOCITY_SERVICE_URL",
   process.env.UNIVOCITY_SERVICE_URL,
 );
+varsBlock = setStringProperty(
+  varsBlock,
+  "UNIVOCITY_RESOLVE_OVERRIDE",
+  process.env.UNIVOCITY_RESOLVE_OVERRIDE,
+);
 envBlock = replaceRange(envBlock, vars, varsBlock);
 envBlock = setR2BucketName(
   envBlock,

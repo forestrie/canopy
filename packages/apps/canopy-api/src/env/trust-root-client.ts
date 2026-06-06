@@ -6,6 +6,7 @@ import {
   logIdToStorageSegment,
   parseLogIdSegment,
 } from "../grant/log-id-wire.js";
+import { univocityFetch } from "../forest/univocity-fetch.js";
 import {
   fetchCustodianPublicKey,
   importEs256PublicKeyFromGrantDataXy64,
@@ -50,6 +51,7 @@ function createBearerCborTrustRootClient(config: {
   baseUrl: string;
   token: string;
   label: string;
+  resolveOverride?: string;
 }): TrustRootClient {
   const base = config.baseUrl.trim().replace(/\/$/, "");
   const token = config.token.trim();
@@ -67,13 +69,17 @@ function createBearerCborTrustRootClient(config: {
           if (!token) throw new Error(`${label} trust-root token is empty`);
 
           const apiLogId = ownerLogIdToApiSegment(ownerLogIdLowerHex32);
-          const resp = await fetch(`${base}/api/logs/${apiLogId}/public-root`, {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              Accept: "application/cbor",
+          const resp = await univocityFetch(
+            `${base}/api/logs/${apiLogId}/public-root`,
+            {
+              method: "GET",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: "application/cbor",
+              },
             },
-          });
+            config.resolveOverride,
+          );
           const body = new Uint8Array(await resp.arrayBuffer());
           if (resp.status === 404) {
             throw new TrustRootNotFoundError(`${label} public root missing`);
@@ -134,11 +140,13 @@ export function createCoordinatorPublicTrustRootClient(config: {
 export function createUnivocityPublicTrustRootClient(config: {
   univocityBaseUrl: string;
   token: string;
+  resolveOverride?: string;
 }): TrustRootClient {
   return createBearerCborTrustRootClient({
     baseUrl: config.univocityBaseUrl,
     token: config.token,
     label: "univocity",
+    resolveOverride: config.resolveOverride,
   });
 }
 

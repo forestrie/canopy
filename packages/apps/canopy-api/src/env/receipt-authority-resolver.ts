@@ -82,6 +82,7 @@ export function createReceiptAuthorityResolver(config: {
   coordinatorToken?: string;
   univocityTrustRootUrl?: string;
   univocityToken?: string;
+  univocityResolveOverride?: string;
   nodeEnv: string;
   testReceiptVerifyEs256XyHex?: string;
 }): ReceiptAuthorityResolver {
@@ -109,6 +110,7 @@ export function createReceiptAuthorityResolver(config: {
         createUnivocityPublicTrustRootClient({
           univocityBaseUrl: univocityUrl,
           token: univocityToken,
+          resolveOverride: config.univocityResolveOverride,
         }),
       );
     }
