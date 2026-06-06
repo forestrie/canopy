@@ -325,7 +325,7 @@ tasks:
           )
           KEY="forests/forest/${UUID}/genesis.cbor"
           echo "Deleting ${KEY} from {{.R2_BUCKET_NAME_GRANTS}}"
-          yes n | wrangler r2 object delete --remote "{{.R2_BUCKET_NAME_GRANTS}}/${KEY}"
+          yes n | wrangler r2 object delete --remote "{{.R2_BUCKET_NAME_GRANTS}}/${KEY}" || test $? -eq 141
 
   mmr:delete:
     desc: Delete a single log's massif/checkpoint tiles from merklelogs (DESTRUCTIVE!) — LOG_ID=<uuid|64-hex>
