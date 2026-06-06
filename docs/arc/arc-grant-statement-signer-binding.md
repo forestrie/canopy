@@ -2,7 +2,7 @@
 
 **Status:** DRAFT  
 **Date:** 2026-03-19  
-**Related:** [ARC-0001 grant verification](arc-0001-grant-verification.md) (**§4** grant transparent-statement signature on register-grant; **§6** register-entry `kid` binding), [arc-statement-cose-encoding.md](arc-statement-cose-encoding.md), [adr-0001-encoding-one-per-artifact.md](adr-0001-encoding-one-per-artifact.md)
+**Related:** [ARC-0001 grant verification](arc-0001-grant-verification.md) (**§4** grant transparent-statement signature on register-grant; **§6** register-entry `kid` binding), [arc-statement-cose-encoding.md](arc/arc-statement-cose-encoding.md), [adr-0001-encoding-one-per-artifact.md](adr-0001-encoding-one-per-artifact.md)
 
 ## Purpose
 

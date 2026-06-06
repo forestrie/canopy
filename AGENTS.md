@@ -1,12 +1,13 @@
 # AGENTS.md
 
-## Cursor Cloud specific instructions
+Canopy: SCITT/SCRAPI transparency log (pnpm monorepo, Cloudflare Workers).
+Human setup: [README.md](README.md). Platform glossary:
+[devdocs/glossary.md](../devdocs/glossary.md).
 
-Canopy is a SCITT/SCRAPI transparency log built as a pnpm monorepo of Cloudflare Workers. See `README.md` for full prerequisites and setup.
+**Plans:** After a Cursor-built plan exists, persist under `docs/plans/`.
+Full rules: `.cursor/rules/docs-workflow.mdc`.
 
-**Plans:** After a Cursor-built plan exists, persist it under `docs/plans/` — merge into the parent numbered plan when the work clearly extends it, otherwise add the next `plan-NNNN-*.md`. Full rules: `.cursor/rules/docs-workflow.mdc` (**Cursor plans → docs/plans/**).
-
-### Services overview
+## Services (ports)
 
 | Package | Port | Purpose |
 |---------|------|---------|
@@ -15,26 +16,28 @@ Canopy is a SCITT/SCRAPI transparency log built as a pnpm monorepo of Cloudflare
 | `@canopy/x402-settlement` | 8792 | x402 payment settlement worker |
 | `@canopy/delegation-coordinator` | 8793 | Delegation coordinator (Phase 3 APIs, sharded DO) |
 
-### Key commands
+## Commands
 
 - **Install**: `pnpm install`
-- **Unit tests**: `pnpm -r test` (uses Vitest + `@cloudflare/vitest-pool-workers`; no external services needed)
-- **Format check**: `pnpm check` (Prettier)
-- **Type check**: `pnpm -r --filter './packages/**' typecheck` (includes `pnpm --filter @canopy/api-e2e typecheck` when that script is present)
-- **Dev server (canopy-api)**: `pnpm --filter @canopy/api dev` (wrangler dev on port 8789)
-- **E2E tests**: In CI, workflows export vars and run Playwright directly. **Locally**, use `task test:e2e` (Doppler project **canopy**, config **ENV** default **dev**) or `doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e test:e2e`. Do not use a repo-root `.env` file. `task test:e2e:preflight` installs tooling only. Do not add Doppler to `@canopy/api-e2e` package scripts — see `.cursor/rules/e2e-local-doppler.mdc` and `taskfiles/e2e-setup.md`.
-- **Build (dry-run)**: `pnpm -r build`
+- **Unit tests**: `pnpm -r test`
+- **Format / typecheck**: `pnpm check`; `pnpm -r --filter './packages/**' typecheck`
+- **Dev API**: `pnpm --filter @canopy/api dev` (also start `@canopy/forestrie-ingress` for cross-worker routes)
+- **E2E**: `task test:e2e` (Doppler project **canopy**). Details: [docs/agents/e2e.md](docs/agents/e2e.md)
+- **Build**: `pnpm -r build`
 
-### Gotchas
+## Gotchas (critical)
 
-- There is no `lint` script in any package. Linting is done via `pnpm check` (Prettier) and `pnpm -r --filter './packages/**' typecheck` (TypeScript).
-- Unit tests for worker packages (`canopy-api`, `forestrie-ingress`, `x402-settlement`) run inside Miniflare via `@cloudflare/vitest-pool-workers`. R2 buckets and Durable Objects are emulated locally — no Cloudflare account needed.
-- `canopy-api` uses a test-specific wrangler config (`wrangler.test.jsonc`) that sets **`NODE_ENV` to `test`** and omits cross-worker DO bindings. **Vitest pool workers only:** `NODE_ENV === "test"` skips non-pool deployment checks (`CUSTODIAN_URL`, queue, `CUSTODIAN_APP_TOKEN`); real workers must define those for SCRAPI or routes return **503**. Playwright e2e uses dev/prod-like `NODE_ENV`, not `test`.
-- When running `pnpm --filter @canopy/api dev` alone, endpoints that call cross-worker Durable Objects (`POST /register/{bootstrap-logid}/grants`, `POST /register/{bootstrap-logid}/entries`) return 500 because the forestrie-ingress worker is not running. Start both workers for full integration: `pnpm --filter @canopy/api dev` and `pnpm --filter @canopy/forestrie-ingress dev` in separate terminals.
-- **Local `wrangler dev` secrets**: Copy `packages/apps/canopy-api/.dev.vars.bootstrap-example` to `packages/apps/canopy-api/.dev.vars` (gitignored). Without `CUSTODIAN_APP_TOKEN` (and related vars), non-pool routes return **503** CBOR before `/api/health` runs. Values can be placeholders for discovery/queue-only work; real grant/register flows need a reachable Custodian.
-- **Two `wrangler dev` processes**: Both default to inspector port **9229**. Start the second worker with a different port, e.g. `cd packages/apps/forestrie-ingress && pnpm exec wrangler dev --inspector-port 9230` (HTTP still on **8791** per `wrangler.jsonc`).
-- **SequencingQueue (forestrie-ingress)**: Ranger pulls **`{CANOPY_FQDN}/canopy/ingress-queue/queue/pull`** (catalog hostname from forest contract, e.g. `https://api-forest-2.forestrie.dev/...`). Per-project script **`forestrie-ingress-{DNS_SUB}`**. A historical bug recycled `nextSeq` without considering `dead_letters`, which could cause `UNIQUE constraint failed: dead_letters.seq` on `pull` until storage was cleared; **fix** is in `SequencingQueue.initializeFromStorage()` (max `seq` over `queue_entries` **and** `dead_letters`). **Dev-only emergency reset** (wipes all shard SQLite/KV for the queue): set Worker secret `INGRESS_RESET_TOKEN`, then `POST https://{CANOPY_FQDN}/canopy/ingress-queue/queue/admin/reset-storage?shard=all` with header `X-Forestrie-Ingress-Reset: <token>`. Only exposed when `NODE_ENV` is `dev` on **forestrie-ingress**; production returns 404 for that path. See `packages/apps/forestrie-ingress/src/handlers/admin-reset-storage.ts`.
-- **`@canopy/api-e2e` TypeScript**: `packages/tests/canopy-api/tsconfig.json` uses `module: "ES2022"` and `moduleResolution: "bundler"` (the package is `"type": "module"`) so `import.meta` in `playwright.config.ts` typechecks and specs can import `@canopy/api` `src` helpers (e.g. transparent-statement assembly) without a `commonjs`/`import.meta` mismatch. Use `pnpm --filter @canopy/api-e2e typecheck` to verify tests and config locally.
-- **Bootstrap grant Playwright (`packages/tests/canopy-api`, Playwright project **`system`**)**: Mint is **runner-side** (Custodian **`POST /api/keys`** + ES256 sign with **`CUSTODIAN_APP_TOKEN`**, and **`CURATOR_ADMIN_TOKEN`** for `POST /api/forest/{log-id}/genesis`), then **`POST /register/{log-id}/grants`**. The worker verifies the grant against **genesis** and **grantData** (no `:bootstrap` alias). Bootstrap specs use a **fresh UUID** per test or per describe so the first register-grant hits the **MMRS-cold** bootstrap branch; receipt verification uses **`curator/log-key`** per owner log. Polling / receipt tests need **forestrie-ingress** on the same stack; without it, **system** e2e **fails** (no skip env).
-- API responses use CBOR encoding (not JSON), except for `/api/health` and `/.well-known/scitt-configuration` which return JSON.
-- pnpm 10 skips dependency build scripts by default. The unit tests and dev server work without running those build scripts (workerd, esbuild, etc. are handled by wrangler internally).
+- No package `lint` script — use `pnpm check` + typecheck.
+- API responses are **CBOR** except `/api/health` and `/.well-known/scitt-configuration`.
+- `canopy-api` alone returns **500** on routes that call forestrie-ingress DOs; start both workers (second needs `--inspector-port 9230`).
+- Playwright **system** tests need deployed stack + forestrie-ingress; no skip env.
+- Local secrets: `packages/apps/canopy-api/.dev.vars` (not repo-root `.env`).
+- SequencingQueue: see [docs/agents/gotchas.md](docs/agents/gotchas.md) for reset and `dead_letters` fix.
+
+## Documentation map
+
+- **Agent index**: [docs/agents/README.md](docs/agents/README.md)
+- **Active plans**: [docs/plans/README.md](docs/plans/README.md) (skip `archived/` unless cited)
+- **Platform design**: [../devdocs/](../devdocs/) — architecture, glossary, arc/, adr/
+- **Grant verification**: [devdocs ARC-0019](../devdocs/arc/arc-0019-grant-verification-model.md) + [canopy implementation](docs/arc/canopy-grant-verification-implementation.md)
+- **Extended commands / conventions**: [docs/agents/commands.md](docs/agents/commands.md), [conventions.md](docs/agents/conventions.md)

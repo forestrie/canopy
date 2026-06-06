@@ -88,24 +88,22 @@ per day is typically sufficient.
 **Token reference:**
 - Base Sepolia USDC: `0x036CbD53842c5426634e7929541eC2318f3dCF7e`
 
-### 3. Configure the Private Key
+### 3. Configure the private key
 
-Add the dev wallet's private key to **`.env`**:
+Store the dev wallet private key in Doppler (project **`canopy`**, config **`dev`**)
+as **`CANOPY_X402_DEV_PRIVATE_KEY`**, or export it for the current shell:
 
 ```bash
-# Shared x402 dev payer wallet (Base Sepolia)
-CANOPY_X402_DEV_PRIVATE_KEY=0x<your-64-hex-char-private-key>
+export CANOPY_X402_DEV_PRIVATE_KEY=0x<your-64-hex-char-private-key>
+doppler run --project canopy --config dev -- task scrapi:register-statement:hello
 ```
 
-This key is used by:
-- SCRAPI Taskfile flows (`task scrapi:register-statement:*`, smoke tests)
-- k6 performance tests
-- Any other local x402 tooling
+Do not commit keys. Prefer Doppler over a repo-root `.env` file.
 
 ### 4. Optional: Balance Guardrail
 
 To enable a warning when your dev wallet's USDC balance drops below 50% of a
-configured daily faucet claim, add:
+configured daily faucet claim, set in Doppler (or export for local runs):
 
 ```bash
 # Expected daily faucet claim in USDC (e.g. 100)
@@ -120,14 +118,8 @@ CANOPY_X402_DEV_DAILY_CLAIM_USDC=100
 
 ### 5. Automated Faucet Refill (Optional)
 
-To automate faucet funding, configure CDP API credentials in **`.env`**:
-
-```bash
-CDP_API_KEY_ID=your-cdp-api-key-id
-CDP_API_KEY_SECRET="-----BEGIN EC PRIVATE KEY-----
-...
------END EC PRIVATE KEY-----"
-```
+To automate faucet funding, configure CDP API credentials in Doppler
+(`CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`) or export for local runs:
 
 Then use the faucet commands:
 

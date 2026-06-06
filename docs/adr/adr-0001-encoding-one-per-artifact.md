@@ -2,7 +2,7 @@
 
 **Status**: ACCEPTED  
 **Date**: 2026-03-08  
-**Related**: [Plan 0003](plans/plan-0003-encoding-redux.md), [arc-statement-cose-encoding](arc-statement-cose-encoding.md)
+**Related**: [Plan 0003](plans/plan-0003-encoding-redux.md), [arc-statement-cose-encoding](arc/arc-statement-cose-encoding.md)
 
 ## Context
 

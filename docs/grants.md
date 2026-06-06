@@ -2,7 +2,7 @@
 
 **Status:** DRAFT  
 **Date:** 2026-03-28  
-**Related:** [ARC-0001: Grant verification](arc-0001-grant-verification.md), [Univocity ARC-0017 — Authorization overview](https://github.com/forestrie/univocity/blob/main/docs/arc/arc-0017-auth-overview.md) (on-chain two-check model; [§5.1 ingress vs verifier](https://github.com/forestrie/univocity/blob/main/docs/arc/arc-0017-auth-overview.md#51-off-chain-ingress-vs-this-contract-forestrie--canopy)), [Univocity ARC-0017 — Log hierarchy](https://github.com/forestrie/univocity/blob/main/docs/arc/arc-0017-log-hierarchy-and-authority.md) (`authLogId`, `ownerLogId`, Phase 0), [Grant–statement signer binding (code paths)](arc-grant-statement-signer-binding.md), [Register-grant API](api/register-grant.md), [Plan 0007 grant type alignment](plans/plan-0007-grant-type-and-commitment-alignment.md)
+**Related:** [ARC-0001: Grant verification](arc-0001-grant-verification.md), [Univocity ARC-0017 — Authorization overview](https://github.com/forestrie/univocity/blob/main/docs/arc/arc-0017-auth-overview.md) (on-chain two-check model; [§5.1 ingress vs verifier](https://github.com/forestrie/univocity/blob/main/docs/arc/arc-0017-auth-overview.md#51-off-chain-ingress-vs-this-contract-forestrie--canopy)), [Univocity ARC-0017 — Log hierarchy](https://github.com/forestrie/univocity/blob/main/docs/arc/arc-0017-log-hierarchy-and-authority.md) (`authLogId`, `ownerLogId`, Phase 0), [Grant–statement signer binding (code paths)](arc/arc-grant-statement-signer-binding.md), [Register-grant API](api/register-grant.md), [Plan 0007 grant type alignment](plans/plan-0007-grant-type-and-commitment-alignment.md)
 
 This page is a **single entry point** for Forestrie grant **shapes**, **wire formats**, and how **creation** (register-grant) and **consumption** (register-signed-statement) differ in what they verify. The **authorization and evidence model** — what actually authorizes a request, and why register-grant sometimes needs a second, _public_ grant as evidence — is in [§10](#10-authorization-and-evidence-model); the request-body wire format for that evidence is [§11](#11-evidence-transport-parent-grant-post-body). Normative security obligations live in **ARC-0001**; this document orients readers before diving there.
 
@@ -181,10 +181,10 @@ Full envelope verification on `/entries` against `K(owner)` is a known gap; the 
 | Topic                                                    | Document                                                                    |
 | -------------------------------------------------------- | --------------------------------------------------------------------------- |
 | Formal model, §4/§5/§6 obligations, circularity, roadmap | [ARC-0001](arc-0001-grant-verification.md)                                  |
-| Byte flow for `kid` vs `grantData`, pool / k6            | [arc-grant-statement-signer-binding](arc-grant-statement-signer-binding.md) |
+| Byte flow for `kid` vs `grantData`, pool / k6            | [arc-grant-statement-signer-binding](arc/arc-grant-statement-signer-binding.md) |
 | Parent-grant evidence wire format (POST body)            | [§11](#11-evidence-transport-parent-grant-post-body)                        |
 | Legacy register-grant request shape (out of date)        | [api/register-grant.md](api/register-grant.md)                              |
-| COSE / hashing details                                   | [arc-statement-cose-encoding.md](arc-statement-cose-encoding.md)            |
+| COSE / hashing details                                   | [arc-statement-cose-encoding.md](arc/arc-statement-cose-encoding.md)            |
 
 ---
 
