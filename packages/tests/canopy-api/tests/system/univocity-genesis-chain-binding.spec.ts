@@ -20,6 +20,7 @@ import {
 } from "@e2e-utils/problem-details";
 import { e2eStaticCustodianKeyLabels } from "@e2e-utils/e2e-static-log-ids";
 import {
+  es256ChainBindingSkipReason,
   getForestGenesisParsed,
   univocityContractAddrBytes,
   univocityGenesisChainId,
@@ -37,10 +38,19 @@ import {
  * verify of chain-id / univocity-addr / bootstrap-logid / COSE key. The bootstrap
  * register-grant 303 flow is Phase 2 (needs per-log MMR reset to re-run).
  *
- * Requires: `CURATOR_ADMIN_TOKEN`, `CUSTODIAN_URL`, `CUSTODIAN_APP_TOKEN`.
+ * Requires: `CURATOR_ADMIN_TOKEN`, `CUSTODIAN_URL`, `CUSTODIAN_APP_TOKEN`, and a
+ * Univocity deployment whose on-chain `bootstrapConfig()` is **ES256** (64-byte
+ * x‖y). The default Base Sepolia Safe deployment is KS256 and is skipped.
  */
 test.describe("Univocity genesis chain binding (Base Sepolia)", () => {
   test.describe.configure({ mode: "serial" });
+
+  test.beforeAll(async () => {
+    const skip = await es256ChainBindingSkipReason();
+    if (skip) {
+      test.skip(true, skip);
+    }
+  });
 
   test("genesis is created/present with real chain binding and verifies via GET", async ({
     unauthorizedRequest,
