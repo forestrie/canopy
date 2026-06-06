@@ -7,8 +7,8 @@ alwaysApply: true
 
 Applies when using the **Linear MCP server** (`plugin-linear-linear`) for work in:
 
-- `canopy`, `arbor`, `arbor-flux`, `forest-1`
-- any other repository under `~/Dev/personal/forestrie`
+- `canopy`, `arbor`, `arbor-flux`, `forest-1`, `univocity`, `devdocs`
+- any other repository in the [forestrie](https://github.com/forestrie) GitHub org
 
 ## Required identity
 
@@ -19,7 +19,8 @@ Applies when using the **Linear MCP server** (`plugin-linear-linear`) for work i
 
 ## Before the first Linear MCP call
 
-1. Confirm the active git/workspace path is under `~/Dev/personal/forestrie` (or one of the named repos above).
+1. Confirm the active workspace is a Forestrie repository (see list above, or
+   a `github.com/forestrie/*` git remote).
 2. Call **`get_user`** with `query: "me"`.
 3. Verify **`email`** is exactly **`robinbryce@gmail.com`**.
 4. Verify the user belongs to the **Forestrie** workspace (team key **`FOR`**).
