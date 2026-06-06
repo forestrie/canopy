@@ -49,6 +49,25 @@ Required keys in the Doppler config include at least:
 - **`SCRAPI_API_KEY`** — bearer token for authorized fixtures (when used)
 - **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**, **`CURATOR_ADMIN_TOKEN`** — for **system** bootstrap mint (runner-side `POST /api/keys` + genesis)
 
+**Univocity genesis chain-binding** (`tests/system/univocity-genesis-*-chain-binding.spec.ts`):
+
+- **`E2E_UNIVOCITY_CONTRACT_ADDR`** — ImutableUnivocity on Base Sepolia (default in code:
+  `0x7A4E8ad88D6Df29FEBEc0d546d148Ed4bea8Cb94`). Set in Doppler **`canopy/dev`** and sync to GitHub **`dev`** Environment **`vars`** for CI.
+- **`E2E_UNIVOCITY_RPC_URL`** — optional; default `https://sepolia.base.org` (runner reads `bootstrapConfig()`).
+- **`E2E_UNIVOCITY_CHAIN_ID`** — optional; default `84532`.
+- **`E2E_UNIVOCITY_GENESIS_LOG_ID`** — optional; default static UUID in
+  `tests/utils/e2e-static-log-ids.ts` (`7a4e8ad8-…`, mnemonic for the new contract).
+- **`CURATOR_ADMIN_TOKEN`** — required (POST `/api/forest/{log-id}/genesis`).
+- Reset persisted genesis: `task cf:genesis:delete LOG_ID=<uuid>` (see spec comments).
+
+Run KS256 chain-binding only:
+
+```bash
+doppler run --project canopy --config dev -- \
+  pnpm --filter @canopy/api-e2e exec playwright test \
+  tests/system/univocity-genesis-ks256-chain-binding.spec.ts
+```
+
 The **worker** must have **`CUSTODIAN_APP_TOKEN`** (Wrangler secret) for SCITT receipt verification on register-grant / register-statement; the **runner** uses the same token for per-root bootstrap mint. Misconfiguration surfaces as **failures**, not skipped tests.
 
 **Do not** put `doppler run` in `@canopy/api-e2e` `package.json` scripts — CI runs Playwright without the Doppler CLI.

@@ -15,7 +15,10 @@
   },
   "dependencies": {
     "@canopy/encoding": "workspace:*",
-    "@canopy/forestrie-sharding": "workspace:*"
+    "@canopy/forestrie-sharding": "workspace:*",
+    "@noble/curves": "^1.9.7",
+    "@noble/hashes": "^1.7.1",
+    "viem": "^2.21.0"
   },
   "devDependencies": {
     "@canopy/encoding": "workspace:*",

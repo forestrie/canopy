@@ -8,14 +8,18 @@ import {
 } from "../grant/log-id-wire.js";
 import {
   fetchCustodianPublicKey,
-  importEs256PublicKeyFromGrantDataXy64,
   importSpkiPemVerifyKeyWithAlg,
 } from "../scrapi/custodian-grant.js";
-import type { ParsedVerifyKey } from "@canopy/encoding";
 import { decode } from "cbor-x";
+import {
+  decodeTrustRootCbor,
+  type RootVerifyKey,
+} from "./decode-trust-root-cbor.js";
+
+export type { RootVerifyKey } from "./decode-trust-root-cbor.js";
 
 export interface TrustRootClient {
-  logSigningKey(ownerLogIdLowerHex32: string): Promise<ParsedVerifyKey>;
+  logSigningKey(ownerLogIdLowerHex32: string): Promise<RootVerifyKey>;
 }
 
 class TrustRootNotFoundError extends Error {
@@ -29,18 +33,6 @@ export function isTrustRootNotFound(error: unknown): boolean {
   return error instanceof TrustRootNotFoundError;
 }
 
-interface CborTrustRootResponse {
-  logId: Uint8Array;
-  alg: string;
-  x: Uint8Array;
-  y: Uint8Array;
-}
-
-/**
- * Generic CBOR public-root client: `GET {base}/api/logs/{id}/public-root` with a
- * Bearer token, decoding the `{ logId, alg, x, y }` CBOR `TrustRootResponse`.
- * Shared by the coordinator and univocity authority resolvers (same wire shape).
- */
 /** Canonical dashed UUID for univocity/coordinator `/api/logs/{id}/…` paths. */
 function ownerLogIdToApiSegment(ownerLogIdLowerHex32: string): string {
   return logIdToStorageSegment(parseLogIdSegment(ownerLogIdLowerHex32));
@@ -54,15 +46,15 @@ function createBearerCborTrustRootClient(config: {
   const base = config.baseUrl.trim().replace(/\/$/, "");
   const token = config.token.trim();
   const { label } = config;
-  const cache = new Map<string, Promise<ParsedVerifyKey>>();
+  const cache = new Map<string, Promise<RootVerifyKey>>();
 
   return {
     async logSigningKey(
       ownerLogIdLowerHex32: string,
-    ): Promise<ParsedVerifyKey> {
+    ): Promise<RootVerifyKey> {
       let p = cache.get(ownerLogIdLowerHex32);
       if (!p) {
-        p = (async (): Promise<ParsedVerifyKey> => {
+        p = (async (): Promise<RootVerifyKey> => {
           if (!base) throw new Error(`${label} trust-root URL is empty`);
           if (!token) throw new Error(`${label} trust-root token is empty`);
 
@@ -84,24 +76,16 @@ function createBearerCborTrustRootClient(config: {
             );
           }
 
-          const decoded = decode(body) as CborTrustRootResponse;
-          if (decoded.alg !== "ES256") {
+          const decoded = decode(body);
+          try {
+            return await decodeTrustRootCbor(decoded);
+          } catch (e) {
             throw new Error(
-              `unsupported ${label} trust-root alg ${decoded.alg}`,
+              `${label} trust-root decode failed: ${
+                e instanceof Error ? e.message : String(e)
+              }`,
             );
           }
-          if (
-            !(decoded.x instanceof Uint8Array) ||
-            decoded.x.byteLength !== 32 ||
-            !(decoded.y instanceof Uint8Array) ||
-            decoded.y.byteLength !== 32
-          ) {
-            throw new Error(`${label} trust-root x/y must be 32 bytes each`);
-          }
-          const xy = new Uint8Array(64);
-          xy.set(decoded.x, 0);
-          xy.set(decoded.y, 32);
-          return importEs256PublicKeyFromGrantDataXy64(xy);
         })();
 
         p = p.catch((err: unknown) => {
@@ -149,7 +133,7 @@ export function createSelectingTrustRootClient(config: {
   return {
     async logSigningKey(
       ownerLogIdLowerHex32: string,
-    ): Promise<ParsedVerifyKey> {
+    ): Promise<RootVerifyKey> {
       try {
         return await config.primary.logSigningKey(ownerLogIdLowerHex32);
       } catch (error) {
@@ -164,21 +148,15 @@ export function createCustodianPublicTrustRootClient(config: {
   custodianBaseUrl: string;
 }): TrustRootClient {
   const base = config.custodianBaseUrl.trim().replace(/\/$/, "");
-  const cache = new Map<string, Promise<ParsedVerifyKey>>();
+  const cache = new Map<string, Promise<RootVerifyKey>>();
 
   return {
     async logSigningKey(
       ownerLogIdLowerHex32: string,
-    ): Promise<ParsedVerifyKey> {
+    ): Promise<RootVerifyKey> {
       let p = cache.get(ownerLogIdLowerHex32);
       if (!p) {
-        p = (async (): Promise<ParsedVerifyKey> => {
-          // `?log-id=true` lets the Custodian resolve the per-log custody key, or
-          // its :bootstrap key server-side when this log is the configured root.
-          // There is no client-side :bootstrap fallback: a 404 means the Custodian
-          // has no trust root for this log (callers may try other roots), and any
-          // other failure is surfaced so a broken per-log lookup cannot be silently
-          // masked by signing-key substitution.
+        p = (async (): Promise<RootVerifyKey> => {
           let publicKeyPem: string;
           let alg: string;
           try {

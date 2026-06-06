@@ -22,7 +22,7 @@
  * dependency on ephemeral queue state.
  */
 
-import type { ParsedVerifyKey } from "@canopy/encoding";
+import type { ReceiptVerifyKey } from "../env/receipt-authority-resolver.js";
 import { decode as decodeCbor } from "cbor-x";
 import type { GrantResult } from "../grant/types.js";
 import { decodeTransparentStatement } from "../grant/transparent-statement.js";
@@ -323,7 +323,7 @@ export async function grantAuthorizeDetailed(
     receipt.coseSign1Bytes,
   );
 
-  let receiptVerifyKeys: ParsedVerifyKey[];
+  let receiptVerifyKeys: ReceiptVerifyKey[];
   try {
     const keys = await env.resolveReceiptAuthority(
       logIdBytesToCustodianLowerHex(grant.ownerLogId),

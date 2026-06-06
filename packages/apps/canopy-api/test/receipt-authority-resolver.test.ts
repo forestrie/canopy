@@ -9,6 +9,7 @@ import {
   createReceiptAuthorityResolver,
   resolveReceiptVerifyKeysFromTrustRoots,
 } from "../src/env/receipt-authority-resolver.js";
+import { es256ReceiptVerifyKeys } from "../src/env/decode-trust-root-cbor.js";
 import { importEs256PublicKeyFromGrantDataXy64 } from "../src/scrapi/custodian-grant.js";
 import { verifyCoseSign1WithParsedKey } from "@canopy/encoding";
 import { DELEGATION_CERT_LABEL } from "../src/grant/delegation-verify.js";
@@ -170,14 +171,15 @@ describe("createReceiptAuthorityResolver", () => {
       coordinatorKey,
       { detachedPayload: peak },
     );
+    const es256Keys = es256ReceiptVerifyKeys(keys!);
     const sigWithMerged = await verifyCoseSign1WithParsedKey(
       receipt,
-      keys![0]!,
+      es256Keys[0]!,
       { detachedPayload: peak },
     );
     let sigOk = sigWithMerged;
     if (!sigOk) {
-      for (const k of keys!) {
+      for (const k of es256Keys) {
         sigOk = await verifyCoseSign1WithParsedKey(receipt, k, {
           detachedPayload: peak,
         });

@@ -104,10 +104,10 @@ test.describe("Univocity genesis chain binding (Base Sepolia)", () => {
       ),
       "stored bootstrap-logid equals padded wire(R)",
     ).toBe(true);
-    expect(parsed.x.length, "COSE x is 32 bytes").toBe(32);
-    expect(parsed.y.length, "COSE y is 32 bytes").toBe(32);
-    expect(bytesEqual(parsed.x, x), "COSE x matches genesis key").toBe(true);
-    expect(bytesEqual(parsed.y, y), "COSE y matches genesis key").toBe(true);
+    expect(parsed.x!.length, "COSE x is 32 bytes").toBe(32);
+    expect(parsed.y!.length, "COSE y is 32 bytes").toBe(32);
+    expect(bytesEqual(parsed.x!, x), "COSE x matches genesis key").toBe(true);
+    expect(bytesEqual(parsed.y!, y), "COSE y matches genesis key").toBe(true);
   });
 
   test("ensureForestGenesis is idempotent (re-POST tolerated, GET unchanged)", async ({

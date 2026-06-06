@@ -10,6 +10,7 @@ import {
   createCustodianPublicTrustRootClient,
   createUnivocityPublicTrustRootClient,
   isTrustRootNotFound,
+  type RootVerifyKey,
   type TrustRootClient,
 } from "./trust-root-client.js";
 import { importEs256PublicKeyFromGrantDataXy64 } from "../scrapi/custodian-grant.js";
@@ -43,10 +44,13 @@ function hexToBytes32Pair(hex: string): Uint8Array {
   return out;
 }
 
+/** Verify keys for receipt Sign1 (ES256 CryptoKey / parsed EC2 or KS256 root address). */
+export type ReceiptVerifyKey = RootVerifyKey;
+
 export type ReceiptAuthorityResolver = (
   ownerLogIdLowerHex32: string,
   receiptCoseBytes: Uint8Array,
-) => Promise<ParsedVerifyKey[] | null>;
+) => Promise<ReceiptVerifyKey[] | null>;
 
 /**
  * Resolve verify-key candidates from each trust-root client. When coordinator
@@ -58,17 +62,22 @@ export async function resolveReceiptVerifyKeysFromTrustRoots(
   ownerLogIdLowerHex32: string,
   receiptCoseBytes: Uint8Array,
   trustRootClients: TrustRootClient[],
-): Promise<ParsedVerifyKey[] | null> {
-  const merged: ParsedVerifyKey[] = [];
+  opts?: { rpcUrl?: string },
+): Promise<ReceiptVerifyKey[] | null> {
+  const merged: ReceiptVerifyKey[] = [];
   for (const client of trustRootClients) {
-    let trustRoot: ParsedVerifyKey;
+    let trustRoot: RootVerifyKey;
     try {
       trustRoot = await client.logSigningKey(ownerLogIdLowerHex32);
     } catch (error) {
       if (isTrustRootNotFound(error)) continue;
       throw error;
     }
-    const resolved = await resolveReceiptVerifyKey(receiptCoseBytes, trustRoot);
+    const resolved = await resolveReceiptVerifyKey(
+      receiptCoseBytes,
+      trustRoot,
+      opts,
+    );
     if (resolved?.verifyKeys?.length) {
       merged.push(...resolved.verifyKeys);
     }
@@ -84,9 +93,12 @@ export function createReceiptAuthorityResolver(config: {
   univocityToken?: string;
   nodeEnv: string;
   testReceiptVerifyEs256XyHex?: string;
+  /** JSON-RPC URL for KS256 ERC-1271 delegation cert verify. */
+  ks256RpcUrl?: string;
 }): ReceiptAuthorityResolver {
   const pool = isCanopyApiPoolTestMode({ NODE_ENV: config.nodeEnv });
   const testHex = config.testReceiptVerifyEs256XyHex?.trim();
+  const ks256RpcUrl = config.ks256RpcUrl?.trim();
 
   let trustRootClients: TrustRootClient[];
   if (pool && testHex) {
@@ -94,14 +106,11 @@ export function createReceiptAuthorityResolver(config: {
     const keyPromise = importEs256PublicKeyFromGrantDataXy64(xy);
     trustRootClients = [
       {
-        logSigningKey: async () => keyPromise,
+        logSigningKey: async (): Promise<ParsedVerifyKey> => keyPromise,
       },
     ];
   } else {
     trustRootClients = [];
-    // Univocity first: it is the authoritative chain/grant-derived anchor (the
-    // same root the sealer authorizes against). Custodian/coordinator remain as
-    // transitional fallbacks for dev custodial forests (plan-0029).
     const univocityUrl = config.univocityTrustRootUrl?.trim();
     const univocityToken = config.univocityToken?.trim();
     if (univocityUrl && univocityToken) {
@@ -129,12 +138,12 @@ export function createReceiptAuthorityResolver(config: {
     }
   }
 
-  const cache = new Map<string, Promise<ParsedVerifyKey[] | null>>();
+  const cache = new Map<string, Promise<ReceiptVerifyKey[] | null>>();
 
   return async (
     ownerLogIdLowerHex32: string,
     receiptCoseBytes: Uint8Array,
-  ): Promise<ParsedVerifyKey[] | null> => {
+  ): Promise<ReceiptVerifyKey[] | null> => {
     const receiptSuffix = await receiptResolverCacheKeySuffix(receiptCoseBytes);
     const cacheKey = `${ownerLogIdLowerHex32}\0${receiptSuffix}`;
     let p = cache.get(cacheKey);
@@ -143,6 +152,7 @@ export function createReceiptAuthorityResolver(config: {
         ownerLogIdLowerHex32,
         receiptCoseBytes,
         trustRootClients,
+        ks256RpcUrl ? { rpcUrl: ks256RpcUrl } : undefined,
       );
 
       p = p.catch((err: unknown) => {

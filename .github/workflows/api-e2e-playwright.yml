@@ -57,6 +57,11 @@ jobs:
           CURATOR_ADMIN_TOKEN: ${{ secrets.CURATOR_ADMIN_TOKEN }}
           DELEGATION_COORDINATOR_URL: ${{ vars.DELEGATION_COORDINATOR_URL }}
           COORDINATOR_APP_TOKEN: ${{ secrets.COORDINATOR_APP_TOKEN }}
+          # Univocity genesis chain-binding (KS256 Safe bootstrap on Base Sepolia).
+          E2E_UNIVOCITY_CONTRACT_ADDR: ${{ vars.E2E_UNIVOCITY_CONTRACT_ADDR }}
+          E2E_UNIVOCITY_RPC_URL: ${{ vars.E2E_UNIVOCITY_RPC_URL }}
+          E2E_UNIVOCITY_CHAIN_ID: ${{ vars.E2E_UNIVOCITY_CHAIN_ID }}
+          E2E_UNIVOCITY_GENESIS_LOG_ID: ${{ vars.E2E_UNIVOCITY_GENESIS_LOG_ID }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }

@@ -21,8 +21,17 @@ export const FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS = -68012;
 /** `chain-id`: tstr decimal EIP-155 id (required on v1 POST). */
 export const FOREST_GENESIS_LABEL_CHAIN_ID = -68013;
 
-/** Stored genesis schema version for new POST writes. */
+/** `genesisAlg`: int COSE alg (-7 ES256 or -65799 KS256); v2 POST. */
+export const FOREST_GENESIS_LABEL_GENESIS_ALG = -68014;
+
+/** `bootstrapKey`: bstr 64 (ES256 x‖y) or 20 (KS256 address); v2 POST. */
+export const FOREST_GENESIS_LABEL_BOOTSTRAP_KEY = -68015;
+
+/** Stored genesis schema version for legacy EC2 POST writes. */
 export const FOREST_GENESIS_SCHEMA_V1 = 1;
+
+/** Stored genesis schema version for alg/key POST writes (KS256 and ES256). */
+export const FOREST_GENESIS_SCHEMA_V2 = 2;
 
 /** Dummy 20-byte contract address for tests and local e2e genesis POST. */
 export const FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR = new Uint8Array(20).fill(

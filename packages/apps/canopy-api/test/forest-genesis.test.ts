@@ -7,6 +7,7 @@ import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import {
   COSE_ALG_ES256,
+  COSE_ALG_KS256,
   COSE_CRV_P256,
   COSE_EC2_CRV,
   COSE_EC2_X,
@@ -17,15 +18,19 @@ import {
 } from "../src/cose/cose-key.js";
 import {
   isGenesisV1,
+  isGenesisV2,
   parseGenesisCborBytes,
 } from "../src/forest/genesis-cache.js";
 import {
+  FOREST_GENESIS_LABEL_BOOTSTRAP_KEY,
   FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID,
   FOREST_GENESIS_LABEL_CHAIN_ID,
+  FOREST_GENESIS_LABEL_GENESIS_ALG,
   FOREST_GENESIS_LABEL_GENESIS_VERSION,
   FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
   FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS,
   FOREST_GENESIS_SCHEMA_V1,
+  FOREST_GENESIS_SCHEMA_V2,
 } from "../src/forest/forest-genesis-labels.js";
 import {
   logIdToStorageSegment,
@@ -122,6 +127,30 @@ describe("parseGenesisCborBytes", () => {
     expect(parsed?.schemaVersion).toBe(1);
     expect(parsed?.chainBinding?.chainId).toBe("84532");
     expect(isGenesisV1(parsed!)).toBe(true);
+  });
+
+  it("accepts v2 KS256 stored objects with 20-byte bootstrapKey", () => {
+    const logId = crypto.randomUUID();
+    const wire = logIdToWireBytes(logId);
+    const addr = new Uint8Array(20).fill(0xab);
+    const safe = new Uint8Array(20).fill(0xcd);
+    const bytes = encodeCbor(
+      new Map<number, unknown>([
+        [FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V2],
+        [FOREST_GENESIS_LABEL_GENESIS_ALG, COSE_ALG_KS256],
+        [FOREST_GENESIS_LABEL_BOOTSTRAP_KEY, safe],
+        [FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID, toPaddedWire32(wire)],
+        [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, addr],
+        [FOREST_GENESIS_LABEL_CHAIN_ID, "84532"],
+      ]),
+    ) as Uint8Array;
+
+    const parsed = parseGenesisCborBytes(bytes, wire);
+    expect(parsed?.schemaVersion).toBe(2);
+    expect(parsed?.bootstrapAlg).toBe(COSE_ALG_KS256);
+    expect(parsed?.bootstrapKey).toEqual(safe);
+    expect(isGenesisV2(parsed!)).toBe(true);
+    expect(isGenesisV1(parsed!)).toBe(false);
   });
 });
 

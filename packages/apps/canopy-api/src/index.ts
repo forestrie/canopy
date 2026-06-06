@@ -131,6 +131,7 @@ function receiptAuthorityResolverForEnv(env: Env): ReceiptAuthorityResolver {
     env.UNIVOCITY_SERVICE_URL?.trim() ?? "",
     env.UNIVOCITY_API_TOKEN?.trim() ?? "",
     env.FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX ?? "",
+    env.UNIVOCITY_CONTRACT_RPC_URL?.trim() ?? "",
   ].join("\0");
   if (
     !receiptAuthorityResolverCache ||
@@ -147,6 +148,7 @@ function receiptAuthorityResolverForEnv(env: Env): ReceiptAuthorityResolver {
         nodeEnv: env.NODE_ENV,
         testReceiptVerifyEs256XyHex:
           env.FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX,
+        ks256RpcUrl: env.UNIVOCITY_CONTRACT_RPC_URL,
       }),
     };
   }

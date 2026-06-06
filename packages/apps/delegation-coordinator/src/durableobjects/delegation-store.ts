@@ -10,6 +10,11 @@ import { materialKeyFor, sha256Hex } from "../material-key.js";
 import { hex32ToWireLogIdBytes, logIdWireBytesToHex32 } from "../log-id.js";
 import type { PutPublicRootBody } from "../types/put-public-root-body.js";
 import type { TrustRootResponseCbor } from "../types/trust-root-response.js";
+import {
+  COSE_ALG_ES256,
+  COSE_ALG_KS256,
+} from "../types/trust-root-response.js";
+import type { PublicRootMaterial } from "../validate-byok-material.js";
 import { base64ToBytes, bytesToBase64 } from "../encoding.js";
 import type { DelegationIssueRequest } from "../types/delegation-issue-request.js";
 import type { DelegationIssueResponse } from "../types/delegation-issue-response.js";
@@ -287,27 +292,87 @@ export class DelegationStoreDO extends DurableObject<Env> {
         { status: 400 },
       );
     }
-    if (body.alg !== "ES256") {
+
+    const algRaw = body.alg;
+    if (algRaw === "ES256") {
+      if (!body.x || !body.y) {
+        return Response.json(
+          {
+            type: "about:blank",
+            title: "Invalid request",
+            status: 400,
+            detail: "x and y are required for ES256",
+          },
+          { status: 400 },
+        );
+      }
+      const x = base64ToBytes(body.x);
+      const y = base64ToBytes(body.y);
+      if (x.length !== 32 || y.length !== 32) {
+        return Response.json(
+          {
+            type: "about:blank",
+            title: "Invalid request",
+            status: 400,
+            detail: "x and y must each decode to 32 bytes",
+          },
+          { status: 400 },
+        );
+      }
+      this.ctx.storage.sql.exec(
+        `INSERT INTO public_roots (log_id_hex32, alg, x, y, uploaded_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(log_id_hex32) DO UPDATE SET
+           alg = excluded.alg,
+           x = excluded.x,
+           y = excluded.y,
+           uploaded_at = excluded.uploaded_at`,
+        logIdHex32,
+        body.alg,
+        x,
+        y,
+        Date.now(),
+      );
+      return Response.json({ ok: true });
+    }
+
+    const algInt =
+      typeof algRaw === "number"
+        ? algRaw
+        : typeof algRaw === "string"
+          ? Number(algRaw)
+          : NaN;
+    if (algInt !== COSE_ALG_ES256 && algInt !== COSE_ALG_KS256) {
       return Response.json(
         {
           type: "about:blank",
           title: "Invalid request",
           status: 400,
-          detail: "alg must be ES256",
+          detail: "alg must be ES256, -7, or -65799",
         },
         { status: 400 },
       );
     }
-
-    const x = base64ToBytes(body.x);
-    const y = base64ToBytes(body.y);
-    if (x.length !== 32 || y.length !== 32) {
+    if (!body.key) {
       return Response.json(
         {
           type: "about:blank",
           title: "Invalid request",
           status: 400,
-          detail: "x and y must each decode to 32 bytes",
+          detail: "key is required for alg int public roots",
+        },
+        { status: 400 },
+      );
+    }
+    const key = base64ToBytes(body.key);
+    const expectedLen = algInt === COSE_ALG_KS256 ? 20 : 64;
+    if (key.length !== expectedLen) {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Invalid request",
+          status: 400,
+          detail: `key must decode to ${expectedLen} bytes for alg ${algInt}`,
         },
         { status: 400 },
       );
@@ -322,13 +387,58 @@ export class DelegationStoreDO extends DurableObject<Env> {
          y = excluded.y,
          uploaded_at = excluded.uploaded_at`,
       logIdHex32,
-      body.alg,
-      x,
-      y,
+      String(algInt),
+      key,
+      new Uint8Array(0),
       Date.now(),
     );
 
     return Response.json({ ok: true });
+  }
+
+  private publicRootMaterialFromRow(row: {
+    alg: string;
+    x: ArrayBuffer;
+    y: ArrayBuffer;
+  }): PublicRootMaterial {
+    if (row.alg === "ES256") {
+      return {
+        alg: "ES256",
+        x: new Uint8Array(row.x),
+        y: new Uint8Array(row.y),
+      };
+    }
+    const algInt = Number(row.alg);
+    if (algInt === COSE_ALG_KS256) {
+      return { alg: "KS256", key: new Uint8Array(row.x) };
+    }
+    throw new ByokMaterialValidationError(
+      `unsupported stored public root alg ${row.alg}`,
+    );
+  }
+
+  private trustRootCborFromRow(
+    logIdHex32: string,
+    row: { alg: string; x: ArrayBuffer; y: ArrayBuffer },
+  ): TrustRootResponseCbor {
+    const logId = hex32ToWireLogIdBytes(logIdHex32);
+    if (row.alg === "ES256") {
+      return {
+        logId,
+        alg: "ES256",
+        x: new Uint8Array(row.x),
+        y: new Uint8Array(row.y),
+      };
+    }
+    const algInt = Number(row.alg);
+    if (algInt === COSE_ALG_KS256 || algInt === COSE_ALG_ES256) {
+      return {
+        logId,
+        alg: algInt,
+        key: new Uint8Array(row.x),
+      };
+    }
+    throw new Error(`unsupported stored public root alg ${row.alg}`);
   }
 
   private handleGetPublicRoot(logIdHex32: string): Response {
@@ -362,12 +472,27 @@ export class DelegationStoreDO extends DurableObject<Env> {
       y: ArrayBuffer;
     };
 
-    const resp: TrustRootResponseCbor = {
-      logId: hex32ToWireLogIdBytes(logIdHex32),
-      alg: row.alg,
-      x: new Uint8Array(row.x),
-      y: new Uint8Array(row.y),
-    };
+    let resp: TrustRootResponseCbor;
+    try {
+      resp = this.trustRootCborFromRow(logIdHex32, row);
+    } catch (error) {
+      const detail =
+        error instanceof Error ? error.message : "invalid stored public root";
+      const problem = encode({
+        type: "about:blank",
+        title: "Internal error",
+        status: 500,
+        detail,
+      });
+      const bytes =
+        problem instanceof Uint8Array
+          ? problem
+          : new Uint8Array(problem as ArrayLike<number>);
+      return new Response(bytes, {
+        status: 500,
+        headers: { "Content-Type": "application/problem+cbor" },
+      });
+    }
 
     const encoded = encode(resp);
     const out =
@@ -415,11 +540,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
         mmrEnd: body.mmrEnd,
         delegatedPublicKey,
         certificate,
-        publicRoot: {
-          alg: rootRow.alg,
-          x: new Uint8Array(rootRow.x),
-          y: new Uint8Array(rootRow.y),
-        },
+        publicRoot: this.publicRootMaterialFromRow(rootRow),
+        ks256RpcUrl: this.env.KS256_RPC_URL,
       });
     } catch (error) {
       const detail =

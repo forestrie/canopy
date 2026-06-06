@@ -22,4 +22,6 @@ export interface Env {
    * Set via `wrangler secret put CUSTODIAN_APP_TOKEN`.
    */
   CUSTODIAN_APP_TOKEN?: string;
+  /** Optional JSON-RPC URL for KS256 ERC-1271 delegation material verify. */
+  KS256_RPC_URL?: string;
 }

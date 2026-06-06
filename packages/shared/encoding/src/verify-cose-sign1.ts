@@ -1,18 +1,19 @@
 /**
  * Cryptographic verification of COSE Sign1 (statement).
- * Supports ES256 (P-256 via Web Crypto) and ES256K (secp256k1 via @noble/curves).
+ * Supports ES256 (P-256 via Web Crypto). KS256 (-65799) verification lives in
+ * dedicated modules (keccak + ecrecover / ERC-1271).
  */
 
 import { decode as decodeCbor } from "cbor-x";
-import { secp256k1 } from "@noble/curves/secp256k1";
 import { encodeSigStructure } from "./encode-sig-structure.js";
 
 /** COSE algorithm identifiers (RFC 9053). */
 export const COSE_ALG_ES256 = -7;
-export const COSE_ALG_ES256K = -47;
+/** KS256: secp256k1 + Keccak-256 + Ethereum address (COSE private use). */
+export const COSE_ALG_KS256 = -65799;
 
-/** Supported COSE algorithms. */
-export type CoseAlgorithm = "ES256" | "ES256K";
+/** Supported COSE algorithms for receipt/delegated-key verification. */
+export type CoseAlgorithm = "ES256";
 
 /** Parsed EC public key for multi-curve verification. */
 export interface ParsedEcPublicKey {
@@ -21,10 +22,10 @@ export interface ParsedEcPublicKey {
   /** Y coordinate (32 bytes). */
   y: Uint8Array;
   /** Curve name. */
-  curve: "P-256" | "secp256k1";
+  curve: "P-256";
 }
 
-/** Verify key: either Web Crypto CryptoKey (P-256) or parsed coordinates (secp256k1). */
+/** Verify key: Web Crypto CryptoKey (P-256) or parsed coordinates. */
 export type ParsedVerifyKey = CryptoKey | ParsedEcPublicKey;
 
 /** Optional structured logging when verification fails (no secrets). */
@@ -99,52 +100,17 @@ export function extractAlgFromProtected(
 }
 
 /**
- * Map COSE algorithm number to curve name.
+ * Map COSE algorithm number to curve name (ES256 delegate keys only).
  */
-export function algToCurve(alg: number): "P-256" | "secp256k1" | null {
+export function algToCurve(alg: number): "P-256" | null {
   if (alg === COSE_ALG_ES256) return "P-256";
-  if (alg === COSE_ALG_ES256K) return "secp256k1";
   return null;
-}
-
-/**
- * Verify a secp256k1 (ES256K) signature using @noble/curves.
- */
-async function verifySecp256k1Signature(
-  sigStructure: Uint8Array,
-  signature: Uint8Array,
-  pubKey: ParsedEcPublicKey,
-): Promise<boolean> {
-  if (signature.length !== 64) return false;
-
-  // Hash the Sig_structure
-  const msgHash = await crypto.subtle.digest(
-    "SHA-256",
-    new Uint8Array(sigStructure),
-  );
-  const msgHashBytes = new Uint8Array(msgHash);
-
-  // Build uncompressed public key: 04 || x || y
-  const uncompressed = new Uint8Array(65);
-  uncompressed[0] = 0x04;
-  uncompressed.set(pubKey.x, 1);
-  uncompressed.set(pubKey.y, 33);
-
-  try {
-    return secp256k1.verify(signature, msgHashBytes, uncompressed);
-  } catch {
-    return false;
-  }
 }
 
 /**
  * Verify COSE Sign1 signature with a public key (ES256).
  * Builds Sig_structure per RFC 8152 and verifies ECDSA P-256 (ES256).
  * Signature bstr must be IEEE P1363 R‖S (64 bytes); ASN.1 DER is not COSE ES256.
- *
- * @param coseSign1Bytes - Full COSE Sign1 CBOR bytes (4-element array)
- * @param publicKey - CryptoKey (EC P-256, usage verify)
- * @returns true if signature is valid
  */
 export async function verifyCoseSign1(
   coseSign1Bytes: Uint8Array,
@@ -171,7 +137,6 @@ export async function verifyCoseSign1(
     return false;
   }
 
-  // Use detachedPayload when provided (re-attaches content for detached receipts).
   const effectivePayload = opts?.detachedPayload ?? payloadBstr;
   const externalAad = new Uint8Array(0);
   const sigStructure = encodeSigStructure(
@@ -209,12 +174,7 @@ export async function verifyCoseSign1(
 }
 
 /**
- * Verify COSE Sign1 signature using a parsed verify key (supports both curves).
- * Extracts `alg` from the protected header and routes to the appropriate verifier.
- *
- * @param coseSign1Bytes - Full COSE Sign1 CBOR bytes
- * @param verifyKey - ParsedVerifyKey (CryptoKey for P-256, or ParsedEcPublicKey for secp256k1)
- * @returns true if signature is valid
+ * Verify COSE Sign1 signature using a parsed verify key (P-256 only).
  */
 export async function verifyCoseSign1WithParsedKey(
   coseSign1Bytes: Uint8Array,
@@ -241,7 +201,6 @@ export async function verifyCoseSign1WithParsedKey(
     return false;
   }
 
-  // Use detachedPayload when provided (re-attaches content for detached receipts).
   const effectivePayload = opts?.detachedPayload ?? payloadBstr;
   const externalAad = new Uint8Array(0);
   const sigStructure = encodeSigStructure(
@@ -250,29 +209,6 @@ export async function verifyCoseSign1WithParsedKey(
     effectivePayload,
   );
 
-  // Determine curve from key type
-  const isSecp256k1 =
-    !(verifyKey instanceof CryptoKey) && verifyKey.curve === "secp256k1";
-
-  if (isSecp256k1) {
-    const ok = await verifySecp256k1Signature(
-      sigStructure,
-      signature,
-      verifyKey as ParsedEcPublicKey,
-    );
-    if (!ok) {
-      logVerifyFailure(opts, "secp256k1_verify_false", {
-        protectedBstrLen: protectedBstr.length,
-        payloadBstrLen: payloadBstr.length,
-        sigStructureLen: sigStructure.length,
-        sigStructureSha256HexPrefix: await sha256HexPrefix16(sigStructure),
-        signatureHeadHex: hexPreview(signature, 8),
-      });
-    }
-    return ok;
-  }
-
-  // P-256 path via Web Crypto
   if (verifyKey instanceof CryptoKey) {
     try {
       const ok = await crypto.subtle.verify(
@@ -302,7 +238,6 @@ export async function verifyCoseSign1WithParsedKey(
     }
   }
 
-  // P-256 with parsed key - import to CryptoKey first
   const parsed = verifyKey as ParsedEcPublicKey;
   const uncompressed = new Uint8Array(65);
   uncompressed[0] = 0x04;
@@ -350,7 +285,6 @@ export interface DecodedCoseSign1 {
 
 /**
  * Decode COSE Sign1 bytes to components. Returns null if malformed.
- * Signature is returned as raw bytes (for verify); caller must have received bstr in the array.
  */
 export function decodeCoseSign1(
   coseSign1Bytes: Uint8Array,
@@ -368,7 +302,6 @@ export function decodeCoseSign1(
   const sig = arr[3];
 
   if (!(protectedBstr instanceof Uint8Array)) return null;
-  /** COSE detached content: payload is null/nil; Sig_structure uses empty bstr (RFC 8152). */
   const payloadBstr =
     payloadRaw === null || payloadRaw === undefined
       ? new Uint8Array(0)

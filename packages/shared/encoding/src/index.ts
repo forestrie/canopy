@@ -24,7 +24,7 @@ export { signCoseSign1Statement } from "./sign-cose-sign1-statement.js";
 export {
   algToCurve,
   COSE_ALG_ES256,
-  COSE_ALG_ES256K,
+  COSE_ALG_KS256,
   type CoseAlgorithm,
   decodeCoseSign1,
   type DecodedCoseSign1,

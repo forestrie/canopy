@@ -9,7 +9,7 @@ import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 import {
   algToCurve,
   COSE_ALG_ES256,
-  COSE_ALG_ES256K,
+  COSE_ALG_KS256,
   decodeCoseSign1,
   extractAlgFromProtected,
   type ParsedEcPublicKey,
@@ -268,30 +268,10 @@ export async function importSpkiPemVerifyKeyWithAlg(
   alg: string,
 ): Promise<ParsedVerifyKey> {
   const normalizedAlg = alg.toUpperCase().trim();
-  const der = pemBodyToDer(pem);
-
-  // Explicit ES256K/KS256 or auto-detect from DER when alg is missing/default
-  const algSaysSecp256k1 =
-    normalizedAlg === "ES256K" || normalizedAlg === "KS256";
-  const derSaysSecp256k1 = isSecp256k1FromDer(der);
-
-  // Use secp256k1 if either alg says so OR if alg is ambiguous and DER contains secp256k1 OID
-  const useSecp256k1 =
-    algSaysSecp256k1 ||
-    (!normalizedAlg || normalizedAlg === "ES256" ? derSaysSecp256k1 : false);
-
-  if (useSecp256k1) {
-    // Extract x, y coordinates from PEM for secp256k1
-    const uncompressed = extractUncompressed65FromEcSpkiDer(der);
-    if (uncompressed[0] !== 0x04 || uncompressed.length !== 65) {
-      throw new Error("Expected uncompressed EC point (04||x||y)");
-    }
-    const x = uncompressed.slice(1, 33);
-    const y = uncompressed.slice(33, 65);
-    return { x, y, curve: "secp256k1" } as ParsedEcPublicKey;
+  if (normalizedAlg !== "" && normalizedAlg !== "ES256") {
+    throw new Error(`unsupported custodian public key alg ${alg} (only ES256)`);
   }
-
-  // P-256 (ES256) via Web Crypto
+  const der = pemBodyToDer(pem);
   return crypto.subtle.importKey(
     "spki",
     new Uint8Array(der),
@@ -364,25 +344,13 @@ export async function importVerifyKeyFromXy64WithAlg(
   if (xy.length !== 64) {
     throw new Error("grantData must be 64 bytes (x||y) for public key import");
   }
-
-  const curve = algToCurve(alg);
-  if (curve === "secp256k1") {
-    const x = xy.slice(0, 32);
-    const y = xy.slice(32, 64);
-    return { x, y, curve: "secp256k1" } as ParsedEcPublicKey;
+  if (alg !== COSE_ALG_ES256 && alg !== undefined) {
+    const curve = algToCurve(alg);
+    if (curve !== "P-256") {
+      throw new Error(`unsupported COSE alg ${alg} for grantData x||y verify`);
+    }
   }
-
-  // Default to P-256 (ES256) via Web Crypto
-  const raw = new Uint8Array(65);
-  raw[0] = 0x04;
-  raw.set(xy, 1);
-  return crypto.subtle.importKey(
-    "raw",
-    new Uint8Array(raw),
-    { name: "ECDSA", namedCurve: "P-256" },
-    false,
-    ["verify"],
-  );
+  return importEs256PublicKeyFromGrantDataXy64(xy);
 }
 
 /**
@@ -430,7 +398,7 @@ export async function verifyGrantCoseSign1WithPem(
   // Extract alg from protected header, default to ES256
   const alg = extractAlgFromProtected(decoded.protectedBstr) ?? COSE_ALG_ES256;
   const algName =
-    alg === COSE_ALG_ES256K ? "ES256K" : alg === COSE_ALG_ES256 ? "ES256" : "";
+    alg === COSE_ALG_KS256 ? "KS256" : alg === COSE_ALG_ES256 ? "ES256" : "";
 
   // Import key based on algorithm (importSpkiPemVerifyKeyWithAlg auto-detects from DER if needed)
   const key = await importSpkiPemVerifyKeyWithAlg(publicKeyPem, algName);

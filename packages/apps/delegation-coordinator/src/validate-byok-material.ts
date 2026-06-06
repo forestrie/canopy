@@ -5,6 +5,9 @@
 
 import { decode } from "cbor-x";
 import { encodeSigStructure } from "@canopy/encoding";
+import { keccak_256 } from "@noble/hashes/sha3";
+import { secp256k1 } from "@noble/curves/secp256k1";
+import { encodeFunctionData, parseAbi } from "viem";
 
 const PAYLOAD_LOG_ID = 1;
 const PAYLOAD_MMR_START = 3;
@@ -18,11 +21,28 @@ const COSE_Y = -3;
 const COSE_KTY_EC2 = 2;
 const COSE_CRV_P256 = 1;
 
-export interface PublicRootXY {
-  alg: string;
+const COSE_ALG_KS256 = -65799;
+
+const ERC1271_ABI = parseAbi([
+  "function isValidSignature(bytes32 hash, bytes signature) view returns (bytes4)",
+]);
+const ERC1271_MAGIC = "0x1626ba7e";
+
+export interface PublicRootEs256 {
+  alg: "ES256";
   x: Uint8Array;
   y: Uint8Array;
 }
+
+export interface PublicRootKs256 {
+  alg: "KS256";
+  key: Uint8Array;
+}
+
+export type PublicRootMaterial = PublicRootEs256 | PublicRootKs256;
+
+/** @deprecated use PublicRootMaterial */
+export type PublicRootXY = PublicRootEs256;
 
 export class ByokMaterialValidationError extends Error {
   constructor(message: string) {
@@ -44,6 +64,20 @@ function bytesFromUnknown(value: unknown, label: string): Uint8Array {
     return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
   }
   throw new ByokMaterialValidationError(`${label} is not bytes`);
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  let hex = "";
+  for (const b of bytes) hex += b.toString(16).padStart(2, "0");
+  return hex;
+}
+
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
 }
 
 function normalizeIntKeyedMap(raw: unknown): Map<number, unknown> {
@@ -103,14 +137,6 @@ function parseDelegatedCoseKeyFromPayload(raw: unknown): {
   return { x, y };
 }
 
-function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
-}
-
 async function importEs256PublicKey(
   x: Uint8Array,
   y: Uint8Array,
@@ -128,20 +154,134 @@ async function importEs256PublicKey(
   );
 }
 
+function addressFromUncompressedPubkey(uncompressed: Uint8Array): Uint8Array {
+  const hash = keccak_256(uncompressed.slice(1));
+  return hash.slice(-20);
+}
+
+function recoverSignerAddress(
+  hash: Uint8Array,
+  signature: Uint8Array,
+): Uint8Array | null {
+  if (signature.length !== 65) return null;
+  const r = signature.slice(0, 32);
+  const s = signature.slice(32, 64);
+  let v = signature[64]!;
+  if (v < 27) v += 27;
+  const recovery = v - 27;
+  if (recovery > 3) return null;
+  try {
+    const sig = secp256k1.Signature.fromCompact(
+      new Uint8Array([...r, ...s]),
+    ).addRecoveryBit(recovery);
+    const pub = sig.recoverPublicKey(hash);
+    return addressFromUncompressedPubkey(pub.toRawBytes(false));
+  } catch {
+    return null;
+  }
+}
+
+async function verifyKs256DelegationSignature(
+  protectedBytes: Uint8Array,
+  payloadBytes: Uint8Array,
+  signature: Uint8Array,
+  rootAddress: Uint8Array,
+  rpcUrl?: string,
+): Promise<boolean> {
+  const sigStructure = encodeSigStructure(
+    protectedBytes,
+    new Uint8Array(),
+    payloadBytes,
+  );
+  const hash = keccak_256(sigStructure);
+
+  if (rpcUrl) {
+    try {
+      const codeResult = (await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "eth_getCode",
+          params: [`0x${bytesToHex(rootAddress)}`, "latest"],
+        }),
+      }).then((r) => r.json())) as { result?: string };
+      const code = codeResult.result?.replace(/^0x/i, "") ?? "";
+      if (code.length > 0 && !/^0+$/.test(code)) {
+        const hashHex = (`0x${bytesToHex(hash)}`) as `0x${string}`;
+        const sigHex = (`0x${bytesToHex(signature)}`) as `0x${string}`;
+        const data = encodeFunctionData({
+          abi: ERC1271_ABI,
+          functionName: "isValidSignature",
+          args: [hashHex, sigHex],
+        });
+        const callResult = (await fetch(rpcUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "eth_call",
+            params: [{ to: `0x${bytesToHex(rootAddress)}`, data }, "latest"],
+          }),
+        }).then((r) => r.json())) as { result?: string };
+        return (
+          typeof callResult.result === "string" &&
+          callResult.result.toLowerCase().startsWith(ERC1271_MAGIC.toLowerCase())
+        );
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  const recovered = recoverSignerAddress(hash, signature);
+  return recovered !== null && bytesEqual(recovered, rootAddress);
+}
+
+async function verifyDelegationCertificate(
+  protectedBytes: Uint8Array,
+  payloadBytes: Uint8Array,
+  signature: Uint8Array,
+  publicRoot: PublicRootMaterial,
+  rpcUrl?: string,
+): Promise<boolean> {
+  if (publicRoot.alg === "ES256") {
+    const rootKey = await importEs256PublicKey(publicRoot.x, publicRoot.y);
+    const sigStructure = encodeSigStructure(
+      protectedBytes,
+      new Uint8Array(),
+      payloadBytes,
+    );
+    return crypto.subtle.verify(
+      { name: "ECDSA", hash: "SHA-256" },
+      rootKey,
+      toArrayBuffer(signature),
+      toArrayBuffer(sigStructure),
+    );
+  }
+  if (signature.length !== 65 && !rpcUrl) {
+    return false;
+  }
+  return verifyKs256DelegationSignature(
+    protectedBytes,
+    payloadBytes,
+    signature,
+    publicRoot.key,
+    rpcUrl,
+  );
+}
+
 export async function validateByokDelegationMaterial(opts: {
   logIdHex32: string;
   mmrStart: number;
   mmrEnd: number;
   delegatedPublicKey: Uint8Array;
   certificate: Uint8Array;
-  publicRoot: PublicRootXY;
+  publicRoot: PublicRootMaterial;
+  ks256RpcUrl?: string;
 }): Promise<void> {
-  if (opts.publicRoot.alg !== "ES256") {
-    throw new ByokMaterialValidationError(
-      `unsupported public root alg ${opts.publicRoot.alg}`,
-    );
-  }
-
   const cert = decode(opts.certificate) as unknown[];
   if (!Array.isArray(cert) || cert.length !== 4) {
     throw new ByokMaterialValidationError(
@@ -152,24 +292,16 @@ export async function validateByokDelegationMaterial(opts: {
   const protectedBytes = bytesFromUnknown(cert[0], "protected");
   const payloadBytes = bytesFromUnknown(cert[2], "payload");
   const signature = bytesFromUnknown(cert[3], "signature");
-  if (signature.length !== 64) {
+  if (opts.publicRoot.alg === "ES256" && signature.length !== 64) {
     throw new ByokMaterialValidationError("signature must be 64 bytes");
   }
 
-  const rootKey = await importEs256PublicKey(
-    opts.publicRoot.x,
-    opts.publicRoot.y,
-  );
-  const sigStructure = encodeSigStructure(
+  const ok = await verifyDelegationCertificate(
     protectedBytes,
-    new Uint8Array(),
     payloadBytes,
-  );
-  const ok = await crypto.subtle.verify(
-    { name: "ECDSA", hash: "SHA-256" },
-    rootKey,
-    toArrayBuffer(signature),
-    toArrayBuffer(sigStructure),
+    signature,
+    opts.publicRoot,
+    opts.ks256RpcUrl,
   );
   if (!ok) {
     throw new ByokMaterialValidationError(
@@ -201,3 +333,5 @@ export async function validateByokDelegationMaterial(opts: {
     );
   }
 }
+
+export { COSE_ALG_KS256 };

@@ -14,6 +14,8 @@ import {
   verifyCoseSign1,
   verifyCoseSign1WithParsedKey,
 } from "@canopy/encoding";
+import type { RootVerifyKey } from "../env/trust-root-client.js";
+import { es256ReceiptVerifyKeys } from "../env/decode-trust-root-cbor.js";
 import {
   calculateRoot,
   verifyInclusion,
@@ -212,9 +214,10 @@ export interface ReceiptInclusionVerifyOptions {
   /** Full receipt COSE Sign1 CBOR bytes (transparent statement header 396). */
   receiptCoseBytes: Uint8Array;
   /**
-   * Pre-resolved verify key candidates (delegated key first, then trust root).
+   * Pre-resolved verify key candidates (delegated ES256 key first, then trust root).
+   * KS256 root keys are used for delegation cert verify only and are skipped here.
    */
-  receiptVerifyKeys: ParsedVerifyKey[];
+  receiptVerifyKeys: RootVerifyKey[];
 }
 
 /** Outcome of {@link verifyReceiptInclusionFromParsed} when receipt verification is enabled. */
@@ -268,8 +271,10 @@ export async function verifyReceiptInclusionFromParsed(
 
   // --- 2. Receipt COSE signature verification (with detached peak payload) ---
   if (receiptVerification) {
-    const verifyKeys = receiptVerification.receiptVerifyKeys;
-    if (!verifyKeys?.length) {
+    const verifyKeys = es256ReceiptVerifyKeys(
+      receiptVerification.receiptVerifyKeys,
+    );
+    if (!verifyKeys.length) {
       console.warn("grant-receipt-verify: no verify keys supplied");
       return "no-verify-keys";
     }

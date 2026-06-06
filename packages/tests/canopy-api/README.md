@@ -104,6 +104,16 @@ Other keys:
 
 - **`SCRAPI_API_KEY`**: Bearer for authorized fixtures (optional for specs that use `unauthorizedRequest` only).
 
+**Univocity genesis chain-binding** (`tests/system/univocity-genesis-chain-binding.spec.ts` ES256 skip gate;
+`tests/system/univocity-genesis-ks256-chain-binding.spec.ts` KS256 default):
+
+- **`E2E_UNIVOCITY_CONTRACT_ADDR`**: ImutableUnivocity address (Doppler **`canopy/dev`**; CI **`vars.E2E_UNIVOCITY_CONTRACT_ADDR`**). Code default: `0x7A4E8ad88D6Df29FEBEc0d546d148Ed4bea8Cb94`.
+- **`E2E_UNIVOCITY_RPC_URL`**: optional RPC for runner `bootstrapConfig()` eth_call (default Base Sepolia).
+- **`E2E_UNIVOCITY_CHAIN_ID`**: optional EIP-155 id (default `84532`).
+- **`E2E_UNIVOCITY_GENESIS_LOG_ID`**: optional forest log UUID (default `E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID`).
+- **`CURATOR_ADMIN_TOKEN`**: POST genesis (same as other system bootstrap specs).
+- Static log id reset: `task cf:genesis:delete LOG_ID=<R>`.
+
 **Delegation coordinator e2e** (`tests/coordinator/`, Playwright project **`coordinator`**):
 
 - **`DELEGATION_COORDINATOR_URL`**, **`COORDINATOR_APP_TOKEN`**: coordinator management APIs and direct coordinator issue.
@@ -146,6 +156,8 @@ Set **`COORDINATOR_APP_TOKEN`** in Doppler **`canopy/dev`** (masked) after fores
 | `system/bootstrap-log-first-entry.spec.ts`       | `POST /register/{bootstrap}/entries` with completed bootstrap grant; rejects wrong signer (`403` `signer_mismatch`). [Doc](tests/system/docs/bootstrap-log-first-entry.md).         |
 | `system/bootstrap-child-auth-grant.spec.ts`      | Root bootstrap + custody-key child auth grant; 303 Location under `/logs/{root}/{root}/entries/…`. [Doc](tests/system/docs/bootstrap-child-auth-grant.md).                          |
 | `system/auth-data-log-chain.spec.ts`             | Root → child auth log → data log delegation chain (delegated `grantData`). [Doc](tests/system/docs/auth-data-log-chain.md).                                                         |
+| `system/univocity-genesis-chain-binding.spec.ts` | ES256 forest genesis vs on-chain `bootstrapConfig()` (skips when contract is KS256).                                                                                                |
+| `system/univocity-genesis-ks256-chain-binding.spec.ts` | KS256 genesis v2 vs Safe bootstrap on default Base Sepolia deployment.                                                                                                    |
 | `custodian/custodian-api.spec.ts`                | Direct **`fetch`** to deployed Custodian: ops + **`/v1/api/…`** key routes. Does not use `:bootstrap` key paths.                                                                    |
 | `coordinator/coordinator-api.spec.ts`            | Phase 3 coordinator APIs; **coordinator** direct issue of stored material (custodial pre-mint).                                                                                     |
 | `coordinator/coordinator-byok-material.spec.ts`  | **BYOK:** runner-owned log root; pending → material → coordinator issue. [System doc](tests/system/docs/README.md#non-custodian-log-root-signing-key-byok-delegation).              |

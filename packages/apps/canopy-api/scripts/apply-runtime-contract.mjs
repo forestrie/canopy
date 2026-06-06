@@ -224,6 +224,16 @@ varsBlock = setStringProperty(
   "UNIVOCITY_SERVICE_URL",
   process.env.UNIVOCITY_SERVICE_URL,
 );
+varsBlock = setStringProperty(
+  varsBlock,
+  "UNIVOCITY_CONTRACT_RPC_URL",
+  process.env.UNIVOCITY_CONTRACT_RPC_URL,
+);
+varsBlock = setStringProperty(
+  varsBlock,
+  "UNIVOCITY_CONTRACT_ADDRESS",
+  process.env.UNIVOCITY_CONTRACT_ADDRESS,
+);
 envBlock = replaceRange(envBlock, vars, varsBlock);
 envBlock = setR2BucketName(
   envBlock,

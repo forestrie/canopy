@@ -7,6 +7,7 @@ import { encode as encodeCbor } from "cbor-x";
 
 import {
   COSE_ALG_ES256,
+  COSE_ALG_KS256,
   COSE_CRV_P256,
   COSE_EC2_CRV,
   COSE_EC2_X,
@@ -31,12 +32,15 @@ import {
   bytesEqual,
 } from "../cbor-api/cbor-map-utils.js";
 import {
+  FOREST_GENESIS_LABEL_BOOTSTRAP_KEY,
   FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID,
   FOREST_GENESIS_LABEL_CHAIN_ID,
+  FOREST_GENESIS_LABEL_GENESIS_ALG,
   FOREST_GENESIS_LABEL_GENESIS_VERSION,
   FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
   FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS,
   FOREST_GENESIS_SCHEMA_V1,
+  FOREST_GENESIS_SCHEMA_V2,
 } from "./forest-genesis-labels.js";
 import {
   asGenesisUint8Array,
@@ -68,6 +72,157 @@ function univocityGenesisClientFromEnv(
   const token = env.UNIVOCITY_API_TOKEN?.trim();
   if (!serviceUrl || !token) return undefined;
   return { serviceUrl, token };
+}
+
+const V1_COSE_KEYS = new Set([
+  COSE_KEY_KTY,
+  COSE_EC2_CRV,
+  COSE_EC2_X,
+  COSE_EC2_Y,
+  COSE_KEY_ALG,
+  FOREST_GENESIS_LABEL_GENESIS_VERSION,
+  FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID,
+  FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
+  FOREST_GENESIS_LABEL_CHAIN_ID,
+]);
+
+const V2_KEYS = new Set([
+  FOREST_GENESIS_LABEL_GENESIS_VERSION,
+  FOREST_GENESIS_LABEL_GENESIS_ALG,
+  FOREST_GENESIS_LABEL_BOOTSTRAP_KEY,
+  FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID,
+  FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
+  FOREST_GENESIS_LABEL_CHAIN_ID,
+]);
+
+function parseGenesisAlg(raw: unknown): number | "invalid" {
+  if (typeof raw === "number" && Number.isInteger(raw)) return raw;
+  if (typeof raw === "bigint") {
+    const n = Number(raw);
+    return Number.isSafeInteger(n) ? n : "invalid";
+  }
+  return "invalid";
+}
+
+function validateBootstrapLogId(
+  m: Map<number, unknown>,
+  paddedWire: Uint8Array,
+): Response | null {
+  const clientBoot = m.get(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID);
+  if (clientBoot !== undefined) {
+    const b = asGenesisUint8Array(clientBoot);
+    if (!b || b.length !== 32 || !bytesEqual(b, paddedWire)) {
+      return ClientErrors.badRequest(
+        "bootstrap-logid must match path log-id when provided",
+      );
+    }
+  }
+  return null;
+}
+
+function validateChainBinding(m: Map<number, unknown>): {
+  addr: Uint8Array;
+  chainId: string;
+} | Response {
+  const addrRes = parseUnivocityAddrRequired(
+    m.get(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR),
+  );
+  if (addrRes === "invalid") {
+    return ClientErrors.badRequest("univocity-addr must be a 20-byte bstr");
+  }
+  const chainId = parseChainIdString(m.get(FOREST_GENESIS_LABEL_CHAIN_ID));
+  if (chainId === "invalid") {
+    return ClientErrors.badRequest(
+      "chain-id must be a non-empty decimal EIP-155 id string (-68013)",
+    );
+  }
+  return { addr: addrRes, chainId };
+}
+
+function buildV1GenesisOut(
+  m: Map<number, unknown>,
+  paddedWire: Uint8Array,
+  binding: { addr: Uint8Array; chainId: string },
+): Map<number, unknown> | Response {
+  const kty = m.get(COSE_KEY_KTY);
+  const crv = m.get(COSE_EC2_CRV);
+  const x = asGenesisUint8Array(m.get(COSE_EC2_X));
+  const y = asGenesisUint8Array(m.get(COSE_EC2_Y));
+  if (kty !== COSE_KTY_EC2 || crv !== COSE_CRV_P256) {
+    return ClientErrors.badRequest("COSE_Key must use EC2 / P-256");
+  }
+  if (!x || x.length !== 32 || !y || y.length !== 32) {
+    return ClientErrors.badRequest("Invalid COSE EC2 coordinate lengths");
+  }
+  const alg = m.get(COSE_KEY_ALG);
+  if (alg !== undefined && alg !== COSE_ALG_ES256) {
+    return ClientErrors.badRequest("COSE alg must be ES256 (-7) if present");
+  }
+  for (const k of m.keys()) {
+    if (!V1_COSE_KEYS.has(k)) {
+      return ClientErrors.badRequest(`Unknown genesis map key ${k}`);
+    }
+  }
+  const out = new Map<number, unknown>();
+  out.set(COSE_KEY_KTY, COSE_KTY_EC2);
+  out.set(COSE_EC2_CRV, COSE_CRV_P256);
+  out.set(COSE_EC2_X, x);
+  out.set(COSE_EC2_Y, y);
+  out.set(COSE_KEY_ALG, COSE_ALG_ES256);
+  out.set(FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V1);
+  out.set(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID, paddedWire);
+  out.set(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, binding.addr);
+  out.set(FOREST_GENESIS_LABEL_CHAIN_ID, binding.chainId);
+  return out;
+}
+
+function buildV2GenesisOut(
+  m: Map<number, unknown>,
+  paddedWire: Uint8Array,
+  binding: { addr: Uint8Array; chainId: string },
+): Map<number, unknown> | Response {
+  const genesisAlg = parseGenesisAlg(m.get(FOREST_GENESIS_LABEL_GENESIS_ALG));
+  if (genesisAlg === "invalid") {
+    return ClientErrors.badRequest(
+      "genesisAlg (-68014) must be ES256 (-7) or KS256 (-65799)",
+    );
+  }
+  const bootstrapKey = asGenesisUint8Array(
+    m.get(FOREST_GENESIS_LABEL_BOOTSTRAP_KEY),
+  );
+  if (!bootstrapKey) {
+    return ClientErrors.badRequest(
+      "bootstrapKey (-68015) must be a byte string",
+    );
+  }
+  if (genesisAlg === COSE_ALG_ES256 && bootstrapKey.length !== 64) {
+    return ClientErrors.badRequest(
+      "ES256 bootstrapKey must be 64 bytes (x||y)",
+    );
+  }
+  if (genesisAlg === COSE_ALG_KS256 && bootstrapKey.length !== 20) {
+    return ClientErrors.badRequest(
+      "KS256 bootstrapKey must be a 20-byte address",
+    );
+  }
+  if (genesisAlg !== COSE_ALG_ES256 && genesisAlg !== COSE_ALG_KS256) {
+    return ClientErrors.badRequest(
+      "genesisAlg must be ES256 (-7) or KS256 (-65799)",
+    );
+  }
+  for (const k of m.keys()) {
+    if (!V2_KEYS.has(k)) {
+      return ClientErrors.badRequest(`Unknown genesis map key ${k}`);
+    }
+  }
+  const out = new Map<number, unknown>();
+  out.set(FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V2);
+  out.set(FOREST_GENESIS_LABEL_GENESIS_ALG, genesisAlg);
+  out.set(FOREST_GENESIS_LABEL_BOOTSTRAP_KEY, bootstrapKey);
+  out.set(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID, paddedWire);
+  out.set(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, binding.addr);
+  out.set(FOREST_GENESIS_LABEL_CHAIN_ID, binding.chainId);
+  return out;
 }
 
 export async function postForestGenesis(
@@ -103,85 +258,32 @@ export async function postForestGenesis(
   }
 
   const version = m.get(FOREST_GENESIS_LABEL_GENESIS_VERSION);
-  if (version !== FOREST_GENESIS_SCHEMA_V1) {
-    return ClientErrors.badRequest("genesis-version must be 1 (-68009)");
-  }
-
-  const kty = m.get(COSE_KEY_KTY);
-  const crv = m.get(COSE_EC2_CRV);
-  const x = asGenesisUint8Array(m.get(COSE_EC2_X));
-  const y = asGenesisUint8Array(m.get(COSE_EC2_Y));
-  if (kty !== COSE_KTY_EC2 || crv !== COSE_CRV_P256) {
-    return ClientErrors.badRequest("COSE_Key must use EC2 / P-256");
-  }
-  if (!x || x.length !== 32 || !y || y.length !== 32) {
-    return ClientErrors.badRequest("Invalid COSE EC2 coordinate lengths");
-  }
-
-  const alg = m.get(COSE_KEY_ALG);
-  if (alg !== undefined && alg !== COSE_ALG_ES256) {
-    return ClientErrors.badRequest("COSE alg must be ES256 (-7) if present");
-  }
-
-  const clientBoot = m.get(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID);
-  if (clientBoot !== undefined) {
-    const b = asGenesisUint8Array(clientBoot);
-    if (!b || b.length !== 32 || !bytesEqual(b, paddedWire)) {
-      return ClientErrors.badRequest(
-        "bootstrap-logid must match path log-id when provided",
-      );
-    }
-  }
-
-  const addrRes = parseUnivocityAddrRequired(
-    m.get(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR),
-  );
-  if (addrRes === "invalid") {
-    return ClientErrors.badRequest("univocity-addr must be a 20-byte bstr");
-  }
-
-  const chainId = parseChainIdString(m.get(FOREST_GENESIS_LABEL_CHAIN_ID));
-  if (chainId === "invalid") {
+  if (
+    version !== FOREST_GENESIS_SCHEMA_V1 &&
+    version !== FOREST_GENESIS_SCHEMA_V2
+  ) {
     return ClientErrors.badRequest(
-      "chain-id must be a non-empty decimal EIP-155 id string (-68013)",
+      "genesis-version must be 1 or 2 (-68009)",
     );
   }
 
-  const allowed = new Set([
-    COSE_KEY_KTY,
-    COSE_EC2_CRV,
-    COSE_EC2_X,
-    COSE_EC2_Y,
-    COSE_KEY_ALG,
-    FOREST_GENESIS_LABEL_GENESIS_VERSION,
-    FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID,
-    FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
-    FOREST_GENESIS_LABEL_CHAIN_ID,
-  ]);
-  for (const k of m.keys()) {
-    if (!allowed.has(k)) {
-      return ClientErrors.badRequest(`Unknown genesis map key ${k}`);
-    }
-  }
+  const bootErr = validateBootstrapLogId(m, paddedWire);
+  if (bootErr) return bootErr;
 
-  const out = new Map<number, unknown>();
-  out.set(COSE_KEY_KTY, COSE_KTY_EC2);
-  out.set(COSE_EC2_CRV, COSE_CRV_P256);
-  out.set(COSE_EC2_X, x);
-  out.set(COSE_EC2_Y, y);
-  out.set(COSE_KEY_ALG, COSE_ALG_ES256);
-  out.set(FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V1);
-  out.set(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID, paddedWire);
-  out.set(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, addrRes);
-  out.set(FOREST_GENESIS_LABEL_CHAIN_ID, chainId);
+  const binding = validateChainBinding(m);
+  if (binding instanceof Response) return binding;
+
+  let out: Map<number, unknown> | Response;
+  if (version === FOREST_GENESIS_SCHEMA_V1) {
+    out = buildV1GenesisOut(m, paddedWire, binding);
+  } else {
+    out = buildV2GenesisOut(m, paddedWire, binding);
+  }
+  if (out instanceof Response) return out;
 
   const storageSeg = logIdToStorageSegment(logId);
   const body = encodeCbor(out) as Uint8Array;
 
-  // Forward to the univocity owned store first when configured: it is the
-  // authority and verifies genesis.key == on-chain bootstrapConfig(). The local
-  // R2 copy below stays authoritative for reads until the subject log's first
-  // checkpoint, after which it may be expired (plan-0029).
   const univocity = univocityGenesisClientFromEnv(env);
   if (univocity) {
     const fwd = await postGenesisToUnivocity(univocity, storageSeg, body);
@@ -204,8 +306,6 @@ export async function postForestGenesis(
   const head = await env.R2_GRANTS.head(key);
   if (head) {
     if (univocity) {
-      // Univocity accepted (created) but R2 already has a copy: idempotent, the
-      // authoritative store is consistent. Report success.
       return cborResponse({}, 201);
     }
     return ClientErrors.conflict("genesis.cbor already exists for this log");

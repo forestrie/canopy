@@ -14,6 +14,7 @@ import {
   createReceiptAuthorityResolver,
   receiptResolverCacheKeySuffix,
 } from "../src/env/receipt-authority-resolver.js";
+import { es256ReceiptVerifyKeys } from "../src/env/decode-trust-root-cbor.js";
 import { DELEGATION_CERT_LABEL } from "../src/grant/delegation-verify.js";
 
 const OWNER_HEX = "0123456789abcdef0123456789abcdef";
@@ -61,21 +62,24 @@ describe("receipt authority resolver cache", () => {
     expect(keysA).not.toBeNull();
     expect(keysB).not.toBeNull();
 
+    const es256A = es256ReceiptVerifyKeys(keysA!);
+    const es256B = es256ReceiptVerifyKeys(keysB!);
+
     const sigOkAWithA = await verifyCoseSign1WithParsedKey(
       receiptA,
-      keysA![0]!,
+      es256A[0]!,
       {
         detachedPayload: await peakFromReceipt(receiptA),
       },
     );
     const sigOkBWithBCachedWrong = await verifyCoseSign1WithParsedKey(
       receiptB,
-      keysA![0]!,
+      es256A[0]!,
       { detachedPayload: await peakFromReceipt(receiptB) },
     );
     const sigOkBWithB = await verifyCoseSign1WithParsedKey(
       receiptB,
-      keysB![0]!,
+      es256B[0]!,
       {
         detachedPayload: await peakFromReceipt(receiptB),
       },

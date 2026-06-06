@@ -1,16 +1,8 @@
 /**
  * Univocity genesis chain-binding e2e helpers (plan-0007 scenario).
  *
- * Provisions a forest genesis bound to a real Base Sepolia Univocity contract
- * against a **fixed** root log id so the "genesis exists before first checkpoint"
- * state can be re-tested. Identity and contract are env-overridable with stable
- * defaults; reset via `task cf:genesis:delete LOG_ID=<R>`.
- *
- * **Bootstrap alg:** forest genesis POST uses an ES256 COSE_Key (P-256 x‖y). The
- * contract under test must have been deployed with `ALG_ES256` and a 64-byte
- * bootstrap key (`abi.encodePacked(x, y)`). The default Safe-backed deployment at
- * `0x611dd70B…` uses `ALG_KS256` (-65799) with a 20-byte Safe address — that is
- * incompatible with canopy genesis and arbor anchor verification today.
+ * Supports ES256 (v1 EC2 COSE_Key) and KS256 (v2 genesisAlg + bootstrapKey)
+ * forest genesis anchors matching on-chain `bootstrapConfig()`.
  */
 
 import { decode as decodeCbor } from "cbor-x";
@@ -18,19 +10,21 @@ import type { APIRequestContext } from "@playwright/test";
 import { decodeBodyAsIntKeyMap } from "@e2e-canopy-api-src/cbor-api/cbor-map-utils.js";
 import { COSE_EC2_X, COSE_EC2_Y } from "@e2e-canopy-api-src/cose/cose-key.js";
 import {
+  FOREST_GENESIS_LABEL_BOOTSTRAP_KEY,
   FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID,
   FOREST_GENESIS_LABEL_CHAIN_ID,
+  FOREST_GENESIS_LABEL_GENESIS_ALG,
   FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
 } from "@e2e-canopy-api-src/forest/forest-genesis-labels.js";
 import { E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID } from "./e2e-static-log-ids.js";
 
 /**
  * Default Base Sepolia ImutableUnivocity (Safe KS256 bootstrap). Used when
- * `E2E_UNIVOCITY_CONTRACT_ADDR` is unset; chain-binding specs skip unless the
- * on-chain bootstrap alg is ES256.
+ * `E2E_UNIVOCITY_CONTRACT_ADDR` is unset. KS256 chain-binding e2e uses this
+ * deployment with genesis v2 (alg -65799 + 20-byte Safe address).
  */
 export const DEFAULT_UNIVOCITY_CONTRACT_ADDR =
-  "0x611dd70B2D36c87B29878089eD8a7aDc68E4441B";
+  "0x7A4E8ad88D6Df29FEBEc0d546d148Ed4bea8Cb94";
 
 /** Safe multisig used as KS256 bootstrap for {@link DEFAULT_UNIVOCITY_CONTRACT_ADDR}. */
 export const DEFAULT_UNIVOCITY_KS256_SAFE_ADDR =
@@ -119,11 +113,25 @@ function decodeInt256Word(word64Hex: string): number {
 }
 
 /**
- * Returns a skip reason when the contract bootstrap is not ES256 x‖y (forest
- * genesis cannot anchor to KS256 Safe deployments without stack changes).
+ * Returns a skip reason when the contract bootstrap is unsupported or unreadable.
+ * ES256 (64-byte x‖y) and KS256 (20-byte address) are both supported.
  */
 export async function es256ChainBindingSkipReason(
   contractAddr?: string,
+): Promise<string | null> {
+  return univocityChainBindingSkipReason(contractAddr, COSE_ALG_ES256);
+}
+
+/** KS256 chain-binding skip gate (default Safe deployment). */
+export async function ks256ChainBindingSkipReason(
+  contractAddr?: string,
+): Promise<string | null> {
+  return univocityChainBindingSkipReason(contractAddr, COSE_ALG_KS256);
+}
+
+async function univocityChainBindingSkipReason(
+  contractAddr: string | undefined,
+  requiredAlg: number,
 ): Promise<string | null> {
   const addr = (
     contractAddr ??
@@ -139,19 +147,18 @@ export async function es256ChainBindingSkipReason(
     }`;
   }
   if (boot.alg === COSE_ALG_ES256 && boot.key.length === 64) {
-    return null;
+    return requiredAlg === COSE_ALG_ES256 ? null : "contract bootstrap is ES256, spec requires KS256";
+  }
+  if (boot.alg === COSE_ALG_KS256 && boot.key.length === 20) {
+    return requiredAlg === COSE_ALG_KS256 ? null : "contract bootstrap is KS256, spec requires ES256";
   }
   const keyDesc =
     boot.key.length === 20
       ? `0x${Buffer.from(boot.key).toString("hex")} (20-byte address)`
       : `${boot.key.length}-byte key`;
   return (
-    `Univocity ${addr} bootstrap is alg=${boot.alg} key=${keyDesc}; chain-binding ` +
-    "e2e requires ALG_ES256 (-7) with a 64-byte x‖y bootstrap matching the " +
-    "Custodian ES256 genesis key. The default deployment is KS256 + Safe " +
-    `${DEFAULT_UNIVOCITY_KS256_SAFE_ADDR}. Deploy a new ImutableUnivocity with ` +
-    "ES256_X/ES256_Y from the Custodian genesis key (univocity script/Deploy.s.sol), " +
-    "set E2E_UNIVOCITY_CONTRACT_ADDR, then re-run."
+    `Univocity ${addr} bootstrap is alg=${boot.alg} key=${keyDesc}; ` +
+    "expected ES256 (-7) with 64-byte x‖y or KS256 (-65799) with 20-byte address."
   );
 }
 
@@ -207,8 +214,12 @@ export interface ParsedForestGenesisE2e {
   chainId: string;
   univocityAddr: Uint8Array;
   bootstrapLogId: Uint8Array;
-  x: Uint8Array;
-  y: Uint8Array;
+  /** ES256 v1 / derived from v2 bootstrapKey. */
+  x?: Uint8Array;
+  y?: Uint8Array;
+  /** v2 opaque bootstrap (64 ES256 or 20 KS256). */
+  bootstrapAlg?: number;
+  bootstrapKey?: Uint8Array;
 }
 
 function asBytes(v: unknown): Uint8Array | null {
@@ -241,13 +252,39 @@ export async function getForestGenesisParsed(
   const chainId = m.get(FOREST_GENESIS_LABEL_CHAIN_ID);
   const univocityAddr = asBytes(m.get(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR));
   const bootstrapLogId = asBytes(m.get(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID));
+  const bootstrapAlgRaw = m.get(FOREST_GENESIS_LABEL_GENESIS_ALG);
+  const bootstrapKey = asBytes(m.get(FOREST_GENESIS_LABEL_BOOTSTRAP_KEY));
   const x = asBytes(m.get(COSE_EC2_X));
   const y = asBytes(m.get(COSE_EC2_Y));
   if (typeof chainId !== "string") {
     throw new Error("genesis chain-id missing or not a string");
   }
-  if (!univocityAddr || !bootstrapLogId || !x || !y) {
-    throw new Error("genesis missing univocity-addr / bootstrap-logid / x / y");
+  if (!univocityAddr || !bootstrapLogId) {
+    throw new Error("genesis missing univocity-addr / bootstrap-logid");
   }
-  return { chainId, univocityAddr, bootstrapLogId, x, y };
+  const parsed: ParsedForestGenesisE2e = {
+    chainId,
+    univocityAddr,
+    bootstrapLogId,
+  };
+  if (bootstrapKey && bootstrapAlgRaw !== undefined) {
+    const alg =
+      typeof bootstrapAlgRaw === "bigint"
+        ? Number(bootstrapAlgRaw)
+        : Number(bootstrapAlgRaw);
+    parsed.bootstrapAlg = alg;
+    parsed.bootstrapKey = bootstrapKey;
+    if (alg === COSE_ALG_ES256 && bootstrapKey.length === 64) {
+      parsed.x = bootstrapKey.slice(0, 32);
+      parsed.y = bootstrapKey.slice(32, 64);
+    }
+  }
+  if (x && y) {
+    parsed.x = x;
+    parsed.y = y;
+  }
+  if (!parsed.bootstrapKey && (!parsed.x || !parsed.y)) {
+    throw new Error("genesis missing bootstrap key (v1 x/y or v2 bootstrapKey)");
+  }
+  return parsed;
 }

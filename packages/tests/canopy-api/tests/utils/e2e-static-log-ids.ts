@@ -3,9 +3,12 @@
  * KMS CryptoKey id === normalized selfLogId (32 hex).
  */
 
-/** Univocity genesis chain-binding (persistent genesis 201/409). */
+/**
+ * Univocity genesis chain-binding (persistent genesis 201/409).
+ * Mnemonic UUID embeds ImutableUnivocity `0x7A4E8ad8…` (Base Sepolia Safe KS256).
+ */
 export const E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID =
-  "b1a50611-dd70-42d3-9c87-611dd70b2441";
+  "7a4e8ad8-8d6d-429f-8bec-0d546d148edb";
 
 /** Custodian HTTP API direct e2e (ensure/sign/list; not deleted on teardown). */
 export const E2E_STATIC_CUSTODIAN_API_LOG_ID =
