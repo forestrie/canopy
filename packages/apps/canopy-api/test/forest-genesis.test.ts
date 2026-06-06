@@ -49,9 +49,9 @@ function envWithCurator(): Env {
   return { ...poolEnv, CURATOR_ADMIN_TOKEN: CURATOR };
 }
 
-function validGenesisV2Es256CborMap(
-  opts?: { bootstrapKey?: Uint8Array },
-): Map<number, unknown> {
+function validGenesisV2Es256CborMap(opts?: {
+  bootstrapKey?: Uint8Array;
+}): Map<number, unknown> {
   const key = opts?.bootstrapKey ?? new Uint8Array(64).fill(0x11);
   return new Map<number, unknown>([
     [FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V2],
@@ -374,6 +374,8 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
       new Uint8Array(await hit.arrayBuffer()),
     ) as Map<number, unknown>;
     expect(roundTrip.get(FOREST_GENESIS_LABEL_GENESIS_VERSION)).toBe(2);
-    expect(roundTrip.get(FOREST_GENESIS_LABEL_GENESIS_ALG)).toBe(COSE_ALG_ES256);
+    expect(roundTrip.get(FOREST_GENESIS_LABEL_GENESIS_ALG)).toBe(
+      COSE_ALG_ES256,
+    );
   });
 });

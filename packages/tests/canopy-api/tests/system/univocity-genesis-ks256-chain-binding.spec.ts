@@ -43,7 +43,9 @@ test.describe("Univocity KS256 genesis chain binding (Base Sepolia)", () => {
     const chainId = univocityGenesisChainId();
     const univocityAddr = ks256BootstrapContractAddrBytes();
 
-    const boot = await fetchOnChainBootstrapConfig(ks256BootstrapContractAddr());
+    const boot = await fetchOnChainBootstrapConfig(
+      ks256BootstrapContractAddr(),
+    );
     expect(boot.alg).toBe(COSE_ALG_KS256);
     expect(boot.key.length).toBe(20);
 

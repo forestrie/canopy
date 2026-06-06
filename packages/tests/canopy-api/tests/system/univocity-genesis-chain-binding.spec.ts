@@ -51,7 +51,9 @@ test.describe("Univocity ES256 genesis chain binding (Base Sepolia)", () => {
     const rootLogId = es256GenesisLogId();
     const chainId = univocityGenesisChainId();
     const univocityAddr = es256BootstrapContractAddrBytes();
-    const boot = await fetchOnChainBootstrapConfig(es256BootstrapContractAddr());
+    const boot = await fetchOnChainBootstrapConfig(
+      es256BootstrapContractAddr(),
+    );
 
     expect(boot.alg).toBe(COSE_ALG_ES256);
     expect(boot.key.length).toBe(64);
@@ -92,7 +94,9 @@ test.describe("Univocity ES256 genesis chain binding (Base Sepolia)", () => {
     const rootLogId = es256GenesisLogId();
     const chainId = univocityGenesisChainId();
     const univocityAddr = es256BootstrapContractAddrBytes();
-    const boot = await fetchOnChainBootstrapConfig(es256BootstrapContractAddr());
+    const boot = await fetchOnChainBootstrapConfig(
+      es256BootstrapContractAddr(),
+    );
 
     await ensureForestGenesisEs256E2e(unauthorizedRequest, {
       logId: rootLogId,
@@ -126,7 +130,9 @@ test.describe("Univocity ES256 genesis chain binding (Base Sepolia)", () => {
     const chainId = univocityGenesisChainId();
     const univocityAddr = es256BootstrapContractAddrBytes();
     const baseURL = testInfo.project.use.baseURL ?? "";
-    const boot = await fetchOnChainBootstrapConfig(es256BootstrapContractAddr());
+    const boot = await fetchOnChainBootstrapConfig(
+      es256BootstrapContractAddr(),
+    );
 
     expect(boot.alg).toBe(COSE_ALG_ES256);
     expect(boot.key.length).toBe(64);

@@ -76,7 +76,10 @@ export function mintEs256RootGrantWithBootstrapPem(opts: {
   };
 
   const payloadBytes = encodeGrantPayloadV0Canonical(grant);
-  const sign1 = signGrantPayloadWithEs256Pem(payloadBytes, opts.es256PrivateKeyPem);
+  const sign1 = signGrantPayloadWithEs256Pem(
+    payloadBytes,
+    opts.es256PrivateKeyPem,
+  );
   return {
     grantBase64: bytesToForestrieGrantBase64(sign1),
     grantData: opts.bootstrapKey64,

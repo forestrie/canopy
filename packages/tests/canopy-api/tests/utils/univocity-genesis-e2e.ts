@@ -56,7 +56,10 @@ export function univocityRpcUrlForE2e(): string {
   ).trim();
 }
 
-function parseContractAddrBytes(rawEnv: string | undefined, fallback: string): Uint8Array {
+function parseContractAddrBytes(
+  rawEnv: string | undefined,
+  fallback: string,
+): Uint8Array {
   const raw = (rawEnv ?? fallback).trim().toLowerCase().replace(/^0x/, "");
   if (!/^[0-9a-f]{40}$/.test(raw)) {
     throw new Error(

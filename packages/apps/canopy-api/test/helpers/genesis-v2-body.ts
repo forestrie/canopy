@@ -1,6 +1,4 @@
-import {
-  COSE_ALG_ES256,
-} from "../../src/cose/cose-key.js";
+import { COSE_ALG_ES256 } from "../../src/cose/cose-key.js";
 import {
   FOREST_GENESIS_E2E_DUMMY_CHAIN_ID,
   FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR,

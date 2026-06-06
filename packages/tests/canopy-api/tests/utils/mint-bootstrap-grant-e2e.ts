@@ -12,9 +12,7 @@ import {
   postCustodianSignGrantPayload,
   publicKeyPemToUncompressed65,
 } from "@e2e-canopy-api-src/scrapi/custodian-grant.js";
-import {
-  ensureForestGenesisEs256E2e,
-} from "./forest-genesis-e2e.js";
+import { ensureForestGenesisEs256E2e } from "./forest-genesis-e2e.js";
 import {
   FOREST_GENESIS_E2E_DUMMY_CHAIN_ID,
   FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR,

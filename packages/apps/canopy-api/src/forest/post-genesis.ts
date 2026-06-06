@@ -5,10 +5,7 @@
 
 import { encode as encodeCbor } from "cbor-x";
 
-import {
-  COSE_ALG_ES256,
-  COSE_ALG_KS256,
-} from "../cose/cose-key.js";
+import { COSE_ALG_ES256, COSE_ALG_KS256 } from "../cose/cose-key.js";
 import {
   logIdToStorageSegment,
   logIdToWireBytes,
