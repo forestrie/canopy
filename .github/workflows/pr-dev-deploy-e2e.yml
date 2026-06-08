@@ -248,17 +248,126 @@ jobs:
     with:
       environment: dev
 
+  univocity-salt-es256:
+    name: Univocity CREATE2 salt (es256)
+    needs: validate
+    if: |
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      vars.E2E_UNIVOCITY_PROVISION_FRESH == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      salt: ${{ steps.salt.outputs.salt }}
+    steps:
+      - uses: foundry-rs/foundry-toolchain@v1
+      - id: salt
+        run: |
+          SALT=$(cast keccak $(cast abi-encode "f(string,uint256,string)" "canopy-e2e" "${{ github.run_id }}" "es256"))
+          echo "salt=$SALT" >> "$GITHUB_OUTPUT"
+
+  univocity-salt-ks256:
+    name: Univocity CREATE2 salt (ks256)
+    needs: validate
+    if: |
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      vars.E2E_UNIVOCITY_PROVISION_FRESH == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      salt: ${{ steps.salt.outputs.salt }}
+    steps:
+      - uses: foundry-rs/foundry-toolchain@v1
+      - id: salt
+        run: |
+          SALT=$(cast keccak $(cast abi-encode "f(string,uint256,string)" "canopy-e2e" "${{ github.run_id }}" "ks256"))
+          echo "salt=$SALT" >> "$GITHUB_OUTPUT"
+
+  deploy-imutable-es256:
+    name: Deploy ImutableUnivocity (es256)
+    needs: univocity-salt-es256
+    if: |
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      vars.E2E_UNIVOCITY_PROVISION_FRESH == 'true'
+    uses: forestrie/univocity/.github/workflows/deploy-imutable.yml@main
+    with:
+      bootstrap_alg: es256
+      salt: ${{ needs.univocity-salt-es256.outputs.salt }}
+      tools_version: v0.2.0
+      rpc_url: ${{ vars.E2E_UNIVOCITY_RPC_URL }}
+    secrets:
+      DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+      BOOTSTRAP_PEM_ES256: ${{ secrets.BOOTSTRAP_PEM_ES256 }}
+
+  deploy-imutable-ks256:
+    name: Deploy ImutableUnivocity (ks256)
+    needs: univocity-salt-ks256
+    if: |
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      vars.E2E_UNIVOCITY_PROVISION_FRESH == 'true'
+    uses: forestrie/univocity/.github/workflows/deploy-imutable.yml@main
+    with:
+      bootstrap_alg: ks256
+      salt: ${{ needs.univocity-salt-ks256.outputs.salt }}
+      tools_version: v0.2.0
+      rpc_url: ${{ vars.E2E_UNIVOCITY_RPC_URL }}
+    secrets:
+      DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+
+  map-univocity-e2e-env:
+    name: Map fresh Univocity deploy outputs
+    needs: [deploy-imutable-es256, deploy-imutable-ks256]
+    if: |
+      always() &&
+      vars.E2E_UNIVOCITY_PROVISION_FRESH == 'true' &&
+      needs.deploy-imutable-es256.result == 'success' &&
+      needs.deploy-imutable-ks256.result == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      es256_address: ${{ steps.map.outputs.es256_address }}
+      ks256_address: ${{ steps.map.outputs.ks256_address }}
+      es256_log_id: ${{ steps.map.outputs.es256_log_id }}
+      ks256_log_id: ${{ steps.map.outputs.ks256_log_id }}
+    steps:
+      - id: map
+        run: |
+          set -euo pipefail
+          es256='${{ needs.deploy-imutable-es256.outputs.imutable_address }}'
+          ks256='${{ needs.deploy-imutable-ks256.outputs.imutable_address }}'
+          log_id() {
+            local addr="$1"
+            local h
+            h=$(echo "$addr" | tr 'A-Z' 'a-z' | sed 's/^0x//')
+            echo "${h:0:8}-${h:8:4}-${h:12:4}-${h:16:4}-${h:20:12}"
+          }
+          echo "es256_address=$es256" >> "$GITHUB_OUTPUT"
+          echo "ks256_address=$ks256" >> "$GITHUB_OUTPUT"
+          echo "es256_log_id=$(log_id "$es256")" >> "$GITHUB_OUTPUT"
+          echo "ks256_log_id=$(log_id "$ks256")" >> "$GITHUB_OUTPUT"
+
   api-e2e-full:
     name: API e2e full (dev)
-    needs: [validate, deploy-dev, deploy-coordinator-dev, health-after-deploy, changes]
+    needs:
+      - validate
+      - deploy-dev
+      - deploy-coordinator-dev
+      - health-after-deploy
+      - changes
+      - deploy-imutable-es256
+      - deploy-imutable-ks256
+      - map-univocity-e2e-env
     if: |
       always() &&
       needs.deploy-dev.result == 'success' &&
       (needs.deploy-coordinator-dev.result == 'success' || needs.deploy-coordinator-dev.result == 'skipped') &&
-      needs.health-after-deploy.result == 'success'
+      needs.health-after-deploy.result == 'success' &&
+      (needs.deploy-imutable-es256.result == 'success' || needs.deploy-imutable-es256.result == 'skipped') &&
+      (needs.deploy-imutable-ks256.result == 'success' || needs.deploy-imutable-ks256.result == 'skipped') &&
+      (needs.map-univocity-e2e-env.result == 'success' || needs.map-univocity-e2e-env.result == 'skipped')
     uses: ./.github/workflows/api-e2e-playwright.yml
     secrets: inherit
     with:
       environment: dev
       playwright_project: system
       require_coordinator_e2e: ${{ needs.changes.outputs.coordinator == 'true' }}
+      e2e_univocity_address_es256: ${{ needs.map-univocity-e2e-env.outputs.es256_address || '' }}
+      e2e_univocity_address_ks256: ${{ needs.map-univocity-e2e-env.outputs.ks256_address || '' }}
+      e2e_univocity_genesis_log_id_es256: ${{ needs.map-univocity-e2e-env.outputs.es256_log_id || '' }}
+      e2e_univocity_genesis_log_id_ks256: ${{ needs.map-univocity-e2e-env.outputs.ks256_log_id || '' }}

@@ -62,6 +62,14 @@ Required keys in the Doppler config include at least:
 - **`CURATOR_ADMIN_TOKEN`** — required (POST `/api/forest/{log-id}/genesis`).
 - Reset persisted genesis: `task cf:genesis:delete LOG_ID=<uuid>` (see spec comments).
 
+**Fresh Imutable provision** (optional; see [plan-0032](../docs/plans/plan-0032-univocity-imutable-e2e-provision.md)):
+
+- Deploy in sibling **univocity**: `doppler run -- task imutable-deploy:default ALG=es256 SALT=0x…`
+- Map manifest in canopy: `eval "$(task e2e-univocity:env-from-manifest MANIFEST=…)"`
+- CI: set GitHub **`dev`** var **`E2E_UNIVOCITY_PROVISION_FRESH=true`** to trigger parallel Safe deploys.
+- **`DEPLOY_KEY`** in canopy **`dev`** secrets must sync from Doppler **`univocity.dev.DEPLOY_KEY`**
+  (Safe owner signer for `deploy approve`).
+
 Run KS256 chain-binding only:
 
 ```bash

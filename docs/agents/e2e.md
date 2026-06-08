@@ -23,6 +23,9 @@ Full detail: [packages/tests/canopy-api/README.md](../../packages/tests/canopy-a
 
 - `CANOPY_BASE_URL`, `CANOPY_FQDN`, `SCRAPI_API_KEY`
 - Bootstrap/system: `CUSTODIAN_APP_TOKEN`, `CURATOR_ADMIN_TOKEN`, Custodian URL
+- Univocity chain-binding: `E2E_UNIVOCITY_ADDRESS_*`, genesis log IDs — static
+  defaults in Doppler **`canopy/dev`**, or fresh addresses when
+  **`E2E_UNIVOCITY_PROVISION_FRESH=true`** (see [plan-0032](../plans/plan-0032-univocity-imutable-e2e-provision.md))
 
 ## System test flow docs
 

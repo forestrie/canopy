@@ -1,0 +1,83 @@
+# E2e Univocity provisioning adapter (canopy-only; no deploy).
+# Deploy ImutableUnivocity in the sibling univocity repo, then point
+# MANIFEST at the written manifest JSON.
+version: "3"
+
+vars:
+  MANIFEST: "{{.MANIFEST}}"
+  RPC_URL: '{{.RPC_URL | default ""}}'
+
+tasks:
+  env-from-manifest:
+    desc: |
+      Print shell exports for E2E_UNIVOCITY_* from an imutable deployment manifest.
+      Usage: eval "$(task e2e-univocity:env-from-manifest MANIFEST=path/to/manifest.json)"
+    requires:
+      vars: [MANIFEST]
+    cmds:
+      - |
+        set -euo pipefail
+        if [ ! -f "{{.MANIFEST}}" ]; then
+          echo "manifest not found: {{.MANIFEST}}" >&2
+          exit 1
+        fi
+        CHAIN_ID=$(jq -r '.chainId' "{{.MANIFEST}}")
+        ADDR=$(jq -r '.imutableUnivocity' "{{.MANIFEST}}")
+        ALG=$(jq -r '.bootstrapAlg' "{{.MANIFEST}}")
+        LOG_ID=$(task e2e-univocity:genesis-log-id ADDR="$ADDR" | tail -1)
+        echo "export E2E_UNIVOCITY_CHAIN_ID=${CHAIN_ID}"
+        if [ "$ALG" = "es256" ]; then
+          echo "export E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP=${ADDR}"
+          echo "export E2E_UNIVOCITY_GENESIS_LOG_ID_ES256=${LOG_ID}"
+        elif [ "$ALG" = "ks256" ]; then
+          echo "export E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP=${ADDR}"
+          echo "export E2E_UNIVOCITY_GENESIS_LOG_ID_KS256=${LOG_ID}"
+        else
+          echo "unknown bootstrapAlg: $ALG" >&2
+          exit 1
+        fi
+        if [ -n "{{.RPC_URL}}" ]; then
+          echo "export E2E_UNIVOCITY_RPC_URL={{.RPC_URL}}"
+        fi
+
+  genesis-log-id:
+    desc: Derive mnemonic forest log UUID from ImutableUnivocity address (matches univocity/scripts/es256_common.py).
+    requires:
+      vars: [ADDR]
+    cmds:
+      - |
+        set -euo pipefail
+        H=$(echo "{{.ADDR}}" | tr 'A-Z' 'a-z' | sed 's/^0x//')
+        if [ "${#H}" -ne 40 ]; then
+          echo "expected 20-byte address, got {{.ADDR}}" >&2
+          exit 1
+        fi
+        echo "${H:0:8}-${H:8:4}-${H:12:4}-${H:16:4}-${H:20:12}"
+
+  verify:
+    desc: eth_call bootstrapConfig() on manifest imutableUnivocity (fail fast before Playwright).
+    requires:
+      vars: [MANIFEST]
+    cmds:
+      - |
+        set -euo pipefail
+        RPC="${RPC_URL:-${E2E_UNIVOCITY_RPC_URL:-https://sepolia.base.org}}"
+        ADDR=$(jq -r '.imutableUnivocity' "{{.MANIFEST}}")
+        CODE=$(cast code "$ADDR" --rpc-url "$RPC")
+        if [ -z "$CODE" ] || [ "$CODE" = "0x" ]; then
+          echo "no contract code at $ADDR" >&2
+          exit 1
+        fi
+        cast call "$ADDR" "bootstrapConfig()(int64,bytes)" --rpc-url "$RPC" >/dev/null
+        echo "bootstrapConfig OK at $ADDR"
+
+  ci-salt:
+    desc: |
+      Compute run-scoped CREATE2 salt for CI (keccak256 encodePacked label, run_id, alg)).
+      Usage: task e2e-univocity:ci-salt RUN_ID=12345 ALG=es256
+    requires:
+      vars: [RUN_ID, ALG]
+    cmds:
+      - |
+        set -euo pipefail
+        cast keccak $(cast abi-encode "f(string,uint256,string)" "canopy-e2e" "{{.RUN_ID}}" "{{.ALG}}")

@@ -11,6 +11,7 @@ Platform-wide plans: [devdocs/plans/](../../../devdocs/plans/README.md).
 |------|--------|-----------|
 | [plan-0029](plan-0029-delegate-grant-validation-to-univocity.md) | DRAFT | Univocity grant validation delegation |
 | [plan-0030](plan-0030-forests-storage-and-uuid-logid.md) | ACTIVE | UUID log IDs, forests/ layout |
+| [plan-0032](plan-0032-univocity-imutable-e2e-provision.md) | DRAFT | Fresh Imutable Safe deploy for e2e |
 | [plan-0031](plan-0031-ks256-forest-roots.md) | ACTIVE | KS256 forest roots |
 | [plan-0028](plan-0028-forest-genesis-chain-binding.md) | DRAFT | Genesis v1 chain binding POST |
 | [plan-0019](plan-0019-bootstrap-path-and-genesis-cache.md) | DRAFT | Bootstrap-scoped SCRAPI paths |

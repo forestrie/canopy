@@ -34,6 +34,7 @@ includes:
   grant-bootstrap: ./taskfiles/grant-bootstrap.yml
   grant: ./taskfiles/grant.yml
   e2e-shared: ./taskfiles/e2e-shared.yml
+  e2e-univocity: ./taskfiles/e2e-univocity.yml
 
 tasks:
   default:
