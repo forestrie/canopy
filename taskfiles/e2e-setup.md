@@ -4,50 +4,53 @@ E2e tests live in **`packages/tests/canopy-api`** (`@canopy/api-e2e`). They targ
 **deployed** Canopy worker (dev/staging/prod depending on your Doppler config), not a
 locally emulated mini-stack.
 
-Playwright projects are **integration** (Canopy surface only), **system** (full SCRAPI + sequencing + Custodian mint), and **custodian** (direct Custodian HTTP). Default `pnpm test:e2e` runs **integration → system → custodian**. See **`packages/tests/canopy-api/README.md`** for layout and path aliases.
+Playwright projects are **integration**, **system**, **custodian**, and **coordinator**
+(when configured). **`task test:e2e`** runs the full dev suite in CI-parity order:
+**integration → system → custodian → coordinator** (coordinator skipped with a warning
+when `DELEGATION_COORDINATOR_URL` or `COORDINATOR_APP_TOKEN` is unset). See
+**`packages/tests/canopy-api/README.md`** for layout and path aliases.
 
-## One-time / when dependencies change
+## Local workflow
 
-From the **repository root**:
-
-| Task | Purpose |
-| ---- | ------- |
-| **`task test:e2e:preflight`** | `pnpm install` and Playwright + Chromium only. Does **not** download secrets. |
-| **`task test:e2e`** | Run the default e2e suite with secrets from **Doppler** (see below). |
-
-Use **`ENV=prod task test:e2e`** when the Doppler config should be **`prod`** (project stays **`canopy`**).
-
-## Secrets and environment variables (local)
-
-Do **not** hydrate a repo-root **`.env`** file. Inject secrets at runtime with the Doppler CLI:
+From the **repository root** (recommended — inject secrets via Doppler):
 
 - **Project:** `canopy`
 - **Config:** `dev` (default) or `prod` (set `ENV=prod` on Task invocations)
 
 ```bash
-# Install tooling once (no secrets):
-task test:e2e:preflight
+# Preflight: tooling + env validation (+ optional fresh Univocity when flag set)
+doppler run --project canopy --config dev -- task test:e2e:preflight
 
-# Default suite (integration → system → custodian):
-task test:e2e
-
-# Equivalent explicit invocation:
-doppler run --project canopy --config dev -- \
-  pnpm --filter @canopy/api-e2e test:e2e
+# Full dev suite (runs preflight first)
+doppler run --project canopy --config dev -- task test:e2e
 ```
 
-**System only** (full stack; requires Custodian + curator secrets in Doppler):
+Bare **`task test:e2e`** self-wraps with `doppler run` when `DOPPLER_CONFIG` is unset.
+
+| Task | Purpose |
+| ---- | ------- |
+| **`task test:e2e:preflight`** | `pnpm install`, Playwright Chromium, Doppler env validation, Canopy health probe; auto-provisions Univocity when **`E2E_UNIVOCITY_PROVISION_FRESH=true`**. |
+| **`task test:e2e`** | Full dev Playwright sequence via **`taskfiles/e2e-run-playwright.sh`** (depends on preflight). |
+
+Use **`ENV=prod task test:e2e`** when the Doppler config should be **`prod`** (project stays **`canopy`**).
+
+**Single tier** (explicit Doppler + package script):
 
 ```bash
 doppler run --project canopy --config dev -- \
   pnpm --filter @canopy/api-e2e test:e2e:system
 ```
 
+## Secrets and environment variables (local)
+
+Do **not** hydrate a repo-root **`.env`** file. Inject secrets at runtime with the Doppler CLI.
+
 Required keys in the Doppler config include at least:
 
 - **`CANOPY_BASE_URL`** _or_ **`CANOPY_FQDN`** — worker origin. Playwright resolves `CANOPY_BASE_URL` first; if unset, it builds `https://…` from `CANOPY_FQDN` (same logic as `.github/workflows/api-e2e-playwright.yml`). Doppler `dev` may only define **`CANOPY_FQDN`**.
 - **`SCRAPI_API_KEY`** — bearer token for authorized fixtures (when used)
 - **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**, **`CURATOR_ADMIN_TOKEN`** — for **system** bootstrap mint (runner-side `POST /api/keys` + genesis)
+- **`DELEGATION_COORDINATOR_URL`**, **`COORDINATOR_APP_TOKEN`** — optional; when both set, **`task test:e2e`** includes the **coordinator** project
 
 **Univocity genesis chain-binding** (`tests/system/univocity-genesis-*-chain-binding.spec.ts`):
 
@@ -64,17 +67,12 @@ Required keys in the Doppler config include at least:
 
 **Fresh Imutable provision** (optional; see [plan-0032](../docs/plans/plan-0032-univocity-imutable-e2e-provision.md)):
 
-- **Local (canopy-native):** `doppler run -- task e2e-univocity:provision RUN_ID=local-smoke`
-  (fetches latest univocity release via `contract-artefacts`, deploys es256 + ks256).
-  Requires **`gh`** auth or **`GH_TOKEN`**, Foundry **`cast`**, and Doppler
+- Set **`E2E_UNIVOCITY_PROVISION_FRESH=true`** in Doppler — **`task test:e2e:preflight`** installs tools (if needed), deploys es256 + ks256, writes **`.work/e2e-univocity.env`**, and Playwright sources it automatically.
+- Manual path still available: `doppler run -- task e2e-univocity:provision RUN_ID=local-smoke`
+- Requires **`gh`** auth (for `fetch-release --auth-kind gh-cli`), Foundry **`cast`**, and Doppler
   **`DEPLOY_KEY`**, **`BOOTSTRAP_PEM_ES256`**, **`E2E_UNIVOCITY_RPC_URL`**.
-- Map manifest: `eval "$(task e2e-univocity:env-from-manifest MANIFEST=…)"`
 - **CI:** set GitHub **`dev`** var **`E2E_UNIVOCITY_PROVISION_FRESH=true`** to run
   **`provision-univocity`** (no cross-repo univocity workflow).
-- **`GITAPP_ID`** (var) + **`GITAPP_PRIVATE_KEY`** (secret) — org GitHub App for
-  release fetch in CI.
-- **`DEPLOY_KEY`** in canopy **`dev`** secrets must sync from Doppler
-  **`univocity.dev.DEPLOY_KEY`** (Safe owner signer for `deploy approve`).
 - Requires **univocity-tools v0.5.0+** (`deploy propose imutable --release-root`).
 
 Run KS256 chain-binding only:
@@ -95,8 +93,9 @@ The **Tests** and **Deploy Workers** workflows call **`.github/workflows/api-e2e
 
 ## Optional variables
 
-- **`E2E_PREFLIGHT_FETCH_TIMEOUT_MS`**: HTTP timeout for preflight probes (default **20000**) if used by future probes.
+- **`E2E_PREFLIGHT_FETCH_TIMEOUT_MS`**: HTTP timeout for Canopy health probe in preflight (default **20000**).
 - **`E2E_RUN_ID`**: optional disambiguator for Custodian key labels in e2e helpers.
+- **`E2E_PROVISION_RUN_ID`**: override run id for fresh Univocity CREATE2 salts (default `local-<timestamp>`).
 
 ## Workspace rules
 

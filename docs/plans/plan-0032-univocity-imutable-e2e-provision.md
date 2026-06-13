@@ -93,8 +93,9 @@ doppler run --project canopy --config dev -- \
   tests/system/univocity-genesis-es256-chain-binding.spec.ts
 ```
 
-**`task test:e2e:preflight`** remains secret-free; **`provision`** is
-manual / Doppler-only.
+**`task test:e2e:preflight`** validates Doppler env and auto-provisions Univocity when
+**`E2E_UNIVOCITY_PROVISION_FRESH=true`** (writes **`.work/e2e-univocity.env`** for Playwright).
+Manual **`e2e-univocity:provision`** remains available for ad-hoc runs.
 
 ## Out of scope (first slice)
 

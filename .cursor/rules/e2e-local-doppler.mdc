@@ -14,8 +14,10 @@ alwaysApply: true
 
 When running Playwright e2e **locally** against dev (or another Doppler config), **always** inject secrets via Doppler **outside** npm. Do **not** create or use a repo-root **`.env`** file.
 
-- **Repo root:** `task test:e2e` (use `ENV=prod` when the Doppler config should be `prod`; project is always **`canopy`**).
-- **Explicit:** `doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e test:e2e` (append spec paths or `--grep` as needed). For **system** tests only: `… pnpm --filter @canopy/api-e2e test:e2e:system`.
-- **Tooling only (no secrets):** `task test:e2e:preflight` — then run tests with `task test:e2e` or `doppler run` as above.
+- **Recommended:** `doppler run --project canopy --config dev -- task test:e2e:preflight` then `doppler run --project canopy --config dev -- task test:e2e`
+- **Repo root:** `task test:e2e` self-wraps with Doppler when `DOPPLER_CONFIG` is unset (use `ENV=prod` when the Doppler config should be `prod`; project is always **`canopy`**).
+- **Single tier:** `doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e test:e2e:system` (append spec paths or `--grep` as needed).
+
+Preflight validates secrets and may auto-provision Univocity when **`E2E_UNIVOCITY_PROVISION_FRESH=true`**.
 
 See **`taskfiles/e2e-setup.md`** and **`packages/tests/canopy-api/README.md`**.

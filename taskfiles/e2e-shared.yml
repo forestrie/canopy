@@ -9,6 +9,8 @@ version: "3"
 
 vars:
   ENV: '{{.ENV | default "dev"}}'
+  E2E_UNIVOCITY_ENV_FILE: "{{.ROOT_DIR}}/.work/e2e-univocity.env"
+  PROPOSAL_DIR: "{{.ROOT_DIR}}/.work/univocity-e2e/proposals"
 
 tasks:
   bootstrap:
@@ -17,3 +19,157 @@ tasks:
       - pnpm install
       - pnpm --filter @canopy/api-e2e exec playwright --version
       - pnpm --filter @canopy/api-e2e exec playwright install chromium
+
+  ensure-doppler:
+    desc: |
+      Re-exec the caller task under doppler run when Doppler env is not already injected.
+      Pass E2E_DOPPLER_TASK (e.g. test:e2e or test:e2e:preflight).
+    requires:
+      vars: [E2E_DOPPLER_TASK]
+    preconditions:
+      - sh: command -v doppler >/dev/null 2>&1
+        msg: "doppler CLI is required — install from https://docs.doppler.com/docs/install-cli"
+    cmds:
+      - |
+        set -euo pipefail
+        if [ -n "${DOPPLER_CONFIG:-}" ] || [ -n "${DOPPLER_PROJECT:-}" ]; then
+          exit 0
+        fi
+        exec doppler run --project canopy --config {{.ENV}} -- \
+          task "{{.E2E_DOPPLER_TASK}}"
+
+  validate-env:
+    desc: |
+      Fail fast when required e2e secrets/vars are missing (mirrors api-e2e-playwright.yml).
+      Set VALIDATE_SKIP_UNIVOCITY=1 to skip Univocity address checks (fresh provision path).
+    cmds:
+      - |
+        set -euo pipefail
+        trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+
+        if [ -z "$(trim_ws "${SCRAPI_API_KEY:-}")" ]; then
+          echo "SCRAPI_API_KEY is not set in Doppler (project canopy, config {{.ENV}})." >&2
+          exit 1
+        fi
+
+        BASE="$(trim_ws "${CANOPY_BASE_URL:-}")"
+        if [ -n "$BASE" ]; then
+          export CANOPY_BASE_URL="${BASE%/}"
+        else
+          FQ="$(trim_ws "${CANOPY_FQDN:-}")"
+          FQ="${FQ#https://}"
+          FQ="${FQ#http://}"
+          FQ="${FQ%%/*}"
+          FQ="${FQ%/}"
+          if [ -z "$FQ" ]; then
+            echo "Set CANOPY_BASE_URL or CANOPY_FQDN in Doppler (project canopy, config {{.ENV}})." >&2
+            exit 1
+          fi
+          export CANOPY_BASE_URL="https://${FQ}"
+          export CANOPY_BASE_URL="${CANOPY_BASE_URL%/}"
+        fi
+
+        if [ -z "$(trim_ws "${CUSTODIAN_URL:-}")" ]; then
+          echo "CUSTODIAN_URL is required for system e2e (Doppler project canopy, config {{.ENV}})." >&2
+          exit 1
+        fi
+        if [ -z "$(trim_ws "${CUSTODIAN_APP_TOKEN:-}")" ]; then
+          echo "CUSTODIAN_APP_TOKEN is required for system e2e (Doppler project canopy, config {{.ENV}})." >&2
+          exit 1
+        fi
+        if [ -z "$(trim_ws "${CURATOR_ADMIN_TOKEN:-}")" ]; then
+          echo "CURATOR_ADMIN_TOKEN is required for system e2e (Doppler project canopy, config {{.ENV}})." >&2
+          exit 1
+        fi
+
+        if [ "${VALIDATE_SKIP_UNIVOCITY:-}" != "1" ]; then
+          if [ -f "{{.E2E_UNIVOCITY_ENV_FILE}}" ]; then
+            set -a
+            # shellcheck source=/dev/null
+            . "{{.E2E_UNIVOCITY_ENV_FILE}}"
+            set +a
+          fi
+          if [ -z "$(trim_ws "${E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP:-}")" ]; then
+            echo "E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP is required for Univocity chain-binding e2e." >&2
+            echo "Set in Doppler, enable E2E_UNIVOCITY_PROVISION_FRESH=true, or run preflight." >&2
+            exit 1
+          fi
+          if [ -z "$(trim_ws "${E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP:-}")" ]; then
+            echo "E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP is required for Univocity chain-binding e2e." >&2
+            echo "Set in Doppler, enable E2E_UNIVOCITY_PROVISION_FRESH=true, or run preflight." >&2
+            exit 1
+          fi
+          if [ -z "$(trim_ws "${E2E_UNIVOCITY_GENESIS_LOG_ID_ES256:-}")" ]; then
+            echo "E2E_UNIVOCITY_GENESIS_LOG_ID_ES256 is required for Univocity chain-binding e2e." >&2
+            echo "Set in Doppler, enable E2E_UNIVOCITY_PROVISION_FRESH=true, or run preflight." >&2
+            exit 1
+          fi
+          if [ -z "$(trim_ws "${E2E_UNIVOCITY_GENESIS_LOG_ID_KS256:-}")" ]; then
+            echo "E2E_UNIVOCITY_GENESIS_LOG_ID_KS256 is required for Univocity chain-binding e2e." >&2
+            echo "Set in Doppler, enable E2E_UNIVOCITY_PROVISION_FRESH=true, or run preflight." >&2
+            exit 1
+          fi
+        fi
+
+        TIMEOUT_MS="${E2E_PREFLIGHT_FETCH_TIMEOUT_MS:-20000}"
+        TIMEOUT_SEC=$((TIMEOUT_MS / 1000))
+        if [ "$TIMEOUT_SEC" -lt 1 ]; then
+          TIMEOUT_SEC=1
+        fi
+        HEALTH_URL="${CANOPY_BASE_URL}/api/health"
+        if ! curl -fsS --max-time "$TIMEOUT_SEC" "$HEALTH_URL" >/dev/null; then
+          echo "Canopy health check failed: GET ${HEALTH_URL} (timeout ${TIMEOUT_MS}ms)." >&2
+          exit 1
+        fi
+        echo "e2e env OK (Canopy ${CANOPY_BASE_URL})"
+
+  provision-univocity-if-needed:
+    desc: |
+      When E2E_UNIVOCITY_PROVISION_FRESH=true, install tools, deploy es256+ks256,
+      verify manifests, and write .work/e2e-univocity.env.
+    cmds:
+      - |
+        set -euo pipefail
+        trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+        FLAG="$(trim_ws "${E2E_UNIVOCITY_PROVISION_FRESH:-}")"
+        if [ "$FLAG" != "true" ]; then
+          echo "E2E_UNIVOCITY_PROVISION_FRESH not true — skipping fresh Univocity provision."
+          exit 0
+        fi
+
+        RUN_ID="${E2E_PROVISION_RUN_ID:-local-$(date +%s)}"
+        echo "Fresh Univocity provision (RUN_ID=${RUN_ID})"
+
+        DEPLOYER="{{.ROOT_DIR}}/.cache/univocity-tools/deployer"
+        if [ ! -x "$DEPLOYER" ]; then
+          SIBLING="{{.ROOT_DIR}}/../univocity-tools/Taskfile.dist.yml"
+          if [ -f "$SIBLING" ]; then
+            task install:dev
+          elif [ "{{OS}}" = "linux" ]; then
+            task install:release
+          else
+            task install:dev
+          fi
+        fi
+
+        task e2e-univocity:provision RUN_ID="$RUN_ID"
+
+        MANIFEST_ES256=$(ls -t "{{.PROPOSAL_DIR}}"/manifest-es256-*.json 2>/dev/null | head -1)
+        MANIFEST_KS256=$(ls -t "{{.PROPOSAL_DIR}}"/manifest-ks256-*.json 2>/dev/null | head -1)
+        if [ -z "$MANIFEST_ES256" ] || [ -z "$MANIFEST_KS256" ]; then
+          echo "missing es256 or ks256 manifest under {{.PROPOSAL_DIR}}" >&2
+          exit 1
+        fi
+
+        task e2e-univocity:verify MANIFEST="$MANIFEST_ES256"
+        task e2e-univocity:verify MANIFEST="$MANIFEST_KS256"
+
+        task e2e-univocity:write-env-file \
+          MANIFEST_ES256="$MANIFEST_ES256" \
+          MANIFEST_KS256="$MANIFEST_KS256"
+        echo "Wrote {{.E2E_UNIVOCITY_ENV_FILE}}"
+
+  run-full:
+    desc: Run full dev Playwright suite (CI-parity project sequence).
+    cmds:
+      - bash taskfiles/e2e-run-playwright.sh

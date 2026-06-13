@@ -31,9 +31,8 @@ Run from repo root unless noted.
 
 ## E2E
 
-- `task test:e2e:preflight`
-- `task test:e2e` (Doppler)
-- `doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e test:e2e`
+- `doppler run --project canopy --config dev -- task test:e2e:preflight`
+- `doppler run --project canopy --config dev -- task test:e2e`
 - Single spec: append path or `--grep`
 
 ## Doppler

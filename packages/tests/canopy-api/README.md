@@ -24,21 +24,23 @@ Shared code: `tests/utils/`, `tests/fixtures/`. Imports use TypeScript path alia
 
 ## Prerequisites
 
-From the **repo root**:
+From the **repo root** (recommended):
 
 ```bash
-task test:e2e:preflight   # install deps + Playwright Chromium (no secrets)
-task test:e2e             # run suite with Doppler project canopy, config ENV (default dev)
+doppler run --project canopy --config dev -- task test:e2e:preflight
+doppler run --project canopy --config dev -- task test:e2e
 ```
+
+Bare **`task test:e2e`** runs preflight and self-wraps with Doppler when needed.
 
 See **`taskfiles/e2e-setup.md`**.
 
 ## Scripts
 
-- **Local (default):** `task test:e2e` — wraps `doppler run --project canopy --config <ENV> -- pnpm --filter @canopy/api-e2e test:e2e`. Use `ENV=prod` for prod config.
-- **Local (explicit):** `doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e test:e2e` (see **`.cursor/rules/e2e-local-doppler.mdc`**). Do **not** add `doppler run` to package.json scripts.
-- **Single tier:** prefix the same `doppler run` with `test:e2e:integration` | `test:e2e:system` | `test:e2e:custodian` | `test:e2e:coordinator` | `test:e2e:prod`.
-- **CI:** workflows export env on the step; run `pnpm --filter @canopy/api-e2e exec playwright test` (see `.github/workflows/api-e2e-playwright.yml`). Plain `pnpm test:e2e` without env is for CI only.
+- **Local (full dev suite):** `task test:e2e` — CI-parity sequence (integration → system → custodian → coordinator when configured). Use `ENV=prod` for prod Doppler config.
+- **Local (explicit tier):** `doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e test:e2e:system` (see **`.cursor/rules/e2e-local-doppler.mdc`**). Do **not** add `doppler run` to package.json scripts.
+- **Single tier npm scripts:** `test:e2e:integration` | `test:e2e:system` | `test:e2e:custodian` | `test:e2e:coordinator` | `test:e2e:prod` (plain Playwright; wrap with Doppler locally).
+- **CI:** workflows export env on the step; run `pnpm --filter @canopy/api-e2e exec playwright test` (see `.github/workflows/api-e2e-playwright.yml`). Package **`pnpm test:e2e`** runs integration + system + custodian only (no coordinator) — use the Task entrypoint locally for full dev parity.
 
 ### Bootstrap grant (mint + register-grant)
 
