@@ -1,0 +1,119 @@
+# Delegate univocity-tools install to the sibling tools repo.
+version: "3"
+
+vars:
+  INSTALL_DIR: '{{.INSTALL_DIR | default ".cache/univocity-tools"}}'
+  UNIVOCITY_TOOLS_VERSION: '{{.UNIVOCITY_TOOLS_VERSION | default "latest"}}'
+  UNIVOCITY_TOOLS_TASKFILE:
+    sh: |
+      set -euo pipefail
+      if [ -n "{{.UNIVOCITY_TOOLS_ROOT}}" ]; then
+        root="{{.UNIVOCITY_TOOLS_ROOT}}"
+      else
+        root="{{.ROOT_DIR}}/../univocity-tools"
+      fi
+      echo "$(cd "$root" && pwd)/Taskfile.dist.yml"
+
+tasks:
+  check:
+    desc: Verify the sibling univocity-tools checkout and Taskfile.dist.yml exist.
+    preconditions:
+      - sh: test -f "{{.UNIVOCITY_TOOLS_TASKFILE}}"
+        msg: >-
+          univocity-tools taskfile not found at {{.UNIVOCITY_TOOLS_TASKFILE}}.
+          Set UNIVOCITY_TOOLS_ROOT or clone forestrie/univocity-tools next to canopy.
+
+  install:
+    desc: |
+      Build + install deployer and contract-artefacts for the current host OS
+      (linux or darwin). Default INSTALL_DIR: .cache/univocity-tools.
+    deps: [check]
+    preconditions:
+      - sh: '[ "{{OS}}" = "linux" ] || [ "{{OS}}" = "darwin" ]'
+        msg: "unsupported platform {{OS}} (linux and darwin only)"
+    cmds:
+      - |
+        set -euo pipefail
+        cd "{{.ROOT_DIR}}"
+        case "{{OS}}" in
+          linux) TARGET=linux ;;
+          darwin) TARGET=darwin ;;
+          *)
+            echo "unsupported platform: {{OS}} (linux and darwin only)" >&2
+            exit 1
+            ;;
+        esac
+        task -t "{{.UNIVOCITY_TOOLS_TASKFILE}}" \
+          "install:${TARGET}:{{.INSTALL_DIR}}" \
+          USER_WORKING_DIR="{{.USER_WORKING_DIR}}"
+
+  install:*:*:
+    desc: |
+      Build + install deployer and contract-artefacts (delegates to univocity-tools).
+      Example: task univocity-tools:install:darwin:.cache/univocity-tools
+    deps: [check]
+    vars:
+      TARGET: "{{index .MATCH 0}}"
+      INSTALL_DIR: "{{index .MATCH 1}}"
+    preconditions:
+      - sh: '[ "{{.TARGET}}" = "linux" ] || [ "{{.TARGET}}" = "darwin" ]'
+        msg: "TARGET must be linux or darwin"
+    cmds:
+      - |
+        set -euo pipefail
+        task -t "{{.UNIVOCITY_TOOLS_TASKFILE}}" \
+          "install:{{.TARGET}}:{{.INSTALL_DIR}}" \
+          USER_WORKING_DIR="{{.USER_WORKING_DIR}}"
+
+  install:release:
+    desc: |
+      Download deployer + contract-artefacts linux-x64 from a GitHub release
+      into INSTALL_DIR (CI parity; no sibling checkout required).
+      Set UNIVOCITY_TOOLS_VERSION=latest or v0.5.0; REFRESH_TOOLS=1 to re-fetch.
+    vars:
+      TOOLS_TAG:
+        sh: |
+          if [ "{{.UNIVOCITY_TOOLS_VERSION}}" = "latest" ]; then
+            gh api repos/forestrie/univocity-tools/releases/latest --jq '.tag_name'
+          else
+            echo "{{.UNIVOCITY_TOOLS_VERSION}}"
+          fi
+      RELEASE_BASE: https://github.com/forestrie/univocity-tools/releases/download/{{.TOOLS_TAG}}
+      INSTALL_DIR_ABS:
+        sh: |
+          set -euo pipefail
+          cd "{{.ROOT_DIR}}"
+          mkdir -p "{{.INSTALL_DIR}}"
+          python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "{{.INSTALL_DIR}}"
+    preconditions:
+      - sh: command -v gh >/dev/null 2>&1 || test -n "${GH_TOKEN:-}" || test -n "${GITHUB_TOKEN:-}"
+        msg: "gh CLI (authenticated) or GH_TOKEN/GITHUB_TOKEN is required"
+    cmds:
+      - |
+        set -euo pipefail
+        DEST="{{.INSTALL_DIR_ABS}}"
+        mkdir -p "$DEST"
+        echo "Installing univocity-tools {{.TOOLS_TAG}} into $DEST"
+        for app in deployer contract-artefacts; do
+          DEST_BIN="$DEST/${app}"
+          if [ -x "$DEST_BIN" ] && [ "${REFRESH_TOOLS:-}" != "1" ]; then
+            echo "${app} already present at $DEST_BIN"
+            continue
+          fi
+          SRC="${DEST}/${app}-linux-x64"
+          curl -fsSL "{{.RELEASE_BASE}}/${app}-linux-x64" -o "$SRC"
+          curl -fsSL "{{.RELEASE_BASE}}/${app}-linux-x64.sha256" -o "${SRC}.sha256"
+          EXPECTED=$(awk '{print $1}' "${SRC}.sha256")
+          if command -v sha256sum >/dev/null 2>&1; then
+            ACTUAL=$(sha256sum "$SRC" | awk '{print $1}')
+          else
+            ACTUAL=$(shasum -a 256 "$SRC" | awk '{print $1}')
+          fi
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "${app} sha256 mismatch" >&2
+            exit 1
+          fi
+          cp "$SRC" "$DEST_BIN"
+          chmod +x "$DEST_BIN"
+          echo "$DEST_BIN"
+        done

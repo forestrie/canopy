@@ -24,21 +24,23 @@ Shared code: `tests/utils/`, `tests/fixtures/`. Imports use TypeScript path alia
 
 ## Prerequisites
 
-From the **repo root**:
+From the **repo root** (recommended):
 
 ```bash
-task test:e2e:preflight   # install deps + Playwright Chromium (no secrets)
-task test:e2e             # run suite with Doppler project canopy, config ENV (default dev)
+doppler run --project canopy --config dev -- task test:e2e:preflight
+doppler run --project canopy --config dev -- task test:e2e
 ```
+
+Bare **`task test:e2e`** runs preflight and self-wraps with Doppler when needed.
 
 See **`taskfiles/e2e-setup.md`**.
 
 ## Scripts
 
-- **Local (default):** `task test:e2e` — wraps `doppler run --project canopy --config <ENV> -- pnpm --filter @canopy/api-e2e test:e2e`. Use `ENV=prod` for prod config.
-- **Local (explicit):** `doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e test:e2e` (see **`.cursor/rules/e2e-local-doppler.mdc`**). Do **not** add `doppler run` to package.json scripts.
-- **Single tier:** prefix the same `doppler run` with `test:e2e:integration` | `test:e2e:system` | `test:e2e:custodian` | `test:e2e:coordinator` | `test:e2e:prod`.
-- **CI:** workflows export env on the step; run `pnpm --filter @canopy/api-e2e exec playwright test` (see `.github/workflows/api-e2e-playwright.yml`). Plain `pnpm test:e2e` without env is for CI only.
+- **Local (full dev suite):** `task test:e2e` — CI-parity sequence (integration → system → custodian → coordinator when configured). Use `ENV=prod` for prod Doppler config.
+- **Local (explicit tier):** `doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e test:e2e:system` (see **`.cursor/rules/e2e-local-doppler.mdc`**). Do **not** add `doppler run` to package.json scripts.
+- **Single tier npm scripts:** `test:e2e:integration` | `test:e2e:system` | `test:e2e:custodian` | `test:e2e:coordinator` | `test:e2e:prod` (plain Playwright; wrap with Doppler locally).
+- **CI:** workflows export env on the step; run `pnpm --filter @canopy/api-e2e exec playwright test` (see `.github/workflows/api-e2e-playwright.yml`). Package **`pnpm test:e2e`** runs integration + system + custodian only (no coordinator) — use the Task entrypoint locally for full dev parity.
 
 ### Bootstrap grant (mint + register-grant)
 
@@ -107,14 +109,15 @@ Other keys:
 **Univocity genesis chain-binding** (`tests/system/univocity-genesis-chain-binding.spec.ts` ES256;
 `tests/system/univocity-genesis-ks256-chain-binding.spec.ts` KS256):
 
-- **`E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP`**: KS256 ImutableUnivocity (Doppler **`canopy/dev`**; CI **`vars`**). Default: `0x7A4E8ad88D6Df29FEBEc0d546d148Ed4bea8Cb94`.
-- **`E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP`**: ES256 ImutableUnivocity. Default: `0xb5906A91eF30dA435Ff13d27619Bc6F76282d19D`.
-- **`E2E_UNIVOCITY_RPC_URL`**: optional RPC for runner `bootstrapConfig()` eth_call (default Base Sepolia).
-- **`E2E_UNIVOCITY_CHAIN_ID`**: optional EIP-155 id (default `84532`).
-- **`E2E_UNIVOCITY_GENESIS_LOG_ID_KS256`**: optional KS256 forest log UUID (default `E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID_KS256`).
-- **`E2E_UNIVOCITY_GENESIS_LOG_ID_ES256`**: optional ES256 forest log UUID (default `E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID_ES256`).
+Provisioned in **`task test:e2e:preflight`** (default). Playwright sources **`.work/e2e-univocity.env`**:
+
+- **`E2E_UNIVOCITY_ADDRESS_*_BOOTSTRAP`**, **`E2E_UNIVOCITY_GENESIS_LOG_ID_*`**
+- **`E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE`** — ES256 register-grant signing
+- **`E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER`** — expected KS256 bootstrap address
+- **`E2E_UNIVOCITY_RPC_URL`**, **`E2E_UNIVOCITY_CHAIN_ID`** (optional defaults)
 - **`CURATOR_ADMIN_TOKEN`**: POST genesis (same as other system bootstrap specs).
-- Static log id reset: `task cf:genesis:delete LOG_ID=<R>`.
+
+Opt out: **`SKIP_UNIVOCITY_PROVISION=true`** (chain-binding specs skip). See [plan-0032](../../docs/plans/plan-0032-univocity-imutable-e2e-provision.md).
 
 **Delegation coordinator e2e** (`tests/coordinator/`, Playwright project **`coordinator`**):
 
@@ -159,7 +162,7 @@ Set **`COORDINATOR_APP_TOKEN`** in Doppler **`canopy/dev`** (masked) after fores
 | `system/bootstrap-child-auth-grant.spec.ts`            | Root bootstrap + custody-key child auth grant; 303 Location under `/logs/{root}/{root}/entries/…`. [Doc](tests/system/docs/bootstrap-child-auth-grant.md).                          |
 | `system/auth-data-log-chain.spec.ts`                   | Root → child auth log → data log delegation chain (delegated `grantData`). [Doc](tests/system/docs/auth-data-log-chain.md).                                                         |
 | `system/univocity-genesis-chain-binding.spec.ts`       | ES256 forest genesis vs on-chain `bootstrapConfig()` (skips when contract is KS256).                                                                                                |
-| `system/univocity-genesis-ks256-chain-binding.spec.ts` | KS256 genesis v2 vs Safe bootstrap on default Base Sepolia deployment.                                                                                                              |
+| `system/univocity-genesis-ks256-chain-binding.spec.ts` | KS256 genesis v2 vs ephemeral on-chain bootstrap (Base Sepolia).                                                                                                                    |
 | `custodian/custodian-api.spec.ts`                      | Direct **`fetch`** to deployed Custodian: ops + **`/v1/api/…`** key routes. Does not use `:bootstrap` key paths.                                                                    |
 | `coordinator/coordinator-api.spec.ts`                  | Phase 3 coordinator APIs; **coordinator** direct issue of stored material (custodial pre-mint).                                                                                     |
 | `coordinator/coordinator-byok-material.spec.ts`        | **BYOK:** runner-owned log root; pending → material → coordinator issue. [System doc](tests/system/docs/README.md#non-custodian-log-root-signing-key-byok-delegation).              |

@@ -251,9 +251,7 @@ jobs:
   provision-univocity:
     name: Provision Univocity (fetch + deploy)
     needs: validate
-    if: |
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      vars.E2E_UNIVOCITY_PROVISION_FRESH == 'true'
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     environment: dev
     outputs:
@@ -261,11 +259,11 @@ jobs:
       ks256_address: ${{ steps.map.outputs.ks256_address }}
       es256_log_id: ${{ steps.map.outputs.es256_log_id }}
       ks256_log_id: ${{ steps.map.outputs.ks256_log_id }}
+      es256_bootstrap_pem_b64: ${{ steps.es256.outputs.es256_bootstrap_pem_b64 }}
+      ks256_bootstrap_signer: ${{ steps.ks256.outputs.ks256_bootstrap_signer }}
     env:
       DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
-      BOOTSTRAP_PEM_ES256: ${{ secrets.BOOTSTRAP_PEM_ES256 }}
       RPC_URL: ${{ vars.E2E_UNIVOCITY_RPC_URL }}
-      OWNER_ADDRESS: "0x1528b86ff561f617602356efdbD05908a07AA788"
       WORK_DIR: .work
     steps:
       - name: Mint GitHub App token
@@ -331,46 +329,46 @@ jobs:
         id: es256
         run: |
           set -euo pipefail
-          SALT=$(cast keccak $(cast abi-encode "f(string,uint256,string)" "canopy-e2e" "${{ github.run_id }}" "es256"))
+          PEM_PATH="${RUNNER_TEMP}/e2e-es256-bootstrap.pem"
           PROPOSAL="${RUNNER_TEMP}/proposal-es256.json"
           deployer deploy propose imutable \
             --source-root . \
             --release-root "$RELEASE_ROOT" \
             --bootstrap-alg es256 \
-            --safe-publish \
-            --owner-address "$OWNER_ADDRESS" \
+            --bootstrap-es256-generate \
+            --bootstrap-es256-pem-out "$PEM_PATH" \
             --deploy-key "$DEPLOY_KEY" \
-            --bootstrap-es256-pem "$BOOTSTRAP_PEM_ES256" \
-            --salt "$SALT" \
             --rpc-url "$RPC_URL" \
             --out "$PROPOSAL"
-          deployer deploy approve "$PROPOSAL" \
+          deployer deploy execute "$PROPOSAL" \
             --source-root . \
             --deploy-key "$DEPLOY_KEY" \
             --rpc-url "$RPC_URL"
           echo "address=$(jq -r '.imutableUnivocity' "$PROPOSAL")" >> "$GITHUB_OUTPUT"
+          echo "es256_bootstrap_pem_b64=$(base64 -w0 "$PEM_PATH")" >> "$GITHUB_OUTPUT"
 
       - name: Deploy ImutableUnivocity (ks256)
         id: ks256
         run: |
           set -euo pipefail
-          SALT=$(cast keccak $(cast abi-encode "f(string,uint256,string)" "canopy-e2e" "${{ github.run_id }}" "ks256"))
+          KEY_PATH="${RUNNER_TEMP}/e2e-ks256-bootstrap.key"
           PROPOSAL="${RUNNER_TEMP}/proposal-ks256.json"
           deployer deploy propose imutable \
             --source-root . \
             --release-root "$RELEASE_ROOT" \
             --bootstrap-alg ks256 \
-            --safe-publish \
-            --owner-address "$OWNER_ADDRESS" \
+            --bootstrap-ks256-generate \
+            --bootstrap-ks256-key-out "$KEY_PATH" \
             --deploy-key "$DEPLOY_KEY" \
-            --salt "$SALT" \
             --rpc-url "$RPC_URL" \
             --out "$PROPOSAL"
-          deployer deploy approve "$PROPOSAL" \
+          deployer deploy execute "$PROPOSAL" \
             --source-root . \
             --deploy-key "$DEPLOY_KEY" \
             --rpc-url "$RPC_URL"
           echo "address=$(jq -r '.imutableUnivocity' "$PROPOSAL")" >> "$GITHUB_OUTPUT"
+          KS256_SIGNER=$(cast wallet address --private-key "$(tr -d '\n' < "$KEY_PATH")")
+          echo "ks256_bootstrap_signer=${KS256_SIGNER}" >> "$GITHUB_OUTPUT"
 
       - id: map
         run: |
@@ -413,3 +411,5 @@ jobs:
       e2e_univocity_address_ks256: ${{ needs.provision-univocity.outputs.ks256_address || '' }}
       e2e_univocity_genesis_log_id_es256: ${{ needs.provision-univocity.outputs.es256_log_id || '' }}
       e2e_univocity_genesis_log_id_ks256: ${{ needs.provision-univocity.outputs.ks256_log_id || '' }}
+      e2e_univocity_es256_bootstrap_pem_b64: ${{ needs.provision-univocity.outputs.es256_bootstrap_pem_b64 || '' }}
+      e2e_univocity_ks256_bootstrap_signer: ${{ needs.provision-univocity.outputs.ks256_bootstrap_signer || '' }}

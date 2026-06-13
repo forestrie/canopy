@@ -172,7 +172,7 @@ export function es256GrantData64FromPrivateKeyPem(
     typeof jwk.x !== "string" ||
     typeof jwk.y !== "string"
   ) {
-    throw new Error("BOOTSTRAP_PEM_ES256 must be a P-256 EC private key");
+    throw new Error("ES256 bootstrap PEM must be a P-256 EC private key");
   }
   const x = base64UrlToBytes(jwk.x);
   const y = base64UrlToBytes(jwk.y);

@@ -63,5 +63,6 @@ packages/apps/delegation-coordinator/wrangler.runtime.jsonc
 *.key
 *.cert
 .cache
+.work
 receipt.cbor
 summary.json

@@ -1,62 +1,30 @@
 # E2e Univocity provisioning (canopy-native fetch + deploy).
 # CI mirrors this flow in pr-dev-deploy-e2e.yml provision-univocity.
-# Local: doppler run -- task e2e-univocity:provision RUN_ID=local-test
+# Prerequisite: task install:dev  (or install:release on Linux without checkout)
+# Local: doppler run -- task e2e-univocity:provision
 version: "3"
 
 vars:
   MANIFEST: "{{.MANIFEST}}"
   RPC_URL: '{{.RPC_URL | default ""}}'
-  UNIVOCITY_TOOLS_VERSION: '{{.UNIVOCITY_TOOLS_VERSION | default "latest"}}'
   TOOLS_CACHE_DIR: "{{.ROOT_DIR}}/.cache/univocity-tools"
-  DEPLOYER_BIN: "{{.TOOLS_CACHE_DIR}}/deployer-linux-x64"
-  CART_BIN: "{{.TOOLS_CACHE_DIR}}/contract-artefacts-linux-x64"
+  DEPLOYER_BIN: "{{.TOOLS_CACHE_DIR}}/deployer"
+  CART_BIN: "{{.TOOLS_CACHE_DIR}}/contract-artefacts"
   WORK_DIR: "{{.ROOT_DIR}}/.work/univocity-e2e"
   RELEASE_ROOT: "{{.ROOT_DIR}}/.work/univocity-release"
-  OWNER_ADDRESS: '{{.OWNER_ADDRESS | default "0x1528b86ff561f617602356efdbD05908a07AA788"}}'
-  RUN_ID: '{{.RUN_ID | default "local"}}'
+  RUN_ID: '{{.RUN_ID | default ""}}'
   ALG: '{{.ALG | default "es256"}}'
   PROPOSAL_DIR: "{{.ROOT_DIR}}/.work/univocity-e2e/proposals"
+  ES256_BOOTSTRAP_PEM: "{{.ROOT_DIR}}/.work/e2e-univocity-es256-bootstrap.pem"
+  KS256_BOOTSTRAP_KEY: "{{.ROOT_DIR}}/.work/e2e-univocity-ks256-bootstrap.key"
+  E2E_UNIVOCITY_ENV_FILE: "{{.ROOT_DIR}}/.work/e2e-univocity.env"
 
 tasks:
-  tools:ensure:
-    desc: Download deployer + contract-artefacts from univocity-tools GitHub release.
-    vars:
-      TOOLS_TAG:
-        sh: |
-          if [ "{{.UNIVOCITY_TOOLS_VERSION}}" = "latest" ]; then
-            gh api repos/forestrie/univocity-tools/releases/latest --jq '.tag_name'
-          else
-            echo "{{.UNIVOCITY_TOOLS_VERSION}}"
-          fi
-      RELEASE_BASE: https://github.com/forestrie/univocity-tools/releases/download/{{.TOOLS_TAG}}
-    cmds:
-      - mkdir -p "{{.TOOLS_CACHE_DIR}}"
-      - |
-        set -euo pipefail
-        for app in deployer contract-artefacts; do
-          BIN="{{.TOOLS_CACHE_DIR}}/${app}-linux-x64"
-          if [ -x "$BIN" ] && [ "${REFRESH_TOOLS:-}" != "1" ]; then
-            echo "${app} already present at $BIN"
-            continue
-          fi
-          curl -fsSL "{{.RELEASE_BASE}}/${app}-linux-x64" -o "$BIN"
-          curl -fsSL "{{.RELEASE_BASE}}/${app}-linux-x64.sha256" -o "${BIN}.sha256"
-          EXPECTED=$(awk '{print $1}' "${BIN}.sha256")
-          if command -v sha256sum >/dev/null 2>&1; then
-            ACTUAL=$(sha256sum "$BIN" | awk '{print $1}')
-          else
-            ACTUAL=$(shasum -a 256 "$BIN" | awk '{print $1}')
-          fi
-          if [ "$EXPECTED" != "$ACTUAL" ]; then
-            echo "${app} sha256 mismatch" >&2
-            exit 1
-          fi
-          chmod +x "$BIN"
-        done
-
   fetch-release:
     desc: Fetch latest univocity contract build archive (requires gh auth or GH_TOKEN).
-    deps: [tools:ensure]
+    preconditions:
+      - sh: test -x "{{.DEPLOYER_BIN}}" && test -x "{{.CART_BIN}}"
+        msg: "Run task install:dev (or install:release) first — binaries missing under {{.TOOLS_CACHE_DIR}}"
     cmds:
       - mkdir -p "{{.WORK_DIR}}"
       - |
@@ -65,7 +33,7 @@ tasks:
           --org forestrie \
           --repo univocity \
           --artefact univocity \
-          --auth-kind env \
+          --auth-kind gh-cli \
           --work-dir "{{.WORK_DIR}}" \
           --source-root "{{.ROOT_DIR}}"
 
@@ -87,42 +55,52 @@ tasks:
           --release-root "{{.RELEASE_ROOT}}"
 
   deploy-one:
-    desc: Propose + approve one ImutableUnivocity (ALG, RUN_ID, SALT optional).
-    deps: [tools:ensure]
+    desc: Propose + execute one ImutableUnivocity via EOA deploy (ephemeral bootstrap key).
+    preconditions:
+      - sh: test -x "{{.DEPLOYER_BIN}}" && test -x "{{.CART_BIN}}"
+        msg: "Run task install:dev (or install:release) first — binaries missing under {{.TOOLS_CACHE_DIR}}"
     requires:
-      vars: [ALG, RUN_ID]
-    vars:
-      SALT:
-        sh: |
-          if [ -n "{{.SALT}}" ]; then
-            echo "{{.SALT}}"
-          else
-            task e2e-univocity:ci-salt RUN_ID="{{.RUN_ID}}" ALG="{{.ALG}}" | tail -1
-          fi
+      vars: [ALG]
     cmds:
-      - mkdir -p "{{.PROPOSAL_DIR}}"
+      - mkdir -p "{{.PROPOSAL_DIR}}" "{{.ROOT_DIR}}/.work"
       - |
         set -euo pipefail
         RPC="${RPC_URL:-${E2E_UNIVOCITY_RPC_URL:?E2E_UNIVOCITY_RPC_URL or RPC_URL is required}}"
-        SALT="{{.SALT}}"
-        PROPOSAL="{{.PROPOSAL_DIR}}/proposal-{{.ALG}}-${SALT}.json"
+        RUN_ID="${E2E_PROVISION_RUN_ID:-$(date +%s)}"
+        PROPOSAL="{{.PROPOSAL_DIR}}/proposal-{{.ALG}}-${RUN_ID}.json"
+        BOOTSTRAP_ARGS=()
+        if [ "{{.ALG}}" = "es256" ]; then
+          BOOTSTRAP_ARGS=(
+            --bootstrap-es256-generate
+            --bootstrap-es256-pem-out "{{.ES256_BOOTSTRAP_PEM}}"
+          )
+        elif [ "{{.ALG}}" = "ks256" ]; then
+          BOOTSTRAP_ARGS=(
+            --bootstrap-ks256-generate
+            --bootstrap-ks256-key-out "{{.KS256_BOOTSTRAP_KEY}}"
+          )
+        else
+          echo "unknown ALG: {{.ALG}}" >&2
+          exit 1
+        fi
         "{{.DEPLOYER_BIN}}" deploy propose imutable \
           --source-root "{{.ROOT_DIR}}" \
           --release-root "{{.RELEASE_ROOT}}" \
           --bootstrap-alg "{{.ALG}}" \
-          --safe-publish \
-          --owner-address "{{.OWNER_ADDRESS}}" \
           --deploy-key "${DEPLOY_KEY:?DEPLOY_KEY is required}" \
-          --salt "$SALT" \
           --rpc-url "$RPC" \
-          ${BOOTSTRAP_PEM_ES256:+--bootstrap-es256-pem "$BOOTSTRAP_PEM_ES256"} \
+          "${BOOTSTRAP_ARGS[@]}" \
           --out "$PROPOSAL"
-        "{{.DEPLOYER_BIN}}" deploy approve "$PROPOSAL" \
+        "{{.DEPLOYER_BIN}}" deploy execute "$PROPOSAL" \
           --source-root "{{.ROOT_DIR}}" \
           --deploy-key "$DEPLOY_KEY" \
           --rpc-url "$RPC"
         CHAIN_ID=$(jq -r '.chainId' "$PROPOSAL")
         ADDR=$(jq -r '.imutableUnivocity' "$PROPOSAL")
+        if [ -z "$ADDR" ] || [ "$ADDR" = "null" ]; then
+          echo "proposal missing imutableUnivocity address after execute" >&2
+          exit 1
+        fi
         SHORT=$(echo "$ADDR" | tr 'A-Z' 'a-z' | sed 's/^0x//' | cut -c1-8)
         MANIFEST="{{.PROPOSAL_DIR}}/manifest-{{.ALG}}-${CHAIN_ID}-${SHORT}.json"
         jq -n \
@@ -131,10 +109,8 @@ tasks:
           --arg bootstrapAlg "{{.ALG}}" \
           --argjson chainId "$CHAIN_ID" \
           --arg imutableUnivocity "$ADDR" \
-          --arg publishMode "safe" \
+          --arg publishMode "eoa" \
           --arg from "$(jq -r '.from' "$PROPOSAL")" \
-          --arg salt "$(jq -r '.safe.salt' "$PROPOSAL")" \
-          --arg safeTxHash "$(jq -r '.safe.safeTxHash' "$PROPOSAL")" \
           '{
             kind: $kind,
             version: $version,
@@ -142,27 +118,155 @@ tasks:
             chainId: $chainId,
             imutableUnivocity: $imutableUnivocity,
             publishMode: $publishMode,
-            from: $from,
-            salt: $salt,
-            safeTxHash: $safeTxHash
+            from: $from
           }' > "$MANIFEST"
         echo "manifest: $MANIFEST"
         cat "$MANIFEST"
 
   provision:
     desc: |
-      Fetch latest univocity release, extract, deploy es256 + ks256 via Safe CREATE2.
-      Requires Doppler (DEPLOY_KEY, BOOTSTRAP_PEM_ES256, E2E_UNIVOCITY_RPC_URL).
-      Usage: doppler run -- task e2e-univocity:provision RUN_ID=local-smoke
+      Fetch latest univocity release, extract, deploy es256 + ks256 via EOA.
+      Prerequisite: task install:dev
+      Requires Doppler (DEPLOY_KEY, E2E_UNIVOCITY_RPC_URL).
+      Usage: doppler run -- task e2e-univocity:provision
     deps: [extract]
     cmds:
       - task: deploy-one
         vars:
           ALG: es256
-          RUN_ID: "{{.RUN_ID}}"
       - task: deploy-one
         vars:
           ALG: ks256
-          RUN_ID: "{{.RUN_ID}}"
 
   env-from-manifest:
+    desc: |
+      Print shell exports for E2E_UNIVOCITY_* from an imutable deployment manifest.
+      Usage: eval "$(task e2e-univocity:env-from-manifest MANIFEST=path/to/manifest.json)"
+    requires:
+      vars: [MANIFEST]
+    cmds:
+      - |
+        set -euo pipefail
+        if [ ! -f "{{.MANIFEST}}" ]; then
+          echo "manifest not found: {{.MANIFEST}}" >&2
+          exit 1
+        fi
+        CHAIN_ID=$(jq -r '.chainId' "{{.MANIFEST}}")
+        ADDR=$(jq -r '.imutableUnivocity' "{{.MANIFEST}}")
+        ALG=$(jq -r '.bootstrapAlg' "{{.MANIFEST}}")
+        LOG_ID=$(task e2e-univocity:genesis-log-id ADDR="$ADDR" | tail -1)
+        echo "export E2E_UNIVOCITY_CHAIN_ID=${CHAIN_ID}"
+        if [ "$ALG" = "es256" ]; then
+          echo "export E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP=${ADDR}"
+          echo "export E2E_UNIVOCITY_GENESIS_LOG_ID_ES256=${LOG_ID}"
+        elif [ "$ALG" = "ks256" ]; then
+          echo "export E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP=${ADDR}"
+          echo "export E2E_UNIVOCITY_GENESIS_LOG_ID_KS256=${LOG_ID}"
+        else
+          echo "unknown bootstrapAlg: $ALG" >&2
+          exit 1
+        fi
+        if [ -n "{{.RPC_URL}}" ]; then
+          echo "export E2E_UNIVOCITY_RPC_URL={{.RPC_URL}}"
+        elif [ -n "${E2E_UNIVOCITY_RPC_URL:-}" ]; then
+          echo "export E2E_UNIVOCITY_RPC_URL=${E2E_UNIVOCITY_RPC_URL}"
+        fi
+
+  env-from-manifests:
+    desc: |
+      Print combined E2E_UNIVOCITY_* exports for es256 + ks256 manifests.
+      Auto-discovers newest manifests under PROPOSAL_DIR when paths are omitted.
+    vars:
+      MANIFEST_ES256:
+        sh: |
+          if [ -n "{{.MANIFEST_ES256}}" ]; then
+            echo "{{.MANIFEST_ES256}}"
+          else
+            ls -t "{{.PROPOSAL_DIR}}"/manifest-es256-*.json 2>/dev/null | head -1
+          fi
+      MANIFEST_KS256:
+        sh: |
+          if [ -n "{{.MANIFEST_KS256}}" ]; then
+            echo "{{.MANIFEST_KS256}}"
+          else
+            ls -t "{{.PROPOSAL_DIR}}"/manifest-ks256-*.json 2>/dev/null | head -1
+          fi
+    cmds:
+      - |
+        set -euo pipefail
+        ES256="{{.MANIFEST_ES256}}"
+        KS256="{{.MANIFEST_KS256}}"
+        if [ -z "$ES256" ] || [ -z "$KS256" ]; then
+          echo "missing es256 or ks256 manifest (set MANIFEST_ES256/MANIFEST_KS256 or run provision)" >&2
+          exit 1
+        fi
+        task e2e-univocity:env-from-manifest MANIFEST="$ES256"
+        task e2e-univocity:env-from-manifest MANIFEST="$KS256" | grep -v '^export E2E_UNIVOCITY_CHAIN_ID='
+
+  write-env-file:
+    desc: Write combined E2E_UNIVOCITY exports to .work/e2e-univocity.env for Playwright.
+    vars:
+      OUT_FILE: "{{.E2E_UNIVOCITY_ENV_FILE}}"
+    cmds:
+      - mkdir -p "{{.ROOT_DIR}}/.work"
+      - |
+        set -euo pipefail
+        task e2e-univocity:env-from-manifests \
+          MANIFEST_ES256="{{.MANIFEST_ES256}}" \
+          MANIFEST_KS256="{{.MANIFEST_KS256}}" \
+          > "{{.OUT_FILE}}"
+        echo "export E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE={{.ES256_BOOTSTRAP_PEM}}" >> "{{.OUT_FILE}}"
+        if [ -f "{{.KS256_BOOTSTRAP_KEY}}" ]; then
+          KS256_SIGNER=$(cast wallet address --private-key "$(tr -d '\n' < "{{.KS256_BOOTSTRAP_KEY}}")")
+          echo "export E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER=${KS256_SIGNER}" >> "{{.OUT_FILE}}"
+          echo "export E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_FILE={{.KS256_BOOTSTRAP_KEY}}" >> "{{.OUT_FILE}}"
+        fi
+        echo "export E2E_SKIP_UNIVOCITY_CHAIN_BINDING=false" >> "{{.OUT_FILE}}"
+        echo "wrote {{.OUT_FILE}}"
+
+  write-skip-env-file:
+    desc: Write opt-out marker so Playwright skips Univocity chain-binding specs.
+    cmds:
+      - mkdir -p "{{.ROOT_DIR}}/.work"
+      - |
+        set -euo pipefail
+        if [ -f "{{.E2E_UNIVOCITY_ENV_FILE}}" ]; then
+          echo "Note: {{.E2E_UNIVOCITY_ENV_FILE}} exists; chain-binding may use stale addresses." >&2
+          grep -v '^export E2E_SKIP_UNIVOCITY_CHAIN_BINDING=' "{{.E2E_UNIVOCITY_ENV_FILE}}" > "{{.E2E_UNIVOCITY_ENV_FILE}}.tmp" || true
+          mv "{{.E2E_UNIVOCITY_ENV_FILE}}.tmp" "{{.E2E_UNIVOCITY_ENV_FILE}}"
+        else
+          : > "{{.E2E_UNIVOCITY_ENV_FILE}}"
+        fi
+        echo "export E2E_SKIP_UNIVOCITY_CHAIN_BINDING=true" >> "{{.E2E_UNIVOCITY_ENV_FILE}}"
+        echo "wrote skip marker to {{.E2E_UNIVOCITY_ENV_FILE}}"
+
+  genesis-log-id:
+    desc: Derive mnemonic forest log UUID from ImutableUnivocity address (matches univocity/scripts/es256_common.py).
+    requires:
+      vars: [ADDR]
+    cmds:
+      - |
+        set -euo pipefail
+        H=$(echo "{{.ADDR}}" | tr 'A-Z' 'a-z' | sed 's/^0x//')
+        if [ "${#H}" -ne 40 ]; then
+          echo "expected 20-byte address, got {{.ADDR}}" >&2
+          exit 1
+        fi
+        echo "${H:0:8}-${H:8:4}-${H:12:4}-${H:16:4}-${H:20:12}"
+
+  verify:
+    desc: eth_call bootstrapConfig() on manifest imutableUnivocity (fail fast before Playwright).
+    requires:
+      vars: [MANIFEST]
+    cmds:
+      - |
+        set -euo pipefail
+        RPC="${RPC_URL:-${E2E_UNIVOCITY_RPC_URL:-https://sepolia.base.org}}"
+        ADDR=$(jq -r '.imutableUnivocity' "{{.MANIFEST}}")
+        CODE=$(cast code "$ADDR" --rpc-url "$RPC")
+        if [ -z "$CODE" ] || [ "$CODE" = "0x" ]; then
+          echo "no contract code at $ADDR" >&2
+          exit 1
+        fi
+        cast call "$ADDR" "bootstrapConfig()(int64,bytes)" --rpc-url "$RPC" >/dev/null
+        echo "bootstrapConfig OK at $ADDR"
