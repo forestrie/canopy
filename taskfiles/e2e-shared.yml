@@ -137,7 +137,7 @@ tasks:
           exit 0
         fi
 
-        RUN_ID="${E2E_PROVISION_RUN_ID:-local-$(date +%s)}"
+        RUN_ID="${E2E_PROVISION_RUN_ID:-$(date +%s)}"
         echo "Fresh Univocity provision (RUN_ID=${RUN_ID})"
 
         DEPLOYER="{{.ROOT_DIR}}/.cache/univocity-tools/deployer"

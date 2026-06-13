@@ -13,7 +13,7 @@ vars:
   WORK_DIR: "{{.ROOT_DIR}}/.work/univocity-e2e"
   RELEASE_ROOT: "{{.ROOT_DIR}}/.work/univocity-release"
   OWNER_ADDRESS: '{{.OWNER_ADDRESS | default "0x1528b86ff561f617602356efdbD05908a07AA788"}}'
-  RUN_ID: '{{.RUN_ID | default "local"}}'
+  RUN_ID: '{{.RUN_ID | default ""}}'
   ALG: '{{.ALG | default "es256"}}'
   PROPOSAL_DIR: "{{.ROOT_DIR}}/.work/univocity-e2e/proposals"
 
