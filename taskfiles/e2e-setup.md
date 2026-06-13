@@ -64,11 +64,18 @@ Required keys in the Doppler config include at least:
 
 **Fresh Imutable provision** (optional; see [plan-0032](../docs/plans/plan-0032-univocity-imutable-e2e-provision.md)):
 
-- Deploy in sibling **univocity**: `doppler run -- task imutable-deploy:default ALG=es256 SALT=0x…`
-- Map manifest in canopy: `eval "$(task e2e-univocity:env-from-manifest MANIFEST=…)"`
-- CI: set GitHub **`dev`** var **`E2E_UNIVOCITY_PROVISION_FRESH=true`** to trigger parallel Safe deploys.
-- **`DEPLOY_KEY`** in canopy **`dev`** secrets must sync from Doppler **`univocity.dev.DEPLOY_KEY`**
-  (Safe owner signer for `deploy approve`).
+- **Local (canopy-native):** `doppler run -- task e2e-univocity:provision RUN_ID=local-smoke`
+  (fetches latest univocity release via `contract-artefacts`, deploys es256 + ks256).
+  Requires **`gh`** auth or **`GH_TOKEN`**, Foundry **`cast`**, and Doppler
+  **`DEPLOY_KEY`**, **`BOOTSTRAP_PEM_ES256`**, **`E2E_UNIVOCITY_RPC_URL`**.
+- Map manifest: `eval "$(task e2e-univocity:env-from-manifest MANIFEST=…)"`
+- **CI:** set GitHub **`dev`** var **`E2E_UNIVOCITY_PROVISION_FRESH=true`** to run
+  **`provision-univocity`** (no cross-repo univocity workflow).
+- **`GITAPP_ID`** (var) + **`GITAPP_PRIVATE_KEY`** (secret) — org GitHub App for
+  release fetch in CI.
+- **`DEPLOY_KEY`** in canopy **`dev`** secrets must sync from Doppler
+  **`univocity.dev.DEPLOY_KEY`** (Safe owner signer for `deploy approve`).
+- Requires **univocity-tools v0.5.0+** (`deploy propose imutable --release-root`).
 
 Run KS256 chain-binding only:
 

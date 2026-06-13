@@ -4,16 +4,18 @@
 **Date**: 2026-06-08  
 **Related**:
 - [plan-0031](plan-0031-ks256-forest-roots.md) (KS256 chain-binding)
-- [univocity deploy-imutable workflow](../../univocity/.github/workflows/deploy-imutable.yml)
+- [univocity-tools ADR-0009](../../univocity-tools/docs/adr/adr-0009-propose-from-build-archive.md)
 - [univocity-tools ADR-0005](../../univocity-tools/docs/adr/adr-0005-safe-approve-command.md)
 
 ## Goal
 
 Provision fresh **ImutableUnivocity** deployments for canopy Playwright
-chain-binding e2e without hand-running Python Safe scripts. Canopy
-orchestrates only; **univocity** owns deploy tasks and the reusable
-**deploy-imutable** workflow; **univocity-tools** ships `deployer deploy
-approve`.
+chain-binding e2e without checking out the contracts repo or triggering
+cross-repo workflows. Canopy orchestrates a composable **univocity-tools**
+pipeline: fetch published build archive → extract → propose → approve.
+
+Requires **univocity-tools v0.5.0+** (`deploy propose imutable
+--release-root`).
 
 ## Scope
 
@@ -36,15 +38,26 @@ Implemented in **`.github/workflows/pr-dev-deploy-e2e.yml`** and
 `defaultSafeBatchSalt()` from deployer for e2e — that pins CREATE2
 addresses across runs.
 
-### CI flow (canopy)
+### CI flow (canopy-native)
 
-1. **`univocity-salt-{es256,ks256}`** — compute salts.
-2. **`deploy-imutable-{es256,ks256}`** — parallel
-   `workflow_call` to `forestrie/univocity/.github/workflows/deploy-imutable.yml`
-   (Safe propose → approve → manifest).
-3. **`map-univocity-e2e-env`** — map `imutable_address` → Playwright env
-   + mnemonic genesis log UUID (`univocity/scripts/es256_common.py` shape).
-4. **`api-e2e-full`** — pass overrides into **`api-e2e-playwright.yml`**.
+Single gated job **`provision-univocity`** when
+**`E2E_UNIVOCITY_PROVISION_FRESH=true`**:
+
+1. Mint org **GitHub App** token (`tibdex/github-app-token@v1`,
+   **`vars.GITAPP_ID`** + **`secrets.GITAPP_PRIVATE_KEY`**).
+2. Download **univocity-tools** latest release (`deployer-linux-x64`,
+   `contract-artefacts-linux-x64`).
+3. **`contract-artefacts fetch-release`** — latest **`forestrie/univocity`**
+   `v*` release (`--artefact univocity`, `--auth-kind env`).
+4. **`contract-artefacts archive-extract --release-root R`** — prebuilt
+   `out/ImutableUnivocity.json`.
+5. For **es256** and **ks256**: run-scoped salt →
+   **`deployer deploy propose imutable --release-root R`** →
+   **`deployer deploy approve`**.
+6. Map addresses + mnemonic genesis log UUIDs → Playwright override inputs
+   on **`api-e2e-full`**.
+
+No `workflow_call` to **`forestrie/univocity`**. No `forge build`.
 
 ### Secrets / Doppler sync
 
@@ -52,7 +65,9 @@ addresses across runs.
 |----------------------|--------|---------|
 | **`DEPLOY_KEY`** | Doppler **`univocity` / `dev`** → `DEPLOY_KEY` | Safe owner signer for `deploy approve` |
 | **`BOOTSTRAP_PEM_ES256`** | Doppler **`canopy` / `dev`** (existing) | ES256 propose bootstrap key |
-| **`E2E_UNIVOCITY_RPC_URL`** | **`vars`** (existing) | Passed as workflow `rpc_url` input |
+| **`E2E_UNIVOCITY_RPC_URL`** | **`vars`** (existing) | RPC for propose / approve |
+| **`GITAPP_ID`** | **`vars`** | GitHub App for cross-repo release fetch |
+| **`GITAPP_PRIVATE_KEY`** | **`secrets`** | GitHub App private key |
 
 Configure Doppler cross-project grant: **`canopy.dev.DEPLOY_KEY`**
 references **`univocity.dev.DEPLOY_KEY`**. Sync to GitHub Environment
@@ -60,41 +75,39 @@ references **`univocity.dev.DEPLOY_KEY`**. Sync to GitHub Environment
 
 ### Local dev
 
-Deploy in sibling **univocity** repo:
+Fetch + deploy from **canopy** (requires **gh** auth or **`GH_TOKEN`**, Foundry **`cast`**, Doppler secrets):
 
 ```bash
-cd ../univocity
-doppler run --project univocity --config dev -- \
-  task imutable-deploy:default ALG=es256 SALT=0x…
+doppler run --project canopy --config dev -- \
+  task e2e-univocity:provision RUN_ID=local-smoke
 ```
 
-Map manifest in **canopy**:
+Map a manifest:
 
 ```bash
 eval "$(doppler run --project canopy --config dev -- \
-  task e2e-univocity:env-from-manifest MANIFEST=../univocity/deployments/immutable/manifest-….json)"
+  task e2e-univocity:env-from-manifest MANIFEST=.work/univocity-e2e/proposals/manifest-es256-….json)"
 task e2e-univocity:verify MANIFEST=…
 doppler run --project canopy --config dev -- \
   pnpm --filter @canopy/api-e2e exec playwright test \
   tests/system/univocity-genesis-es256-chain-binding.spec.ts
 ```
 
-Canopy taskfile **does not** duplicate deploy.
+**`task test:e2e:preflight`** remains secret-free; **`provision`** is
+manual / Doppler-only.
 
 ## Out of scope (first slice)
 
 - Automated genesis POST / curator bootstrap after deploy
-- Replacing legacy Python deploy scripts (deprecated in README only)
+- Removing univocity-side **`deploy-imutable.yml`** (still usable manually)
 - **`deploy approve`** for non-imutable proposal kinds
 
 ## Manual smoke checklist
 
-1. **univocity** — `workflow_dispatch` **Deploy ImutableUnivocity** with
-   `bootstrap_alg=es256`, unique `salt`, `tools_version=v0.2.0`; confirm
-   manifest artifact and on-chain code.
+1. **univocity-tools** — tag **`v0.5.0`** and confirm release assets.
 2. **canopy** — set **`E2E_UNIVOCITY_PROVISION_FRESH=true`** on a test PR;
-   confirm parallel ES256 + KS256 deploy jobs and chain-binding specs only
-   (or full system suite) against fresh addresses.
+   confirm **`provision-univocity`** fetches latest contract release and
+   chain-binding specs use fresh addresses.
 3. Reset **`E2E_UNIVOCITY_PROVISION_FRESH`** after validation.
 
 ## Verification
@@ -102,8 +115,6 @@ Canopy taskfile **does not** duplicate deploy.
 ```sh
 # univocity-tools
 cd ../univocity-tools && bun test
-
-# univocity taskfile (dry): task --list-all | grep imutable-deploy
 
 # canopy adapter
 cd canopy && task e2e-univocity:genesis-log-id ADDR=0x7A4E8ad88D6Df29FEBEc0d546d148Ed4bea8Cb94

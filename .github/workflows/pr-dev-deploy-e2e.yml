@@ -248,89 +248,135 @@ jobs:
     with:
       environment: dev
 
-  univocity-salt-es256:
-    name: Univocity CREATE2 salt (es256)
+  provision-univocity:
+    name: Provision Univocity (fetch + deploy)
     needs: validate
     if: |
       github.event.pull_request.head.repo.full_name == github.repository &&
       vars.E2E_UNIVOCITY_PROVISION_FRESH == 'true'
     runs-on: ubuntu-latest
-    outputs:
-      salt: ${{ steps.salt.outputs.salt }}
-    steps:
-      - uses: foundry-rs/foundry-toolchain@v1
-      - id: salt
-        run: |
-          SALT=$(cast keccak $(cast abi-encode "f(string,uint256,string)" "canopy-e2e" "${{ github.run_id }}" "es256"))
-          echo "salt=$SALT" >> "$GITHUB_OUTPUT"
-
-  univocity-salt-ks256:
-    name: Univocity CREATE2 salt (ks256)
-    needs: validate
-    if: |
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      vars.E2E_UNIVOCITY_PROVISION_FRESH == 'true'
-    runs-on: ubuntu-latest
-    outputs:
-      salt: ${{ steps.salt.outputs.salt }}
-    steps:
-      - uses: foundry-rs/foundry-toolchain@v1
-      - id: salt
-        run: |
-          SALT=$(cast keccak $(cast abi-encode "f(string,uint256,string)" "canopy-e2e" "${{ github.run_id }}" "ks256"))
-          echo "salt=$SALT" >> "$GITHUB_OUTPUT"
-
-  deploy-imutable-es256:
-    name: Deploy ImutableUnivocity (es256)
-    needs: univocity-salt-es256
-    if: |
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      vars.E2E_UNIVOCITY_PROVISION_FRESH == 'true'
-    uses: forestrie/univocity/.github/workflows/deploy-imutable.yml@main
-    with:
-      bootstrap_alg: es256
-      salt: ${{ needs.univocity-salt-es256.outputs.salt }}
-      tools_version: v0.2.0
-      rpc_url: ${{ vars.E2E_UNIVOCITY_RPC_URL }}
-    secrets:
-      DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
-      BOOTSTRAP_PEM_ES256: ${{ secrets.BOOTSTRAP_PEM_ES256 }}
-
-  deploy-imutable-ks256:
-    name: Deploy ImutableUnivocity (ks256)
-    needs: univocity-salt-ks256
-    if: |
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      vars.E2E_UNIVOCITY_PROVISION_FRESH == 'true'
-    uses: forestrie/univocity/.github/workflows/deploy-imutable.yml@main
-    with:
-      bootstrap_alg: ks256
-      salt: ${{ needs.univocity-salt-ks256.outputs.salt }}
-      tools_version: v0.2.0
-      rpc_url: ${{ vars.E2E_UNIVOCITY_RPC_URL }}
-    secrets:
-      DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
-
-  map-univocity-e2e-env:
-    name: Map fresh Univocity deploy outputs
-    needs: [deploy-imutable-es256, deploy-imutable-ks256]
-    if: |
-      always() &&
-      vars.E2E_UNIVOCITY_PROVISION_FRESH == 'true' &&
-      needs.deploy-imutable-es256.result == 'success' &&
-      needs.deploy-imutable-ks256.result == 'success'
-    runs-on: ubuntu-latest
+    environment: dev
     outputs:
       es256_address: ${{ steps.map.outputs.es256_address }}
       ks256_address: ${{ steps.map.outputs.ks256_address }}
       es256_log_id: ${{ steps.map.outputs.es256_log_id }}
       ks256_log_id: ${{ steps.map.outputs.ks256_log_id }}
+    env:
+      DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+      BOOTSTRAP_PEM_ES256: ${{ secrets.BOOTSTRAP_PEM_ES256 }}
+      RPC_URL: ${{ vars.E2E_UNIVOCITY_RPC_URL }}
+      OWNER_ADDRESS: "0x1528b86ff561f617602356efdbD05908a07AA788"
+      WORK_DIR: .work
     steps:
+      - name: Mint GitHub App token
+        id: app-token
+        uses: tibdex/github-app-token@v1
+        with:
+          app_id: ${{ vars.GITAPP_ID }}
+          private_key: ${{ secrets.GITAPP_PRIVATE_KEY }}
+
+      - uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Download univocity-tools binaries
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          TOOLS_VERSION=$(gh api repos/forestrie/univocity-tools/releases/latest --jq '.tag_name')
+          echo "Using univocity-tools ${TOOLS_VERSION}"
+          CACHE="${RUNNER_TEMP}/univocity-tools"
+          mkdir -p "$CACHE"
+          RELEASE_BASE="https://github.com/forestrie/univocity-tools/releases/download/${TOOLS_VERSION}"
+          for app in deployer contract-artefacts; do
+            BIN="${CACHE}/${app}-linux-x64"
+            curl -fsSL "${RELEASE_BASE}/${app}-linux-x64" -o "$BIN"
+            curl -fsSL "${RELEASE_BASE}/${app}-linux-x64.sha256" -o "${BIN}.sha256"
+            EXPECTED=$(awk '{print $1}' "${BIN}.sha256")
+            ACTUAL=$(sha256sum "$BIN" | awk '{print $1}')
+            if [ "$EXPECTED" != "$ACTUAL" ]; then
+              echo "::error::${app} sha256 mismatch"
+              exit 1
+            fi
+            chmod +x "$BIN"
+          done
+          echo "${CACHE}" >> "$GITHUB_PATH"
+          echo "TOOLS_VERSION=${TOOLS_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Fetch and extract univocity build archive
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          RELEASE_ROOT="${RUNNER_TEMP}/univocity-release"
+          mkdir -p "${WORK_DIR}"
+          contract-artefacts fetch-release \
+            --org forestrie \
+            --repo univocity \
+            --artefact univocity \
+            --auth-kind env \
+            --work-dir "${WORK_DIR}" \
+            --source-root .
+          ARCHIVE=$(find "${WORK_DIR}/univocity" -name 'univocity*.tar.gz' | head -1)
+          if [ -z "$ARCHIVE" ]; then
+            echo "::error::univocity build archive not found under ${WORK_DIR}/univocity"
+            exit 1
+          fi
+          contract-artefacts archive-extract "$ARCHIVE" \
+            --work-dir "${WORK_DIR}" \
+            --source-root . \
+            --release-root "$RELEASE_ROOT"
+          echo "RELEASE_ROOT=$RELEASE_ROOT" >> "$GITHUB_ENV"
+
+      - name: Deploy ImutableUnivocity (es256)
+        id: es256
+        run: |
+          set -euo pipefail
+          SALT=$(cast keccak $(cast abi-encode "f(string,uint256,string)" "canopy-e2e" "${{ github.run_id }}" "es256"))
+          PROPOSAL="${RUNNER_TEMP}/proposal-es256.json"
+          deployer deploy propose imutable \
+            --source-root . \
+            --release-root "$RELEASE_ROOT" \
+            --bootstrap-alg es256 \
+            --safe-publish \
+            --owner-address "$OWNER_ADDRESS" \
+            --deploy-key "$DEPLOY_KEY" \
+            --bootstrap-es256-pem "$BOOTSTRAP_PEM_ES256" \
+            --salt "$SALT" \
+            --rpc-url "$RPC_URL" \
+            --out "$PROPOSAL"
+          deployer deploy approve "$PROPOSAL" \
+            --source-root . \
+            --deploy-key "$DEPLOY_KEY" \
+            --rpc-url "$RPC_URL"
+          echo "address=$(jq -r '.imutableUnivocity' "$PROPOSAL")" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy ImutableUnivocity (ks256)
+        id: ks256
+        run: |
+          set -euo pipefail
+          SALT=$(cast keccak $(cast abi-encode "f(string,uint256,string)" "canopy-e2e" "${{ github.run_id }}" "ks256"))
+          PROPOSAL="${RUNNER_TEMP}/proposal-ks256.json"
+          deployer deploy propose imutable \
+            --source-root . \
+            --release-root "$RELEASE_ROOT" \
+            --bootstrap-alg ks256 \
+            --safe-publish \
+            --owner-address "$OWNER_ADDRESS" \
+            --deploy-key "$DEPLOY_KEY" \
+            --salt "$SALT" \
+            --rpc-url "$RPC_URL" \
+            --out "$PROPOSAL"
+          deployer deploy approve "$PROPOSAL" \
+            --source-root . \
+            --deploy-key "$DEPLOY_KEY" \
+            --rpc-url "$RPC_URL"
+          echo "address=$(jq -r '.imutableUnivocity' "$PROPOSAL")" >> "$GITHUB_OUTPUT"
+
       - id: map
         run: |
           set -euo pipefail
-          es256='${{ needs.deploy-imutable-es256.outputs.imutable_address }}'
-          ks256='${{ needs.deploy-imutable-ks256.outputs.imutable_address }}'
+          es256='${{ steps.es256.outputs.address }}'
+          ks256='${{ steps.ks256.outputs.address }}'
           log_id() {
             local addr="$1"
             local h
@@ -350,24 +396,20 @@ jobs:
       - deploy-coordinator-dev
       - health-after-deploy
       - changes
-      - deploy-imutable-es256
-      - deploy-imutable-ks256
-      - map-univocity-e2e-env
+      - provision-univocity
     if: |
       always() &&
       needs.deploy-dev.result == 'success' &&
       (needs.deploy-coordinator-dev.result == 'success' || needs.deploy-coordinator-dev.result == 'skipped') &&
       needs.health-after-deploy.result == 'success' &&
-      (needs.deploy-imutable-es256.result == 'success' || needs.deploy-imutable-es256.result == 'skipped') &&
-      (needs.deploy-imutable-ks256.result == 'success' || needs.deploy-imutable-ks256.result == 'skipped') &&
-      (needs.map-univocity-e2e-env.result == 'success' || needs.map-univocity-e2e-env.result == 'skipped')
+      (needs.provision-univocity.result == 'success' || needs.provision-univocity.result == 'skipped')
     uses: ./.github/workflows/api-e2e-playwright.yml
     secrets: inherit
     with:
       environment: dev
       playwright_project: system
       require_coordinator_e2e: ${{ needs.changes.outputs.coordinator == 'true' }}
-      e2e_univocity_address_es256: ${{ needs.map-univocity-e2e-env.outputs.es256_address || '' }}
-      e2e_univocity_address_ks256: ${{ needs.map-univocity-e2e-env.outputs.ks256_address || '' }}
-      e2e_univocity_genesis_log_id_es256: ${{ needs.map-univocity-e2e-env.outputs.es256_log_id || '' }}
-      e2e_univocity_genesis_log_id_ks256: ${{ needs.map-univocity-e2e-env.outputs.ks256_log_id || '' }}
+      e2e_univocity_address_es256: ${{ needs.provision-univocity.outputs.es256_address || '' }}
+      e2e_univocity_address_ks256: ${{ needs.provision-univocity.outputs.ks256_address || '' }}
+      e2e_univocity_genesis_log_id_es256: ${{ needs.provision-univocity.outputs.es256_log_id || '' }}
+      e2e_univocity_genesis_log_id_ks256: ${{ needs.provision-univocity.outputs.ks256_log_id || '' }}

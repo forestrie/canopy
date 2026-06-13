@@ -26,6 +26,10 @@ Full detail: [packages/tests/canopy-api/README.md](../../packages/tests/canopy-a
 - Univocity chain-binding: `E2E_UNIVOCITY_ADDRESS_*`, genesis log IDs — static
   defaults in Doppler **`canopy/dev`**, or fresh addresses when
   **`E2E_UNIVOCITY_PROVISION_FRESH=true`** (see [plan-0032](../plans/plan-0032-univocity-imutable-e2e-provision.md))
+- Fresh provision CI: **`GITAPP_ID`** + **`GITAPP_PRIVATE_KEY`** (org GitHub App),
+  **`DEPLOY_KEY`**, **`BOOTSTRAP_PEM_ES256`**, **`E2E_UNIVOCITY_RPC_URL`**
+- Local fresh provision: `doppler run -- task e2e-univocity:provision RUN_ID=…`
+  (requires **univocity-tools v0.5.0+** on GitHub releases)
 
 ## System test flow docs
 
