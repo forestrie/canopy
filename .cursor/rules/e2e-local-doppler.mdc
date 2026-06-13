@@ -18,6 +18,7 @@ When running Playwright e2e **locally** against dev (or another Doppler config),
 - **Repo root:** `task test:e2e` self-wraps with Doppler when `DOPPLER_CONFIG` is unset (use `ENV=prod` when the Doppler config should be `prod`; project is always **`canopy`**).
 - **Single tier:** `doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e test:e2e:system` (append spec paths or `--grep` as needed).
 
-Preflight validates secrets and may auto-provision Univocity when **`E2E_UNIVOCITY_PROVISION_FRESH=true`**.
+Preflight validates secrets and provisions ephemeral Univocity by default (opt out:
+**`SKIP_UNIVOCITY_PROVISION=true`**).
 
 See **`taskfiles/e2e-setup.md`** and **`packages/tests/canopy-api/README.md`**.

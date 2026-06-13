@@ -89,25 +89,30 @@ tasks:
             . "{{.E2E_UNIVOCITY_ENV_FILE}}"
             set +a
           fi
-          if [ -z "$(trim_ws "${E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP:-}")" ]; then
-            echo "E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP is required for Univocity chain-binding e2e." >&2
-            echo "Set in Doppler, enable E2E_UNIVOCITY_PROVISION_FRESH=true, or run preflight." >&2
-            exit 1
-          fi
-          if [ -z "$(trim_ws "${E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP:-}")" ]; then
-            echo "E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP is required for Univocity chain-binding e2e." >&2
-            echo "Set in Doppler, enable E2E_UNIVOCITY_PROVISION_FRESH=true, or run preflight." >&2
-            exit 1
-          fi
-          if [ -z "$(trim_ws "${E2E_UNIVOCITY_GENESIS_LOG_ID_ES256:-}")" ]; then
-            echo "E2E_UNIVOCITY_GENESIS_LOG_ID_ES256 is required for Univocity chain-binding e2e." >&2
-            echo "Set in Doppler, enable E2E_UNIVOCITY_PROVISION_FRESH=true, or run preflight." >&2
-            exit 1
-          fi
-          if [ -z "$(trim_ws "${E2E_UNIVOCITY_GENESIS_LOG_ID_KS256:-}")" ]; then
-            echo "E2E_UNIVOCITY_GENESIS_LOG_ID_KS256 is required for Univocity chain-binding e2e." >&2
-            echo "Set in Doppler, enable E2E_UNIVOCITY_PROVISION_FRESH=true, or run preflight." >&2
-            exit 1
+          SKIP_CHAIN="$(trim_ws "${E2E_SKIP_UNIVOCITY_CHAIN_BINDING:-}")"
+          if [ "$SKIP_CHAIN" = "true" ]; then
+            echo "Univocity chain-binding skipped (SKIP_UNIVOCITY_PROVISION)."
+          else
+            if [ -z "$(trim_ws "${E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP:-}")" ]; then
+              echo "E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP is required for Univocity chain-binding e2e." >&2
+              echo "Run test:e2e:preflight without SKIP_UNIVOCITY_PROVISION." >&2
+              exit 1
+            fi
+            if [ -z "$(trim_ws "${E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP:-}")" ]; then
+              echo "E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP is required for Univocity chain-binding e2e." >&2
+              echo "Run test:e2e:preflight without SKIP_UNIVOCITY_PROVISION." >&2
+              exit 1
+            fi
+            if [ -z "$(trim_ws "${E2E_UNIVOCITY_GENESIS_LOG_ID_ES256:-}")" ]; then
+              echo "E2E_UNIVOCITY_GENESIS_LOG_ID_ES256 is required for Univocity chain-binding e2e." >&2
+              echo "Run test:e2e:preflight without SKIP_UNIVOCITY_PROVISION." >&2
+              exit 1
+            fi
+            if [ -z "$(trim_ws "${E2E_UNIVOCITY_GENESIS_LOG_ID_KS256:-}")" ]; then
+              echo "E2E_UNIVOCITY_GENESIS_LOG_ID_KS256 is required for Univocity chain-binding e2e." >&2
+              echo "Run test:e2e:preflight without SKIP_UNIVOCITY_PROVISION." >&2
+              exit 1
+            fi
           fi
         fi
 
@@ -123,22 +128,35 @@ tasks:
         fi
         echo "e2e env OK (Canopy ${CANOPY_BASE_URL})"
 
-  provision-univocity-if-needed:
+  provision-univocity:
     desc: |
-      When E2E_UNIVOCITY_PROVISION_FRESH=true, install tools, deploy es256+ks256,
-      verify manifests, and write .work/e2e-univocity.env.
+      Deploy ephemeral es256+ks256 ImutableUnivocity (default in preflight).
+      Opt out: SKIP_UNIVOCITY_PROVISION=true or E2E_SKIP_UNIVOCITY_PROVISION=true
+    vars:
+      SKIP:
+        sh: |
+          if [ "{{.SKIP_UNIVOCITY_PROVISION | default "false"}}" = "true" ]; then
+            echo true
+            exit 0
+          fi
+          FLAG="$(printf '%s' "${E2E_SKIP_UNIVOCITY_PROVISION:-}" | tr 'A-Z' 'a-z')"
+          if [ "$FLAG" = "true" ]; then
+            echo true
+            exit 0
+          fi
+          echo false
     cmds:
       - |
         set -euo pipefail
-        trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
-        FLAG="$(trim_ws "${E2E_UNIVOCITY_PROVISION_FRESH:-}")"
-        if [ "$FLAG" != "true" ]; then
-          echo "E2E_UNIVOCITY_PROVISION_FRESH not true — skipping fresh Univocity provision."
+        if [ "{{.SKIP}}" = "true" ]; then
+          echo "Skipping Univocity provision (SKIP_UNIVOCITY_PROVISION)."
+          task e2e-univocity:write-skip-env-file
           exit 0
         fi
 
         RUN_ID="${E2E_PROVISION_RUN_ID:-$(date +%s)}"
-        echo "Fresh Univocity provision (RUN_ID=${RUN_ID})"
+        export E2E_PROVISION_RUN_ID="$RUN_ID"
+        echo "Ephemeral Univocity provision (RUN_ID=${RUN_ID})"
 
         DEPLOYER="{{.ROOT_DIR}}/.cache/univocity-tools/deployer"
         if [ ! -x "$DEPLOYER" ]; then
@@ -152,7 +170,7 @@ tasks:
           fi
         fi
 
-        task e2e-univocity:provision RUN_ID="$RUN_ID"
+        task e2e-univocity:provision
 
         MANIFEST_ES256=$(ls -t "{{.PROPOSAL_DIR}}"/manifest-es256-*.json 2>/dev/null | head -1)
         MANIFEST_KS256=$(ls -t "{{.PROPOSAL_DIR}}"/manifest-ks256-*.json 2>/dev/null | head -1)

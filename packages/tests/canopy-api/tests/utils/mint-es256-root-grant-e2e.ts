@@ -1,6 +1,6 @@
 /**
  * Mint the **root creation grant** for an ES256 chain-bound forest, signed by the
- * contract's on-chain bootstrap key (`BOOTSTRAP_PEM_ES256`).
+ * contract's on-chain bootstrap key (`E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE`).
  *
  * Unlike the per-log Custodian mint ({@link ./mint-bootstrap-grant-e2e}), the
  * root grant's `grantData` and signer are the contract's ES256 bootstrap key, so
@@ -18,12 +18,17 @@ import {
   signGrantPayloadWithEs256Pem,
 } from "./es256-pem-grant.js";
 
+import { readFileSync } from "node:fs";
+
 const ES256_GRANT_DATA_BYTES = 64;
 
-/** `BOOTSTRAP_PEM_ES256` (ES256 EC private key PEM) or undefined when unset. */
+/** Ephemeral ES256 bootstrap PEM from `E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE`. */
 export function bootstrapEs256PrivateKeyPem(): string | undefined {
-  const pem = process.env.BOOTSTRAP_PEM_ES256?.trim();
-  return pem && pem.length > 0 ? pem : undefined;
+  const file = process.env.E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE?.trim();
+  if (file) {
+    return readFileSync(file, "utf8").trim();
+  }
+  return undefined;
 }
 
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
@@ -45,7 +50,7 @@ function bytesToForestrieGrantBase64(bytes: Uint8Array): string {
  *
  * @param rootLogId - the forest root R (UUID).
  * @param bootstrapKey64 - on-chain `bootstrapConfig().key` (ES256 x‖y, 64 bytes).
- * @param es256PrivateKeyPem - `BOOTSTRAP_PEM_ES256`.
+ * @param es256PrivateKeyPem - ephemeral ES256 bootstrap PEM from provision.
  */
 export function mintEs256RootGrantWithBootstrapPem(opts: {
   rootLogId: string;
@@ -60,7 +65,7 @@ export function mintEs256RootGrantWithBootstrapPem(opts: {
   const pemKey = es256GrantData64FromPrivateKeyPem(opts.es256PrivateKeyPem);
   if (!bytesEqual(pemKey, opts.bootstrapKey64)) {
     throw new Error(
-      "BOOTSTRAP_PEM_ES256 public key does not match the on-chain bootstrapConfig() " +
+      "ES256 bootstrap PEM public key does not match the on-chain bootstrapConfig() " +
         "key; the root grant signer must be the contract's bootstrap key.",
     );
   }

@@ -18,8 +18,11 @@ From the **repository root** (recommended — inject secrets via Doppler):
 - **Config:** `dev` (default) or `prod` (set `ENV=prod` on Task invocations)
 
 ```bash
-# Preflight: tooling + env validation (+ optional fresh Univocity when flag set)
+# Preflight: tooling + env validation (+ ephemeral Univocity provision by default)
 doppler run --project canopy --config dev -- task test:e2e:preflight
+
+# Opt out of on-chain Univocity deploy (chain-binding specs skip)
+doppler run --project canopy --config dev -- task test:e2e:preflight SKIP_UNIVOCITY_PROVISION=true
 
 # Full dev suite (runs preflight first)
 doppler run --project canopy --config dev -- task test:e2e
@@ -29,7 +32,7 @@ Bare **`task test:e2e`** self-wraps with `doppler run` when `DOPPLER_CONFIG` is 
 
 | Task | Purpose |
 | ---- | ------- |
-| **`task test:e2e:preflight`** | `pnpm install`, Playwright Chromium, Doppler env validation, Canopy health probe; auto-provisions Univocity when **`E2E_UNIVOCITY_PROVISION_FRESH=true`**. |
+| **`task test:e2e:preflight`** | `pnpm install`, Playwright Chromium, Doppler env validation, Canopy health probe; **provisions ephemeral Univocity es256+ks256 by default** (see opt-out below). |
 | **`task test:e2e`** | Full dev Playwright sequence via **`taskfiles/e2e-run-playwright.sh`** (depends on preflight). |
 
 Use **`ENV=prod task test:e2e`** when the Doppler config should be **`prod`** (project stays **`canopy`**).
@@ -54,26 +57,22 @@ Required keys in the Doppler config include at least:
 
 **Univocity genesis chain-binding** (`tests/system/univocity-genesis-*-chain-binding.spec.ts`):
 
-- **`E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP`** — KS256 ImutableUnivocity on Base Sepolia (default
-  `0x7A4E8ad88D6Df29FEBEc0d546d148Ed4bea8Cb94`). Set in Doppler **`canopy/dev`** and sync to GitHub **`dev`** Environment **`vars`** for CI.
-- **`E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP`** — ES256 ImutableUnivocity (default
-  `0xb5906A91eF30dA435Ff13d27619Bc6F76282d19D`).
-- **`E2E_UNIVOCITY_RPC_URL`** — optional; default `https://sepolia.base.org` (runner reads `bootstrapConfig()`).
-- **`E2E_UNIVOCITY_CHAIN_ID`** — optional; default `84532`.
-- **`E2E_UNIVOCITY_GENESIS_LOG_ID_KS256`** — optional; default `7a4e8ad8-…` in `e2e-static-log-ids.ts`.
-- **`E2E_UNIVOCITY_GENESIS_LOG_ID_ES256`** — optional; default `b5906a91-…` in `e2e-static-log-ids.ts`.
-- **`CURATOR_ADMIN_TOKEN`** — required (POST `/api/forest/{log-id}/genesis`).
-- Reset persisted genesis: `task cf:genesis:delete LOG_ID=<uuid>` (see spec comments).
+Provisioned automatically in preflight (see [plan-0032](../docs/plans/plan-0032-univocity-imutable-e2e-provision.md)). Playwright reads **`.work/e2e-univocity.env`**:
 
-**Fresh Imutable provision** (optional; see [plan-0032](../docs/plans/plan-0032-univocity-imutable-e2e-provision.md)):
+- **`E2E_UNIVOCITY_ADDRESS_*_BOOTSTRAP`**, **`E2E_UNIVOCITY_GENESIS_LOG_ID_*`**
+- **`E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE`** — ES256 register-grant signing
+- **`E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER`** — expected KS256 bootstrap address
+- **`E2E_UNIVOCITY_RPC_URL`** — optional; default `https://sepolia.base.org`
+- **`E2E_UNIVOCITY_CHAIN_ID`** — optional; default `84532`
 
-- Set **`E2E_UNIVOCITY_PROVISION_FRESH=true`** in Doppler — **`task test:e2e:preflight`** installs tools (if needed), deploys es256 + ks256, writes **`.work/e2e-univocity.env`**, and Playwright sources it automatically.
-- Manual path still available: `doppler run -- task e2e-univocity:provision RUN_ID=local-smoke`
-- Requires **`gh`** auth (for `fetch-release --auth-kind gh-cli`), Foundry **`cast`**, and Doppler
-  **`DEPLOY_KEY`**, **`BOOTSTRAP_PEM_ES256`**, **`E2E_UNIVOCITY_RPC_URL`**.
-- **CI:** set GitHub **`dev`** var **`E2E_UNIVOCITY_PROVISION_FRESH=true`** to run
-  **`provision-univocity`** (no cross-repo univocity workflow).
-- Requires **univocity-tools v0.5.0+** (`deploy propose imutable --release-root`).
+**Opt out:** `SKIP_UNIVOCITY_PROVISION=true` or **`E2E_SKIP_UNIVOCITY_PROVISION=true`** —
+chain-binding specs skip; other projects still run.
+
+**Manual provision:** `doppler run -- task e2e-univocity:provision`
+
+Requires **`gh`** auth, Foundry **`cast`**, Doppler **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`**, and **univocity-tools v0.5.1+** (sibling `task install:dev` or release binaries).
+
+**CI:** **`provision-univocity`** runs on every same-repo PR (no feature flag).
 
 Run KS256 chain-binding only:
 
@@ -95,7 +94,7 @@ The **Tests** and **Deploy Workers** workflows call **`.github/workflows/api-e2e
 
 - **`E2E_PREFLIGHT_FETCH_TIMEOUT_MS`**: HTTP timeout for Canopy health probe in preflight (default **20000**).
 - **`E2E_RUN_ID`**: optional disambiguator for Custodian key labels in e2e helpers.
-- **`E2E_PROVISION_RUN_ID`**: override run id for fresh Univocity CREATE2 salts (default `local-<timestamp>`).
+- **`E2E_PROVISION_RUN_ID`**: override run id label for provision logs (default unix timestamp).
 
 ## Workspace rules
 

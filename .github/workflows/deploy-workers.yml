@@ -244,20 +244,7 @@ jobs:
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
           put_wrangler_secret() {
             local name="$1" value="$2"
-            local err_file
-            err_file="$(mktemp)"
-            if printf '%s' "$value" | wrangler secret put "$name" --env "$ENV" 2>"$err_file"; then
-              rm -f "$err_file"
-              return 0
-            fi
-            if grep -qE '10053|already in use' "$err_file"; then
-              echo "Secret binding ${name} already exists; skipping put."
-              rm -f "$err_file"
-              return 0
-            fi
-            cat "$err_file" >&2
-            rm -f "$err_file"
-            return 1
+            printf '%s' "$value" | wrangler secret put "$name" --env "$ENV"
           }
           ENV="${DEPLOY_ENV}"
           BOOT=$(trim_ws "${CUSTODIAN_BOOTSTRAP_APP_TOKEN:-}")
@@ -313,20 +300,7 @@ jobs:
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
           put_wrangler_secret() {
             local name="$1" value="$2"
-            local err_file
-            err_file="$(mktemp)"
-            if printf '%s' "$value" | wrangler secret put "$name" --env "$ENV" 2>"$err_file"; then
-              rm -f "$err_file"
-              return 0
-            fi
-            if grep -qE '10053|already in use' "$err_file"; then
-              echo "Secret binding ${name} already exists; skipping put."
-              rm -f "$err_file"
-              return 0
-            fi
-            cat "$err_file" >&2
-            rm -f "$err_file"
-            return 1
+            printf '%s' "$value" | wrangler secret put "$name" --env "$ENV"
           }
           ENV="${DEPLOY_ENV}"
           COORD=$(trim_ws "${COORDINATOR_APP_TOKEN:-}")

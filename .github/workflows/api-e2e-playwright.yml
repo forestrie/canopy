@@ -17,22 +17,32 @@ on:
         type: boolean
         default: false
       e2e_univocity_address_es256:
-        description: "Override E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP (fresh imutable provision)"
+        description: "E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP from ephemeral provision"
         required: false
         type: string
         default: ""
       e2e_univocity_address_ks256:
-        description: "Override E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP (fresh imutable provision)"
+        description: "E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP from ephemeral provision"
         required: false
         type: string
         default: ""
       e2e_univocity_genesis_log_id_es256:
-        description: "Override E2E_UNIVOCITY_GENESIS_LOG_ID_ES256"
+        description: "E2E_UNIVOCITY_GENESIS_LOG_ID_ES256 from ephemeral provision"
         required: false
         type: string
         default: ""
       e2e_univocity_genesis_log_id_ks256:
-        description: "Override E2E_UNIVOCITY_GENESIS_LOG_ID_KS256"
+        description: "E2E_UNIVOCITY_GENESIS_LOG_ID_KS256 from ephemeral provision"
+        required: false
+        type: string
+        default: ""
+      e2e_univocity_es256_bootstrap_pem_b64:
+        description: "Base64 ES256 bootstrap PEM from ephemeral provision"
+        required: false
+        type: string
+        default: ""
+      e2e_univocity_ks256_bootstrap_signer:
+        description: "KS256 bootstrap signer address from ephemeral provision"
         required: false
         type: string
         default: ""
@@ -68,25 +78,20 @@ jobs:
           SCRAPI_API_KEY: ${{ secrets.SCRAPI_API_KEY }}
           CANOPY_BASE_URL: ${{ vars.CANOPY_BASE_URL }}
           FOREST_PROJECT_ID: ${{ vars.FOREST_PROJECT_ID }}
-          # Runner bootstrap mint + first-entry sign: POST /api/keys + /sign with APP_TOKEN.
-          # Use the same base as the worker (`…/v1` per canopy-api wrangler.jsonc).
           CUSTODIAN_URL: ${{ vars.CUSTODIAN_URL }}
           CUSTODIAN_APP_TOKEN: ${{ secrets.CUSTODIAN_APP_TOKEN }}
           CUSTODIAN_BOOTSTRAP_APP_TOKEN: ${{ secrets.CUSTODIAN_BOOTSTRAP_APP_TOKEN }}
-          # Bootstrap mint e2e: POST /api/forest/{log-id}/genesis (409 OK if exists).
           CURATOR_ADMIN_TOKEN: ${{ secrets.CURATOR_ADMIN_TOKEN }}
           DELEGATION_COORDINATOR_URL: ${{ vars.DELEGATION_COORDINATOR_URL }}
           COORDINATOR_APP_TOKEN: ${{ secrets.COORDINATOR_APP_TOKEN }}
-          # Univocity genesis chain-binding (KS256 + ES256 on Base Sepolia).
-          E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP: ${{ inputs.e2e_univocity_address_ks256 || vars.E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP }}
-          E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP: ${{ inputs.e2e_univocity_address_es256 || vars.E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP }}
+          E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP: ${{ inputs.e2e_univocity_address_ks256 }}
+          E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP: ${{ inputs.e2e_univocity_address_es256 }}
           E2E_UNIVOCITY_RPC_URL: ${{ vars.E2E_UNIVOCITY_RPC_URL }}
           E2E_UNIVOCITY_CHAIN_ID: ${{ vars.E2E_UNIVOCITY_CHAIN_ID }}
-          E2E_UNIVOCITY_GENESIS_LOG_ID_KS256: ${{ inputs.e2e_univocity_genesis_log_id_ks256 || vars.E2E_UNIVOCITY_GENESIS_LOG_ID_KS256 }}
-          E2E_UNIVOCITY_GENESIS_LOG_ID_ES256: ${{ inputs.e2e_univocity_genesis_log_id_es256 || vars.E2E_UNIVOCITY_GENESIS_LOG_ID_ES256 }}
-          # ES256 Univocity bootstrap private key (PEM) signs the root creation
-          # grant for the chain-binding register-grant test (secret, not a var).
-          BOOTSTRAP_PEM_ES256: ${{ secrets.BOOTSTRAP_PEM_ES256 }}
+          E2E_UNIVOCITY_GENESIS_LOG_ID_KS256: ${{ inputs.e2e_univocity_genesis_log_id_ks256 }}
+          E2E_UNIVOCITY_GENESIS_LOG_ID_ES256: ${{ inputs.e2e_univocity_genesis_log_id_es256 }}
+          E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64: ${{ inputs.e2e_univocity_es256_bootstrap_pem_b64 }}
+          E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER: ${{ inputs.e2e_univocity_ks256_bootstrap_signer }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
@@ -109,6 +114,16 @@ jobs:
             fi
             export CANOPY_BASE_URL="https://${FQ}"
             export CANOPY_BASE_URL="${CANOPY_BASE_URL%/}"
+          fi
+          PEM_B64="$(trim_ws "${E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64:-}")"
+          if [ -n "$PEM_B64" ]; then
+            PEM_FILE="${RUNNER_TEMP}/e2e-es256-bootstrap.pem"
+            echo "$PEM_B64" | base64 -d > "$PEM_FILE"
+            export E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE="$PEM_FILE"
+          fi
+          KS256_SIGNER="$(trim_ws "${E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER:-}")"
+          if [ -n "$KS256_SIGNER" ]; then
+            export E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER="$KS256_SIGNER"
           fi
           pnpm --filter @canopy/api-e2e exec playwright install chromium
           if [ "${{ inputs.playwright_project }}" = "prod" ]; then

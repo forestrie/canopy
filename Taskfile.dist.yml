@@ -65,8 +65,9 @@ tasks:
 
   test:e2e:preflight:
     desc: |
-      E2e prerequisites: pnpm + Playwright, Doppler env validation, optional fresh Univocity
-      provision when E2E_UNIVOCITY_PROVISION_FRESH=true.
+      E2e prerequisites: bootstrap, Doppler validation, Univocity provision (default).
+      Opt out of on-chain provision: SKIP_UNIVOCITY_PROVISION=true or
+      E2E_SKIP_UNIVOCITY_PROVISION=true
       Recommended: doppler run --project canopy --config dev -- task test:e2e:preflight
       Use ENV=prod when the Doppler config should be **prod**.
     cmds:
@@ -74,14 +75,7 @@ tasks:
       - task: e2e-shared:ensure-doppler
         vars:
           E2E_DOPPLER_TASK: test:e2e:preflight
-      - |
-        set -euo pipefail
-        trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
-        if [ "$(trim_ws "${E2E_UNIVOCITY_PROVISION_FRESH:-}")" = "true" ]; then
-          export VALIDATE_SKIP_UNIVOCITY=1
-        fi
-        task e2e-shared:validate-env
-      - task: e2e-shared:provision-univocity-if-needed
+      - task: e2e-shared:provision-univocity
       - task: e2e-shared:validate-env
 
   build:

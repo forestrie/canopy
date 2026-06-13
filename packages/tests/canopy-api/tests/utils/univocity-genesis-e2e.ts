@@ -16,26 +16,9 @@ import {
   FOREST_GENESIS_LABEL_GENESIS_ALG,
   FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
 } from "@e2e-canopy-api-src/forest/forest-genesis-labels.js";
-import {
-  E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID_ES256,
-  E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID_KS256,
-} from "./e2e-static-log-ids.js";
 
-/** Default Base Sepolia KS256 ImutableUnivocity (Safe bootstrap). */
-export const DEFAULT_KS256_BOOTSTRAP_CONTRACT_ADDR =
-  "0x7A4E8ad88D6Df29FEBEc0d546d148Ed4bea8Cb94";
-
-/** Default Base Sepolia ES256 ImutableUnivocity (PEM bootstrap). */
-export const DEFAULT_ES256_BOOTSTRAP_CONTRACT_ADDR =
-  "0xb5906A91eF30dA435Ff13d27619Bc6F76282d19D";
-
-/** @deprecated Use {@link DEFAULT_KS256_BOOTSTRAP_CONTRACT_ADDR}. */
-export const DEFAULT_UNIVOCITY_CONTRACT_ADDR =
-  DEFAULT_KS256_BOOTSTRAP_CONTRACT_ADDR;
-
-/** Safe multisig used as KS256 bootstrap for {@link DEFAULT_KS256_BOOTSTRAP_CONTRACT_ADDR}. */
-export const DEFAULT_UNIVOCITY_KS256_SAFE_ADDR =
-  "0x1528b86ff561f617602356efdbD05908a07AA788";
+/** Default Base Sepolia EIP-155 chain id when RPC env omits chain id. */
+export const DEFAULT_UNIVOCITY_CHAIN_ID = "84532";
 
 /** COSE `alg` for ES256 (forest genesis and ES256 Univocity bootstrap). */
 export const COSE_ALG_ES256 = -7;
@@ -56,11 +39,13 @@ export function univocityRpcUrlForE2e(): string {
   ).trim();
 }
 
-function parseContractAddrBytes(
-  rawEnv: string | undefined,
-  fallback: string,
-): Uint8Array {
-  const raw = (rawEnv ?? fallback).trim().toLowerCase().replace(/^0x/, "");
+function parseContractAddrBytes(rawEnv: string | undefined): Uint8Array {
+  if (rawEnv === undefined || rawEnv.trim().length === 0) {
+    throw new Error(
+      "Univocity contract address env is required (run test:e2e:preflight)",
+    );
+  }
+  const raw = rawEnv.trim().toLowerCase().replace(/^0x/, "");
   if (!/^[0-9a-f]{40}$/.test(raw)) {
     throw new Error(
       `Univocity contract env must be a 20-byte (40 hex) address; got ${raw.length} hex chars`,
@@ -69,27 +54,51 @@ function parseContractAddrBytes(
   return hexToBytes(raw);
 }
 
-/** `E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP` (or KS256 default). */
-export function ks256BootstrapContractAddr(): string {
-  return (
-    process.env.E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP ??
-    DEFAULT_KS256_BOOTSTRAP_CONTRACT_ADDR
-  ).trim();
+function requireEnvTrim(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(
+      `${name} is required (run test:e2e:preflight without SKIP_UNIVOCITY_PROVISION)`,
+    );
+  }
+  return value;
 }
 
-/** `E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP` (or ES256 default). */
+/** Skip reason when preflight opted out of Univocity provision or env is missing. */
+export function univocityProvisionSkipReason(): string | null {
+  const skipFlag = process.env.E2E_SKIP_UNIVOCITY_CHAIN_BINDING?.trim();
+  if (skipFlag === "true") {
+    return "Univocity provision skipped (SKIP_UNIVOCITY_PROVISION)";
+  }
+  if (!process.env.E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP?.trim()) {
+    return "Univocity not provisioned — run test:e2e:preflight without SKIP_UNIVOCITY_PROVISION";
+  }
+  if (!process.env.E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP?.trim()) {
+    return "Univocity not provisioned — run test:e2e:preflight without SKIP_UNIVOCITY_PROVISION";
+  }
+  return null;
+}
+
+/** `E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP` from ephemeral provision. */
+export function ks256BootstrapContractAddr(): string {
+  return requireEnvTrim("E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP");
+}
+
+/** `E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP` from ephemeral provision. */
 export function es256BootstrapContractAddr(): string {
-  return (
-    process.env.E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP ??
-    DEFAULT_ES256_BOOTSTRAP_CONTRACT_ADDR
-  ).trim();
+  return requireEnvTrim("E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP");
+}
+
+/** Ephemeral KS256 bootstrap signer address from provision env. */
+export function ks256BootstrapSigner(): string | undefined {
+  const signer = process.env.E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER?.trim();
+  return signer && signer.length > 0 ? signer : undefined;
 }
 
 /** Parse KS256 bootstrap contract address into 20 bytes. */
 export function ks256BootstrapContractAddrBytes(): Uint8Array {
   return parseContractAddrBytes(
     process.env.E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP,
-    DEFAULT_KS256_BOOTSTRAP_CONTRACT_ADDR,
   );
 }
 
@@ -97,7 +106,6 @@ export function ks256BootstrapContractAddrBytes(): Uint8Array {
 export function es256BootstrapContractAddrBytes(): Uint8Array {
   return parseContractAddrBytes(
     process.env.E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP,
-    DEFAULT_ES256_BOOTSTRAP_CONTRACT_ADDR,
   );
 }
 
@@ -204,33 +212,30 @@ async function univocityChainBindingSkipReason(
 export async function es256ChainBindingSkipReason(
   contractAddr?: string,
 ): Promise<string | null> {
-  return univocityChainBindingSkipReason(
-    (contractAddr ?? es256BootstrapContractAddr()).trim(),
-    COSE_ALG_ES256,
-  );
+  const provisionSkip = univocityProvisionSkipReason();
+  if (provisionSkip) return provisionSkip;
+  let addr: string;
+  try {
+    addr = (contractAddr ?? es256BootstrapContractAddr()).trim();
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+  return univocityChainBindingSkipReason(addr, COSE_ALG_ES256);
 }
 
 export async function ks256ChainBindingSkipReason(
   contractAddr?: string,
 ): Promise<string | null> {
-  return univocityChainBindingSkipReason(
-    (contractAddr ?? ks256BootstrapContractAddr()).trim(),
-    COSE_ALG_KS256,
-  );
+  const provisionSkip = univocityProvisionSkipReason();
+  if (provisionSkip) return provisionSkip;
+  let addr: string;
+  try {
+    addr = (contractAddr ?? ks256BootstrapContractAddr()).trim();
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+  return univocityChainBindingSkipReason(addr, COSE_ALG_KS256);
 }
-
-/** Default Base Sepolia EIP-155 chain id. */
-export const DEFAULT_UNIVOCITY_CHAIN_ID = "84532";
-
-/** @deprecated Use {@link DEFAULT_UNIVOCITY_GENESIS_LOG_ID_KS256}. */
-export const DEFAULT_UNIVOCITY_GENESIS_LOG_ID =
-  E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID_KS256;
-
-export const DEFAULT_UNIVOCITY_GENESIS_LOG_ID_KS256 =
-  E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID_KS256;
-
-export const DEFAULT_UNIVOCITY_GENESIS_LOG_ID_ES256 =
-  E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID_ES256;
 
 /** `E2E_UNIVOCITY_CHAIN_ID` (or default Base Sepolia 84532). */
 export function univocityGenesisChainId(): string {
@@ -239,20 +244,14 @@ export function univocityGenesisChainId(): string {
   ).trim();
 }
 
-/** `E2E_UNIVOCITY_GENESIS_LOG_ID_KS256` (or KS256 static default). */
+/** `E2E_UNIVOCITY_GENESIS_LOG_ID_KS256` from ephemeral provision. */
 export function ks256GenesisLogId(): string {
-  return (
-    process.env.E2E_UNIVOCITY_GENESIS_LOG_ID_KS256 ??
-    E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID_KS256
-  ).trim();
+  return requireEnvTrim("E2E_UNIVOCITY_GENESIS_LOG_ID_KS256");
 }
 
-/** `E2E_UNIVOCITY_GENESIS_LOG_ID_ES256` (or ES256 static default). */
+/** `E2E_UNIVOCITY_GENESIS_LOG_ID_ES256` from ephemeral provision. */
 export function es256GenesisLogId(): string {
-  return (
-    process.env.E2E_UNIVOCITY_GENESIS_LOG_ID_ES256 ??
-    E2E_STATIC_UNIVOCITY_GENESIS_LOG_ID_ES256
-  ).trim();
+  return requireEnvTrim("E2E_UNIVOCITY_GENESIS_LOG_ID_ES256");
 }
 
 /** @deprecated Use {@link ks256GenesisLogId} or {@link es256GenesisLogId}. */

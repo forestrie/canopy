@@ -112,7 +112,7 @@ test.describe("Univocity ES256 genesis chain binding (Base Sepolia)", () => {
   });
 
   // Root creation grant signed by the contract's on-chain ES256 bootstrap key
-  // (BOOTSTRAP_PEM_ES256), so grantData == bootstrapConfig() and the envelope
+  // (E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE), so grantData == bootstrapConfig()
   // verifies against the real chain anchor. Single canonical R, so we probe:
   // 303 when R is MMRS-cold (cold bootstrap exercised end-to-end), or confirm
   // the established root when R is already MMRS-warm from a prior run.
@@ -122,7 +122,7 @@ test.describe("Univocity ES256 genesis chain binding (Base Sepolia)", () => {
     const pem = bootstrapEs256PrivateKeyPem();
     test.skip(
       !pem,
-      "BOOTSTRAP_PEM_ES256 not set; cannot sign the on-chain root creation grant",
+      "E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE not set; cannot sign the on-chain root creation grant",
     );
     assertBootstrapMintE2eEnv();
     const curatorToken = process.env.CURATOR_ADMIN_TOKEN!.trim();

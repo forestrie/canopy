@@ -18,7 +18,9 @@ doppler run --project canopy --config dev -- task test:e2e
 ```
 
 **Preflight** installs tooling, validates Doppler env (including Canopy health), and
-auto-provisions fresh Univocity when **`E2E_UNIVOCITY_PROVISION_FRESH=true`**.
+**provisions ephemeral Univocity es256+ks256 by default** (writes **`.work/e2e-univocity.env`**).
+
+**Opt out:** `SKIP_UNIVOCITY_PROVISION=true` or `E2E_SKIP_UNIVOCITY_PROVISION=true`.
 
 **`task test:e2e`** runs preflight then the full dev suite: integration → system →
 custodian → coordinator (when coordinator vars are set).
@@ -36,11 +38,10 @@ custodian → coordinator (when coordinator vars are set).
 - `CANOPY_BASE_URL`, `CANOPY_FQDN`, `SCRAPI_API_KEY`
 - Bootstrap/system: `CUSTODIAN_APP_TOKEN`, `CURATOR_ADMIN_TOKEN`, Custodian URL
 - Coordinator: `DELEGATION_COORDINATOR_URL`, `COORDINATOR_APP_TOKEN`
-- Univocity chain-binding: `E2E_UNIVOCITY_ADDRESS_*`, genesis log IDs — static
-  defaults in Doppler **`canopy/dev`**, or fresh addresses when
-  **`E2E_UNIVOCITY_PROVISION_FRESH=true`** (see [plan-0032](../plans/plan-0032-univocity-imutable-e2e-provision.md))
-- Fresh provision: **`DEPLOY_KEY`**, **`BOOTSTRAP_PEM_ES256`**, **`E2E_UNIVOCITY_RPC_URL`**
-- Fresh provision CI: **`GITAPP_ID`** + **`GITAPP_PRIVATE_KEY`** (org GitHub App)
+- Univocity chain-binding: from **`.work/e2e-univocity.env`** after preflight (see
+  [plan-0032](../plans/plan-0032-univocity-imutable-e2e-provision.md))
+- Provision secrets: **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`**
+- CI provision: **`GITAPP_ID`** + **`GITAPP_PRIVATE_KEY`**
 
 ## System test flow docs
 

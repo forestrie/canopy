@@ -8,20 +8,20 @@ import { assertBootstrapMintE2eEnv } from "@e2e-utils/e2e-env-guards";
 import { ensureForestGenesisKs256E2e } from "@e2e-utils/forest-genesis-e2e";
 import {
   COSE_ALG_KS256,
-  DEFAULT_UNIVOCITY_KS256_SAFE_ADDR,
   fetchOnChainBootstrapConfig,
   getForestGenesisParsed,
   ks256BootstrapContractAddr,
   ks256BootstrapContractAddrBytes,
+  ks256BootstrapSigner,
   ks256ChainBindingSkipReason,
   ks256GenesisLogId,
   univocityGenesisChainId,
 } from "@e2e-utils/univocity-genesis-e2e";
 
 /**
- * Forest genesis with KS256 bootstrap (default Base Sepolia Safe deployment).
+ * Forest genesis with KS256 bootstrap (ephemeral ImutableUnivocity provision).
  *
- * Uses genesis v2 (genesisAlg -65799 + 20-byte Safe address).
+ * Uses genesis v2 (genesisAlg -65799 + 20-byte bootstrap address).
  */
 test.describe("Univocity KS256 genesis chain binding (Base Sepolia)", () => {
   test.describe.configure({ mode: "serial" });
@@ -70,9 +70,11 @@ test.describe("Univocity KS256 genesis chain binding (Base Sepolia)", () => {
     expect(parsed.bootstrapKey?.length).toBe(20);
     expect(bytesEqual(parsed.bootstrapKey!, boot.key)).toBe(true);
 
-    const expectedSafe =
-      DEFAULT_UNIVOCITY_KS256_SAFE_ADDR.toLowerCase().replace(/^0x/, "");
-    const actualHex = Buffer.from(parsed.bootstrapKey!).toString("hex");
-    expect(actualHex).toBe(expectedSafe);
+    const expectedSigner = ks256BootstrapSigner();
+    if (expectedSigner) {
+      const expectedHex = expectedSigner.toLowerCase().replace(/^0x/, "");
+      const actualHex = Buffer.from(parsed.bootstrapKey!).toString("hex");
+      expect(actualHex).toBe(expectedHex);
+    }
   });
 });
