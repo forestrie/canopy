@@ -116,6 +116,43 @@ jobs:
           echo "script_name=${SCRIPT}" >> "$GITHUB_OUTPUT"
           echo "Deploy ${SCRIPT} with custom domain ${INGRESS_FQDN}"
 
+      - name: Decommission legacy ingress zone routes (slot a only)
+        if: inputs.ledger_slot == 'a'
+        env:
+          DNS_SUB: ${{ inputs.dns_sub }}
+          DNS_APEX: ${{ inputs.dns_apex }}
+        run: |
+          set -euo pipefail
+          ZONE_ID="$(curl -sf -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/zones?name=${DNS_APEX}" \
+            | jq -r '.result[0].id // empty')"
+          if [ -z "${ZONE_ID}" ]; then
+            echo "::error::Could not resolve Cloudflare zone id for ${DNS_APEX}."
+            exit 1
+          fi
+          ROUTES_JSON="$(curl -sf -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/workers/routes")"
+          LEGACY_PATTERNS=(
+            "api-${DNS_SUB}.${DNS_APEX}/canopy/ingress-queue/*"
+            "*.${DNS_APEX}/canopy/ingress-queue/*"
+          )
+          for PATTERN in "${LEGACY_PATTERNS[@]}"; do
+            ROUTE_ID="$(printf '%s' "${ROUTES_JSON}" | jq -r --arg p "${PATTERN}" \
+              '.result[] | select(.pattern == $p) | .id' | head -1)"
+            if [ -z "${ROUTE_ID}" ] || [ "${ROUTE_ID}" = "null" ]; then
+              echo "No zone route for ${PATTERN}; continuing."
+              continue
+            fi
+            echo "Deleting legacy zone route ${ROUTE_ID} (${PATTERN})..."
+            curl -sf -X DELETE -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/workers/routes/${ROUTE_ID}"
+          done
+          LEGACY_SCRIPT="forestrie-ingress-${DNS_SUB}"
+          echo "Deleting legacy Worker script ${LEGACY_SCRIPT} (best-effort)..."
+          curl -sf -X DELETE -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${LEGACY_SCRIPT}" \
+            || echo "Legacy script ${LEGACY_SCRIPT} not present or already deleted."
+
       - name: Deploy per-slot forestrie-ingress
         working-directory: packages/apps/forestrie-ingress
         env:
