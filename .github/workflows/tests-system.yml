@@ -1,5 +1,8 @@
 name: System tests
 
+permissions:
+  contents: read
+
 # Provision-or-accept ephemeral Univocity Imutable contracts, then run the full
 # dev Playwright suite (integration → system → custodian → coordinator).
 #
@@ -196,6 +199,7 @@ jobs:
 
       - name: Mint GitHub App token
         id: app-token
+        if: ${{ vars.GITAPP_ID != '' }}
         uses: tibdex/github-app-token@v1
         with:
           app_id: ${{ vars.GITAPP_ID }}
@@ -204,7 +208,7 @@ jobs:
       - name: Prepare Univocity per alg
         id: prepare
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
@@ -251,11 +255,45 @@ jobs:
               echo "::error::DEPLOY_KEY is required to provision Univocity contracts."
               exit 1
             fi
-            export PATH="${GITHUB_WORKSPACE}/.cache/univocity-tools:${PATH}"
-            task install:release
-            export PATH="${GITHUB_WORKSPACE}/.cache/univocity-tools:${PATH}"
-            task e2e-univocity:extract
-            export RELEASE_ROOT="${GITHUB_WORKSPACE}/.work/univocity-release"
+            TOOLS_VERSION=$(gh api repos/forestrie/univocity-tools/releases/latest --jq '.tag_name')
+            echo "Using univocity-tools ${TOOLS_VERSION}"
+            TOOLS_CACHE="${RUNNER_TEMP}/univocity-tools"
+            mkdir -p "$TOOLS_CACHE" .cache/univocity-tools
+            RELEASE_BASE="https://github.com/forestrie/univocity-tools/releases/download/${TOOLS_VERSION}"
+            for app in deployer contract-artefacts; do
+              BIN="${TOOLS_CACHE}/${app}-linux-x64"
+              curl -fsSL "${RELEASE_BASE}/${app}-linux-x64" -o "$BIN"
+              curl -fsSL "${RELEASE_BASE}/${app}-linux-x64.sha256" -o "${BIN}.sha256"
+              EXPECTED=$(awk '{print $1}' "${BIN}.sha256")
+              ACTUAL=$(sha256sum "$BIN" | awk '{print $1}')
+              if [ "$EXPECTED" != "$ACTUAL" ]; then
+                echo "::error::${app} sha256 mismatch"
+                exit 1
+              fi
+              chmod +x "$BIN"
+              cp "$BIN" ".cache/univocity-tools/${app}"
+            done
+            export PATH="${TOOLS_CACHE}:${PATH}"
+            WORK_DIR=".work"
+            RELEASE_ROOT="${GITHUB_WORKSPACE}/.work/univocity-release"
+            mkdir -p "${WORK_DIR}" "${RELEASE_ROOT}"
+            contract-artefacts fetch-release \
+              --org forestrie \
+              --repo univocity \
+              --artefact univocity \
+              --auth-kind env \
+              --work-dir "${WORK_DIR}" \
+              --source-root .
+            ARCHIVE=$(find "${WORK_DIR}/univocity" -name 'univocity*.tar.gz' | head -1)
+            if [ -z "$ARCHIVE" ]; then
+              echo "::error::univocity build archive not found under ${WORK_DIR}/univocity"
+              exit 1
+            fi
+            contract-artefacts archive-extract "$ARCHIVE" \
+              --work-dir "${WORK_DIR}" \
+              --source-root . \
+              --release-root "$RELEASE_ROOT"
+            export RELEASE_ROOT="$RELEASE_ROOT"
           fi
 
           deploy_fresh_alg() {
