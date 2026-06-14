@@ -290,6 +290,7 @@ jobs:
               echo "::error::univocity build archive not found under ${WORK_DIR}/univocity"
               exit 1
             fi
+            ARCHIVE=$(realpath "$ARCHIVE")
             contract-artefacts archive-extract "$ARCHIVE" \
               --work-dir "${WORK_DIR}" \
               --source-root . \
