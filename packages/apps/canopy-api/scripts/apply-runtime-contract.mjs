@@ -158,22 +158,8 @@ function parseHostnames(primary, aliasesCsv) {
   return hostnames;
 }
 
-function setRoutes(envBlock, hostnames) {
-  if (!hostnames.length) return envBlock;
-  envBlock = removePropertyWithComma(envBlock, "custom_domains", "[", "]");
-  const entries = hostnames.map((fqdn) => {
-    return `        {
-          "pattern": "${fqdn}",
-          "custom_domain": true,
-        }`;
-  });
-  const routesBody = `[\n${entries.join(",\n")}\n      ]`;
-  const existing = blockForProperty(envBlock, "routes", "[", "]");
-  if (existing) {
-    return replaceRange(envBlock, existing, routesBody);
-  }
-  const insert = `\n      "routes": ${routesBody},`;
-  return insertAfterEnvName(envBlock, insert);
+function clearRoutes(envBlock) {
+  return removePropertyWithComma(envBlock, "routes", "[", "]");
 }
 
 function setR2BucketName(envBlock, bindingName, bucketName) {
@@ -302,10 +288,10 @@ const routeHostnames = parseHostnames(
   canopyFqdn,
   process.env.CANOPY_FQDN_ALIASES,
 );
-envBlock = setRoutes(envBlock, routeHostnames);
+envBlock = clearRoutes(envBlock);
 
 config = replaceRange(config, target, envBlock);
 writeFileSync(outputPath, config);
 console.log(
-  `Wrote ${outputPath} for env ${envName} (routes on ${routeHostnames.join(", ")})`,
+  `Wrote ${outputPath} for env ${envName} (custom domains via wrangler --domain: ${routeHostnames.join(", ")})`,
 );

@@ -144,21 +144,9 @@ function insertAfterEnvName(envBlock, insertText) {
   return envBlock.replace(re, `$1${insertText}`);
 }
 
-function setIngressCustomDomain(envBlock, hostname) {
-  if (!hostname) fail("INGRESS_FQDN hostname is required.");
+function clearRoutes(envBlock) {
   envBlock = removePropertyWithComma(envBlock, "custom_domains", "[", "]");
-  const body = `[
-        {
-          "pattern": "${hostname}",
-          "custom_domain": true,
-        },
-      ]`;
-  const existing = blockForProperty(envBlock, "routes", "[", "]");
-  if (existing) {
-    return replaceRange(envBlock, existing, body);
-  }
-  const insert = `\n      "routes": ${body},`;
-  return insertAfterEnvName(envBlock, insert);
+  return removePropertyWithComma(envBlock, "routes", "[", "]");
 }
 
 function setWorkerName(envBlock, scriptName) {
@@ -211,10 +199,10 @@ if (!ingressHost) {
     "INGRESS_FQDN or CANOPY_FQDN is required for forestrie-ingress deploy runtime config.",
   );
 }
-envBlock = setIngressCustomDomain(envBlock, ingressHost);
+envBlock = clearRoutes(envBlock);
 
 config = replaceRange(config, target, envBlock);
 writeFileSync(outputPath, config);
 console.log(
-  `Wrote ${outputPath} for env ${envName} (${scriptName} custom_domain ${ingressHost})`,
+  `Wrote ${outputPath} for env ${envName} (${scriptName} custom domain via wrangler --domain: ${ingressHost})`,
 );

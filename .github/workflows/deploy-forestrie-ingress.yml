@@ -161,4 +161,6 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/apply-runtime-contract.mjs --env prod --out wrangler.runtime.jsonc
-          wrangler deploy --config wrangler.runtime.jsonc --env prod
+          DOMAIN_FLAGS="$("${GITHUB_WORKSPACE}/scripts/wrangler-domain-flags.sh" "${INGRESS_FQDN}")"
+          # shellcheck disable=SC2086
+          wrangler deploy --config wrangler.runtime.jsonc --env prod ${DOMAIN_FLAGS}

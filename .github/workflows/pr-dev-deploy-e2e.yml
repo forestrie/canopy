@@ -161,7 +161,9 @@ jobs:
             fi
           done
           node scripts/apply-runtime-contract.mjs --env dev --out wrangler.runtime.jsonc
-          wrangler deploy --config wrangler.runtime.jsonc --env dev
+          DOMAIN_FLAGS="$("${GITHUB_WORKSPACE}/scripts/wrangler-domain-flags.sh" "${CANOPY_FQDN}" "${CANOPY_FQDN_ALIASES:-}")"
+          # shellcheck disable=SC2086
+          wrangler deploy --config wrangler.runtime.jsonc --env dev ${DOMAIN_FLAGS}
 
   deploy-coordinator-dev:
     name: Deploy delegation-coordinator (dev)
@@ -234,7 +236,9 @@ jobs:
             exit 1
           fi
           node scripts/apply-runtime-contract.mjs --env dev --out wrangler.runtime.jsonc
-          wrangler deploy --config wrangler.runtime.jsonc --env dev
+          DOMAIN_FLAGS="$("${GITHUB_WORKSPACE}/scripts/wrangler-domain-flags.sh" "${DELEGATION_COORDINATOR_URL}" "${DELEGATION_COORDINATOR_URL_ALIASES:-}")"
+          # shellcheck disable=SC2086
+          wrangler deploy --config wrangler.runtime.jsonc --env dev ${DOMAIN_FLAGS}
 
   health-after-deploy:
     name: Health check (dev)

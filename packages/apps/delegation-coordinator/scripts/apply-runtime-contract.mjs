@@ -155,24 +155,8 @@ function parseCoordinatorHostnames(primaryUrl, aliasesCsv) {
   return hostnames;
 }
 
-function setCoordinatorCustomDomains(envBlock, hostnames) {
-  if (!hostnames.length) {
-    fail("DELEGATION_COORDINATOR_URL hostname is required.");
-  }
-  envBlock = removePropertyWithComma(envBlock, "custom_domains", "[", "]");
-  const entries = hostnames.map((hostname) => {
-    return `        {
-          "pattern": "${hostname}",
-          "custom_domain": true,
-        }`;
-  });
-  const body = `[\n${entries.join(",\n")}\n      ]`;
-  const existing = blockForProperty(envBlock, "routes", "[", "]");
-  if (existing) {
-    return replaceRange(envBlock, existing, body);
-  }
-  const insert = `\n      "routes": ${body},`;
-  return insertAfterEnvName(envBlock, insert);
+function clearRoutes(envBlock) {
+  return removePropertyWithComma(envBlock, "routes", "[", "]");
 }
 
 let config = readFileSync(inputPath, "utf8");
@@ -209,10 +193,10 @@ if (!coordinatorHostnames.length) {
     "DELEGATION_COORDINATOR_URL is required for delegation-coordinator deploy.",
   );
 }
-envBlock = setCoordinatorCustomDomains(envBlock, coordinatorHostnames);
+envBlock = clearRoutes(envBlock);
 
 config = replaceRange(config, target, envBlock);
 writeFileSync(outputPath, config);
 console.log(
-  `Wrote ${outputPath} for env ${envName} (custom_domain routes ${coordinatorHostnames.join(", ")})`,
+  `Wrote ${outputPath} for env ${envName} (custom domains via wrangler --domain: ${coordinatorHostnames.join(", ")})`,
 );

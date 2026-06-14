@@ -298,7 +298,9 @@ jobs:
             done
           fi
           node scripts/apply-runtime-contract.mjs --env "$ENV" --out wrangler.runtime.jsonc
-          wrangler deploy --config wrangler.runtime.jsonc --env "$ENV"
+          DOMAIN_FLAGS="$("${GITHUB_WORKSPACE}/scripts/wrangler-domain-flags.sh" "${CANOPY_FQDN}" "${CANOPY_FQDN_ALIASES:-}")"
+          # shellcheck disable=SC2086
+          wrangler deploy --config wrangler.runtime.jsonc --env "$ENV" ${DOMAIN_FLAGS}
 
       - name: Configure Coordinator secrets and deploy delegation-coordinator
         if: matrix.target.app == 'delegation-coordinator'
@@ -339,7 +341,9 @@ jobs:
             fi
           fi
           node scripts/apply-runtime-contract.mjs --env "$ENV" --out wrangler.runtime.jsonc
-          wrangler deploy --config wrangler.runtime.jsonc --env "$ENV"
+          DOMAIN_FLAGS="$("${GITHUB_WORKSPACE}/scripts/wrangler-domain-flags.sh" "${DELEGATION_COORDINATOR_URL}" "${DELEGATION_COORDINATOR_URL_ALIASES:-}")"
+          # shellcheck disable=SC2086
+          wrangler deploy --config wrangler.runtime.jsonc --env "$ENV" ${DOMAIN_FLAGS}
 
       - name: Deploy ${{ matrix.target.app }} (${{ env.DEPLOY_ENV }})
         if: matrix.target.app != 'canopy-api' && matrix.target.app != 'delegation-coordinator'
