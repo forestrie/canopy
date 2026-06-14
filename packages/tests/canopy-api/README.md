@@ -91,7 +91,7 @@ Resolved in **`playwright.config.ts`** from the **process environment** (Doppler
 
 **Worker origin** (one of):
 
-- **`CANOPY_BASE_URL`** — full origin, e.g. `https://api-forest-2.forestrie.dev` or catalog `https://api-{DNS_SUB}.{DNS_APEX}` (no trailing slash), or
+- **`CANOPY_BASE_URL`** — full origin, e.g. Lane A `https://api-a-forest-2.forestrie.dev`, Lane B canonical `https://api-b-forest-2.forestrie.dev`, or prod alias `https://api-forest-2.forestrie.dev` (no trailing slash), or
 - **`CANOPY_FQDN`** — host or URL; Playwright builds `https://{host}` the same way as `.github/workflows/test.yml` (Doppler `dev` often supplies only `CANOPY_FQDN`).
 
 **System / bootstrap e2e** (`tests/system/*.spec.ts`):

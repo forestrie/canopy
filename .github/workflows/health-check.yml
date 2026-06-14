@@ -48,8 +48,10 @@ jobs:
       - name: Read-only API health (Playwright)
         env:
           CANOPY_FQDN: ${{ vars.CANOPY_FQDN }}
+          CANOPY_FQDN_ALIASES: ${{ vars.CANOPY_FQDN_ALIASES }}
           CANOPY_BASE_URL: ${{ vars.CANOPY_BASE_URL }}
           DELEGATION_COORDINATOR_URL: ${{ vars.DELEGATION_COORDINATOR_URL }}
+          DELEGATION_COORDINATOR_URL_ALIASES: ${{ vars.DELEGATION_COORDINATOR_URL_ALIASES }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
@@ -90,5 +92,29 @@ jobs:
               fi
               echo "Coordinator not ready yet (${attempt}/${COORD_RETRIES}); waiting ${COORD_SLEEP}s for Custom Domain DNS..."
               sleep "${COORD_SLEEP}"
+            done
+          fi
+          if [ "${{ inputs.environment }}" = "prod" ]; then
+            for alias_fqdn in $(printf '%s' "${CANOPY_FQDN_ALIASES:-}" | tr ',' ' '); do
+              alias_fqdn="$(trim_ws "${alias_fqdn}")"
+              [ -z "${alias_fqdn}" ] && continue
+              alias_url="https://${alias_fqdn}/api/health"
+              if curl -sf "${alias_url}" >/dev/null; then
+                echo "OK: prod API alias ${alias_url}"
+              else
+                echo "::error::Prod API alias health failed: ${alias_url}"
+                exit 1
+              fi
+            done
+            for alias_coord in $(printf '%s' "${DELEGATION_COORDINATOR_URL_ALIASES:-}" | tr ',' ' '); do
+              alias_coord="$(trim_ws "${alias_coord}")"
+              [ -z "${alias_coord}" ] && continue
+              alias_coord_health="${alias_coord%/}/_delegation-coordinator/health"
+              if curl -sf "${alias_coord_health}" | grep -q '"status"[[:space:]]*:[[:space:]]*"ok"'; then
+                echo "OK: prod coordinator alias ${alias_coord_health}"
+              else
+                echo "::error::Prod coordinator alias health failed: ${alias_coord_health}"
+                exit 1
+              fi
             done
           fi

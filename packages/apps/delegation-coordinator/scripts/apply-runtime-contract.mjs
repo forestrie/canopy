@@ -110,7 +110,7 @@ function hostnameFromUrl(url) {
   try {
     return new URL(url.trim()).hostname;
   } catch {
-    fail(`Invalid DELEGATION_COORDINATOR_URL: ${url}`);
+    fail(`Invalid URL for hostname extraction: ${url}`);
   }
 }
 
@@ -137,17 +137,38 @@ function insertAfterEnvName(envBlock, insertText) {
   return envBlock.replace(re, `$1${insertText}`);
 }
 
-function setCoordinatorCustomDomain(envBlock, hostname) {
-  if (!hostname) fail("DELEGATION_COORDINATOR_URL hostname is required.");
+function parseCoordinatorHostnames(primaryUrl, aliasesCsv) {
+  const seen = new Set();
+  const hostnames = [];
+  const add = (value) => {
+    const host = hostnameFromUrl(value);
+    if (!host || seen.has(host)) return;
+    seen.add(host);
+    hostnames.push(host);
+  };
+  add(primaryUrl);
+  if (aliasesCsv) {
+    for (const part of aliasesCsv.split(",")) {
+      add(part);
+    }
+  }
+  return hostnames;
+}
+
+function setCoordinatorCustomDomains(envBlock, hostnames) {
+  if (!hostnames.length) {
+    fail("DELEGATION_COORDINATOR_URL hostname is required.");
+  }
   envBlock = removePropertyWithComma(envBlock, "custom_domains", "[", "]");
-  const zone = hostname.split(".").slice(-2).join(".");
-  const body = `[
-        {
+  const entries = hostnames.map((hostname) => {
+    const zone = hostname.split(".").slice(-2).join(".");
+    return `        {
           "pattern": "${hostname}",
           "zone_name": "${zone}",
           "custom_domain": true,
-        },
-      ]`;
+        }`;
+  });
+  const body = `[\n${entries.join(",\n")}\n      ]`;
   const existing = blockForProperty(envBlock, "routes", "[", "]");
   if (existing) {
     return replaceRange(envBlock, existing, body);
@@ -181,16 +202,19 @@ varsBlock = setStringProperty(
 );
 envBlock = replaceRange(envBlock, vars, varsBlock);
 
-const coordinatorHost = hostnameFromUrl(process.env.DELEGATION_COORDINATOR_URL);
-if (!coordinatorHost) {
+const coordinatorHostnames = parseCoordinatorHostnames(
+  process.env.DELEGATION_COORDINATOR_URL,
+  process.env.DELEGATION_COORDINATOR_URL_ALIASES,
+);
+if (!coordinatorHostnames.length) {
   fail(
     "DELEGATION_COORDINATOR_URL is required for delegation-coordinator deploy.",
   );
 }
-envBlock = setCoordinatorCustomDomain(envBlock, coordinatorHost);
+envBlock = setCoordinatorCustomDomains(envBlock, coordinatorHostnames);
 
 config = replaceRange(config, target, envBlock);
 writeFileSync(outputPath, config);
 console.log(
-  `Wrote ${outputPath} for env ${envName} (custom_domain route ${coordinatorHost})`,
+  `Wrote ${outputPath} for env ${envName} (custom_domain routes ${coordinatorHostnames.join(", ")})`,
 );

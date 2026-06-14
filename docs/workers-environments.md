@@ -2,11 +2,11 @@
 
 ## Worker names and routes
 
-| Wrangler config        | Worker name in dashboard | Route (runtime from `CANOPY_FQDN`)        | When it gets deployed                                                                       |
-| ---------------------- | ------------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Wrangler config        | Worker name in dashboard | Route (runtime from `CANOPY_FQDN` + aliases) | When it gets deployed                                                                       |
+| ---------------------- | ------------------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Top-level (no `--env`) | **canopy-api**           | No route in wrangler (may use workers.dev) | Only when someone runs `wrangler deploy` without `ENV` from the app directory               |
-| `--env dev` (Lane A)   | **canopy-api-dev**       | `api-{DNS_SUB}.{DNS_APEX}/*`              | **Deploy Workers** workflow (push to main → dev, or workflow_dispatch with environment=dev) |
-| `--env prod` (Lane B)  | **canopy-api-prod**      | `api-b.{DNS_SUB}.{DNS_APEX}/*`            | **Deploy Workers** workflow_dispatch with environment=prod                                  |
+| `--env dev` (Lane A)   | **canopy-api-dev**       | `api-a.{DNS_SUB}.{DNS_APEX}`                 | **Deploy Workers** workflow (push to main → dev, or workflow_dispatch with environment=dev) |
+| `--env prod` (Lane B)  | **canopy-api-prod**      | `api-b.{DNS_SUB}.{DNS_APEX}` + alias `api-{DNS_SUB}.{DNS_APEX}` | **Deploy Workers** workflow_dispatch with environment=prod                                  |
 
 All three configs include the **R2_GRANTS** binding (and R2_MMRS, DOs, etc.).
 
@@ -14,13 +14,14 @@ All three configs include the **R2_GRANTS** binding (and R2_MMRS, DOs, etc.).
 
 | Idea | Meaning |
 |------|---------|
-| **Lane A** (`dev`) | **canopy-api-dev**, ledger slot `a`, `api-{DNS_SUB}.{DNS_APEX}` |
+| **Lane A** (`dev`) | **canopy-api-dev**, ledger slot `a`, `api-a.{DNS_SUB}.{DNS_APEX}` |
 | **Lane B** (`prod`) | **canopy-api-prod**, ledger slot `b`, `api-b.{DNS_SUB}.{DNS_APEX}` |
+| **Production alias** | `api-{DNS_SUB}.{DNS_APEX}` on **canopy-api-prod** (Lane B only) |
 | **Edge ingress** | Per-slot **`forestrie-ingress-{DNS_SUB}-{a|b}`** on **`ingress.{slot}.{DNS_SUB}.{DNS_APEX}`** |
 
 Lane and slot are **coupled** on a single forest project: `CANOPY_PROMOTION_LANE`
 selects Worker script, GitHub Environment, GKE slot, and catalog hostnames. See
-**forest-1** [ADR-0003](../../forest-1/docs/adr-0003-lane-ab-promotion-model.md).
+**forest-1** [ADR-0004](../../forest-1/docs/adr-0004-symmetric-lane-hostnames.md).
 
 Each API lane binds `SEQUENCING_QUEUE` to **`forestrie-ingress-{DNS_SUB}-{slot}`**
 from the forest consumer contract.
@@ -35,8 +36,8 @@ Forest bootstrap publishes and verifies the contract per lane; see **forest-1**
 ## Perf test and dev traffic
 
 - The **Performance Tests** workflow uses GitHub Environment **`dev`**, **`stage`**, or **`prod`**. Variables supply **`CANOPY_BASE_URL`**, etc.
-- Dev perf traffic hits **canopy-api-dev** on **`api-{DNS_SUB}.{DNS_APEX}`** (Lane A).
-- Prod perf uses **`CANOPY_FQDN`** from the prod GitHub Environment (Lane B hostname when on the same forest project).
+- Dev perf traffic hits **canopy-api-dev** on **`api-a.{DNS_SUB}.{DNS_APEX}`** (Lane A).
+- Prod perf uses **`CANOPY_FQDN`** from the prod GitHub Environment (Lane B canonical hostname).
 
 ## Deploying a feature branch to dev
 
@@ -48,7 +49,7 @@ Forest bootstrap publishes and verifies the contract per lane; see **forest-1**
 4. Set **Deployment environment** to **dev**.
 5. Run the workflow.
 
-That deploys **canopy-api-dev** to **`api-{DNS_SUB}.{DNS_APEX}`**.
+That deploys **canopy-api-dev** to **`api-a.{DNS_SUB}.{DNS_APEX}`**.
 
 If you deploy from the repo root with `task wrangler:deploy:canopy-api` **without**
 `ENV=dev`, you deploy the **canopy-api** (default) worker, which is **not** the one
@@ -65,8 +66,8 @@ serving the Lane A catalog hostname.
 
 | Wrangler env | Worker name (dashboard)           | Route(s)                              | Notes |
 | ------------ | ------------------------------- | ------------------------------------- | ----- |
-| **`dev`** (Lane A) | **delegation-coordinator-dev**  | **`coordinator.{DNS_SUB}.{DNS_APEX}`** | Sharded `DelegationStoreDO`. Local `wrangler dev` on port **8793**. |
-| **`prod`** (Lane B) | **delegation-coordinator-prod** | **`coordinator-b.{DNS_SUB}.{DNS_APEX}`** (runtime) | Distinct hostname so both coordinators can run on one forest project. |
+| **`dev`** (Lane A) | **delegation-coordinator-dev**  | **`coordinator-a.{DNS_SUB}.{DNS_APEX}`** | Sharded `DelegationStoreDO`. Local `wrangler dev` on port **8793**. |
+| **`prod`** (Lane B) | **delegation-coordinator-prod** | **`coordinator-b.{DNS_SUB}.{DNS_APEX}`** + alias **`coordinator.{DNS_SUB}.{DNS_APEX}`** | Distinct canonical hostnames; prod alias for public traffic. |
 
 Secrets (per env): **`COORDINATOR_APP_TOKEN`**, **`CUSTODIAN_APP_TOKEN`**.
 
@@ -82,7 +83,7 @@ FQDNs from **forest-1** [ARC-0003](../../forest-1/docs/arc-0003-ingress-and-dns-
 
 | GitHub Environment | Lane | Doppler `canopy` config | Typical `CANOPY_FQDN` | Playwright project |
 | ------------------ | ---- | ----------------------- | --------------------- | ------------------ |
-| **`dev`** | Lane A | **`dev`** | `api-{DNS_SUB}.{DNS_APEX}` | `system` (deploy-workers on main) |
+| **`dev`** | Lane A | **`dev`** | `api-a.{DNS_SUB}.{DNS_APEX}` | `system` (deploy-workers on main) |
 | **`prod`** | Lane B | **`prd`** | `api-b.{DNS_SUB}.{DNS_APEX}` | `prod` |
 
 Both lanes can target the same **`FOREST_PROJECT_ID`** with different GKE slots and

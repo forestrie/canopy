@@ -146,17 +146,36 @@ function insertAfterEnvName(envBlock, insertText) {
   return envBlock.replace(re, `$1${insertText}`);
 }
 
-function setRoutes(envBlock, fqdn) {
-  if (!fqdn) return envBlock;
+function parseHostnames(primary, aliasesCsv) {
+  const seen = new Set();
+  const hostnames = [];
+  const add = (value) => {
+    const host = hostnameFromFqdnOrUrl(value);
+    if (!host || seen.has(host)) return;
+    seen.add(host);
+    hostnames.push(host);
+  };
+  add(primary);
+  if (aliasesCsv) {
+    for (const part of aliasesCsv.split(",")) {
+      add(part);
+    }
+  }
+  return hostnames;
+}
+
+function setRoutes(envBlock, hostnames) {
+  if (!hostnames.length) return envBlock;
   envBlock = removePropertyWithComma(envBlock, "custom_domains", "[", "]");
-  const zone = zoneFromFqdn(fqdn);
-  const routesBody = `[
-        {
+  const entries = hostnames.map((fqdn) => {
+    const zone = zoneFromFqdn(fqdn);
+    return `        {
           "pattern": "${fqdn}",
           "zone_name": "${zone}",
           "custom_domain": true,
-        },
-      ]`;
+        }`;
+  });
+  const routesBody = `[\n${entries.join(",\n")}\n      ]`;
   const existing = blockForProperty(envBlock, "routes", "[", "]");
   if (existing) {
     return replaceRange(envBlock, existing, routesBody);
@@ -287,8 +306,14 @@ const canopyFqdn = hostnameFromFqdnOrUrl(process.env.CANOPY_FQDN);
 if (!canopyFqdn) {
   fail("CANOPY_FQDN is required for canopy-api deploy runtime config.");
 }
-envBlock = setRoutes(envBlock, canopyFqdn);
+const routeHostnames = parseHostnames(
+  canopyFqdn,
+  process.env.CANOPY_FQDN_ALIASES,
+);
+envBlock = setRoutes(envBlock, routeHostnames);
 
 config = replaceRange(config, target, envBlock);
 writeFileSync(outputPath, config);
-console.log(`Wrote ${outputPath} for env ${envName} (routes on ${canopyFqdn})`);
+console.log(
+  `Wrote ${outputPath} for env ${envName} (routes on ${routeHostnames.join(", ")})`,
+);
