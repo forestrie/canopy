@@ -52,8 +52,8 @@ function recoverSignerAddress(
   const r = signature.slice(0, 32);
   const s = signature.slice(32, 64);
   let v = signature[64]!;
-  if (v < 27) v += 27;
-  const recovery = v - 27;
+  if (v >= 27) v -= 27;
+  const recovery = v;
   if (recovery > 3) return null;
   try {
     const sig = secp256k1.Signature.fromCompact(

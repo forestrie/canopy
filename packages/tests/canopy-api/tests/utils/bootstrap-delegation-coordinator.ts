@@ -16,6 +16,7 @@ import {
   verifyByokDelegationCertificate,
   verifyKs256BootstrapDelegationCertificate,
 } from "./coordinator-delegation-helpers.js";
+import { assertGoCompatibleDelegatedKeyInCertificate } from "./delegation-cbor-contract.js";
 import {
   E2E_POLL_MAX_WAIT_MS,
   sequencingBackoff,
@@ -266,6 +267,8 @@ export async function signPendingBootstrapDelegations(opts: {
       }
     }
 
+    assertGoCompatibleDelegatedKeyInCertificate(material.certificate);
+
     const res = await opts.request.post(
       `${opts.coordinatorUrl}/api/delegations/material`,
       {
@@ -330,9 +333,11 @@ export async function pollBootstrapRegistrationThroughReceipt(opts: {
   let attempt = 0;
   let receiptUrlAbsolute: string | undefined;
   let entryIdHex: string | undefined;
+  const pollStart = Date.now();
+  let lastPendingSeenAt = pollStart;
 
   while (Date.now() < deadlineMs) {
-    await signPendingBootstrapDelegations({
+    const { pendingCount } = await signPendingBootstrapDelegations({
       request: opts.request,
       coordinatorUrl: coordinator.baseUrl,
       coordinatorToken: coordinator.appToken,
@@ -342,6 +347,18 @@ export async function pollBootstrapRegistrationThroughReceipt(opts: {
       signedMaterialKeys: opts.signedMaterialKeys,
       stats: opts.stats,
     });
+    if (pendingCount > 0) lastPendingSeenAt = Date.now();
+    if (
+      !receiptUrlAbsolute &&
+      Date.now() - lastPendingSeenAt >= E2E_POLL_MAX_WAIT_MS &&
+      (opts.stats?.materialSigned ?? 0) === 0
+    ) {
+      throw new Error(
+        `Bootstrap: no coordinator pending entries for ${E2E_POLL_MAX_WAIT_MS}ms ` +
+          "(Sealer may not be issuing, or poison material already stored). " +
+          "Check forestrie-a sealer logs for verify delegation lease errors.",
+      );
+    }
 
     if (receiptUrlAbsolute) {
       const res = await opts.request.get(receiptUrlAbsolute, {

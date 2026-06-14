@@ -70,6 +70,22 @@ export function assertCustodianProfileTransparentStatement(
   }
 }
 
+/** COSE protected header alg label. */
+const COSE_HEADER_ALG = 1;
+const COSE_ALG_ES256 = -7;
+const COSE_ALG_KS256 = -65799;
+
+function algFromProtectedHeader(protectedBytes: Uint8Array): number | undefined {
+  try {
+    const decoded = decode(protectedBytes) as unknown;
+    const m = toHeaderMap(decoded);
+    const alg = m.get(COSE_HEADER_ALG);
+    return typeof alg === "number" ? alg : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Assert root grant COSE Sign1 has 32-byte digest payload and grant v0 embedded. */
 export function assertRootGrantTransparentStatement(base64: string): void {
   const normalized = base64.replace(/-/g, "+").replace(/_/g, "/");
@@ -84,6 +100,20 @@ export function assertRootGrantTransparentStatement(base64: string): void {
   const payload = sign1[2];
   if (!(payload instanceof Uint8Array) || payload.length !== 32) {
     throw new Error("Expected COSE payload to be 32-byte SHA-256 digest");
+  }
+  const sig = sign1[3];
+  const protectedBytes =
+    sign1[0] instanceof Uint8Array ? sign1[0] : new Uint8Array(0);
+  const alg = algFromProtectedHeader(protectedBytes);
+  const expectedSigLen = alg === COSE_ALG_KS256 ? 65 : 64;
+  if (!(sig instanceof Uint8Array) || sig.length !== expectedSigLen) {
+    throw new Error(
+      `Expected COSE ${alg === COSE_ALG_KS256 ? "KS256" : "ES256"} signature ` +
+        `to be ${expectedSigLen} bytes`,
+    );
+  }
+  if (alg !== COSE_ALG_ES256 && alg !== COSE_ALG_KS256) {
+    throw new Error(`Unexpected grant protected alg ${String(alg)}`);
   }
   const unprotected = toHeaderMap(sign1[1]);
   const embedded = unprotected.get(HEADER_FORESTRIE_GRANT_V0);

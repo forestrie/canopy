@@ -7,15 +7,13 @@ import { decode, encode } from "cbor-x";
 import { encodeSigStructure } from "@canopy/encoding";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { secp256k1 } from "@noble/curves/secp256k1";
+import { cborIntKeyBytes } from "./cbor-int-key.js";
 import { custodianApiV1BaseUrl } from "./custodian-api-env.js";
 import { custodianDecodeCbor } from "./custodian-api-cbor.js";
 import { normalizeForestrieHexId32 } from "./forestrie-hex-id.js";
 
 function cborBytes(value: unknown): Uint8Array {
-  const encoded = encode(value);
-  return encoded instanceof Uint8Array
-    ? encoded
-    : new Uint8Array(encoded as ArrayLike<number>);
+  return cborIntKeyBytes(value);
 }
 
 export function hex32ToWireLogId(hex32: string): Uint8Array {
@@ -366,12 +364,11 @@ export async function buildKs256BootstrapDelegationMaterial(opts: {
   );
   const hash = keccak_256(sigStructure);
   const sk = parseKs256PrivateKeyHex(opts.privateKeyHex);
-  const sigObj = secp256k1.sign(hash, sk);
+  const sigObj = secp256k1.sign(hash, sk, { lowS: true });
   const compact = sigObj.toCompactRawBytes();
-  const recovery = sigObj.recovery ?? 0;
   const signature = new Uint8Array(KS256_EOA_SIG_BYTES);
   signature.set(compact, 0);
-  signature[64] = 27 + recovery;
+  signature[64] = sigObj.recovery ?? 0;
 
   const certificate = cborBytes([
     protectedBytes,
@@ -408,8 +405,8 @@ export function verifyKs256BootstrapDelegationCertificate(opts: {
   const r = signature.slice(0, 32);
   const s = signature.slice(32, 64);
   let v = signature[64]!;
-  if (v < 27) v += 27;
-  const recovery = v - 27;
+  if (v >= 27) v -= 27;
+  const recovery = v;
   if (recovery > 3) return false;
   try {
     const sig = secp256k1.Signature.fromCompact(

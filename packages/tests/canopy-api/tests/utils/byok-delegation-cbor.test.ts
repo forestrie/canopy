@@ -6,9 +6,11 @@ import { decode, Encoder } from "cbor-x";
 import { describe, expect, it } from "vitest";
 import {
   buildByokDelegationMaterial,
+  buildKs256BootstrapDelegationMaterial,
   generateEphemeralDelegatedPublicKeyCbor,
   generateEs256RootKeyPair,
 } from "./coordinator-delegation-helpers.js";
+import { assertGoCompatibleDelegatedKeyInCertificate } from "./delegation-cbor-contract.js";
 import { normalizeForestrieHexId32 } from "./forestrie-hex-id.js";
 
 const cborEncoder = new Encoder({ mapsAsObjects: false });
@@ -59,5 +61,45 @@ describe("BYOK delegation CBOR contract", () => {
         ? roundTrip.get(1)
         : (roundTrip[1] ?? roundTrip["1"]);
     expect(kty).toBe(2);
+  });
+
+  it("passes Go-compatible field-5 check for ES256 bootstrap material", async () => {
+    const logUuid = "b2c3d4e5-f6a7-8901-bcde-f12345678901";
+    const logHex32 = normalizeForestrieHexId32(logUuid);
+    const rootKeyPair = await generateEs256RootKeyPair();
+    const delegatedPublicKey = await generateEphemeralDelegatedPublicKeyCbor();
+    const material = await buildByokDelegationMaterial({
+      rootKeyPair,
+      logIdHex32: logHex32,
+      mmrStart: 0,
+      mmrEnd: 63,
+      delegatedPublicKey,
+    });
+    expect(() =>
+      assertGoCompatibleDelegatedKeyInCertificate(material.certificate),
+    ).not.toThrow();
+  });
+
+  it("passes Go-compatible field-5 check for KS256 bootstrap material", async () => {
+    const logUuid = "c3d4e5f6-a7b8-9012-cdef-123456789012";
+    const logHex32 = normalizeForestrieHexId32(logUuid);
+    const privateKeyHex =
+      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const rootAddress = new Uint8Array([
+      0x7b, 0x0e, 0x80, 0x9c, 0x6a, 0x7e, 0x3b, 0x16, 0x3c, 0x4d, 0x3a, 0x2b,
+      0xb1, 0xc0, 0x7c, 0x6d, 0x3e, 0x8f, 0x1a, 0x2b,
+    ]);
+    const delegatedPublicKey = await generateEphemeralDelegatedPublicKeyCbor();
+    const material = await buildKs256BootstrapDelegationMaterial({
+      rootSignerAddress: rootAddress,
+      privateKeyHex,
+      logIdHex32: logHex32,
+      mmrStart: 0,
+      mmrEnd: 127,
+      delegatedPublicKey,
+    });
+    expect(() =>
+      assertGoCompatibleDelegatedKeyInCertificate(material.certificate),
+    ).not.toThrow();
   });
 });

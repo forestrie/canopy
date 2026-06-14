@@ -3,7 +3,7 @@
  * Mirrors arbor delegationcert rules for payload field 5 (integer-key COSE_Key).
  */
 
-import { decode } from "cbor-x";
+import { decode, Decoder } from "cbor-x";
 import { encodeSigStructure } from "@canopy/encoding";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { secp256k1 } from "@noble/curves/secp256k1";
@@ -22,6 +22,8 @@ const COSE_KTY_EC2 = 2;
 const COSE_CRV_P256 = 1;
 
 const COSE_ALG_KS256 = -65799;
+
+const intKeyDecoder = new Decoder({ mapsAsObjects: false });
 
 const ERC1271_ABI = parseAbi([
   "function isValidSignature(bytes32 hash, bytes signature) view returns (bytes4)",
@@ -114,6 +116,16 @@ function parseDelegatedCoseKeyFromPayload(raw: unknown): {
   x: Uint8Array;
   y: Uint8Array;
 } {
+  if (raw instanceof Uint8Array) {
+    throw new ByokMaterialValidationError(
+      "payload field 5 must be inline integer-key COSE_Key map, not bstr",
+    );
+  }
+  if (!(raw instanceof Map)) {
+    throw new ByokMaterialValidationError(
+      "payload field 5 must be CBOR map with integer keys (not string-key object)",
+    );
+  }
   const m = normalizeIntKeyedMap(raw);
   const kty = Number(m.get(COSE_KTY));
   if (kty !== COSE_KTY_EC2) {
@@ -167,8 +179,8 @@ function recoverSignerAddress(
   const r = signature.slice(0, 32);
   const s = signature.slice(32, 64);
   let v = signature[64]!;
-  if (v < 27) v += 27;
-  const recovery = v - 27;
+  if (v >= 27) v -= 27;
+  const recovery = v;
   if (recovery > 3) return null;
   try {
     const sig = secp256k1.Signature.fromCompact(
@@ -284,7 +296,7 @@ export async function validateByokDelegationMaterial(opts: {
   publicRoot: PublicRootMaterial;
   ks256RpcUrl?: string;
 }): Promise<void> {
-  const cert = decode(opts.certificate) as unknown[];
+  const cert = intKeyDecoder.decode(opts.certificate) as unknown[];
   if (!Array.isArray(cert) || cert.length !== 4) {
     throw new ByokMaterialValidationError(
       "certificate must be COSE_Sign1 array",
@@ -311,7 +323,7 @@ export async function validateByokDelegationMaterial(opts: {
     );
   }
 
-  const payloadMap = normalizeIntKeyedMap(decode(payloadBytes));
+  const payloadMap = normalizeIntKeyedMap(intKeyDecoder.decode(payloadBytes));
   const logId = payloadMap.get(PAYLOAD_LOG_ID);
   if (typeof logId !== "string" || logId !== opts.logIdHex32) {
     throw new ByokMaterialValidationError("payload log id mismatch");
@@ -327,7 +339,7 @@ export async function validateByokDelegationMaterial(opts: {
     payloadMap.get(PAYLOAD_DELEGATED_KEY),
   );
   const submitted = parseDelegatedCoseKeyFromPayload(
-    decode(opts.delegatedPublicKey),
+    intKeyDecoder.decode(opts.delegatedPublicKey),
   );
   if (!bytesEqual(x, submitted.x) || !bytesEqual(y, submitted.y)) {
     throw new ByokMaterialValidationError(
