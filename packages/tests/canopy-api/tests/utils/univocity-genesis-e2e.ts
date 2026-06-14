@@ -64,6 +64,18 @@ function requireEnvTrim(name: string): string {
   return value;
 }
 
+function algAllowsBootstrapTests(alg: "es256" | "ks256"): boolean {
+  const envName =
+    alg === "es256"
+      ? "E2E_UNIVOCITY_ES256_ALLOW_BOOTSTRAP"
+      : "E2E_UNIVOCITY_KS256_ALLOW_BOOTSTRAP";
+  const value = process.env[envName]?.trim();
+  if (value === undefined || value === "") {
+    return true;
+  }
+  return value === "true";
+}
+
 /** Skip reason when preflight opted out of Univocity provision or env is missing. */
 export function univocityProvisionSkipReason(): string | null {
   const skipFlag = process.env.E2E_SKIP_UNIVOCITY_CHAIN_BINDING?.trim();
@@ -212,6 +224,9 @@ async function univocityChainBindingSkipReason(
 export async function es256ChainBindingSkipReason(
   contractAddr?: string,
 ): Promise<string | null> {
+  if (!algAllowsBootstrapTests("es256")) {
+    return "ES256 Univocity address supplied (non-fresh) — bootstrap specs skipped";
+  }
   const provisionSkip = univocityProvisionSkipReason();
   if (provisionSkip) return provisionSkip;
   let addr: string;
@@ -226,6 +241,9 @@ export async function es256ChainBindingSkipReason(
 export async function ks256ChainBindingSkipReason(
   contractAddr?: string,
 ): Promise<string | null> {
+  if (!algAllowsBootstrapTests("ks256")) {
+    return "KS256 Univocity address supplied (non-fresh) — bootstrap specs skipped";
+  }
   const provisionSkip = univocityProvisionSkipReason();
   if (provisionSkip) return provisionSkip;
   if (!process.env.E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_FILE?.trim()) {

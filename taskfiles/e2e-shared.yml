@@ -40,7 +40,7 @@ tasks:
 
   validate-env:
     desc: |
-      Fail fast when required e2e secrets/vars are missing (mirrors api-e2e-playwright.yml).
+      Fail fast when required e2e secrets/vars are missing (mirrors tests-system.yml).
       Set VALIDATE_SKIP_UNIVOCITY=1 to skip Univocity address checks (fresh provision path).
     cmds:
       - |

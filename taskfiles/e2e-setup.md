@@ -50,7 +50,7 @@ Do **not** hydrate a repo-root **`.env`** file. Inject secrets at runtime with t
 
 Required keys in the Doppler config include at least:
 
-- **`CANOPY_BASE_URL`** _or_ **`CANOPY_FQDN`** — worker origin. Playwright resolves `CANOPY_BASE_URL` first; if unset, it builds `https://…` from `CANOPY_FQDN` (same logic as `.github/workflows/api-e2e-playwright.yml`). Doppler `dev` may only define **`CANOPY_FQDN`**.
+- **`CANOPY_BASE_URL`** _or_ **`CANOPY_FQDN`** — worker origin. Playwright resolves `CANOPY_BASE_URL` first; if unset, it builds `https://…` from `CANOPY_FQDN` (same logic as `.github/workflows/tests-system.yml`). Doppler `dev` may only define **`CANOPY_FQDN`**.
 - **`SCRAPI_API_KEY`** — bearer token for authorized fixtures (when used)
 - **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**, **`CURATOR_ADMIN_TOKEN`** — for **system** specs (child custody keys + genesis)
 - **`DELEGATION_COORDINATOR_URL`**, **`COORDINATOR_APP_TOKEN`** — optional; when both set, **`task test:e2e`** includes the **coordinator** project
@@ -72,7 +72,7 @@ bootstrap system specs skip; other projects still run.
 
 Requires **`gh`** auth, Foundry **`cast`**, Doppler **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`**, and **univocity-tools v0.5.1+** (sibling `task install:dev` or release binaries).
 
-**CI:** **`provision-univocity`** runs on every same-repo PR (no feature flag).
+**CI:** **`prepare-univocity`** in **tests-system.yml** provisions ephemeral contracts by default (or accepts supplied addresses + keys).
 
 Run ES256 bootstrap specs only:
 
@@ -88,7 +88,17 @@ The **worker** must have **`CUSTODIAN_APP_TOKEN`** (Wrangler secret) for SCITT r
 
 ## CI
 
-The **Tests** and **Deploy Workers** workflows call **`.github/workflows/api-e2e-playwright.yml`**. They use GitHub Environment **`dev`** or **`prod`** (Doppler sync): `secrets.*` and `vars.*` on the Playwright step — **no** repo-root `.env` and **no** Doppler CLI in the job.
+| Workflow | Role |
+| -------- | ---- |
+| **`ci.yml`** | Lint, format, unit tests on every push and PR |
+| **`tests-integration.yml`** | Playwright **integration** vs deployed **dev** |
+| **`tests-system.yml`** | Univocity prepare + full dev suite (integration → system → custodian → coordinator); `workflow_dispatch`, `workflow_call`, push to **main** when deploy-workers did not run |
+| **`deploy-workers.yml`** | Deploy workers; chains **tests-system.yml** on **dev** after health |
+| **`release.yaml`** | Tag → deploy **dev** → **tests-system.yml** → promote **prod** → prod health |
+
+**tests-system.yml** manual inputs (optional): `es256_address` / `ks256_address` plus matching bootstrap key material; genesis log ids are derived from addresses when omitted. Supplied addresses skip bootstrap mutating specs for that alg.
+
+GitHub Environment **`dev`** or **`prod`** (Doppler sync): `secrets.*` and `vars.*` on Playwright steps — **no** repo-root `.env` and **no** Doppler CLI in CI jobs.
 
 ## Optional variables
 

@@ -12,12 +12,15 @@ This doc explains the GitHub Actions that affect deployment and how to get a **f
 
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
-| **Tests** | Push/PR to `main` | Lint, unit tests, perf lib tests, e2e **local** (no deploy). |
-| **Deploy Workers** | **Push to `main`** (path-filtered) **or** **workflow_dispatch** | Deploys canopy-api, delegation-signer, forestrie-ingress, x402-settlement to Cloudflare (dev or prod). On success, runs **Smoke test**. |
-| **Smoke Test** | Called by Deploy Workers, or **workflow_dispatch** | Runs `task scrapi:smoke:N` against an environment (dev/prod). Uses `ENV` and dotenv (`.env`, `.env.{{ENV}}`) for `CANOPY_FQDN`, `TEST_SCRAPI_LOG_PATH`, and `SCRAPI_API_KEY`. |
+| **CI** (`ci.yml`) | Push/PR (all branches) | Lint, format, unit tests, perf lib tests. |
+| **Integration tests** | Push/PR (all branches) | Playwright **integration** vs deployed **dev**. |
+| **System tests** | **workflow_dispatch**, **workflow_call**, push to **main** (deduped) | Univocity prepare + full dev Playwright suite. |
+| **Deploy Workers** | **Push to `main`** (path-filtered), **workflow_dispatch**, **workflow_call** | Deploy workers to dev/prod; on **dev**, chains **System tests** after health. |
+| **Release** | Push of tag `v*` | Unit tests → deploy **dev** → system e2e → promote **prod** → prod health. |
 | **Cloudflare Infrastructure** | **workflow_dispatch** only | Creates/destroys Cloudflare infra (R2, queues, etc.) via `task cf:bootstrap`. |
-| **Release** | Push of tag `v*` | Deploys to **production** (with approval), then smoke. |
-| **Performance Tests** | **workflow_dispatch** only | Runs k6 against dev/prod using Doppler-hydrated repo-root `.env` in CI; generates grant pool then load test. |
+| **Performance Tests** | **workflow_dispatch** only | Runs k6 against dev/prod. |
+
+See [plan-0034](plan-0034-ci-consolidation.md). PRs no longer auto-deploy branch code to dev; run **System tests** manually when needed.
 
 Important: **automatic deploy runs only on push to `main`**. Your branch is not deployed unless you run **Deploy Workers** manually and select your branch.
 

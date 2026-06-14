@@ -34,6 +34,27 @@ on:
           - delegation-coordinator
           - forestrie-ingress
           - x402-settlement
+      run_e2e:
+        description: "Run system tests after health check (dev only)"
+        required: false
+        default: true
+        type: boolean
+  workflow_call:
+    inputs:
+      environment:
+        description: "Deployment environment"
+        required: true
+        type: string
+      app:
+        description: "Worker to deploy (leave empty for all)"
+        required: false
+        type: string
+        default: ""
+      run_e2e:
+        description: "Run system tests after health check (dev only)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -55,7 +76,7 @@ jobs:
       - name: Determine environment
         id: env
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
             echo "environment=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
           else
             echo "environment=dev" >> "$GITHUB_OUTPUT"
@@ -93,8 +114,8 @@ jobs:
         run: |
           apps=()
 
-          # For workflow_dispatch, use the selected app or all apps
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          # For workflow_dispatch or workflow_call, use the selected app or all apps
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
             selected_app="${{ inputs.app }}"
             if [ -n "$selected_app" ]; then
               # Single app selected
@@ -364,13 +385,22 @@ jobs:
     with:
       environment: ${{ needs.changes.outputs.environment }}
 
-  api-e2e:
-    name: API e2e (${{ needs.changes.outputs.environment }})
+  system-tests:
+    name: System tests (${{ needs.changes.outputs.environment }})
     needs: [changes, deploy, health-check]
-    if: always() && needs.deploy.result == 'success' && needs.health-check.result == 'success'
-    uses: ./.github/workflows/api-e2e-playwright.yml
+    if: |
+      always() &&
+      needs.deploy.result == 'success' &&
+      needs.health-check.result == 'success' &&
+      needs.changes.outputs.environment == 'dev' &&
+      (
+        (github.event_name == 'push') ||
+        (github.event_name == 'workflow_dispatch' && inputs.run_e2e == true) ||
+        (github.event_name == 'workflow_call' && inputs.run_e2e == true)
+      )
+    uses: ./.github/workflows/tests-system.yml
     secrets: inherit
     with:
-      environment: ${{ needs.changes.outputs.environment }}
-      playwright_project: ${{ needs.changes.outputs.environment == 'prod' && 'prod' || 'system' }}
-      require_coordinator_e2e: ${{ needs.changes.outputs.environment != 'prod' }}
+      environment: dev
+      require_coordinator_e2e: true
+      playwright_project: system

@@ -1,5 +1,5 @@
 # E2e Univocity provisioning (canopy-native fetch + deploy).
-# CI mirrors this flow in pr-dev-deploy-e2e.yml provision-univocity.
+# CI mirrors prepare-univocity in tests-system.yml.
 # Prerequisite: task install:dev  (or install:release on Linux without checkout)
 # Local: doppler run -- task e2e-univocity:provision
 version: "3"

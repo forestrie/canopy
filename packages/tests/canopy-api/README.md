@@ -40,7 +40,7 @@ See **`taskfiles/e2e-setup.md`**.
 - **Local (full dev suite):** `task test:e2e` — CI-parity sequence (integration → system → custodian → coordinator when configured). Use `ENV=prod` for prod Doppler config.
 - **Local (explicit tier):** `doppler run --project canopy --config dev -- pnpm --filter @canopy/api-e2e test:e2e:system` (see **`.cursor/rules/e2e-local-doppler.mdc`**). Do **not** add `doppler run` to package.json scripts.
 - **Single tier npm scripts:** `test:e2e:integration` | `test:e2e:system` | `test:e2e:custodian` | `test:e2e:coordinator` | `test:e2e:prod` (plain Playwright; wrap with Doppler locally).
-- **CI:** workflows export env on the step; run `pnpm --filter @canopy/api-e2e exec playwright test` (see `.github/workflows/api-e2e-playwright.yml`). Package **`pnpm test:e2e`** runs integration + system + custodian only (no coordinator) — use the Task entrypoint locally for full dev parity.
+- **CI:** workflows export env on the step; run `pnpm --filter @canopy/api-e2e exec playwright test` (see `.github/workflows/tests-system.yml` and `.github/workflows/tests-integration.yml`). Package **`pnpm test:e2e`** runs integration + system + custodian only (no coordinator) — use the Task entrypoint locally for full dev parity.
 
 ### Bootstrap grant (mint + register-grant)
 
@@ -48,7 +48,9 @@ See **`taskfiles/e2e-setup.md`**.
 
 Requires **`CURATOR_ADMIN_TOKEN`**, Univocity provision env (see below), and for child/delegation specs **`CUSTODIAN_URL`** + **`CUSTODIAN_APP_TOKEN`**. The **deployed** worker needs **`R2_MMRS`**, sequencing queue bindings, and `bootstrapEnv` + `queueEnv`.
 
-**First signed entry** (`tests/system/bootstrap-log-first-entry.spec.ts`): ES256 variant only (register-statement requires 64-byte ES256 grantData); contract-bootstrap statement signing.
+**First signed entry** (`tests/system/bootstrap-log-first-entry.spec.ts`): **ES256
+and KS256** variants — `POST /register/{R}/entries` with contract-bootstrap
+statement signing (ES256: 32-byte `kid` = x; KS256: 20-byte `kid` = address).
 
 **Child auth grant** (`tests/system/bootstrap-child-auth-grant.spec.ts`): root contract-bootstrap mint; child envelope signed by **owner root key**; Custodian provisions child `grantData`.
 
@@ -92,7 +94,7 @@ Resolved in **`playwright.config.ts`** from the **process environment** (Doppler
 **Worker origin** (one of):
 
 - **`CANOPY_BASE_URL`** — full origin, e.g. Lane A `https://api-a-forest-2.forestrie.dev`, Lane B canonical `https://api-b-forest-2.forestrie.dev`, or prod alias `https://api-forest-2.forestrie.dev` (no trailing slash), or
-- **`CANOPY_FQDN`** — host or URL; Playwright builds `https://{host}` the same way as `.github/workflows/test.yml` (Doppler `dev` often supplies only `CANOPY_FQDN`).
+- **`CANOPY_FQDN`** — host or URL; Playwright builds `https://{host}` the same way as `.github/workflows/tests-system.yml` (Doppler `dev` often supplies only `CANOPY_FQDN`).
 
 **System / bootstrap e2e** (`tests/system/*.spec.ts`):
 
@@ -114,6 +116,7 @@ Provisioned in **`task test:e2e:preflight`** (default). Playwright sources **`.w
 - **`E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE`** — ES256 root grant + owner envelope signing
 - **`E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_FILE`** — KS256 root grant + owner envelope signing
 - **`E2E_UNIVOCITY_RPC_URL`**, **`E2E_UNIVOCITY_CHAIN_ID`** (optional defaults)
+- **`E2E_UNIVOCITY_ES256_ALLOW_BOOTSTRAP`**, **`E2E_UNIVOCITY_KS256_ALLOW_BOOTSTRAP`** — when `false`, bootstrap mutating specs skip for that alg (CI when a supplied address is used instead of fresh provision)
 - **`CURATOR_ADMIN_TOKEN`**: POST genesis
 
 Opt out: **`SKIP_UNIVOCITY_PROVISION=true`** (bootstrap system specs skip per variant). See [plan-0032](../../docs/plans/plan-0032-univocity-imutable-e2e-provision.md).
@@ -123,7 +126,7 @@ Opt out: **`SKIP_UNIVOCITY_PROVISION=true`** (bootstrap system specs skip per va
 - **`DELEGATION_COORDINATOR_URL`**, **`COORDINATOR_APP_TOKEN`**: coordinator management APIs and direct coordinator issue.
 - **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**: required by `coordinator-api.spec.ts` for custodial pre-wallet mint and custody-keys orchestration.
 - Deployed **Custodian** must have **`DELEGATION_COORDINATOR_URL`** configured for the stretch spec’s proxy path (ledger env; not a Playwright env var).
-- CI runs this project after **custodian** when both coordinator env vars are set (`.github/workflows/api-e2e-playwright.yml`); **`deploy-workers`** on **dev** sets **`require_coordinator_e2e: true`** (fails if vars/secrets missing).
+- CI runs this project after **custodian** when both coordinator env vars are set (`.github/workflows/tests-system.yml`); **`deploy-workers`** on **dev** requires coordinator e2e (fails if vars/secrets missing).
 - Opt-in stretch (`tests/system/coordinator-delegation-issuance.spec.ts`): set **`E2E_COORDINATOR_SEALER_STRETCH=1`** — Custodian proxy on KMS miss; not part of default **`test:e2e:system`**.
 
 **Hydrating coordinator secrets locally**
@@ -157,7 +160,7 @@ Set **`COORDINATOR_APP_TOKEN`** in Doppler **`canopy/dev`** (masked) after fores
 | `integration/api.spec.ts`                        | Cross-cutting HTTP (e.g. CORS OPTIONS).                                                                                                                                             |
 | `integration/observability.spec.ts`              | `/api/health`, `/.well-known/scitt-configuration`.                                                                                                                                  |
 | `system/grants-bootstrap.spec.ts`                | Ephemeral Imutable bootstrap: genesis + contract-signed root grant + register-grant (ES256 + KS256). [Doc](tests/system/docs/grants-bootstrap.md).                                  |
-| `system/bootstrap-log-first-entry.spec.ts`       | `POST /register/{bootstrap}/entries` (ES256 variant). [Doc](tests/system/docs/bootstrap-log-first-entry.md).                                                                        |
+| `system/bootstrap-log-first-entry.spec.ts`       | `POST /register/{bootstrap}/entries` (ES256 + KS256). [Doc](tests/system/docs/bootstrap-log-first-entry.md).                                                                        |
 | `system/bootstrap-child-auth-grant.spec.ts`      | Root contract bootstrap + child auth grant (owner-root envelope); ES256 + KS256. [Doc](tests/system/docs/bootstrap-child-auth-grant.md).                                            |
 | `system/auth-data-log-chain.spec.ts`             | Root → child auth log → data log delegation chain; ES256 + KS256. [Doc](tests/system/docs/auth-data-log-chain.md).                                                                  |
 | `custodian/custodian-api.spec.ts`                | Direct **`fetch`** to deployed Custodian: ops + **`/v1/api/…`** key routes. Does not use `:bootstrap` key paths.                                                                    |
