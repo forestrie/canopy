@@ -81,6 +81,7 @@ export default defineConfig({
     {
       // Prod / release: excludes mutating system tests.
       name: "prod",
+      testMatch: ["**/*.spec.ts"],
       testIgnore: [
         "**/system/grants-bootstrap.spec.ts",
         "**/system/bootstrap-log-first-entry.spec.ts",
