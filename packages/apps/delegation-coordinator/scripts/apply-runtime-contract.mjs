@@ -161,10 +161,8 @@ function setCoordinatorCustomDomains(envBlock, hostnames) {
   }
   envBlock = removePropertyWithComma(envBlock, "custom_domains", "[", "]");
   const entries = hostnames.map((hostname) => {
-    const zone = hostname.split(".").slice(-2).join(".");
     return `        {
           "pattern": "${hostname}",
-          "zone_name": "${zone}",
           "custom_domain": true,
         }`;
   });

@@ -104,12 +104,6 @@ function setStringProperty(block, key, value) {
   return block.replace(/\n\s*}$/, `${insert}\n      }`);
 }
 
-function zoneFromFqdn(fqdn) {
-  const parts = fqdn.split(".").filter(Boolean);
-  if (parts.length < 2) return fqdn;
-  return parts.slice(-2).join(".");
-}
-
 function hostnameFromFqdnOrUrl(value) {
   if (!value) return "";
   const trimmed = value.trim();
@@ -168,10 +162,8 @@ function setRoutes(envBlock, hostnames) {
   if (!hostnames.length) return envBlock;
   envBlock = removePropertyWithComma(envBlock, "custom_domains", "[", "]");
   const entries = hostnames.map((fqdn) => {
-    const zone = zoneFromFqdn(fqdn);
     return `        {
           "pattern": "${fqdn}",
-          "zone_name": "${zone}",
           "custom_domain": true,
         }`;
   });

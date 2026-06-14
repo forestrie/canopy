@@ -147,11 +147,9 @@ function insertAfterEnvName(envBlock, insertText) {
 function setIngressCustomDomain(envBlock, hostname) {
   if (!hostname) fail("INGRESS_FQDN hostname is required.");
   envBlock = removePropertyWithComma(envBlock, "custom_domains", "[", "]");
-  const zone = hostname.split(".").slice(-2).join(".");
   const body = `[
         {
           "pattern": "${hostname}",
-          "zone_name": "${zone}",
           "custom_domain": true,
         },
       ]`;
