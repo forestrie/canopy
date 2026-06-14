@@ -298,7 +298,10 @@ jobs:
             done
           fi
           node scripts/apply-runtime-contract.mjs --env "$ENV" --out wrangler.runtime.jsonc
-          DOMAIN_FLAGS="$("${GITHUB_WORKSPACE}/scripts/wrangler-domain-flags.sh" "${CANOPY_FQDN}" "${CANOPY_FQDN_ALIASES:-}")"
+          DOMAIN_FLAGS="$(
+            cd "${GITHUB_WORKSPACE}"
+            PRIMARY="${CANOPY_FQDN}" ALIASES="${CANOPY_FQDN_ALIASES:-}" task wrangler:domain-flags
+          )"
           # shellcheck disable=SC2086
           wrangler deploy --config wrangler.runtime.jsonc --env "$ENV" ${DOMAIN_FLAGS}
 
@@ -341,7 +344,10 @@ jobs:
             fi
           fi
           node scripts/apply-runtime-contract.mjs --env "$ENV" --out wrangler.runtime.jsonc
-          DOMAIN_FLAGS="$("${GITHUB_WORKSPACE}/scripts/wrangler-domain-flags.sh" "${DELEGATION_COORDINATOR_URL}" "${DELEGATION_COORDINATOR_URL_ALIASES:-}")"
+          DOMAIN_FLAGS="$(
+            cd "${GITHUB_WORKSPACE}"
+            PRIMARY="${DELEGATION_COORDINATOR_URL}" ALIASES="${DELEGATION_COORDINATOR_URL_ALIASES:-}" task wrangler:domain-flags
+          )"
           # shellcheck disable=SC2086
           wrangler deploy --config wrangler.runtime.jsonc --env "$ENV" ${DOMAIN_FLAGS}
 

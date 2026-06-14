@@ -1,6 +1,41 @@
 version: "3"
 
 tasks:
+  domain-flags:
+    desc: |
+      Print wrangler --domain flags for PRIMARY (+ optional ALIASES CSV).
+      Env: PRIMARY, ALIASES (optional). Used by deploy-workers CI and local deploy.
+    silent: true
+    cmds:
+      - cmd: |
+          python3 <<'PY'
+          import os
+          import shlex
+          import urllib.parse
+
+          def norm(value):
+              value = (value or "").strip()
+              if not value:
+                  return ""
+              if "://" in value:
+                  return (urllib.parse.urlparse(value).hostname or "").strip()
+              return value.split("/")[0].strip()
+
+          def hosts(*chunks):
+              seen = set()
+              out = []
+              for chunk in chunks:
+                  for part in (chunk or "").split(","):
+                      host = norm(part)
+                      if host and host not in seen:
+                          seen.add(host)
+                          out.append(host)
+              return out
+
+          for host in hosts(os.environ.get("PRIMARY"), os.environ.get("ALIASES")):
+              print(f" --domain {shlex.quote(host)}", end="")
+          PY
+
   deploy:*:
     desc: Deploy a worker app (e.g., task wrangler:deploy:canopy-api ENV=prod)
     vars:
