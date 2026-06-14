@@ -76,7 +76,8 @@ jobs:
       - name: Determine environment
         id: env
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
+          # workflow_call inherits the caller event_name (e.g. tag push); use inputs.
+          if [ -n "${{ inputs.environment }}" ]; then
             echo "environment=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
           else
             echo "environment=dev" >> "$GITHUB_OUTPUT"
@@ -84,7 +85,7 @@ jobs:
 
       - name: Detect changes
         id: changes
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && inputs.environment == ''
         uses: dorny/paths-filter@v3
         with:
           filters: |
@@ -114,8 +115,8 @@ jobs:
         run: |
           apps=()
 
-          # For workflow_dispatch or workflow_call, use the selected app or all apps
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
+          # Caller-driven deploy (dispatch or reusable workflow_call with inputs).
+          if [ -n "${{ inputs.environment }}" ]; then
             selected_app="${{ inputs.app }}"
             if [ -n "$selected_app" ]; then
               # Single app selected
@@ -394,9 +395,8 @@ jobs:
       needs.health-check.result == 'success' &&
       needs.changes.outputs.environment == 'dev' &&
       (
-        (github.event_name == 'push') ||
-        (github.event_name == 'workflow_dispatch' && inputs.run_e2e == true) ||
-        (github.event_name == 'workflow_call' && inputs.run_e2e == true)
+        (github.event_name == 'push' && inputs.environment == '') ||
+        inputs.run_e2e == true
       )
     uses: ./.github/workflows/tests-system.yml
     secrets: inherit
