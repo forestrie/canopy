@@ -57,6 +57,13 @@ on:
 
   workflow_call:
     inputs:
+      ignore_deploy_path_overlap:
+        description: |
+          Run full suite when caller already deployed (reusable workflows inherit
+          parent push events, so path dedupe must be bypassed).
+        required: false
+        type: boolean
+        default: false
       environment:
         description: "GitHub Environment for vars and secrets"
         required: true
@@ -129,9 +136,16 @@ jobs:
     name: Prepare Univocity (provision or accept)
     needs: [paths]
     if: |
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'workflow_call' ||
-      (github.event_name == 'push' && needs.paths.outputs.deploy_workers != 'true')
+      always() &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        inputs.ignore_deploy_path_overlap == true ||
+        (
+          github.event_name == 'push' &&
+          needs.paths.result == 'success' &&
+          needs.paths.outputs.deploy_workers != 'true'
+        )
+      )
     runs-on: ubuntu-latest
     environment: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}
     outputs:
@@ -332,10 +346,8 @@ jobs:
 
   system-tests:
     name: System tests (${{ github.event_name == 'push' && 'dev' || inputs.environment }})
-    needs: [paths, prepare-univocity]
-    if: |
-      always() &&
-      needs.prepare-univocity.result == 'success'
+    needs: [prepare-univocity]
+    if: always() && needs.prepare-univocity.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     environment: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}

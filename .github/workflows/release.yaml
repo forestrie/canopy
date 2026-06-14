@@ -51,6 +51,7 @@ jobs:
       environment: dev
       require_coordinator_e2e: true
       playwright_project: system
+      ignore_deploy_path_overlap: true
 
   promote-prod:
     name: Promote to prod (Lane B)
