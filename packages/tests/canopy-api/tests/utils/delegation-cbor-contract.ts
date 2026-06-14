@@ -82,4 +82,8 @@ export function assertGoCompatibleDelegatedKeyInCertificate(
   parseDelegatedCoseKeyFromPayload(payloadMap.get(PAYLOAD_DELEGATED_KEY));
 }
 
-export { PAYLOAD_DELEGATED_KEY, normalizeIntKeyedMap, parseDelegatedCoseKeyFromPayload };
+export {
+  PAYLOAD_DELEGATED_KEY,
+  normalizeIntKeyedMap,
+  parseDelegatedCoseKeyFromPayload,
+};

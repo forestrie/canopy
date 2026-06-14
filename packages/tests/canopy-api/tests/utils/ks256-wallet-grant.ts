@@ -108,9 +108,8 @@ function signKeccak256Ethereum(
   const tryRecovery = (recovery: number): Uint8Array | null => {
     if (recovery < 0 || recovery > 3) return null;
     try {
-      const sig = secp256k1.Signature.fromCompact(compact).addRecoveryBit(
-        recovery,
-      );
+      const sig =
+        secp256k1.Signature.fromCompact(compact).addRecoveryBit(recovery);
       const pub = sig.recoverPublicKey(hash);
       const addr = addressFromUncompressedPubkey(pub.toRawBytes(false));
       if (!bytesEqual(addr, expectedAddress20)) return null;
@@ -148,11 +147,7 @@ export function signGrantPayloadWithKs256Wallet(
     payloadDigest,
   );
   const hash = keccak_256(sigStructure);
-  const signature = signKeccak256Ethereum(
-    hash,
-    privateKeyHex,
-    expectedAddress,
-  );
+  const signature = signKeccak256Ethereum(hash, privateKeyHex, expectedAddress);
 
   const out: number[] = [0x84];
   appendCborBstr(out, KS256_PROTECTED_HEADER);
@@ -239,9 +234,7 @@ export function mintKs256RootGrantWithWalletKey(opts: {
     payloadBytes,
     opts.ks256PrivateKeyHex,
   );
-  if (
-    !verifyKs256GrantStatement(sign1, opts.bootstrapAddress20)
-  ) {
+  if (!verifyKs256GrantStatement(sign1, opts.bootstrapAddress20)) {
     throw new Error(
       "KS256 root grant COSE Sign1 failed local ecrecover verification",
     );

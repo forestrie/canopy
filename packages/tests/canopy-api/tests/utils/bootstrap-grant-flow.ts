@@ -75,7 +75,9 @@ const COSE_HEADER_ALG = 1;
 const COSE_ALG_ES256 = -7;
 const COSE_ALG_KS256 = -65799;
 
-function algFromProtectedHeader(protectedBytes: Uint8Array): number | undefined {
+function algFromProtectedHeader(
+  protectedBytes: Uint8Array,
+): number | undefined {
   try {
     const decoded = decode(protectedBytes) as unknown;
     const m = toHeaderMap(decoded);

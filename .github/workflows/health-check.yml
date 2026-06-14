@@ -71,6 +71,21 @@ jobs:
             export CANOPY_BASE_URL="https://${FQ}"
             export CANOPY_BASE_URL="${CANOPY_BASE_URL%/}"
           fi
+          API_RETRIES="${API_HEALTH_RETRIES:-24}"
+          API_SLEEP="${API_HEALTH_SLEEP_SEC:-10}"
+          echo "Waiting for ${CANOPY_BASE_URL}/api/health (up to ${API_RETRIES} attempts)..."
+          for attempt in $(seq 1 "${API_RETRIES}"); do
+            if curl -sf "${CANOPY_BASE_URL}/api/health" >/dev/null; then
+              echo "OK: API health ready (attempt ${attempt}/${API_RETRIES})"
+              break
+            fi
+            if [ "${attempt}" -eq "${API_RETRIES}" ]; then
+              echo "::error::API health check failed: ${CANOPY_BASE_URL}/api/health after ${API_RETRIES} attempts"
+              exit 1
+            fi
+            echo "API not ready yet (${attempt}/${API_RETRIES}); waiting ${API_SLEEP}s for Custom Domain DNS/SSL..."
+            sleep "${API_SLEEP}"
+          done
           pnpm --filter @canopy/api-e2e exec playwright install chromium
           pnpm --filter @canopy/api-e2e exec playwright test --project=integration
           COORD_URL="$(trim_ws "${DELEGATION_COORDINATOR_URL:-}")"
@@ -99,9 +114,21 @@ jobs:
               alias_fqdn="$(trim_ws "${alias_fqdn}")"
               [ -z "${alias_fqdn}" ] && continue
               alias_url="https://${alias_fqdn}/api/health"
-              if curl -sf "${alias_url}" >/dev/null; then
-                echo "OK: prod API alias ${alias_url}"
-              else
+              ALIAS_RETRIES="${API_HEALTH_RETRIES:-24}"
+              ALIAS_SLEEP="${API_HEALTH_SLEEP_SEC:-10}"
+              alias_ok=0
+              for attempt in $(seq 1 "${ALIAS_RETRIES}"); do
+                if curl -sf "${alias_url}" >/dev/null; then
+                  echo "OK: prod API alias ${alias_url} (attempt ${attempt}/${ALIAS_RETRIES})"
+                  alias_ok=1
+                  break
+                fi
+                if [ "${attempt}" -lt "${ALIAS_RETRIES}" ]; then
+                  echo "Prod API alias not ready (${attempt}/${ALIAS_RETRIES}); waiting ${ALIAS_SLEEP}s..."
+                  sleep "${ALIAS_SLEEP}"
+                fi
+              done
+              if [ "${alias_ok}" -ne 1 ]; then
                 echo "::error::Prod API alias health failed: ${alias_url}"
                 exit 1
               fi
