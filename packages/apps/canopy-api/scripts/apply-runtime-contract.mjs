@@ -240,6 +240,13 @@ envBlock = setR2BucketName(
   "R2_MMRS",
   process.env.R2_MMRS_BUCKET_NAME,
 );
+if (process.env.R2_GRANTS_BUCKET_NAME) {
+  envBlock = setR2BucketName(
+    envBlock,
+    "R2_GRANTS",
+    process.env.R2_GRANTS_BUCKET_NAME,
+  );
+}
 envBlock = setDurableObjectScript(
   envBlock,
   "SEQUENCING_QUEUE",
