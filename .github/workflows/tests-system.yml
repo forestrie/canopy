@@ -271,6 +271,7 @@ jobs:
                 exit 1
               fi
               chmod +x "$BIN"
+              cp "$BIN" "${TOOLS_CACHE}/${app}"
               cp "$BIN" ".cache/univocity-tools/${app}"
             done
             export PATH="${TOOLS_CACHE}:${PATH}"
