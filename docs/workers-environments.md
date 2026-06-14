@@ -81,10 +81,12 @@ FQDNs from **forest-1** [ARC-0003](../../forest-1/docs/arc-0003-ingress-and-dns-
 
 ## CI / e2e targeting
 
-| GitHub Environment | Lane | Doppler `canopy` config | Typical `CANOPY_FQDN` | Playwright project |
-| ------------------ | ---- | ----------------------- | --------------------- | ------------------ |
-| **`dev`** | Lane A | **`dev`** | `api-a.{DNS_SUB}.{DNS_APEX}` | `system` (deploy-workers on main) |
-| **`prod`** | Lane B | **`prd`** | `api-b.{DNS_SUB}.{DNS_APEX}` | `prod` |
+| GitHub Environment | Lane | Doppler `canopy` config | Typical `CANOPY_FQDN` | Playwright |
+| ------------------ | ---- | ----------------------- | --------------------- | ---------- |
+| **`dev`** | Lane A | **`dev`** | `api-a.{DNS_SUB}.{DNS_APEX}` | **integration** (`tests-integration.yml`); **system** suite (`tests-system.yml` via deploy-workers or manual) |
+| **`prod`** | Lane B | **`prd`** | `api-b.{DNS_SUB}.{DNS_APEX}` | Release promotes Lane A → B after **tests-system.yml** on dev; prod health only |
+
+**Release (`v*` tag):** deploy tagged commit to **dev** → system e2e gate → deploy same commit to **prod** (Lane B promotion).
 
 Both lanes can target the same **`FOREST_PROJECT_ID`** with different GKE slots and
 hostnames. Do not override slot on the dev lane — use **`CANOPY_PROMOTION_LANE=prod`**

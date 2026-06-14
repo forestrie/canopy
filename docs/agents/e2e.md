@@ -42,6 +42,7 @@ custodian → coordinator (when coordinator vars are set).
   [plan-0032](../plans/plan-0032-univocity-imutable-e2e-provision.md))
 - Provision secrets: **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`**
 - CI provision: **`GITAPP_ID`** + **`GITAPP_PRIVATE_KEY`**
+- CI workflows: **`ci.yml`** (lint/unit), **`tests-integration.yml`** (integration vs dev), **`tests-system.yml`** (provision + full suite; manual dispatch with optional contract addresses)
 
 ## System test flow docs
 

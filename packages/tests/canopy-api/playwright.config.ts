@@ -8,7 +8,7 @@ const DOPPLER_E2E_HINT =
   "See taskfiles/e2e-setup.md and packages/tests/canopy-api/README.md.";
 
 /**
- * Match `.github/workflows/test.yml` API e2e step: prefer CANOPY_BASE_URL, else https://CANOPY_FQDN.
+ * Match `.github/workflows/tests-system.yml`: prefer CANOPY_BASE_URL, else https://CANOPY_FQDN.
  * Doppler `dev` often supplies CANOPY_FQDN only.
  */
 function resolveCanopyBaseUrl(): string {
@@ -26,7 +26,7 @@ function resolveCanopyBaseUrl(): string {
       );
     }
     throw new Error(
-      "Set CANOPY_BASE_URL or CANOPY_FQDN in CI — same as .github/workflows/api-e2e-playwright.yml.",
+      "Set CANOPY_BASE_URL or CANOPY_FQDN in CI — same as .github/workflows/tests-system.yml.",
     );
   }
   return `https://${fq}`.replace(/\/$/, "");

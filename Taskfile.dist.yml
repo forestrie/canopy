@@ -54,7 +54,7 @@ tasks:
       Requires Doppler project **canopy**, config **ENV** (default **dev**; use ENV=prod for prod).
       Recommended: doppler run --project canopy --config dev -- task test:e2e
       Self-wraps with doppler run when DOPPLER_CONFIG is unset. Runs preflight first.
-      CI runs Playwright without Doppler — see .github/workflows/api-e2e-playwright.yml.
+      CI runs Playwright without Doppler — see .github/workflows/tests-system.yml.
       Do not add doppler run to @canopy/api-e2e package.json scripts.
     deps: [test:e2e:preflight]
     cmds:

@@ -1,0 +1,470 @@
+name: System tests
+
+# Provision-or-accept ephemeral Univocity Imutable contracts, then run the full
+# dev Playwright suite (integration → system → custodian → coordinator).
+#
+# Triggers: manual dispatch, workflow_call (deploy-workers, release), and
+# push to main when deploy-workers did not run (non-overlapping paths).
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "GitHub Environment for vars and secrets"
+        required: true
+        default: dev
+        type: choice
+        options:
+          - dev
+          - prod
+      require_coordinator_e2e:
+        description: "Fail if coordinator env vars missing and run coordinator project"
+        required: false
+        default: true
+        type: boolean
+      playwright_project:
+        description: "prod = non-mutating prod project; system = full dev suite"
+        required: false
+        default: system
+        type: choice
+        options:
+          - system
+          - prod
+      es256_address:
+        description: "Optional ImutableUnivocity address (skip es256 provision)"
+        required: false
+        type: string
+      ks256_address:
+        description: "Optional ImutableUnivocity address (skip ks256 provision)"
+        required: false
+        type: string
+      es256_bootstrap_pem_b64:
+        description: "Base64 ES256 bootstrap PEM (required when es256_address set)"
+        required: false
+        type: string
+      ks256_bootstrap_key_b64:
+        description: "Base64 KS256 bootstrap private key (required when ks256_address set)"
+        required: false
+        type: string
+      es256_genesis_log_id:
+        description: "Optional ES256 genesis log id (derived from address when omitted)"
+        required: false
+        type: string
+      ks256_genesis_log_id:
+        description: "Optional KS256 genesis log id (derived from address when omitted)"
+        required: false
+        type: string
+
+  workflow_call:
+    inputs:
+      environment:
+        description: "GitHub Environment for vars and secrets"
+        required: true
+        type: string
+      require_coordinator_e2e:
+        description: "Fail if coordinator env vars missing and run coordinator project"
+        required: false
+        type: boolean
+        default: false
+      playwright_project:
+        description: "prod = non-mutating prod project; system = full dev suite"
+        required: false
+        type: string
+        default: system
+      es256_address:
+        required: false
+        type: string
+        default: ""
+      ks256_address:
+        required: false
+        type: string
+        default: ""
+      es256_bootstrap_pem_b64:
+        required: false
+        type: string
+        default: ""
+      ks256_bootstrap_key_b64:
+        required: false
+        type: string
+        default: ""
+      es256_genesis_log_id:
+        required: false
+        type: string
+        default: ""
+      ks256_genesis_log_id:
+        required: false
+        type: string
+        default: ""
+
+  push:
+    branches: [main]
+
+jobs:
+  paths:
+    name: Path filter (deploy-workers overlap)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_workers: ${{ steps.filter.outputs.deploy_workers }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Detect deploy-workers-triggered paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            deploy_workers:
+              - "packages/apps/canopy-api/**"
+              - "packages/apps/delegation-coordinator/**"
+              - "packages/apps/forestrie-ingress/**"
+              - "packages/apps/x402-settlement/**"
+              - "packages/shared/**"
+              - "packages/merklelog/**"
+              - "Taskfile.dist.yml"
+              - "taskfiles/wrangler.yml"
+              - ".github/workflows/deploy-workers.yml"
+
+  prepare-univocity:
+    name: Prepare Univocity (provision or accept)
+    needs: [paths]
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'workflow_call' ||
+      (github.event_name == 'push' && needs.paths.outputs.deploy_workers != 'true')
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}
+    outputs:
+      es256_address: ${{ steps.prepare.outputs.es256_address }}
+      ks256_address: ${{ steps.prepare.outputs.ks256_address }}
+      es256_log_id: ${{ steps.prepare.outputs.es256_log_id }}
+      ks256_log_id: ${{ steps.prepare.outputs.ks256_log_id }}
+      es256_bootstrap_pem_b64: ${{ steps.prepare.outputs.es256_bootstrap_pem_b64 }}
+      ks256_bootstrap_signer: ${{ steps.prepare.outputs.ks256_bootstrap_signer }}
+      ks256_bootstrap_key_b64: ${{ steps.prepare.outputs.ks256_bootstrap_key_b64 }}
+      es256_fresh: ${{ steps.prepare.outputs.es256_fresh }}
+      ks256_fresh: ${{ steps.prepare.outputs.ks256_fresh }}
+    env:
+      DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+      E2E_UNIVOCITY_RPC_URL: ${{ vars.E2E_UNIVOCITY_RPC_URL }}
+      INPUT_ES256_ADDRESS: ${{ inputs.es256_address || '' }}
+      INPUT_KS256_ADDRESS: ${{ inputs.ks256_address || '' }}
+      INPUT_ES256_PEM_B64: ${{ inputs.es256_bootstrap_pem_b64 || '' }}
+      INPUT_KS256_KEY_B64: ${{ inputs.ks256_bootstrap_key_b64 || '' }}
+      INPUT_ES256_LOG_ID: ${{ inputs.es256_genesis_log_id || '' }}
+      INPUT_KS256_LOG_ID: ${{ inputs.ks256_genesis_log_id || '' }}
+      PLAYWRIGHT_PROJECT: ${{ github.event_name == 'push' && 'system' || inputs.playwright_project || 'system' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.6.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install go-task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Mint GitHub App token
+        id: app-token
+        uses: tibdex/github-app-token@v1
+        with:
+          app_id: ${{ vars.GITAPP_ID }}
+          private_key: ${{ secrets.GITAPP_PRIVATE_KEY }}
+
+      - name: Prepare Univocity per alg
+        id: prepare
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+
+          log_id_from_addr() {
+            local addr="$1"
+            local h
+            h=$(echo "$addr" | tr 'A-Z' 'a-z' | sed 's/^0x//')
+            echo "${h:0:8}-${h:8:4}-${h:12:4}-${h:16:4}-${h:20:12}"
+          }
+
+          if [ "${PLAYWRIGHT_PROJECT}" = "prod" ]; then
+            echo "prod project — skipping Univocity prepare"
+            echo "es256_address=" >> "$GITHUB_OUTPUT"
+            echo "ks256_address=" >> "$GITHUB_OUTPUT"
+            echo "es256_log_id=" >> "$GITHUB_OUTPUT"
+            echo "ks256_log_id=" >> "$GITHUB_OUTPUT"
+            echo "es256_bootstrap_pem_b64=" >> "$GITHUB_OUTPUT"
+            echo "ks256_bootstrap_signer=" >> "$GITHUB_OUTPUT"
+            echo "ks256_bootstrap_key_b64=" >> "$GITHUB_OUTPUT"
+            echo "es256_fresh=false" >> "$GITHUB_OUTPUT"
+            echo "ks256_fresh=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          ES256_ADDR="$(trim_ws "${INPUT_ES256_ADDRESS}")"
+          KS256_ADDR="$(trim_ws "${INPUT_KS256_ADDRESS}")"
+          ES256_PEM_B64="$(trim_ws "${INPUT_ES256_PEM_B64}")"
+          KS256_KEY_B64="$(trim_ws "${INPUT_KS256_KEY_B64}")"
+          ES256_LOG="$(trim_ws "${INPUT_ES256_LOG_ID}")"
+          KS256_LOG="$(trim_ws "${INPUT_KS256_LOG_ID}")"
+          RPC="$(trim_ws "${E2E_UNIVOCITY_RPC_URL:-}")"
+          if [ -z "$RPC" ]; then
+            echo "::error::E2E_UNIVOCITY_RPC_URL is required in GitHub Environment."
+            exit 1
+          fi
+
+          NEED_PROVISION=false
+          if [ -z "$ES256_ADDR" ]; then NEED_PROVISION=true; fi
+          if [ -z "$KS256_ADDR" ]; then NEED_PROVISION=true; fi
+
+          if [ "$NEED_PROVISION" = true ]; then
+            if [ -z "$(trim_ws "${DEPLOY_KEY:-}")" ]; then
+              echo "::error::DEPLOY_KEY is required to provision Univocity contracts."
+              exit 1
+            fi
+            export PATH="${GITHUB_WORKSPACE}/.cache/univocity-tools:${PATH}"
+            task install:release
+            export PATH="${GITHUB_WORKSPACE}/.cache/univocity-tools:${PATH}"
+            task e2e-univocity:extract
+            export RELEASE_ROOT="${GITHUB_WORKSPACE}/.work/univocity-release"
+          fi
+
+          deploy_fresh_alg() {
+            local alg="$1"
+            local run_id="${GITHUB_RUN_ID:-$(date +%s)}"
+            export E2E_PROVISION_RUN_ID="$run_id"
+            task e2e-univocity:deploy-one ALG="$alg"
+            local manifest
+            manifest=$(cat ".work/univocity-e2e/proposals/provision-${run_id}-${alg}.manifest")
+            task e2e-univocity:verify MANIFEST="$manifest"
+            local addr
+            addr=$(jq -r '.imutableUnivocity' "$manifest")
+            local log_id
+            log_id=$(task e2e-univocity:genesis-log-id ADDR="$addr" | tail -1)
+            if [ "$alg" = "es256" ]; then
+              ES256_ADDR="$addr"
+              ES256_LOG="$log_id"
+              if [ -f ".work/e2e-univocity-es256-bootstrap.pem" ]; then
+                ES256_PEM_B64=$(base64 -w0 ".work/e2e-univocity-es256-bootstrap.pem")
+              fi
+            else
+              KS256_ADDR="$addr"
+              KS256_LOG="$log_id"
+              if [ -f ".work/e2e-univocity-ks256-bootstrap.key" ]; then
+                KS256_KEY_B64=$(base64 -w0 ".work/e2e-univocity-ks256-bootstrap.key")
+                KS256_SIGNER=$(cast wallet address --private-key "$(tr -d '\n' < .work/e2e-univocity-ks256-bootstrap.key)")
+              fi
+            fi
+          }
+
+          ES256_FRESH=false
+          KS256_FRESH=false
+          KS256_SIGNER=""
+
+          if [ -z "$ES256_ADDR" ]; then
+            deploy_fresh_alg es256
+            ES256_FRESH=true
+          else
+            if [ -z "$ES256_PEM_B64" ]; then
+              echo "::error::es256_address supplied but es256_bootstrap_pem_b64 is missing."
+              exit 1
+            fi
+            if [ -z "$ES256_LOG" ]; then
+              ES256_LOG=$(log_id_from_addr "$ES256_ADDR")
+            fi
+          fi
+
+          if [ -z "$KS256_ADDR" ]; then
+            deploy_fresh_alg ks256
+            KS256_FRESH=true
+          else
+            if [ -z "$KS256_KEY_B64" ]; then
+              echo "::error::ks256_address supplied but ks256_bootstrap_key_b64 is missing."
+              exit 1
+            fi
+            if [ -z "$KS256_LOG" ]; then
+              KS256_LOG=$(log_id_from_addr "$KS256_ADDR")
+            fi
+            KS256_KEY_FILE="${RUNNER_TEMP}/e2e-ks256-bootstrap.key"
+            echo "$KS256_KEY_B64" | base64 -d > "$KS256_KEY_FILE"
+            KS256_SIGNER=$(cast wallet address --private-key "$(tr -d '\n' < "$KS256_KEY_FILE")")
+          fi
+
+          if [ "$(echo "$ES256_ADDR" | tr 'A-Z' 'a-z')" = "$(echo "$KS256_ADDR" | tr 'A-Z' 'a-z')" ]; then
+            echo "::error::es256 and ks256 must use different addresses (both ${ES256_ADDR})"
+            exit 1
+          fi
+
+          if [ "$NEED_PROVISION" = true ]; then
+            ES256_MANIFEST=$(ls -t .work/univocity-e2e/proposals/manifest-es256-*.json 2>/dev/null | head -1)
+            KS256_MANIFEST=$(ls -t .work/univocity-e2e/proposals/manifest-ks256-*.json 2>/dev/null | head -1)
+            if [ -n "$ES256_MANIFEST" ] && [ -n "$KS256_MANIFEST" ]; then
+              task e2e-univocity:verify-pair \
+                MANIFEST_ES256="$ES256_MANIFEST" \
+                MANIFEST_KS256="$KS256_MANIFEST"
+            fi
+          fi
+
+          echo "es256_address=${ES256_ADDR}" >> "$GITHUB_OUTPUT"
+          echo "ks256_address=${KS256_ADDR}" >> "$GITHUB_OUTPUT"
+          echo "es256_log_id=${ES256_LOG}" >> "$GITHUB_OUTPUT"
+          echo "ks256_log_id=${KS256_LOG}" >> "$GITHUB_OUTPUT"
+          echo "es256_bootstrap_pem_b64=${ES256_PEM_B64}" >> "$GITHUB_OUTPUT"
+          echo "ks256_bootstrap_signer=${KS256_SIGNER}" >> "$GITHUB_OUTPUT"
+          echo "ks256_bootstrap_key_b64=${KS256_KEY_B64}" >> "$GITHUB_OUTPUT"
+          echo "es256_fresh=${ES256_FRESH}" >> "$GITHUB_OUTPUT"
+          echo "ks256_fresh=${KS256_FRESH}" >> "$GITHUB_OUTPUT"
+
+  system-tests:
+    name: System tests (${{ github.event_name == 'push' && 'dev' || inputs.environment }})
+    needs: [paths, prepare-univocity]
+    if: |
+      always() &&
+      needs.prepare-univocity.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.6.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: System API tests (Playwright)
+        env:
+          CANOPY_FQDN: ${{ vars.CANOPY_FQDN }}
+          SCRAPI_API_KEY: ${{ secrets.SCRAPI_API_KEY }}
+          CANOPY_BASE_URL: ${{ vars.CANOPY_BASE_URL }}
+          FOREST_PROJECT_ID: ${{ vars.FOREST_PROJECT_ID }}
+          CUSTODIAN_URL: ${{ vars.CUSTODIAN_URL }}
+          CUSTODIAN_APP_TOKEN: ${{ secrets.CUSTODIAN_APP_TOKEN }}
+          CUSTODIAN_BOOTSTRAP_APP_TOKEN: ${{ secrets.CUSTODIAN_BOOTSTRAP_APP_TOKEN }}
+          CURATOR_ADMIN_TOKEN: ${{ secrets.CURATOR_ADMIN_TOKEN }}
+          DELEGATION_COORDINATOR_URL: ${{ vars.DELEGATION_COORDINATOR_URL }}
+          COORDINATOR_APP_TOKEN: ${{ secrets.COORDINATOR_APP_TOKEN }}
+          E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP: ${{ needs.prepare-univocity.outputs.ks256_address }}
+          E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP: ${{ needs.prepare-univocity.outputs.es256_address }}
+          E2E_UNIVOCITY_RPC_URL: ${{ vars.E2E_UNIVOCITY_RPC_URL }}
+          E2E_UNIVOCITY_CHAIN_ID: ${{ vars.E2E_UNIVOCITY_CHAIN_ID }}
+          E2E_UNIVOCITY_GENESIS_LOG_ID_KS256: ${{ needs.prepare-univocity.outputs.ks256_log_id }}
+          E2E_UNIVOCITY_GENESIS_LOG_ID_ES256: ${{ needs.prepare-univocity.outputs.es256_log_id }}
+          E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64: ${{ needs.prepare-univocity.outputs.es256_bootstrap_pem_b64 }}
+          E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER: ${{ needs.prepare-univocity.outputs.ks256_bootstrap_signer }}
+          E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_B64: ${{ needs.prepare-univocity.outputs.ks256_bootstrap_key_b64 }}
+          E2E_UNIVOCITY_ES256_ALLOW_BOOTSTRAP: ${{ needs.prepare-univocity.outputs.es256_fresh }}
+          E2E_UNIVOCITY_KS256_ALLOW_BOOTSTRAP: ${{ needs.prepare-univocity.outputs.ks256_fresh }}
+          PLAYWRIGHT_PROJECT: ${{ github.event_name == 'push' && 'system' || inputs.playwright_project || 'system' }}
+          REQUIRE_COORDINATOR_E2E: ${{ github.event_name == 'push' && 'false' || inputs.require_coordinator_e2e || 'false' }}
+        run: |
+          set -euo pipefail
+          trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+          if [ -z "$(trim_ws "${SCRAPI_API_KEY:-}")" ]; then
+            echo "::error::SCRAPI_API_KEY is not set in GitHub Environment **${{ inputs.environment || 'dev' }}**."
+            exit 1
+          fi
+          BASE="$(trim_ws "${CANOPY_BASE_URL:-}")"
+          if [ -n "$BASE" ]; then
+            export CANOPY_BASE_URL="${BASE%/}"
+          else
+            FQ=$(trim_ws "${CANOPY_FQDN:-}")
+            FQ="${FQ#https://}"
+            FQ="${FQ#http://}"
+            FQ="${FQ%%/*}"
+            FQ="${FQ%/}"
+            if [ -z "$FQ" ]; then
+              echo "::error::Set **CANOPY_BASE_URL** or **CANOPY_FQDN** in GitHub Environment **${{ inputs.environment || 'dev' }}**."
+              exit 1
+            fi
+            export CANOPY_BASE_URL="https://${FQ}"
+            export CANOPY_BASE_URL="${CANOPY_BASE_URL%/}"
+          fi
+          PEM_B64="$(trim_ws "${E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64:-}")"
+          if [ -n "$PEM_B64" ]; then
+            PEM_FILE="${RUNNER_TEMP}/e2e-es256-bootstrap.pem"
+            echo "$PEM_B64" | base64 -d > "$PEM_FILE"
+            export E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE="$PEM_FILE"
+          fi
+          KS256_SIGNER="$(trim_ws "${E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER:-}")"
+          if [ -n "$KS256_SIGNER" ]; then
+            export E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER="$KS256_SIGNER"
+          fi
+          KS256_KEY_B64="$(trim_ws "${E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_B64:-}")"
+          if [ -n "$KS256_KEY_B64" ]; then
+            KS256_KEY_FILE="${RUNNER_TEMP}/e2e-ks256-bootstrap.key"
+            echo "$KS256_KEY_B64" | base64 -d > "$KS256_KEY_FILE"
+            export E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_FILE="$KS256_KEY_FILE"
+          fi
+          export E2E_SKIP_UNIVOCITY_CHAIN_BINDING=false
+          pnpm --filter @canopy/api-e2e exec playwright install chromium
+          if [ "${PLAYWRIGHT_PROJECT}" = "prod" ]; then
+            pnpm --filter @canopy/api-e2e exec playwright test \
+              --project=prod \
+              --forbid-only
+          else
+            pnpm --filter @canopy/api-e2e exec playwright test \
+              --project=integration \
+              --forbid-only
+            pnpm --filter @canopy/api-e2e exec playwright test \
+              --project=system \
+              --forbid-only
+            pnpm --filter @canopy/api-e2e exec playwright test \
+              --project=custodian \
+              --forbid-only
+            COORD_URL="$(trim_ws "${DELEGATION_COORDINATOR_URL:-}")"
+            COORD_TOKEN="$(trim_ws "${COORDINATOR_APP_TOKEN:-}")"
+            if [ -n "$COORD_URL" ] && [ -n "$COORD_TOKEN" ]; then
+              pnpm --filter @canopy/api-e2e exec playwright test \
+                --project=coordinator \
+                --forbid-only
+            elif [ "${REQUIRE_COORDINATOR_E2E}" = "true" ]; then
+              echo "::error::Coordinator e2e required but DELEGATION_COORDINATOR_URL or COORDINATOR_APP_TOKEN is unset."
+              exit 1
+            else
+              echo "::warning::Skipping coordinator Playwright project."
+            fi
+          fi
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.event_name == 'push' && 'dev' || inputs.environment }}-${{ github.run_id }}
+          path: packages/tests/canopy-api/playwright-report/
+          retention-days: 14
+
+      - name: Upload Playwright test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results-${{ github.event_name == 'push' && 'dev' || inputs.environment }}-${{ github.run_id }}
+          path: packages/tests/canopy-api/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
