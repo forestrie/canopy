@@ -225,9 +225,7 @@ export async function es256ChainBindingSkipReason(
   contractAddr?: string,
 ): Promise<string | null> {
   if (!algAllowsBootstrapTests("es256")) {
-    return (
-      "ES256 Univocity address supplied (non-fresh) — bootstrap specs skipped"
-    );
+    return "ES256 Univocity address supplied (non-fresh) — bootstrap specs skipped";
   }
   const provisionSkip = univocityProvisionSkipReason();
   if (provisionSkip) return provisionSkip;
@@ -244,9 +242,7 @@ export async function ks256ChainBindingSkipReason(
   contractAddr?: string,
 ): Promise<string | null> {
   if (!algAllowsBootstrapTests("ks256")) {
-    return (
-      "KS256 Univocity address supplied (non-fresh) — bootstrap specs skipped"
-    );
+    return "KS256 Univocity address supplied (non-fresh) — bootstrap specs skipped";
   }
   const provisionSkip = univocityProvisionSkipReason();
   if (provisionSkip) return provisionSkip;
