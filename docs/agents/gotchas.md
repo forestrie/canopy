@@ -19,8 +19,10 @@ Extended notes beyond [AGENTS.md](../../AGENTS.md) critical gotchas.
 
 ## SequencingQueue (forestrie-ingress)
 
-- Ranger pulls `{CANOPY_FQDN}/canopy/ingress-queue/queue/pull`.
-- Per-project script: `forestrie-ingress-{DNS_SUB}`.
+- Ranger pulls `{RANGER_INGRESS_QUEUE_URL}/queue/pull` (per slot:
+  `https://ingress.{slot}.{DNS_SUB}.{DNS_APEX}/canopy/ingress-queue`).
+- Per-slot script: `forestrie-ingress-{DNS_SUB}-{a|b}`; custom domain on
+  `ingress.{slot}.{DNS_SUB}.*`.
 - Historical bug recycled `nextSeq` without `dead_letters` max — fixed in
   `SequencingQueue.initializeFromStorage()`.
 - **Dev-only reset**: `INGRESS_RESET_TOKEN` + `POST …/queue/admin/reset-storage?shard=all`

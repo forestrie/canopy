@@ -13,6 +13,14 @@ on:
       dns_apex:
         description: "DNS_APEX from forest project infra"
         required: true
+      ledger_slot:
+        description: "Ledger slot (a or b) for per-slot ingress Worker and route"
+        required: true
+        default: "a"
+        type: choice
+        options:
+          - a
+          - b
       github_environment:
         description: "GitHub Environment that provides Cloudflare deploy secrets"
         required: true
@@ -23,18 +31,18 @@ on:
           - dev
           - prod
 
-run-name: Deploy forestrie-ingress${{ inputs.dns_sub && format(' ({0})', inputs.dns_sub) || '' }}${{ inputs.project_id && format(' for {0}', inputs.project_id) || '' }}
+run-name: Deploy forestrie-ingress${{ inputs.dns_sub && format(' ({0})', inputs.dns_sub) || '' }} slot ${{ inputs.ledger_slot }}${{ inputs.project_id && format(' for {0}', inputs.project_id) || '' }}
 
 permissions:
   contents: read
 
 jobs:
   deploy:
-    name: Deploy forestrie-ingress
+    name: Deploy forestrie-ingress (${{ inputs.ledger_slot }})
     runs-on: ubuntu-latest
     environment: ${{ inputs.github_environment }}
     concurrency:
-      group: forestrie-ingress-${{ inputs.dns_sub || 'shared' }}
+      group: forestrie-ingress-${{ inputs.dns_sub || 'shared' }}-${{ inputs.ledger_slot }}
       cancel-in-progress: false
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -87,56 +95,31 @@ jobs:
         env:
           INPUT_DNS_SUB: ${{ inputs.dns_sub }}
           INPUT_DNS_APEX: ${{ inputs.dns_apex }}
+          INPUT_LEDGER_SLOT: ${{ inputs.ledger_slot }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
           DNS_SUB="$(trim_ws "${INPUT_DNS_SUB:-}")"
           DNS_APEX="$(trim_ws "${INPUT_DNS_APEX:-}")"
+          SLOT="$(trim_ws "${INPUT_LEDGER_SLOT:-a}")"
+          case "${SLOT}" in
+            a|b) ;;
+            *) echo "::error::ledger_slot must be a or b (got ${SLOT})."; exit 1 ;;
+          esac
           if [ -z "${DNS_SUB}" ] || [ -z "${DNS_APEX}" ]; then
             echo "::error::dns_sub and dns_apex workflow inputs are required."
             exit 1
           fi
-          CANOPY_FQDN_VAL="api-${DNS_SUB}.${DNS_APEX}"
-          SCRIPT="forestrie-ingress-${DNS_SUB}"
-          echo "canopy_fqdn=${CANOPY_FQDN_VAL}" >> "$GITHUB_OUTPUT"
+          INGRESS_FQDN="ingress.${SLOT}.${DNS_SUB}.${DNS_APEX}"
+          SCRIPT="forestrie-ingress-${DNS_SUB}-${SLOT}"
+          echo "ingress_fqdn=${INGRESS_FQDN}" >> "$GITHUB_OUTPUT"
           echo "script_name=${SCRIPT}" >> "$GITHUB_OUTPUT"
-          echo "route_pattern=${CANOPY_FQDN_VAL}/canopy/ingress-queue/*" >> "$GITHUB_OUTPUT"
-          echo "Deploy ${SCRIPT} with route ${CANOPY_FQDN_VAL}/canopy/ingress-queue/*"
+          echo "Deploy ${SCRIPT} with custom domain ${INGRESS_FQDN}"
 
-      - name: Unassign project route from other workers
-        env:
-          DNS_APEX: ${{ inputs.dns_apex }}
-          ROUTE_PATTERN: ${{ steps.contract.outputs.route_pattern }}
-        run: |
-          set -euo pipefail
-          if [ -z "${ROUTE_PATTERN}" ] || [ -z "${DNS_APEX}" ]; then
-            echo "::error::route_pattern and dns_apex are required."
-            exit 1
-          fi
-          ZONE_ID="$(curl -sf -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            "https://api.cloudflare.com/client/v4/zones?name=${DNS_APEX}" \
-            | jq -r '.result[0].id // empty')"
-          if [ -z "${ZONE_ID}" ]; then
-            echo "::error::Could not resolve Cloudflare zone id for ${DNS_APEX}."
-            exit 1
-          fi
-          ROUTES_JSON="$(curl -sf -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/workers/routes")"
-          ROUTE_ID="$(printf '%s' "${ROUTES_JSON}" | jq -r --arg p "${ROUTE_PATTERN}" \
-            '.result[] | select(.pattern == $p) | .id' | head -1)"
-          if [ -z "${ROUTE_ID}" ] || [ "${ROUTE_ID}" = "null" ]; then
-            echo "No existing zone route for ${ROUTE_PATTERN}; continuing."
-            exit 0
-          fi
-          echo "Deleting zone route ${ROUTE_ID} (${ROUTE_PATTERN})..."
-          curl -sf -X DELETE -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/workers/routes/${ROUTE_ID}"
-          echo "Route unassigned."
-
-      - name: Deploy per-project forestrie-ingress
+      - name: Deploy per-slot forestrie-ingress
         working-directory: packages/apps/forestrie-ingress
         env:
-          CANOPY_FQDN: ${{ steps.contract.outputs.canopy_fqdn }}
+          INGRESS_FQDN: ${{ steps.contract.outputs.ingress_fqdn }}
           SEQUENCING_QUEUE_SCRIPT_NAME: ${{ steps.contract.outputs.script_name }}
         run: |
           set -euo pipefail

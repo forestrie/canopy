@@ -1,5 +1,5 @@
 /**
- * Inject per-project forestrie-ingress Worker name and host-scoped route (ARC-0001).
+ * Inject per-slot forestrie-ingress Worker name and custom domain (ARC-0003).
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -104,12 +104,6 @@ function setStringProperty(block, key, value) {
   return block.replace(/\n\s*}$/, `${insert}\n      }`);
 }
 
-function zoneFromFqdn(fqdn) {
-  const parts = fqdn.split(".").filter(Boolean);
-  if (parts.length < 2) return fqdn;
-  return parts.slice(-2).join(".");
-}
-
 function hostnameFromFqdnOrUrl(value) {
   if (!value) return "";
   const trimmed = value.trim();
@@ -123,6 +117,23 @@ function hostnameFromFqdnOrUrl(value) {
   return trimmed.replace(/^https?:\/\//, "").split("/")[0];
 }
 
+function removePropertyWithComma(text, property, openChar, closeChar) {
+  const prop = `"${property}"`;
+  const idx = text.indexOf(prop);
+  if (idx < 0) return text;
+  const open = text.indexOf(openChar, idx + prop.length);
+  if (open < 0) return text;
+  const close = findMatching(text, open, openChar, closeChar);
+  if (close < 0) return text;
+  let start = idx;
+  while (start > 0 && /[\s]/.test(text[start - 1])) start -= 1;
+  if (start > 0 && text[start - 1] === ",") start -= 1;
+  let end = close + 1;
+  while (end < text.length && /[\s]/.test(text[end])) end += 1;
+  if (text[end] === ",") end += 1;
+  return text.slice(0, start) + text.slice(end);
+}
+
 function envWorkerNamePattern() {
   return /(\{\s*(?:\/\/[^\n]*\n\s*)*"name"\s*:\s*)"[^"]*"/;
 }
@@ -133,20 +144,22 @@ function insertAfterEnvName(envBlock, insertText) {
   return envBlock.replace(re, `$1${insertText}`);
 }
 
-function setRoutes(envBlock, fqdn) {
-  if (!fqdn) return envBlock;
-  const zone = zoneFromFqdn(fqdn);
-  const routesBody = `[
+function setIngressCustomDomain(envBlock, hostname) {
+  if (!hostname) fail("INGRESS_FQDN hostname is required.");
+  envBlock = removePropertyWithComma(envBlock, "custom_domains", "[", "]");
+  const zone = hostname.split(".").slice(-2).join(".");
+  const body = `[
         {
-          "pattern": "${fqdn}/canopy/ingress-queue/*",
+          "pattern": "${hostname}",
           "zone_name": "${zone}",
+          "custom_domain": true,
         },
       ]`;
   const existing = blockForProperty(envBlock, "routes", "[", "]");
   if (existing) {
-    return replaceRange(envBlock, existing, routesBody);
+    return replaceRange(envBlock, existing, body);
   }
-  const insert = `\n      "routes": ${routesBody},`;
+  const insert = `\n      "routes": ${body},`;
   return insertAfterEnvName(envBlock, insert);
 }
 
@@ -192,14 +205,18 @@ if (vars) {
   envBlock = replaceRange(envBlock, vars, varsBlock);
 }
 
-const edgeFqdn = hostnameFromFqdnOrUrl(process.env.CANOPY_FQDN);
-if (!edgeFqdn) {
-  fail("CANOPY_FQDN is required for forestrie-ingress deploy runtime config.");
+const ingressHost =
+  hostnameFromFqdnOrUrl(process.env.INGRESS_FQDN) ||
+  hostnameFromFqdnOrUrl(process.env.CANOPY_FQDN);
+if (!ingressHost) {
+  fail(
+    "INGRESS_FQDN or CANOPY_FQDN is required for forestrie-ingress deploy runtime config.",
+  );
 }
-envBlock = setRoutes(envBlock, edgeFqdn);
+envBlock = setIngressCustomDomain(envBlock, ingressHost);
 
 config = replaceRange(config, target, envBlock);
 writeFileSync(outputPath, config);
 console.log(
-  `Wrote ${outputPath} for env ${envName} (${scriptName} route on ${edgeFqdn}/canopy/ingress-queue/*)`,
+  `Wrote ${outputPath} for env ${envName} (${scriptName} custom_domain ${ingressHost})`,
 );

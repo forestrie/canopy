@@ -45,7 +45,7 @@
       },
     },
     "prod": {
-      // Worker name and routes injected at deploy from consumer contract (apply-runtime-contract.mjs).
+      // Worker name and custom domain injected at deploy (apply-runtime-contract.mjs).
       "name": "forestrie-ingress-prod",
       "routes": [],
       "vars": {

@@ -104,7 +104,7 @@
             "name": "SEQUENCING_QUEUE",
             "class_name": "SequencingQueue",
             // Per-project ingress (runtime: SEQUENCING_QUEUE_SCRIPT_NAME from contract).
-            "script_name": "forestrie-ingress-forest-2",
+            "script_name": "forestrie-ingress-forest-2-a",
           },
           {
             "name": "X402_SETTLEMENT_DO",

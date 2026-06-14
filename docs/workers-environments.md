@@ -17,11 +17,12 @@ Two ideas are easy to confuse:
 | Idea | Meaning |
 |------|---------|
 | **Promotion lane** | **`dev`** → **canopy-api-dev**; **`prod`** → **canopy-api-prod** (Worker script + secrets) |
-| **Project hostname** | **`CANOPY_FQDN`** from forest contract = `api-{DNS_SUB}.{DNS_APEX}` ([ADR-0002](../../forest-1/docs/adr-0002-dns-catalog-provisioning.md)) |
-| **Edge ingress deployment** | Per-project **`forestrie-ingress-{DNS_SUB}`** with host-scoped route on **`CANOPY_FQDN`** |
+| **Project hostname** | **`CANOPY_FQDN`** from forest contract = `api-{DNS_SUB}.{DNS_APEX}` ([ARC-0003](../../forest-1/docs/arc-0003-ingress-and-dns-provisioning.md)) |
+| **Edge ingress deployment** | Per-slot **`forestrie-ingress-{DNS_SUB}-{a|b}`** on **`ingress.{slot}.{DNS_SUB}.{DNS_APEX}`** (custom domain) |
 
-**Both API lanes** bind `SEQUENCING_QUEUE` to **`forestrie-ingress-{DNS_SUB}`** from the
-consumer contract (per-project isolation; see **forest-1** `docs/arc-0001-per-project-ingress-isolation.md`).
+**Both API lanes** bind `SEQUENCING_QUEUE` to **`forestrie-ingress-{DNS_SUB}-{active_slot}`**
+from the forest consumer contract (per-project isolation; see **forest-1**
+`docs/arc-0003-ingress-and-dns-provisioning.md`).
 
 Deployed **canopy-api-*** vars and bindings (including `R2_MMRS` bucket and ingress script
 name) come from the GitHub Environment (**`dev`** / **`prod`**) and
@@ -29,8 +30,8 @@ name) come from the GitHub Environment (**`dev`** / **`prod`**) and
 `wrangler.jsonc` defaults alone.
 
 Forest bootstrap publishes and verifies the contract per lane; see **forest-1**
-`docs/bootstrap-canopy-contract.md`. Future per-project ingress isolation:
-`docs/arc-0001-per-project-ingress-isolation.md`.
+`docs/bootstrap-canopy-contract.md`. Ingress and DNS model:
+`docs/arc-0003-ingress-and-dns-provisioning.md` (forest-1).
 
 ## Perf test and dev traffic
 
@@ -61,7 +62,7 @@ serving the dev lane catalog hostname.
 | Wrangler env | Worker name (dashboard)    | Route(s)                                 | Notes                                                                                                                                                                                                                                                                             |
 | ------------ | -------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **`dev`**    | **forestrie-ingress-dev**  | _(none — use `wrangler dev` locally)_    | Avoids overlapping zone routes with prod.                                                                                                                                                                                                                                         |
-| **`prod`**   | **`forestrie-ingress-{DNS_SUB}`** (runtime) | `{CANOPY_FQDN}/canopy/ingress-queue/*` | Per-project **Strategy B** edge ingress. Deploy via **`deploy-forestrie-ingress.yml`** or **`task bootstrap:canopy:deploy-ingress`**. |
+| **`prod`**   | **`forestrie-ingress-{DNS_SUB}-{slot}`** (runtime) | **`ingress.{slot}.{DNS_SUB}.{DNS_APEX}`** (Wrangler custom domain) | Per-slot edge ingress. Deploy both slots via **`deploy-forestrie-ingress.yml`** (`ledger_slot` input). |
 
 Deploy **`prod`** after DNS for **`api-<DNS_SUB>.forestrie.dev`** exists (Terraform in **forest-1** publishes the hostname + URL to Doppler). Other apex domains require adjusting **`zone_name`** / **`pattern`** in [`packages/apps/forestrie-ingress/wrangler.jsonc`](../packages/apps/forestrie-ingress/wrangler.jsonc).
 
@@ -81,6 +82,6 @@ syncs it to GitHub Environment **`dev`** / **`prod`**. Custodian uses the same U
 misses.
 
 Legacy lane globals **`api-dev`** / **`coordinator-dev`** are retired — use catalog
-FQDNs from **forest-1** [ADR-0002](../../forest-1/docs/adr-0002-dns-catalog-provisioning.md).
+FQDNs from **forest-1** [ARC-0003](../../forest-1/docs/arc-0003-ingress-and-dns-provisioning.md).
 
 **Ops runbook:** [plan-0022](plans/plan-0022-delegation-coordinator-ops-parity.md), [forest-1 bootstrap-canopy-contract](../../forest-1/docs/bootstrap-canopy-contract.md) (coordinator token + deploy tasks).
