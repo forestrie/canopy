@@ -281,7 +281,7 @@ jobs:
             exit 1
           fi
           put_wrangler_secret UNIVOCITY_API_TOKEN "$UNIV"
-          for key in FOREST_PROJECT_ID CUSTODIAN_URL DELEGATION_COORDINATOR_URL R2_MMRS_BUCKET_NAME R2_GRANTS_BUCKET_NAME SEQUENCING_QUEUE_SCRIPT_NAME CANOPY_FQDN UNIVOCITY_SERVICE_URL; do
+          for key in CANOPY_ID FOREST_PROJECT_ID CUSTODIAN_URL DELEGATION_COORDINATOR_URL R2_MMRS_BUCKET_NAME R2_GRANTS_BUCKET_NAME SEQUENCING_QUEUE_SCRIPT_NAME CANOPY_FQDN UNIVOCITY_SERVICE_URL; do
             if [ -z "$(trim_ws "${!key:-}")" ]; then
               echo "::error::${key} is required in GitHub Environment ${ENV}."
               exit 1

@@ -186,6 +186,21 @@ function setDurableObjectScript(envBlock, bindingName, scriptName) {
   );
 }
 
+function setQueueName(envBlock, bindingName, queueName) {
+  if (!queueName) return envBlock;
+  const re = new RegExp(
+    `("binding"\\s*:\\s*"${bindingName}"[\\s\\S]*?"queue"\\s*:\\s*)"[^"]*"`,
+  );
+  return envBlock.replace(re, `$1"${queueName}"`);
+}
+
+function x402SettlementScriptFromCanopyId(canopyId) {
+  if (!canopyId) return "";
+  const match = canopyId.match(/^canopy-([^-]+)/);
+  if (!match) return "";
+  return `x402-settlement-${match[1]}`;
+}
+
 let config = readFileSync(inputPath, "utf8");
 const envs = blockForProperty(config, "env", "{", "}");
 if (!envs) fail("Could not find top-level env block in wrangler config.");
@@ -204,6 +219,7 @@ const vars = blockForProperty(envBlock, "vars", "{", "}");
 if (!vars) fail(`Could not find env.${envName}.vars block in wrangler config.`);
 
 let varsBlock = vars.text;
+varsBlock = setStringProperty(varsBlock, "CANOPY_ID", process.env.CANOPY_ID);
 varsBlock = setStringProperty(
   varsBlock,
   "FOREST_PROJECT_ID",
@@ -252,6 +268,18 @@ envBlock = setDurableObjectScript(
   "SEQUENCING_QUEUE",
   process.env.SEQUENCING_QUEUE_SCRIPT_NAME,
 );
+if (process.env.CANOPY_ID) {
+  envBlock = setQueueName(
+    envBlock,
+    "X402_SETTLEMENT_QUEUE",
+    `${process.env.CANOPY_ID}-x402-settlement`,
+  );
+  envBlock = setDurableObjectScript(
+    envBlock,
+    "X402_SETTLEMENT_DO",
+    x402SettlementScriptFromCanopyId(process.env.CANOPY_ID),
+  );
+}
 
 const canopyFqdn = hostnameFromFqdnOrUrl(process.env.CANOPY_FQDN);
 if (!canopyFqdn) {
