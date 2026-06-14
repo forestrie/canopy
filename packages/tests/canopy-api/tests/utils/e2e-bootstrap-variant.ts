@@ -193,7 +193,9 @@ export const E2E_BOOTSTRAP_VARIANTS: readonly E2eBootstrapVariant[] = [
   buildKs256Variant(),
 ];
 
-export function getBootstrapVariant(id: BootstrapVariantId): E2eBootstrapVariant {
+export function getBootstrapVariant(
+  id: BootstrapVariantId,
+): E2eBootstrapVariant {
   const v = E2E_BOOTSTRAP_VARIANTS.find((x) => x.id === id);
   if (!v) throw new Error(`unknown bootstrap variant: ${id}`);
   return v;

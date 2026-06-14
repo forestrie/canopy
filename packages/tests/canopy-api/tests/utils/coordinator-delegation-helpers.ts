@@ -252,7 +252,9 @@ export async function generateEs256RootKeyPair(): Promise<CryptoKeyPair> {
 }
 
 /** Import ES256 bootstrap PEM as a WebCrypto key pair for delegation signing. */
-export async function importEs256PemKeyPair(pem: string): Promise<CryptoKeyPair> {
+export async function importEs256PemKeyPair(
+  pem: string,
+): Promise<CryptoKeyPair> {
   const privKeyObj = createPrivateKey({ key: pem, format: "pem" });
   const pkcs8 = privKeyObj.export({ format: "der", type: "pkcs8" });
   const privateKey = await crypto.subtle.importKey(

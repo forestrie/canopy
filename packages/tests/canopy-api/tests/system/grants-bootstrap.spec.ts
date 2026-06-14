@@ -14,7 +14,10 @@ import {
   mintBootstrapGrant,
 } from "@e2e-utils/bootstrap-grant-flow";
 import { decodeEntryIdHex } from "@e2e-utils/entry-id-e2e";
-import { assertBootstrapMintE2eEnv, e2eReceiptBootstrapRootLogId } from "@e2e-utils/e2e-env-guards";
+import {
+  assertBootstrapMintE2eEnv,
+  e2eReceiptBootstrapRootLogId,
+} from "@e2e-utils/e2e-env-guards";
 import { describeForEachBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
 import type { E2eBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
 import {
@@ -52,7 +55,10 @@ describeForEachBootstrapVariant(
         boot.key,
       );
 
-      const parsed = await getForestGenesisParsed(unauthorizedRequest, rootLogId);
+      const parsed = await getForestGenesisParsed(
+        unauthorizedRequest,
+        rootLogId,
+      );
       expect(parsed.chainId).toBe(variant.chainId);
       expect(bytesEqual(parsed.univocityAddr, variant.contractAddrBytes)).toBe(
         true,
@@ -76,7 +82,9 @@ describeForEachBootstrapVariant(
         logId,
         variant,
       );
-      expect(() => assertRootGrantTransparentStatement(grantBase64)).not.toThrow();
+      expect(() =>
+        assertRootGrantTransparentStatement(grantBase64),
+      ).not.toThrow();
     });
 
     test("After bootstrap mint, POST /register/{bootstrap}/grants returns 303 See Other (enqueued)", async ({
@@ -145,7 +153,9 @@ describeForEachBootstrapVariant(
           ladderMs: sequencingBackoff,
         });
 
-      expect(receiptRes.status, "resolve-receipt returns CBOR receipt").toBe(200);
+      expect(receiptRes.status, "resolve-receipt returns CBOR receipt").toBe(
+        200,
+      );
       const ct = receiptRes.headers["content-type"] ?? "";
       expect(ct, "SCITT receipt content type").toMatch(
         /application\/scitt-receipt\+cbor/i,
@@ -182,7 +192,10 @@ describeForEachBootstrapVariant(
           (await responseTextPreview(secondRegisterRes)),
       ).toBe(303);
       const locSecond = secondRegisterRes.headers().location;
-      expect(locSecond, "second register-grant 303 must include Location").toBeTruthy();
+      expect(
+        locSecond,
+        "second register-grant 303 must include Location",
+      ).toBeTruthy();
       let absoluteSecond = locSecond!;
       if (!absoluteSecond.startsWith("http")) {
         absoluteSecond = `${baseURL}${absoluteSecond.startsWith("/") ? "" : "/"}${absoluteSecond}`;
@@ -247,7 +260,10 @@ describeForEachBootstrapVariant(
         `register-grant returned ${status}, neither 303 nor warm receipt-required. ${hint}`,
       ).toBe(true);
 
-      const parsed = await getForestGenesisParsed(unauthorizedRequest, rootLogId);
+      const parsed = await getForestGenesisParsed(
+        unauthorizedRequest,
+        rootLogId,
+      );
       const expectedAlg =
         variant.id === "es256" ? COSE_ALG_ES256 : COSE_ALG_KS256;
       expect(parsed.bootstrapAlg, hint).toBe(expectedAlg);

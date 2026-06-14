@@ -19,12 +19,7 @@ export async function mintRootGrantForVariant(
   curatorToken: string,
 ): Promise<MintRootGrantResult> {
   const boot = await variant.fetchBootstrapKey();
-  await variant.ensureGenesis(
-    request,
-    rootLogId,
-    curatorToken,
-    boot.key,
-  );
+  await variant.ensureGenesis(request, rootLogId, curatorToken, boot.key);
   const { grantBase64 } = variant.mintRootGrant(rootLogId, boot.key);
   return {
     grantBase64,

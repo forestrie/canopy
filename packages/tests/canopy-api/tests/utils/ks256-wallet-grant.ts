@@ -76,7 +76,9 @@ function hexToBytes(hex: string): Uint8Array {
 }
 
 /** 20-byte Ethereum address from a secp256k1 private key. */
-export function ks256AddressFromPrivateKeyHex(privateKeyHex: string): Uint8Array {
+export function ks256AddressFromPrivateKeyHex(
+  privateKeyHex: string,
+): Uint8Array {
   const sk = parsePrivateKeyHex(privateKeyHex);
   const pub = secp256k1.getPublicKey(sk, false);
   const hash = keccak_256(pub.slice(1));
