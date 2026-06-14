@@ -12,7 +12,8 @@
 Every **`task test:e2e:preflight`** (default in **`task test:e2e`**) deploys fresh
 **ImutableUnivocity** contracts for **ES256** and **KS256** on Base Sepolia via
 **EOA** `deploy propose` + `deploy execute`, with **ephemeral bootstrap keys**
-generated per run. Playwright chain-binding specs read **`.work/e2e-univocity.env`**.
+generated per run. Playwright **system bootstrap specs** read **`.work/e2e-univocity.env`**
+and run each scenario for **ES256** and **KS256** variants.
 
 No static Doppler contract addresses, no Safe publish path, no
 `BOOTSTRAP_PEM_ES256`.
@@ -26,7 +27,7 @@ task test:e2e:preflight SKIP_UNIVOCITY_PROVISION=true
 # or E2E_SKIP_UNIVOCITY_PROVISION=true in Doppler/shell
 ```
 
-Chain-binding specs skip; integration/custodian/coordinator still run.
+Bootstrap **system** specs skip when env is unset; integration/custodian/coordinator still run.
 
 ## Preflight sequence
 
@@ -62,7 +63,7 @@ Requires **univocity-tools v0.5.1+** (`--bootstrap-es256-generate`,
 contract addresses, genesis log IDs, base64 ES256 PEM, and KS256 bootstrap signer
 to **`api-e2e-full`**.
 
-Fork PRs skip provision; chain-binding specs skip when env is unset.
+Fork PRs skip provision; bootstrap system specs skip when env is unset.
 
 ## Local dev
 

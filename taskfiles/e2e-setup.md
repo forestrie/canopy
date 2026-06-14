@@ -21,7 +21,7 @@ From the **repository root** (recommended — inject secrets via Doppler):
 # Preflight: tooling + env validation (+ ephemeral Univocity provision by default)
 doppler run --project canopy --config dev -- task test:e2e:preflight
 
-# Opt out of on-chain Univocity deploy (chain-binding specs skip)
+# Opt out of on-chain Univocity deploy (bootstrap system specs skip per variant)
 doppler run --project canopy --config dev -- task test:e2e:preflight SKIP_UNIVOCITY_PROVISION=true
 
 # Full dev suite (runs preflight first)
@@ -52,21 +52,21 @@ Required keys in the Doppler config include at least:
 
 - **`CANOPY_BASE_URL`** _or_ **`CANOPY_FQDN`** — worker origin. Playwright resolves `CANOPY_BASE_URL` first; if unset, it builds `https://…` from `CANOPY_FQDN` (same logic as `.github/workflows/api-e2e-playwright.yml`). Doppler `dev` may only define **`CANOPY_FQDN`**.
 - **`SCRAPI_API_KEY`** — bearer token for authorized fixtures (when used)
-- **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**, **`CURATOR_ADMIN_TOKEN`** — for **system** bootstrap mint (runner-side `POST /api/keys` + genesis)
+- **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**, **`CURATOR_ADMIN_TOKEN`** — for **system** specs (child custody keys + genesis)
 - **`DELEGATION_COORDINATOR_URL`**, **`COORDINATOR_APP_TOKEN`** — optional; when both set, **`task test:e2e`** includes the **coordinator** project
 
-**Univocity genesis chain-binding** (`tests/system/univocity-genesis-*-chain-binding.spec.ts`):
+**Univocity ephemeral provision** (bootstrap **system** specs):
 
 Provisioned automatically in preflight (see [plan-0032](../docs/plans/plan-0032-univocity-imutable-e2e-provision.md)). Playwright reads **`.work/e2e-univocity.env`**:
 
 - **`E2E_UNIVOCITY_ADDRESS_*_BOOTSTRAP`**, **`E2E_UNIVOCITY_GENESIS_LOG_ID_*`**
-- **`E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE`** — ES256 register-grant signing
-- **`E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER`** — expected KS256 bootstrap address
+- **`E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE`** — ES256 root grant signing
+- **`E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_FILE`** — KS256 root grant signing
 - **`E2E_UNIVOCITY_RPC_URL`** — optional; default `https://sepolia.base.org`
 - **`E2E_UNIVOCITY_CHAIN_ID`** — optional; default `84532`
 
 **Opt out:** `SKIP_UNIVOCITY_PROVISION=true` or **`E2E_SKIP_UNIVOCITY_PROVISION=true`** —
-chain-binding specs skip; other projects still run.
+bootstrap system specs skip; other projects still run.
 
 **Manual provision:** `doppler run -- task e2e-univocity:provision`
 
@@ -74,15 +74,15 @@ Requires **`gh`** auth, Foundry **`cast`**, Doppler **`DEPLOY_KEY`**, **`E2E_UNI
 
 **CI:** **`provision-univocity`** runs on every same-repo PR (no feature flag).
 
-Run KS256 chain-binding only:
+Run ES256 bootstrap specs only:
 
 ```bash
 doppler run --project canopy --config dev -- \
   pnpm --filter @canopy/api-e2e exec playwright test \
-  tests/system/univocity-genesis-ks256-chain-binding.spec.ts
+  tests/system/grants-bootstrap.spec.ts --grep "ES256"
 ```
 
-The **worker** must have **`CUSTODIAN_APP_TOKEN`** (Wrangler secret) for SCITT receipt verification on register-grant / register-statement; the **runner** uses the same token for per-root bootstrap mint. Misconfiguration surfaces as **failures**, not skipped tests.
+The **worker** must have **`CUSTODIAN_APP_TOKEN`** (Wrangler secret) for SCITT receipt verification; the **runner** uses Custodian for **child** custody keys. Misconfiguration surfaces as **failures**, not skipped tests.
 
 **Do not** put `doppler run` in `@canopy/api-e2e` `package.json` scripts — CI runs Playwright without the Doppler CLI.
 

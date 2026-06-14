@@ -1,7 +1,8 @@
 import type { APIRequestContext } from "@playwright/test";
 import { encode as encodeCbor } from "cbor-x";
-import { custodianCustodySignEnv } from "./custodian-custody-grant";
-import { mintTransparentBootstrapGrantBase64 } from "./mint-bootstrap-grant-e2e.js";
+import { assertBootstrapMintE2eEnv } from "./e2e-env-guards";
+import { getBootstrapVariant } from "./e2e-bootstrap-variant.js";
+import { mintBootstrapGrant } from "./bootstrap-grant-flow.js";
 import {
   decodeProblemDetails,
   type ProblemDetails,
@@ -35,27 +36,19 @@ function toAbsoluteUrl(baseURL: string, location: string): string {
 /**
  * Mint bootstrap grant and POST register-grant. Only enforces HTTP semantics
  * (303 register with Location)—no transparent-statement shape checks.
- * Caller must supply curator + custodian env (see `mintTransparentBootstrapGrantBase64`).
  */
 export async function bootstrapMintAndRegisterEnqueued(
   unauthorizedRequest: APIRequestContext,
   opts: { logId: string; baseURL: string; rootLogIdForMint?: string },
 ): Promise<BootstrapMintAndRegisterResult> {
+  assertBootstrapMintE2eEnv();
   const rootLogId = opts.rootLogIdForMint ?? opts.logId;
-  const curator = process.env.CURATOR_ADMIN_TOKEN?.trim();
-  const custody = custodianCustodySignEnv();
-  if (!curator || !custody) {
-    throw new Error(
-      "CURATOR_ADMIN_TOKEN and CUSTODIAN_URL + CUSTODIAN_APP_TOKEN required",
-    );
-  }
-  const { grantBase64 } = await mintTransparentBootstrapGrantBase64({
-    request: unauthorizedRequest,
+  const variant = getBootstrapVariant("es256");
+  const { grantBase64 } = await mintBootstrapGrant(
+    unauthorizedRequest,
     rootLogId,
-    curatorToken: curator,
-    custodianUrl: custody.baseUrl,
-    custodianAppToken: custody.token,
-  });
+    variant,
+  );
 
   const registerRes = await unauthorizedRequest.post(
     `/register/${rootLogId}/grants`,
@@ -82,11 +75,6 @@ export async function bootstrapMintAndRegisterEnqueued(
 /**
  * POST /register/{bootstrap}/grants with Forestrie-Grant; expects 303 + registration
  * status Location.
- *
- * For a child-**data** grant under an intermediate authority log A, pass
- * `parentGrantBase64` (A's completed creation grant). It is decoded to bytes and sent in
- * the CBOR request body as `{ parentGrant: <bytes> }` (grants.md §11) so the worker can
- * verify A's seal from the receipt, with no dependence on SequencingQueue state.
  */
 export async function postRegisterGrantExpect303(
   unauthorizedRequest: APIRequestContext,

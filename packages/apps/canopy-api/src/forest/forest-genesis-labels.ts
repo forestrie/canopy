@@ -32,11 +32,3 @@ export const FOREST_GENESIS_SCHEMA_V1 = 1;
 
 /** Stored genesis schema version for alg/key POST writes (KS256 and ES256). */
 export const FOREST_GENESIS_SCHEMA_V2 = 2;
-
-/** Dummy 20-byte contract address for tests and local e2e genesis POST. */
-export const FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR = new Uint8Array(20).fill(
-  0xab,
-);
-
-/** Dummy chain id for tests and local e2e genesis POST. */
-export const FOREST_GENESIS_E2E_DUMMY_CHAIN_ID = "84532";

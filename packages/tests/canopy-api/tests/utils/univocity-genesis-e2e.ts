@@ -228,6 +228,13 @@ export async function ks256ChainBindingSkipReason(
 ): Promise<string | null> {
   const provisionSkip = univocityProvisionSkipReason();
   if (provisionSkip) return provisionSkip;
+  if (!process.env.E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_FILE?.trim()) {
+    return (
+      "KS256 bootstrap key file missing — run task test:e2e:preflight " +
+      "(E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_FILE); re-run verify-pair if " +
+      "ES256/KS256 addresses are stale"
+    );
+  }
   let addr: string;
   try {
     addr = (contractAddr ?? ks256BootstrapContractAddr()).trim();

@@ -261,6 +261,7 @@ jobs:
       ks256_log_id: ${{ steps.map.outputs.ks256_log_id }}
       es256_bootstrap_pem_b64: ${{ steps.es256.outputs.es256_bootstrap_pem_b64 }}
       ks256_bootstrap_signer: ${{ steps.ks256.outputs.ks256_bootstrap_signer }}
+      ks256_bootstrap_key_b64: ${{ steps.ks256.outputs.ks256_bootstrap_key_b64 }}
     env:
       DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
       RPC_URL: ${{ vars.E2E_UNIVOCITY_RPC_URL }}
@@ -343,8 +344,33 @@ jobs:
           deployer deploy execute "$PROPOSAL" \
             --source-root . \
             --deploy-key "$DEPLOY_KEY" \
-            --rpc-url "$RPC_URL"
-          echo "address=$(jq -r '.imutableUnivocity' "$PROPOSAL")" >> "$GITHUB_OUTPUT"
+            --rpc-url "$RPC_URL" 2>&1 | tee "${PROPOSAL}.execute.log"
+          ADDR=$(jq -r '.imutableUnivocity' "$PROPOSAL")
+          DEPLOYED=$(
+            grep -oE 'ImutableUnivocity deployed at: 0x[a-fA-F0-9]{40}' "${PROPOSAL}.execute.log" \
+              | tail -1 \
+              | awk '{print $NF}'
+          )
+          if [ -n "$DEPLOYED" ]; then
+            DEPLOYED_LC=$(echo "$DEPLOYED" | tr 'A-Z' 'a-z')
+            ADDR_LC=$(echo "$ADDR" | tr 'A-Z' 'a-z')
+            if [ "$DEPLOYED_LC" != "$ADDR_LC" ]; then
+              jq --arg addr "$DEPLOYED" '.imutableUnivocity = $addr' "$PROPOSAL" > "${PROPOSAL}.tmp"
+              mv "${PROPOSAL}.tmp" "$PROPOSAL"
+              ADDR="$DEPLOYED"
+            fi
+          fi
+          cast code "$ADDR" --rpc-url "$RPC_URL" | grep -qv '^0x$'
+          ON_CHAIN_ALG=$(
+            cast call "$ADDR" "bootstrapConfig()(int64,bytes)" --rpc-url "$RPC_URL" \
+              | head -1 \
+              | awk '{print $1}'
+          )
+          if [ "$ON_CHAIN_ALG" != "-7" ]; then
+            echo "::error::es256 bootstrap alg mismatch at ${ADDR}: ${ON_CHAIN_ALG}"
+            exit 1
+          fi
+          echo "address=${ADDR}" >> "$GITHUB_OUTPUT"
           echo "es256_bootstrap_pem_b64=$(base64 -w0 "$PEM_PATH")" >> "$GITHUB_OUTPUT"
 
       - name: Deploy ImutableUnivocity (ks256)
@@ -365,16 +391,46 @@ jobs:
           deployer deploy execute "$PROPOSAL" \
             --source-root . \
             --deploy-key "$DEPLOY_KEY" \
-            --rpc-url "$RPC_URL"
-          echo "address=$(jq -r '.imutableUnivocity' "$PROPOSAL")" >> "$GITHUB_OUTPUT"
+            --rpc-url "$RPC_URL" 2>&1 | tee "${PROPOSAL}.execute.log"
+          ADDR=$(jq -r '.imutableUnivocity' "$PROPOSAL")
+          DEPLOYED=$(
+            grep -oE 'ImutableUnivocity deployed at: 0x[a-fA-F0-9]{40}' "${PROPOSAL}.execute.log" \
+              | tail -1 \
+              | awk '{print $NF}'
+          )
+          if [ -n "$DEPLOYED" ]; then
+            DEPLOYED_LC=$(echo "$DEPLOYED" | tr 'A-Z' 'a-z')
+            ADDR_LC=$(echo "$ADDR" | tr 'A-Z' 'a-z')
+            if [ "$DEPLOYED_LC" != "$ADDR_LC" ]; then
+              jq --arg addr "$DEPLOYED" '.imutableUnivocity = $addr' "$PROPOSAL" > "${PROPOSAL}.tmp"
+              mv "${PROPOSAL}.tmp" "$PROPOSAL"
+              ADDR="$DEPLOYED"
+            fi
+          fi
+          cast code "$ADDR" --rpc-url "$RPC_URL" | grep -qv '^0x$'
+          ON_CHAIN_ALG=$(
+            cast call "$ADDR" "bootstrapConfig()(int64,bytes)" --rpc-url "$RPC_URL" \
+              | head -1 \
+              | awk '{print $1}'
+          )
+          if [ "$ON_CHAIN_ALG" != "-65799" ]; then
+            echo "::error::ks256 bootstrap alg mismatch at ${ADDR}: ${ON_CHAIN_ALG}"
+            exit 1
+          fi
+          echo "address=${ADDR}" >> "$GITHUB_OUTPUT"
           KS256_SIGNER=$(cast wallet address --private-key "$(tr -d '\n' < "$KEY_PATH")")
           echo "ks256_bootstrap_signer=${KS256_SIGNER}" >> "$GITHUB_OUTPUT"
+          echo "ks256_bootstrap_key_b64=$(base64 -w0 "$KEY_PATH")" >> "$GITHUB_OUTPUT"
 
       - id: map
         run: |
           set -euo pipefail
           es256='${{ steps.es256.outputs.address }}'
           ks256='${{ steps.ks256.outputs.address }}'
+          if [ "$(echo "$es256" | tr 'A-Z' 'a-z')" = "$(echo "$ks256" | tr 'A-Z' 'a-z')" ]; then
+            echo "::error::es256 and ks256 must deploy to different addresses (both ${es256})"
+            exit 1
+          fi
           log_id() {
             local addr="$1"
             local h
@@ -413,3 +469,4 @@ jobs:
       e2e_univocity_genesis_log_id_ks256: ${{ needs.provision-univocity.outputs.ks256_log_id || '' }}
       e2e_univocity_es256_bootstrap_pem_b64: ${{ needs.provision-univocity.outputs.es256_bootstrap_pem_b64 || '' }}
       e2e_univocity_ks256_bootstrap_signer: ${{ needs.provision-univocity.outputs.ks256_bootstrap_signer || '' }}
+      e2e_univocity_ks256_bootstrap_key_b64: ${{ needs.provision-univocity.outputs.ks256_bootstrap_key_b64 || '' }}

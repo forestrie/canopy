@@ -1,7 +1,5 @@
 import { COSE_ALG_ES256 } from "../../src/cose/cose-key.js";
 import {
-  FOREST_GENESIS_E2E_DUMMY_CHAIN_ID,
-  FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR,
   FOREST_GENESIS_LABEL_BOOTSTRAP_KEY,
   FOREST_GENESIS_LABEL_CHAIN_ID,
   FOREST_GENESIS_LABEL_GENESIS_ALG,
@@ -10,10 +8,9 @@ import {
   FOREST_GENESIS_SCHEMA_V2,
 } from "../../src/forest/forest-genesis-labels.js";
 
-export {
-  FOREST_GENESIS_E2E_DUMMY_CHAIN_ID,
-  FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR,
-};
+/** Inline unit-test chain binding (not a deployed contract). */
+const TEST_GENESIS_UNIVOCITY_ADDR = new Uint8Array(20).fill(0x42);
+const TEST_GENESIS_CHAIN_ID = "84532";
 
 /** Valid v2 ES256 genesis POST body for pool / integration tests. */
 export function validGenesisV2Es256CborMap(opts?: {
@@ -28,11 +25,11 @@ export function validGenesisV2Es256CborMap(opts?: {
     [FOREST_GENESIS_LABEL_BOOTSTRAP_KEY, key],
     [
       FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
-      opts?.univocityAddr ?? FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR,
+      opts?.univocityAddr ?? TEST_GENESIS_UNIVOCITY_ADDR,
     ],
     [
       FOREST_GENESIS_LABEL_CHAIN_ID,
-      opts?.chainId ?? FOREST_GENESIS_E2E_DUMMY_CHAIN_ID,
+      opts?.chainId ?? TEST_GENESIS_CHAIN_ID,
     ],
   ]);
 }

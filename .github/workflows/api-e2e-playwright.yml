@@ -46,6 +46,11 @@ on:
         required: false
         type: string
         default: ""
+      e2e_univocity_ks256_bootstrap_key_b64:
+        description: "Base64 KS256 bootstrap private key from ephemeral provision"
+        required: false
+        type: string
+        default: ""
 
 jobs:
   api-e2e:
@@ -92,6 +97,7 @@ jobs:
           E2E_UNIVOCITY_GENESIS_LOG_ID_ES256: ${{ inputs.e2e_univocity_genesis_log_id_es256 }}
           E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64: ${{ inputs.e2e_univocity_es256_bootstrap_pem_b64 }}
           E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER: ${{ inputs.e2e_univocity_ks256_bootstrap_signer }}
+          E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_B64: ${{ inputs.e2e_univocity_ks256_bootstrap_key_b64 }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
@@ -124,6 +130,12 @@ jobs:
           KS256_SIGNER="$(trim_ws "${E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER:-}")"
           if [ -n "$KS256_SIGNER" ]; then
             export E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER="$KS256_SIGNER"
+          fi
+          KS256_KEY_B64="$(trim_ws "${E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_B64:-}")"
+          if [ -n "$KS256_KEY_B64" ]; then
+            KS256_KEY_FILE="${RUNNER_TEMP}/e2e-ks256-bootstrap.key"
+            echo "$KS256_KEY_B64" | base64 -d > "$KS256_KEY_FILE"
+            export E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_FILE="$KS256_KEY_FILE"
           fi
           pnpm --filter @canopy/api-e2e exec playwright install chromium
           if [ "${{ inputs.playwright_project }}" = "prod" ]; then

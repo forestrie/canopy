@@ -7,9 +7,9 @@ import {
   completeBootstrapGrantWithReceipt,
   mintBootstrapGrant,
 } from "@e2e-utils/bootstrap-grant-flow";
-import { custodianCustodySignEnv } from "@e2e-utils/custodian-custody-grant";
-import { postCustodianSignRawPayloadBytes } from "@e2e-utils/custodian-sign-payload";
 import { e2eReceiptBootstrapRootLogId } from "@e2e-utils/e2e-env-guards";
+import { describeForEachBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
+import type { E2eBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
 import {
   assert303ContentHashLocation,
   postLogEntriesCoseSign1,
@@ -33,135 +33,134 @@ function e2eFirstStatementPayload(): Uint8Array {
   return new Uint8Array(u8);
 }
 
-/**
- * First transparency **statement** on a freshly bootstrapped root log: completed
- * Forestrie-Grant (receipt + idtimestamp) plus COSE Sign1 from the **same** per-root
- * custody key used to mint the bootstrap grant.
- *
- * Needs the same sequencing + MMRS setup as `grants-bootstrap` poll test. The happy path
- * needs **Custodian** on the runner (`CUSTODIAN_URL`, `CUSTODIAN_APP_TOKEN`).
- * The wrong-signer test uses an ephemeral P-256 key locally (no Custodian sign call).
- *
- * One mint + completed grant is shared across both tests; `logId` is a fresh UUID
- * for the whole describe (via `e2eReceiptBootstrapRootLogId()` once in `beforeAll`).
- */
-test.describe("Bootstrap log e2e — first signed entry", () => {
-  test.describe.configure({ mode: "serial" });
+describeForEachBootstrapVariant(
+  "Bootstrap log e2e — first signed entry",
+  (variant: E2eBootstrapVariant) => {
+    test.describe.configure({ mode: "serial" });
 
-  const shared = {
-    logId: "",
-    baseURL: "",
-    completedGrantB64: "",
-    rootCustodySignKeyId: "",
-  };
+    const shared = {
+      logId: "",
+      baseURL: "",
+      completedGrantB64: "",
+    };
 
-  test.beforeAll(async ({ unauthorizedRequest }, testInfo) => {
-    const logId = e2eReceiptBootstrapRootLogId();
-    const baseURL = testInfo.project.use.baseURL ?? "";
+    test.beforeAll(async ({ unauthorizedRequest }, testInfo) => {
+      test.skip(
+        !variant.supportsRootStatementRegistration,
+        "register-statement requires ES256 grantData (64-byte x‖y)",
+      );
 
-    const { grantBase64: mintGrantB64, rootCustodySignKeyId } =
-      await mintBootstrapGrant(unauthorizedRequest, logId);
+      const logId = e2eReceiptBootstrapRootLogId();
+      const baseURL = testInfo.project.use.baseURL ?? "";
 
-    const { grantBase64, entryIdHex, receiptRes } =
-      await completeBootstrapGrantWithReceipt({
+      const { grantBase64: mintGrantB64 } = await mintBootstrapGrant(
         unauthorizedRequest,
         logId,
-        baseURL,
-        grantBase64: mintGrantB64,
-        ladderMs: sequencingBackoff,
+        variant,
+      );
+
+      const { grantBase64, entryIdHex, receiptRes } =
+        await completeBootstrapGrantWithReceipt({
+          unauthorizedRequest,
+          logId,
+          baseURL,
+          grantBase64: mintGrantB64,
+          variant,
+          ladderMs: sequencingBackoff,
+        });
+
+      expect(receiptRes.status).toBe(200);
+
+      shared.logId = logId;
+      shared.baseURL = baseURL;
+      shared.completedGrantB64 = buildCompletedGrantBase64(
+        grantBase64,
+        receiptRes.body,
+        entryIdHex,
+      );
+    });
+
+    test("POST /register/entries returns 303 with content-hash Location", async ({
+      unauthorizedRequest,
+    }, testInfo) => {
+      test.skip(
+        !variant.supportsRootStatementRegistration,
+        "register-statement requires ES256 grantData",
+      );
+      expect(
+        shared.logId,
+        "beforeAll must complete bootstrap + receipt",
+      ).toBeTruthy();
+
+      const statementPayload = e2eFirstStatementPayload();
+      const sign1Bytes = await variant.signRootStatement(statementPayload);
+      const expectedHash = await sha256Hex(sign1Bytes);
+
+      const entriesRes = await postLogEntriesCoseSign1(unauthorizedRequest, {
+        bootstrapLogId: shared.logId,
+        logId: shared.logId,
+        completedGrantB64: shared.completedGrantB64,
+        sign1Bytes,
       });
 
-    expect(receiptRes.status).toBe(200);
+      const problem = await reportProblemDetails(entriesRes, testInfo);
+      const hint =
+        formatProblemDetailsMessage(problem) ??
+        (await responseTextPreview(entriesRes));
+      expect(entriesRes.status(), hint).toBe(303);
 
-    shared.logId = logId;
-    shared.baseURL = baseURL;
-    shared.rootCustodySignKeyId = rootCustodySignKeyId;
-    shared.completedGrantB64 = buildCompletedGrantBase64(
-      grantBase64,
-      receiptRes.body,
-      entryIdHex,
-    );
-  });
-
-  test("POST /register/entries returns 303 with content-hash Location", async ({
-    unauthorizedRequest,
-  }, testInfo) => {
-    expect(
-      shared.logId,
-      "beforeAll must complete bootstrap + receipt",
-    ).toBeTruthy();
-    const custody = custodianCustodySignEnv()!;
-    const statementPayload = e2eFirstStatementPayload();
-    const sign1Bytes = await postCustodianSignRawPayloadBytes({
-      baseUrl: custody.baseUrl,
-      bearerToken: custody.token,
-      keyIdSegment: shared.rootCustodySignKeyId,
-      payloadBytes: statementPayload,
+      assert303ContentHashLocation({
+        bootstrapLogId: shared.logId,
+        logId: shared.logId,
+        baseURL: shared.baseURL,
+        location: entriesRes.headers().location,
+        contentHashHexLower: expectedHash,
+      });
     });
 
-    const expectedHash = await sha256Hex(sign1Bytes);
-    const entriesRes = await postLogEntriesCoseSign1(unauthorizedRequest, {
-      bootstrapLogId: shared.logId,
-      logId: shared.logId,
-      completedGrantB64: shared.completedGrantB64,
-      sign1Bytes,
+    test("POST /register/entries rejects valid Sign1 when kid is not bootstrap signer", async ({
+      unauthorizedRequest,
+    }, testInfo) => {
+      test.skip(
+        !variant.supportsRootStatementRegistration,
+        "register-statement requires ES256 grantData",
+      );
+      expect(
+        shared.logId,
+        "beforeAll must complete bootstrap + receipt",
+      ).toBeTruthy();
+
+      const pair = (await crypto.subtle.generateKey(
+        { name: "ECDSA", namedCurve: "P-256" },
+        true,
+        ["sign", "verify"],
+      )) as CryptoKeyPair;
+      const rawSpki = new Uint8Array(
+        await crypto.subtle.exportKey("raw", pair.publicKey),
+      );
+      expect(rawSpki[0]).toBe(0x04);
+      const wrongKid = rawSpki.subarray(1, 33);
+
+      const sign1Bytes = await signCoseSign1Statement(
+        e2eFirstStatementPayload(),
+        wrongKid,
+        pair.privateKey,
+      );
+
+      const entriesRes = await postLogEntriesCoseSign1(unauthorizedRequest, {
+        bootstrapLogId: shared.logId,
+        logId: shared.logId,
+        completedGrantB64: shared.completedGrantB64,
+        sign1Bytes,
+      });
+
+      const problem = await reportProblemDetails(entriesRes, testInfo);
+      const hint =
+        formatProblemDetailsMessage(problem) ??
+        (await responseTextPreview(entriesRes));
+      expect(entriesRes.status(), hint).toBe(403);
+      expect(problem?.reason).toBe("signer_mismatch");
+      expect(problem?.detail).toContain("signer binding");
     });
-
-    const problem = await reportProblemDetails(entriesRes, testInfo);
-    const hint =
-      formatProblemDetailsMessage(problem) ??
-      (await responseTextPreview(entriesRes));
-    expect(entriesRes.status(), hint).toBe(303);
-
-    assert303ContentHashLocation({
-      bootstrapLogId: shared.logId,
-      logId: shared.logId,
-      baseURL: shared.baseURL,
-      location: entriesRes.headers().location,
-      contentHashHexLower: expectedHash,
-    });
-  });
-
-  test("POST /register/entries rejects valid Sign1 when kid is not bootstrap signer", async ({
-    unauthorizedRequest,
-  }, testInfo) => {
-    expect(
-      shared.logId,
-      "beforeAll must complete bootstrap + receipt",
-    ).toBeTruthy();
-
-    // Ephemeral P-256 key: kid = 32-byte x from uncompressed raw public key (04||x||y).
-    // Bootstrap grantData binds the root custody pubkey, so this must not match.
-    const pair = (await crypto.subtle.generateKey(
-      { name: "ECDSA", namedCurve: "P-256" },
-      true,
-      ["sign", "verify"],
-    )) as CryptoKeyPair;
-    const rawSpki = new Uint8Array(
-      await crypto.subtle.exportKey("raw", pair.publicKey),
-    );
-    expect(rawSpki[0]).toBe(0x04);
-    const wrongKid = rawSpki.subarray(1, 33);
-
-    const sign1Bytes = await signCoseSign1Statement(
-      e2eFirstStatementPayload(),
-      wrongKid,
-      pair.privateKey,
-    );
-
-    const entriesRes = await postLogEntriesCoseSign1(unauthorizedRequest, {
-      bootstrapLogId: shared.logId,
-      logId: shared.logId,
-      completedGrantB64: shared.completedGrantB64,
-      sign1Bytes,
-    });
-
-    const problem = await reportProblemDetails(entriesRes, testInfo);
-    const hint =
-      formatProblemDetailsMessage(problem) ??
-      (await responseTextPreview(entriesRes));
-    expect(entriesRes.status(), hint).toBe(403);
-    expect(problem?.reason).toBe("signer_mismatch");
-    expect(problem?.detail).toContain("signer binding");
-  });
-});
+  },
+);

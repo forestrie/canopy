@@ -2,8 +2,11 @@
  * Delegation issuance helpers for coordinator e2e (custodial trust root).
  */
 
+import { createPrivateKey, createPublicKey } from "node:crypto";
 import { decode, Encoder } from "cbor-x";
 import { encodeSigStructure } from "@canopy/encoding";
+import { keccak_256 } from "@noble/hashes/sha3";
+import { secp256k1 } from "@noble/curves/secp256k1";
 import { custodianApiV1BaseUrl } from "./custodian-api-env.js";
 import { custodianDecodeCbor } from "./custodian-api-cbor.js";
 import { normalizeForestrieHexId32 } from "./forestrie-hex-id.js";
@@ -246,6 +249,176 @@ export async function generateEs256RootKeyPair(): Promise<CryptoKeyPair> {
     true,
     ["sign", "verify"],
   );
+}
+
+/** Import ES256 bootstrap PEM as a WebCrypto key pair for delegation signing. */
+export async function importEs256PemKeyPair(pem: string): Promise<CryptoKeyPair> {
+  const privKeyObj = createPrivateKey({ key: pem, format: "pem" });
+  const pkcs8 = privKeyObj.export({ format: "der", type: "pkcs8" });
+  const privateKey = await crypto.subtle.importKey(
+    "pkcs8",
+    new Uint8Array(pkcs8).buffer as ArrayBuffer,
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["sign"],
+  );
+  const pubDer = createPublicKey(privKeyObj).export({
+    format: "der",
+    type: "spki",
+  });
+  const publicKey = await crypto.subtle.importKey(
+    "spki",
+    new Uint8Array(pubDer).buffer as ArrayBuffer,
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["verify"],
+  );
+  return { privateKey, publicKey };
+}
+
+export async function uploadBootstrapKs256PublicRoot(opts: {
+  coordinatorUrl: string;
+  token: string;
+  logId: string;
+  address: Uint8Array;
+}): Promise<Response> {
+  if (opts.address.length !== 20) {
+    throw new Error("KS256 bootstrap address must be 20 bytes");
+  }
+  return fetch(`${opts.coordinatorUrl}/api/logs/${opts.logId}/public-root`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${opts.token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      alg: -65799,
+      key: bytesToBase64(opts.address),
+    }),
+  });
+}
+
+const COSE_ALG_KS256 = -65799;
+const KS256_EOA_SIG_BYTES = 65;
+
+function parseKs256PrivateKeyHex(raw: string): Uint8Array {
+  const hex = raw.trim().replace(/^0x/, "");
+  if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+    throw new Error(
+      "KS256 bootstrap private key must be 32-byte hex (64 chars)",
+    );
+  }
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+}
+
+/** Build KS256 delegation material signed by contract bootstrap EOA key. */
+export async function buildKs256BootstrapDelegationMaterial(opts: {
+  rootSignerAddress: Uint8Array;
+  privateKeyHex: string;
+  logIdHex32: string;
+  mmrStart: number;
+  mmrEnd: number;
+  delegatedPublicKey: Uint8Array;
+  ttlSeconds?: number;
+}): Promise<ByokDelegationMaterial> {
+  if (opts.rootSignerAddress.length !== 20) {
+    throw new Error("KS256 root signer address must be 20 bytes");
+  }
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const expiresAt = issuedAt + (opts.ttlSeconds ?? 3600);
+  const delegatedKey = decodeDelegatedCoseKey(opts.delegatedPublicKey);
+
+  const protectedBytes = cborBytes(
+    new Map<number, unknown>([
+      [1, COSE_ALG_KS256],
+      [3, "application/forestrie.delegation+cbor"],
+      [4, opts.rootSignerAddress],
+    ]),
+  );
+  const payloadBytes = cborBytes(
+    new Map<number, unknown>([
+      [1, normalizeForestrieHexId32(opts.logIdHex32)],
+      [3, opts.mmrStart],
+      [4, opts.mmrEnd],
+      [5, delegatedKey],
+      [6, new Map<string, unknown>()],
+      [7, 1],
+      [8, issuedAt],
+      [9, expiresAt],
+      [10, crypto.getRandomValues(new Uint8Array(16))],
+    ]),
+  );
+  const sigStructure = encodeSigStructure(
+    protectedBytes,
+    new Uint8Array(),
+    payloadBytes,
+  );
+  const hash = keccak_256(sigStructure);
+  const sk = parseKs256PrivateKeyHex(opts.privateKeyHex);
+  const sigObj = secp256k1.sign(hash, sk);
+  const compact = sigObj.toCompactRawBytes();
+  const recovery = sigObj.recovery ?? 0;
+  const signature = new Uint8Array(KS256_EOA_SIG_BYTES);
+  signature.set(compact, 0);
+  signature[64] = 27 + recovery;
+
+  const certificate = cborBytes([
+    protectedBytes,
+    new Map<string, unknown>(),
+    payloadBytes,
+    signature,
+  ]);
+  return { certificate, issuedAt, expiresAt };
+}
+
+export function verifyKs256BootstrapDelegationCertificate(opts: {
+  certificate: Uint8Array;
+  rootSignerAddress: Uint8Array;
+}): boolean {
+  if (opts.rootSignerAddress.length !== 20) {
+    throw new Error("KS256 root signer address must be 20 bytes");
+  }
+  const cert = decode(opts.certificate) as unknown[];
+  if (!Array.isArray(cert) || cert.length !== 4) {
+    throw new Error("delegation certificate must be COSE_Sign1 array");
+  }
+  const protectedBytes = bytesFromUnknown(cert[0], "protected");
+  const payloadBytes = bytesFromUnknown(cert[2], "payload");
+  const signature = bytesFromUnknown(cert[3], "signature");
+  if (signature.length !== KS256_EOA_SIG_BYTES) {
+    return false;
+  }
+  const sigStructure = encodeSigStructure(
+    protectedBytes,
+    new Uint8Array(),
+    payloadBytes,
+  );
+  const hash = keccak_256(sigStructure);
+  const r = signature.slice(0, 32);
+  const s = signature.slice(32, 64);
+  let v = signature[64]!;
+  if (v < 27) v += 27;
+  const recovery = v - 27;
+  if (recovery > 3) return false;
+  try {
+    const sig = secp256k1.Signature.fromCompact(
+      new Uint8Array([...r, ...s]),
+    ).addRecoveryBit(recovery);
+    const pub = sig.recoverPublicKey(hash);
+    const pubHash = keccak_256(pub.toRawBytes(false).slice(1));
+    const recovered = pubHash.slice(-20);
+    if (recovered.length !== opts.rootSignerAddress.length) return false;
+    for (let i = 0; i < recovered.length; i++) {
+      if (recovered[i] !== opts.rootSignerAddress[i]) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function buildByokDelegationMaterial(opts: {

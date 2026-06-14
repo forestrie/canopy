@@ -1,16 +1,21 @@
 import type { APIRequestContext } from "@playwright/test";
 import { decode } from "cbor-x";
+import type { Grant } from "@e2e-canopy-api-src/grant/types.js";
 import { attachReceiptAndIdtimestampToTransparentStatement } from "@e2e-canopy-api-src/scrapi/attach-scitt-transparent-statement-receipt.js";
-import { assertBootstrapMintE2eEnv } from "./e2e-env-guards";
-import { custodianCustodySignEnv } from "./custodian-custody-grant";
-import { entryIdHexToIdtimestampBe8 } from "./entry-id-e2e";
-import { mintTransparentBootstrapGrantBase64 } from "./mint-bootstrap-grant-e2e.js";
 import {
-  completeGrantRegistrationThroughReceipt,
-  type CompleteGrantRegistrationThroughReceiptResult,
-} from "./register-grant-through-receipt";
-
-export { mintTransparentBootstrapGrantBase64 };
+  assertBootstrapMintE2eEnv,
+  assertBootstrapReceiptE2eEnv,
+} from "./e2e-env-guards";
+import { entryIdHexToIdtimestampBe8 } from "./entry-id-e2e";
+import type { E2eBootstrapVariant } from "./e2e-bootstrap-variant.js";
+import { mintRootGrantForVariant } from "./mint-root-grant-e2e.js";
+import {
+  pollBootstrapRegistrationThroughReceipt,
+  setupBootstrapCoordinatorDelegation,
+} from "./bootstrap-delegation-coordinator.js";
+import type { ByokPollStats } from "./byok-wallet-seal-helpers.js";
+import { postRegisterGrantExpect303 } from "./bootstrap-grant-setup";
+import { sequencingBackoff } from "./arithmetic-backoff-poll";
 
 /** Plan 0014 / `transparent-statement.ts`: full grant v0 CBOR in unprotected header. */
 const HEADER_FORESTRIE_GRANT_V0 = -65538;
@@ -65,6 +70,30 @@ export function assertCustodianProfileTransparentStatement(
   }
 }
 
+/** Assert root grant COSE Sign1 has 32-byte digest payload and grant v0 embedded. */
+export function assertRootGrantTransparentStatement(base64: string): void {
+  const normalized = base64.replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(normalized);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+
+  const sign1 = decode(bytes) as unknown;
+  if (!Array.isArray(sign1) || sign1.length !== 4) {
+    throw new Error("Expected untagged COSE Sign1 (CBOR array of 4 elements)");
+  }
+  const payload = sign1[2];
+  if (!(payload instanceof Uint8Array) || payload.length !== 32) {
+    throw new Error("Expected COSE payload to be 32-byte SHA-256 digest");
+  }
+  const unprotected = toHeaderMap(sign1[1]);
+  const embedded = unprotected.get(HEADER_FORESTRIE_GRANT_V0);
+  if (!(embedded instanceof Uint8Array) || embedded.length === 0) {
+    throw new Error(
+      `Expected unprotected header ${HEADER_FORESTRIE_GRANT_V0} (grant v0 CBOR bytes)`,
+    );
+  }
+}
+
 export function base64ToBytes(b64: string): Uint8Array {
   const normalized = b64.replace(/-/g, "+").replace(/_/g, "/");
   const raw = atob(normalized);
@@ -80,30 +109,31 @@ export function bytesToForestrieGrantBase64(bytes: Uint8Array): string {
 }
 
 /**
- * Bootstrap mint for e2e: per-root Custodian custody key + `POST /api/forest/{log-id}/genesis`
- * + ES256 sign (Plan 0019). **Throws** if `CURATOR_ADMIN_TOKEN` or custody env is missing.
- *
- * Thin wrapper around `mintTransparentBootstrapGrantBase64` with env from `process.env`
- * (same package as the Playwright specs — no separate test-runner layer).
+ * Root bootstrap mint: ephemeral Imutable chain binding + contract-bootstrap-signed
+ * root creation grant. Requires curator token and Univocity provision env.
  */
 export async function mintBootstrapGrant(
   unauthorizedRequest: APIRequestContext,
   rootLogId: string,
-  binding?: { univocityAddr?: Uint8Array; chainId?: string },
-): Promise<{ grantBase64: string; rootCustodySignKeyId: string }> {
+  variant: E2eBootstrapVariant,
+): Promise<{ grantBase64: string }> {
   assertBootstrapMintE2eEnv();
   const curator = process.env.CURATOR_ADMIN_TOKEN!.trim();
-  const custody = custodianCustodySignEnv()!;
-
-  return mintTransparentBootstrapGrantBase64({
-    request: unauthorizedRequest,
+  const { grantBase64 } = await mintRootGrantForVariant(
+    unauthorizedRequest,
     rootLogId,
-    curatorToken: curator,
-    custodianUrl: custody.baseUrl,
-    custodianAppToken: custody.token,
-    univocityAddr: binding?.univocityAddr,
-    chainId: binding?.chainId,
-  });
+    variant,
+    curator,
+  );
+  return { grantBase64 };
+}
+
+/** Sign a child (or other) grant with the owner root key for this variant. */
+export function signChildGrantUnderRoot(
+  variant: E2eBootstrapVariant,
+  grant: Grant,
+): string {
+  return variant.signOwnerGrant(grant);
 }
 
 export interface CompleteBootstrapGrantWithReceiptOptions {
@@ -111,29 +141,74 @@ export interface CompleteBootstrapGrantWithReceiptOptions {
   logId: string;
   baseURL: string;
   grantBase64: string;
+  variant: E2eBootstrapVariant;
   ladderMs?: number[];
   pollRegistrationMaxMs?: number;
   resolveReceiptMaxMs?: number;
 }
 
-export type CompleteBootstrapGrantWithReceiptResult =
-  CompleteGrantRegistrationThroughReceiptResult;
+export interface CompleteBootstrapGrantWithReceiptResult {
+  statusUrlAbsolute: string;
+  receiptUrlAbsolute: string;
+  entryIdHex: string;
+  grantBase64: string;
+  receiptRes: {
+    status: number;
+    headers: { [key: string]: string };
+    body: Uint8Array;
+  };
+}
 
 /**
- * POST register-grant, poll until receipt redirect, GET receipt until 200.
+ * POST register-grant, poll until receipt redirect (with coordinator delegation
+ * material loop), GET receipt until 200.
  */
 export async function completeBootstrapGrantWithReceipt(
   opts: CompleteBootstrapGrantWithReceiptOptions,
 ): Promise<CompleteBootstrapGrantWithReceiptResult> {
-  return completeGrantRegistrationThroughReceipt({
-    unauthorizedRequest: opts.unauthorizedRequest,
-    bootstrapLogId: opts.logId,
-    baseURL: opts.baseURL,
-    grantBase64: opts.grantBase64,
-    ladderMs: opts.ladderMs,
-    pollRegistrationMaxMs: opts.pollRegistrationMaxMs,
-    resolveReceiptMaxMs: opts.resolveReceiptMaxMs,
+  assertBootstrapReceiptE2eEnv();
+  const signingContext = await setupBootstrapCoordinatorDelegation({
+    request: opts.unauthorizedRequest,
+    logId: opts.logId,
+    variant: opts.variant,
   });
+  const signedMaterialKeys = new Set<string>();
+  const stats: ByokPollStats = {
+    pendingEntriesSeen: 0,
+    materialSigned: 0,
+  };
+
+  const { statusUrlAbsolute } = await postRegisterGrantExpect303(
+    opts.unauthorizedRequest,
+    {
+      bootstrapLogId: opts.logId,
+      baseURL: opts.baseURL,
+      grantBase64: opts.grantBase64,
+    },
+  );
+
+  const ladder = opts.ladderMs ?? sequencingBackoff;
+  const { receiptUrlAbsolute, entryIdHex, receiptRes } =
+    await pollBootstrapRegistrationThroughReceipt({
+      request: opts.unauthorizedRequest,
+      statusUrlAbsolute,
+      baseURL: opts.baseURL,
+      logId: opts.logId,
+      signingContext,
+      signedMaterialKeys,
+      stats,
+      ladderMs: ladder,
+      maxWaitMs: opts.pollRegistrationMaxMs,
+      resolveReceiptMaxMs: opts.resolveReceiptMaxMs,
+    });
+
+  return {
+    statusUrlAbsolute,
+    receiptUrlAbsolute,
+    entryIdHex,
+    grantBase64: opts.grantBase64,
+    receiptRes,
+  };
 }
 
 export function buildCompletedGrantBase64(

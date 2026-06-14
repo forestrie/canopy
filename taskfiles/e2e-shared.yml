@@ -172,15 +172,22 @@ tasks:
 
         task e2e-univocity:provision
 
-        MANIFEST_ES256=$(ls -t "{{.PROPOSAL_DIR}}"/manifest-es256-*.json 2>/dev/null | head -1)
-        MANIFEST_KS256=$(ls -t "{{.PROPOSAL_DIR}}"/manifest-ks256-*.json 2>/dev/null | head -1)
-        if [ -z "$MANIFEST_ES256" ] || [ -z "$MANIFEST_KS256" ]; then
-          echo "missing es256 or ks256 manifest under {{.PROPOSAL_DIR}}" >&2
+        MANIFEST_ES256="{{.PROPOSAL_DIR}}/provision-${RUN_ID}-es256.manifest"
+        MANIFEST_KS256="{{.PROPOSAL_DIR}}/provision-${RUN_ID}-ks256.manifest"
+        if [ ! -f "$MANIFEST_ES256" ] || [ ! -f "$MANIFEST_KS256" ]; then
+          echo "missing provision manifest pointers for RUN_ID=${RUN_ID}" >&2
+          echo "  expected: $MANIFEST_ES256" >&2
+          echo "  expected: $MANIFEST_KS256" >&2
           exit 1
         fi
+        MANIFEST_ES256=$(cat "$MANIFEST_ES256")
+        MANIFEST_KS256=$(cat "$MANIFEST_KS256")
 
         task e2e-univocity:verify MANIFEST="$MANIFEST_ES256"
         task e2e-univocity:verify MANIFEST="$MANIFEST_KS256"
+        task e2e-univocity:verify-pair \
+          MANIFEST_ES256="$MANIFEST_ES256" \
+          MANIFEST_KS256="$MANIFEST_KS256"
 
         task e2e-univocity:write-env-file \
           MANIFEST_ES256="$MANIFEST_ES256" \

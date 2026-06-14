@@ -91,16 +91,49 @@ tasks:
           --rpc-url "$RPC" \
           "${BOOTSTRAP_ARGS[@]}" \
           --out "$PROPOSAL"
+        EXEC_LOG=$(mktemp)
         "{{.DEPLOYER_BIN}}" deploy execute "$PROPOSAL" \
           --source-root "{{.ROOT_DIR}}" \
           --deploy-key "$DEPLOY_KEY" \
-          --rpc-url "$RPC"
+          --rpc-url "$RPC" 2>&1 | tee "$EXEC_LOG"
         CHAIN_ID=$(jq -r '.chainId' "$PROPOSAL")
         ADDR=$(jq -r '.imutableUnivocity' "$PROPOSAL")
+        DEPLOYED=$(
+          grep -oE 'ImutableUnivocity deployed at: 0x[a-fA-F0-9]{40}' "$EXEC_LOG" \
+            | tail -1 \
+            | awk '{print $NF}'
+        )
+        rm -f "$EXEC_LOG"
+        if [ -n "$DEPLOYED" ]; then
+          DEPLOYED_LC=$(echo "$DEPLOYED" | tr 'A-Z' 'a-z')
+          ADDR_LC=$(echo "$ADDR" | tr 'A-Z' 'a-z')
+          if [ "$DEPLOYED_LC" != "$ADDR_LC" ]; then
+            echo "using execute receipt address ${DEPLOYED} (proposal had ${ADDR})" >&2
+            jq --arg addr "$DEPLOYED" '.imutableUnivocity = $addr' "$PROPOSAL" > "${PROPOSAL}.tmp"
+            mv "${PROPOSAL}.tmp" "$PROPOSAL"
+            ADDR="$DEPLOYED"
+          fi
+        fi
         if [ -z "$ADDR" ] || [ "$ADDR" = "null" ]; then
           echo "proposal missing imutableUnivocity address after execute" >&2
           exit 1
         fi
+        FROM=$(jq -r '.from' "$PROPOSAL")
+        echo "waiting for contract code at ${ADDR}..."
+        for i in $(seq 1 30); do
+          CODE=$(cast code "$ADDR" --rpc-url "$RPC" 2>/dev/null || echo "0x")
+          if [ -n "$CODE" ] && [ "$CODE" != "0x" ]; then
+            echo "contract confirmed at ${ADDR}"
+            break
+          fi
+          if [ "$i" -eq 30 ]; then
+            echo "timeout waiting for contract code at ${ADDR}" >&2
+            exit 1
+          fi
+          sleep 2
+        done
+        NONCE=$(cast nonce "$FROM" --rpc-url "$RPC" --block latest 2>/dev/null || cast nonce "$FROM" --rpc-url "$RPC")
+        echo "deployer ${FROM} nonce after deploy: ${NONCE}"
         SHORT=$(echo "$ADDR" | tr 'A-Z' 'a-z' | sed 's/^0x//' | cut -c1-8)
         MANIFEST="{{.PROPOSAL_DIR}}/manifest-{{.ALG}}-${CHAIN_ID}-${SHORT}.json"
         jq -n \
@@ -120,6 +153,7 @@ tasks:
             publishMode: $publishMode,
             from: $from
           }' > "$MANIFEST"
+        echo "$MANIFEST" > "{{.PROPOSAL_DIR}}/provision-${RUN_ID}-{{.ALG}}.manifest"
         echo "manifest: $MANIFEST"
         cat "$MANIFEST"
 
@@ -255,7 +289,9 @@ tasks:
         echo "${H:0:8}-${H:8:4}-${H:12:4}-${H:16:4}-${H:20:12}"
 
   verify:
-    desc: eth_call bootstrapConfig() on manifest imutableUnivocity (fail fast before Playwright).
+    desc: |
+      eth_call bootstrapConfig() on manifest imutableUnivocity and assert
+      on-chain bootstrap alg matches manifest bootstrapAlg (fail before Playwright).
     requires:
       vars: [MANIFEST]
     cmds:
@@ -263,10 +299,42 @@ tasks:
         set -euo pipefail
         RPC="${RPC_URL:-${E2E_UNIVOCITY_RPC_URL:-https://sepolia.base.org}}"
         ADDR=$(jq -r '.imutableUnivocity' "{{.MANIFEST}}")
+        ALG=$(jq -r '.bootstrapAlg' "{{.MANIFEST}}")
+        case "$ALG" in
+          es256) EXPECTED_ALG=-7 ;;
+          ks256) EXPECTED_ALG=-65799 ;;
+          *)
+            echo "unknown bootstrapAlg in manifest: $ALG" >&2
+            exit 1
+            ;;
+        esac
         CODE=$(cast code "$ADDR" --rpc-url "$RPC")
         if [ -z "$CODE" ] || [ "$CODE" = "0x" ]; then
           echo "no contract code at $ADDR" >&2
           exit 1
         fi
-        cast call "$ADDR" "bootstrapConfig()(int64,bytes)" --rpc-url "$RPC" >/dev/null
-        echo "bootstrapConfig OK at $ADDR"
+        ON_CHAIN_ALG=$(
+          cast call "$ADDR" "bootstrapConfig()(int64,bytes)" --rpc-url "$RPC" \
+            | head -1 \
+            | awk '{print $1}'
+        )
+        if [ "$ON_CHAIN_ALG" != "$EXPECTED_ALG" ]; then
+          echo "bootstrap alg mismatch at $ADDR: manifest ${ALG} expects ${EXPECTED_ALG}, on-chain ${ON_CHAIN_ALG}" >&2
+          exit 1
+        fi
+        echo "bootstrapConfig OK at $ADDR (${ALG}, alg=${ON_CHAIN_ALG})"
+
+  verify-pair:
+    desc: Assert es256 and ks256 manifests reference distinct contract addresses.
+    requires:
+      vars: [MANIFEST_ES256, MANIFEST_KS256]
+    cmds:
+      - |
+        set -euo pipefail
+        ES256=$(jq -r '.imutableUnivocity' "{{.MANIFEST_ES256}}" | tr 'A-Z' 'a-z')
+        KS256=$(jq -r '.imutableUnivocity' "{{.MANIFEST_KS256}}" | tr 'A-Z' 'a-z')
+        if [ "$ES256" = "$KS256" ]; then
+          echo "es256 and ks256 must deploy to different addresses (both ${ES256})" >&2
+          exit 1
+        fi
+        echo "distinct bootstrap addresses: es256=${ES256} ks256=${KS256}"

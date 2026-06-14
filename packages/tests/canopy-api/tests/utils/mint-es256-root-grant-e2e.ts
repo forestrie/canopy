@@ -2,7 +2,7 @@
  * Mint the **root creation grant** for an ES256 chain-bound forest, signed by the
  * contract's on-chain bootstrap key (`E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE`).
  *
- * Unlike the per-log Custodian mint ({@link ./mint-bootstrap-grant-e2e}), the
+ * Unlike the legacy per-log Custodian mint, the root grant's `grantData` and signer
  * root grant's `grantData` and signer are the contract's ES256 bootstrap key, so
  * `grantData == bootstrapConfig()` and arbor's root-grant check passes against the
  * real on-chain anchor (`verifyGrantChainDepth`, [grant_chain.go]). The grant is

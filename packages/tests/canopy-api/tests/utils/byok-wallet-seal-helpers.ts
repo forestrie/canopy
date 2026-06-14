@@ -10,9 +10,9 @@ import {
 } from "@e2e-canopy-api-src/grant/transparent-statement.js";
 import { ensureForestGenesisEs256E2e } from "./forest-genesis-e2e.js";
 import {
-  FOREST_GENESIS_E2E_DUMMY_CHAIN_ID,
-  FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR,
-} from "@e2e-canopy-api-src/forest/forest-genesis-labels.js";
+  es256BootstrapContractAddrBytes,
+  univocityGenesisChainId,
+} from "./univocity-genesis-e2e.js";
 import {
   buildByokDelegationMaterial,
   bytesToBase64,
@@ -109,8 +109,8 @@ export async function mintByokBootstrapGrant(opts: {
     logId: opts.rootLogId,
     curatorToken: opts.curatorToken,
     bootstrapKey: grantData,
-    univocityAddr: FOREST_GENESIS_E2E_DUMMY_UNIVOCITY_ADDR,
-    chainId: FOREST_GENESIS_E2E_DUMMY_CHAIN_ID,
+    univocityAddr: es256BootstrapContractAddrBytes(),
+    chainId: univocityGenesisChainId(),
   });
   const grantBitmap = new Uint8Array(8);
   grantBitmap[4] = 0x03;

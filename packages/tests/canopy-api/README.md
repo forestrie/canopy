@@ -44,13 +44,13 @@ See **`taskfiles/e2e-setup.md`**.
 
 ### Bootstrap grant (mint + register-grant)
 
-`tests/system/grants-bootstrap.spec.ts` exercises **runner-side** bootstrap mint (per-root **`POST /api/keys`** with **`CUSTODIAN_APP_TOKEN`**, genesis **`POST /api/forest/{log-id}/genesis`** with **`CURATOR_ADMIN_TOKEN`**, then custody ES256 sign) and **`POST /register/{bootstrap-logid}/grants`** on the **bootstrap branch** (303 See Other with a registration-status `Location` under `/logs/{bootstrap}/{owner}/entries/…`).
+`tests/system/grants-bootstrap.spec.ts` (and related bootstrap specs) exercise **ephemeral Imutable chain binding**: genesis **`POST /api/forest/{log-id}/genesis`** with real `(chain-id, univocity-addr)` from preflight, **contract-bootstrap-signed** root creation grant, and **`POST /register/{bootstrap-logid}/grants`** (303 See Other). Each spec runs for **ES256** and **KS256** via `describeForEachBootstrapVariant`.
 
-The **deployed** worker needs **`R2_MMRS`**, sequencing queue bindings, and `bootstrapEnv` + `queueEnv`. Specs pick a **fresh UUID** per run so the target log has no MMRS massif yet for the first register-grant (303). Tests that poll sequencing and resolve receipts need **forestrie-ingress** on the same SequencingQueue — without it, **system** tests **fail** (no env-driven skips).
+Requires **`CURATOR_ADMIN_TOKEN`**, Univocity provision env (see below), and for child/delegation specs **`CUSTODIAN_URL`** + **`CUSTODIAN_APP_TOKEN`**. The **deployed** worker needs **`R2_MMRS`**, sequencing queue bindings, and `bootstrapEnv` + `queueEnv`.
 
-**First signed entry** (`tests/system/bootstrap-log-first-entry.spec.ts`): same stack requirements; mint → register → receipt, then runner **`POST /api/keys/{root-key}/sign`** and **`POST /register/{bootstrap}/entries`**. Missing **`CURATOR_ADMIN_TOKEN`** or **`CUSTODIAN_APP_TOKEN`** causes **hard failure** at mint (`assertBootstrapMintE2eEnv` / `assertSystemE2eEnv`).
+**First signed entry** (`tests/system/bootstrap-log-first-entry.spec.ts`): ES256 variant only (register-statement requires 64-byte ES256 grantData); contract-bootstrap statement signing.
 
-**Child auth grant** (`tests/system/bootstrap-child-auth-grant.spec.ts`): root bootstrap mint plus an additional custody key for the child grant. Helpers: `@e2e-utils/custodian-custody-grant`.
+**Child auth grant** (`tests/system/bootstrap-child-auth-grant.spec.ts`): root contract-bootstrap mint; child envelope signed by **owner root key**; Custodian provisions child `grantData`.
 
 ### Non-Custodian log-root signing key (BYOK)
 
@@ -106,18 +106,17 @@ Other keys:
 
 - **`SCRAPI_API_KEY`**: Bearer for authorized fixtures (optional for specs that use `unauthorizedRequest` only).
 
-**Univocity genesis chain-binding** (`tests/system/univocity-genesis-chain-binding.spec.ts` ES256;
-`tests/system/univocity-genesis-ks256-chain-binding.spec.ts` KS256):
+**Univocity ephemeral provision** (required for bootstrap **system** specs):
 
 Provisioned in **`task test:e2e:preflight`** (default). Playwright sources **`.work/e2e-univocity.env`**:
 
 - **`E2E_UNIVOCITY_ADDRESS_*_BOOTSTRAP`**, **`E2E_UNIVOCITY_GENESIS_LOG_ID_*`**
-- **`E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE`** — ES256 register-grant signing
-- **`E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER`** — expected KS256 bootstrap address
+- **`E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE`** — ES256 root grant + owner envelope signing
+- **`E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_FILE`** — KS256 root grant + owner envelope signing
 - **`E2E_UNIVOCITY_RPC_URL`**, **`E2E_UNIVOCITY_CHAIN_ID`** (optional defaults)
-- **`CURATOR_ADMIN_TOKEN`**: POST genesis (same as other system bootstrap specs).
+- **`CURATOR_ADMIN_TOKEN`**: POST genesis
 
-Opt out: **`SKIP_UNIVOCITY_PROVISION=true`** (chain-binding specs skip). See [plan-0032](../../docs/plans/plan-0032-univocity-imutable-e2e-provision.md).
+Opt out: **`SKIP_UNIVOCITY_PROVISION=true`** (bootstrap system specs skip per variant). See [plan-0032](../../docs/plans/plan-0032-univocity-imutable-e2e-provision.md).
 
 **Delegation coordinator e2e** (`tests/coordinator/`, Playwright project **`coordinator`**):
 
@@ -157,18 +156,16 @@ Set **`COORDINATOR_APP_TOKEN`** in Doppler **`canopy/dev`** (masked) after fores
 | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `integration/api.spec.ts`                              | Cross-cutting HTTP (e.g. CORS OPTIONS).                                                                                                                                             |
 | `integration/observability.spec.ts`                    | `/api/health`, `/.well-known/scitt-configuration`.                                                                                                                                  |
-| `system/grants-bootstrap.spec.ts`                      | Bootstrap mint + register-grant (Custodian-profile Forestrie-Grant). [Doc](tests/system/docs/grants-bootstrap.md).                                                                  |
-| `system/bootstrap-log-first-entry.spec.ts`             | `POST /register/{bootstrap}/entries` with completed bootstrap grant; rejects wrong signer (`403` `signer_mismatch`). [Doc](tests/system/docs/bootstrap-log-first-entry.md).         |
-| `system/bootstrap-child-auth-grant.spec.ts`            | Root bootstrap + custody-key child auth grant; 303 Location under `/logs/{root}/{root}/entries/…`. [Doc](tests/system/docs/bootstrap-child-auth-grant.md).                          |
-| `system/auth-data-log-chain.spec.ts`                   | Root → child auth log → data log delegation chain (delegated `grantData`). [Doc](tests/system/docs/auth-data-log-chain.md).                                                         |
-| `system/univocity-genesis-chain-binding.spec.ts`       | ES256 forest genesis vs on-chain `bootstrapConfig()` (skips when contract is KS256).                                                                                                |
-| `system/univocity-genesis-ks256-chain-binding.spec.ts` | KS256 genesis v2 vs ephemeral on-chain bootstrap (Base Sepolia).                                                                                                                    |
+| `system/grants-bootstrap.spec.ts`                      | Ephemeral Imutable bootstrap: genesis + contract-signed root grant + register-grant (ES256 + KS256). [Doc](tests/system/docs/grants-bootstrap.md). |
+| `system/bootstrap-log-first-entry.spec.ts`             | `POST /register/{bootstrap}/entries` (ES256 variant). [Doc](tests/system/docs/bootstrap-log-first-entry.md).         |
+| `system/bootstrap-child-auth-grant.spec.ts`            | Root contract bootstrap + child auth grant (owner-root envelope); ES256 + KS256. [Doc](tests/system/docs/bootstrap-child-auth-grant.md).                          |
+| `system/auth-data-log-chain.spec.ts`                   | Root → child auth log → data log delegation chain; ES256 + KS256. [Doc](tests/system/docs/auth-data-log-chain.md).                                                         |
 | `custodian/custodian-api.spec.ts`                      | Direct **`fetch`** to deployed Custodian: ops + **`/v1/api/…`** key routes. Does not use `:bootstrap` key paths.                                                                    |
 | `coordinator/coordinator-api.spec.ts`                  | Phase 3 coordinator APIs; **coordinator** direct issue of stored material (custodial pre-mint).                                                                                     |
 | `coordinator/coordinator-byok-material.spec.ts`        | **BYOK:** runner-owned log root; pending → material → coordinator issue. [System doc](tests/system/docs/README.md#non-custodian-log-root-signing-key-byok-delegation).              |
 | `system/coordinator-delegation-issuance.spec.ts`       | Opt-in stretch: **Custodian proxy** on KMS miss with runner-signed BYOK material (`E2E_COORDINATOR_SEALER_STRETCH=1`). [Doc](tests/system/docs/coordinator-delegation-issuance.md). |
 
-- Shared e2e utils: `e2e-env-guards.ts`, `e2e-grant-flags.ts`, `register-grant-through-receipt.ts`, `post-entries-e2e.ts`, `custodian-sign-payload.ts`, `custodian-api-*.ts`, `problem-details.ts`, `bootstrap-grant-flow.ts`, `parent-grant-ab-split.ts`, etc.
+- Shared e2e utils: `e2e-env-guards.ts`, `e2e-bootstrap-variant.ts`, `e2e-grant-flags.ts`, …
 
 **CI failure artifacts:** When the Playwright job fails, download the HTML report and attachments (e.g. `parent-grant-ab-split.json`):
 

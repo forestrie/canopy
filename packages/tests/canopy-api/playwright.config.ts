@@ -58,8 +58,8 @@ export default defineConfig({
       name: "system",
       testMatch: ["**/system/**/*.spec.ts"],
       timeout: E2E_SYSTEM_TEST_TIMEOUT_MS,
-      // Serial in CI: parallel genesis POSTs stress Worker→univocity and flake 502.
-      workers: process.env.CI ? 1 : undefined,
+      // Serial: parallel genesis POSTs stress Worker→univocity and flake 502.
+      workers: 1,
       use: {
         baseURL,
       },
@@ -86,8 +86,6 @@ export default defineConfig({
         "**/system/bootstrap-log-first-entry.spec.ts",
         "**/system/bootstrap-child-auth-grant.spec.ts",
         "**/system/auth-data-log-chain.spec.ts",
-        "**/system/univocity-genesis-chain-binding.spec.ts",
-        "**/system/univocity-genesis-ks256-chain-binding.spec.ts",
       ],
       use: {
         baseURL,

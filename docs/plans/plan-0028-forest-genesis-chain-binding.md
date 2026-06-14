@@ -31,7 +31,7 @@ See [CONTEXT.md](../../CONTEXT.md) for canonical terms (Forest, bootstrap root a
 | Univocity contract address | `-68011` | bstr 20 | `imutableUnivocity` from Safe deploy JSON (**not** the Safe multisig address) |
 | Chain id | `-68013` | tstr decimal EIP-155 | `chainId` from same deploy JSON (e.g. `"84532"`) |
 
-**Policy:** No queue-only profile. Integration tests use dummy 20-byte address + `"84532"`. Production curators use real deploy values.
+**Policy:** No queue-only profile. System e2e uses ephemeral Imutable contracts from [plan-0032](plan-0032-univocity-imutable-e2e-provision.md). Production curators use real deploy values.
 
 ## Wire format
 
