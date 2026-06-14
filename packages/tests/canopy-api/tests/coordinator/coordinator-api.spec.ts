@@ -18,7 +18,9 @@ import {
   generateEphemeralDelegatedPublicKeyCbor,
   hex32ToWireLogId,
   postCustodianDelegationIssue,
+  uploadByokRootPublicKey,
 } from "@e2e-utils/coordinator-delegation-helpers.js";
+import { publicKeyPemToUncompressed65 } from "@e2e-canopy-api-src/scrapi/custodian-grant.js";
 import { assertCustodianApiE2eEnv } from "@e2e-utils/custodian-api-env.js";
 import { normalizeForestrieHexId32 } from "@e2e-utils/forestrie-hex-id.js";
 import { e2eCustodianKeyOwnerId } from "@e2e-utils/custodian-custody-grant.js";
@@ -51,6 +53,7 @@ test.describe("delegation-coordinator APIs", () => {
   let materialIssuedAt: number;
   let materialExpiresAt: number;
   let materialCertificateB64: string;
+  let authCustodianPublicKeyPem: string;
 
   test("health", async ({ request }) => {
     const res = await request.get(
@@ -93,6 +96,20 @@ test.describe("delegation-coordinator APIs", () => {
     expect(res.status()).toBe(200);
     const body = await res.json();
     expect(body.keyId).toBeTruthy();
+    expect(body.publicKey).toBeTruthy();
+    authCustodianPublicKeyPem = body.publicKey as string;
+  });
+
+  test("POST public-root — custodian trust root for auth log", async () => {
+    const u65 = publicKeyPemToUncompressed65(authCustodianPublicKeyPem);
+    const rootRes = await uploadByokRootPublicKey({
+      coordinatorUrl,
+      token: coordinatorToken,
+      logId: authLogUuid,
+      x: u65.slice(1, 33),
+      y: u65.slice(33, 65),
+    });
+    expect(rootRes.status).toBe(200);
   });
 
   test("POST custody-keys — create custodian key for child log", async ({

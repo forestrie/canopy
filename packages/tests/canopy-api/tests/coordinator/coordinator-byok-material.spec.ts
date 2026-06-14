@@ -15,9 +15,11 @@ import {
   buildByokDelegationMaterial,
   bytesToBase64,
   decodeCoordinatorDelegationIssue,
+  exportEs256RootXy,
   generateEphemeralDelegatedPublicKeyCbor,
   generateEs256RootKeyPair,
   hex32ToWireLogId,
+  uploadByokRootPublicKey,
   verifyByokDelegationCertificate,
 } from "@e2e-utils/coordinator-delegation-helpers.js";
 import { normalizeForestrieHexId32 } from "@e2e-utils/forestrie-hex-id.js";
@@ -42,6 +44,8 @@ test.describe("delegation-coordinator BYOK material", () => {
   const mmrEnd = 64;
 
   let rootKeyPair: CryptoKeyPair;
+  let rootX: Uint8Array;
+  let rootY: Uint8Array;
   let delegatedPublicKey: Uint8Array;
   let materialCertificate: Uint8Array;
   let materialIssuedAt: number;
@@ -51,7 +55,17 @@ test.describe("delegation-coordinator BYOK material", () => {
     request,
   }) => {
     rootKeyPair = await generateEs256RootKeyPair();
+    ({ x: rootX, y: rootY } = await exportEs256RootXy(rootKeyPair));
     delegatedPublicKey = await generateEphemeralDelegatedPublicKeyCbor();
+
+    const rootRes = await uploadByokRootPublicKey({
+      coordinatorUrl,
+      token: coordinatorToken,
+      logId: logUuid,
+      x: rootX,
+      y: rootY,
+    });
+    expect(rootRes.status).toBe(200);
 
     const res = await request.post(
       `${coordinatorUrl}/api/logs/${logUuid}/signing-route`,

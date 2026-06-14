@@ -3,7 +3,7 @@
  */
 
 import { createPrivateKey, createPublicKey } from "node:crypto";
-import { decode, Encoder } from "cbor-x";
+import { decode, encode } from "cbor-x";
 import { encodeSigStructure } from "@canopy/encoding";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { secp256k1 } from "@noble/curves/secp256k1";
@@ -11,7 +11,12 @@ import { custodianApiV1BaseUrl } from "./custodian-api-env.js";
 import { custodianDecodeCbor } from "./custodian-api-cbor.js";
 import { normalizeForestrieHexId32 } from "./forestrie-hex-id.js";
 
-const cborEncoder = new Encoder({ mapsAsObjects: false });
+function cborBytes(value: unknown): Uint8Array {
+  const encoded = encode(value);
+  return encoded instanceof Uint8Array
+    ? encoded
+    : new Uint8Array(encoded as ArrayLike<number>);
+}
 
 export function hex32ToWireLogId(hex32: string): Uint8Array {
   const h = normalizeForestrieHexId32(hex32);
@@ -82,15 +87,11 @@ export async function postCustodianDelegationIssue(opts: {
     delegatedPublicKey: opts.delegatedPublicKey,
     requestedTtlSeconds: opts.requestedTtlSeconds ?? 3600,
   };
-  const encoded = cborBytes(body);
+  const encoded = encode(body);
   const u8 =
     encoded instanceof Uint8Array
       ? encoded
       : new Uint8Array(encoded as ArrayLike<number>);
-  const bodyBuf = u8.buffer.slice(
-    u8.byteOffset,
-    u8.byteOffset + u8.byteLength,
-  ) as ArrayBuffer;
   const res = await fetch(`${base}/api/delegations`, {
     method: "POST",
     headers: {
@@ -98,12 +99,16 @@ export async function postCustodianDelegationIssue(opts: {
       "Content-Type": "application/cbor",
       Accept: "application/cbor",
     },
-    body: bodyBuf,
+    body: u8,
   });
   const buf = new Uint8Array(await res.arrayBuffer());
   if (!res.ok) {
+    const preview =
+      buf.byteLength > 0
+        ? Buffer.from(buf).toString("utf8").slice(0, 300)
+        : "(empty)";
     throw new Error(
-      `Custodian delegation issue: ${res.status} (${buf.byteLength} bytes)`,
+      `Custodian delegation issue: ${res.status} (${buf.byteLength} bytes): ${preview}`,
     );
   }
   const raw = custodianDecodeCbor(buf) as Record<string, unknown>;
@@ -509,13 +514,6 @@ export async function verifyByokDelegationCertificate(opts: {
     toArrayBuffer(signature),
     toArrayBuffer(sigStructure),
   );
-}
-
-function cborBytes(value: unknown): Uint8Array {
-  const encoded = cborEncoder.encode(value);
-  return encoded instanceof Uint8Array
-    ? encoded
-    : new Uint8Array(encoded as ArrayLike<number>);
 }
 
 function decodeDelegatedCoseKey(bytes: Uint8Array): Map<number, unknown> {
