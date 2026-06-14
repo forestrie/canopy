@@ -148,11 +148,13 @@ function insertAfterEnvName(envBlock, insertText) {
 
 function setRoutes(envBlock, fqdn) {
   if (!fqdn) return envBlock;
+  envBlock = removePropertyWithComma(envBlock, "custom_domains", "[", "]");
   const zone = zoneFromFqdn(fqdn);
   const routesBody = `[
         {
-          "pattern": "${fqdn}/*",
+          "pattern": "${fqdn}",
           "zone_name": "${zone}",
+          "custom_domain": true,
         },
       ]`;
   const existing = blockForProperty(envBlock, "routes", "[", "]");
