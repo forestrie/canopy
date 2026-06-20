@@ -15,7 +15,7 @@ when `DELEGATION_COORDINATOR_URL` or `COORDINATOR_APP_TOKEN` is unset). See
 From the **repository root** (recommended — inject secrets via Doppler):
 
 - **Project:** `canopy`
-- **Config:** `dev` (default) or `prod` (set `ENV=prod` on Task invocations)
+- **Config:** `dev` (default) or `prd` (set `ENV=prd` on Task invocations)
 
 ```bash
 # Preflight: tooling + env validation (+ ephemeral Univocity provision by default)
@@ -35,7 +35,7 @@ Bare **`task test:e2e`** self-wraps with `doppler run` when `DOPPLER_CONFIG` is 
 | **`task test:e2e:preflight`** | `pnpm install`, Playwright Chromium, Doppler env validation, Canopy health probe; **provisions ephemeral Univocity es256+ks256 by default** (see opt-out below). |
 | **`task test:e2e`** | Full dev Playwright sequence via **`taskfiles/e2e-run-playwright.sh`** (depends on preflight). |
 
-Use **`ENV=prod task test:e2e`** when the Doppler config should be **`prod`** (project stays **`canopy`**).
+Use **`ENV=prd task test:e2e`** when the Doppler config should be **`prd`** (project stays **`canopy`**).
 
 **Single tier** (explicit Doppler + package script):
 
