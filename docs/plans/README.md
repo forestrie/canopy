@@ -14,7 +14,7 @@ Platform-wide plans: [devdocs/plans/](../../../devdocs/plans/README.md).
 | [plan-0034](plan-0034-ci-consolidation.md) | IMPLEMENTED | CI: ci.yml, tests-integration, tests-system, release promotion |
 | [plan-0032](plan-0032-univocity-imutable-e2e-provision.md) | DRAFT | Fresh Imutable Safe deploy for e2e |
 | [plan-0031](plan-0031-ks256-forest-roots.md) | ACTIVE | KS256 forest roots |
-| [plan-0033](plan-0033-ks256-register-statement.md) | ACTIVE | KS256 register-statement verify |
+| [plan-0033](plan-0033-ks256-register-statement.md) | IMPLEMENTED | KS256 register-statement verify |
 | [plan-0028](plan-0028-forest-genesis-chain-binding.md) | DRAFT | Genesis v1 chain binding POST |
 | [plan-0019](plan-0019-bootstrap-path-and-genesis-cache.md) | DRAFT | Bootstrap-scoped SCRAPI paths |
 | [plan-0018](plan-0018-forest-genesis-api.md) | ACCEPTED | `/api/forest` genesis API |

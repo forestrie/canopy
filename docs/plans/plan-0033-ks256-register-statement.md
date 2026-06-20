@@ -1,7 +1,6 @@
 # Plan 0033: KS256 register-statement parity
 
-**Status**: ACTIVE  
-**Date**: 2026-06-14  
+**Status**: IMPLEMENTED (2026-06-20)  
 **Related**:
 - [plan-0031](plan-0031-ks256-forest-roots.md) (KS256 forest roots — left statement verify out of scope)
 - [forest-1 plan-0002](../../../forest-1/docs/plans/plan-0002-per-slot-pipeline-rollout.md) (per-slot e2e sign-off)
@@ -54,8 +53,8 @@ Expected: KS256 first-entry cases pass; default system tier skip count drops by 
 | Phase | Task | Status |
 |-------|------|--------|
 | 0 | `@canopy/api` unit tests + typecheck | Done |
-| 1 | Land code, ADR, docs, README index | In progress |
-| 2 | Deploy `canopy-api` Lane A + B (`forest-dev-5`) | Pending |
-| 3 | `bootstrap-log-first-entry.spec.ts` dev + prd | Pending |
-| 4 | Full `task test:e2e` 22/22 both lanes | Pending |
-| 5 | Mark plan IMPLEMENTED; update plan-0002 sign-off | Pending |
+| 1 | Land code, ADR, docs, README index | Done (`2cf873f`) |
+| 2 | Deploy `canopy-api` Lane A + B (`forest-dev-5`) | Done |
+| 3 | `bootstrap-log-first-entry.spec.ts` dev + prd | Done (4/4 each lane) |
+| 4 | Full `task test:e2e` 22/22 both lanes | Done (20 passed, 2 BYOK skipped) |
+| 5 | Mark plan IMPLEMENTED; update plan-0002 sign-off | Done |
