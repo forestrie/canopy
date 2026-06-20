@@ -131,15 +131,15 @@ sequenceDiagram
 
 ## Failure modes (operational)
 
-| Symptom             | Typical cause                                                         |
-| ------------------- | --------------------------------------------------------------------- |
-| 503 on register     | Missing `CUSTODIAN_APP_TOKEN` / queue binding on worker               |
-| Not 303 on register | MMRS already has massif for `R` (not cold)                            |
-| Poll timeout        | forestrie-ingress or Ranger not running on env                        |
-| Receipt 404         | Sealer pending delegation — check coordinator material loop           |
-| KS256 describe skip | Missing key file or stale ES256/KS256 address pair — re-run preflight |
+| Symptom                | Typical cause                                                          |
+| ---------------------- | ---------------------------------------------------------------------- |
+| 503 on register        | Missing `CUSTODIAN_APP_TOKEN` / queue binding on worker                |
+| Not 303 on register    | MMRS already has massif for `R` (not cold)                             |
+| Poll timeout           | forestrie-ingress or Ranger not running on env                         |
+| Receipt 404            | Sealer pending delegation — check coordinator material loop            |
+| KS256 describe skip    | Missing key file or stale ES256/KS256 address pair — re-run preflight  |
 | KS256 first-entry fail | Deploy worker without KS256 register-statement support — see plan-0033 |
-| `mmrIndex !== 0`    | Concurrent bootstrap on same `R`                                      |
+| `mmrIndex !== 0`       | Concurrent bootstrap on same `R`                                       |
 
 ## Local KS256 hygiene
 

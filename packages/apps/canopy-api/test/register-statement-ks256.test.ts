@@ -7,7 +7,10 @@ import { grantDataToBytes } from "../src/grant/grant-data.js";
 import { authLogBootstrapShapedFlags } from "../src/grant/grant-flags.js";
 import type { Grant } from "../src/grant/types.js";
 import { statementSignerBindingBytes } from "../src/grant/statement-signer-binding.js";
-import { verifyKs256CoseSign1, COSE_ALG_KS256 } from "../src/grant/ks256-verify.js";
+import {
+  verifyKs256CoseSign1,
+  COSE_ALG_KS256,
+} from "../src/grant/ks256-verify.js";
 import {
   getSignerFromCoseSign1,
   signerMatchesGrant,
@@ -21,8 +24,8 @@ import {
 
 const LOG_ID_BYTES = new Uint8Array(16);
 LOG_ID_BYTES.set([
-  0x55, 0x0e, 0x84, 0x00, 0xe2, 0x9b, 0x41, 0xd4, 0xa7, 0x16, 0x44, 0x66,
-  0x55, 0x44, 0x00, 0x00,
+  0x55, 0x0e, 0x84, 0x00, 0xe2, 0x9b, 0x41, 0xd4, 0xa7, 0x16, 0x44, 0x66, 0x55,
+  0x44, 0x00, 0x00,
 ]);
 
 function ks256BootstrapGrant(address: Uint8Array): Grant {
@@ -37,7 +40,9 @@ function ks256BootstrapGrant(address: Uint8Array): Grant {
 }
 
 describe("register-statement KS256", () => {
-  const statementPayload = new Uint8Array([0xa1, 0x64, 0x6b, 0x69, 0x6e, 0x64, 0x65]);
+  const statementPayload = new Uint8Array([
+    0xa1, 0x64, 0x6b, 0x69, 0x6e, 0x64, 0x65,
+  ]);
   const grantAddress = ks256StatementTestAddress();
   const grant = ks256BootstrapGrant(grantAddress);
 

@@ -23,9 +23,9 @@ R  (root)
    statement: COSE Sign1 kid MUST match grantData (x or KS256 address)
 ```
 
-| Check               | Mechanism                                                     |
-| ------------------- | ------------------------------------------------------------- |
-| Grant authorization | `grantAuthorize` — completed Forestrie-Grant + receipt        |
+| Check               | Mechanism                                                      |
+| ------------------- | -------------------------------------------------------------- |
+| Grant authorization | `grantAuthorize` — completed Forestrie-Grant + receipt         |
 | Statement signer    | Compare Sign1 protected `kid` to `statementSignerBindingBytes` |
 
 ## Test cases

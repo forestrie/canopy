@@ -63,9 +63,7 @@ export interface E2eBootstrapVariant {
   /** COSE Sign1 statement bytes for root log. */
   signRootStatement: (payload: Uint8Array) => Promise<Uint8Array>;
   /** Valid Sign1 with a foreign signer (wrong kid vs grantData). */
-  signRootStatementForeignSigner: (
-    payload: Uint8Array,
-  ) => Promise<Uint8Array>;
+  signRootStatementForeignSigner: (payload: Uint8Array) => Promise<Uint8Array>;
   supportsRootStatementRegistration: boolean;
 }
 
