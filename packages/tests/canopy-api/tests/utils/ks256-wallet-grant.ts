@@ -6,7 +6,11 @@
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { decode } from "cbor-x";
-import { encodeSigStructure } from "@canopy/encoding";
+import {
+  encodeCoseProtectedMapBytes,
+  encodeCoseSign1Statement,
+  encodeSigStructure,
+} from "@canopy/encoding";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import type { Grant } from "@e2e-canopy-api-src/grant/types.js";
@@ -132,6 +136,35 @@ function signKeccak256Ethereum(
   throw new Error(
     "KS256 grant signature: no recovery id matches bootstrap address",
   );
+}
+
+/** Sign a register-statement COSE Sign1 with KS256 (kid = 20-byte address). */
+export function signKs256RootStatement(
+  payload: Uint8Array,
+  privateKeyHex: string,
+): Uint8Array {
+  const address = ks256AddressFromPrivateKeyHex(privateKeyHex);
+  const protectedMapBytes = encodeCoseProtectedMapBytes(address);
+  const sigStructure = encodeSigStructure(
+    protectedMapBytes,
+    new Uint8Array(0),
+    payload,
+  );
+  const hash = keccak_256(sigStructure);
+  const signature = signKeccak256Ethereum(hash, privateKeyHex, address);
+  const sign1 = encodeCoseSign1Statement(payload, address, signature);
+  if (!verifyKs256GrantStatement(sign1, address)) {
+    throw new Error(
+      "KS256 statement COSE Sign1 failed local ecrecover verification",
+    );
+  }
+  return sign1;
+}
+
+/** Ephemeral KS256 private key hex (32 bytes) for negative-path e2e. */
+export function randomKs256PrivateKeyHex(): string {
+  const sk = secp256k1.utils.randomPrivateKey();
+  return Array.from(sk, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /** Sign grant v0 CBOR with KS256 EOA key; returns COSE Sign1 wire bytes. */

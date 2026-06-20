@@ -14,8 +14,9 @@
  * **`Authorization: Forestrie-Grant`** holding a **transparent statement** (embedded grant,
  * idtimestamp, receipt). The handler resolves and authorizes the grant via receipt inclusion
  * ({@link grantAuthorize}), checks that it **allows statement registration** on **`T`**, checks
- * **`kid`** against **`grantData`**, verifies the **statement** COSE Sign1 (for **64-byte x‖y**
- * `grantData`), enqueues on **`T`**'s shard, and returns **303** to the entry status URL.
+ * **`kid`** against **`grantData`**, verifies the **statement** COSE Sign1 (ES256 for **64-byte
+ * x‖y** `grantData`, KS256 for **20-byte address** `grantData`), enqueues on **`T`**'s shard,
+ * and returns **303** to the entry status URL.
  *
  * **Note:** The grant itself is NOT verified against `grantData` because delegated grants are
  * signed by the authority key (of `ownerLogId`), not the key embedded in `grantData`. The grant's
@@ -39,6 +40,8 @@ import { seeOtherResponse } from "../cbor-api/cbor-response.js";
 
 import { verifyCoseSign1 } from "@canopy/encoding";
 import { grantDataToBytes } from "../grant/grant-data.js";
+import type { ParsedKs256RootKey } from "../grant/parsed-ks256-root-key.js";
+import { verifyKs256CoseSign1, COSE_ALG_KS256 } from "../grant/ks256-verify.js";
 import {
   getSignerFromCoseSign1,
   GrantAuthErrors,
@@ -94,6 +97,7 @@ export async function registerSignedStatement(
   nodeEnv: string | undefined,
   bootstrapLogIdSegment: string,
   r2Grants: R2Bucket,
+  ks256RpcUrl?: string,
 ): Promise<Response> {
   try {
     const nenv = nodeEnv ?? "production";
@@ -209,31 +213,51 @@ export async function registerSignedStatement(
       return GrantAuthErrors.signerMismatch();
     }
 
-    // Extract grantData for statement signature verification (x||y of the statement signer)
+    // Statement signature verification: ES256 (64-byte x‖y) or KS256 (20-byte address).
     const grantDataBytes = grantDataToBytes(grant.grantData);
-    if (grantDataBytes.length !== 64) {
-      return ClientErrors.forbidden(
-        "Grant grantData must be 64 bytes (public key x||y) for statement signature verification.",
+    if (grantDataBytes.length === 64) {
+      let statementVerifyKey: CryptoKey;
+      try {
+        statementVerifyKey =
+          await importEs256PublicKeyFromGrantDataXy64(grantDataBytes);
+      } catch {
+        return ClientErrors.forbidden(
+          "Grant grantData is not valid ES256 x||y for statement signature verification.",
+        );
+      }
+      const statementSigOk = await verifyCoseSign1(
+        statementData,
+        statementVerifyKey,
+        { logFailures: true, logPrefix: "register-statement-payload" },
       );
-    }
-
-    let statementVerifyKey: CryptoKey;
-    try {
-      statementVerifyKey =
-        await importEs256PublicKeyFromGrantDataXy64(grantDataBytes);
-    } catch {
-      return ClientErrors.forbidden(
-        "Grant grantData is not valid ES256 x||y for statement signature verification.",
+      if (!statementSigOk) {
+        return ClientErrors.invalidStatement(
+          "Statement COSE signature verification failed.",
+        );
+      }
+    } else if (grantDataBytes.length === 20) {
+      const ks256Root: ParsedKs256RootKey = {
+        kind: "KS256",
+        alg: COSE_ALG_KS256,
+        address: grantDataBytes,
+      };
+      const statementSigOk = await verifyKs256CoseSign1(
+        statementData,
+        ks256Root,
+        {
+          rpcUrl: ks256RpcUrl?.trim(),
+          logFailures: true,
+          logPrefix: "register-statement-ks256",
+        },
       );
-    }
-    const statementSigOk = await verifyCoseSign1(
-      statementData,
-      statementVerifyKey,
-      { logFailures: true, logPrefix: "register-statement-payload" },
-    );
-    if (!statementSigOk) {
-      return ClientErrors.invalidStatement(
-        "Statement COSE signature verification failed.",
+      if (!statementSigOk) {
+        return ClientErrors.invalidStatement(
+          "Statement COSE signature verification failed.",
+        );
+      }
+    } else {
+      return ClientErrors.forbidden(
+        "Grant grantData must be 64 bytes (ES256 x||y) or 20 bytes (KS256 address) for statement signature verification.",
       );
     }
 

@@ -138,6 +138,7 @@ sequenceDiagram
 | Poll timeout        | forestrie-ingress or Ranger not running on env                        |
 | Receipt 404         | Sealer pending delegation — check coordinator material loop           |
 | KS256 describe skip | Missing key file or stale ES256/KS256 address pair — re-run preflight |
+| KS256 first-entry fail | Deploy worker without KS256 register-statement support — see plan-0033 |
 | `mmrIndex !== 0`    | Concurrent bootstrap on same `R`                                      |
 
 ## Local KS256 hygiene

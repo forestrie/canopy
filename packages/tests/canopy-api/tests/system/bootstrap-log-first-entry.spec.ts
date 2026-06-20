@@ -1,5 +1,4 @@
 import { encode as encodeCbor } from "cbor-x";
-import { signCoseSign1Statement } from "@canopy/encoding";
 import { expectAPI as expect, test } from "@e2e-fixtures/auth";
 import { sequencingBackoff } from "@e2e-utils/arithmetic-backoff-poll";
 import {
@@ -47,7 +46,7 @@ describeForEachBootstrapVariant(
     test.beforeAll(async ({ unauthorizedRequest }, testInfo) => {
       test.skip(
         !variant.supportsRootStatementRegistration,
-        "register-statement requires ES256 grantData (64-byte x‖y)",
+        "register-statement not supported for this bootstrap variant",
       );
 
       const logId = e2eReceiptBootstrapRootLogId();
@@ -85,7 +84,7 @@ describeForEachBootstrapVariant(
     }, testInfo) => {
       test.skip(
         !variant.supportsRootStatementRegistration,
-        "register-statement requires ES256 grantData",
+        "register-statement not supported for this bootstrap variant",
       );
       expect(
         shared.logId,
@@ -123,28 +122,15 @@ describeForEachBootstrapVariant(
     }, testInfo) => {
       test.skip(
         !variant.supportsRootStatementRegistration,
-        "register-statement requires ES256 grantData",
+        "register-statement not supported for this bootstrap variant",
       );
       expect(
         shared.logId,
         "beforeAll must complete bootstrap + receipt",
       ).toBeTruthy();
 
-      const pair = (await crypto.subtle.generateKey(
-        { name: "ECDSA", namedCurve: "P-256" },
-        true,
-        ["sign", "verify"],
-      )) as CryptoKeyPair;
-      const rawSpki = new Uint8Array(
-        await crypto.subtle.exportKey("raw", pair.publicKey),
-      );
-      expect(rawSpki[0]).toBe(0x04);
-      const wrongKid = rawSpki.subarray(1, 33);
-
-      const sign1Bytes = await signCoseSign1Statement(
+      const sign1Bytes = await variant.signRootStatementForeignSigner(
         e2eFirstStatementPayload(),
-        wrongKid,
-        pair.privateKey,
       );
 
       const entriesRes = await postLogEntriesCoseSign1(unauthorizedRequest, {

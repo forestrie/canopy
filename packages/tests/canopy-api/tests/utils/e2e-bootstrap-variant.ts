@@ -23,7 +23,9 @@ import {
 import {
   bootstrapKs256PrivateKeyHex,
   mintKs256RootGrantWithWalletKey,
+  randomKs256PrivateKeyHex,
   signGrantWithKs256WalletKey,
+  signKs256RootStatement,
 } from "./ks256-wallet-grant.js";
 import {
   es256BootstrapContractAddr,
@@ -58,8 +60,12 @@ export interface E2eBootstrapVariant {
     bootstrapKey: Uint8Array,
   ) => { grantBase64: string };
   signOwnerGrant: (grant: Grant) => string;
-  /** COSE Sign1 statement bytes for root log (ES256 only; KS256 unsupported by API). */
+  /** COSE Sign1 statement bytes for root log. */
   signRootStatement: (payload: Uint8Array) => Promise<Uint8Array>;
+  /** Valid Sign1 with a foreign signer (wrong kid vs grantData). */
+  signRootStatementForeignSigner: (
+    payload: Uint8Array,
+  ) => Promise<Uint8Array>;
   supportsRootStatementRegistration: boolean;
 }
 
@@ -135,6 +141,18 @@ function buildEs256Variant(): E2eBootstrapVariant {
       const privateKey = await importEs256PemPrivateKey(p);
       return signCoseSign1Statement(payload, kid, privateKey);
     },
+    signRootStatementForeignSigner: async (payload) => {
+      const pair = (await crypto.subtle.generateKey(
+        { name: "ECDSA", namedCurve: "P-256" },
+        true,
+        ["sign", "verify"],
+      )) as CryptoKeyPair;
+      const rawSpki = new Uint8Array(
+        await crypto.subtle.exportKey("raw", pair.publicKey),
+      );
+      const wrongKid = rawSpki.subarray(1, 33);
+      return signCoseSign1Statement(payload, wrongKid, pair.privateKey);
+    },
   };
 }
 
@@ -179,12 +197,11 @@ function buildKs256Variant(): E2eBootstrapVariant {
         ks256PrivateKeyHex: keyHex(),
       }),
     signOwnerGrant: (grant) => signGrantWithKs256WalletKey(grant, keyHex()),
-    supportsRootStatementRegistration: false,
-    signRootStatement: async () => {
-      throw new Error(
-        "register-statement requires ES256 grantData (64-byte x‖y); KS256 root not supported",
-      );
-    },
+    supportsRootStatementRegistration: true,
+    signRootStatement: async (payload) =>
+      signKs256RootStatement(payload, keyHex()),
+    signRootStatementForeignSigner: async (payload) =>
+      signKs256RootStatement(payload, randomKs256PrivateKeyHex()),
   };
 }
 

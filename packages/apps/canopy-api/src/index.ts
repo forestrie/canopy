@@ -294,6 +294,7 @@ export default {
             env.NODE_ENV,
             segments[1],
             env.R2_GRANTS,
+            env.UNIVOCITY_CONTRACT_RPC_URL,
           );
           const headers = new Headers(response.headers);
           Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));

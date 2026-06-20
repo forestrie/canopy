@@ -40,7 +40,8 @@ export const isPublishCheckpointStatementAuthGrant =
  *
  * Always derived from **`grantData`** only. If **grantData** is **64** bytes (ES256 **x||y**),
  * the binding is the **first 32 bytes (x)** so a standard **32-byte `kid`** matches typical
- * secp256r1 usage. Otherwise the full **grantData** bytes are used (e.g. **32-byte** kid id).
+ * secp256r1 usage. Otherwise the full **grantData** bytes are used (e.g. **20-byte**
+ * KS256 address).
  */
 export function statementSignerBindingBytes(grant: Grant): Uint8Array {
   const gd = grantDataToBytes(grant.grantData);

@@ -10,23 +10,23 @@ tests against the same **completed grant**.
 ## What this spec proves
 
 - After root bootstrap, **`POST /register/{R}/entries`** accepts a COSE Sign1
-  statement when the Sign1 `kid` matches the **root custody public key** bound in
-  the completed grant’s `grantData`.
-- A statement signed with a **different** P-256 key is rejected with
+  statement when the Sign1 `kid` matches the **root signer** bound in the
+  completed grant’s `grantData` (ES256: 32-byte x; KS256: 20-byte address).
+- A statement signed with a **different** key is rejected with
   **`signer_mismatch`** even when the grant/receipt are valid.
 
 ## Auth under test
 
 ```text
 R  (root)
-   completedGrant: receipt inclusion on R + grantData = root custody x‖y
-   statement: COSE Sign1 kid MUST match grantData (root signer binding)
+   completedGrant: receipt inclusion on R + grantData = root signer binding
+   statement: COSE Sign1 kid MUST match grantData (x or KS256 address)
 ```
 
 | Check               | Mechanism                                                     |
 | ------------------- | ------------------------------------------------------------- |
 | Grant authorization | `grantAuthorize` — completed Forestrie-Grant + receipt        |
-| Statement signer    | Compare Sign1 protected `kid` to `grantData` uncompressed x‖y |
+| Statement signer    | Compare Sign1 protected `kid` to `statementSignerBindingBytes` |
 
 ## Test cases
 

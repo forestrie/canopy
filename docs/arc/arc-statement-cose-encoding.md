@@ -156,10 +156,30 @@ These are not statement COSE encoders but define the **signer** that must match 
 | File                                                 | Encode statement            | Decode statement | Signer / grant check                              | Pre / Post register-grant        |
 | ---------------------------------------------------- | --------------------------- | ---------------- | ------------------------------------------------- | -------------------------------- |
 | `canopy-api/src/scrapi/grant-auth.ts`                | No                          | Yes (kid only)   | Yes (signerMatchesGrant)                          | Register-grant                   |
-| `canopy-api/src/scrapi/register-signed-statement.ts` | No                          | Uses grant-auth  | Calls getSignerFromCoseSign1 + signerMatchesGrant | Register-grant                   |
+| `canopy-api/src/scrapi/register-signed-statement.ts` | No                          | Uses grant-auth  | ES256 verifyCoseSign1 or KS256 verifyKs256CoseSign1 | Register-grant                   |
 | `perf/k6/canopy-api/lib/cose.js`                     | Yes (with/without kid)      | No               | No                                                | Both (kid path = register-grant) |
 | `canopy-api/test/cose-sign1-k6-encoder.ts`           | Re-exports @canopy/encoding | No               | No                                                | Register-grant                   |
 | `packages/shared/encoding`                           | Yes (canonical)             | verifyCoseSign1  | signCoseSign1Statement                            | Register-grant                   |
 | `scripts/gen-cose-sign1.ts`                          | Yes (no kid, **legacy**)    | No               | No                                                | Pre–register-grant               |
 | `canopy-api/src/scrapi/resolve-receipt.ts`           | No                          | Yes (receipts)   | No                                                | Pre–register-grant               |
 | `delegation-signer/src/cose/sign1.ts`                | Yes (delegation cert)       | No               | N/A                                               | Pre–register-grant               |
+
+---
+
+## 8. KS256 register-statement (plan-0033)
+
+When `grantData` is **20 bytes** (KS256 root address), register-statement:
+
+1. Binds the statement COSE **`kid`** to the full **`grantData`** address via
+   `statementSignerBindingBytes` (same helper as ES256; no special case).
+2. Verifies the signature with **`verifyKs256CoseSign1`** (Keccak Sig_structure,
+   65-byte eth sig, ecrecover or ERC-1271 when `UNIVOCITY_CONTRACT_RPC_URL` is set).
+3. Does **not** read `alg` from the statement protected header; dispatch is
+   grant-driven (64-byte = ES256, 20-byte = KS256).
+
+**E2e signing:** `packages/tests/canopy-api/tests/utils/ks256-wallet-grant.ts`
+→ `signKs256RootStatement(payload, privateKeyHex)` builds kid-only protected
+`{4: address}` and uses `@canopy/encoding` `encodeCoseSign1Statement`.
+
+**Deferred:** self-describing protected headers `{1: alg, 4: kid}` for both algs —
+[FOR-74](https://linear.app/forestrie/issue/FOR-74), [ADR-0004](adr-0004-ks256-register-statement-binding.md).

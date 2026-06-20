@@ -22,8 +22,14 @@ production grant auth without envelope verification.
 ## Chain binding (Univocity)
 
 **Bootstrap key**: the contract-global key from the ImutableUnivocity
-`bootstrapConfig()` (alg + 64-byte ES256 `x‖y`, or KS256). One bootstrap key per
-deployed contract instance. The forest genesis stores it as the `bootstrapKey`.
+`bootstrapConfig()` — **ES256:** 64-byte `x‖y`; **KS256:** 20-byte Ethereum
+address. One bootstrap key per deployed contract instance. The forest genesis
+stores it as the `bootstrapKey`.
+
+**Statement signer binding**: bytes derived from a grant's committed **`grantData`**
+that the statement COSE **`kid`** must equal at register-statement. ES256: first
+32 bytes of 64-byte `x‖y`; KS256: full 20-byte address. Distinct from the grant
+envelope signer (authority key on `ownerLogId`).
 
 **Forest root R**: a Canopy forest's root authority log id (a UUID, e.g. the
 `E2E_UNIVOCITY_GENESIS_LOG_ID_ES256` fixture). A forest is bound to a contract by
