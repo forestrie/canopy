@@ -48,7 +48,8 @@ SKIP_CANOPY_COORDINATOR_DEPLOY=0 CANOPY_PROMOTION_LANE=dev \
 CANOPY_PROMOTION_LANE=dev \
   doppler run -p "${GCP_PROJECT_ID}" -c infra -- \
   task service:populate-config:custodian
-# Reconcile custodian via Flux
+# Sealer/custodian pick up coordinator URL via Reloader (~90s after Doppler sync;
+# see arbor-flux service-secrets.md). No manual kubectl rollout for those services.
 
 # 5. Verify
 SKIP_CANOPY_HEALTH=0 SKIP_COORDINATOR_HEALTH=0 CANOPY_PROMOTION_LANE=dev \
@@ -68,8 +69,8 @@ doppler run --project canopy --config dev -- \
 
 When changing **custodian proxy** (arbor) or **coordinator issuance** (canopy Worker):
 
-1. Deploy **delegation-coordinator-**{lane}**
-2. Refresh custodian **`DELEGATION_COORDINATOR_URL`** (arbor-flux populate + rollout)
+1. Deploy **delegation-coordinator-**{lane}
+2. Refresh custodian **`DELEGATION_COORDINATOR_URL`** (`service:populate-config:custodian` + `service:populate-config:sealer`); Reloader restarts sealer/custodian automatically (~90s)
 3. Run coordinator Playwright project in CI or locally
 
 ## Explicitly deferred
