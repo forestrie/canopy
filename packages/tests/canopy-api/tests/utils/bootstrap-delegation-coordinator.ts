@@ -256,7 +256,7 @@ export async function signPendingBootstrapDelegations(opts: {
         mmrEnd: entry.mmrEnd,
         delegatedPublicKey,
       });
-      const verified = verifyKs256BootstrapDelegationCertificate({
+      const verified = await verifyKs256BootstrapDelegationCertificate({
         certificate: material.certificate,
         rootSignerAddress: rootAddress,
       });
