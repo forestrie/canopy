@@ -37,6 +37,10 @@ import {
   assertOpsAdminE2eEnv,
   mintOnboardTokenE2e,
 } from "@e2e-utils/onboard-token-e2e";
+import {
+  assertCoordinatorApiE2eEnv,
+  hasCoordinatorApiE2eEnv,
+} from "@e2e-utils/coordinator-api-env.js";
 import { completeGrantRegistrationThroughReceipt } from "@e2e-utils/register-grant-through-receipt";
 import { univocityProvisionSkipReason } from "@e2e-utils/univocity-genesis-e2e";
 
@@ -58,6 +62,41 @@ function genesisBodyEs256(
 
 function forestrieGrantAuthHeader(completedGrantB64: string): string {
   return `Forestrie-Grant ${completedGrantB64}`;
+}
+
+function testDelegatedPublicKey(seed: number): Uint8Array {
+  const out = new Uint8Array(24);
+  for (let i = 0; i < out.length; i++) out[i] = seed + i;
+  return out;
+}
+
+async function postCoordinatorDelegationIssue(opts: {
+  coordinatorUrl: string;
+  appToken: string;
+  logId: string;
+  delegatedPublicKey: Uint8Array;
+  mmrStart?: number;
+  mmrEnd?: number;
+}): Promise<number> {
+  const body = encodeCbor({
+    version: 1,
+    logId: uuidToBytes(opts.logId),
+    mmrStart: opts.mmrStart ?? 1,
+    mmrEnd: opts.mmrEnd ?? 8,
+    algorithm: "ES256",
+    delegatedPublicKey: opts.delegatedPublicKey,
+    requestedTtlSeconds: 3600,
+  }) as Uint8Array;
+  const res = await fetch(`${opts.coordinatorUrl}/api/delegations`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${opts.appToken}`,
+      "Content-Type": "application/cbor",
+      Accept: "application/cbor",
+    },
+    body,
+  });
+  return res.status;
 }
 
 test.describe("Forest genesis registration control plane", () => {
@@ -384,5 +423,124 @@ test.describe("Forest genesis registration control plane", () => {
       },
     );
     expect(res.status()).toBe(403);
+  });
+
+  test("ops kill switch suppresses coordinator pending surfacing for registration", async ({
+    unauthorizedRequest,
+  }) => {
+    assertOpsAdminE2eEnv();
+    assertBootstrapMintE2eEnv();
+    if (!hasCoordinatorApiE2eEnv()) {
+      test.skip(
+        true,
+        "DELEGATION_COORDINATOR_URL and COORDINATOR_APP_TOKEN required",
+      );
+    }
+    const skip = univocityProvisionSkipReason();
+    test.skip(!!skip, skip ?? "");
+
+    const { baseUrl: coordinatorUrl, appToken } = assertCoordinatorApiE2eEnv();
+    const ops = process.env.CANOPY_OPS_ADMIN_TOKEN!.trim();
+    const onboardToken = await mintOnboardTokenE2e(
+      unauthorizedRequest,
+      "kill-switch-e2e",
+    );
+    const logId = randomUUID();
+    const variant = getBootstrapVariant("es256");
+    const boot = await variant.fetchBootstrapKey();
+
+    const genesisRes = await unauthorizedRequest.post(
+      `/api/forest/${logId}/genesis`,
+      {
+        headers: {
+          Authorization: `Bearer ${onboardToken}`,
+          "Content-Type": "application/cbor",
+        },
+        data: Buffer.from(
+          genesisBodyEs256(
+            boot.key,
+            variant.contractAddrBytes,
+            variant.chainId,
+          ),
+        ),
+      },
+    );
+    expect(genesisRes.status()).toBe(201);
+
+    const delegatedKey = testDelegatedPublicKey(71);
+    const issueStatus = await postCoordinatorDelegationIssue({
+      coordinatorUrl,
+      appToken,
+      logId,
+      delegatedPublicKey: delegatedKey,
+    });
+    expect(issueStatus).toBe(202);
+
+    const pendingBefore = await fetch(
+      `${coordinatorUrl}/api/logs/${logId}/pending-delegation`,
+      { headers: { Authorization: `Bearer ${appToken}` } },
+    );
+    expect(pendingBefore.status).toBe(200);
+    const beforeBody = (await pendingBefore.json()) as {
+      entries?: unknown[];
+    };
+    expect((beforeBody.entries ?? []).length).toBeGreaterThan(0);
+
+    const disableRes = await unauthorizedRequest.put(
+      `/api/payments/registrations/${logId}/enabled`,
+      {
+        headers: {
+          Authorization: `Bearer ${ops}`,
+          "Content-Type": "application/cbor",
+        },
+        data: Buffer.from(encodeCbor(new Map([[1, false]])) as Uint8Array),
+      },
+    );
+    expect(disableRes.status()).toBe(200);
+    const disabledBody = decodeCbor(
+      new Uint8Array(await disableRes.body()),
+    ) as { R?: string; enabled?: boolean };
+    expect(disabledBody.R).toBe(logId);
+    expect(disabledBody.enabled).toBe(false);
+
+    const pendingDisabled = await fetch(
+      `${coordinatorUrl}/api/logs/${logId}/pending-delegation`,
+      { headers: { Authorization: `Bearer ${appToken}` } },
+    );
+    expect(pendingDisabled.status).toBe(200);
+    const disabledPending = (await pendingDisabled.json()) as {
+      entries?: unknown[];
+    };
+    expect(disabledPending.entries ?? []).toEqual([]);
+
+    const issueWhileDisabled = await postCoordinatorDelegationIssue({
+      coordinatorUrl,
+      appToken,
+      logId,
+      delegatedPublicKey: testDelegatedPublicKey(72),
+      mmrStart: 2,
+      mmrEnd: 9,
+    });
+    expect(issueWhileDisabled).toBe(202);
+
+    const enableRes = await unauthorizedRequest.put(
+      `/api/payments/registrations/${logId}/enabled`,
+      {
+        headers: {
+          Authorization: `Bearer ${ops}`,
+          "Content-Type": "application/cbor",
+        },
+        data: Buffer.from(encodeCbor(new Map([[1, true]])) as Uint8Array),
+      },
+    );
+    expect(enableRes.status()).toBe(200);
+
+    const pendingAfter = await fetch(
+      `${coordinatorUrl}/api/logs/${logId}/pending-delegation`,
+      { headers: { Authorization: `Bearer ${appToken}` } },
+    );
+    expect(pendingAfter.status).toBe(200);
+    const afterBody = (await pendingAfter.json()) as { entries?: unknown[] };
+    expect((afterBody.entries ?? []).length).toBeGreaterThan(0);
   });
 });
