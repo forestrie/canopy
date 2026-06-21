@@ -17,6 +17,11 @@ import {
   handlePostPublicRoot,
   handlePostSigningRoute,
   handleAdminResetStorage,
+  handleGetWebhook,
+  handlePutWebhook,
+  handleDeleteWebhook,
+  handleGetEnabled,
+  handlePutEnabled,
 } from "./handlers/index.js";
 
 export { DelegationStoreDO } from "./durableobjects/index.js";
@@ -92,6 +97,31 @@ export default {
       }
       if (method === "POST") {
         return handlePostPublicRoot(logId, request, env);
+      }
+    }
+
+    const webhookMatch = /^\/api\/logs\/([^/]+)\/webhook$/.exec(pathname);
+    if (webhookMatch) {
+      const logId = decodeURIComponent(webhookMatch[1]!);
+      if (method === "GET") {
+        return handleGetWebhook(logId, request, env);
+      }
+      if (method === "PUT") {
+        return handlePutWebhook(logId, request, env);
+      }
+      if (method === "DELETE") {
+        return handleDeleteWebhook(logId, request, env);
+      }
+    }
+
+    const enabledMatch = /^\/api\/logs\/([^/]+)\/enabled$/.exec(pathname);
+    if (enabledMatch) {
+      const logId = decodeURIComponent(enabledMatch[1]!);
+      if (method === "GET") {
+        return handleGetEnabled(logId, request, env);
+      }
+      if (method === "PUT") {
+        return handlePutEnabled(logId, request, env);
       }
     }
 

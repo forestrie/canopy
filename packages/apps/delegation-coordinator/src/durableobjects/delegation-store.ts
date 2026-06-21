@@ -23,6 +23,10 @@ import type { PendingEntry } from "../types/pending-entry.js";
 import type { PendingHintRequest } from "../types/pending-hint-request.js";
 import type { SigningRoute } from "../types/signing-route.js";
 import type { SubmitMaterialRequest } from "../types/submit-material-request.js";
+import type { PutWebhookRequest } from "../types/put-webhook-request.js";
+import type { PutEnabledRequest } from "../types/put-enabled-request.js";
+import type { WebhookConfigResponse } from "../types/webhook-config-response.js";
+import type { EnabledResponse } from "../types/enabled-response.js";
 import { delegationPendingResponse } from "../delegation-pending-response.js";
 import {
   ByokMaterialValidationError,
@@ -89,6 +93,31 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
       if (pathname === "/pending-hint" && method === "POST") {
         return this.handlePendingHint(request);
+      }
+
+      const webhookMatch = /^\/webhook\/([0-9a-f]{32})$/.exec(pathname);
+      if (webhookMatch) {
+        const logIdHex32 = webhookMatch[1]!;
+        if (method === "GET") {
+          return this.handleGetWebhookConfig(logIdHex32);
+        }
+        if (method === "PUT") {
+          return this.handlePutWebhookConfig(logIdHex32, request);
+        }
+        if (method === "DELETE") {
+          return this.handleDeleteWebhookConfig(logIdHex32);
+        }
+      }
+
+      const enabledMatch = /^\/enabled\/([0-9a-f]{32})$/.exec(pathname);
+      if (enabledMatch) {
+        const logIdHex32 = enabledMatch[1]!;
+        if (method === "GET") {
+          return this.handleGetEnabled(logIdHex32);
+        }
+        if (method === "PUT") {
+          return this.handlePutEnabled(logIdHex32, request);
+        }
       }
 
       if (pathname.startsWith("/")) {
@@ -172,6 +201,16 @@ export class DelegationStoreDO extends DurableObject<Env> {
         x BLOB NOT NULL,
         y BLOB NOT NULL,
         uploaded_at INTEGER NOT NULL
+      )
+    `);
+
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS log_delegation_config (
+        log_id_hex32 TEXT PRIMARY KEY,
+        webhook_url TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
       )
     `);
 
@@ -823,6 +862,169 @@ export class DelegationStoreDO extends DurableObject<Env> {
     this.prunePending(logIdHex32, now);
 
     return Response.json({ ok: true, id });
+  }
+
+  private readDelegationConfigRow(logIdHex32: string): {
+    webhook_url: string | null;
+    enabled: number;
+    created_at: number;
+    updated_at: number;
+  } | null {
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT webhook_url, enabled, created_at, updated_at
+         FROM log_delegation_config WHERE log_id_hex32 = ?`,
+        logIdHex32,
+      ),
+    ];
+    if (rows.length === 0) return null;
+    return rows[0] as {
+      webhook_url: string | null;
+      enabled: number;
+      created_at: number;
+      updated_at: number;
+    };
+  }
+
+  private webhookConfigResponseFromRow(row: {
+    webhook_url: string | null;
+    enabled: number;
+    created_at: number;
+    updated_at: number;
+  }): WebhookConfigResponse {
+    const resp: WebhookConfigResponse = {
+      enabled: row.enabled !== 0,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+    if (row.webhook_url) {
+      resp.webhookUrl = row.webhook_url;
+    }
+    return resp;
+  }
+
+  private handleGetWebhookConfig(logIdHex32: string): Response {
+    const row = this.readDelegationConfigRow(logIdHex32);
+    if (!row) {
+      return Response.json(
+        { type: "about:blank", title: "Not Found", status: 404 },
+        { status: 404 },
+      );
+    }
+    return Response.json(this.webhookConfigResponseFromRow(row));
+  }
+
+  private async handlePutWebhookConfig(
+    logIdHex32: string,
+    request: Request,
+  ): Promise<Response> {
+    const body = (await request.json()) as PutWebhookRequest;
+    if (!body.url || typeof body.url !== "string") {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Invalid request",
+          status: 400,
+          detail: "url is required",
+        },
+        { status: 400 },
+      );
+    }
+
+    const now = Date.now();
+    const existing = this.readDelegationConfigRow(logIdHex32);
+    const enabled = existing?.enabled ?? 1;
+    const createdAt = existing?.created_at ?? now;
+
+    this.ctx.storage.sql.exec(
+      `INSERT INTO log_delegation_config
+         (log_id_hex32, webhook_url, enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(log_id_hex32) DO UPDATE SET
+         webhook_url = excluded.webhook_url,
+         updated_at = excluded.updated_at`,
+      logIdHex32,
+      body.url,
+      enabled,
+      createdAt,
+      now,
+    );
+
+    const row = this.readDelegationConfigRow(logIdHex32);
+    return Response.json(
+      row ? this.webhookConfigResponseFromRow(row) : { ok: true },
+    );
+  }
+
+  private handleDeleteWebhookConfig(logIdHex32: string): Response {
+    const now = Date.now();
+    const existing = this.readDelegationConfigRow(logIdHex32);
+    if (!existing) {
+      return Response.json({ ok: true });
+    }
+
+    this.ctx.storage.sql.exec(
+      `UPDATE log_delegation_config
+       SET webhook_url = NULL, updated_at = ?
+       WHERE log_id_hex32 = ?`,
+      now,
+      logIdHex32,
+    );
+
+    return Response.json({ ok: true });
+  }
+
+  private handleGetEnabled(logIdHex32: string): Response {
+    const row = this.readDelegationConfigRow(logIdHex32);
+    if (!row) {
+      return Response.json(
+        { type: "about:blank", title: "Not Found", status: 404 },
+        { status: 404 },
+      );
+    }
+    const resp: EnabledResponse = { enabled: row.enabled !== 0 };
+    return Response.json(resp);
+  }
+
+  private async handlePutEnabled(
+    logIdHex32: string,
+    request: Request,
+  ): Promise<Response> {
+    const body = (await request.json()) as PutEnabledRequest;
+    if (typeof body.enabled !== "boolean") {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Invalid request",
+          status: 400,
+          detail: "enabled must be a boolean",
+        },
+        { status: 400 },
+      );
+    }
+
+    const now = Date.now();
+    const existing = this.readDelegationConfigRow(logIdHex32);
+    const webhookUrl = existing?.webhook_url ?? null;
+    const createdAt = existing?.created_at ?? now;
+    const enabledInt = body.enabled ? 1 : 0;
+
+    this.ctx.storage.sql.exec(
+      `INSERT INTO log_delegation_config
+         (log_id_hex32, webhook_url, enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(log_id_hex32) DO UPDATE SET
+         enabled = excluded.enabled,
+         updated_at = excluded.updated_at`,
+      logIdHex32,
+      webhookUrl,
+      enabledInt,
+      createdAt,
+      now,
+    );
+
+    const resp: EnabledResponse = { enabled: body.enabled };
+    return Response.json(resp);
   }
 
   /** @internal Exported for tests */

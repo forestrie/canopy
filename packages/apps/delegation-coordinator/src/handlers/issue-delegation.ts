@@ -5,31 +5,16 @@
 import type { Env } from "../env.js";
 import { decode } from "cbor-x";
 import { checkBearerToken } from "../auth/check-bearer-token.js";
+import { issuerTokenForLog } from "../auth/issuer-token-for-log.js";
 import { logIdWireBytesToHex32 } from "../log-id.js";
 import type { DelegationIssueRequest } from "../types/delegation-issue-request.js";
 import {
-  forwardToStore,
   getStoreStubForLogId,
   internalError,
   problemResponse,
 } from "./handler.js";
 
 const CBOR_CONTENT_TYPE = "application/cbor";
-
-async function issuerTokenForLog(
-  env: Env,
-  logIdHex32: string,
-): Promise<string | undefined> {
-  const routeResp = await forwardToStore(
-    env,
-    logIdHex32,
-    `/signing-route/${logIdHex32}`,
-    { method: "GET" },
-  );
-  if (!routeResp.ok) return undefined;
-  const route = (await routeResp.json()) as { issuerToken?: string };
-  return route.issuerToken?.trim() || undefined;
-}
 
 export async function handleIssueDelegation(
   request: Request,

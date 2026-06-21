@@ -8,3 +8,8 @@ export { handlePostCustodyKeys } from "./post-custody-keys.js";
 export { handleGetPublicRoot } from "./get-public-root.js";
 export { handlePostPublicRoot } from "./post-public-root.js";
 export { handleAdminResetStorage } from "./admin-reset-storage.js";
+export { handleGetWebhook } from "./get-webhook.js";
+export { handlePutWebhook } from "./put-webhook.js";
+export { handleDeleteWebhook } from "./delete-webhook.js";
+export { handleGetEnabled } from "./get-enabled.js";
+export { handlePutEnabled } from "./put-enabled.js";
