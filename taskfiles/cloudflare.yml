@@ -455,7 +455,10 @@ tasks:
           import urllib.request
 
           CF = "https://api.cloudflare.com/client/v4"
-          STORE_NAME = "forestrie-coordinator"
+          PREFERRED_STORE_NAME = os.environ.get(
+              "COORDINATOR_SECRETS_STORE_NAME", "forestrie-coordinator"
+          )
+          FALLBACK_STORE_NAME = "default_secrets_store"
           SECRET_NAME = "webhook-signing-key"
 
           def env_required(key: str) -> str:
@@ -472,7 +475,7 @@ tasks:
               print("WEBHOOK_SIGNING_KEY_PEM must be PKCS#8 PEM", file=sys.stderr)
               sys.exit(1)
 
-          def cf_json(method: str, path: str, body=None):
+          def cf_json(method: str, path: str, body=None, *, fatal: bool = True):
               url = f"{CF}{path}"
               data = None if body is None else json.dumps(body).encode("utf-8")
               req = urllib.request.Request(
@@ -489,6 +492,12 @@ tasks:
                       return json.loads(resp.read().decode("utf-8"))
               except urllib.error.HTTPError as e:
                   err = e.read().decode("utf-8", errors="replace")
+                  try:
+                      parsed = json.loads(err)
+                  except json.JSONDecodeError:
+                      parsed = None
+                  if not fatal and parsed is not None:
+                      return parsed
                   print(
                       f"Cloudflare API {method} {path} failed: HTTP {e.code} {err}",
                       file=sys.stderr,
@@ -502,28 +511,54 @@ tasks:
               print("secrets_store stores list failed", file=sys.stderr)
               sys.exit(1)
           stores = stores_resp.get("result") or []
-          store = next(
-              (
-                  s
-                  for s in stores
-                  if s.get("name") == STORE_NAME or s.get("id") == STORE_NAME
-              ),
-              None,
-          )
+
+          def find_store(name: str):
+              return next(
+                  (s for s in stores if s.get("name") == name or s.get("id") == name),
+                  None,
+              )
+
+          store = find_store(PREFERRED_STORE_NAME)
           if store is None:
               created = cf_json(
                   "POST",
                   f"/accounts/{account_id}/secrets_store/stores",
-                  {"name": STORE_NAME},
+                  {"name": PREFERRED_STORE_NAME},
+                  fatal=False,
               )
-              if not created.get("success"):
-                  print("secrets_store store create failed", file=sys.stderr)
-                  sys.exit(1)
-              store = created["result"]
-              print(f"Created Secrets Store {STORE_NAME} (id={store.get('id')})")
+              if created.get("success"):
+                  store = created["result"]
+                  print(
+                      f"Created Secrets Store {PREFERRED_STORE_NAME} "
+                      f"(id={store.get('id')})"
+                  )
+              else:
+                  errors = created.get("errors") or []
+                  codes = {e.get("code") for e in errors}
+                  messages = " ".join(
+                      str(e.get("message", "")) for e in errors
+                  )
+                  if 1003 in codes or "maximum_stores_exceeded" in messages:
+                      store = find_store(FALLBACK_STORE_NAME) or (
+                          stores[0] if len(stores) == 1 else None
+                      )
+                      if store is None:
+                          print(
+                              "Cannot create preferred store (account store limit); "
+                              f"no fallback {FALLBACK_STORE_NAME} found",
+                              file=sys.stderr,
+                          )
+                          sys.exit(1)
+                      print(
+                          f"Using existing store {store.get('name')} "
+                          f"(id={store.get('id')}); account store limit reached"
+                      )
+                  else:
+                      print("secrets_store store create failed", file=sys.stderr)
+                      sys.exit(1)
           else:
               print(
-                  f"Secrets Store {STORE_NAME} exists (id={store.get('id')})"
+                  f"Secrets Store {store.get('name')} exists (id={store.get('id')})"
               )
 
           store_id = store["id"]
@@ -554,5 +589,5 @@ tasks:
           if not created_secret.get("success"):
               print("secrets_store secret create failed", file=sys.stderr)
               sys.exit(1)
-          print(f"Created secret {SECRET_NAME} in store {STORE_NAME}")
+          print(f"Created secret {SECRET_NAME} in store {store.get('name')}")
           PY

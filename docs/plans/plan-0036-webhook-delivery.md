@@ -32,7 +32,8 @@ gh secret set WEBHOOK_SIGNING_KEY_PEM --env prod --repo forestrie/canopy
 doppler run --project canopy --config dev -- task cf:coordinator:ensure-webhook-signing-key
 ```
 
-- **Store:** `forestrie-coordinator` (Secrets Store)
+- **Store:** `default_secrets_store` (account default; dedicated
+  `forestrie-coordinator` store when account quota allows)
 - **Secret:** `webhook-signing-key` (PKCS#8 ES256 PEM)
 - **Worker binding:** `WEBHOOK_SIGNING_KEY` in `wrangler.jsonc` (`secrets_store_secrets`)
 - **Deploy gate:** `deploy-workers.yml` requires `WEBHOOK_SIGNING_KEY_PEM` and runs ensure before `wrangler deploy`

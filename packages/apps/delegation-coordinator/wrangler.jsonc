@@ -53,7 +53,7 @@
       "secrets_store_secrets": [
         {
           "binding": "WEBHOOK_SIGNING_KEY",
-          "store_id": "forestrie-coordinator",
+          "store_id": "default_secrets_store",
           "secret_name": "webhook-signing-key",
         },
       ],
@@ -79,7 +79,7 @@
       "secrets_store_secrets": [
         {
           "binding": "WEBHOOK_SIGNING_KEY",
-          "store_id": "forestrie-coordinator",
+          "store_id": "default_secrets_store",
           "secret_name": "webhook-signing-key",
         },
       ],

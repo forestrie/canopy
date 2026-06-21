@@ -72,7 +72,7 @@ serving the Lane A catalog hostname.
 Secrets (per env): **`COORDINATOR_APP_TOKEN`**, **`CUSTODIAN_APP_TOKEN`**.
 
 **Webhook identity (account-level, ADR-0006):** `WEBHOOK_SIGNING_KEY` via Cloudflare
-Secrets Store (`forestrie-coordinator` / `webhook-signing-key`). Bootstrap PEM in
+Secrets Store (`default_secrets_store` / `webhook-signing-key`). Bootstrap PEM in
 Doppler `canopy` dev+prd (`task cf:coordinator:bootstrap-webhook-signing-key`);
 CI runs `task cf:coordinator:ensure-webhook-signing-key` before deploy
 (`WEBHOOK_SIGNING_KEY_PEM` GitHub Environment secret).
