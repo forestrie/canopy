@@ -12,6 +12,7 @@ on:
       - "packages/merklelog/**"
       - "Taskfile.dist.yml"
       - "taskfiles/wrangler.yml"
+      - "taskfiles/cloudflare.yml"
       - ".github/workflows/deploy-workers.yml"
   workflow_dispatch:
     inputs:
@@ -323,6 +324,7 @@ jobs:
           COORDINATOR_APP_TOKEN: ${{ secrets.COORDINATOR_APP_TOKEN }}
           CUSTODIAN_APP_TOKEN: ${{ secrets.CUSTODIAN_APP_TOKEN }}
           COORDINATOR_RESET_TOKEN: ${{ secrets.COORDINATOR_RESET_TOKEN }}
+          WEBHOOK_SIGNING_KEY_PEM: ${{ secrets.WEBHOOK_SIGNING_KEY_PEM }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
@@ -350,8 +352,14 @@ jobs:
           elif [ "${ENV}" = "dev" ]; then
             echo "COORDINATOR_RESET_TOKEN not set; skipping (content-reset coordinator wipe unavailable)."
           fi
-          echo "WEBHOOK_SIGNING_KEY uses Cloudflare Secrets Store (secrets_store_secrets in wrangler)."
-          echo "Ensure store forestrie-coordinator / secret webhook-signing-key exists (PKCS#8 ES256 PEM)."
+          PEM=$(trim_ws "${WEBHOOK_SIGNING_KEY_PEM:-}")
+          if [ -z "$PEM" ]; then
+            echo "::error::WEBHOOK_SIGNING_KEY_PEM is required (bootstrap via task cf:coordinator:bootstrap-webhook-signing-key, sync to GitHub Environment secret)."
+            exit 1
+          fi
+          cd "${GITHUB_WORKSPACE}"
+          task cf:coordinator:ensure-webhook-signing-key
+          cd packages/apps/delegation-coordinator
           for key in CUSTODIAN_URL DELEGATION_COORDINATOR_URL; do
             if [ -z "$(trim_ws "${!key:-}")" ]; then
               echo "::error::${key} is required in GitHub Environment ${ENV}."

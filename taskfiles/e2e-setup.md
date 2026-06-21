@@ -55,6 +55,10 @@ Required keys in the Doppler config include at least:
 - **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**, **`CANOPY_OPS_ADMIN_TOKEN`** — for **system** specs (child custody keys + onboard-token genesis)
 - **`DELEGATION_COORDINATOR_URL`**, **`COORDINATOR_APP_TOKEN`** — optional; when both set, **`task test:e2e`** includes the **coordinator** project
 
+Deployed coordinator webhook delivery requires Cloudflare Secrets Store
+(`task cf:coordinator:ensure-webhook-signing-key`). Local `wrangler dev` uses
+`WEBHOOK_SIGNING_KEY_PEM` from Doppler or vitest vars in `wrangler.jsonc`.
+
 **Univocity ephemeral provision** (bootstrap **system** specs):
 
 Provisioned automatically in preflight (see [plan-0032](../docs/plans/plan-0032-univocity-imutable-e2e-provision.md)). Playwright reads **`.work/e2e-univocity.env`**:

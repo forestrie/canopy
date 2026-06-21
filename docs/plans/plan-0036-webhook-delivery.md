@@ -16,13 +16,29 @@ vitest), public key at `GET /api/coordinator/webhook-signing-key`.
 
 ## Ops — webhook signing key
 
-1. Generate P-256 PKCS#8 PEM: `openssl ecparam -genkey -name prime256v1 -noout -out webhook.pem`
-2. Create Cloudflare Secrets Store `forestrie-coordinator` (account-level).
-3. Upload PEM as secret `webhook-signing-key`.
-4. Wrangler binding `WEBHOOK_SIGNING_KEY` is configured in `wrangler.jsonc`
-   (`secrets_store_secrets`).
+Account-level coordinator ES256 identity key (ADR-0006). Canonical PEM in
+**Doppler `canopy` `dev` + `prd`** (same value); CI pushes to Cloudflare Secrets
+Store before coordinator deploy.
 
-Local dev without Secrets Store: set `WEBHOOK_SIGNING_KEY_PEM` via Doppler or
+```bash
+# 1. Generate + store PEM (once, idempotent)
+doppler run --project canopy --config dev -- task cf:coordinator:bootstrap-webhook-signing-key
+
+# 2. Sync PEM to GitHub Environment secrets (dev + prod, same PEM)
+gh secret set WEBHOOK_SIGNING_KEY_PEM --env dev --repo forestrie/canopy
+gh secret set WEBHOOK_SIGNING_KEY_PEM --env prod --repo forestrie/canopy
+
+# 3. Push to Cloudflare Secrets Store (or rely on deploy-workers CI)
+doppler run --project canopy --config dev -- task cf:coordinator:ensure-webhook-signing-key
+```
+
+- **Store:** `default_secrets_store` (account default; dedicated
+  `forestrie-coordinator` store when account quota allows)
+- **Secret:** `webhook-signing-key` (PKCS#8 ES256 PEM)
+- **Worker binding:** `WEBHOOK_SIGNING_KEY` in `wrangler.jsonc` (`secrets_store_secrets`)
+- **Deploy gate:** `deploy-workers.yml` requires `WEBHOOK_SIGNING_KEY_PEM` and runs ensure before `wrangler deploy`
+
+Local dev without Secrets Store: `WEBHOOK_SIGNING_KEY_PEM` via Doppler or
 `wrangler dev --var`.
 
 ## Config

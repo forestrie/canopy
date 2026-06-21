@@ -408,3 +408,186 @@ tasks:
           yes n | wrangler r2 bucket notification list "{{.R2_BUCKET_NAME}}" | grep -q "v2/merklelog/massifs/" && \
             yes n | wrangler r2 bucket notification delete "{{.R2_BUCKET_NAME}}" --queue "{{.QUEUE_NAME}}" || \
             echo "No notifications to delete"
+
+  coordinator:bootstrap-webhook-signing-key:
+    desc: |
+      Generate WEBHOOK_SIGNING_KEY_PEM in Doppler canopy dev+prd if missing (idempotent).
+      Requires doppler CLI auth. Account-level ES256 coordinator identity key (ADR-0006).
+    cmds:
+      - cmd: |
+          set -euo pipefail
+          PROJECT=canopy
+          if doppler secrets get WEBHOOK_SIGNING_KEY_PEM -p "${PROJECT}" -c dev --plain >/dev/null 2>&1 \
+            && doppler secrets get WEBHOOK_SIGNING_KEY_PEM -p "${PROJECT}" -c prd --plain >/dev/null 2>&1; then
+            echo "WEBHOOK_SIGNING_KEY_PEM already set in ${PROJECT}/dev and ${PROJECT}/prd — no-op"
+            exit 0
+          fi
+          PEM="$(openssl ecparam -genkey -name prime256v1 2>/dev/null | openssl pkcs8 -topk8 -nocrypt 2>/dev/null)"
+          if [ -z "${PEM}" ] || ! printf '%s' "${PEM}" | grep -q 'BEGIN PRIVATE KEY'; then
+            echo "ERROR: failed to generate PKCS#8 ES256 PEM" >&2
+            exit 1
+          fi
+          for CONFIG in dev prd; do
+            printf '%s' "${PEM}" | doppler secrets set WEBHOOK_SIGNING_KEY_PEM \
+              -p "${PROJECT}" -c "${CONFIG}" --visibility masked --silent
+            echo "Set WEBHOOK_SIGNING_KEY_PEM in ${PROJECT}/${CONFIG}"
+          done
+          echo "Next steps:"
+          echo "  1. gh secret set WEBHOOK_SIGNING_KEY_PEM --env dev --repo forestrie/canopy"
+          echo "  2. gh secret set WEBHOOK_SIGNING_KEY_PEM --env prod --repo forestrie/canopy (same PEM)"
+          echo "  3. doppler run --project canopy --config dev -- task cf:coordinator:ensure-webhook-signing-key"
+
+  coordinator:ensure-webhook-signing-key:
+    desc: |
+      Ensure Cloudflare Secrets Store forestrie-coordinator + webhook-signing-key exist.
+      Reads WEBHOOK_SIGNING_KEY_PEM from env (Doppler or GitHub). Idempotent create-if-absent.
+      Requires CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN.
+    deps:
+      - validate
+    cmds:
+      - cmd: |
+          set -euo pipefail
+          python3 << 'PY'
+          import json
+          import os
+          import sys
+          import urllib.error
+          import urllib.request
+
+          CF = "https://api.cloudflare.com/client/v4"
+          PREFERRED_STORE_NAME = os.environ.get(
+              "COORDINATOR_SECRETS_STORE_NAME", "forestrie-coordinator"
+          )
+          FALLBACK_STORE_NAME = "default_secrets_store"
+          SECRET_NAME = "webhook-signing-key"
+
+          def env_required(key: str) -> str:
+              value = os.environ.get(key, "").strip()
+              if not value:
+                  print(f"{key} must be set", file=sys.stderr)
+                  sys.exit(1)
+              return value
+
+          account_id = env_required("CLOUDFLARE_ACCOUNT_ID")
+          cf_api = env_required("CLOUDFLARE_API_TOKEN")
+          pem = env_required("WEBHOOK_SIGNING_KEY_PEM")
+          if "BEGIN PRIVATE KEY" not in pem:
+              print("WEBHOOK_SIGNING_KEY_PEM must be PKCS#8 PEM", file=sys.stderr)
+              sys.exit(1)
+
+          def cf_json(method: str, path: str, body=None, *, fatal: bool = True):
+              url = f"{CF}{path}"
+              data = None if body is None else json.dumps(body).encode("utf-8")
+              req = urllib.request.Request(
+                  url,
+                  data=data,
+                  method=method,
+                  headers={
+                      "Authorization": f"Bearer {cf_api}",
+                      "Content-Type": "application/json",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as resp:
+                      return json.loads(resp.read().decode("utf-8"))
+              except urllib.error.HTTPError as e:
+                  err = e.read().decode("utf-8", errors="replace")
+                  try:
+                      parsed = json.loads(err)
+                  except json.JSONDecodeError:
+                      parsed = None
+                  if not fatal and parsed is not None:
+                      return parsed
+                  print(
+                      f"Cloudflare API {method} {path} failed: HTTP {e.code} {err}",
+                      file=sys.stderr,
+                  )
+                  sys.exit(1)
+
+          stores_resp = cf_json(
+              "GET", f"/accounts/{account_id}/secrets_store/stores?per_page=50"
+          )
+          if not stores_resp.get("success"):
+              print("secrets_store stores list failed", file=sys.stderr)
+              sys.exit(1)
+          stores = stores_resp.get("result") or []
+
+          def find_store(name: str):
+              return next(
+                  (s for s in stores if s.get("name") == name or s.get("id") == name),
+                  None,
+              )
+
+          store = find_store(PREFERRED_STORE_NAME)
+          if store is None:
+              created = cf_json(
+                  "POST",
+                  f"/accounts/{account_id}/secrets_store/stores",
+                  {"name": PREFERRED_STORE_NAME},
+                  fatal=False,
+              )
+              if created.get("success"):
+                  store = created["result"]
+                  print(
+                      f"Created Secrets Store {PREFERRED_STORE_NAME} "
+                      f"(id={store.get('id')})"
+                  )
+              else:
+                  errors = created.get("errors") or []
+                  codes = {e.get("code") for e in errors}
+                  messages = " ".join(
+                      str(e.get("message", "")) for e in errors
+                  )
+                  if 1003 in codes or "maximum_stores_exceeded" in messages:
+                      store = find_store(FALLBACK_STORE_NAME) or (
+                          stores[0] if len(stores) == 1 else None
+                      )
+                      if store is None:
+                          print(
+                              "Cannot create preferred store (account store limit); "
+                              f"no fallback {FALLBACK_STORE_NAME} found",
+                              file=sys.stderr,
+                          )
+                          sys.exit(1)
+                      print(
+                          f"Using existing store {store.get('name')} "
+                          f"(id={store.get('id')}); account store limit reached"
+                      )
+                  else:
+                      print("secrets_store store create failed", file=sys.stderr)
+                      sys.exit(1)
+          else:
+              print(
+                  f"Secrets Store {store.get('name')} exists (id={store.get('id')})"
+              )
+
+          store_id = store["id"]
+          secrets_resp = cf_json(
+              "GET",
+              f"/accounts/{account_id}/secrets_store/stores/{store_id}/secrets?per_page=50",
+          )
+          if not secrets_resp.get("success"):
+              print("secrets_store secret list failed", file=sys.stderr)
+              sys.exit(1)
+          secrets = secrets_resp.get("result") or []
+          if any(s.get("name") == SECRET_NAME for s in secrets):
+              print(f"Secret {SECRET_NAME} already exists — no-op")
+              sys.exit(0)
+
+          created_secret = cf_json(
+              "POST",
+              f"/accounts/{account_id}/secrets_store/stores/{store_id}/secrets",
+              [
+                  {
+                      "name": SECRET_NAME,
+                      "value": pem,
+                      "scopes": ["workers"],
+                      "comment": "Coordinator ES256 webhook identity (ADR-0006)",
+                  }
+              ],
+          )
+          if not created_secret.get("success"):
+              print("secrets_store secret create failed", file=sys.stderr)
+              sys.exit(1)
+          print(f"Created secret {SECRET_NAME} in store {store.get('name')}")
+          PY
