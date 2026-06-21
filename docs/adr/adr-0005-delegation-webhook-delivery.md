@@ -1,6 +1,6 @@
 # ADR-0005 — Delegation webhook notification delivery mechanism
 
-**Status:** ACCEPTED
+**Status:** IMPLEMENTED
 **Date:** 2026-06-21
 **Related:**
 [arc-univocity-instance-registration.md](../arc/arc-univocity-instance-registration.md),

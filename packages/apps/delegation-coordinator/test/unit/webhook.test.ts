@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { normalizeLogIdToHex32 } from "../../src/log-id.js";
+import { fetchWithDoRetry } from "./fetch-with-do-retry.js";
 
 const TEST_TOKEN = "test-coordinator-token";
 const ISSUER_TOKEN = "per-log-issuer-token";
@@ -14,22 +14,6 @@ function authHeaders(
     Authorization: `Bearer ${token}`,
     ...extra,
   };
-}
-
-async function fetchWithDoRetry(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<Response> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      return await SELF.fetch(input, init);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!message.includes("invalidating this Durable Object")) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-  }
-  return SELF.fetch(input, init);
 }
 
 describe("webhook + enabled CRUD", () => {
