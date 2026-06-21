@@ -153,7 +153,7 @@ tokens.
 |---|---|---|
 | Forest genesis document (trust anchor + chain binding) | **canopy-api** (R2 writer) | unchanged storage; auth extended |
 | Issued onboard-token set + registration records (class, `endorsed-by`) | **canopy-api** | the payment-registration graph |
-| Webhook config + `enabled` (kill-switch) flag | **delegation-coordinator** | co-located with `signing_routes`, `pending`, `public-root` |
+| Webhook config + `enabled` (kill-switch) flag | **delegation-coordinator** | `log_delegation_config` per log; co-located shard with `pending`, `public-root` |
 
 canopy-api is the **controller**; the coordinator is the **enforcement point**.
 
@@ -163,8 +163,7 @@ canopy-api is the **controller**; the coordinator is the **enforcement point**.
 addr + `-68013` chain id, plan-0028), extended:
 
 - **Auth:** onboard token **or** descendant grant (table above).
-- **Optional** `webhookUrl` (+ a client-supplied `webhookSecret`, or
-  server-generated): on success, canopy-api **forwards** it to the coordinator
+- **Optional** `webhookUrl`: on success, canopy-api **forwards** it to the coordinator
   webhook CRUD (single-post ergonomics for the demo). The coordinator remains
   the owner of webhook config; operators may also manage it directly.
 - **Response:** 201 with `{ R, class, endorsedBy?, chainBinding }`; 401/403 on
@@ -222,23 +221,33 @@ appended leaf yields a `grantAuthorize`-verifiable completed grant.
 
 ## Webhook config CRUD (delegation-coordinator)
 
-Co-locate with the per-log `signing_routes` row (already keyed by
-`log_id_hex32`, already has `inherits_from`). Add columns:
+Per-log config lives in a dedicated DO SQLite table (independent of
+`signing_routes`, so `enabled` is togglable for polling-only logs):
 
 ```
-ALTER TABLE signing_routes ADD COLUMN webhook_url        TEXT;
-ALTER TABLE signing_routes ADD COLUMN webhook_secret_hash TEXT;  -- HMAC key digest
-ALTER TABLE signing_routes ADD COLUMN enabled            INTEGER NOT NULL DEFAULT 1;
+CREATE TABLE log_delegation_config (
+  log_id_hex32 TEXT PRIMARY KEY,
+  webhook_url  TEXT,
+  enabled      INTEGER NOT NULL DEFAULT 1,
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL
+);
 ```
 
-CRUD surface (CBOR/JSON, `COORDINATOR_APP_TOKEN` or per-log `issuerToken`):
+Source authentication for outbound delivery uses a **single coordinator ES256
+identity key** (asymmetric) — see
+[ADR-0006](../adr/adr-0006-webhook-source-authentication.md). FOR-92 stores
+**no per-log secret**; only `webhook_url` and `enabled`.
 
-| Method | Path | Purpose |
-|---|---|---|
-| `PUT` | `/api/logs/{logId}/webhook` | create/replace `{ url, secret }` |
-| `GET` | `/api/logs/{logId}/webhook` | read config (secret never returned; digest/flags only) |
-| `DELETE` | `/api/logs/{logId}/webhook` | remove the webhook (polling-only thereafter) |
-| `PUT` | `/api/logs/{logId}/enabled` | kill switch — canopy-api flips `enabled` |
+CRUD surface (JSON):
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `PUT` | `/api/logs/{logId}/webhook` | `COORDINATOR_APP_TOKEN` or per-log `issuerToken` | create/replace `{ url }` |
+| `GET` | `/api/logs/{logId}/webhook` | same | read `{ webhookUrl?, enabled, createdAt, updatedAt }` |
+| `DELETE` | `/api/logs/{logId}/webhook` | same | null `webhook_url` (polling-only thereafter) |
+| `PUT` | `/api/logs/{logId}/enabled` | `COORDINATOR_APP_TOKEN` only | kill switch — canopy-api flips `enabled` |
+| `GET` | `/api/logs/{logId}/enabled` | `COORDINATOR_APP_TOKEN` only | read `{ enabled }` |
 
 **Acceptance for this work stream: e2e tests for the CRUD APIs.** The hook is
 **stored but not invoked** at this stage.
@@ -278,12 +287,15 @@ key is a genuinely different request that needs fresh material. MMR range alone
 is necessary but not sufficient.
 
 Transport security (integrity + source auth, **not** confidentiality — the
-payload is non-sensitive per the isolation ARC):
+payload is non-sensitive per the isolation ARC). Per
+[ADR-0006](../adr/adr-0006-webhook-source-authentication.md):
 
-- `X-Forestrie-Webhook-Signature: sha256=<hmac>` over the raw body using the
-  per-log `webhook_secret`;
+- `X-Forestrie-Webhook-Signature` — ES256 over a canonical `{timestamp}.{body}`
+  string, signed with the coordinator identity key (FOR-93);
 - `X-Forestrie-Webhook-Timestamp` + a receiver replay window (freshness only —
   separate from idempotency);
+- receiver verifies with the coordinator's **published P-256 public key** (no
+  per-log shared secret);
 - receiver dedups on the deterministic `requestKey` and replies `2xx` fast; it
   then signs locally and uploads via the existing `POST
   /api/delegations/material` (itself an idempotent upsert at the coordinator).

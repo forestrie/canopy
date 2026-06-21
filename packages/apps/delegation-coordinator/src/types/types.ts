@@ -11,3 +11,8 @@ export type { PublicRootRecord } from "./public-root-record.js";
 export type { SubmitPublicRootRequest } from "./submit-public-root-request.js";
 export type { TrustRootResponseCbor } from "./trust-root-response.js";
 export type { PutPublicRootBody } from "./put-public-root-body.js";
+export type { WebhookConfig } from "./webhook-config.js";
+export type { PutWebhookRequest } from "./put-webhook-request.js";
+export type { PutEnabledRequest } from "./put-enabled-request.js";
+export type { WebhookConfigResponse } from "./webhook-config-response.js";
+export type { EnabledResponse } from "./enabled-response.js";
