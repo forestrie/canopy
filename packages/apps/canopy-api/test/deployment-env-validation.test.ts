@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import worker from "../src/index";
 import type { Env } from "../src/index";
 import { validGenesisV2Es256CborMap } from "./helpers/genesis-v2-body.js";
+import { mintTestOnboardToken } from "./helpers/onboard-token.js";
 
 const poolEnv = env as unknown as Env;
 
@@ -110,26 +111,18 @@ describe("Sequencing + receipt verifier env (non-pool NODE_ENV)", () => {
   });
 });
 
-describe("Forest admin env (non-pool NODE_ENV)", () => {
-  const forestLogId = "123e4567-e89b-12d3-a456-426614174000";
-  const forestUrl = `http://localhost/api/forest/${forestLogId}/genesis`;
-
-  function minimalGenesisBody(): Uint8Array {
-    return encodeCbor(validGenesisV2Es256CborMap()) as Uint8Array;
-  }
-
-  it("returns 503 on forest route when CURATOR_ADMIN_TOKEN is missing", async () => {
+describe("Payments ops env (non-pool NODE_ENV)", () => {
+  it("returns 503 on payments route when CANOPY_OPS_ADMIN_TOKEN is missing", async () => {
     const badEnv = {
       ...poolEnv,
       NODE_ENV: "development",
-      CUSTODIAN_URL: undefined,
-      CUSTODIAN_APP_TOKEN: undefined,
-      SEQUENCING_QUEUE: undefined,
-      CURATOR_ADMIN_TOKEN: undefined,
+      CANOPY_OPS_ADMIN_TOKEN: undefined,
     } as unknown as Env;
 
     const response = await worker.fetch(
-      new Request(forestUrl, { method: "POST" }),
+      new Request("http://localhost/api/payments/onboard-tokens", {
+        method: "GET",
+      }),
       badEnv,
       {} as ExecutionContext,
     );
@@ -138,35 +131,59 @@ describe("Forest admin env (non-pool NODE_ENV)", () => {
     const decoded = decodeCbor(
       new Uint8Array(await response.arrayBuffer()),
     ) as { detail?: string };
-    expect(decoded.detail).toMatch(/CURATOR_ADMIN_TOKEN/);
+    expect(decoded.detail).toMatch(/CANOPY_OPS_ADMIN_TOKEN/);
   });
+});
 
-  it("allows forest genesis POST when curator token is set without Custodian trio", async () => {
+describe("Forest genesis route env (non-pool NODE_ENV)", () => {
+  const forestLogId = "123e4567-e89b-12d3-a456-426614174000";
+
+  it("allows forest genesis POST without bootstrap trio when onboard token is valid", async () => {
     const okEnv = {
       ...poolEnv,
       NODE_ENV: "development",
       CUSTODIAN_URL: undefined,
       CUSTODIAN_APP_TOKEN: undefined,
       SEQUENCING_QUEUE: undefined,
-      CURATOR_ADMIN_TOKEN: "dev-forest-admin-token",
     } as unknown as Env;
 
     const uniqueLogId = crypto.randomUUID();
     const url = `http://localhost/api/forest/${uniqueLogId}/genesis`;
+    const { token } = await mintTestOnboardToken(okEnv);
 
     const response = await worker.fetch(
       new Request(url, {
         method: "POST",
         headers: {
-          Authorization: "Bearer dev-forest-admin-token",
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/cbor",
         },
-        body: minimalGenesisBody(),
+        body: encodeCbor(validGenesisV2Es256CborMap()) as Uint8Array,
       }),
       okEnv,
       {} as ExecutionContext,
     );
 
     expect(response.status).toBe(201);
+  });
+
+  it("allows public GET genesis without bootstrap trio", async () => {
+    const okEnv = {
+      ...poolEnv,
+      NODE_ENV: "development",
+      CUSTODIAN_URL: undefined,
+      CUSTODIAN_APP_TOKEN: undefined,
+      SEQUENCING_QUEUE: undefined,
+    } as unknown as Env;
+
+    const response = await worker.fetch(
+      new Request(`http://localhost/api/forest/${forestLogId}/genesis`, {
+        method: "GET",
+      }),
+      okEnv,
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(404);
   });
 });

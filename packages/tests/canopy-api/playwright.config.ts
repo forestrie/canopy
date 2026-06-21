@@ -87,6 +87,7 @@ export default defineConfig({
         "**/system/bootstrap-log-first-entry.spec.ts",
         "**/system/bootstrap-child-auth-grant.spec.ts",
         "**/system/auth-data-log-chain.spec.ts",
+        "**/system/forest-genesis-registration.spec.ts",
       ],
       use: {
         baseURL,

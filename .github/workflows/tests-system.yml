@@ -419,7 +419,7 @@ jobs:
           CUSTODIAN_URL: ${{ vars.CUSTODIAN_URL }}
           CUSTODIAN_APP_TOKEN: ${{ secrets.CUSTODIAN_APP_TOKEN }}
           CUSTODIAN_BOOTSTRAP_APP_TOKEN: ${{ secrets.CUSTODIAN_BOOTSTRAP_APP_TOKEN }}
-          CURATOR_ADMIN_TOKEN: ${{ secrets.CURATOR_ADMIN_TOKEN }}
+          CANOPY_OPS_ADMIN_TOKEN: ${{ secrets.CANOPY_OPS_ADMIN_TOKEN }}
           DELEGATION_COORDINATOR_URL: ${{ vars.DELEGATION_COORDINATOR_URL }}
           COORDINATOR_APP_TOKEN: ${{ secrets.COORDINATOR_APP_TOKEN }}
           E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP: ${{ needs.prepare-univocity.outputs.ks256_address }}

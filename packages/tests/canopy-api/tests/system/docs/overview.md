@@ -89,7 +89,7 @@ sequenceDiagram
 
     PT->>CUS: POST /v1/api/keys (selfLogId = root log R)
     CUS-->>PT: custody keyId, publicKeyPem
-    PT->>API: POST /api/forest/{R}/genesis (CURATOR_ADMIN_TOKEN)
+    PT->>API: POST /api/forest/{R}/genesis (onboard token Bearer)
     API->>R2G: persist genesis COSE_Key
     API-->>PT: 201 or 409
     PT->>CUS: POST /v1/api/keys/{kmsId}/sign (grant payload)
@@ -174,7 +174,7 @@ Spec detail: [bootstrap-log-first-entry.md](./bootstrap-log-first-entry.md),
 ## Environment
 
 See [package README](../../../README.md): `CANOPY_BASE_URL` / `CANOPY_FQDN`,
-`CURATOR_ADMIN_TOKEN`, `CUSTODIAN_URL`, `CUSTODIAN_APP_TOKEN`, deployed worker
+`CANOPY_OPS_ADMIN_TOKEN`, `CUSTODIAN_URL`, `CUSTODIAN_APP_TOKEN`, deployed worker
 bindings (`SEQUENCING_QUEUE`, `R2_MMRS`, …). Without **forestrie-ingress** and
 Ranger on the same env, poll/receipt tests **fail** (no skip).
 

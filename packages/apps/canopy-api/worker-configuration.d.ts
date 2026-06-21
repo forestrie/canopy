@@ -31,8 +31,8 @@ declare namespace Cloudflare {
   }
 }
 interface Env extends Cloudflare.Env {
-  /** Wrangler secret: Bearer token for `/api/forest/**` (not in generated deploy types). */
-  CURATOR_ADMIN_TOKEN?: string;
+  /** Wrangler secret: Bearer token for `/api/payments/**` ops routes (not in generated deploy types). */
+  CANOPY_OPS_ADMIN_TOKEN?: string;
 }
 
 // Begin runtime types

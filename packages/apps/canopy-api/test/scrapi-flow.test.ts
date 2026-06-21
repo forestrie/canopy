@@ -11,13 +11,12 @@ import type { Grant } from "../src/grant";
 import { custodianStatementKidFromXyGrantData } from "../src/grant/custodian-statement-kid.js";
 import { forestrieGrantAuthorizationHeader } from "./helpers/custodian-transparent-grant";
 import { validGenesisV2Es256CborMap } from "./helpers/genesis-v2-body.js";
+import { mintTestOnboardToken } from "./helpers/onboard-token.js";
 
-const FLOW_CURATOR = "scrapi-flow-curator-token";
+const testEnv = env as unknown as Env;
+
 /** Set in beforeAll: genesis for this id is stored in R2_GRANTS. */
 let flowBootstrapLogId = "";
-
-// Cast the test env to our Env type.
-const testEnv = env as unknown as Env;
 
 let flowGrantPriv: CryptoKey;
 /** ES256 public key as x‖y (64 bytes); matches {@link flowGrantPriv}. */
@@ -38,6 +37,7 @@ beforeAll(async () => {
   flowGrantData64 = raw.subarray(1, 65);
 
   flowBootstrapLogId = crypto.randomUUID();
+  const { token } = await mintTestOnboardToken(testEnv, "scrapi-flow");
 
   const genesisBody = encodeCbor(
     validGenesisV2Es256CborMap({
@@ -49,11 +49,11 @@ beforeAll(async () => {
       method: "POST",
       headers: {
         "Content-Type": "application/cbor",
-        Authorization: `Bearer ${FLOW_CURATOR}`,
+        Authorization: `Bearer ${token}`,
       },
       body: genesisBody,
     }),
-    { ...testEnv, CURATOR_ADMIN_TOKEN: FLOW_CURATOR },
+    testEnv,
     {} as ExecutionContext,
   );
   expect(res.status).toBe(201);

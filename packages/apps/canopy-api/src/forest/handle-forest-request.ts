@@ -1,15 +1,24 @@
 /**
- * `/api/forest/**` dispatcher (Plan 0018). POST genesis requires curator bearer; GET genesis is public.
+ * `/api/forest/**` dispatcher. POST genesis: onboard token or endorsement grant.
  */
 
+import { cborResponse } from "../cbor-api/cbor-response.js";
 import { problemResponse } from "../cbor-api/cbor-response.js";
 import { ClientErrors } from "../cbor-api/problem-details.js";
-import { curatorAdminBearerOrUnauthorized } from "./curator-admin-bearer.js";
+import type { ReceiptAuthorityResolver } from "../env/receipt-authority-resolver.js";
+import { resolveGenesisAuth } from "../payments/genesis-auth.js";
+import { buildGenesisRegistrationResponse } from "../payments/genesis-registration-response.js";
+import {
+  logIdWireToUuid,
+  registrationRecordFromChainBinding,
+  writeRegistration,
+} from "../payments/registration-store.js";
 import { getForestGenesis } from "./get-forest-genesis.js";
 import { postForestGenesis, type PostGenesisEnv } from "./post-genesis.js";
 
 export interface ForestHandlerEnv extends PostGenesisEnv {
-  CURATOR_ADMIN_TOKEN?: string;
+  NODE_ENV: string;
+  resolveReceiptAuthority?: ReceiptAuthorityResolver;
 }
 
 function attachCors(
@@ -41,9 +50,6 @@ export async function handleForestRequest(
   }
 
   if (pathname === "/api/forest") {
-    const token = env.CURATOR_ADMIN_TOKEN?.trim() ?? "";
-    const authErr = curatorAdminBearerOrUnauthorized(request, token);
-    if (authErr) return attachCors(authErr, corsHeaders);
     return attachCors(
       ClientErrors.notFound(
         "Not Found",
@@ -63,11 +69,59 @@ export async function handleForestRequest(
       return attachCors(res, corsHeaders);
     }
     if (request.method === "POST") {
-      const token = env.CURATOR_ADMIN_TOKEN?.trim() ?? "";
-      const authErr = curatorAdminBearerOrUnauthorized(request, token);
-      if (authErr) return attachCors(authErr, corsHeaders);
-      const res = await postForestGenesis(request, logIdSeg, env);
-      return attachCors(res, corsHeaders);
+      const auth = await resolveGenesisAuth(request, logIdSeg, env);
+      if (auth instanceof Response) return attachCors(auth, corsHeaders);
+
+      const genesisResult = await postForestGenesis(request, logIdSeg, env);
+      if (genesisResult instanceof Response) {
+        return attachCors(genesisResult, corsHeaders);
+      }
+
+      const rUuid = logIdWireToUuid(genesisResult.logIdWire);
+      if (auth.mode === "onboard") {
+        await writeRegistration(
+          env,
+          genesisResult.logIdWire,
+          registrationRecordFromChainBinding({
+            class: "payment-authoritative",
+            onboardTokenRef: auth.tokenHash,
+            chainBinding: genesisResult.chainBinding,
+          }),
+        );
+        return attachCors(
+          cborResponse(
+            buildGenesisRegistrationResponse(
+              rUuid,
+              "payment-authoritative",
+              genesisResult.chainBinding,
+            ),
+            201,
+          ),
+          corsHeaders,
+        );
+      }
+
+      await writeRegistration(
+        env,
+        genesisResult.logIdWire,
+        registrationRecordFromChainBinding({
+          class: "regular",
+          endorsedBy: auth.endorserUuid,
+          chainBinding: genesisResult.chainBinding,
+        }),
+      );
+      return attachCors(
+        cborResponse(
+          buildGenesisRegistrationResponse(
+            rUuid,
+            "regular",
+            genesisResult.chainBinding,
+            auth.endorserUuid,
+          ),
+          201,
+        ),
+        corsHeaders,
+      );
     }
     return attachCors(
       problemResponse(405, "Method Not Allowed", "about:blank", {
@@ -76,10 +130,6 @@ export async function handleForestRequest(
       corsHeaders,
     );
   }
-
-  const token = env.CURATOR_ADMIN_TOKEN?.trim() ?? "";
-  const authErr = curatorAdminBearerOrUnauthorized(request, token);
-  if (authErr) return attachCors(authErr, corsHeaders);
 
   return attachCors(
     problemResponse(404, "Not Found", "about:blank", {

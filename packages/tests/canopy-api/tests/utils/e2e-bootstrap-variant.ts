@@ -52,7 +52,7 @@ export interface E2eBootstrapVariant {
   ensureGenesis: (
     request: APIRequestContext,
     rootLogId: string,
-    curatorToken: string,
+    onboardToken: string,
     bootstrapKey: Uint8Array,
   ) => Promise<void>;
   mintRootGrant: (
@@ -111,10 +111,10 @@ function buildEs256Variant(): E2eBootstrapVariant {
     skipReason: es256ChainBindingSkipReason,
     fetchBootstrapKey: () =>
       fetchOnChainBootstrapConfig(es256BootstrapContractAddr()),
-    ensureGenesis: async (request, rootLogId, curatorToken, bootstrapKey) => {
+    ensureGenesis: async (request, rootLogId, onboardToken, bootstrapKey) => {
       await ensureForestGenesisEs256E2e(request, {
         logId: rootLogId,
-        curatorToken,
+        onboardToken,
         bootstrapKey,
         univocityAddr: es256BootstrapContractAddrBytes(),
         chainId,
@@ -179,10 +179,10 @@ function buildKs256Variant(): E2eBootstrapVariant {
     skipReason: ks256ChainBindingSkipReason,
     fetchBootstrapKey: () =>
       fetchOnChainBootstrapConfig(ks256BootstrapContractAddr()),
-    ensureGenesis: async (request, rootLogId, curatorToken, bootstrapKey) => {
+    ensureGenesis: async (request, rootLogId, onboardToken, bootstrapKey) => {
       await ensureForestGenesisKs256E2e(request, {
         logId: rootLogId,
-        curatorToken,
+        onboardToken,
         ks256Address: bootstrapKey,
         univocityAddr: ks256BootstrapContractAddrBytes(),
         chainId,

@@ -11,6 +11,7 @@ import {
 } from "./env/receipt-authority-resolver.js";
 import { problemResponse } from "./cbor-api/cbor-response.js";
 import { handleForestRequest } from "./forest/handle-forest-request.js";
+import { handlePaymentsRequest } from "./payments/handle-payments-request.js";
 import { registerGrant, type RegisterGrantEnv } from "./scrapi/register-grant";
 import { createUnivocityGrantValidator } from "./scrapi/univocity-grant-client.js";
 import { registerSignedStatement } from "./scrapi/register-signed-statement";
@@ -86,8 +87,8 @@ export interface Env {
   FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX?: string;
   /** Bootstrap signing alg: ES256 (default) or KS256. */
   BOOTSTRAP_ALG?: string;
-  /** Bearer secret for `POST /api/forest/**` admin routes (Wrangler secret). */
-  CURATOR_ADMIN_TOKEN?: string;
+  /** Bearer secret for ops onboard-token mint/list/revoke (Wrangler secret). */
+  CANOPY_OPS_ADMIN_TOKEN?: string;
   UNIVOCITY_SERVICE_URL?: string;
   /** Bearer token authorizing canopy -> univocity owned-store calls. */
   UNIVOCITY_API_TOKEN?: string;
@@ -184,10 +185,23 @@ export default {
         return misconfigured;
       }
 
-      const forestResponse = await handleForestRequest(
+      const paymentsResponse = await handlePaymentsRequest(
         request,
         pathname,
         env,
+        corsHeaders,
+      );
+      if (paymentsResponse) {
+        return paymentsResponse;
+      }
+
+      const forestResponse = await handleForestRequest(
+        request,
+        pathname,
+        {
+          ...env,
+          resolveReceiptAuthority: receiptAuthorityResolverForEnv(env),
+        },
         corsHeaders,
       );
       if (forestResponse) {

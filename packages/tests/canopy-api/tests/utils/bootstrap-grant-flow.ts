@@ -6,6 +6,7 @@ import {
   assertBootstrapMintE2eEnv,
   assertBootstrapReceiptE2eEnv,
 } from "./e2e-env-guards";
+import { mintOnboardTokenE2e } from "./onboard-token-e2e.js";
 import { entryIdHexToIdtimestampBe8 } from "./entry-id-e2e";
 import type { E2eBootstrapVariant } from "./e2e-bootstrap-variant.js";
 import { mintRootGrantForVariant } from "./mint-root-grant-e2e.js";
@@ -142,7 +143,7 @@ export function bytesToForestrieGrantBase64(bytes: Uint8Array): string {
 
 /**
  * Root bootstrap mint: ephemeral Imutable chain binding + contract-bootstrap-signed
- * root creation grant. Requires curator token and Univocity provision env.
+ * root creation grant. Requires onboard token and Univocity provision env.
  */
 export async function mintBootstrapGrant(
   unauthorizedRequest: APIRequestContext,
@@ -150,12 +151,15 @@ export async function mintBootstrapGrant(
   variant: E2eBootstrapVariant,
 ): Promise<{ grantBase64: string }> {
   assertBootstrapMintE2eEnv();
-  const curator = process.env.CURATOR_ADMIN_TOKEN!.trim();
+  const onboardToken = await mintOnboardTokenE2e(
+    unauthorizedRequest,
+    `bootstrap-${rootLogId.slice(0, 8)}`,
+  );
   const { grantBase64 } = await mintRootGrantForVariant(
     unauthorizedRequest,
     rootLogId,
     variant,
-    curator,
+    onboardToken,
   );
   return { grantBase64 };
 }

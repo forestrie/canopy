@@ -36,7 +36,7 @@ custodian → coordinator (when coordinator vars are set).
 ## Key env vars
 
 - `CANOPY_BASE_URL`, `CANOPY_FQDN`, `SCRAPI_API_KEY`
-- Bootstrap/system: `CUSTODIAN_APP_TOKEN`, `CURATOR_ADMIN_TOKEN`, Custodian URL
+- Bootstrap/system: `CUSTODIAN_APP_TOKEN`, `CANOPY_OPS_ADMIN_TOKEN`, Custodian URL
 - Coordinator: `DELEGATION_COORDINATOR_URL`, `COORDINATOR_APP_TOKEN`
 - Univocity chain-binding: from **`.work/e2e-univocity.env`** after preflight (see
   [plan-0032](../plans/plan-0032-univocity-imutable-e2e-provision.md))

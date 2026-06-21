@@ -39,27 +39,16 @@ import {
 } from "../src/grant/log-id-wire.js";
 import worker from "../src/index";
 import type { Env } from "../src/index";
+import { validGenesisV2Es256CborMap } from "./helpers/genesis-v2-body.js";
+import { mintTestOnboardToken } from "./helpers/onboard-token.js";
 
 const poolEnv = env as unknown as Env;
-const CURATOR = "vitest-curator-admin-token";
-const TEST_UNIVOCITY_ADDR = new Uint8Array(20).fill(0xab);
 const TEST_CHAIN_ID = "84532";
+const TEST_UNIVOCITY_ADDR = new Uint8Array(20).fill(0x42);
 
-function envWithCurator(): Env {
-  return { ...poolEnv, CURATOR_ADMIN_TOKEN: CURATOR };
-}
-
-function validGenesisV2Es256CborMap(opts?: {
-  bootstrapKey?: Uint8Array;
-}): Map<number, unknown> {
-  const key = opts?.bootstrapKey ?? new Uint8Array(64).fill(0x11);
-  return new Map<number, unknown>([
-    [FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V2],
-    [FOREST_GENESIS_LABEL_GENESIS_ALG, COSE_ALG_ES256],
-    [FOREST_GENESIS_LABEL_BOOTSTRAP_KEY, key],
-    [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, TEST_UNIVOCITY_ADDR],
-    [FOREST_GENESIS_LABEL_CHAIN_ID, TEST_CHAIN_ID],
-  ]);
+async function genesisAuthHeader(e: Env): Promise<string> {
+  const { token } = await mintTestOnboardToken(e, "forest-genesis-test");
+  return `Bearer ${token}`;
 }
 
 function genesisRequest(
@@ -165,14 +154,15 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
     const logId = crypto.randomUUID();
     const wire = logIdToWireBytes(logId);
     const storageSeg = logIdToStorageSegment(wire);
-    const e = envWithCurator();
+    const e = poolEnv;
     const bootstrapKey = new Uint8Array(64).fill(0x22);
+    const auth = await genesisAuthHeader(e);
 
     const res = await worker.fetch(
       genesisRequest(
         logId,
         validGenesisV2Es256CborMap({ bootstrapKey }),
-        `Bearer ${CURATOR}`,
+        auth,
       ),
       e,
       {} as ExecutionContext,
@@ -220,8 +210,8 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
       [FOREST_GENESIS_LABEL_CHAIN_ID, TEST_CHAIN_ID],
     ]);
     const res = await worker.fetch(
-      genesisRequest(logId, v1, `Bearer ${CURATOR}`),
-      envWithCurator(),
+      genesisRequest(logId, v1, await genesisAuthHeader(poolEnv)),
+      poolEnv,
       {} as ExecutionContext,
     );
     expect(res.status).toBe(400);
@@ -232,8 +222,8 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
     const m = validGenesisV2Es256CborMap();
     m.delete(FOREST_GENESIS_LABEL_GENESIS_VERSION);
     const res = await worker.fetch(
-      genesisRequest(logId, m, `Bearer ${CURATOR}`),
-      envWithCurator(),
+      genesisRequest(logId, m, await genesisAuthHeader(poolEnv)),
+      poolEnv,
       {} as ExecutionContext,
     );
     expect(res.status).toBe(400);
@@ -244,8 +234,8 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
     const m = validGenesisV2Es256CborMap();
     m.delete(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR);
     const res = await worker.fetch(
-      genesisRequest(logId, m, `Bearer ${CURATOR}`),
-      envWithCurator(),
+      genesisRequest(logId, m, await genesisAuthHeader(poolEnv)),
+      poolEnv,
       {} as ExecutionContext,
     );
     expect(res.status).toBe(400);
@@ -256,8 +246,8 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
     const m = validGenesisV2Es256CborMap();
     m.delete(FOREST_GENESIS_LABEL_CHAIN_ID);
     const res = await worker.fetch(
-      genesisRequest(logId, m, `Bearer ${CURATOR}`),
-      envWithCurator(),
+      genesisRequest(logId, m, await genesisAuthHeader(poolEnv)),
+      poolEnv,
       {} as ExecutionContext,
     );
     expect(res.status).toBe(400);
@@ -268,8 +258,8 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
     const m = validGenesisV2Es256CborMap();
     m.set(FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS, [84532]);
     const res = await worker.fetch(
-      genesisRequest(logId, m, `Bearer ${CURATOR}`),
-      envWithCurator(),
+      genesisRequest(logId, m, await genesisAuthHeader(poolEnv)),
+      poolEnv,
       {} as ExecutionContext,
     );
     expect(res.status).toBe(400);
@@ -279,7 +269,7 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
     const logId = crypto.randomUUID();
     const res = await worker.fetch(
       genesisRequest(logId, validGenesisV2Es256CborMap()),
-      envWithCurator(),
+      poolEnv,
       {} as ExecutionContext,
     );
     expect(res.status).toBe(401);
@@ -289,23 +279,23 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
     const logId = crypto.randomUUID();
     const res = await worker.fetch(
       genesisRequest(logId, validGenesisV2Es256CborMap(), "Bearer wrong-token"),
-      envWithCurator(),
+      poolEnv,
       {} as ExecutionContext,
     );
     expect(res.status).toBe(401);
   });
 
-  it("returns 409 when genesis.cbor already exists", async () => {
+  it("returns 201 idempotently when genesis.cbor already exists", async () => {
     const logId = crypto.randomUUID();
-    const e = envWithCurator();
+    const auth = await genesisAuthHeader(poolEnv);
     const mk = () =>
-      genesisRequest(logId, validGenesisV2Es256CborMap(), `Bearer ${CURATOR}`);
+      genesisRequest(logId, validGenesisV2Es256CborMap(), auth);
 
-    expect((await worker.fetch(mk(), e, {} as ExecutionContext)).status).toBe(
+    expect((await worker.fetch(mk(), poolEnv, {} as ExecutionContext)).status).toBe(
       201,
     );
-    expect((await worker.fetch(mk(), e, {} as ExecutionContext)).status).toBe(
-      409,
+    expect((await worker.fetch(mk(), poolEnv, {} as ExecutionContext)).status).toBe(
+      201,
     );
   });
 
@@ -315,8 +305,8 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
       bootstrapKey: new Uint8Array(32).fill(0xee),
     });
     const res = await worker.fetch(
-      genesisRequest(logId, m, `Bearer ${CURATOR}`),
-      envWithCurator(),
+      genesisRequest(logId, m, await genesisAuthHeader(poolEnv)),
+      poolEnv,
       {} as ExecutionContext,
     );
     expect(res.status).toBe(400);
@@ -327,8 +317,8 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
     const m = validGenesisV2Es256CborMap();
     m.set(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID, new Uint8Array(32).fill(0xee));
     const res = await worker.fetch(
-      genesisRequest(logId, m, `Bearer ${CURATOR}`),
-      envWithCurator(),
+      genesisRequest(logId, m, await genesisAuthHeader(poolEnv)),
+      poolEnv,
       {} as ExecutionContext,
     );
     expect(res.status).toBe(400);
@@ -340,12 +330,12 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
       new Request(`http://localhost/api/forest/${logId}/genesis`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${CURATOR}`,
+          Authorization: await genesisAuthHeader(poolEnv),
           "Content-Type": "application/json",
         },
         body: "{}",
       }),
-      envWithCurator(),
+      poolEnv,
       {} as ExecutionContext,
     );
     expect(res.status).toBe(415);
@@ -353,21 +343,24 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
 
   it("GET returns 404 before genesis exists, 200 application/cbor after POST", async () => {
     const logId = crypto.randomUUID();
-    const e = envWithCurator();
     const getReq = new Request(`http://localhost/api/forest/${logId}/genesis`, {
       method: "GET",
     });
-    const miss = await worker.fetch(getReq, e, {} as ExecutionContext);
+    const miss = await worker.fetch(getReq, poolEnv, {} as ExecutionContext);
     expect(miss.status).toBe(404);
 
     const postOk = await worker.fetch(
-      genesisRequest(logId, validGenesisV2Es256CborMap(), `Bearer ${CURATOR}`),
-      e,
+      genesisRequest(
+        logId,
+        validGenesisV2Es256CborMap(),
+        await genesisAuthHeader(poolEnv),
+      ),
+      poolEnv,
       {} as ExecutionContext,
     );
     expect(postOk.status).toBe(201);
 
-    const hit = await worker.fetch(getReq, e, {} as ExecutionContext);
+    const hit = await worker.fetch(getReq, poolEnv, {} as ExecutionContext);
     expect(hit.status).toBe(200);
     expect(hit.headers.get("Content-Type")).toBe("application/cbor");
     const roundTrip = decodeCbor(
