@@ -77,8 +77,8 @@ tasks:
           echo "CUSTODIAN_APP_TOKEN is required for system e2e (Doppler project canopy, config {{.ENV}})." >&2
           exit 1
         fi
-        if [ -z "$(trim_ws "${CURATOR_ADMIN_TOKEN:-}")" ]; then
-          echo "CURATOR_ADMIN_TOKEN is required for system e2e (Doppler project canopy, config {{.ENV}})." >&2
+        if [ -z "$(trim_ws "${CANOPY_OPS_ADMIN_TOKEN:-}")" ]; then
+          echo "CANOPY_OPS_ADMIN_TOKEN is required for system e2e (Doppler project canopy, config {{.ENV}})." >&2
           exit 1
         fi
 

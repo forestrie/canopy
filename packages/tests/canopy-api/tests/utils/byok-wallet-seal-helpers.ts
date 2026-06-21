@@ -98,7 +98,7 @@ async function signCoseSign1(opts: {
 export async function mintByokBootstrapGrant(opts: {
   request: APIRequestContext;
   rootLogId: string;
-  curatorToken: string;
+  onboardToken: string;
   rootKeyPair: CryptoKeyPair;
 }): Promise<{ grantBase64: string; grantData: Uint8Array }> {
   const { x, y } = await exportEs256RootXy(opts.rootKeyPair);
@@ -107,7 +107,7 @@ export async function mintByokBootstrapGrant(opts: {
   grantData.set(y, 32);
   await ensureForestGenesisEs256E2e(opts.request, {
     logId: opts.rootLogId,
-    curatorToken: opts.curatorToken,
+    onboardToken: opts.onboardToken,
     bootstrapKey: grantData,
     univocityAddr: es256BootstrapContractAddrBytes(),
     chainId: univocityGenesisChainId(),

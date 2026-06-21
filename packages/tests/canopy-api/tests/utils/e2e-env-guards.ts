@@ -18,13 +18,13 @@ const BOOTSTRAP_MINT_E2E_HELP =
   "See packages/tests/canopy-api/README.md.";
 
 /**
- * Root bootstrap mint requires curator genesis + ephemeral Imutable provision
+ * Root bootstrap mint requires ops onboard token + ephemeral Imutable provision
  * (ES256/KS256 contract addresses and bootstrap signing material).
  */
 export function assertBootstrapMintE2eEnv(): void {
-  if (!process.env.CURATOR_ADMIN_TOKEN?.trim()) {
+  if (!process.env.CANOPY_OPS_ADMIN_TOKEN?.trim()) {
     throw new Error(
-      `CURATOR_ADMIN_TOKEN is required to POST /api/forest/{log-id}/genesis. ${BOOTSTRAP_MINT_E2E_HELP}`,
+      `CANOPY_OPS_ADMIN_TOKEN is required to mint onboard tokens for POST /api/forest/{log-id}/genesis. ${BOOTSTRAP_MINT_E2E_HELP}`,
     );
   }
   const skip = univocityProvisionSkipReason();
@@ -59,7 +59,7 @@ export function assertBootstrapReceiptE2eEnv(): void {
 }
 
 /**
- * Full **system** e2e (SCRAPI + Custodian for child keys + curator + Univocity provision).
+ * Full **system** e2e (SCRAPI + Custodian for child keys + ops onboard token + Univocity provision).
  */
 export function assertSystemE2eEnv(): void {
   assertBootstrapReceiptE2eEnv();

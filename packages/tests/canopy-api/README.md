@@ -46,7 +46,7 @@ See **`taskfiles/e2e-setup.md`**.
 
 `tests/system/grants-bootstrap.spec.ts` (and related bootstrap specs) exercise **ephemeral Imutable chain binding**: genesis **`POST /api/forest/{log-id}/genesis`** with real `(chain-id, univocity-addr)` from preflight, **contract-bootstrap-signed** root creation grant, and **`POST /register/{bootstrap-logid}/grants`** (303 See Other). Each spec runs for **ES256** and **KS256** via `describeForEachBootstrapVariant`.
 
-Requires **`CURATOR_ADMIN_TOKEN`**, Univocity provision env (see below), and for child/delegation specs **`CUSTODIAN_URL`** + **`CUSTODIAN_APP_TOKEN`**. The **deployed** worker needs **`R2_MMRS`**, sequencing queue bindings, and `bootstrapEnv` + `queueEnv`.
+Requires **`CANOPY_OPS_ADMIN_TOKEN`** (mint onboard tokens + genesis), Univocity provision env (see below), and for child/delegation specs **`CUSTODIAN_URL`** + **`CUSTODIAN_APP_TOKEN`**. The **deployed** worker needs **`R2_MMRS`**, sequencing queue bindings, and `bootstrapEnv` + `queueEnv`.
 
 **First signed entry** (`tests/system/bootstrap-log-first-entry.spec.ts`): **ES256
 and KS256** variants — `POST /register/{R}/entries` with contract-bootstrap
@@ -98,7 +98,7 @@ Resolved in **`playwright.config.ts`** from the **process environment** (Doppler
 
 **System / bootstrap e2e** (`tests/system/*.spec.ts`):
 
-- **Runner:** **`CURATOR_ADMIN_TOKEN`** (genesis), **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`** (ensure custody key + sign). The **Worker** must expose SCRAPI **`/register/{bootstrap}/…`** with queue/MMRS configured.
+- **Runner:** **`CANOPY_OPS_ADMIN_TOKEN`** (mint onboard tokens; genesis via minted token), **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`** (ensure custody key + sign). The **Worker** must expose SCRAPI **`/register/{bootstrap}/…`** with queue/MMRS configured.
 - If bootstrap mint env is missing, tests **fail** immediately with a clear error.
 - **`E2E_RUN_ID`**: written by `globalSetup` to `.e2e-run-id`; labels per-run custody keys for teardown.
 - **`globalTeardown`**: best-effort delete of keys labeled `e2e-run-id` + `e2e-test-key` (needs **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`**). Set **`E2E_SKIP_CUSTODIAN_KEY_CLEANUP=1`** to skip. Static keys (`e2e-static-key: true`) are never auto-deleted.
@@ -117,7 +117,7 @@ Provisioned in **`task test:e2e:preflight`** (default). Playwright sources **`.w
 - **`E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_FILE`** — KS256 root grant + owner envelope signing
 - **`E2E_UNIVOCITY_RPC_URL`**, **`E2E_UNIVOCITY_CHAIN_ID`** (optional defaults)
 - **`E2E_UNIVOCITY_ES256_ALLOW_BOOTSTRAP`**, **`E2E_UNIVOCITY_KS256_ALLOW_BOOTSTRAP`** — when `false`, bootstrap mutating specs skip for that alg (CI when a supplied address is used instead of fresh provision)
-- **`CURATOR_ADMIN_TOKEN`**: POST genesis
+- **`CANOPY_OPS_ADMIN_TOKEN`**: mint onboard tokens (`POST /api/payments/onboard-tokens`); genesis uses a minted token as `Bearer`
 
 Opt out: **`SKIP_UNIVOCITY_PROVISION=true`** (bootstrap system specs skip per variant). See [plan-0032](../../docs/plans/plan-0032-univocity-imutable-e2e-provision.md).
 
@@ -160,6 +160,7 @@ Set **`COORDINATOR_APP_TOKEN`** in Doppler **`canopy/dev`** (masked) after fores
 | `integration/api.spec.ts`                        | Cross-cutting HTTP (e.g. CORS OPTIONS).                                                                                                                                             |
 | `integration/observability.spec.ts`              | `/api/health`, `/.well-known/scitt-configuration`.                                                                                                                                  |
 | `system/grants-bootstrap.spec.ts`                | Ephemeral Imutable bootstrap: genesis + contract-signed root grant + register-grant (ES256 + KS256). [Doc](tests/system/docs/grants-bootstrap.md).                                  |
+| `system/forest-genesis-registration.spec.ts`     | Onboard-token mint + payment-authoritative genesis; `GF_DERIVED` endorsement descendant registration (ES256). Mutating — ignored on prod project.                                   |
 | `system/bootstrap-log-first-entry.spec.ts`       | `POST /register/{bootstrap}/entries` (ES256 + KS256). [Doc](tests/system/docs/bootstrap-log-first-entry.md).                                                                        |
 | `system/bootstrap-child-auth-grant.spec.ts`      | Root contract bootstrap + child auth grant (owner-root envelope); ES256 + KS256. [Doc](tests/system/docs/bootstrap-child-auth-grant.md).                                            |
 | `system/auth-data-log-chain.spec.ts`             | Root → child auth log → data log delegation chain; ES256 + KS256. [Doc](tests/system/docs/auth-data-log-chain.md).                                                                  |

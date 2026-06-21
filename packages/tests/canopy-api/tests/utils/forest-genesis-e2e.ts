@@ -20,12 +20,12 @@ import {
 async function postGenesisWithRetry(
   request: APIRequestContext,
   logId: string,
-  curatorToken: string,
+  onboardToken: string,
   body: Uint8Array,
   label: string,
 ): Promise<void> {
   const headers = {
-    Authorization: `Bearer ${curatorToken}`,
+    Authorization: `Bearer ${onboardToken}`,
     "Content-Type": "application/cbor",
   };
   const maxAttempts = 6;
@@ -37,7 +37,7 @@ async function postGenesisWithRetry(
       data: Buffer.from(body),
     });
     lastStatus = res.status();
-    if (lastStatus === 201 || lastStatus === 409) return;
+    if (lastStatus === 201) return;
     lastBody = (await res.text()).slice(0, 500);
     const transient =
       lastStatus >= 500 ||
@@ -50,7 +50,7 @@ async function postGenesisWithRetry(
     break;
   }
   throw new Error(
-    `${label} genesis POST for ${logId}: expected 201 or 409, got ${lastStatus}: ${lastBody}`,
+    `${label} genesis POST for ${logId}: expected 201, got ${lastStatus}: ${lastBody}`,
   );
 }
 
@@ -59,7 +59,7 @@ export async function ensureForestGenesisKs256E2e(
   request: APIRequestContext,
   opts: {
     logId: string;
-    curatorToken: string;
+    onboardToken: string;
     ks256Address: Uint8Array;
     univocityAddr: Uint8Array;
     chainId: string;
@@ -79,7 +79,7 @@ export async function ensureForestGenesisKs256E2e(
   await postGenesisWithRetry(
     request,
     opts.logId,
-    opts.curatorToken,
+    opts.onboardToken,
     body,
     "KS256",
   );
@@ -90,7 +90,7 @@ export async function ensureForestGenesisEs256E2e(
   request: APIRequestContext,
   opts: {
     logId: string;
-    curatorToken: string;
+    onboardToken: string;
     bootstrapKey: Uint8Array;
     univocityAddr: Uint8Array;
     chainId: string;
@@ -110,7 +110,7 @@ export async function ensureForestGenesisEs256E2e(
   await postGenesisWithRetry(
     request,
     opts.logId,
-    opts.curatorToken,
+    opts.onboardToken,
     body,
     "ES256",
   );

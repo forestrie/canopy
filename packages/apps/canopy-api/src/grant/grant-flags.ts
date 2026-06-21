@@ -45,3 +45,26 @@ export function authLogBootstrapShapedFlags(): Uint8Array {
 export function isDataLogStatementGrantFlags(grant: Uint8Array): boolean {
   return hasExtendCapability(grant) && hasDataLogClass(grant);
 }
+
+/** GF_DERIVED (univocity bit 34) on canopy wire byte 4, mask 0x04. */
+export function hasDerivedFlag(grant: Uint8Array): boolean {
+  if (grant.length < 8) return false;
+  return ((grant[4] ?? 0) & 0x04) !== 0;
+}
+
+/** GF_DERIVED + GF_EXTEND + GF_AUTH_LOG — endorsement leaf shape. */
+export function derivedEndorsementGrantFlags(): Uint8Array {
+  const grant = new Uint8Array(8);
+  grant[4] = 0x06; // GF_EXTEND | GF_DERIVED
+  grant[7] = 0x01; // GF_AUTH_LOG
+  return grant;
+}
+
+/** Extend-only derived leaf appended on owner log O (logId = R', ownerLogId = R). */
+export function isDerivedEndorsementGrant(grant: Uint8Array): boolean {
+  return (
+    hasDerivedFlag(grant) &&
+    hasExtendCapability(grant) &&
+    !hasCreateAndExtend(grant)
+  );
+}

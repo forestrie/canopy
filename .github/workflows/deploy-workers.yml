@@ -259,7 +259,7 @@ jobs:
         working-directory: packages/apps/canopy-api
         env:
           CUSTODIAN_APP_TOKEN: ${{ secrets.CUSTODIAN_APP_TOKEN }}
-          CURATOR_ADMIN_TOKEN: ${{ secrets.CURATOR_ADMIN_TOKEN }}
+          CANOPY_OPS_ADMIN_TOKEN: ${{ secrets.CANOPY_OPS_ADMIN_TOKEN }}
           COORDINATOR_APP_TOKEN: ${{ secrets.COORDINATOR_APP_TOKEN }}
           UNIVOCITY_API_TOKEN: ${{ secrets.UNIVOCITY_API_TOKEN }}
         run: |
@@ -282,12 +282,12 @@ jobs:
             exit 1
           fi
           put_wrangler_secret COORDINATOR_APP_TOKEN "$COORD"
-          CURATOR=$(trim_ws "${CURATOR_ADMIN_TOKEN:-}")
-          if [ -z "$CURATOR" ]; then
-            echo "::error::CURATOR_ADMIN_TOKEN is required for canopy-api (POST /api/forest/.../genesis)."
+          OPS=$(trim_ws "${CANOPY_OPS_ADMIN_TOKEN:-}")
+          if [ -z "$OPS" ]; then
+            echo "::error::CANOPY_OPS_ADMIN_TOKEN is required for canopy-api (onboard-token mint / payments ops)."
             exit 1
           fi
-          put_wrangler_secret CURATOR_ADMIN_TOKEN "$CURATOR"
+          put_wrangler_secret CANOPY_OPS_ADMIN_TOKEN "$OPS"
           UNIV=$(trim_ws "${UNIVOCITY_API_TOKEN:-}")
           if [ -z "$UNIV" ]; then
             echo "::error::UNIVOCITY_API_TOKEN is required for canopy-api (creation-grant validation)."

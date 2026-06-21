@@ -31,7 +31,7 @@ import {
   postLogEntriesCoseSign1,
 } from "@e2e-utils/post-entries-e2e";
 import { postRegisterGrantExpect303 } from "@e2e-utils/bootstrap-grant-setup";
-import { sha256Hex } from "@e2e-utils/statement-sign-bytes";
+import { mintOnboardTokenE2e } from "@e2e-utils/onboard-token-e2e";
 
 const enabled = process.env.E2E_BYOK_SEAL_STRETCH === "1";
 
@@ -46,11 +46,11 @@ test.describe("BYOK checkpoint seal e2e", () => {
   test.beforeAll(() => {
     if (
       !hasCoordinatorApiE2eEnv() ||
-      !process.env.CURATOR_ADMIN_TOKEN?.trim()
+      !process.env.CANOPY_OPS_ADMIN_TOKEN?.trim()
     ) {
       throw new Error(
         "BYOK seal e2e requires DELEGATION_COORDINATOR_URL, " +
-          "COORDINATOR_APP_TOKEN, and CURATOR_ADMIN_TOKEN.",
+          "COORDINATOR_APP_TOKEN, and CANOPY_OPS_ADMIN_TOKEN.",
       );
     }
   });
@@ -91,11 +91,13 @@ test.describe("BYOK checkpoint seal e2e", () => {
     );
     expect(signingRoute.status()).toBe(200);
 
+    const onboardToken = await mintOnboardTokenE2e(unauthorizedRequest);
+
     const { grantBase64: mintGrantB64, grantData } =
       await mintByokBootstrapGrant({
         request: unauthorizedRequest,
         rootLogId,
-        curatorToken: process.env.CURATOR_ADMIN_TOKEN!.trim(),
+        onboardToken,
         rootKeyPair,
       });
 

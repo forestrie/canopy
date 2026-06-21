@@ -52,7 +52,7 @@ Required keys in the Doppler config include at least:
 
 - **`CANOPY_BASE_URL`** _or_ **`CANOPY_FQDN`** — worker origin. Playwright resolves `CANOPY_BASE_URL` first; if unset, it builds `https://…` from `CANOPY_FQDN` (same logic as `.github/workflows/tests-system.yml`). Doppler `dev` may only define **`CANOPY_FQDN`**.
 - **`SCRAPI_API_KEY`** — bearer token for authorized fixtures (when used)
-- **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**, **`CURATOR_ADMIN_TOKEN`** — for **system** specs (child custody keys + genesis)
+- **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**, **`CANOPY_OPS_ADMIN_TOKEN`** — for **system** specs (child custody keys + onboard-token genesis)
 - **`DELEGATION_COORDINATOR_URL`**, **`COORDINATOR_APP_TOKEN`** — optional; when both set, **`task test:e2e`** includes the **coordinator** project
 
 **Univocity ephemeral provision** (bootstrap **system** specs):

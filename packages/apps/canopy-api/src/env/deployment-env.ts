@@ -1,30 +1,34 @@
 import { problemResponse } from "../cbor-api/cbor-response.js";
 import { isCanopyApiPoolTestMode } from "./runtime-mode";
 
-function pathnameIsForestAdmin(pathname: string): boolean {
+function pathnameIsForestRoute(pathname: string): boolean {
   return pathname === "/api/forest" || pathname.startsWith("/api/forest/");
 }
 
-/** `/api/forest/**` readiness: curator admin token only (no ROOT_LOG_ID). */
-export interface CanopyAdminEnv {
+function pathnameIsPaymentsOps(pathname: string): boolean {
+  return pathname === "/api/payments" || pathname.startsWith("/api/payments/");
+}
+
+/** Ops routes for onboard-token mint/list/revoke. */
+export interface CanopyOpsAdminEnv {
   NODE_ENV: string;
-  CURATOR_ADMIN_TOKEN?: string;
+  CANOPY_OPS_ADMIN_TOKEN?: string;
 }
 
 /**
- * Non-pool workers serving `/api/forest/**` need CURATOR_ADMIN_TOKEN.
+ * Non-pool workers serving `/api/payments/**` need CANOPY_OPS_ADMIN_TOKEN.
  */
-export function responseIfForestAdminIncomplete(
-  env: CanopyAdminEnv,
+export function responseIfPaymentsOpsIncomplete(
+  env: CanopyOpsAdminEnv,
   corsHeaders: Record<string, string>,
 ): Response | null {
   if (isCanopyApiPoolTestMode(env)) {
     return null;
   }
-  if (!env.CURATOR_ADMIN_TOKEN?.trim()) {
+  if (!env.CANOPY_OPS_ADMIN_TOKEN?.trim()) {
     return problemResponse(503, "Service Unavailable", "about:blank", {
       detail:
-        "Canopy API is misconfigured (missing CURATOR_ADMIN_TOKEN; required for /api/forest admin routes).",
+        "Canopy API is misconfigured (missing CANOPY_OPS_ADMIN_TOKEN; required for /api/payments ops routes).",
       headers: corsHeaders,
     });
   }
@@ -32,13 +36,13 @@ export function responseIfForestAdminIncomplete(
 }
 
 /** Env slice required for {@link checkRequestEnv} (structural typing with worker `Env`). */
-export type CanopyCheckRequestEnv = CanopyAdminEnv &
+export type CanopyCheckRequestEnv = CanopyOpsAdminEnv &
   CanopyBootstrapTrioEnv &
   CanopySequencingEnv &
   CanopyReceiptVerifierEnv;
 
 /**
- * Route-aware deployment readiness: `/api/forest/**` needs only {@link CanopyAdminEnv};
+ * Route-aware deployment readiness: `/api/payments/**` needs ops admin token;
  * all other routes keep bootstrap trio + sequencing + receipt verifier checks.
  */
 export function checkRequestEnv(
@@ -50,8 +54,11 @@ export function checkRequestEnv(
     return null;
   }
   const pathname = new URL(request.url).pathname;
-  if (pathnameIsForestAdmin(pathname)) {
-    return responseIfForestAdminIncomplete(env, corsHeaders);
+  if (pathnameIsPaymentsOps(pathname)) {
+    return responseIfPaymentsOpsIncomplete(env, corsHeaders);
+  }
+  if (pathnameIsForestRoute(pathname)) {
+    return null;
   }
   const trio = responseIfBootstrapTrioIncomplete(env, corsHeaders);
   if (trio) return trio;

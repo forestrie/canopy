@@ -26,10 +26,16 @@
  * - **Steady-state grant** (target `T` already has MMRS state): the grant must carry a valid
  *   inclusion receipt, checked by {@link grantAuthorize} — the same self-authenticating bar
  *   **register-signed-statement** uses for statement append.
+ * - **Derived endorsement** (`GF_DERIVED|GF_EXTEND`, no `GF_CREATE`): target `R'` may have no
+ *   MMRS; the leaf appends on warm owner `O` (`ownerLogId`). Verify envelope against `K(O)`
+ *   (bootstrap anchor for v1 endorser root) and enqueue on `O`'s shard.
  */
 
 import { grantCommitmentHashFromGrant } from "../grant/grant-commitment.js";
-import { hasCreateAndExtend } from "../grant/grant-flags.js";
+import {
+  hasCreateAndExtend,
+  isDerivedEndorsementGrant,
+} from "../grant/grant-flags.js";
 import type { Grant, GrantResult } from "../grant/types.js";
 import { bytesToUuid } from "../grant/uuid-bytes.js";
 import { getGrantFromRequest, grantAuthorize } from "./auth-grant.js";
@@ -43,8 +49,12 @@ import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
 import { isLogInitializedMmrs } from "./log-initialized-mmrs.js";
 import type { LogShardEnv } from "../sequeue/logshard.js";
 import type { ReceiptAuthorityResolver } from "../env/receipt-authority-resolver.js";
-import { getParsedGenesis } from "../forest/genesis-cache.js";
+import {
+  getParsedGenesis,
+  type ParsedForestGenesis,
+} from "../forest/genesis-cache.js";
 import type { CreationGrantValidator } from "./univocity-grant-client.js";
+import { verifyDerivedEndorsementEnvelope } from "./verify-derived-endorsement-envelope.js";
 
 export interface RegisterGrantEnv {
   /**
@@ -127,6 +137,14 @@ export async function registerGrant(
   }
   const genesis = genesisLookup;
   const bootstrapUrlUuid = bytesToUuid(genesis.wire);
+  const grantFlags = grant.grant as Uint8Array;
+
+  let ownerLogUuid: string;
+  try {
+    ownerLogUuid = bytesToUuid(grant.ownerLogId);
+  } catch {
+    return ClientErrors.badRequest("Invalid ownerLogId in grant");
+  }
 
   // MMRS on T decides the path: an initialized log requires an inclusion receipt
   // (grantAuthorize); an uninitialized log is opened by a creation grant, which
@@ -153,7 +171,19 @@ export async function registerGrant(
   // uniqueness atomically (201 new / 200 idempotent / 409 conflict). There is no
   // local fallback: without a validator a creation grant is a 503.
   if (!logInitialized) {
-    if (!hasCreateAndExtend(grant.grant as Uint8Array) || !grantResult.bytes) {
+    if (isDerivedEndorsementGrant(grantFlags)) {
+      return registerDerivedEndorsementGrant(
+        request,
+        grant,
+        grantResult,
+        env,
+        targetLogUuid,
+        ownerLogUuid,
+        bootstrapUrlUuid,
+        genesis,
+      );
+    }
+    if (!hasCreateAndExtend(grantFlags) || !grantResult.bytes) {
       return ClientErrors.forbidden(
         "Log has no MMRS data yet; open it with a create+extend creation grant.",
       );
@@ -256,6 +286,73 @@ async function enqueueAndStoreGrant(
   });
 
   return seeOtherResponse(statusUrl, 5);
+}
+
+async function registerDerivedEndorsementGrant(
+  request: Request,
+  grant: Grant,
+  grantResult: GrantResult,
+  env: RegisterGrantEnv,
+  endorsedRootUuid: string,
+  ownerLogUuid: string,
+  bootstrapUrlUuid: string,
+  genesis: ParsedForestGenesis,
+): Promise<Response> {
+  if (ownerLogUuid !== bootstrapUrlUuid) {
+    return ClientErrors.forbidden(
+      "Derived endorsement grant must be registered on the endorser forest root.",
+    );
+  }
+  if (endorsedRootUuid === ownerLogUuid) {
+    return ClientErrors.forbidden(
+      "Endorsement grant logId must name the endorsed forest root R', not the endorser.",
+    );
+  }
+
+  let ownerInitialized: boolean;
+  try {
+    ownerInitialized = await isLogInitializedMmrs(
+      ownerLogUuid,
+      env.bootstrapEnv.r2Mmrs,
+      env.bootstrapEnv.massifHeight,
+    );
+  } catch (e) {
+    console.warn("isLogInitializedMmrs (owner) failed", e);
+    return ServerErrors.serviceUnavailable(
+      e instanceof Error
+        ? e.message
+        : "Failed to read merklelog storage for endorser log initialization check",
+    );
+  }
+  if (!ownerInitialized) {
+    return ClientErrors.forbidden(
+      "Endorser log has no MMRS data yet; bootstrap the endorser forest first.",
+    );
+  }
+
+  const verified = await verifyDerivedEndorsementEnvelope(grantResult, genesis);
+  if (!verified) {
+    return ClientErrors.forbidden(
+      "Derived endorsement grant envelope signature did not verify against the endorser authority key.",
+    );
+  }
+
+  try {
+    return await enqueueAndStoreGrant(
+      request,
+      grant,
+      env,
+      endorsedRootUuid,
+      bootstrapUrlUuid,
+    );
+  } catch (e) {
+    console.warn("Derived endorsement grant enqueue failed", e);
+    return ServerErrors.serviceUnavailable(
+      e instanceof Error
+        ? e.message
+        : "Grant sequencing failed after endorsement verify",
+    );
+  }
 }
 
 function resolveAuth(

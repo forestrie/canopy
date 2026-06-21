@@ -30,6 +30,7 @@ import {
   COSE_ALG_KS256,
   getForestGenesisParsed,
 } from "@e2e-utils/univocity-genesis-e2e";
+import { mintOnboardTokenE2e } from "@e2e-utils/onboard-token-e2e";
 
 /**
  * Ephemeral Imutable chain-bound bootstrap: genesis POST, contract-bootstrap-signed
@@ -44,14 +45,14 @@ describeForEachBootstrapVariant(
       unauthorizedRequest,
     }) => {
       assertBootstrapMintE2eEnv();
-      const curatorToken = process.env.CURATOR_ADMIN_TOKEN!.trim();
+      const onboardToken = await mintOnboardTokenE2e(unauthorizedRequest);
       const rootLogId = randomUUID();
       const boot = await variant.fetchBootstrapKey();
 
       await variant.ensureGenesis(
         unauthorizedRequest,
         rootLogId,
-        curatorToken,
+        onboardToken,
         boot.key,
       );
 
@@ -210,7 +211,7 @@ describeForEachBootstrapVariant(
       unauthorizedRequest,
     }, testInfo) => {
       assertBootstrapMintE2eEnv();
-      const curatorToken = process.env.CURATOR_ADMIN_TOKEN!.trim();
+      const onboardToken = await mintOnboardTokenE2e(unauthorizedRequest);
       const rootLogId = e2eReceiptBootstrapRootLogId();
       const baseURL = testInfo.project.use.baseURL ?? "";
       const boot = await variant.fetchBootstrapKey();
@@ -218,7 +219,7 @@ describeForEachBootstrapVariant(
       await variant.ensureGenesis(
         unauthorizedRequest,
         rootLogId,
-        curatorToken,
+        onboardToken,
         boot.key,
       );
 

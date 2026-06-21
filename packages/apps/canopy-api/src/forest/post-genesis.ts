@@ -12,10 +12,7 @@ import {
   toPaddedWire32,
 } from "../grant/log-id-wire.js";
 import { parseCborBody } from "../cbor-api/cbor-request.js";
-import {
-  cborResponse,
-  requireContentTypeCbor,
-} from "../cbor-api/cbor-response.js";
+import { requireContentTypeCbor } from "../cbor-api/cbor-response.js";
 import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
 import {
   decodeBodyAsIntKeyMap,
@@ -35,6 +32,7 @@ import {
   asGenesisUint8Array,
   parseChainIdString,
   parseUnivocityAddrRequired,
+  type ForestGenesisChainBinding,
 } from "./genesis-wire.js";
 import {
   postGenesisToUnivocity,
@@ -167,11 +165,19 @@ function buildV2GenesisOut(
   return out;
 }
 
+export interface PostGenesisSuccess {
+  logIdWire: Uint8Array;
+  storageSeg: string;
+  chainBinding: ForestGenesisChainBinding;
+  /** True when genesis already existed (idempotent 201). */
+  alreadyExisted: boolean;
+}
+
 export async function postForestGenesis(
   request: Request,
   logIdRouteSegment: string,
   env: PostGenesisEnv,
-): Promise<Response> {
+): Promise<PostGenesisSuccess | Response> {
   const ctErr = requireContentTypeCbor(request);
   if (ctErr) return ctErr;
 
@@ -215,12 +221,21 @@ export async function postForestGenesis(
 
   const storageSeg = logIdToStorageSegment(logId);
   const body = encodeCbor(out) as Uint8Array;
+  const chainBinding: ForestGenesisChainBinding = {
+    address: binding.addr,
+    chainId: binding.chainId,
+  };
 
   const univocity = univocityGenesisClientFromEnv(env);
   if (univocity) {
     const fwd = await postGenesisToUnivocity(univocity, storageSeg, body);
     if (fwd.kind === "exists") {
-      return ClientErrors.conflict("genesis already exists for this log");
+      return {
+        logIdWire: logId,
+        storageSeg,
+        chainBinding,
+        alreadyExisted: true,
+      };
     }
     if (fwd.kind === "rejected") {
       return ClientErrors.badRequest(
@@ -237,10 +252,12 @@ export async function postForestGenesis(
   const key = `forests/forest/${storageSeg}/genesis.cbor`;
   const head = await env.R2_GRANTS.head(key);
   if (head) {
-    if (univocity) {
-      return cborResponse({}, 201);
-    }
-    return ClientErrors.conflict("genesis.cbor already exists for this log");
+    return {
+      logIdWire: logId,
+      storageSeg,
+      chainBinding,
+      alreadyExisted: true,
+    };
   }
 
   try {
@@ -252,5 +269,10 @@ export async function postForestGenesis(
     );
   }
 
-  return cborResponse({}, 201);
+  return {
+    logIdWire: logId,
+    storageSeg,
+    chainBinding,
+    alreadyExisted: false,
+  };
 }

@@ -16,10 +16,10 @@ export async function mintRootGrantForVariant(
   request: APIRequestContext,
   rootLogId: string,
   variant: E2eBootstrapVariant,
-  curatorToken: string,
+  onboardToken: string,
 ): Promise<MintRootGrantResult> {
   const boot = await variant.fetchBootstrapKey();
-  await variant.ensureGenesis(request, rootLogId, curatorToken, boot.key);
+  await variant.ensureGenesis(request, rootLogId, onboardToken, boot.key);
   const { grantBase64 } = variant.mintRootGrant(rootLogId, boot.key);
   return {
     grantBase64,
