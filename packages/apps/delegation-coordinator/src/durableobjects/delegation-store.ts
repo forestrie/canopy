@@ -664,6 +664,10 @@ export class DelegationStoreDO extends DurableObject<Env> {
     const req = decode(new Uint8Array(buffer)) as DelegationIssueRequest;
 
     const logIdHex32 = logIdWireBytesToHex32(req.logId);
+    if (!this.isDelegationSurfacingEnabled(logIdHex32)) {
+      return delegationPendingResponse(202);
+    }
+
     const key = await materialKeyFor(
       req.mmrStart,
       req.mmrEnd,
@@ -775,6 +779,11 @@ export class DelegationStoreDO extends DurableObject<Env> {
               delegated_pubkey_hash, delegated_public_key, requested_at
        FROM pending
        WHERE auth_log_id_hex32 = ?
+         AND COALESCE(
+           (SELECT enabled FROM log_delegation_config c
+            WHERE c.log_id_hex32 = pending.log_id_hex32),
+           1
+         ) = 1
        ORDER BY requested_at DESC
        LIMIT ? OFFSET ?`,
         authLogId,
@@ -823,6 +832,10 @@ export class DelegationStoreDO extends DurableObject<Env> {
         },
         { status: 400 },
       );
+    }
+
+    if (!this.isDelegationSurfacingEnabled(logIdHex32)) {
+      return Response.json({ entries: [], limit: PENDING_CAP_PER_LOG });
     }
 
     const now = Math.floor(Date.now() / 1000);
@@ -900,6 +913,13 @@ export class DelegationStoreDO extends DurableObject<Env> {
     this.prunePending(logIdHex32, now);
 
     return Response.json({ ok: true, id });
+  }
+
+  /** Default true when no config row exists (same as webhook CRUD defaults). */
+  private isDelegationSurfacingEnabled(logIdHex32: string): boolean {
+    const row = this.readDelegationConfigRow(logIdHex32);
+    if (!row) return true;
+    return row.enabled !== 0;
   }
 
   private readDelegationConfigRow(logIdHex32: string): {

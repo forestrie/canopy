@@ -302,11 +302,18 @@ payload is non-sensitive per the isolation ARC). Per
 
 ## Kill switch
 
-`enabled = 0` on the coordinator's per-log record causes the `POST
-/api/delegations` issue path to **neither** notify the webhook **nor** serve
-stored material — Sealer simply keeps receiving `202` (benign; see isolation
-ARC). canopy-api flips the flag (per log, or cascaded across an `endorsed-by`
-subtree it computes from its registration records).
+`enabled = 0` on the coordinator's per-log record causes:
+
+- `POST /api/delegations` to **neither** notify the webhook **nor** serve stored
+  material — Sealer keeps receiving `202` (benign; see isolation ARC);
+- `GET /api/logs/{logId}/pending-delegation` and `GET /api/delegations/pending`
+  to return **no entries** for that log (polling backstop suppressed).
+
+canopy-api is the **controller**: ops flips the flag via
+`PUT /api/payments/registrations/{R}/enabled` (gated by `CANOPY_OPS_ADMIN_TOKEN`),
+which propagates to the coordinator's `PUT /api/logs/{logId}/enabled`. **Per-R
+only** in this milestone — cascading disable across an `endorsed-by` subtree is
+deferred (needs a reverse descendant index).
 
 ## Security considerations
 
