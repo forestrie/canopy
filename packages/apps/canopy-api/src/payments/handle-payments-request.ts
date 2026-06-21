@@ -149,9 +149,7 @@ async function handleRegistrationEnabled(
 
     if (enabled === undefined) {
       return attachCors(
-        ClientErrors.badRequest(
-          "enabled (map key 1) must be a boolean",
-        ),
+        ClientErrors.badRequest("enabled (map key 1) must be a boolean"),
         corsHeaders,
       );
     }
