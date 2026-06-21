@@ -9,9 +9,7 @@
 #   CONFIRM=1 doppler run --project canopy --config dev -- task custodian:keys-delete-all
 #
 # Tokens: CUSTODIAN_APP_TOKEN lists keys; CUSTODIAN_BOOTSTRAP_APP_TOKEN deletes (CONFIRM=1 only).
-# The :bootstrap KMS key (BOOTSTRAP_KMS_CRYPTO_KEY_ID) is usually outside the custody ring and
-# does not appear in list-all; optional CUSTODIAN_KEYS_DELETE_ONLY_PREFIX and
-# CUSTODIAN_KEYS_DELETE_SKIP_PREFIXES filter delete targets.
+# Optional CUSTODIAN_KEYS_DELETE_ONLY_PREFIX and CUSTODIAN_KEYS_DELETE_SKIP_PREFIXES filter delete targets.
 
 version: "3"
 
@@ -29,22 +27,12 @@ tasks:
     cmds:
       - curl -sS "{{.BASE_URL}}/metrics" | head -n 8
 
-  bootstrap-public:
-    desc: GET /v1/api/keys/:bootstrap/public (CBOR) — URL-encoded key id
-    cmds:
-      - |
-        curl -sS -v \
-          -H "Accept: application/cbor" \
-          -o bootstrap-public.cbor \
-          "{{.BASE_URL}}/v1/api/keys/%3Abootstrap/public"
-
   verify:
-    desc: Run healthz, metrics, and bootstrap-public checks (requires public ingress)
+    desc: Run healthz and metrics checks (requires public ingress)
     cmds:
       - task: healthz
       - task: metrics
-      - task: bootstrap-public
-      - echo "Custodian checks done. See bootstrap-public.cbor if HTTP 200."
+      - echo "Custodian checks done."
 
   keys-list:
     desc: POST /v1/api/keys/list with empty labels — all CryptoKeys in custody ring (needs CUSTODIAN_APP_TOKEN)

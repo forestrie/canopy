@@ -79,7 +79,9 @@ test.describe("Custodian HTTP API (deployed)", () => {
       },
     });
     expect(ensured.alg).toBe("ES256");
-    expect(ensured.keyId).not.toBe(":bootstrap");
+    expect(
+      ensured.keyId === logHex32 || ensured.keyId.endsWith(`/${logHex32}`),
+    ).toBeTruthy();
     expect(ensured.publicKeyPem).toContain("BEGIN PUBLIC KEY");
 
     const pub = await getCustodianApiPublicKey({
@@ -122,7 +124,6 @@ test.describe("Custodian HTTP API (deployed)", () => {
       await sleep(500);
     }
     expect(curatorKeyId).toBeTruthy();
-    expect(curatorKeyId).not.toBe(":bootstrap");
     expect(curatorKeyId).toBe(logHex32);
 
     const listedGet = await getCustodianApiKeysListGet({

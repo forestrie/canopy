@@ -31,9 +31,8 @@ Custodian returns HTTP **500** with Problem title **signing failed** (empty
   of `custody_signer`.
 - That runtime identity therefore needs **`useToSign`** on the CryptoKeyVersion.
 
-**Why bootstrap still works:** `:bootstrap` signing uses
-**BOOTSTRAP_KMS_CRYPTO_KEY_ID**, where Custodian’s SA already has matching IAM
-(see `forest-1` `custodian_kms_sign_bootstrap_secp256r1`).
+**Historical (removed 2026-06):** `:bootstrap` / root KMS IAM is gone; all signing
+uses custody-ring keys with per-key IAM as below.
 
 ## Fix options (pick one primary + optional belt-and-suspenders)
 

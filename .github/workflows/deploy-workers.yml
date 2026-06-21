@@ -258,8 +258,6 @@ jobs:
         if: matrix.target.app == 'canopy-api'
         working-directory: packages/apps/canopy-api
         env:
-          CUSTODIAN_BOOTSTRAP_APP_TOKEN: ${{ secrets.CUSTODIAN_BOOTSTRAP_APP_TOKEN }}
-          BOOTSTRAP_APP_TOKEN: ${{ secrets.BOOTSTRAP_APP_TOKEN }}
           CUSTODIAN_APP_TOKEN: ${{ secrets.CUSTODIAN_APP_TOKEN }}
           CURATOR_ADMIN_TOKEN: ${{ secrets.CURATOR_ADMIN_TOKEN }}
           COORDINATOR_APP_TOKEN: ${{ secrets.COORDINATOR_APP_TOKEN }}
@@ -272,15 +270,6 @@ jobs:
             printf '%s' "$value" | wrangler secret put "$name" --env "$ENV"
           }
           ENV="${DEPLOY_ENV}"
-          BOOT=$(trim_ws "${CUSTODIAN_BOOTSTRAP_APP_TOKEN:-}")
-          if [ -z "$BOOT" ]; then
-            BOOT=$(trim_ws "${BOOTSTRAP_APP_TOKEN:-}")
-          fi
-          if [ -n "$BOOT" ]; then
-            put_wrangler_secret CUSTODIAN_BOOTSTRAP_APP_TOKEN "$BOOT"
-          else
-            echo "CUSTODIAN_BOOTSTRAP_APP_TOKEN not set; skipping (optional for canopy-api)."
-          fi
           APP=$(trim_ws "${CUSTODIAN_APP_TOKEN:-}")
           if [ -z "$APP" ]; then
             echo "::error::CUSTODIAN_APP_TOKEN is required for canopy-api (receipt verification)."
@@ -333,6 +322,7 @@ jobs:
         env:
           COORDINATOR_APP_TOKEN: ${{ secrets.COORDINATOR_APP_TOKEN }}
           CUSTODIAN_APP_TOKEN: ${{ secrets.CUSTODIAN_APP_TOKEN }}
+          COORDINATOR_RESET_TOKEN: ${{ secrets.COORDINATOR_RESET_TOKEN }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
@@ -353,6 +343,13 @@ jobs:
             exit 1
           fi
           put_wrangler_secret CUSTODIAN_APP_TOKEN "$CUST"
+          RESET=$(trim_ws "${COORDINATOR_RESET_TOKEN:-}")
+          if [ "${ENV}" = "dev" ] && [ -n "$RESET" ]; then
+            put_wrangler_secret COORDINATOR_RESET_TOKEN "$RESET"
+            echo "Configured COORDINATOR_RESET_TOKEN (dev lane content-reset)."
+          elif [ "${ENV}" = "dev" ]; then
+            echo "COORDINATOR_RESET_TOKEN not set; skipping (content-reset coordinator wipe unavailable)."
+          fi
           for key in CUSTODIAN_URL DELEGATION_COORDINATOR_URL; do
             if [ -z "$(trim_ws "${!key:-}")" ]; then
               echo "::error::${key} is required in GitHub Environment ${ENV}."

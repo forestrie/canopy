@@ -26,7 +26,7 @@
     "X402_PRICE_UPTO_MAX": "$1.00",
     "GRANT_STORAGE_PUBLIC_BASE": "https://grants-dev.forestrie.dev",
     // Plan 0014: public Custodian (Traefik /v1/api → pod /api). Base must end
-    // with /v1. Tokens: CUSTODIAN_BOOTSTRAP_APP_TOKEN, CUSTODIAN_APP_TOKEN (secrets).
+    // with /v1. Token: CUSTODIAN_APP_TOKEN (secret).
     "CUSTODIAN_URL": "https://custodian.a.forest-2.forestrie.dev/v1",
     "ROOT_LOG_ID": "123e4567e89b12d3a456426614174000",
     // "UNIVOCITY_SERVICE_URL": "",
@@ -139,7 +139,7 @@
         "X402_PRICE_UPTO_MAX": "$1.00",
         "GRANT_STORAGE_PUBLIC_BASE": "https://grants.forestrie.dev",
         "CUSTODIAN_URL": "https://custodian.prod-1.forestrie.dev/v1",
-        // CUSTODIAN_BOOTSTRAP_APP_TOKEN, CUSTODIAN_APP_TOKEN (secrets); UNIVOCITY_*
+        // CUSTODIAN_APP_TOKEN (secret); UNIVOCITY_*
       },
       "r2_buckets": [
         {

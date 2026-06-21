@@ -16,6 +16,7 @@ On-demand guides for AI agents. Always-loaded bootstrap: [AGENTS.md](../../AGENT
 | Implementation plans | [plans/README.md](../plans/README.md) — do not bulk-read `archived/` |
 | Platform architecture | [devdocs AGENTS.md](../../devdocs/AGENTS.md), [architecture.md](../../devdocs/architecture.md) |
 | SCRAPI API reference | [docs/api/](../api/) |
+| Hackathon / demo walkthrough | [scitt-hackathon.md](../demo/scitt-hackathon.md) |
 
 ## Repo-local vs platform docs
 

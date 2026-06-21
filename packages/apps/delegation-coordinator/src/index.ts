@@ -16,6 +16,7 @@ import {
   handlePostMaterial,
   handlePostPublicRoot,
   handlePostSigningRoute,
+  handleAdminResetStorage,
 } from "./handlers/index.js";
 
 export { DelegationStoreDO } from "./durableobjects/index.js";
@@ -35,6 +36,10 @@ export default {
         status: "ok",
         nodeEnv: env.NODE_ENV,
       });
+    }
+
+    if (pathname === "/admin/reset-storage" && method === "POST") {
+      return handleAdminResetStorage(request, url, env);
     }
 
     if (pathname === "/api/delegations" && method === "POST") {

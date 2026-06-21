@@ -1,17 +1,16 @@
 /**
- * POST /queue/admin/reset-storage — token-gated; wipes a SequencingQueue shard.
+ * POST /admin/reset-storage — dev lane only; wipes DelegationStoreDO shards.
  *
  * Query: shard=0|1|… or shard=all
- * Header: X-Forestrie-Ingress-Reset must equal secret INGRESS_RESET_TOKEN.
+ * Header: X-Forestrie-Coordinator-Reset must equal COORDINATOR_RESET_TOKEN.
  */
 
 import type { Env } from "../env.js";
-import { PROBLEM_TYPES } from "@canopy/forestrie-ingress-types";
 import {
-  problemResponse,
-  internalError,
-  getQueueStub,
   getShardCount,
+  getStoreStub,
+  internalError,
+  problemResponse,
 } from "./handler.js";
 
 export async function handleAdminResetStorage(
@@ -19,23 +18,27 @@ export async function handleAdminResetStorage(
   url: URL,
   env: Env,
 ): Promise<Response> {
-  const configured = env.INGRESS_RESET_TOKEN;
+  if (env.NODE_ENV !== "dev") {
+    return new Response("Not Found", { status: 404 });
+  }
+
+  const configured = env.COORDINATOR_RESET_TOKEN;
   if (!configured || configured.length < 16) {
     return problemResponse(
       503,
-      PROBLEM_TYPES.INTERNAL_ERROR,
+      "about:blank",
       "Reset unavailable",
-      "INGRESS_RESET_TOKEN is not configured for this worker",
+      "COORDINATOR_RESET_TOKEN is not configured for this worker",
     );
   }
 
-  const presented = request.headers.get("X-Forestrie-Ingress-Reset") ?? "";
+  const presented = request.headers.get("X-Forestrie-Coordinator-Reset") ?? "";
   if (presented !== configured) {
     return problemResponse(
       401,
-      PROBLEM_TYPES.INVALID_REQUEST,
+      "about:blank",
       "Unauthorized",
-      "Invalid or missing X-Forestrie-Ingress-Reset header",
+      "Invalid or missing X-Forestrie-Coordinator-Reset header",
     );
   }
 
@@ -43,7 +46,7 @@ export async function handleAdminResetStorage(
   if (shardParam === null) {
     return problemResponse(
       400,
-      PROBLEM_TYPES.INVALID_REQUEST,
+      "about:blank",
       "Invalid request",
       "shard query parameter is required (integer or 'all')",
     );
@@ -53,7 +56,7 @@ export async function handleAdminResetStorage(
 
   try {
     const resetOne = async (shardIndex: number) => {
-      const stub = getQueueStub(env, shardIndex);
+      const stub = getStoreStub(env, shardIndex);
       await stub.devResetStorage();
     };
 
@@ -72,7 +75,7 @@ export async function handleAdminResetStorage(
     if (isNaN(shardIndex) || shardIndex < 0 || shardIndex >= shardCount) {
       return problemResponse(
         400,
-        PROBLEM_TYPES.INVALID_REQUEST,
+        "about:blank",
         "Invalid request",
         `shard must be an integer in [0, ${shardCount - 1}] or 'all'`,
       );

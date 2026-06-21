@@ -158,8 +158,16 @@ jobs:
         env:
           INGRESS_FQDN: ${{ steps.contract.outputs.ingress_fqdn }}
           SEQUENCING_QUEUE_SCRIPT_NAME: ${{ steps.contract.outputs.script_name }}
+          INGRESS_RESET_TOKEN: ${{ secrets.INGRESS_RESET_TOKEN }}
         run: |
           set -euo pipefail
+          trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+          if [ -n "$(trim_ws "${INGRESS_RESET_TOKEN:-}")" ]; then
+            printf '%s' "${INGRESS_RESET_TOKEN}" | wrangler secret put INGRESS_RESET_TOKEN --env prod --quiet
+            echo "Configured INGRESS_RESET_TOKEN on forestrie-ingress (prod wrangler env)."
+          else
+            echo "INGRESS_RESET_TOKEN not set; skipping (content-reset ingress wipe unavailable until synced)."
+          fi
           node scripts/apply-runtime-contract.mjs --env prod --out wrangler.runtime.jsonc
           DOMAIN_FLAGS="$(
             cd "${GITHUB_WORKSPACE}"

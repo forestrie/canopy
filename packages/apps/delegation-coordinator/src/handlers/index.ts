@@ -7,3 +7,4 @@ export { handleGetPending } from "./get-pending.js";
 export { handlePostCustodyKeys } from "./post-custody-keys.js";
 export { handleGetPublicRoot } from "./get-public-root.js";
 export { handlePostPublicRoot } from "./post-public-root.js";
+export { handleAdminResetStorage } from "./admin-reset-storage.js";
