@@ -29,4 +29,19 @@ export interface Env {
   COORDINATOR_RESET_TOKEN?: string;
   /** Optional JSON-RPC URL for KS256 ERC-1271 delegation material verify. */
   KS256_RPC_URL?: string;
+  /**
+   * Cloudflare Secrets Store binding for the coordinator webhook ES256 identity
+   * private key (PKCS#8 PEM). Preferred in deployed environments.
+   */
+  WEBHOOK_SIGNING_KEY?: SecretsStoreSecret;
+  /**
+   * PKCS#8 PEM fallback for local dev and vitest (when Secrets Store is unset).
+   */
+  WEBHOOK_SIGNING_KEY_PEM?: string;
+  /** Public coordinator base URL for materialSubmitUrl in webhook events. */
+  COORDINATOR_PUBLIC_URL?: string;
+  /** JSON array of retry multipliers, e.g. `[1,2,4,8]`. */
+  WEBHOOK_RETRY_LADDER?: string;
+  /** Retry scale in ms (default 1000). */
+  WEBHOOK_RETRY_SCALE_MS?: string;
 }

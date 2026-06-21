@@ -32,6 +32,15 @@ import {
   ByokMaterialValidationError,
   validateByokDelegationMaterial,
 } from "../validate-byok-material.js";
+import {
+  buildDelegationRequiredEvent,
+  materialSubmitUrlFromEnv,
+} from "../webhook/build-delegation-required-event.js";
+import { deliverSignedWebhook } from "../webhook/deliver-webhook.js";
+import {
+  computeRetryWaitMs,
+  parseRetryConfig,
+} from "../webhook/retry-config.js";
 
 const PENDING_TTL_SECONDS = 60 * 60;
 const PENDING_CAP_PER_LOG = 32;
@@ -212,6 +221,23 @@ export class DelegationStoreDO extends DurableObject<Env> {
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )
+    `);
+
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS webhook_deliveries (
+        request_key TEXT PRIMARY KEY,
+        log_id_hex32 TEXT NOT NULL,
+        webhook_url TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        attempt INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL
+      )
+    `);
+
+    this.ctx.storage.sql.exec(`
+      CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_next
+      ON webhook_deliveries (next_attempt_at)
     `);
 
     this.initialized = true;
@@ -679,6 +705,18 @@ export class DelegationStoreDO extends DurableObject<Env> {
       );
       this.prunePending(logIdHex32, now);
 
+      this.ctx.waitUntil(
+        this.enqueueWebhookDelivery({
+          logIdHex32,
+          authLogIdHex32: logIdHex32,
+          mmrStart: req.mmrStart,
+          mmrEnd: req.mmrEnd,
+          delegatedPublicKey: req.delegatedPublicKey,
+          delegatedPubkeyHash: pubkeyHash,
+          requestedAt: now,
+        }),
+      );
+
       return delegationPendingResponse(202);
     }
 
@@ -1025,6 +1063,147 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
     const resp: EnabledResponse = { enabled: body.enabled };
     return Response.json(resp);
+  }
+
+  private coordinatorPublicUrl(): string {
+    return (
+      this.env.COORDINATOR_PUBLIC_URL?.trim() ||
+      "https://delegation-coordinator.example"
+    );
+  }
+
+  private async enqueueWebhookDelivery(input: {
+    logIdHex32: string;
+    authLogIdHex32: string;
+    mmrStart: number;
+    mmrEnd: number;
+    delegatedPublicKey: Uint8Array;
+    delegatedPubkeyHash: string;
+    requestedAt: number;
+  }): Promise<void> {
+    const config = this.readDelegationConfigRow(input.logIdHex32);
+    if (!config?.webhook_url || config.enabled === 0) {
+      return;
+    }
+
+    const event = await buildDelegationRequiredEvent({
+      logIdHex32: input.logIdHex32,
+      authLogIdHex32: input.authLogIdHex32,
+      mmrStart: input.mmrStart,
+      mmrEnd: input.mmrEnd,
+      delegatedPublicKeyBase64: bytesToBase64(input.delegatedPublicKey),
+      delegatedPubkeyHash: input.delegatedPubkeyHash,
+      requestedAt: input.requestedAt,
+      materialSubmitUrl: materialSubmitUrlFromEnv(this.coordinatorPublicUrl()),
+    });
+    const payloadJson = JSON.stringify(event);
+    const now = Math.floor(Date.now() / 1000);
+
+    this.ctx.storage.sql.exec(
+      `INSERT INTO webhook_deliveries
+         (request_key, log_id_hex32, webhook_url, payload_json, attempt,
+          next_attempt_at, created_at)
+       VALUES (?, ?, ?, ?, 0, ?, ?)
+       ON CONFLICT(request_key) DO UPDATE SET
+         webhook_url = excluded.webhook_url,
+         payload_json = excluded.payload_json,
+         attempt = 0,
+         next_attempt_at = excluded.next_attempt_at`,
+      event.requestKey,
+      input.logIdHex32,
+      config.webhook_url,
+      payloadJson,
+      now,
+      now,
+    );
+
+    await this.processWebhookDeliveryAttempt(event.requestKey);
+  }
+
+  private async processWebhookDeliveryAttempt(
+    requestKey: string,
+  ): Promise<void> {
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT request_key, webhook_url, payload_json, attempt
+         FROM webhook_deliveries WHERE request_key = ?`,
+        requestKey,
+      ),
+    ];
+    if (rows.length === 0) return;
+
+    const row = rows[0] as {
+      request_key: string;
+      webhook_url: string;
+      payload_json: string;
+      attempt: number;
+    };
+
+    const result = await deliverSignedWebhook(
+      this.env,
+      row.webhook_url,
+      row.payload_json,
+    );
+    if (result.ok) {
+      this.ctx.storage.sql.exec(
+        `DELETE FROM webhook_deliveries WHERE request_key = ?`,
+        requestKey,
+      );
+      this.scheduleNextWebhookAlarm();
+      return;
+    }
+
+    const retry = parseRetryConfig(this.env);
+    const nextAttempt = row.attempt + 1;
+    if (nextAttempt > retry.retryLadder.length) {
+      this.ctx.storage.sql.exec(
+        `DELETE FROM webhook_deliveries WHERE request_key = ?`,
+        requestKey,
+      );
+      this.scheduleNextWebhookAlarm();
+      return;
+    }
+
+    const waitMs = computeRetryWaitMs(retry, nextAttempt - 1);
+    const nextAt = Math.floor(Date.now() / 1000) + Math.ceil(waitMs / 1000);
+    this.ctx.storage.sql.exec(
+      `UPDATE webhook_deliveries
+       SET attempt = ?, next_attempt_at = ?
+       WHERE request_key = ?`,
+      nextAttempt,
+      nextAt,
+      requestKey,
+    );
+    this.scheduleNextWebhookAlarm();
+  }
+
+  private scheduleNextWebhookAlarm(): void {
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT MIN(next_attempt_at) AS min_at FROM webhook_deliveries`,
+      ),
+    ];
+    const minAt = (rows[0] as { min_at: number | null } | undefined)?.min_at;
+    if (minAt == null) return;
+    this.ctx.storage.setAlarm(minAt * 1000);
+  }
+
+  async alarm(): Promise<void> {
+    this.ensureSchema();
+    const now = Math.floor(Date.now() / 1000);
+    const due = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT request_key FROM webhook_deliveries
+         WHERE next_attempt_at <= ?`,
+        now,
+      ),
+    ];
+    for (const row of due) {
+      await this.processWebhookDeliveryAttempt(
+        (row as { request_key: string }).request_key,
+      );
+    }
+    this.scheduleNextWebhookAlarm();
   }
 
   /** @internal Exported for tests */

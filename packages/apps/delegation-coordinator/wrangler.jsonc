@@ -16,6 +16,10 @@
     "COORDINATOR_SHARD_COUNT": "4",
     "CUSTODIAN_URL": "https://custodian.example/v1",
     "COORDINATOR_APP_TOKEN": "test-coordinator-token",
+    "COORDINATOR_PUBLIC_URL": "http://localhost",
+    "WEBHOOK_RETRY_LADDER": "[1,2]",
+    "WEBHOOK_RETRY_SCALE_MS": "10",
+    "WEBHOOK_SIGNING_KEY_PEM": "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgtqphxBbS+VoJfXxw\n4APhrI8JxK4XLq3VmRdDS+8uAmOhRANCAAS0OmAJaG1Vw/Q6LILankbebW96imXI\nEBpPd7YHJNzaTnbqktHURsl1tNwUEDJI9sR0dkYXVCz5vJHYpY2bD0TS\n-----END PRIVATE KEY-----",
   },
   // Top-level durable_objects needed for vitest (@cloudflare/vitest-pool-workers)
   "durable_objects": {
@@ -39,9 +43,20 @@
         "NODE_ENV": "dev",
         "COORDINATOR_SHARD_COUNT": "4",
         "CUSTODIAN_URL": "https://custodian.a.forest-2.forestrie.dev/v1",
+        "COORDINATOR_PUBLIC_URL": "https://delegation-coordinator.a.forest-2.forestrie.dev",
+        "WEBHOOK_RETRY_LADDER": "[1,2,4,8]",
+        "WEBHOOK_RETRY_SCALE_MS": "1000",
         // COORDINATOR_APP_TOKEN, CUSTODIAN_APP_TOKEN: wrangler secrets (deploy + local via doppler --var).
         // COORDINATOR_RESET_TOKEN: dev-only DO wipe (content-reset); wrangler secret put.
+        // WEBHOOK_SIGNING_KEY: Secrets Store binding (see secrets_store_secrets).
       },
+      "secrets_store_secrets": [
+        {
+          "binding": "WEBHOOK_SIGNING_KEY",
+          "store_id": "forestrie-coordinator",
+          "secret_name": "webhook-signing-key",
+        },
+      ],
       "durable_objects": {
         "bindings": [
           {
@@ -57,7 +72,17 @@
         "NODE_ENV": "prod",
         "COORDINATOR_SHARD_COUNT": "4",
         "CUSTODIAN_URL": "https://custodian.forestrie.dev/v1",
+        "COORDINATOR_PUBLIC_URL": "https://delegation-coordinator.forestrie.dev",
+        "WEBHOOK_RETRY_LADDER": "[1,2,4,8]",
+        "WEBHOOK_RETRY_SCALE_MS": "1000",
       },
+      "secrets_store_secrets": [
+        {
+          "binding": "WEBHOOK_SIGNING_KEY",
+          "store_id": "forestrie-coordinator",
+          "secret_name": "webhook-signing-key",
+        },
+      ],
       "durable_objects": {
         "bindings": [
           {

@@ -252,9 +252,9 @@ CRUD surface (JSON):
 **Acceptance for this work stream: e2e tests for the CRUD APIs.** The hook is
 **stored but not invoked** at this stage.
 
-## Webhook event schema (delivered later — ADR-0005)
+## Webhook event schema (FOR-93 — ADR-0005)
 
-The event the coordinator **will** POST to `webhook_url` when it inserts a
+The event the coordinator POSTs to `webhook_url` when it inserts a
 `pending` row on a `POST /api/delegations` miss:
 
 ```jsonc
@@ -326,7 +326,7 @@ subtree it computes from its registration records).
 
 ## Deferred / out of scope
 
-- **Delivery mechanism** for the webhook → [ADR-0005](../adr/adr-0005-delegation-webhook-delivery.md).
+- **Delivery mechanism** for the webhook → [ADR-0005](../adr/adr-0005-delegation-webhook-delivery.md) (implemented FOR-93).
 - **COSE delegation certificate assembly** baseline (production material shape) →
   separate work stream: a framework-agnostic, publishable
   `packages/libs/delegation-cose` (browser / Workers / Node / Bun; no

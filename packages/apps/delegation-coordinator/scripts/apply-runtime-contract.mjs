@@ -182,6 +182,11 @@ varsBlock = setStringProperty(
   "CUSTODIAN_URL",
   process.env.CUSTODIAN_URL,
 );
+varsBlock = setStringProperty(
+  varsBlock,
+  "COORDINATOR_PUBLIC_URL",
+  process.env.DELEGATION_COORDINATOR_URL,
+);
 envBlock = replaceRange(envBlock, vars, varsBlock);
 
 const coordinatorHostnames = parseCoordinatorHostnames(

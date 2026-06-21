@@ -1,6 +1,6 @@
 # ADR-0006 — Webhook source authentication (asymmetric ES256)
 
-**Status:** ACCEPTED
+**Status:** IMPLEMENTED
 **Date:** 2026-06-21
 **Related:**
 [arc-univocity-instance-registration.md](../arc/arc-univocity-instance-registration.md),

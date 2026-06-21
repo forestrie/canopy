@@ -350,6 +350,8 @@ jobs:
           elif [ "${ENV}" = "dev" ]; then
             echo "COORDINATOR_RESET_TOKEN not set; skipping (content-reset coordinator wipe unavailable)."
           fi
+          echo "WEBHOOK_SIGNING_KEY uses Cloudflare Secrets Store (secrets_store_secrets in wrangler)."
+          echo "Ensure store forestrie-coordinator / secret webhook-signing-key exists (PKCS#8 ES256 PEM)."
           for key in CUSTODIAN_URL DELEGATION_COORDINATOR_URL; do
             if [ -z "$(trim_ws "${!key:-}")" ]; then
               echo "::error::${key} is required in GitHub Environment ${ENV}."

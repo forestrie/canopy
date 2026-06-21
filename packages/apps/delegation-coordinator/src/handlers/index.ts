@@ -13,3 +13,4 @@ export { handlePutWebhook } from "./put-webhook.js";
 export { handleDeleteWebhook } from "./delete-webhook.js";
 export { handleGetEnabled } from "./get-enabled.js";
 export { handlePutEnabled } from "./put-enabled.js";
+export { handleGetWebhookSigningKey } from "./get-webhook-signing-key.js";

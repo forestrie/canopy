@@ -22,6 +22,7 @@ import {
   handleDeleteWebhook,
   handleGetEnabled,
   handlePutEnabled,
+  handleGetWebhookSigningKey,
 } from "./handlers/index.js";
 
 export { DelegationStoreDO } from "./durableobjects/index.js";
@@ -41,6 +42,13 @@ export default {
         status: "ok",
         nodeEnv: env.NODE_ENV,
       });
+    }
+
+    if (
+      pathname === "/api/coordinator/webhook-signing-key" &&
+      method === "GET"
+    ) {
+      return handleGetWebhookSigningKey(env);
     }
 
     if (pathname === "/admin/reset-storage" && method === "POST") {
