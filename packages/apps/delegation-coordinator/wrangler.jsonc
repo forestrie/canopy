@@ -49,11 +49,12 @@
         // COORDINATOR_APP_TOKEN, CUSTODIAN_APP_TOKEN: wrangler secrets (deploy + local via doppler --var).
         // COORDINATOR_RESET_TOKEN: dev-only DO wipe (content-reset); wrangler secret put.
         // WEBHOOK_SIGNING_KEY: Secrets Store binding (see secrets_store_secrets).
+        // store_id: account default_secrets_store UUID (Forestrie CF account).
       },
       "secrets_store_secrets": [
         {
           "binding": "WEBHOOK_SIGNING_KEY",
-          "store_id": "default_secrets_store",
+          "store_id": "d3458a6fe5214ba1ab0b894f1b0e4158",
           "secret_name": "webhook-signing-key",
         },
       ],
@@ -79,7 +80,7 @@
       "secrets_store_secrets": [
         {
           "binding": "WEBHOOK_SIGNING_KEY",
-          "store_id": "default_secrets_store",
+          "store_id": "d3458a6fe5214ba1ab0b894f1b0e4158",
           "secret_name": "webhook-signing-key",
         },
       ],
