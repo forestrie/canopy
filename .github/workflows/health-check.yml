@@ -108,6 +108,28 @@ jobs:
               echo "Coordinator not ready yet (${attempt}/${COORD_RETRIES}); waiting ${COORD_SLEEP}s for Custom Domain DNS..."
               sleep "${COORD_SLEEP}"
             done
+            SIGNING_KEY_URL="${COORD_URL%/}/api/coordinator/webhook-signing-key"
+            SIGNING_RETRIES="${COORD_SIGNING_KEY_RETRIES:-12}"
+            SIGNING_SLEEP="${COORD_SIGNING_KEY_SLEEP_SEC:-10}"
+            echo "Checking ${SIGNING_KEY_URL} (up to ${SIGNING_RETRIES} attempts)..."
+            for attempt in $(seq 1 "${SIGNING_RETRIES}"); do
+              if curl -sf "${SIGNING_KEY_URL}" | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          assert d.get('alg') == 'ES256', d.get('alg')
+          jwk = d.get('publicKeyJwk') or {}
+          assert jwk.get('kty') == 'EC' and jwk.get('crv') == 'P-256'
+          "; then
+                echo "OK: coordinator webhook signing key (ES256 P-256) attempt ${attempt}/${SIGNING_RETRIES}"
+                break
+              fi
+              if [ "${attempt}" -eq "${SIGNING_RETRIES}" ]; then
+                echo "::error::Coordinator webhook signing key check failed: ${SIGNING_KEY_URL}"
+                exit 1
+              fi
+              echo "Signing key endpoint not ready (${attempt}/${SIGNING_RETRIES}); waiting ${SIGNING_SLEEP}s..."
+              sleep "${SIGNING_SLEEP}"
+            done
           fi
           if [ "${{ inputs.environment }}" = "prod" ]; then
             for alias_fqdn in $(printf '%s' "${CANOPY_FQDN_ALIASES:-}" | tr ',' ' '); do
