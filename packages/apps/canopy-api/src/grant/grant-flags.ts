@@ -60,3 +60,12 @@ export function derivedEndorsementGrantFlags(): Uint8Array {
   return grant;
 }
 
+/** Extend-only derived leaf appended on owner log O (logId = R', ownerLogId = R). */
+export function isDerivedEndorsementGrant(grant: Uint8Array): boolean {
+  return (
+    hasDerivedFlag(grant) &&
+    hasExtendCapability(grant) &&
+    !hasCreateAndExtend(grant)
+  );
+}
+
