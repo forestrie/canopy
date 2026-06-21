@@ -8,6 +8,9 @@ Related:
   - devdocs [Plan 0013 Custodian](https://github.com/forestrie/devdocs/blob/main/plans/plan-0013-custodian-implementation.md)
 ---
 
+> **Note (2026-06):** `:bootstrap` KMS sign/public routes and
+> `CUSTODIAN_BOOTSTRAP_APP_TOKEN` for canopy-api are removed. See plan-0011 note.
+
 # Plan 0014: Custodian-signed grants for bootstrap and regular paths (canopy-api)
 
 ## Goal

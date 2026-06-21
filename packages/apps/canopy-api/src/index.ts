@@ -73,8 +73,6 @@ export interface Env {
    * Future BYOK: Univocity trust-root service.
    */
   TRUST_ROOT_URL?: string;
-  /** Maps to Custodian secret BOOTSTRAP_APP_TOKEN (Wrangler secret). */
-  CUSTODIAN_BOOTSTRAP_APP_TOKEN?: string;
   /** Maps to Custodian secret APP_TOKEN; curator/log-key + receipt verification. */
   CUSTODIAN_APP_TOKEN?: string;
   /** Delegation Coordinator base URL for BYOK public-root receipt verification. */

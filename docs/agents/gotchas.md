@@ -25,13 +25,14 @@ Extended notes beyond [AGENTS.md](../../AGENTS.md) critical gotchas.
   `ingress.{slot}.{DNS_SUB}.*`.
 - Historical bug recycled `nextSeq` without `dead_letters` max — fixed in
   `SequencingQueue.initializeFromStorage()`.
-- **Dev-only reset**: `INGRESS_RESET_TOKEN` + `POST …/queue/admin/reset-storage?shard=all`
+- **Ingress queue reset**: `INGRESS_RESET_TOKEN` (forest-platform) + `POST …/queue/admin/reset-storage?shard=all` — token in Doppler `forest-platform/dev`, refs in project `infra` and canopy GitHub/Doppler
+- **Content reset orchestrator** (forest-1): `task content-reset` — see [forest-1/docs/ops/content-reset.md](../../forest-1/docs/ops/content-reset.md)
   with header `X-Forestrie-Ingress-Reset` (404 in production).
 
 ## Bootstrap grant Playwright (system project)
 
 - Mint is runner-side: Custodian `POST /api/keys` + ES256 sign, curator genesis.
-- Worker verifies against genesis and grantData (no `:bootstrap` alias).
+- Worker verifies against genesis and grantData (contract bootstrap key + custody ensure).
 - Fresh UUID per test for MMRS-cold bootstrap branch.
 - Polling/receipt tests require forestrie-ingress on the same stack.
 

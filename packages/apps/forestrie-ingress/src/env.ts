@@ -13,8 +13,8 @@ export interface Env {
   /** Number of DO shards for the sequencing queue (typically 4) */
   QUEUE_SHARD_COUNT: string;
   /**
-   * Dev only: set via `wrangler secret put INGRESS_RESET_TOKEN --env dev`.
    * Required for POST /queue/admin/reset-storage.
+   * Canonical value: forest-platform/dev; per-project infra cross-project ref.
    */
   INGRESS_RESET_TOKEN?: string;
 }

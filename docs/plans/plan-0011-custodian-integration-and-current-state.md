@@ -12,6 +12,11 @@ Related:
   - devdocs [Plan 0013 Custodian](https://github.com/forestrie/devdocs/blob/main/plans/plan-0013-custodian-implementation.md)
 ---
 
+> **Note (2026-06):** Custodian `:bootstrap` KMS alias, `BOOTSTRAP_KMS_CRYPTO_KEY_ID`,
+> and the legacy delegation-signer / `forestrie-root` KMS path were removed.
+> Root grants use the **contract bootstrap key**; custody keys use `POST /api/keys`.
+> `BOOTSTRAP_APP_TOKEN` remains only for privileged key-delete routes.
+
 # Plan 0011: Custodian integration and current state (canopy)
 
 This plan records the **Univocity `grantData` contract**, how **canopy-api** aligns with it, and how **Custodian (arbor)** fits in **after** [Plan 0014](plan-0014-register-grant-custodian-signing.md). **Historical and superseded** design notes (token-broker model, legacy delegation-signer, old checklists) live in the [appendix](#appendix-historical-and-superseded-material) at the end.

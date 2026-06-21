@@ -40,6 +40,7 @@
         "COORDINATOR_SHARD_COUNT": "4",
         "CUSTODIAN_URL": "https://custodian.a.forest-2.forestrie.dev/v1",
         // COORDINATOR_APP_TOKEN, CUSTODIAN_APP_TOKEN: wrangler secrets (deploy + local via doppler --var).
+        // COORDINATOR_RESET_TOKEN: dev-only DO wipe (content-reset); wrangler secret put.
       },
       "durable_objects": {
         "bindings": [
