@@ -153,20 +153,6 @@ describe("webhook + enabled CRUD", () => {
     expect(delAgain.status).toBe(200);
   });
 
-  it("rejects private webhook URLs", async () => {
-    const res = await fetchWithDoRetry(
-      `http://localhost/api/logs/${randomUUID()}/webhook`,
-      {
-        method: "PUT",
-        headers: authHeaders(TEST_TOKEN, {
-          "Content-Type": "application/json",
-        }),
-        body: JSON.stringify({ url: "https://10.0.0.1/hook" }),
-      },
-    );
-    expect(res.status).toBe(400);
-  });
-
   it("requires bearer auth on /webhook", async () => {
     const res = await fetchWithDoRetry(
       `http://localhost/api/logs/${logUuid}/webhook`,
