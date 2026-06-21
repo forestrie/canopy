@@ -82,10 +82,7 @@ export async function resolveGenesisAuth(
       );
     }
 
-    const authErr = await grantAuthorize(
-      grantParsed,
-      grantAuthorizeEnv(env),
-    );
+    const authErr = await grantAuthorize(grantParsed, grantAuthorizeEnv(env));
     if (authErr) return authErr;
 
     const endorserUuid = bytesToUuid(grantParsed.grant.ownerLogId);

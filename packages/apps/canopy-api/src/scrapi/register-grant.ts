@@ -348,7 +348,9 @@ async function registerDerivedEndorsementGrant(
   } catch (e) {
     console.warn("Derived endorsement grant enqueue failed", e);
     return ServerErrors.serviceUnavailable(
-      e instanceof Error ? e.message : "Grant sequencing failed after endorsement verify",
+      e instanceof Error
+        ? e.message
+        : "Grant sequencing failed after endorsement verify",
     );
   }
 }

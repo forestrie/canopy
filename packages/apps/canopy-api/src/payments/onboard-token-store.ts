@@ -1,8 +1,5 @@
 import type { OnboardTokenRecord } from "./onboard-token-record.js";
-import {
-  hashOnboardToken,
-  onboardTokenR2Key,
-} from "./onboard-token-hash.js";
+import { hashOnboardToken, onboardTokenR2Key } from "./onboard-token-hash.js";
 
 export interface OnboardTokenStoreEnv {
   R2_GRANTS: R2Bucket;
@@ -14,7 +11,9 @@ function encodeRecord(record: OnboardTokenRecord): string {
 
 function decodeRecord(bytes: Uint8Array): OnboardTokenRecord | null {
   try {
-    const parsed = JSON.parse(new TextDecoder().decode(bytes)) as OnboardTokenRecord;
+    const parsed = JSON.parse(
+      new TextDecoder().decode(bytes),
+    ) as OnboardTokenRecord;
     if (
       typeof parsed.hash !== "string" ||
       typeof parsed.createdAt !== "number" ||
@@ -68,7 +67,9 @@ export async function mintOnboardToken(
 export async function listOnboardTokens(
   env: OnboardTokenStoreEnv,
 ): Promise<OnboardTokenRecord[]> {
-  const listed = await env.R2_GRANTS.list({ prefix: "payments/onboard-tokens/" });
+  const listed = await env.R2_GRANTS.list({
+    prefix: "payments/onboard-tokens/",
+  });
   const out: OnboardTokenRecord[] = [];
   for (const obj of listed.objects) {
     const got = await env.R2_GRANTS.get(obj.key);

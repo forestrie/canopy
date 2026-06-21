@@ -68,4 +68,3 @@ export function isDerivedEndorsementGrant(grant: Uint8Array): boolean {
     !hasCreateAndExtend(grant)
   );
 }
-

@@ -44,7 +44,10 @@ test.describe("BYOK checkpoint seal e2e", () => {
   );
 
   test.beforeAll(() => {
-    if (!hasCoordinatorApiE2eEnv() || !process.env.CANOPY_OPS_ADMIN_TOKEN?.trim()) {
+    if (
+      !hasCoordinatorApiE2eEnv() ||
+      !process.env.CANOPY_OPS_ADMIN_TOKEN?.trim()
+    ) {
       throw new Error(
         "BYOK seal e2e requires DELEGATION_COORDINATOR_URL, " +
           "COORDINATOR_APP_TOKEN, and CANOPY_OPS_ADMIN_TOKEN.",

@@ -36,9 +36,9 @@ export async function mintOnboardTokenE2e(
       `mint onboard token: expected 201, got ${res.status()}: ${(await res.text()).slice(0, 300)}`,
     );
   }
-  const body = decodeCbor(
-    new Uint8Array(await res.body().then((b) => b)),
-  ) as { token?: string };
+  const body = decodeCbor(new Uint8Array(await res.body().then((b) => b))) as {
+    token?: string;
+  };
   const token = body.token?.trim();
   if (!token) {
     throw new Error("mint onboard token: response missing token field");

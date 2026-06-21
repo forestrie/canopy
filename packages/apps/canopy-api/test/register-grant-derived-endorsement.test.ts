@@ -26,7 +26,8 @@ vi.mock("../src/scrapi/log-initialized-mmrs.js", () => ({
 }));
 
 vi.mock("../src/forest/genesis-cache.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../src/forest/genesis-cache.js")>();
+  const actual =
+    await importOriginal<typeof import("../src/forest/genesis-cache.js")>();
   return {
     ...actual,
     getParsedGenesis: vi.fn(async (segment: string) => {
@@ -111,8 +112,7 @@ beforeAll(async () => {
     pair.publicKey,
   )) as ArrayBuffer;
   const raw = new Uint8Array(rawExport);
-  testState.bootstrapKey =
-    raw.length === 65 ? raw.slice(1, 65) : raw;
+  testState.bootstrapKey = raw.length === 65 ? raw.slice(1, 65) : raw;
 });
 
 afterEach(() => {

@@ -12,9 +12,7 @@ import {
   toPaddedWire32,
 } from "../grant/log-id-wire.js";
 import { parseCborBody } from "../cbor-api/cbor-request.js";
-import {
-  requireContentTypeCbor,
-} from "../cbor-api/cbor-response.js";
+import { requireContentTypeCbor } from "../cbor-api/cbor-response.js";
 import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
 import {
   decodeBodyAsIntKeyMap,

@@ -58,9 +58,7 @@ describe("ops onboard-token API", () => {
       {} as ExecutionContext,
     );
     expect(postRes.status).toBe(201);
-    const minted = decodeCbor(
-      new Uint8Array(await postRes.arrayBuffer()),
-    ) as {
+    const minted = decodeCbor(new Uint8Array(await postRes.arrayBuffer())) as {
       token?: string;
       ref?: string;
       status?: string;
@@ -80,9 +78,9 @@ describe("ops onboard-token API", () => {
       {} as ExecutionContext,
     );
     expect(listRes.status).toBe(200);
-    const listed = decodeCbor(
-      new Uint8Array(await listRes.arrayBuffer()),
-    ) as { tokens?: { hash: string }[] };
+    const listed = decodeCbor(new Uint8Array(await listRes.arrayBuffer())) as {
+      tokens?: { hash: string }[];
+    };
     expect(listed.tokens?.some((t) => t.hash === minted.ref)).toBe(true);
   });
 

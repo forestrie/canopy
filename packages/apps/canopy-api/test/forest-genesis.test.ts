@@ -159,11 +159,7 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
     const auth = await genesisAuthHeader(e);
 
     const res = await worker.fetch(
-      genesisRequest(
-        logId,
-        validGenesisV2Es256CborMap({ bootstrapKey }),
-        auth,
-      ),
+      genesisRequest(logId, validGenesisV2Es256CborMap({ bootstrapKey }), auth),
       e,
       {} as ExecutionContext,
     );
@@ -288,15 +284,14 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
   it("returns 201 idempotently when genesis.cbor already exists", async () => {
     const logId = crypto.randomUUID();
     const auth = await genesisAuthHeader(poolEnv);
-    const mk = () =>
-      genesisRequest(logId, validGenesisV2Es256CborMap(), auth);
+    const mk = () => genesisRequest(logId, validGenesisV2Es256CborMap(), auth);
 
-    expect((await worker.fetch(mk(), poolEnv, {} as ExecutionContext)).status).toBe(
-      201,
-    );
-    expect((await worker.fetch(mk(), poolEnv, {} as ExecutionContext)).status).toBe(
-      201,
-    );
+    expect(
+      (await worker.fetch(mk(), poolEnv, {} as ExecutionContext)).status,
+    ).toBe(201);
+    expect(
+      (await worker.fetch(mk(), poolEnv, {} as ExecutionContext)).status,
+    ).toBe(201);
   });
 
   it("returns 400 when ES256 bootstrapKey length is wrong", async () => {

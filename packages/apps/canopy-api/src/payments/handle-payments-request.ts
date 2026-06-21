@@ -91,7 +91,10 @@ export async function handlePaymentsRequest(
           expiry = readOptionalExpiry(m);
         }
       } catch {
-        return attachCors(ClientErrors.badRequest("Invalid CBOR body"), corsHeaders);
+        return attachCors(
+          ClientErrors.badRequest("Invalid CBOR body"),
+          corsHeaders,
+        );
       }
 
       const minted = await mintOnboardToken(env, { label, expiry });
@@ -144,7 +147,10 @@ export async function handlePaymentsRequest(
         corsHeaders,
       );
     }
-    return attachCors(cborResponse({ ref: revoked.hash, status: revoked.status }, 200), corsHeaders);
+    return attachCors(
+      cborResponse({ ref: revoked.hash, status: revoked.status }, 200),
+      corsHeaders,
+    );
   }
 
   return attachCors(

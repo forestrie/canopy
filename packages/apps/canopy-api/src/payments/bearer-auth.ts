@@ -43,9 +43,7 @@ export function bearerTokenOrUnauthorized(
   for (let i = 0; i < a.length; i++) {
     diff |= a[i]! ^ b[i]!;
   }
-  return diff === 0
-    ? null
-    : ClientErrors.unauthorized(messages.invalid);
+  return diff === 0 ? null : ClientErrors.unauthorized(messages.invalid);
 }
 
 /** Ops admin bearer for onboard-token mint/list/revoke. */

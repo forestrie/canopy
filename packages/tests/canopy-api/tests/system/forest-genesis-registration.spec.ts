@@ -94,14 +94,16 @@ test.describe("Forest genesis registration control plane", () => {
           "Content-Type": "application/cbor",
         },
         data: Buffer.from(
-          genesisBodyEs256(boot.key, variant.contractAddrBytes, variant.chainId),
+          genesisBodyEs256(
+            boot.key,
+            variant.contractAddrBytes,
+            variant.chainId,
+          ),
         ),
       },
     );
     expect(postRes.status()).toBe(201);
-    const body = decodeCbor(
-      new Uint8Array(await postRes.body()),
-    ) as {
+    const body = decodeCbor(new Uint8Array(await postRes.body())) as {
       R?: string;
       class?: string;
       chainBinding?: { chainId?: string };
@@ -147,9 +149,10 @@ test.describe("Forest genesis registration control plane", () => {
       },
     );
     expect(mintRes.status()).toBe(201);
-    const minted = decodeCbor(
-      new Uint8Array(await mintRes.body()),
-    ) as { token?: string; ref?: string };
+    const minted = decodeCbor(new Uint8Array(await mintRes.body())) as {
+      token?: string;
+      ref?: string;
+    };
     const delRes = await unauthorizedRequest.delete(
       `/api/payments/onboard-tokens/${minted.ref}`,
       { headers: { Authorization: `Bearer ${ops}` } },
@@ -231,14 +234,16 @@ test.describe("Forest genesis registration control plane", () => {
           "Content-Type": "application/cbor",
         },
         data: Buffer.from(
-          genesisBodyEs256(boot.key, variant.contractAddrBytes, variant.chainId),
+          genesisBodyEs256(
+            boot.key,
+            variant.contractAddrBytes,
+            variant.chainId,
+          ),
         ),
       },
     );
     expect(genesisRes.status()).toBe(201);
-    const regBody = decodeCbor(
-      new Uint8Array(await genesisRes.body()),
-    ) as {
+    const regBody = decodeCbor(new Uint8Array(await genesisRes.body())) as {
       R?: string;
       class?: string;
       endorsedBy?: string;
@@ -303,7 +308,11 @@ test.describe("Forest genesis registration control plane", () => {
           "Content-Type": "application/cbor",
         },
         data: Buffer.from(
-          genesisBodyEs256(boot.key, variant.contractAddrBytes, variant.chainId),
+          genesisBodyEs256(
+            boot.key,
+            variant.contractAddrBytes,
+            variant.chainId,
+          ),
         ),
       },
     );
@@ -366,7 +375,11 @@ test.describe("Forest genesis registration control plane", () => {
           "Content-Type": "application/cbor",
         },
         data: Buffer.from(
-          genesisBodyEs256(boot.key, variant.contractAddrBytes, variant.chainId),
+          genesisBodyEs256(
+            boot.key,
+            variant.contractAddrBytes,
+            variant.chainId,
+          ),
         ),
       },
     );
