@@ -108,6 +108,9 @@ importers:
 
   packages/apps/delegation-coordinator:
     dependencies:
+      '@canopy/delegation-cose':
+        specifier: workspace:*
+        version: link:../../libs/delegation-cose
       '@canopy/encoding':
         specifier: workspace:*
         version: link:../../shared/encoding
@@ -196,6 +199,28 @@ importers:
         specifier: ^4.94.0
         version: 4.94.0(@cloudflare/workers-types@4.20251011.0)
 
+  packages/libs/delegation-cose:
+    dependencies:
+      '@canopy/encoding':
+        specifier: workspace:*
+        version: link:../../shared/encoding
+      '@noble/curves':
+        specifier: ^1.9.7
+        version: 1.9.7
+      '@noble/hashes':
+        specifier: ^1.7.1
+        version: 1.8.0
+      cbor-x:
+        specifier: ^1.5.9
+        version: 1.6.0
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@24.8.1)(tsx@4.21.0)
+
   packages/merklelog:
     devDependencies:
       typescript:
@@ -247,6 +272,9 @@ importers:
       '@canopy/api':
         specifier: workspace:*
         version: link:../../apps/canopy-api
+      '@canopy/delegation-cose':
+        specifier: workspace:*
+        version: link:../../libs/delegation-cose
       '@canopy/encoding':
         specifier: workspace:*
         version: link:../../shared/encoding

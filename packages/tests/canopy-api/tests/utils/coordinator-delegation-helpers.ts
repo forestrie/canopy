@@ -4,9 +4,13 @@
 
 import { createPrivateKey, createPublicKey } from "node:crypto";
 import { decode, encode } from "cbor-x";
-import { encodeSigStructure } from "@canopy/encoding";
-import { keccak_256 } from "@noble/hashes/sha3";
-import { secp256k1 } from "@noble/curves/secp256k1";
+import {
+  buildDelegationCertificateEs256,
+  buildDelegationCertificateKs256,
+  parseDelegationCertificate,
+  verifyDelegationCertificateEs256,
+  verifyDelegationCertificateKs256,
+} from "@canopy/delegation-cose";
 import { cborIntKeyBytes } from "./cbor-int-key.js";
 import { custodianApiV1BaseUrl } from "./custodian-api-env.js";
 import { custodianDecodeCbor } from "./custodian-api-cbor.js";
@@ -303,23 +307,6 @@ export async function uploadBootstrapKs256PublicRoot(opts: {
   });
 }
 
-const COSE_ALG_KS256 = -65799;
-const KS256_EOA_SIG_BYTES = 65;
-
-function parseKs256PrivateKeyHex(raw: string): Uint8Array {
-  const hex = raw.trim().replace(/^0x/, "");
-  if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
-    throw new Error(
-      "KS256 bootstrap private key must be 32-byte hex (64 chars)",
-    );
-  }
-  const out = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < out.length; i++) {
-    out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return out;
-}
-
 /** Build KS256 delegation material signed by contract bootstrap EOA key. */
 export async function buildKs256BootstrapDelegationMaterial(opts: {
   rootSignerAddress: Uint8Array;
@@ -330,99 +317,36 @@ export async function buildKs256BootstrapDelegationMaterial(opts: {
   delegatedPublicKey: Uint8Array;
   ttlSeconds?: number;
 }): Promise<ByokDelegationMaterial> {
-  if (opts.rootSignerAddress.length !== 20) {
-    throw new Error("KS256 root signer address must be 20 bytes");
-  }
-  const issuedAt = Math.floor(Date.now() / 1000);
-  const expiresAt = issuedAt + (opts.ttlSeconds ?? 3600);
-  const delegatedKey = decodeDelegatedCoseKey(opts.delegatedPublicKey);
-
-  const protectedBytes = cborBytes(
-    new Map<number, unknown>([
-      [1, COSE_ALG_KS256],
-      [3, "application/forestrie.delegation+cbor"],
-      [4, opts.rootSignerAddress],
-    ]),
+  const certificate = await buildDelegationCertificateKs256(
+    {
+      logIdHex32: opts.logIdHex32,
+      mmrStart: opts.mmrStart,
+      mmrEnd: opts.mmrEnd,
+      delegatedPublicKeyCbor: opts.delegatedPublicKey,
+      ttlSeconds: opts.ttlSeconds,
+    },
+    opts.rootSignerAddress,
+    opts.privateKeyHex,
   );
-  const payloadBytes = cborBytes(
-    new Map<number, unknown>([
-      [1, normalizeForestrieHexId32(opts.logIdHex32)],
-      [3, opts.mmrStart],
-      [4, opts.mmrEnd],
-      [5, delegatedKey],
-      [6, new Map<string, unknown>()],
-      [7, 1],
-      [8, issuedAt],
-      [9, expiresAt],
-      [10, crypto.getRandomValues(new Uint8Array(16))],
-    ]),
-  );
-  const sigStructure = encodeSigStructure(
-    protectedBytes,
-    new Uint8Array(),
-    payloadBytes,
-  );
-  const hash = keccak_256(sigStructure);
-  const sk = parseKs256PrivateKeyHex(opts.privateKeyHex);
-  const sigObj = secp256k1.sign(hash, sk, { lowS: true });
-  const compact = sigObj.toCompactRawBytes();
-  const signature = new Uint8Array(KS256_EOA_SIG_BYTES);
-  signature.set(compact, 0);
-  signature[64] = sigObj.recovery ?? 0;
-
-  const certificate = cborBytes([
-    protectedBytes,
-    new Map<string, unknown>(),
-    payloadBytes,
-    signature,
-  ]);
-  return { certificate, issuedAt, expiresAt };
+  const info = parseDelegationCertificate(certificate);
+  return {
+    certificate,
+    issuedAt: info.issuedAt,
+    expiresAt: info.expiresAt,
+  };
 }
 
-export function verifyKs256BootstrapDelegationCertificate(opts: {
+export async function verifyKs256BootstrapDelegationCertificate(opts: {
   certificate: Uint8Array;
   rootSignerAddress: Uint8Array;
-}): boolean {
+}): Promise<boolean> {
   if (opts.rootSignerAddress.length !== 20) {
     throw new Error("KS256 root signer address must be 20 bytes");
   }
-  const cert = decode(opts.certificate) as unknown[];
-  if (!Array.isArray(cert) || cert.length !== 4) {
-    throw new Error("delegation certificate must be COSE_Sign1 array");
-  }
-  const protectedBytes = bytesFromUnknown(cert[0], "protected");
-  const payloadBytes = bytesFromUnknown(cert[2], "payload");
-  const signature = bytesFromUnknown(cert[3], "signature");
-  if (signature.length !== KS256_EOA_SIG_BYTES) {
-    return false;
-  }
-  const sigStructure = encodeSigStructure(
-    protectedBytes,
-    new Uint8Array(),
-    payloadBytes,
+  return verifyDelegationCertificateKs256(
+    opts.certificate,
+    opts.rootSignerAddress,
   );
-  const hash = keccak_256(sigStructure);
-  const r = signature.slice(0, 32);
-  const s = signature.slice(32, 64);
-  let v = signature[64]!;
-  if (v >= 27) v -= 27;
-  const recovery = v;
-  if (recovery > 3) return false;
-  try {
-    const sig = secp256k1.Signature.fromCompact(
-      new Uint8Array([...r, ...s]),
-    ).addRecoveryBit(recovery);
-    const pub = sig.recoverPublicKey(hash);
-    const pubHash = keccak_256(pub.toRawBytes(false).slice(1));
-    const recovered = pubHash.slice(-20);
-    if (recovered.length !== opts.rootSignerAddress.length) return false;
-    for (let i = 0; i < recovered.length; i++) {
-      if (recovered[i] !== opts.rootSignerAddress[i]) return false;
-    }
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export async function buildByokDelegationMaterial(opts: {
@@ -433,113 +357,29 @@ export async function buildByokDelegationMaterial(opts: {
   delegatedPublicKey: Uint8Array;
   ttlSeconds?: number;
 }): Promise<ByokDelegationMaterial> {
-  const issuedAt = Math.floor(Date.now() / 1000);
-  const expiresAt = issuedAt + (opts.ttlSeconds ?? 3600);
-  const rawRoot = new Uint8Array(
-    await crypto.subtle.exportKey("raw", opts.rootKeyPair.publicKey),
+  const certificate = await buildDelegationCertificateEs256(
+    {
+      logIdHex32: opts.logIdHex32,
+      mmrStart: opts.mmrStart,
+      mmrEnd: opts.mmrEnd,
+      delegatedPublicKeyCbor: opts.delegatedPublicKey,
+      ttlSeconds: opts.ttlSeconds,
+    },
+    opts.rootKeyPair,
   );
-  const kid = new Uint8Array(
-    await crypto.subtle.digest("SHA-256", rawRoot),
-  ).slice(0, 16);
-  const delegatedKey = decodeDelegatedCoseKey(opts.delegatedPublicKey);
-
-  const protectedBytes = cborBytes(
-    new Map<number, unknown>([
-      [1, -7],
-      [3, "application/forestrie.delegation+cbor"],
-      [4, kid],
-    ]),
-  );
-  const payloadBytes = cborBytes(
-    new Map<number, unknown>([
-      [1, normalizeForestrieHexId32(opts.logIdHex32)],
-      [3, opts.mmrStart],
-      [4, opts.mmrEnd],
-      [5, delegatedKey],
-      [6, new Map<string, unknown>()],
-      [7, 1],
-      [8, issuedAt],
-      [9, expiresAt],
-      [10, crypto.getRandomValues(new Uint8Array(16))],
-    ]),
-  );
-  const sigStructure = encodeSigStructure(
-    protectedBytes,
-    new Uint8Array(),
-    payloadBytes,
-  );
-  const signature = new Uint8Array(
-    await crypto.subtle.sign(
-      { name: "ECDSA", hash: "SHA-256" },
-      opts.rootKeyPair.privateKey,
-      toArrayBuffer(sigStructure),
-    ),
-  );
-  if (signature.byteLength !== 64) {
-    throw new Error(
-      `expected P-256 signature to be 64 bytes, got ${signature.byteLength}`,
-    );
-  }
-  const certificate = cborBytes([
-    protectedBytes,
-    new Map<string, unknown>(),
-    payloadBytes,
-    signature,
-  ]);
-  return { certificate, issuedAt, expiresAt };
+  const info = parseDelegationCertificate(certificate);
+  return {
+    certificate,
+    issuedAt: info.issuedAt,
+    expiresAt: info.expiresAt,
+  };
 }
 
 export async function verifyByokDelegationCertificate(opts: {
   certificate: Uint8Array;
   rootPublicKey: CryptoKey;
 }): Promise<boolean> {
-  const cert = decode(opts.certificate) as unknown[];
-  if (!Array.isArray(cert) || cert.length !== 4) {
-    throw new Error("delegation certificate must be COSE_Sign1 array");
-  }
-  const protectedBytes = bytesFromUnknown(cert[0], "protected");
-  const payloadBytes = bytesFromUnknown(cert[2], "payload");
-  const signature = bytesFromUnknown(cert[3], "signature");
-  const sigStructure = encodeSigStructure(
-    protectedBytes,
-    new Uint8Array(),
-    payloadBytes,
-  );
-  return crypto.subtle.verify(
-    { name: "ECDSA", hash: "SHA-256" },
-    opts.rootPublicKey,
-    toArrayBuffer(signature),
-    toArrayBuffer(sigStructure),
-  );
-}
-
-function decodeDelegatedCoseKey(bytes: Uint8Array): Map<number, unknown> {
-  const raw = decode(bytes) as unknown;
-  if (raw instanceof Map) {
-    return new Map(
-      [...raw.entries()].map(([key, value]) => [Number(key), value]),
-    );
-  }
-  if (raw && typeof raw === "object") {
-    const out = new Map<number, unknown>();
-    for (const [key, value] of Object.entries(raw)) {
-      const numericKey = Number(key);
-      if (!Number.isInteger(numericKey)) {
-        throw new Error(`delegated COSE_Key has non-integer key ${key}`);
-      }
-      out.set(numericKey, value);
-    }
-    return out;
-  }
-  throw new Error("delegated COSE_Key is not a map");
-}
-
-function bytesFromUnknown(value: unknown, label: string): Uint8Array {
-  if (value instanceof Uint8Array) return value;
-  if (ArrayBuffer.isView(value)) {
-    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
-  }
-  throw new Error(`${label} is not bytes`);
+  return verifyDelegationCertificateEs256(opts.certificate, opts.rootPublicKey);
 }
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {

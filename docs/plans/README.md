@@ -12,6 +12,7 @@ Platform-wide plans: [devdocs/plans/](../../../devdocs/plans/README.md).
 | [plan-0029](plan-0029-delegate-grant-validation-to-univocity.md) | DRAFT | Univocity grant validation delegation |
 | [plan-0030](plan-0030-forests-storage-and-uuid-logid.md) | ACTIVE | UUID log IDs, forests/ layout |
 | [plan-0034](plan-0034-ci-consolidation.md) | IMPLEMENTED | CI: ci.yml, tests-integration, tests-system, release promotion |
+| [plan-0035](plan-0035-delegation-cose-library.md) | ACTIVE | FOR-94: `@canopy/delegation-cose` assemble+verify ES256/KS256 |
 | [plan-0032](plan-0032-univocity-imutable-e2e-provision.md) | DRAFT | Fresh Imutable Safe deploy for e2e |
 | [plan-0031](plan-0031-ks256-forest-roots.md) | ACTIVE | KS256 forest roots |
 | [plan-0033](plan-0033-ks256-register-statement.md) | IMPLEMENTED | KS256 register-statement verify |
