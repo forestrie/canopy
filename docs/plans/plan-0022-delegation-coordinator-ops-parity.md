@@ -16,7 +16,7 @@ Environment vars/secrets, health gates, and cross-repo bootstrap tasks.
 
 - [x] `DELEGATION_COORDINATOR_URL` documented and verified in forest-1 contract + GitHub + `canopy/{lane}` Doppler
 - [ ] `COORDINATOR_APP_TOKEN` bootstrapped per lane (`bootstrap:canopy:bootstrap-coordinator-token`)
-- [ ] `WEBHOOK_SIGNING_KEY_PEM` bootstrapped in Doppler + GitHub (`cf:coordinator:bootstrap-webhook-signing-key`); Secrets Store ensured on deploy
+- [x] `WEBHOOK_SIGNING_KEY_PEM` bootstrapped in Doppler + GitHub (`cf:coordinator:bootstrap-webhook-signing-key`); Secrets Store ensured on deploy
 - [x] Coordinator `CUSTODIAN_URL` injected from GitHub vars at deploy (`apply-runtime-contract.mjs`)
 - [x] Post-deploy health includes coordinator when URL configured
 - [x] CI coordinator e2e required on `main` dev deploy (`require_coordinator_e2e`)
