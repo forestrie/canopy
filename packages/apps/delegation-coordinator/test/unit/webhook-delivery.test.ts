@@ -77,12 +77,13 @@ async function verifySignature(
   signatureB64Url: string,
 ): Promise<boolean> {
   const keyRes = await fetchWithDoRetry(
-    "http://localhost/api/coordinator/webhook-signing-key",
+    "http://localhost/.well-known/forestrie-webhook-jwks.json",
   );
   expect(keyRes.status).toBe(200);
-  const { publicKeyJwk } = (await keyRes.json()) as {
-    publicKeyJwk: JsonWebKey;
+  const { keys } = (await keyRes.json()) as {
+    keys: Array<JsonWebKey & { kid: string; alg: string }>;
   };
+  const publicKeyJwk = keys[0]!;
   const publicKey = await crypto.subtle.importKey(
     "jwk",
     publicKeyJwk,
@@ -103,22 +104,31 @@ async function verifySignature(
 }
 
 describe("webhook delivery", () => {
-  it("GET /api/coordinator/webhook-signing-key returns ES256 public JWK", async () => {
+  it("GET /.well-known/forestrie-webhook-jwks.json returns JWKS with ES256 key", async () => {
     const res = await fetchWithDoRetry(
-      "http://localhost/api/coordinator/webhook-signing-key",
+      "http://localhost/.well-known/forestrie-webhook-jwks.json",
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      kid: string;
-      alg: string;
-      publicKeyJwk: JsonWebKey;
+      keys: Array<{
+        kid: string;
+        alg: string;
+        use: string;
+        kty: string;
+        crv: string;
+        x: string;
+        y: string;
+      }>;
     };
-    expect(body.alg).toBe("ES256");
-    expect(body.kid).toMatch(/^[0-9a-f]{16}$/);
-    expect(body.publicKeyJwk.kty).toBe("EC");
-    expect(body.publicKeyJwk.crv).toBe("P-256");
-    expect(body.publicKeyJwk.x).toBeTruthy();
-    expect(body.publicKeyJwk.y).toBeTruthy();
+    expect(body.keys).toHaveLength(1);
+    const key = body.keys[0]!;
+    expect(key.alg).toBe("ES256");
+    expect(key.use).toBe("sig");
+    expect(key.kid).toMatch(/^[0-9a-f]{16}$/);
+    expect(key.kty).toBe("EC");
+    expect(key.crv).toBe("P-256");
+    expect(key.x).toBeTruthy();
+    expect(key.y).toBeTruthy();
   });
 
   it("pending miss with webhook registered emits delegation.required", async () => {

@@ -108,7 +108,7 @@ jobs:
               echo "Coordinator not ready yet (${attempt}/${COORD_RETRIES}); waiting ${COORD_SLEEP}s for Custom Domain DNS..."
               sleep "${COORD_SLEEP}"
             done
-            SIGNING_KEY_URL="${COORD_URL%/}/api/coordinator/webhook-signing-key"
+            SIGNING_KEY_URL="${COORD_URL%/}/.well-known/forestrie-webhook-jwks.json"
             SIGNING_RETRIES="${COORD_SIGNING_KEY_RETRIES:-12}"
             SIGNING_SLEEP="${COORD_SIGNING_KEY_SLEEP_SEC:-10}"
             echo "Checking ${SIGNING_KEY_URL} (up to ${SIGNING_RETRIES} attempts)..."
@@ -116,11 +116,14 @@ jobs:
               if curl -sf "${SIGNING_KEY_URL}" | python3 -c "
           import json, sys
           d = json.load(sys.stdin)
-          assert d.get('alg') == 'ES256', d.get('alg')
-          jwk = d.get('publicKeyJwk') or {}
-          assert jwk.get('kty') == 'EC' and jwk.get('crv') == 'P-256'
+          keys = d.get('keys') or []
+          assert keys, 'no keys in JWKS'
+          k = keys[0]
+          assert k.get('alg') == 'ES256', k.get('alg')
+          assert k.get('use') == 'sig', k.get('use')
+          assert k.get('kty') == 'EC' and k.get('crv') == 'P-256'
           "; then
-                echo "OK: coordinator webhook signing key (ES256 P-256) attempt ${attempt}/${SIGNING_RETRIES}"
+                echo "OK: coordinator webhook JWKS (ES256 P-256) attempt ${attempt}/${SIGNING_RETRIES}"
                 break
               fi
               if [ "${attempt}" -eq "${SIGNING_RETRIES}" ]; then

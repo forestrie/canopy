@@ -1,4 +1,4 @@
-import { encodeSigStructure } from "@canopy/encoding";
+import { encodeSigStructure } from "./encode-sig-structure.js";
 import type { DelegationInput } from "./delegation-input.js";
 import type { DelegationToBeSigned } from "./delegation-tbs.js";
 import { decodeDelegatedCoseKeyFromBytes } from "./parse-delegated-cose-key.js";

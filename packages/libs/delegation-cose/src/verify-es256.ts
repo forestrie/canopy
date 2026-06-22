@@ -1,4 +1,4 @@
-import { encodeSigStructure } from "@canopy/encoding";
+import { encodeSigStructure } from "./encode-sig-structure.js";
 import { decodeCoseSign1Parts } from "./parse-delegated-cose-key.js";
 import { toArrayBuffer } from "./bytes-utils.js";
 import { ES256_SIG_BYTES } from "./payload-labels.js";

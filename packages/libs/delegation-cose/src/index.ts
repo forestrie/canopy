@@ -10,6 +10,12 @@ export { DELEGATION_CONTENT_TYPE } from "./delegation-content-type.js";
 export {
   COSE_ALG_ES256,
   COSE_ALG_KS256,
+  COSE_CRV,
+  COSE_CRV_P256,
+  COSE_KTY,
+  COSE_KTY_EC2,
+  COSE_X,
+  COSE_Y,
   PAYLOAD_DELEGATED_KEY,
 } from "./payload-labels.js";
 
@@ -37,3 +43,4 @@ export {
 } from "./parse-delegated-cose-key.js";
 export { verifyDelegationCertificateEs256 } from "./verify-es256.js";
 export { verifyDelegationCertificateKs256 } from "./verify-ks256.js";
+export { encodeIntKeyCbor } from "./encode-int-map.js";
