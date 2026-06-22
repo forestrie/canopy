@@ -261,3 +261,11 @@ Existing `byok-delegation-cbor.test.ts` must stay green after helper refactor.
 `main` or parallel branches; merge conflicts likely only in
 `validate-byok-material.ts` if both touch coordinator (coordinate or do slice 6
 after M2 lands).
+
+## GitHub Packages publish (FOR-106)
+
+Package name **`@forestrie/delegation-cose`** (scope must match GitHub org for
+GitHub Packages). Published from this repo via
+`.github/workflows/publish-delegation-cose.yml` on tag `delegation-cose-v*`
+or `workflow_dispatch`. Mandate and forks consume an exact pinned version;
+see mandate ADR-0004.
