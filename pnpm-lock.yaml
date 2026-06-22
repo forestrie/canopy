@@ -201,9 +201,6 @@ importers:
 
   packages/libs/delegation-cose:
     dependencies:
-      '@canopy/encoding':
-        specifier: workspace:*
-        version: link:../../shared/encoding
       '@noble/curves':
         specifier: ^1.9.7
         version: 1.9.7

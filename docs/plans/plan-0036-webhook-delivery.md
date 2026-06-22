@@ -12,7 +12,7 @@ Delegation-coordinator emits signed `delegation.required` v1 webhooks on
 `POST /api/delegations` material miss (pending insert). Delivery uses ADR-0005
 B+C: `ctx.waitUntil` attempt 0 + DO `alarm()` retry ladder. Source auth per
 ADR-0006: ES256 coordinator identity key (Secrets Store in deploy, PEM in
-vitest), public key at `GET /api/coordinator/webhook-signing-key`.
+vitest), public key JWKS at `GET /.well-known/forestrie-webhook-jwks.json`.
 
 ## Ops — webhook signing key
 
