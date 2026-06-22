@@ -51,7 +51,7 @@ Reference implementations today:
 
 ```
 packages/libs/delegation-cose/
-  package.json          # name: @canopy/delegation-cose
+  package.json          # name: @forestrie/delegation-cose
   src/
     index.ts            # barrel re-export only
     delegation-input.ts
@@ -188,7 +188,7 @@ fixture file — defer unless easy.
 **Replace** in `coordinator-delegation-helpers.ts`:
 
 - `buildByokDelegationMaterial` → thin wrapper over
-  `@canopy/delegation-cose`
+  `@forestrie/delegation-cose`
 - `buildKs256BootstrapDelegationMaterial` → thin wrapper
 - `verifyByokDelegationCertificate` → delegate to package
 - `verifyKs256BootstrapDelegationCertificate` → delegate to package
@@ -226,8 +226,8 @@ FOR-94 acceptance.
 
 ```sh
 pnpm install
-pnpm --filter @canopy/delegation-cose test
-pnpm --filter @canopy/delegation-cose typecheck
+pnpm --filter @forestrie/delegation-cose test
+pnpm --filter @forestrie/delegation-cose typecheck
 pnpm run check
 pnpm -r --filter './packages/**' typecheck
 pnpm --filter @canopy/api-e2e test:e2e:system -- tests/system/coordinator-delegation-issuance.spec.ts

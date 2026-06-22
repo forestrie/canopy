@@ -108,15 +108,15 @@ importers:
 
   packages/apps/delegation-coordinator:
     dependencies:
-      '@canopy/delegation-cose':
-        specifier: workspace:*
-        version: link:../../libs/delegation-cose
       '@canopy/encoding':
         specifier: workspace:*
         version: link:../../shared/encoding
       '@canopy/forestrie-sharding':
         specifier: workspace:*
         version: link:../../shared/forestrie-sharding
+      '@forestrie/delegation-cose':
+        specifier: workspace:*
+        version: link:../../libs/delegation-cose
       '@noble/curves':
         specifier: ^1.9.7
         version: 1.9.7
@@ -269,12 +269,12 @@ importers:
       '@canopy/api':
         specifier: workspace:*
         version: link:../../apps/canopy-api
-      '@canopy/delegation-cose':
-        specifier: workspace:*
-        version: link:../../libs/delegation-cose
       '@canopy/encoding':
         specifier: workspace:*
         version: link:../../shared/encoding
+      '@forestrie/delegation-cose':
+        specifier: workspace:*
+        version: link:../../libs/delegation-cose
       '@noble/curves':
         specifier: ^1.9.7
         version: 1.9.7

@@ -1,8 +1,13 @@
 {
-  "name": "@canopy/delegation-cose",
+  "name": "@forestrie/delegation-cose",
   "version": "0.1.0",
   "type": "module",
   "description": "Forestrie delegation certificate assembly and verification (ES256, KS256)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/forestrie/canopy.git",
+    "directory": "packages/libs/delegation-cose"
+  },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -12,6 +17,7 @@
     }
   },
   "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
     "exports": {

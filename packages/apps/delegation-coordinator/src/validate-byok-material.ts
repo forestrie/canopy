@@ -13,7 +13,7 @@ import {
   parseDelegationCertificate,
   verifyDelegationCertificateEs256,
   verifyDelegationCertificateKs256,
-} from "@canopy/delegation-cose";
+} from "@forestrie/delegation-cose";
 import { createKs256RpcVerifyHooks } from "./ks256-rpc-verify-hooks.js";
 
 const PAYLOAD_DELEGATED_KEY = 5;

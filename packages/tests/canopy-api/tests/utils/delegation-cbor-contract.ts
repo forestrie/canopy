@@ -1,5 +1,5 @@
 /**
- * Go delegationcert-compatible checks — re-exported from @canopy/delegation-cose.
+ * Go delegationcert-compatible checks — re-exported from @forestrie/delegation-cose.
  */
 
 export {
@@ -7,4 +7,4 @@ export {
   normalizeIntKeyedMap,
   parseDelegatedCoseKeyFromPayload,
   PAYLOAD_DELEGATED_KEY,
-} from "@canopy/delegation-cose";
+} from "@forestrie/delegation-cose";

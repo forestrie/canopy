@@ -1,5 +1,5 @@
 import { encodeFunctionData, parseAbi } from "viem";
-import type { Ks256VerifyHooks } from "@canopy/delegation-cose";
+import type { Ks256VerifyHooks } from "@forestrie/delegation-cose";
 
 const ERC1271_ABI = parseAbi([
   "function isValidSignature(bytes32 hash, bytes signature) view returns (bytes4)",

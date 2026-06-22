@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@canopy/api": "workspace:*",
-    "@canopy/delegation-cose": "workspace:*",
+    "@forestrie/delegation-cose": "workspace:*",
     "@canopy/encoding": "workspace:*",
     "@noble/curves": "^1.9.7",
     "@noble/hashes": "^1.7.1",

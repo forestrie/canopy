@@ -10,7 +10,7 @@ import {
   parseDelegationCertificate,
   verifyDelegationCertificateEs256,
   verifyDelegationCertificateKs256,
-} from "@canopy/delegation-cose";
+} from "@forestrie/delegation-cose";
 import { cborIntKeyBytes } from "./cbor-int-key.js";
 import { custodianApiV1BaseUrl } from "./custodian-api-env.js";
 import { custodianDecodeCbor } from "./custodian-api-cbor.js";
