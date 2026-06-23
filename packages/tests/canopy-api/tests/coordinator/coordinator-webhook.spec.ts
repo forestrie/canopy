@@ -88,14 +88,22 @@ test.describe("coordinator webhook CRUD", () => {
       },
     );
     expect(putRes.status()).toBe(200);
-    expect(await putRes.json()).toEqual({ enabled: false });
+    expect(await putRes.json()).toEqual({
+      enabled: false,
+      userEnabled: true,
+      operatorEnabled: false,
+    });
 
     const getRes = await request.get(
       `${coordinatorUrl}/admin/api/logs/${logId}/enabled`,
       { headers: authHeaders() },
     );
     expect(getRes.status()).toBe(200);
-    expect(await getRes.json()).toEqual({ enabled: false });
+    expect(await getRes.json()).toEqual({
+      enabled: false,
+      userEnabled: true,
+      operatorEnabled: false,
+    });
   });
 
   test("DELETE /webhook clears url", async ({ request }) => {
@@ -127,6 +135,10 @@ test.describe("coordinator webhook CRUD", () => {
       },
     );
     expect(putRes.status()).toBe(200);
-    expect(await putRes.json()).toEqual({ enabled: true });
+    expect(await putRes.json()).toEqual({
+      enabled: true,
+      userEnabled: true,
+      operatorEnabled: true,
+    });
   });
 });
