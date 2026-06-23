@@ -25,6 +25,7 @@ import {
   generateEphemeralDelegatedPublicKeyCbor,
   generateEs256RootKeyPair,
   postCustodianDelegationIssue,
+  postSigningRouteBestEffort,
   verifyByokDelegationCertificate,
 } from "@e2e-utils/coordinator-delegation-helpers.js";
 import { normalizeForestrieHexId32 } from "@e2e-utils/forestrie-hex-id.js";
@@ -53,17 +54,16 @@ test.describe("coordinator delegation issuance (stretch)", () => {
     const rootKeyPair = await generateEs256RootKeyPair();
     const delegatedPublicKey = await generateEphemeralDelegatedPublicKeyCbor();
 
-    const routeRes = await request.post(
-      `${coordinatorUrl}/api/logs/${logUuid}/signing-route`,
-      {
-        headers: {
-          Authorization: `Bearer ${coordinatorToken}`,
-          "Content-Type": "application/json",
-        },
-        data: { mode: "wallet" },
-      },
-    );
-    expect(routeRes.status()).toBe(200);
+    const routeRes = await postSigningRouteBestEffort({
+      request,
+      coordinatorUrl,
+      logId: logUuid,
+      appToken: coordinatorToken,
+    });
+    expect(
+      routeRes.ok || routeRes.sessionRequired,
+      `POST signing-route: ${routeRes.status}`,
+    ).toBe(true);
 
     const material = await buildByokDelegationMaterial({
       rootKeyPair,
@@ -83,7 +83,6 @@ test.describe("coordinator delegation issuance (stretch)", () => {
       `${coordinatorUrl}/api/delegations/certificate`,
       {
         headers: {
-          Authorization: `Bearer ${coordinatorToken}`,
           "Content-Type": "application/json",
         },
         data: {

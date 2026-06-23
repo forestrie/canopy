@@ -388,3 +388,92 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
     bytes.byteOffset + bytes.byteLength,
   ) as ArrayBuffer;
 }
+
+export type SigningRoutePostResult = {
+  status: number;
+  ok: boolean;
+  /** 401 when FOR-129 wallet-challenge session is required (route is optional). */
+  sessionRequired: boolean;
+};
+
+type SigningRouteRequest = {
+  post: (
+    url: string,
+    options?: {
+      headers?: Record<string, string>;
+      data?: unknown;
+    },
+  ) => Promise<{
+    status: () => number;
+    ok: () => boolean;
+    text: () => Promise<string>;
+  }>;
+};
+
+/**
+ * POST signing-route with operator token. Under wallet-challenge this returns
+ * 401; production sealer/custodian do not require signing-route.
+ */
+export async function postSigningRouteBestEffort(opts: {
+  request: SigningRouteRequest;
+  coordinatorUrl: string;
+  logId: string;
+  appToken: string;
+  mode?: "wallet" | "http";
+}): Promise<SigningRoutePostResult> {
+  const res = await opts.request.post(
+    `${opts.coordinatorUrl}/api/logs/${opts.logId}/signing-route`,
+    {
+      headers: {
+        Authorization: `Bearer ${opts.appToken}`,
+        "Content-Type": "application/json",
+      },
+      data: { mode: opts.mode ?? "wallet" },
+    },
+  );
+  const status = res.status();
+  const text = await res.text();
+  const sessionRequired =
+    status === 401 && text.includes("Control-plane session required");
+  return { status, ok: res.ok(), sessionRequired };
+}
+
+/** Public per-log pending poll (sealer path; no bearer). */
+export async function fetchLogPendingDelegation(opts: {
+  request: SigningRouteRequest & {
+    get: (
+      url: string,
+      options?: { headers?: Record<string, string> },
+    ) => Promise<{
+      ok: () => boolean;
+      status: () => number;
+      json: () => Promise<unknown>;
+    }>;
+  };
+  coordinatorUrl: string;
+  logId: string;
+}): Promise<{
+  entries: Array<{
+    logIdHex32: string;
+    mmrStart: number;
+    mmrEnd: number;
+    delegatedPublicKey: string;
+  }>;
+}> {
+  const res = await opts.request.get(
+    `${opts.coordinatorUrl}/api/logs/${opts.logId}/pending-delegation`,
+  );
+  if (!res.ok()) {
+    throw new Error(
+      `GET pending-delegation: ${res.status()} ${JSON.stringify(await res.json())}`,
+    );
+  }
+  return (await res.json()) as {
+    entries: Array<{
+      logIdHex32: string;
+      mmrStart: number;
+      mmrEnd: number;
+      delegatedPublicKey: string;
+    }>;
+  };
+}

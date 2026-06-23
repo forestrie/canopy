@@ -13,6 +13,7 @@ import {
   importEs256PemKeyPair,
   uploadBootstrapKs256PublicRoot,
   uploadByokRootPublicKey,
+  postSigningRouteBestEffort,
   verifyByokDelegationCertificate,
   verifyKs256BootstrapDelegationCertificate,
 } from "./coordinator-delegation-helpers.js";
@@ -138,19 +139,15 @@ export async function setupBootstrapCoordinatorDelegation(opts: {
   const coordinator = assertCoordinatorApiE2eEnv();
   const signingContext = await loadBootstrapSigningContext(opts.variant);
 
-  const signingRoute = await opts.request.post(
-    `${coordinator.baseUrl}/api/logs/${opts.logId}/signing-route`,
-    {
-      headers: {
-        Authorization: `Bearer ${coordinator.appToken}`,
-        "Content-Type": "application/json",
-      },
-      data: { mode: "wallet" },
-    },
-  );
-  if (!signingRoute.ok()) {
+  const signingRoute = await postSigningRouteBestEffort({
+    request: opts.request,
+    coordinatorUrl: coordinator.baseUrl,
+    logId: opts.logId,
+    appToken: coordinator.appToken,
+  });
+  if (!signingRoute.ok && !signingRoute.sessionRequired) {
     throw new Error(
-      `POST signing-route: ${signingRoute.status()} ${(await signingRoute.text()).slice(0, 300)}`,
+      `POST signing-route: ${signingRoute.status} (unexpected failure)`,
     );
   }
 
@@ -270,7 +267,6 @@ export async function signPendingBootstrapDelegations(opts: {
       `${opts.coordinatorUrl}/api/delegations/certificate`,
       {
         headers: {
-          Authorization: `Bearer ${opts.coordinatorToken}`,
           "Content-Type": "application/json",
         },
         data: {

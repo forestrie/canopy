@@ -16,6 +16,7 @@ import {
   decodeCoordinatorDelegationIssue,
   generateEphemeralDelegatedPublicKeyCbor,
   hex32ToWireLogId,
+  postSigningRouteBestEffort,
   verifyKs256BootstrapDelegationCertificate,
 } from "@e2e-utils/coordinator-delegation-helpers";
 import { decodeEntryIdHex } from "@e2e-utils/entry-id-e2e";
@@ -130,17 +131,16 @@ test.describe("Mode C webhook-driven BYOK seal e2e", () => {
         true,
       );
 
-      const signingRoute = await unauthorizedRequest.post(
-        `${coordinator.baseUrl}/api/logs/${rootLogId}/signing-route`,
-        {
-          headers: {
-            Authorization: `Bearer ${coordinator.appToken}`,
-            "Content-Type": "application/json",
-          },
-          data: { mode: "wallet" },
-        },
-      );
-      expect(signingRoute.status()).toBe(200);
+      const signingRoute = await postSigningRouteBestEffort({
+        request: unauthorizedRequest,
+        coordinatorUrl: coordinator.baseUrl,
+        logId: rootLogId,
+        appToken: coordinator.appToken,
+      });
+      expect(
+        signingRoute.ok || signingRoute.sessionRequired,
+        `POST signing-route: ${signingRoute.status}`,
+      ).toBe(true);
 
       const delegatedPublicKey =
         await generateEphemeralDelegatedPublicKeyCbor();
