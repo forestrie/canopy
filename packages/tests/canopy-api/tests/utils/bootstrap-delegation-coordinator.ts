@@ -13,10 +13,15 @@ import {
   importEs256PemKeyPair,
   uploadBootstrapKs256PublicRoot,
   uploadByokRootPublicKey,
-  postSigningRouteBestEffort,
   verifyByokDelegationCertificate,
   verifyKs256BootstrapDelegationCertificate,
 } from "./coordinator-delegation-helpers.js";
+import {
+  exchangeEs256ControlPlaneSession,
+  exchangeKs256ControlPlaneSession,
+  postSigningRouteWithSession,
+  WALLET_CHALLENGE_ES256_SCOPES,
+} from "./wallet-challenge-session-e2e.js";
 import { assertGoCompatibleDelegatedKeyInCertificate } from "./delegation-cbor-contract.js";
 import {
   E2E_POLL_MAX_WAIT_MS,
@@ -139,18 +144,6 @@ export async function setupBootstrapCoordinatorDelegation(opts: {
   const coordinator = assertCoordinatorApiE2eEnv();
   const signingContext = await loadBootstrapSigningContext(opts.variant);
 
-  const signingRoute = await postSigningRouteBestEffort({
-    request: opts.request,
-    coordinatorUrl: coordinator.baseUrl,
-    logId: opts.logId,
-    appToken: coordinator.appToken,
-  });
-  if (!signingRoute.ok && !signingRoute.sessionRequired) {
-    throw new Error(
-      `POST signing-route: ${signingRoute.status} (unexpected failure)`,
-    );
-  }
-
   if (signingContext.es256RootKeyPair) {
     const { x, y } = await exportEs256RootXy(signingContext.es256RootKeyPair);
     const publicRoot = await uploadByokRootPublicKey({
@@ -165,7 +158,24 @@ export async function setupBootstrapCoordinatorDelegation(opts: {
         `POST public-root (ES256): ${publicRoot.status} ${(await publicRoot.text()).slice(0, 300)}`,
       );
     }
-  } else if (signingContext.ks256RootAddress) {
+    const session = await exchangeEs256ControlPlaneSession({
+      request: opts.request,
+      coordinatorUrl: coordinator.baseUrl,
+      authLogId: opts.logId,
+      scopes: WALLET_CHALLENGE_ES256_SCOPES,
+      rootKeyPair: signingContext.es256RootKeyPair,
+    });
+    await postSigningRouteWithSession({
+      request: opts.request,
+      coordinatorUrl: coordinator.baseUrl,
+      logId: opts.logId,
+      sessionToken: session.token,
+      mode: "wallet",
+    });
+  } else if (
+    signingContext.ks256RootAddress &&
+    signingContext.ks256PrivateKeyHex
+  ) {
     const publicRoot = await uploadBootstrapKs256PublicRoot({
       coordinatorUrl: coordinator.baseUrl,
       token: coordinator.appToken,
@@ -177,6 +187,20 @@ export async function setupBootstrapCoordinatorDelegation(opts: {
         `POST public-root (KS256): ${publicRoot.status} ${(await publicRoot.text()).slice(0, 300)}`,
       );
     }
+    const session = await exchangeKs256ControlPlaneSession({
+      request: opts.request,
+      coordinatorUrl: coordinator.baseUrl,
+      authLogId: opts.logId,
+      scopes: WALLET_CHALLENGE_ES256_SCOPES,
+      privateKeyHex: signingContext.ks256PrivateKeyHex,
+    });
+    await postSigningRouteWithSession({
+      request: opts.request,
+      coordinatorUrl: coordinator.baseUrl,
+      logId: opts.logId,
+      sessionToken: session.token,
+      mode: "wallet",
+    });
   }
 
   return signingContext;

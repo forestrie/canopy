@@ -25,6 +25,7 @@
   "devDependencies": {
     "@playwright/test": "^1.48.0",
     "typescript": "^5.9.2",
+    "viem": "^2.21.0",
     "vitest": "^3.2.4"
   }
 }

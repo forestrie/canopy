@@ -172,31 +172,6 @@ test.describe("delegation-coordinator APIs", () => {
     expect(body.ok).toBe(true);
   });
 
-  test.skip("POST signing-route — wallet-managed auth log (needs wallet session)", async ({
-    request,
-  }) => {
-    const res = await request.post(
-      `${coordinatorUrl}/api/logs/${authLogUuid}/signing-route`,
-      {
-        headers: {
-          Authorization: `Bearer ${coordinatorToken}`,
-          "Content-Type": "application/json",
-        },
-        data: { mode: "wallet" },
-      },
-    );
-    expect(res.status()).toBe(200);
-    const getRes = await request.get(
-      `${coordinatorUrl}/api/logs/${authLogHex32}/signing-route`,
-      {
-        headers: { Authorization: `Bearer ${coordinatorToken}` },
-      },
-    );
-    expect(getRes.ok()).toBeTruthy();
-    const route = await getRes.json();
-    expect(route.mode).toBe("wallet");
-  });
-
   test("POST /api/delegations — returns stored material", async ({
     request,
   }) => {

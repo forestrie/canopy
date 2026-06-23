@@ -45,3 +45,20 @@ export function ks256AddressMatchesRoot(
     .join("");
   return addr === `0x${expected}`;
 }
+
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+export function es256PublicKeyMatchesRoot(
+  signerX: Uint8Array,
+  signerY: Uint8Array,
+  rootX: Uint8Array,
+  rootY: Uint8Array,
+): boolean {
+  if (signerX.length !== 32 || signerY.length !== 32) return false;
+  if (rootX.length !== 32 || rootY.length !== 32) return false;
+  return bytesEqual(signerX, rootX) && bytesEqual(signerY, rootY);
+}

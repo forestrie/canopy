@@ -16,9 +16,13 @@ import {
   decodeCoordinatorDelegationIssue,
   generateEphemeralDelegatedPublicKeyCbor,
   hex32ToWireLogId,
-  postSigningRouteBestEffort,
   verifyKs256BootstrapDelegationCertificate,
 } from "@e2e-utils/coordinator-delegation-helpers";
+import {
+  exchangeKs256ControlPlaneSession,
+  postSigningRouteWithSession,
+  WALLET_CHALLENGE_KS256_SCOPES,
+} from "@e2e-utils/wallet-challenge-session-e2e";
 import { decodeEntryIdHex } from "@e2e-utils/entry-id-e2e";
 import { ensureForestGenesisKs256WithWebhookE2e } from "@e2e-utils/forest-genesis-e2e";
 import {
@@ -131,16 +135,20 @@ test.describe("Mode C webhook-driven BYOK seal e2e", () => {
         true,
       );
 
-      const signingRoute = await postSigningRouteBestEffort({
+      const session = await exchangeKs256ControlPlaneSession({
+        request: unauthorizedRequest,
+        coordinatorUrl: coordinator.baseUrl,
+        authLogId: rootLogId,
+        scopes: WALLET_CHALLENGE_KS256_SCOPES,
+        privateKeyHex,
+      });
+      await postSigningRouteWithSession({
         request: unauthorizedRequest,
         coordinatorUrl: coordinator.baseUrl,
         logId: rootLogId,
-        appToken: coordinator.appToken,
+        sessionToken: session.token,
+        mode: "wallet",
       });
-      expect(
-        signingRoute.ok || signingRoute.sessionRequired,
-        `POST signing-route: ${signingRoute.status}`,
-      ).toBe(true);
 
       const delegatedPublicKey =
         await generateEphemeralDelegatedPublicKeyCbor();

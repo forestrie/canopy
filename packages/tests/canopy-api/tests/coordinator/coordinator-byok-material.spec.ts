@@ -24,6 +24,11 @@ import {
   verifyByokDelegationCertificate,
 } from "@e2e-utils/coordinator-delegation-helpers.js";
 import { normalizeForestrieHexId32 } from "@e2e-utils/forestrie-hex-id.js";
+import {
+  exchangeEs256ControlPlaneSession,
+  postSigningRouteWithSession,
+  WALLET_CHALLENGE_ES256_SCOPES,
+} from "@e2e-utils/wallet-challenge-session-e2e.js";
 
 test.describe.configure({ mode: "serial" });
 
@@ -65,6 +70,25 @@ test.describe("delegation-coordinator BYOK material", () => {
       y: rootY,
     });
     expect(rootRes.status).toBe(200);
+  });
+
+  test("POST signing-route — wallet-managed via ES256 session", async ({
+    request,
+  }) => {
+    const session = await exchangeEs256ControlPlaneSession({
+      request,
+      coordinatorUrl,
+      authLogId: logUuid,
+      scopes: WALLET_CHALLENGE_ES256_SCOPES,
+      rootKeyPair,
+    });
+    await postSigningRouteWithSession({
+      request,
+      coordinatorUrl,
+      logId: logUuid,
+      sessionToken: session.token,
+      mode: "wallet",
+    });
   });
 
   test("POST /api/delegations — miss creates pending entry", async ({

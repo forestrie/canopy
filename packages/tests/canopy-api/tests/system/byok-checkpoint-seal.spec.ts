@@ -15,10 +15,14 @@ import {
 import {
   exportEs256RootXy,
   generateEs256RootKeyPair,
-  postSigningRouteBestEffort,
   uploadByokRootPublicKey,
   verifyByokDelegationCertificate,
 } from "@e2e-utils/coordinator-delegation-helpers";
+import {
+  exchangeEs256ControlPlaneSession,
+  postSigningRouteWithSession,
+  WALLET_CHALLENGE_ES256_SCOPES,
+} from "@e2e-utils/wallet-challenge-session-e2e";
 import { decodeEntryIdHex } from "@e2e-utils/entry-id-e2e";
 import { normalizeForestrieHexId32 } from "@e2e-utils/forestrie-hex-id";
 import {
@@ -31,6 +35,7 @@ import {
   assert303ContentHashLocation,
   postLogEntriesCoseSign1,
 } from "@e2e-utils/post-entries-e2e";
+import { sha256Hex } from "@e2e-utils/statement-sign-bytes";
 import { postRegisterGrantExpect303 } from "@e2e-utils/bootstrap-grant-setup";
 import { mintOnboardTokenE2e } from "@e2e-utils/onboard-token-e2e";
 
@@ -80,16 +85,20 @@ test.describe("BYOK checkpoint seal e2e", () => {
     });
     expect(publicRoot.status).toBe(200);
 
-    const signingRoute = await postSigningRouteBestEffort({
+    const session = await exchangeEs256ControlPlaneSession({
+      request: unauthorizedRequest,
+      coordinatorUrl: coordinator.baseUrl,
+      authLogId: rootLogId,
+      scopes: WALLET_CHALLENGE_ES256_SCOPES,
+      rootKeyPair,
+    });
+    await postSigningRouteWithSession({
       request: unauthorizedRequest,
       coordinatorUrl: coordinator.baseUrl,
       logId: rootLogId,
-      appToken: coordinator.appToken,
+      sessionToken: session.token,
+      mode: "wallet",
     });
-    expect(
-      signingRoute.ok || signingRoute.sessionRequired,
-      `POST signing-route: ${signingRoute.status}`,
-    ).toBe(true);
 
     const onboardToken = await mintOnboardTokenE2e(unauthorizedRequest);
 

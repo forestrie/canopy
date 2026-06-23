@@ -21,3 +21,6 @@ export function buildKs256ControlPlaneMessage(
     .filter((line) => line.length > 0)
     .join("\n");
 }
+
+/** Alg-agnostic alias for wcc-1 challenge text (KS256 and ES256). */
+export const buildControlPlaneMessage = buildKs256ControlPlaneMessage;

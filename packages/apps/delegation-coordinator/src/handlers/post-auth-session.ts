@@ -6,13 +6,16 @@ import type { Env } from "../env.js";
 import { consumeWalletChallengeNonce } from "../auth/wallet-challenge/nonce-client.js";
 import { coordinatorOrigin } from "../auth/coordinator-origin.js";
 import {
+  es256PublicKeyMatchesRoot,
   ks256AddressMatchesRoot,
   loadRegisteredPublicRoot,
 } from "../auth/wallet-challenge/public-root-match.js";
 import { mintSessionToken } from "../auth/wallet-challenge/session-token.js";
+import { verifyEs256ControlPlaneSignature } from "../auth/wallet-challenge/verify-es256.js";
 import { verifyKs256ControlPlaneSignature } from "../auth/wallet-challenge/verify-ks256.js";
 import { normalizeLogIdToHex32 } from "../log-id.js";
 import type { SessionExchangeRequest } from "../types/wallet-challenge.js";
+import { base64ToBytes } from "../encoding.js";
 import { internalError, problemResponse } from "./handler.js";
 
 function walletChallengeEnabled(env: Env): boolean {
@@ -110,12 +113,84 @@ export async function handlePostAuthSession(
     }
 
     if (alg === "ES256") {
-      return problemResponse(
-        501,
-        "about:blank",
-        "Not Implemented",
-        "ES256 wallet challenge is not implemented yet",
+      if (!body.publicKeyX?.trim() || !body.publicKeyY?.trim()) {
+        return problemResponse(
+          400,
+          "about:blank",
+          "Invalid request",
+          "publicKeyX and publicKeyY are required for ES256",
+        );
+      }
+      let signerX: Uint8Array;
+      let signerY: Uint8Array;
+      try {
+        signerX = base64ToBytes(body.publicKeyX);
+        signerY = base64ToBytes(body.publicKeyY);
+      } catch {
+        return problemResponse(
+          400,
+          "about:blank",
+          "Invalid request",
+          "publicKeyX and publicKeyY must be valid base64",
+        );
+      }
+
+      const verified = await verifyEs256ControlPlaneSignature(
+        envelope,
+        signature,
+        signerX,
+        signerY,
       );
+      if (!verified) {
+        return problemResponse(
+          401,
+          "about:blank",
+          "Unauthorized",
+          "Invalid challenge signature",
+        );
+      }
+
+      const root = await loadRegisteredPublicRoot(env, authLogIdHex32);
+      if (!root) {
+        return problemResponse(
+          403,
+          "about:blank",
+          "Forbidden",
+          "No registered publicRoot for authLogId",
+        );
+      }
+      if (root.alg !== "ES256") {
+        return problemResponse(
+          403,
+          "about:blank",
+          "Forbidden",
+          "Registered publicRoot alg does not match ES256 challenge",
+        );
+      }
+      if (!es256PublicKeyMatchesRoot(signerX, signerY, root.x, root.y)) {
+        return problemResponse(
+          403,
+          "about:blank",
+          "Forbidden",
+          "Signer does not match registered publicRoot",
+        );
+      }
+
+      const { token, expiresAt, claims } = mintSessionToken(
+        {
+          authLogId: authLogIdHex32,
+          scopes: envelope.scopes,
+          aud: expectedOrigin,
+        },
+        secret,
+      );
+
+      return Response.json({
+        token,
+        expiresAt,
+        authLogId: claims.authLogId,
+        scopes: claims.scopes,
+      });
     }
 
     if (alg !== "KS256") {

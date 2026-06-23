@@ -94,7 +94,10 @@ async function postCoordinatorDelegationIssue(opts: {
       "Content-Type": "application/cbor",
       Accept: "application/cbor",
     },
-    body,
+    body: body.buffer.slice(
+      body.byteOffset,
+      body.byteOffset + body.byteLength,
+    ) as ArrayBuffer,
   });
   return res.status;
 }
