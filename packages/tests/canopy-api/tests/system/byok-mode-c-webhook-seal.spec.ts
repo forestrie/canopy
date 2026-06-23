@@ -118,7 +118,6 @@ test.describe("Mode C webhook-driven BYOK seal e2e", () => {
         {
           method: "GET",
           headers: {
-            Authorization: `Bearer ${coordinator.appToken}`,
             Accept: "application/cbor",
           },
         },

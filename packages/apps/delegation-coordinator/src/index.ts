@@ -1,7 +1,7 @@
 /**
  * delegation-coordinator Worker
  *
- * Phase 3 management APIs for signing routes, delegation material, pending
+ * Phase 3 management APIs for signing routes, delegation certificates, pending
  * hints, and custody-key orchestration (plan-0021).
  */
 
@@ -13,7 +13,8 @@ import {
   handleGetSigningRoute,
   handleIssueDelegation,
   handlePostCustodyKeys,
-  handlePostMaterial,
+  handleAdminPostCustodyKeys,
+  handlePostCertificate,
   handlePostPublicRoot,
   handlePostSigningRoute,
   handleAdminResetStorage,
@@ -22,11 +23,35 @@ import {
   handleDeleteWebhook,
   handleGetEnabled,
   handlePutEnabled,
+  handleAdminGetEnabled,
+  handleAdminPutEnabled,
   handleGetWebhookJwks,
+  handlePostAuthChallenge,
+  handlePostAuthSession,
   WEBHOOK_JWKS_PATH,
 } from "./handlers/index.js";
 
-export { DelegationStoreDO } from "./durableobjects/index.js";
+export { DelegationStoreDO, WalletChallengeNonceDO } from "./durableobjects/index.js";
+
+function matchLogRoute(
+  pathname: string,
+  suffix: string,
+): string | null {
+  const match = new RegExp(
+    `^/api/logs/([^/]+)/${suffix}$`,
+  ).exec(pathname);
+  return match ? decodeURIComponent(match[1]!) : null;
+}
+
+function matchAdminLogRoute(
+  pathname: string,
+  suffix: string,
+): string | null {
+  const match = new RegExp(
+    `^/admin/api/logs/([^/]+)/${suffix}$`,
+  ).exec(pathname);
+  return match ? decodeURIComponent(match[1]!) : null;
+}
 
 export default {
   async fetch(
@@ -53,85 +78,95 @@ export default {
       return handleAdminResetStorage(request, url, env);
     }
 
+    if (pathname === "/api/auth/challenge" && method === "POST") {
+      return handlePostAuthChallenge(request, env);
+    }
+
+    if (pathname === "/api/auth/session" && method === "POST") {
+      return handlePostAuthSession(request, env);
+    }
+
     if (pathname === "/api/delegations" && method === "POST") {
       return handleIssueDelegation(request, env);
     }
 
-    if (pathname === "/api/delegations/material" && method === "POST") {
-      return handlePostMaterial(request, env);
+    if (pathname === "/api/delegations/certificate" && method === "POST") {
+      return handlePostCertificate(request, env);
     }
 
     if (pathname === "/api/delegations/pending" && method === "GET") {
       return handleGetPending(request, env);
     }
 
-    const pendingDelegationMatch =
-      /^\/api\/logs\/([^/]+)\/pending-delegation$/.exec(pathname);
-    if (pendingDelegationMatch && method === "GET") {
-      const logId = decodeURIComponent(pendingDelegationMatch[1]!);
-      return handleGetPendingDelegation(logId, request, env);
+    const pendingDelegationLogId = matchLogRoute(pathname, "pending-delegation");
+    if (pendingDelegationLogId && method === "GET") {
+      return handleGetPendingDelegation(pendingDelegationLogId, request, env);
     }
 
-    const signingRouteMatch = /^\/api\/logs\/([^/]+)\/signing-route$/.exec(
-      pathname,
-    );
-    if (signingRouteMatch) {
-      const logId = decodeURIComponent(signingRouteMatch[1]!);
+    const signingRouteLogId = matchLogRoute(pathname, "signing-route");
+    if (signingRouteLogId) {
       if (method === "GET") {
-        return handleGetSigningRoute(logId, request, env);
+        return handleGetSigningRoute(signingRouteLogId, request, env);
       }
       if (method === "POST") {
-        return handlePostSigningRoute(logId, request, env);
+        return handlePostSigningRoute(signingRouteLogId, request, env);
       }
     }
 
-    const custodyKeysMatch = /^\/api\/logs\/([^/]+)\/custody-keys$/.exec(
-      pathname,
-    );
-    if (custodyKeysMatch && method === "POST") {
-      const logId = decodeURIComponent(custodyKeysMatch[1]!);
-      return handlePostCustodyKeys(logId, request, env);
+    const custodyKeysLogId = matchLogRoute(pathname, "custody-keys");
+    if (custodyKeysLogId && method === "POST") {
+      return handlePostCustodyKeys(custodyKeysLogId, request, env);
     }
 
-    const publicRootMatch = /^\/api\/logs\/([^/]+)\/public-root$/.exec(
-      pathname,
-    );
-    if (publicRootMatch) {
-      const logId = decodeURIComponent(publicRootMatch[1]!);
+    const adminCustodyKeysLogId = matchAdminLogRoute(pathname, "custody-keys");
+    if (adminCustodyKeysLogId && method === "POST") {
+      return handleAdminPostCustodyKeys(adminCustodyKeysLogId, request, env);
+    }
+
+    const publicRootLogId = matchLogRoute(pathname, "public-root");
+    if (publicRootLogId) {
       if (method === "GET") {
-        return handleGetPublicRoot(logId, request, env);
+        return handleGetPublicRoot(publicRootLogId, request, env);
       }
       if (method === "POST") {
-        return handlePostPublicRoot(logId, request, env);
+        return handlePostPublicRoot(publicRootLogId, request, env);
       }
     }
 
-    const webhookMatch = /^\/api\/logs\/([^/]+)\/webhook$/.exec(pathname);
-    if (webhookMatch) {
-      const logId = decodeURIComponent(webhookMatch[1]!);
+    const webhookLogId = matchLogRoute(pathname, "webhook");
+    if (webhookLogId) {
       if (method === "GET") {
-        return handleGetWebhook(logId, request, env);
+        return handleGetWebhook(webhookLogId, request, env);
       }
       if (method === "PUT") {
-        return handlePutWebhook(logId, request, env);
+        return handlePutWebhook(webhookLogId, request, env);
       }
       if (method === "DELETE") {
-        return handleDeleteWebhook(logId, request, env);
+        return handleDeleteWebhook(webhookLogId, request, env);
       }
     }
 
-    const enabledMatch = /^\/api\/logs\/([^/]+)\/enabled$/.exec(pathname);
-    if (enabledMatch) {
-      const logId = decodeURIComponent(enabledMatch[1]!);
+    const enabledLogId = matchLogRoute(pathname, "enabled");
+    if (enabledLogId) {
       if (method === "GET") {
-        return handleGetEnabled(logId, request, env);
+        return handleGetEnabled(enabledLogId, request, env);
       }
       if (method === "PUT") {
-        return handlePutEnabled(logId, request, env);
+        return handlePutEnabled(enabledLogId, request, env);
       }
     }
 
-    if (pathname.startsWith("/api/")) {
+    const adminEnabledLogId = matchAdminLogRoute(pathname, "enabled");
+    if (adminEnabledLogId) {
+      if (method === "GET") {
+        return handleAdminGetEnabled(adminEnabledLogId, request, env);
+      }
+      if (method === "PUT") {
+        return handleAdminPutEnabled(adminEnabledLogId, request, env);
+      }
+    }
+
+    if (pathname.startsWith("/api/") || pathname.startsWith("/admin/api/")) {
       return new Response("Method Not Allowed", { status: 405 });
     }
 

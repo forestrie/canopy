@@ -33,11 +33,14 @@ async function putEnabled(
   logUuid: string,
   enabled: boolean,
 ): Promise<Response> {
-  return fetchWithDoRetry(`http://localhost/api/logs/${logUuid}/enabled`, {
-    method: "PUT",
-    headers: authHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ enabled }),
-  });
+  return fetchWithDoRetry(
+    `http://localhost/admin/api/logs/${logUuid}/enabled`,
+    {
+      method: "PUT",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ enabled }),
+    },
+  );
 }
 
 async function postIssue(opts: {
@@ -65,7 +68,7 @@ async function postIssue(opts: {
   });
 }
 
-async function seedMaterial(
+async function seedCertificate(
   logUuid: string,
   logHex32: string,
   delegatedKey: Uint8Array,
@@ -94,11 +97,11 @@ async function seedMaterial(
   );
   expect(rootRes.status).toBe(200);
 
-  const materialRes = await fetchWithDoRetry(
-    "http://localhost/api/delegations/material",
+  const certificateRes = await fetchWithDoRetry(
+    "http://localhost/api/delegations/certificate",
     {
       method: "POST",
-      headers: authHeaders({ "Content-Type": "application/json" }),
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         logId: logUuid,
         mmrStart: 4,
@@ -110,7 +113,7 @@ async function seedMaterial(
       }),
     },
   );
-  expect(materialRes.status).toBe(200);
+  expect(certificateRes.status).toBe(200);
 
   const hit = await postIssue({
     logHex32,
@@ -127,7 +130,7 @@ describe("kill switch (enabled flag)", () => {
     const logHex32 = normalizeLogIdToHex32(logUuid);
     const delegatedKey = testDelegatedCoseKey(92);
 
-    await seedMaterial(logUuid, logHex32, delegatedKey);
+    await seedCertificate(logUuid, logHex32, delegatedKey);
 
     const disableRes = await putEnabled(logUuid, false);
     expect(disableRes.status).toBe(200);
@@ -167,7 +170,7 @@ describe("kill switch (enabled flag)", () => {
 
     const pendingBefore = await fetchWithDoRetry(
       `http://localhost/api/logs/${logUuid}/pending-delegation`,
-      { method: "GET", headers: authHeaders() },
+      { method: "GET" },
     );
     expect(pendingBefore.status).toBe(200);
     const beforeBody = (await pendingBefore.json()) as {
@@ -180,7 +183,7 @@ describe("kill switch (enabled flag)", () => {
 
     const pendingDisabled = await fetchWithDoRetry(
       `http://localhost/api/logs/${logUuid}/pending-delegation`,
-      { method: "GET", headers: authHeaders() },
+      { method: "GET" },
     );
     expect(pendingDisabled.status).toBe(200);
     const disabledBody = (await pendingDisabled.json()) as {
@@ -193,7 +196,7 @@ describe("kill switch (enabled flag)", () => {
 
     const pendingAfter = await fetchWithDoRetry(
       `http://localhost/api/logs/${logUuid}/pending-delegation`,
-      { method: "GET", headers: authHeaders() },
+      { method: "GET" },
     );
     expect(pendingAfter.status).toBe(200);
     const afterBody = (await pendingAfter.json()) as {

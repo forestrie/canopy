@@ -9,5 +9,7 @@ export interface DelegationRequiredEvent {
   mmrEnd: number;
   delegatedPublicKey: string;
   requestedAt: number;
-  materialSubmitUrl: string;
+  certificateSubmitUrl: string;
+  /** @deprecated use certificateSubmitUrl */
+  materialSubmitUrl?: string;
 }

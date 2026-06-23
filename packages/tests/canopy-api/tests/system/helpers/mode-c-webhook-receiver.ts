@@ -20,7 +20,9 @@ export interface DelegationRequiredEvent {
   mmrEnd: number;
   delegatedPublicKey: string;
   requestedAt: number;
-  materialSubmitUrl: string;
+  certificateSubmitUrl: string;
+  /** @deprecated use certificateSubmitUrl */
+  materialSubmitUrl?: string;
 }
 
 export interface ModeCWebhookReceiverConfig {
@@ -58,6 +60,8 @@ export interface SubmitModeCKs256MaterialInput {
   mmrStart: number;
   mmrEnd: number;
   delegatedPublicKey: Uint8Array;
+  certificateSubmitUrl?: string;
+  /** @deprecated use certificateSubmitUrl */
   materialSubmitUrl?: string;
 }
 
@@ -134,9 +138,11 @@ export async function submitModeCKs256DelegationMaterial(
     delegatedPublicKey: input.delegatedPublicKey,
   });
   const base = input.coordinatorBaseUrl.trim().replace(/\/$/, "");
-  const materialSubmitUrl =
-    input.materialSubmitUrl ?? `${base}/api/delegations/material`;
-  const materialRes = await fetch(materialSubmitUrl, {
+  const certificateSubmitUrl =
+    input.certificateSubmitUrl ??
+    input.materialSubmitUrl ??
+    `${base}/api/delegations/certificate`;
+  const materialRes = await fetch(certificateSubmitUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${input.coordinatorAppToken}`,
@@ -232,7 +238,8 @@ export async function startModeCWebhookReceiver(
           mmrStart: event.mmrStart,
           mmrEnd: event.mmrEnd,
           delegatedPublicKey,
-          materialSubmitUrl: event.materialSubmitUrl,
+          certificateSubmitUrl:
+            event.certificateSubmitUrl ?? event.materialSubmitUrl,
         });
         stats.materialsSubmitted++;
 

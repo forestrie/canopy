@@ -177,11 +177,14 @@ describe("webhook delivery", () => {
       expect(event.mmrStart).toBe(1);
       expect(event.mmrEnd).toBe(8);
       expect(event.delegatedPublicKey).toBe(bytesToBase64(key));
+      expect(event.certificateSubmitUrl).toBe(
+        "http://localhost/api/delegations/certificate",
+      );
       expect(event.materialSubmitUrl).toBe(
-        "http://localhost/api/delegations/material",
+        "http://localhost/api/delegations/certificate",
       );
 
-      const pubkeyHash = await import("../../src/material-key.js").then((m) =>
+      const pubkeyHash = await import("../../src/certificate-key.js").then((m) =>
         m.sha256Hex(key),
       );
       const expectedKey = await requestKeyFor(logHex32, 1, 8, pubkeyHash);
@@ -210,7 +213,7 @@ describe("webhook delivery", () => {
 
     await registerWebhook(logUuid, webhookUrl);
     const disableRes = await fetchWithDoRetry(
-      `http://localhost/api/logs/${logUuid}/enabled`,
+      `http://localhost/admin/api/logs/${logUuid}/enabled`,
       {
         method: "PUT",
         headers: authHeaders({ "Content-Type": "application/json" }),

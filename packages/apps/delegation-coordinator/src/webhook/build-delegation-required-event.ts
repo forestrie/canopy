@@ -9,7 +9,7 @@ export interface BuildDelegationRequiredEventInput {
   delegatedPublicKeyBase64: string;
   delegatedPubkeyHash: string;
   requestedAt: number;
-  materialSubmitUrl: string;
+  certificateSubmitUrl: string;
 }
 
 export async function buildDelegationRequiredEvent(
@@ -31,11 +31,17 @@ export async function buildDelegationRequiredEvent(
     mmrEnd: input.mmrEnd,
     delegatedPublicKey: input.delegatedPublicKeyBase64,
     requestedAt: input.requestedAt,
-    materialSubmitUrl: input.materialSubmitUrl,
+    certificateSubmitUrl: input.certificateSubmitUrl,
+    materialSubmitUrl: input.certificateSubmitUrl,
   };
 }
 
-export function materialSubmitUrlFromEnv(coordinatorPublicUrl: string): string {
+export function certificateSubmitUrlFromEnv(
+  coordinatorPublicUrl: string,
+): string {
   const base = coordinatorPublicUrl.replace(/\/$/, "");
-  return `${base}/api/delegations/material`;
+  return `${base}/api/delegations/certificate`;
 }
+
+/** @deprecated use certificateSubmitUrlFromEnv */
+export const materialSubmitUrlFromEnv = certificateSubmitUrlFromEnv;

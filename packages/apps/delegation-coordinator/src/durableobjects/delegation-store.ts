@@ -6,7 +6,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { decode, encode } from "cbor-x";
 import type { Env } from "../env.js";
-import { materialKeyFor, sha256Hex } from "../material-key.js";
+import { certificateKeyFor, sha256Hex } from "../certificate-key.js";
 import { hex32ToWireLogIdBytes, logIdWireBytesToHex32 } from "../log-id.js";
 import type { PutPublicRootBody } from "../types/put-public-root-body.js";
 import type { TrustRootResponseCbor } from "../types/trust-root-response.js";
@@ -14,27 +14,27 @@ import {
   COSE_ALG_ES256,
   COSE_ALG_KS256,
 } from "../types/trust-root-response.js";
-import type { PublicRootMaterial } from "../validate-byok-material.js";
+import type { PublicRootMaterial } from "../validate-byok-certificate.js";
 import { base64ToBytes, bytesToBase64 } from "../encoding.js";
 import type { DelegationIssueRequest } from "../types/delegation-issue-request.js";
 import type { DelegationIssueResponse } from "../types/delegation-issue-response.js";
-import type { MaterialRecord } from "../types/material-record.js";
+import type { DelegationCertificateRecord } from "../types/delegation-certificate-record.js";
 import type { PendingEntry } from "../types/pending-entry.js";
 import type { PendingHintRequest } from "../types/pending-hint-request.js";
 import type { SigningRoute } from "../types/signing-route.js";
-import type { SubmitMaterialRequest } from "../types/submit-material-request.js";
+import type { SubmitDelegationCertificateRequest } from "../types/submit-delegation-certificate-request.js";
 import type { PutWebhookRequest } from "../types/put-webhook-request.js";
 import type { PutEnabledRequest } from "../types/put-enabled-request.js";
 import type { WebhookConfigResponse } from "../types/webhook-config-response.js";
 import type { EnabledResponse } from "../types/enabled-response.js";
 import { delegationPendingResponse } from "../delegation-pending-response.js";
 import {
-  ByokMaterialValidationError,
-  validateByokDelegationMaterial,
-} from "../validate-byok-material.js";
+  ByokCertificateValidationError,
+  validateByokDelegationCertificate,
+} from "../validate-byok-certificate.js";
 import {
   buildDelegationRequiredEvent,
-  materialSubmitUrlFromEnv,
+  certificateSubmitUrlFromEnv,
 } from "../webhook/build-delegation-required-event.js";
 import { deliverSignedWebhook } from "../webhook/deliver-webhook.js";
 import {
@@ -84,8 +84,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
         }
       }
 
-      if (pathname === "/material" && method === "PUT") {
-        return this.handlePutMaterial(request);
+      if (pathname === "/certificate" && method === "PUT") {
+        return this.handlePutCertificate(request);
       }
 
       if (pathname === "/issue" && method === "POST") {
@@ -118,14 +118,20 @@ export class DelegationStoreDO extends DurableObject<Env> {
         }
       }
 
-      const enabledMatch = /^\/enabled\/([0-9a-f]{32})$/.exec(pathname);
+      const enabledMatch = /^\/enabled\/([0-9a-f]{32})(?:\/(user|operator))?$/.exec(
+        pathname,
+      );
       if (enabledMatch) {
         const logIdHex32 = enabledMatch[1]!;
-        if (method === "GET") {
+        const authority = enabledMatch[2];
+        if (method === "GET" && !authority) {
           return this.handleGetEnabled(logIdHex32);
         }
-        if (method === "PUT") {
-          return this.handlePutEnabled(logIdHex32, request);
+        if (method === "PUT" && authority === "user") {
+          return this.handlePutUserEnabled(logIdHex32, request);
+        }
+        if (method === "PUT" && authority === "operator") {
+          return this.handlePutOperatorEnabled(logIdHex32, request);
         }
       }
 
@@ -163,6 +169,19 @@ export class DelegationStoreDO extends DurableObject<Env> {
         updated_at INTEGER NOT NULL
       )
     `);
+
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS delegation_certificates (
+        log_id_hex32 TEXT NOT NULL,
+        certificate_key TEXT NOT NULL,
+        certificate BLOB NOT NULL,
+        issued_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL,
+        PRIMARY KEY (log_id_hex32, certificate_key)
+      )
+    `);
+
+    this.ensureDelegationCertificatesMigrated();
 
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS materials (
@@ -218,10 +237,14 @@ export class DelegationStoreDO extends DurableObject<Env> {
         log_id_hex32 TEXT PRIMARY KEY,
         webhook_url TEXT,
         enabled INTEGER NOT NULL DEFAULT 1,
+        user_enabled INTEGER NOT NULL DEFAULT 1,
+        operator_enabled INTEGER NOT NULL DEFAULT 1,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )
     `);
+
+    this.ensureEnabledAuthorityColumns();
 
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS webhook_deliveries (
@@ -241,6 +264,40 @@ export class DelegationStoreDO extends DurableObject<Env> {
     `);
 
     this.initialized = true;
+  }
+
+  private ensureDelegationCertificatesMigrated(): void {
+    try {
+      this.ctx.storage.sql.exec(`
+        INSERT OR IGNORE INTO delegation_certificates
+          (log_id_hex32, certificate_key, certificate, issued_at, expires_at)
+        SELECT log_id_hex32, material_key, certificate, issued_at, expires_at
+        FROM materials
+      `);
+    } catch {
+      // materials table may not exist on fresh installs
+    }
+  }
+
+  private ensureEnabledAuthorityColumns(): void {
+    try {
+      [
+        ...this.ctx.storage.sql.exec(
+          `SELECT user_enabled FROM log_delegation_config LIMIT 0`,
+        ),
+      ];
+    } catch {
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE log_delegation_config ADD COLUMN user_enabled INTEGER NOT NULL DEFAULT 1`,
+      );
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE log_delegation_config ADD COLUMN operator_enabled INTEGER NOT NULL DEFAULT 1`,
+      );
+      this.ctx.storage.sql.exec(
+        `UPDATE log_delegation_config
+         SET operator_enabled = enabled, user_enabled = 1`,
+      );
+    }
   }
 
   private ensurePendingDelegatedPublicKeyColumn(): void {
@@ -477,7 +534,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     if (algInt === COSE_ALG_KS256) {
       return { alg: "KS256", key: new Uint8Array(row.x) };
     }
-    throw new ByokMaterialValidationError(
+    throw new ByokCertificateValidationError(
       `unsupported stored public root alg ${row.alg}`,
     );
   }
@@ -570,8 +627,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
     });
   }
 
-  private async handlePutMaterial(request: Request): Promise<Response> {
-    const body = (await request.json()) as SubmitMaterialRequest;
+  private async handlePutCertificate(request: Request): Promise<Response> {
+    const body = (await request.json()) as SubmitDelegationCertificateRequest;
     const logIdHex32 = body.logId;
     const delegatedPublicKey = base64ToBytes(body.delegatedPublicKey);
     const certificate = base64ToBytes(body.certificate);
@@ -599,7 +656,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
       y: ArrayBuffer;
     };
     try {
-      await validateByokDelegationMaterial({
+      await validateByokDelegationCertificate({
         logIdHex32,
         mmrStart: body.mmrStart,
         mmrEnd: body.mmrEnd,
@@ -610,11 +667,11 @@ export class DelegationStoreDO extends DurableObject<Env> {
       });
     } catch (error) {
       const detail =
-        error instanceof ByokMaterialValidationError
+        error instanceof ByokCertificateValidationError
           ? error.message
           : error instanceof Error
             ? error.message
-            : "invalid delegation material";
+            : "invalid delegation certificate";
       return Response.json(
         {
           type: "about:blank",
@@ -626,16 +683,17 @@ export class DelegationStoreDO extends DurableObject<Env> {
       );
     }
 
-    const key = await materialKeyFor(
+    const key = await certificateKeyFor(
       body.mmrStart,
       body.mmrEnd,
       delegatedPublicKey,
     );
 
     this.ctx.storage.sql.exec(
-      `INSERT INTO materials (log_id_hex32, material_key, certificate, issued_at, expires_at)
+      `INSERT INTO delegation_certificates
+         (log_id_hex32, certificate_key, certificate, issued_at, expires_at)
        VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(log_id_hex32, material_key) DO UPDATE SET
+       ON CONFLICT(log_id_hex32, certificate_key) DO UPDATE SET
          certificate = excluded.certificate,
          issued_at = excluded.issued_at,
          expires_at = excluded.expires_at`,
@@ -656,7 +714,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
       pubkeyHash,
     );
 
-    return Response.json({ ok: true, materialKey: key });
+    return Response.json({ ok: true, certificateKey: key });
   }
 
   private async handleIssue(request: Request): Promise<Response> {
@@ -668,7 +726,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
       return delegationPendingResponse(202);
     }
 
-    const key = await materialKeyFor(
+    const key = await certificateKeyFor(
       req.mmrStart,
       req.mmrEnd,
       req.delegatedPublicKey,
@@ -677,8 +735,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
     const rows = [
       ...this.ctx.storage.sql.exec(
         `SELECT certificate, issued_at, expires_at
-       FROM materials
-       WHERE log_id_hex32 = ? AND material_key = ?`,
+       FROM delegation_certificates
+       WHERE log_id_hex32 = ? AND certificate_key = ?`,
         logIdHex32,
         key,
       ),
@@ -780,7 +838,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
        FROM pending
        WHERE auth_log_id_hex32 = ?
          AND COALESCE(
-           (SELECT enabled FROM log_delegation_config c
+           (SELECT (user_enabled != 0 AND operator_enabled != 0)
+            FROM log_delegation_config c
             WHERE c.log_id_hex32 = pending.log_id_hex32),
            1
          ) = 1
@@ -919,18 +978,28 @@ export class DelegationStoreDO extends DurableObject<Env> {
   private isDelegationSurfacingEnabled(logIdHex32: string): boolean {
     const row = this.readDelegationConfigRow(logIdHex32);
     if (!row) return true;
-    return row.enabled !== 0;
+    return this.effectiveEnabled(row);
+  }
+
+  private effectiveEnabled(row: {
+    user_enabled: number;
+    operator_enabled: number;
+  }): boolean {
+    return row.user_enabled !== 0 && row.operator_enabled !== 0;
   }
 
   private readDelegationConfigRow(logIdHex32: string): {
     webhook_url: string | null;
     enabled: number;
+    user_enabled: number;
+    operator_enabled: number;
     created_at: number;
     updated_at: number;
   } | null {
     const rows = [
       ...this.ctx.storage.sql.exec(
-        `SELECT webhook_url, enabled, created_at, updated_at
+        `SELECT webhook_url, enabled, user_enabled, operator_enabled,
+                created_at, updated_at
          FROM log_delegation_config WHERE log_id_hex32 = ?`,
         logIdHex32,
       ),
@@ -939,6 +1008,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
     return rows[0] as {
       webhook_url: string | null;
       enabled: number;
+      user_enabled: number;
+      operator_enabled: number;
       created_at: number;
       updated_at: number;
     };
@@ -946,12 +1017,13 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
   private webhookConfigResponseFromRow(row: {
     webhook_url: string | null;
-    enabled: number;
+    user_enabled: number;
+    operator_enabled: number;
     created_at: number;
     updated_at: number;
   }): WebhookConfigResponse {
     const resp: WebhookConfigResponse = {
-      enabled: row.enabled !== 0,
+      enabled: this.effectiveEnabled(row),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -991,19 +1063,23 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
     const now = Date.now();
     const existing = this.readDelegationConfigRow(logIdHex32);
-    const enabled = existing?.enabled ?? 1;
+    const userEnabled = existing?.user_enabled ?? 1;
+    const operatorEnabled = existing?.operator_enabled ?? 1;
     const createdAt = existing?.created_at ?? now;
 
     this.ctx.storage.sql.exec(
       `INSERT INTO log_delegation_config
-         (log_id_hex32, webhook_url, enabled, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?)
+         (log_id_hex32, webhook_url, enabled, user_enabled, operator_enabled,
+          created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(log_id_hex32) DO UPDATE SET
          webhook_url = excluded.webhook_url,
          updated_at = excluded.updated_at`,
       logIdHex32,
       body.url,
-      enabled,
+      userEnabled && operatorEnabled ? 1 : 0,
+      userEnabled,
+      operatorEnabled,
       createdAt,
       now,
     );
@@ -1040,13 +1116,32 @@ export class DelegationStoreDO extends DurableObject<Env> {
         { status: 404 },
       );
     }
-    const resp: EnabledResponse = { enabled: row.enabled !== 0 };
+    const resp: EnabledResponse = {
+      enabled: this.effectiveEnabled(row),
+      userEnabled: row.user_enabled !== 0,
+      operatorEnabled: row.operator_enabled !== 0,
+    };
     return Response.json(resp);
   }
 
-  private async handlePutEnabled(
+  private async handlePutUserEnabled(
     logIdHex32: string,
     request: Request,
+  ): Promise<Response> {
+    return this.handlePutEnabledAuthority(logIdHex32, request, "user");
+  }
+
+  private async handlePutOperatorEnabled(
+    logIdHex32: string,
+    request: Request,
+  ): Promise<Response> {
+    return this.handlePutEnabledAuthority(logIdHex32, request, "operator");
+  }
+
+  private async handlePutEnabledAuthority(
+    logIdHex32: string,
+    request: Request,
+    authority: "user" | "operator",
   ): Promise<Response> {
     const body = (await request.json()) as PutEnabledRequest;
     if (typeof body.enabled !== "boolean") {
@@ -1065,23 +1160,45 @@ export class DelegationStoreDO extends DurableObject<Env> {
     const existing = this.readDelegationConfigRow(logIdHex32);
     const webhookUrl = existing?.webhook_url ?? null;
     const createdAt = existing?.created_at ?? now;
-    const enabledInt = body.enabled ? 1 : 0;
+    const userEnabledInt =
+      authority === "user"
+        ? body.enabled
+          ? 1
+          : 0
+        : (existing?.user_enabled ?? 1);
+    const operatorEnabledInt =
+      authority === "operator"
+        ? body.enabled
+          ? 1
+          : 0
+        : (existing?.operator_enabled ?? 1);
+    const legacyEnabledInt =
+      userEnabledInt !== 0 && operatorEnabledInt !== 0 ? 1 : 0;
 
     this.ctx.storage.sql.exec(
       `INSERT INTO log_delegation_config
-         (log_id_hex32, webhook_url, enabled, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?)
+         (log_id_hex32, webhook_url, enabled, user_enabled, operator_enabled,
+          created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(log_id_hex32) DO UPDATE SET
+         user_enabled = excluded.user_enabled,
+         operator_enabled = excluded.operator_enabled,
          enabled = excluded.enabled,
          updated_at = excluded.updated_at`,
       logIdHex32,
       webhookUrl,
-      enabledInt,
+      legacyEnabledInt,
+      userEnabledInt,
+      operatorEnabledInt,
       createdAt,
       now,
     );
 
-    const resp: EnabledResponse = { enabled: body.enabled };
+    const resp: EnabledResponse = {
+      enabled: userEnabledInt !== 0 && operatorEnabledInt !== 0,
+      userEnabled: userEnabledInt !== 0,
+      operatorEnabled: operatorEnabledInt !== 0,
+    };
     return Response.json(resp);
   }
 
@@ -1102,7 +1219,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     requestedAt: number;
   }): Promise<void> {
     const config = this.readDelegationConfigRow(input.logIdHex32);
-    if (!config?.webhook_url || config.enabled === 0) {
+    if (!config?.webhook_url || !this.effectiveEnabled(config)) {
       return;
     }
 
@@ -1114,7 +1231,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
       delegatedPublicKeyBase64: bytesToBase64(input.delegatedPublicKey),
       delegatedPubkeyHash: input.delegatedPubkeyHash,
       requestedAt: input.requestedAt,
-      materialSubmitUrl: materialSubmitUrlFromEnv(this.coordinatorPublicUrl()),
+      certificateSubmitUrl: certificateSubmitUrlFromEnv(this.coordinatorPublicUrl()),
     });
     const payloadJson = JSON.stringify(event);
     const now = Math.floor(Date.now() / 1000);
@@ -1227,17 +1344,18 @@ export class DelegationStoreDO extends DurableObject<Env> {
   }
 
   /** @internal Exported for tests */
-  getMaterialRecord(
+  getDelegationCertificateRecord(
     logIdHex32: string,
-    materialKey: string,
-  ): MaterialRecord | null {
+    certificateKey: string,
+  ): DelegationCertificateRecord | null {
     this.ensureSchema();
     const rows = [
       ...this.ctx.storage.sql.exec(
         `SELECT certificate, issued_at, expires_at
-       FROM materials WHERE log_id_hex32 = ? AND material_key = ?`,
+       FROM delegation_certificates
+       WHERE log_id_hex32 = ? AND certificate_key = ?`,
         logIdHex32,
-        materialKey,
+        certificateKey,
       ),
     ];
     if (rows.length === 0) return null;
@@ -1248,11 +1366,19 @@ export class DelegationStoreDO extends DurableObject<Env> {
     };
     return {
       logIdHex32,
-      materialKey,
+      certificateKey,
       certificate: new Uint8Array(row.certificate),
       issuedAt: row.issued_at,
       expiresAt: row.expires_at,
     };
+  }
+
+  /** @deprecated use getDelegationCertificateRecord */
+  getMaterialRecord(
+    logIdHex32: string,
+    materialKey: string,
+  ): DelegationCertificateRecord | null {
+    return this.getDelegationCertificateRecord(logIdHex32, materialKey);
   }
 
   /**

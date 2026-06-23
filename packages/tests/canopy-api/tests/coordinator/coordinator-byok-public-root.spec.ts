@@ -105,7 +105,7 @@ test.describe("delegation-coordinator BYOK public-root", () => {
     });
 
     const res = await request.post(
-      `${coordinatorUrl}/api/delegations/material`,
+      `${coordinatorUrl}/api/delegations/certificate`,
       {
         headers: {
           Authorization: `Bearer ${coordinatorToken}`,
@@ -154,7 +154,6 @@ test.describe("delegation-coordinator BYOK public-root negatives", () => {
       `${coordinatorUrl}/api/logs/${freshLog}/public-root`,
       {
         headers: {
-          Authorization: `Bearer ${coordinatorToken}`,
           Accept: "application/cbor",
         },
       },

@@ -1,18 +1,6 @@
-export type { DelegationIssueRequest } from "./delegation-issue-request.js";
-export type { DelegationIssueResponse } from "./delegation-issue-response.js";
-export type { SigningRoute, SigningRouteMode } from "./signing-route.js";
+export type { DelegationCertificateRecord } from "./delegation-certificate-record.js";
+export type { SubmitDelegationCertificateRequest } from "./submit-delegation-certificate-request.js";
+/** @deprecated use DelegationCertificateRecord */
 export type { MaterialRecord } from "./material-record.js";
+/** @deprecated use SubmitDelegationCertificateRequest */
 export type { SubmitMaterialRequest } from "./submit-material-request.js";
-export type { PendingEntry } from "./pending-entry.js";
-export type { PendingHintRequest } from "./pending-hint-request.js";
-export type { CustodyKeysRequest } from "./custody-keys-request.js";
-export type { CustodyKeysResponse } from "./custody-keys-response.js";
-export type { PublicRootRecord } from "./public-root-record.js";
-export type { SubmitPublicRootRequest } from "./submit-public-root-request.js";
-export type { TrustRootResponseCbor } from "./trust-root-response.js";
-export type { PutPublicRootBody } from "./put-public-root-body.js";
-export type { WebhookConfig } from "./webhook-config.js";
-export type { PutWebhookRequest } from "./put-webhook-request.js";
-export type { PutEnabledRequest } from "./put-enabled-request.js";
-export type { WebhookConfigResponse } from "./webhook-config-response.js";
-export type { EnabledResponse } from "./enabled-response.js";

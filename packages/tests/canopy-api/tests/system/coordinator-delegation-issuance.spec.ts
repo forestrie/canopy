@@ -80,7 +80,7 @@ test.describe("coordinator delegation issuance (stretch)", () => {
     ).toBe(true);
 
     const materialRes = await request.post(
-      `${coordinatorUrl}/api/delegations/material`,
+      `${coordinatorUrl}/api/delegations/certificate`,
       {
         headers: {
           Authorization: `Bearer ${coordinatorToken}`,

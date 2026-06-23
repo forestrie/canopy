@@ -3,7 +3,7 @@
  */
 
 import type { Env } from "../env.js";
-import { checkBearerToken } from "../auth/check-bearer-token.js";
+import { requireUserSessionOrResponse } from "../auth/authorize.js";
 import { normalizeLogIdToHex32 } from "../log-id.js";
 import type { PendingEntry } from "../types/pending-entry.js";
 import {
@@ -18,9 +18,6 @@ export async function handleGetPending(
   env: Env,
 ): Promise<Response> {
   try {
-    const authErr = checkBearerToken(request, env.COORDINATOR_APP_TOKEN);
-    if (authErr) return authErr;
-
     const url = new URL(request.url);
     const metaUrl = new URL("https://coordinator.local/pending");
     for (const key of ["offset", "limit"]) {
@@ -51,6 +48,12 @@ export async function handleGetPending(
     }
 
     metaUrl.searchParams.set("authLogId", authLogIdHex32);
+
+    const sessionAuth = requireUserSessionOrResponse(request, env, {
+      scope: "delegations:read",
+      authLogIdHex32,
+    });
+    if (sessionAuth) return sessionAuth;
 
     const shardCount = getShardCount(env);
     const slices = await Promise.all(
