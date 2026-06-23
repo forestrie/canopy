@@ -57,7 +57,12 @@ export function requireUserSessionOrResponse(
 
   if (sessionToken && secret && walletChallengeEnabled(env)) {
     const expectedAud = coordinatorOrigin(env, request);
-    const claims = verifySessionToken(sessionToken, secret, undefined, expectedAud);
+    const claims = verifySessionToken(
+      sessionToken,
+      secret,
+      undefined,
+      expectedAud,
+    );
     if (!claims) {
       return problemResponse(
         401,

@@ -31,25 +31,20 @@ import {
   WEBHOOK_JWKS_PATH,
 } from "./handlers/index.js";
 
-export { DelegationStoreDO, WalletChallengeNonceDO } from "./durableobjects/index.js";
+export {
+  DelegationStoreDO,
+  WalletChallengeNonceDO,
+} from "./durableobjects/index.js";
 
-function matchLogRoute(
-  pathname: string,
-  suffix: string,
-): string | null {
-  const match = new RegExp(
-    `^/api/logs/([^/]+)/${suffix}$`,
-  ).exec(pathname);
+function matchLogRoute(pathname: string, suffix: string): string | null {
+  const match = new RegExp(`^/api/logs/([^/]+)/${suffix}$`).exec(pathname);
   return match ? decodeURIComponent(match[1]!) : null;
 }
 
-function matchAdminLogRoute(
-  pathname: string,
-  suffix: string,
-): string | null {
-  const match = new RegExp(
-    `^/admin/api/logs/([^/]+)/${suffix}$`,
-  ).exec(pathname);
+function matchAdminLogRoute(pathname: string, suffix: string): string | null {
+  const match = new RegExp(`^/admin/api/logs/([^/]+)/${suffix}$`).exec(
+    pathname,
+  );
   return match ? decodeURIComponent(match[1]!) : null;
 }
 
@@ -98,7 +93,10 @@ export default {
       return handleGetPending(request, env);
     }
 
-    const pendingDelegationLogId = matchLogRoute(pathname, "pending-delegation");
+    const pendingDelegationLogId = matchLogRoute(
+      pathname,
+      "pending-delegation",
+    );
     if (pendingDelegationLogId && method === "GET") {
       return handleGetPendingDelegation(pendingDelegationLogId, request, env);
     }

@@ -55,12 +55,22 @@ export async function handlePostAuthSession(
     }
 
     if (envelope.version !== "wcc-1") {
-      return problemResponse(400, "about:blank", "Invalid request", "Unsupported envelope version");
+      return problemResponse(
+        400,
+        "about:blank",
+        "Invalid request",
+        "Unsupported envelope version",
+      );
     }
 
     const now = Date.now();
     if (envelope.expiresAt < now) {
-      return problemResponse(400, "about:blank", "Invalid request", "Challenge expired");
+      return problemResponse(
+        400,
+        "about:blank",
+        "Invalid request",
+        "Challenge expired",
+      );
     }
 
     const expectedOrigin = coordinatorOrigin(env, request);
@@ -109,10 +119,18 @@ export async function handlePostAuthSession(
     }
 
     if (alg !== "KS256") {
-      return problemResponse(400, "about:blank", "Invalid request", "Unsupported alg");
+      return problemResponse(
+        400,
+        "about:blank",
+        "Invalid request",
+        "Unsupported alg",
+      );
     }
 
-    const recovered = await verifyKs256ControlPlaneSignature(envelope, signature);
+    const recovered = await verifyKs256ControlPlaneSignature(
+      envelope,
+      signature,
+    );
     if (!recovered) {
       return problemResponse(
         401,

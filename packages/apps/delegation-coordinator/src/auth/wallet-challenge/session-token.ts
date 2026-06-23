@@ -11,7 +11,9 @@ function signingKey(secret: string): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
-export function sessionExpiresAt(nowSec = Math.floor(Date.now() / 1000)): number {
+export function sessionExpiresAt(
+  nowSec = Math.floor(Date.now() / 1000),
+): number {
   return nowSec + SESSION_TTL_SEC;
 }
 
@@ -27,7 +29,9 @@ export function mintSessionToken(
     aud: claims.aud,
     exp: claims.exp ?? sessionExpiresAt(nowSec),
   };
-  const payload = bytesToBase64Url(new TextEncoder().encode(JSON.stringify(full)));
+  const payload = bytesToBase64Url(
+    new TextEncoder().encode(JSON.stringify(full)),
+  );
   const sig = bytesToBase64Url(
     hmac(sha256, signingKey(secret), new TextEncoder().encode(`v1.${payload}`)),
   );
@@ -71,9 +75,7 @@ export function verifySessionToken(
   return claims;
 }
 
-export function parseBearerSession(
-  request: Request,
-): string | null {
+export function parseBearerSession(request: Request): string | null {
   const auth = request.headers.get("Authorization")?.trim() ?? "";
   const match = /^Bearer\s+(.+)$/i.exec(auth);
   if (!match) return null;

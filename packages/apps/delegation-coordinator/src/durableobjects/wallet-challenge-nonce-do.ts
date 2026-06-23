@@ -75,7 +75,10 @@ export class WalletChallengeNonceDO extends DurableObject<Env> {
       ),
     ];
     if (rows.length === 0) {
-      return Response.json({ ok: false, reason: "unknown_nonce" }, { status: 409 });
+      return Response.json(
+        { ok: false, reason: "unknown_nonce" },
+        { status: 409 },
+      );
     }
     const row = rows[0] as {
       auth_log_id_hex32: string;
@@ -90,13 +93,19 @@ export class WalletChallengeNonceDO extends DurableObject<Env> {
       return Response.json({ ok: false, reason: "expired" }, { status: 409 });
     }
     if (row.auth_log_id_hex32 !== body.authLogIdHex32) {
-      return Response.json({ ok: false, reason: "auth_log_mismatch" }, { status: 409 });
+      return Response.json(
+        { ok: false, reason: "auth_log_mismatch" },
+        { status: 409 },
+      );
     }
     const storedScopes = JSON.parse(row.scopes_json) as string[];
     const requested = [...body.scopes].sort().join(",");
     const stored = [...storedScopes].sort().join(",");
     if (requested !== stored) {
-      return Response.json({ ok: false, reason: "scope_mismatch" }, { status: 409 });
+      return Response.json(
+        { ok: false, reason: "scope_mismatch" },
+        { status: 409 },
+      );
     }
 
     this.ctx.storage.sql.exec(

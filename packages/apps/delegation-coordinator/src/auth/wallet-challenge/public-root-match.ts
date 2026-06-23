@@ -20,11 +20,14 @@ export async function loadRegisteredPublicRoot(
   if (resp.status === 404) return null;
   if (!resp.ok) return null;
 
-  const decoded = decode(new Uint8Array(await resp.arrayBuffer())) as TrustRootResponseCbor;
+  const decoded = decode(
+    new Uint8Array(await resp.arrayBuffer()),
+  ) as TrustRootResponseCbor;
   if (decoded.alg === "ES256" && decoded.x && decoded.y) {
     return { alg: "ES256", x: decoded.x, y: decoded.y };
   }
-  const algInt = typeof decoded.alg === "number" ? decoded.alg : Number(decoded.alg);
+  const algInt =
+    typeof decoded.alg === "number" ? decoded.alg : Number(decoded.alg);
   if (algInt === COSE_ALG_KS256 && decoded.key) {
     return { alg: "KS256", key: decoded.key };
   }

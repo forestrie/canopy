@@ -5,7 +5,10 @@
 import type { Env } from "../env.js";
 import { issueWalletChallengeNonce } from "../auth/wallet-challenge/nonce-client.js";
 import { isControlPlaneScope } from "../types/control-plane-scope.js";
-import type { ChallengeRequest, ChallengeResponse } from "../types/wallet-challenge.js";
+import type {
+  ChallengeRequest,
+  ChallengeResponse,
+} from "../types/wallet-challenge.js";
 import { normalizeLogIdToHex32 } from "../log-id.js";
 import { internalError, problemResponse } from "./handler.js";
 
@@ -36,7 +39,11 @@ export async function handlePostAuthChallenge(
     }
 
     const body = (await request.json()) as ChallengeRequest;
-    if (!body.authLogId || !Array.isArray(body.scopes) || body.scopes.length === 0) {
+    if (
+      !body.authLogId ||
+      !Array.isArray(body.scopes) ||
+      body.scopes.length === 0
+    ) {
       return problemResponse(
         400,
         "about:blank",

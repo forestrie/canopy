@@ -118,9 +118,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
         }
       }
 
-      const enabledMatch = /^\/enabled\/([0-9a-f]{32})(?:\/(user|operator))?$/.exec(
-        pathname,
-      );
+      const enabledMatch =
+        /^\/enabled\/([0-9a-f]{32})(?:\/(user|operator))?$/.exec(pathname);
       if (enabledMatch) {
         const logIdHex32 = enabledMatch[1]!;
         const authority = enabledMatch[2];
@@ -1231,7 +1230,9 @@ export class DelegationStoreDO extends DurableObject<Env> {
       delegatedPublicKeyBase64: bytesToBase64(input.delegatedPublicKey),
       delegatedPubkeyHash: input.delegatedPubkeyHash,
       requestedAt: input.requestedAt,
-      certificateSubmitUrl: certificateSubmitUrlFromEnv(this.coordinatorPublicUrl()),
+      certificateSubmitUrl: certificateSubmitUrlFromEnv(
+        this.coordinatorPublicUrl(),
+      ),
     });
     const payloadJson = JSON.stringify(event);
     const now = Math.floor(Date.now() / 1000);

@@ -86,7 +86,12 @@ describe("wallet-challenge session token", () => {
       verifySessionToken(token, SESSION_SECRET, undefined, "http://localhost"),
     ).toBeNull();
     expect(
-      verifySessionToken(token, SESSION_SECRET, undefined, "https://evil.example"),
+      verifySessionToken(
+        token,
+        SESSION_SECRET,
+        undefined,
+        "https://evil.example",
+      ),
     ).not.toBeNull();
   });
 });
@@ -102,104 +107,104 @@ describe("wallet-challenge scopes", () => {
 });
 
 describe("wallet-challenge auth flow", () => {
-  it(
-    "challenge → sign → session → pending with session bearer",
-    async () => {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          await runWalletChallengeFlow();
-          return;
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          if (!message.includes("500") && !message.includes("Durable Object")) {
-            throw error;
-          }
-          if (attempt === 2) throw error;
-          await new Promise((resolve) => setTimeout(resolve, 25));
+  it("challenge → sign → session → pending with session bearer", async () => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await runWalletChallengeFlow();
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!message.includes("500") && !message.includes("Durable Object")) {
+          throw error;
         }
+        if (attempt === 2) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 25));
       }
-    },
-    30_000,
-  );
+    }
+  }, 30_000);
 });
 
 async function assertOk(response: Response, step: string): Promise<void> {
   if (!response.ok) {
-    throw new Error(`${step} returned ${response.status}: ${await response.text()}`);
+    throw new Error(
+      `${step} returned ${response.status}: ${await response.text()}`,
+    );
   }
 }
 
 async function runWalletChallengeFlow(): Promise<void> {
-    const account = privateKeyToAccount(TEST_PRIVATE_KEY);
-    const logUuid = crypto.randomUUID();
+  const account = privateKeyToAccount(TEST_PRIVATE_KEY);
+  const logUuid = crypto.randomUUID();
 
-    const rootPost = await fetchWithDoRetry(
-      `http://localhost/api/logs/${logUuid}/public-root`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${TEST_APP_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          alg: COSE_ALG_KS256,
-          key: addressToRootKey(account.address),
-        }),
+  const rootPost = await fetchWithDoRetry(
+    `http://localhost/api/logs/${logUuid}/public-root`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${TEST_APP_TOKEN}`,
+        "Content-Type": "application/json",
       },
-    );
-    await assertOk(rootPost, "public-root");
+      body: JSON.stringify({
+        alg: COSE_ALG_KS256,
+        key: addressToRootKey(account.address),
+      }),
+    },
+  );
+  await assertOk(rootPost, "public-root");
 
-    const challengeRes = await fetchWithDoRetry(
-      "http://localhost/api/auth/challenge",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          authLogId: logUuid,
-          scopes: ["delegations:read"],
-        }),
-      },
-    );
-    await assertOk(challengeRes, "challenge");
-    const challenge = (await challengeRes.json()) as {
-      nonce: string;
-      authLogId: string;
-      scopes: string[];
-      issuedAt: number;
-      expiresAt: number;
-      domain: string;
-      coordinatorOrigin: string;
-      version: string;
-    };
+  const challengeRes = await fetchWithDoRetry(
+    "http://localhost/api/auth/challenge",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        authLogId: logUuid,
+        scopes: ["delegations:read"],
+      }),
+    },
+  );
+  await assertOk(challengeRes, "challenge");
+  const challenge = (await challengeRes.json()) as {
+    nonce: string;
+    authLogId: string;
+    scopes: string[];
+    issuedAt: number;
+    expiresAt: number;
+    domain: string;
+    coordinatorOrigin: string;
+    version: string;
+  };
 
-    const envelope: WalletChallengeEnvelope = {
-      version: "wcc-1",
-      domain: challenge.domain,
-      coordinatorOrigin: challenge.coordinatorOrigin,
-      authLogId: challenge.authLogId,
-      scopes: challenge.scopes as WalletChallengeEnvelope["scopes"],
-      nonce: challenge.nonce,
-      issuedAt: challenge.issuedAt,
-      expiresAt: challenge.expiresAt,
-    };
-    const message = buildKs256ControlPlaneMessage(envelope);
-    const signature = await account.signMessage({ message });
+  const envelope: WalletChallengeEnvelope = {
+    version: "wcc-1",
+    domain: challenge.domain,
+    coordinatorOrigin: challenge.coordinatorOrigin,
+    authLogId: challenge.authLogId,
+    scopes: challenge.scopes as WalletChallengeEnvelope["scopes"],
+    nonce: challenge.nonce,
+    issuedAt: challenge.issuedAt,
+    expiresAt: challenge.expiresAt,
+  };
+  const message = buildKs256ControlPlaneMessage(envelope);
+  const signature = await account.signMessage({ message });
 
-    const sessionRes = await fetchWithDoRetry("http://localhost/api/auth/session", {
+  const sessionRes = await fetchWithDoRetry(
+    "http://localhost/api/auth/session",
+    {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ envelope, signature, alg: "KS256" }),
-    });
-    await assertOk(sessionRes, "session");
-    const session = (await sessionRes.json()) as { token: string };
+    },
+  );
+  await assertOk(sessionRes, "session");
+  const session = (await sessionRes.json()) as { token: string };
 
-    const pendingRes = await fetchWithDoRetry(
-      `http://localhost/api/delegations/pending?authLogId=${logUuid}`,
-      {
-        method: "GET",
-        headers: { Authorization: `Bearer ${session.token}` },
-      },
-    );
-    await assertOk(pendingRes, "pending");
+  const pendingRes = await fetchWithDoRetry(
+    `http://localhost/api/delegations/pending?authLogId=${logUuid}`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${session.token}` },
+    },
+  );
+  await assertOk(pendingRes, "pending");
 }
-

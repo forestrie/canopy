@@ -184,8 +184,8 @@ describe("webhook delivery", () => {
         "http://localhost/api/delegations/certificate",
       );
 
-      const pubkeyHash = await import("../../src/certificate-key.js").then((m) =>
-        m.sha256Hex(key),
+      const pubkeyHash = await import("../../src/certificate-key.js").then(
+        (m) => m.sha256Hex(key),
       );
       const expectedKey = await requestKeyFor(logHex32, 1, 8, pubkeyHash);
       expect(event.requestKey).toBe(expectedKey);

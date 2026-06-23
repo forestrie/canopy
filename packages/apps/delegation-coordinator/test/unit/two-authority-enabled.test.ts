@@ -47,14 +47,11 @@ async function userPutEnabled(
     authLogIdHex32: logHex32,
     scopes: ["logs:enabled:write"],
   });
-  return fetchWithDoRetry(
-    `http://localhost/api/logs/${logUuid}/enabled`,
-    {
-      method: "PUT",
-      headers: sessionHeaders(token, { "Content-Type": "application/json" }),
-      body: JSON.stringify({ enabled }),
-    },
-  );
+  return fetchWithDoRetry(`http://localhost/api/logs/${logUuid}/enabled`, {
+    method: "PUT",
+    headers: sessionHeaders(token, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ enabled }),
+  });
 }
 
 describe("two-authority enabled model", () => {
