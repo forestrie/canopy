@@ -403,7 +403,11 @@ type SigningRouteRequest = {
       headers?: Record<string, string>;
       data?: unknown;
     },
-  ) => Promise<{ status: () => number; ok: () => boolean; text: () => Promise<string> }>;
+  ) => Promise<{
+    status: () => number;
+    ok: () => boolean;
+    text: () => Promise<string>;
+  }>;
 };
 
 /**
@@ -440,7 +444,11 @@ export async function fetchLogPendingDelegation(opts: {
     get: (
       url: string,
       options?: { headers?: Record<string, string> },
-    ) => Promise<{ ok: () => boolean; status: () => number; json: () => Promise<unknown> }>;
+    ) => Promise<{
+      ok: () => boolean;
+      status: () => number;
+      json: () => Promise<unknown>;
+    }>;
   };
   coordinatorUrl: string;
   logId: string;
