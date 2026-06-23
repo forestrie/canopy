@@ -4,7 +4,7 @@
 
 import { cborResponse } from "../cbor-api/cbor-response.js";
 import { problemResponse } from "../cbor-api/cbor-response.js";
-import { ClientErrors } from "../cbor-api/problem-details.js";
+import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
 import type { ReceiptAuthorityResolver } from "../env/receipt-authority-resolver.js";
 import { resolveGenesisAuth } from "../payments/genesis-auth.js";
 import { buildGenesisRegistrationResponse } from "../payments/genesis-registration-response.js";
@@ -13,10 +13,27 @@ import {
   registrationRecordFromChainBinding,
   writeRegistration,
 } from "../payments/registration-store.js";
+import type { CoordinatorRegistrationStatus } from "./coordinator-registration-status.js";
+import {
+  forwardCoordinatorRegistration,
+  isCoordinatorForwardConfigured,
+  type CoordinatorForwardEnv,
+} from "./forward-coordinator-registration.js";
 import { getForestGenesis } from "./get-forest-genesis.js";
-import { postForestGenesis, type PostGenesisEnv } from "./post-genesis.js";
+import {
+  postForestGenesis,
+  type PostGenesisEnv,
+  type PostGenesisSuccess,
+} from "./post-genesis.js";
+import {
+  GenesisWebhookUrlValidationError,
+  validateGenesisWebhookUrl,
+} from "./validate-genesis-webhook-url.js";
+import type { RegistrationClass } from "../payments/registration-class.js";
 
-export interface ForestHandlerEnv extends PostGenesisEnv {
+export interface ForestHandlerEnv
+  extends PostGenesisEnv,
+    CoordinatorForwardEnv {
   NODE_ENV: string;
   resolveReceiptAuthority?: ReceiptAuthorityResolver;
 }
@@ -34,6 +51,82 @@ function attachCors(
     statusText: res.statusText,
     headers,
   });
+}
+
+function parseGenesisWebhookUrlParam(
+  request: Request,
+  env: ForestHandlerEnv,
+): { webhookUrl?: string } | Response {
+  const raw = new URL(request.url).searchParams.get("webhookUrl");
+  if (raw === null || raw.trim() === "") {
+    return {};
+  }
+  try {
+    return {
+      webhookUrl: validateGenesisWebhookUrl(raw, {
+        allowInsecureLocal: env.NODE_ENV === "dev",
+      }),
+    };
+  } catch (error) {
+    const detail =
+      error instanceof GenesisWebhookUrlValidationError
+        ? error.message
+        : "Invalid webhookUrl";
+    return ClientErrors.badRequest(detail);
+  }
+}
+
+async function coordinatorStatusForGenesis(
+  env: ForestHandlerEnv,
+  genesisResult: PostGenesisSuccess,
+  webhookUrl: string,
+): Promise<CoordinatorRegistrationStatus> {
+  return forwardCoordinatorRegistration({
+    coordinatorBaseUrl: env.DELEGATION_COORDINATOR_URL!.trim(),
+    coordinatorAppToken: env.COORDINATOR_APP_TOKEN!.trim(),
+    logIdWire: genesisResult.logIdWire,
+    genesisAlg: genesisResult.genesisAlg,
+    bootstrapKey: genesisResult.bootstrapKey,
+    webhookUrl,
+  });
+}
+
+async function finishGenesisPost(
+  env: ForestHandlerEnv,
+  genesisResult: PostGenesisSuccess,
+  registrationClass: RegistrationClass,
+  record: Parameters<typeof writeRegistration>[2],
+  endorsedBy: string | undefined,
+  webhookUrl: string | undefined,
+): Promise<Response> {
+  await writeRegistration(env, genesisResult.logIdWire, record);
+
+  let coordinator: CoordinatorRegistrationStatus | undefined;
+  if (webhookUrl) {
+    coordinator = await coordinatorStatusForGenesis(
+      env,
+      genesisResult,
+      webhookUrl,
+    );
+    if (coordinator.publicRoot !== "ok" || coordinator.webhook !== "ok") {
+      const detail =
+        coordinator.detail ??
+        `coordinator registration incomplete (publicRoot=${coordinator.publicRoot}, webhook=${coordinator.webhook})`;
+      return ServerErrors.serviceUnavailable(detail);
+    }
+  }
+
+  const rUuid = logIdWireToUuid(genesisResult.logIdWire);
+  return cborResponse(
+    buildGenesisRegistrationResponse(
+      rUuid,
+      registrationClass,
+      genesisResult.chainBinding,
+      endorsedBy,
+      coordinator,
+    ),
+    201,
+  );
 }
 
 /**
@@ -72,53 +165,54 @@ export async function handleForestRequest(
       const auth = await resolveGenesisAuth(request, logIdSeg, env);
       if (auth instanceof Response) return attachCors(auth, corsHeaders);
 
-      const genesisResult = await postForestGenesis(request, logIdSeg, env);
-      if (genesisResult instanceof Response) {
-        return attachCors(genesisResult, corsHeaders);
+      const webhookParsed = parseGenesisWebhookUrlParam(request, env);
+      if (webhookParsed instanceof Response) {
+        return attachCors(webhookParsed, corsHeaders);
       }
-
-      const rUuid = logIdWireToUuid(genesisResult.logIdWire);
-      if (auth.mode === "onboard") {
-        await writeRegistration(
-          env,
-          genesisResult.logIdWire,
-          registrationRecordFromChainBinding({
-            class: "payment-authoritative",
-            onboardTokenRef: auth.tokenHash,
-            chainBinding: genesisResult.chainBinding,
-          }),
-        );
+      if (webhookParsed.webhookUrl && !isCoordinatorForwardConfigured(env)) {
         return attachCors(
-          cborResponse(
-            buildGenesisRegistrationResponse(
-              rUuid,
-              "payment-authoritative",
-              genesisResult.chainBinding,
-            ),
-            201,
+          ServerErrors.serviceUnavailable(
+            "webhookUrl requires delegation coordinator configuration (DELEGATION_COORDINATOR_URL and COORDINATOR_APP_TOKEN)",
           ),
           corsHeaders,
         );
       }
 
-      await writeRegistration(
-        env,
-        genesisResult.logIdWire,
-        registrationRecordFromChainBinding({
-          class: "regular",
-          endorsedBy: auth.endorserUuid,
-          chainBinding: genesisResult.chainBinding,
-        }),
-      );
-      return attachCors(
-        cborResponse(
-          buildGenesisRegistrationResponse(
-            rUuid,
-            "regular",
-            genesisResult.chainBinding,
-            auth.endorserUuid,
+      const genesisResult = await postForestGenesis(request, logIdSeg, env);
+      if (genesisResult instanceof Response) {
+        return attachCors(genesisResult, corsHeaders);
+      }
+
+      if (auth.mode === "onboard") {
+        return attachCors(
+          await finishGenesisPost(
+            env,
+            genesisResult,
+            "payment-authoritative",
+            registrationRecordFromChainBinding({
+              class: "payment-authoritative",
+              onboardTokenRef: auth.tokenHash,
+              chainBinding: genesisResult.chainBinding,
+            }),
+            undefined,
+            webhookParsed.webhookUrl,
           ),
-          201,
+          corsHeaders,
+        );
+      }
+
+      return attachCors(
+        await finishGenesisPost(
+          env,
+          genesisResult,
+          "regular",
+          registrationRecordFromChainBinding({
+            class: "regular",
+            endorsedBy: auth.endorserUuid,
+            chainBinding: genesisResult.chainBinding,
+          }),
+          auth.endorserUuid,
+          webhookParsed.webhookUrl,
         ),
         corsHeaders,
       );

@@ -40,7 +40,9 @@ custodian → coordinator (when coordinator vars are set).
 - Coordinator: `DELEGATION_COORDINATOR_URL`, `COORDINATOR_APP_TOKEN`
 - Univocity chain-binding: from **`.work/e2e-univocity.env`** after preflight (see
   [plan-0032](../plans/plan-0032-univocity-imutable-e2e-provision.md))
-- Provision secrets: **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`**
+- Provision secrets: **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`** (stored config; preflight
+  bridges to **`RPC_URL`** for deployer/`cast` during provision; `task ... RPC_URL=` overrides
+  without touching Doppler)
 - CI provision: **`GITAPP_ID`** + **`GITAPP_PRIVATE_KEY`**
 - CI workflows: **`ci.yml`** (lint/unit), **`tests-integration.yml`** (integration vs dev), **`tests-system.yml`** (provision + full suite; manual dispatch with optional contract addresses)
 

@@ -163,11 +163,17 @@ canopy-api is the **controller**; the coordinator is the **enforcement point**.
 addr + `-68013` chain id, plan-0028), extended:
 
 - **Auth:** onboard token **or** descendant grant (table above).
-- **Optional** `webhookUrl`: on success, canopy-api **forwards** it to the coordinator
-  webhook CRUD (single-post ergonomics for the demo). The coordinator remains
-  the owner of webhook config; operators may also manage it directly.
-- **Response:** 201 with `{ R, class, endorsedBy?, chainBinding }`; 401/403 on
-  auth failure; 409 on `logId→R` uniqueness conflict (univocity-enforced).
+- **Optional** `webhookUrl` **query param** (not stored in genesis CBOR): after a
+  successful genesis write, canopy-api forwards `POST …/public-root` (derived
+  from `bootstrapKey` == `K(L)` for Mode B/C) and `PUT …/webhook` using
+  `COORDINATOR_APP_TOKEN` ([plan-0037](../plans/plan-0037-mode-c-onboarding-coordinator-forward.md)).
+  Onboard-token holders need not hold the coordinator app token.
+- **Response:** 201 with `{ R, class, endorsedBy?, chainBinding, coordinator? }`;
+  `coordinator` reports per-step `publicRoot` / `webhook` status when
+  `webhookUrl` was supplied; 401/403 on auth failure; 400 on invalid
+  `webhookUrl`; 503 when `webhookUrl` is set but coordinator is not configured
+  or coordinator forward fails after genesis write (partial state — see
+  [ops-0011](../../devdocs/ops/ops-0011-canopy-coordinator-forward-orphan-recovery.md)).
 
 ## Endorsement grant shape (pinned)
 

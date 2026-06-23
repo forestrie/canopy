@@ -1,3 +1,4 @@
+import type { CoordinatorRegistrationStatus } from "../forest/coordinator-registration-status.js";
 import type { ForestGenesisChainBinding } from "../forest/genesis-wire.js";
 import type { RegistrationClass } from "./registration-class.js";
 
@@ -9,6 +10,7 @@ export interface GenesisRegistrationResponseBody {
     univocityAddr: string;
   };
   endorsedBy?: string;
+  coordinator?: CoordinatorRegistrationStatus;
 }
 
 export function buildGenesisRegistrationResponse(
@@ -16,6 +18,7 @@ export function buildGenesisRegistrationResponse(
   registrationClass: RegistrationClass,
   chainBinding: ForestGenesisChainBinding,
   endorsedBy?: string,
+  coordinator?: CoordinatorRegistrationStatus,
 ): GenesisRegistrationResponseBody {
   const body: GenesisRegistrationResponseBody = {
     R: r,
@@ -28,5 +31,6 @@ export function buildGenesisRegistrationResponse(
     },
   };
   if (endorsedBy) body.endorsedBy = endorsedBy;
+  if (coordinator) body.coordinator = coordinator;
   return body;
 }

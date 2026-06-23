@@ -6,7 +6,6 @@ version: "3"
 
 vars:
   MANIFEST: "{{.MANIFEST}}"
-  RPC_URL: '{{.RPC_URL | default ""}}'
   TOOLS_CACHE_DIR: "{{.ROOT_DIR}}/.cache/univocity-tools"
   DEPLOYER_BIN: "{{.TOOLS_CACHE_DIR}}/deployer"
   CART_BIN: "{{.TOOLS_CACHE_DIR}}/contract-artefacts"
@@ -65,7 +64,23 @@ tasks:
       - mkdir -p "{{.PROPOSAL_DIR}}" "{{.ROOT_DIR}}/.work"
       - |
         set -euo pipefail
-        RPC="${RPC_URL:-${E2E_UNIVOCITY_RPC_URL:?E2E_UNIVOCITY_RPC_URL or RPC_URL is required}}"
+        trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+        resolve_rpc_url() {
+          local from_rpc from_e2e
+          from_rpc="$(trim_ws "${RPC_URL:-}")"
+          from_e2e="$(trim_ws "${E2E_UNIVOCITY_RPC_URL:-}")"
+          if [ -n "$from_rpc" ]; then
+            printf '%s' "$from_rpc"
+          elif [ -n "$from_e2e" ]; then
+            printf '%s' "$from_e2e"
+          else
+            return 1
+          fi
+        }
+        RPC="$(resolve_rpc_url)" || {
+          echo "E2E_UNIVOCITY_RPC_URL or RPC_URL is required" >&2
+          exit 1
+        }
         RUN_ID="${E2E_PROVISION_RUN_ID:-$(date +%s)}"
         PROPOSAL="{{.PROPOSAL_DIR}}/proposal-{{.ALG}}-${RUN_ID}.json"
         BOOTSTRAP_ARGS=()
@@ -200,10 +215,21 @@ tasks:
           echo "unknown bootstrapAlg: $ALG" >&2
           exit 1
         fi
-        if [ -n "{{.RPC_URL}}" ]; then
-          echo "export E2E_UNIVOCITY_RPC_URL={{.RPC_URL}}"
-        elif [ -n "${E2E_UNIVOCITY_RPC_URL:-}" ]; then
-          echo "export E2E_UNIVOCITY_RPC_URL=${E2E_UNIVOCITY_RPC_URL}"
+        trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+        resolve_rpc_url() {
+          local from_rpc from_e2e
+          from_rpc="$(trim_ws "${RPC_URL:-}")"
+          from_e2e="$(trim_ws "${E2E_UNIVOCITY_RPC_URL:-}")"
+          if [ -n "$from_rpc" ]; then
+            printf '%s' "$from_rpc"
+          elif [ -n "$from_e2e" ]; then
+            printf '%s' "$from_e2e"
+          else
+            return 1
+          fi
+        }
+        if RPC_RESOLVED="$(resolve_rpc_url)"; then
+          echo "export E2E_UNIVOCITY_RPC_URL=${RPC_RESOLVED}"
         fi
 
   env-from-manifests:
@@ -297,7 +323,20 @@ tasks:
     cmds:
       - |
         set -euo pipefail
-        RPC="${RPC_URL:-${E2E_UNIVOCITY_RPC_URL:-https://sepolia.base.org}}"
+        trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+        resolve_rpc_url() {
+          local from_rpc from_e2e
+          from_rpc="$(trim_ws "${RPC_URL:-}")"
+          from_e2e="$(trim_ws "${E2E_UNIVOCITY_RPC_URL:-}")"
+          if [ -n "$from_rpc" ]; then
+            printf '%s' "$from_rpc"
+          elif [ -n "$from_e2e" ]; then
+            printf '%s' "$from_e2e"
+          else
+            return 1
+          fi
+        }
+        RPC="$(resolve_rpc_url)" || RPC="https://sepolia.base.org"
         ADDR=$(jq -r '.imutableUnivocity' "{{.MANIFEST}}")
         ALG=$(jq -r '.bootstrapAlg' "{{.MANIFEST}}")
         case "$ALG" in

@@ -66,7 +66,7 @@ Provisioned automatically in preflight (see [plan-0032](../docs/plans/plan-0032-
 - **`E2E_UNIVOCITY_ADDRESS_*_BOOTSTRAP`**, **`E2E_UNIVOCITY_GENESIS_LOG_ID_*`**
 - **`E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE`** — ES256 root grant signing
 - **`E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_FILE`** — KS256 root grant signing
-- **`E2E_UNIVOCITY_RPC_URL`** — optional; default `https://sepolia.base.org`
+- **`E2E_UNIVOCITY_RPC_URL`** — RPC for Playwright `eth_call` and on-chain provision; configure in Doppler or GitHub Environment. Preflight copies it to **`RPC_URL`** for deployer/`cast` (univocity-tools convention). Override per invocation with `task ... RPC_URL=https://...` without changing Doppler.
 - **`E2E_UNIVOCITY_CHAIN_ID`** — optional; default `84532`
 
 **Opt out:** `SKIP_UNIVOCITY_PROVISION=true` or **`E2E_SKIP_UNIVOCITY_PROVISION=true`** —
