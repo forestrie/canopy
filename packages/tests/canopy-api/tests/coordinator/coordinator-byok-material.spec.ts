@@ -16,6 +16,7 @@ import {
   bytesToBase64,
   decodeCoordinatorDelegationIssue,
   exportEs256RootXy,
+  fetchLogPendingDelegation,
   generateEphemeralDelegatedPublicKeyCbor,
   generateEs256RootKeyPair,
   hex32ToWireLogId,
@@ -51,9 +52,7 @@ test.describe("delegation-coordinator BYOK material", () => {
   let materialIssuedAt: number;
   let materialExpiresAt: number;
 
-  test("POST signing-route — mark fresh log wallet-managed", async ({
-    request,
-  }) => {
+  test("POST public-root — mark fresh log wallet-managed", async () => {
     rootKeyPair = await generateEs256RootKeyPair();
     ({ x: rootX, y: rootY } = await exportEs256RootXy(rootKeyPair));
     delegatedPublicKey = await generateEphemeralDelegatedPublicKeyCbor();
@@ -66,18 +65,6 @@ test.describe("delegation-coordinator BYOK material", () => {
       y: rootY,
     });
     expect(rootRes.status).toBe(200);
-
-    const res = await request.post(
-      `${coordinatorUrl}/api/logs/${logUuid}/signing-route`,
-      {
-        headers: {
-          Authorization: `Bearer ${coordinatorToken}`,
-          "Content-Type": "application/json",
-        },
-        data: { mode: "wallet" },
-      },
-    );
-    expect(res.status()).toBe(200);
   });
 
   test("POST /api/delegations — miss creates pending entry", async ({
@@ -93,20 +80,11 @@ test.describe("delegation-coordinator BYOK material", () => {
     });
     expect(res.status()).toBe(202);
 
-    const pending = await request.get(
-      `${coordinatorUrl}/api/delegations/pending?authLogId=${logUuid}`,
-      {
-        headers: { Authorization: `Bearer ${coordinatorToken}` },
-      },
-    );
-    expect(pending.ok()).toBeTruthy();
-    const body = (await pending.json()) as {
-      entries: Array<{
-        logIdHex32: string;
-        mmrStart: number;
-        mmrEnd: number;
-      }>;
-    };
+    const body = await fetchLogPendingDelegation({
+      request,
+      coordinatorUrl,
+      logId: logUuid,
+    });
     expect(
       body.entries.some(
         (entry) =>
@@ -141,7 +119,6 @@ test.describe("delegation-coordinator BYOK material", () => {
       `${coordinatorUrl}/api/delegations/certificate`,
       {
         headers: {
-          Authorization: `Bearer ${coordinatorToken}`,
           "Content-Type": "application/json",
         },
         data: {
@@ -185,16 +162,11 @@ test.describe("delegation-coordinator BYOK material", () => {
       }),
     ).toBe(true);
 
-    const pending = await request.get(
-      `${coordinatorUrl}/api/delegations/pending?authLogId=${logUuid}`,
-      {
-        headers: { Authorization: `Bearer ${coordinatorToken}` },
-      },
-    );
-    expect(pending.ok()).toBeTruthy();
-    const body = (await pending.json()) as {
-      entries: Array<{ logIdHex32: string; mmrStart: number; mmrEnd: number }>;
-    };
+    const body = await fetchLogPendingDelegation({
+      request,
+      coordinatorUrl,
+      logId: logUuid,
+    });
     expect(
       body.entries.some(
         (entry) =>

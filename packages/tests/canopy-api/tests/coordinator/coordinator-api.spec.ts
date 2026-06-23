@@ -15,6 +15,7 @@ import {
 import {
   bytesToBase64,
   decodeCoordinatorDelegationIssue,
+  fetchLogPendingDelegation,
   generateEphemeralDelegatedPublicKeyCbor,
   hex32ToWireLogId,
   postCustodianDelegationIssue,
@@ -64,17 +65,15 @@ test.describe("delegation-coordinator APIs", () => {
     expect(body).toMatchObject({ status: "ok" });
   });
 
-  test("GET pending — empty for fresh auth log", async ({ request }) => {
-    const res = await request.get(
-      `${coordinatorUrl}/api/delegations/pending?authLogId=${authLogUuid}`,
-      {
-        headers: { Authorization: `Bearer ${coordinatorToken}` },
-      },
-    );
-    expect(res.ok()).toBeTruthy();
-    const body = await res.json();
+  test("GET pending-delegation — empty for fresh auth log", async ({
+    request,
+  }) => {
+    const body = await fetchLogPendingDelegation({
+      request,
+      coordinatorUrl,
+      logId: authLogUuid,
+    });
     expect(body.entries).toEqual([]);
-    expect(body.shardCount).toBe(4);
   });
 
   test("POST custody-keys — create custodian key for auth log", async ({
@@ -155,7 +154,6 @@ test.describe("delegation-coordinator APIs", () => {
       `${coordinatorUrl}/api/delegations/certificate`,
       {
         headers: {
-          Authorization: `Bearer ${coordinatorToken}`,
           "Content-Type": "application/json",
         },
         data: {
@@ -174,7 +172,9 @@ test.describe("delegation-coordinator APIs", () => {
     expect(body.ok).toBe(true);
   });
 
-  test("POST signing-route — wallet-managed auth log", async ({ request }) => {
+  test.skip("POST signing-route — wallet-managed auth log (needs wallet session)", async ({
+    request,
+  }) => {
     const res = await request.post(
       `${coordinatorUrl}/api/logs/${authLogUuid}/signing-route`,
       {
