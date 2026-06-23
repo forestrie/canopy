@@ -1,4 +1,4 @@
-import { sha256Hex } from "../material-key.js";
+import { sha256Hex } from "../certificate-key.js";
 
 /**
  * Deterministic idempotency key for a pending delegation (matches pending

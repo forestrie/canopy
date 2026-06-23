@@ -1,9 +1,9 @@
 /**
- * Handler for GET /api/logs/{logId}/enabled
+ * Handler for GET /api/logs/{logId}/enabled (user session)
  */
 
 import type { Env } from "../env.js";
-import { checkBearerToken } from "../auth/check-bearer-token.js";
+import { requireUserSessionOrResponse } from "../auth/authorize.js";
 import {
   forwardToStore,
   internalError,
@@ -16,11 +16,14 @@ export async function handleGetEnabled(
   env: Env,
 ): Promise<Response> {
   try {
-    const authErr = checkBearerToken(request, env.COORDINATOR_APP_TOKEN);
-    if (authErr) return authErr;
-
     const logIdHex32 = normalizePathLogId(logIdSegment);
     if (logIdHex32 instanceof Response) return logIdHex32;
+
+    const authErr = requireUserSessionOrResponse(request, env, {
+      scope: "logs:enabled:read",
+      logIdHex32,
+    });
+    if (authErr) return authErr;
 
     return forwardToStore(env, logIdHex32, `/enabled/${logIdHex32}`, {
       method: "GET",

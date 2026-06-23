@@ -152,7 +152,7 @@ test.describe("delegation-coordinator APIs", () => {
 
   test("POST material — store pre-signed certificate", async ({ request }) => {
     const res = await request.post(
-      `${coordinatorUrl}/api/delegations/material`,
+      `${coordinatorUrl}/api/delegations/certificate`,
       {
         headers: {
           Authorization: `Bearer ${coordinatorToken}`,

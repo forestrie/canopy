@@ -146,7 +146,7 @@ describe("registration enabled kill-switch API", () => {
     expect(body.enabled).toBe(false);
 
     expect(fetchMock).toHaveBeenCalledWith(
-      `${COORD_URL}/api/logs/${encodeURIComponent(logId)}/enabled`,
+      `${COORD_URL}/admin/api/logs/${encodeURIComponent(logId)}/enabled`,
       expect.objectContaining({
         method: "PUT",
         headers: expect.objectContaining({

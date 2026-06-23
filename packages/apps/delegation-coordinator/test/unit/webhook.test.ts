@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { normalizeLogIdToHex32 } from "../../src/log-id.js";
 import { fetchWithDoRetry } from "./fetch-with-do-retry.js";
+import {
+  expectEnabledBody,
+  mintTestSessionToken,
+  sessionHeaders,
+} from "./wallet-session-helpers.js";
 
 const TEST_TOKEN = "test-coordinator-token";
 const ISSUER_TOKEN = "per-log-issuer-token";
@@ -82,9 +87,9 @@ describe("webhook + enabled CRUD", () => {
     expect(body.webhookUrl).toBe(webhookUrlUpdated);
   });
 
-  it("PUT /enabled false toggles kill switch", async () => {
+  it("PUT /enabled false toggles operator service gate", async () => {
     const putRes = await fetchWithDoRetry(
-      `http://localhost/api/logs/${logUuid}/enabled`,
+      `http://localhost/admin/api/logs/${logUuid}/enabled`,
       {
         method: "PUT",
         headers: authHeaders(TEST_TOKEN, {
@@ -94,14 +99,14 @@ describe("webhook + enabled CRUD", () => {
       },
     );
     expect(putRes.status).toBe(200);
-    expect(await putRes.json()).toEqual({ enabled: false });
+    expectEnabledBody(await putRes.json(), false, { operatorEnabled: false });
 
     const getRes = await fetchWithDoRetry(
-      `http://localhost/api/logs/${logUuid}/enabled`,
+      `http://localhost/admin/api/logs/${logUuid}/enabled`,
       { method: "GET", headers: authHeaders() },
     );
     expect(getRes.status).toBe(200);
-    expect(await getRes.json()).toEqual({ enabled: false });
+    expectEnabledBody(await getRes.json(), false, { operatorEnabled: false });
 
     const webhookRes = await fetchWithDoRetry(
       `http://localhost/api/logs/${logUuid}/webhook`,
@@ -163,11 +168,16 @@ describe("webhook + enabled CRUD", () => {
     const issuerLogUuid = randomUUID();
     const issuerLogHex = normalizeLogIdToHex32(issuerLogUuid);
 
+    const routeToken = mintTestSessionToken({
+      authLogIdHex32: issuerLogHex,
+      scopes: ["logs:signing-route:write"],
+    });
+
     const routeRes = await fetchWithDoRetry(
       `http://localhost/api/logs/${issuerLogUuid}/signing-route`,
       {
         method: "POST",
-        headers: authHeaders(TEST_TOKEN, {
+        headers: sessionHeaders(routeToken, {
           "Content-Type": "application/json",
         }),
         body: JSON.stringify({
@@ -205,8 +215,9 @@ describe("webhook + enabled CRUD", () => {
     void issuerLogHex;
   });
 
-  it("PUT /enabled on a new log creates row with enabled default true", async () => {
+  it("PUT /enabled on a new log creates row via transitional app token", async () => {
     const freshUuid = randomUUID();
+    const freshHex = normalizeLogIdToHex32(freshUuid);
     const putRes = await fetchWithDoRetry(
       `http://localhost/api/logs/${freshUuid}/enabled`,
       {
@@ -220,11 +231,22 @@ describe("webhook + enabled CRUD", () => {
     expect(putRes.status).toBe(200);
 
     const getRes = await fetchWithDoRetry(
-      `http://localhost/api/logs/${freshUuid}/enabled`,
+      `http://localhost/admin/api/logs/${freshUuid}/enabled`,
       { method: "GET", headers: authHeaders() },
     );
     expect(getRes.status).toBe(200);
-    expect(await getRes.json()).toEqual({ enabled: true });
+    expectEnabledBody(await getRes.json(), true);
+
+    const sessionToken = mintTestSessionToken({
+      authLogIdHex32: freshHex,
+      scopes: ["logs:enabled:read"],
+    });
+    const userGetRes = await fetchWithDoRetry(
+      `http://localhost/api/logs/${freshUuid}/enabled`,
+      { method: "GET", headers: sessionHeaders(sessionToken) },
+    );
+    expect(userGetRes.status).toBe(200);
+    expectEnabledBody(await userGetRes.json(), true);
   });
 
   void logHex32;

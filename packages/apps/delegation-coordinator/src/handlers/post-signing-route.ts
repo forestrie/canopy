@@ -3,7 +3,7 @@
  */
 
 import type { Env } from "../env.js";
-import { checkBearerToken } from "../auth/check-bearer-token.js";
+import { requireUserSessionOrResponse } from "../auth/authorize.js";
 import type { SigningRoute } from "../types/signing-route.js";
 import {
   forwardToStore,
@@ -18,11 +18,14 @@ export async function handlePostSigningRoute(
   env: Env,
 ): Promise<Response> {
   try {
-    const authErr = checkBearerToken(request, env.COORDINATOR_APP_TOKEN);
-    if (authErr) return authErr;
-
     const logIdHex32 = normalizePathLogId(logIdSegment);
     if (logIdHex32 instanceof Response) return logIdHex32;
+
+    const authErr = requireUserSessionOrResponse(request, env, {
+      scope: "logs:signing-route:write",
+      logIdHex32,
+    });
+    if (authErr) return authErr;
 
     const body = (await request.json()) as SigningRoute;
     if (body.mode !== "wallet" && body.mode !== "http") {

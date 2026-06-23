@@ -64,7 +64,7 @@ export async function getCoordinatorEnabled(
   }
 
   const res = await fetch(
-    `${base}/api/logs/${encodeURIComponent(logUuid)}/enabled`,
+    `${base}/admin/api/logs/${encodeURIComponent(logUuid)}/enabled`,
     {
       method: "GET",
       headers: { Authorization: `Bearer ${token}` },
@@ -89,7 +89,7 @@ export async function putCoordinatorEnabled(
   }
 
   const res = await fetch(
-    `${base}/api/logs/${encodeURIComponent(logUuid)}/enabled`,
+    `${base}/admin/api/logs/${encodeURIComponent(logUuid)}/enabled`,
     {
       method: "PUT",
       headers: {

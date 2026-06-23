@@ -478,7 +478,6 @@ test.describe("Forest genesis registration control plane", () => {
 
     const pendingBefore = await fetch(
       `${coordinatorUrl}/api/logs/${logId}/pending-delegation`,
-      { headers: { Authorization: `Bearer ${appToken}` } },
     );
     expect(pendingBefore.status).toBe(200);
     const beforeBody = (await pendingBefore.json()) as {
@@ -505,7 +504,6 @@ test.describe("Forest genesis registration control plane", () => {
 
     const pendingDisabled = await fetch(
       `${coordinatorUrl}/api/logs/${logId}/pending-delegation`,
-      { headers: { Authorization: `Bearer ${appToken}` } },
     );
     expect(pendingDisabled.status).toBe(200);
     const disabledPending = (await pendingDisabled.json()) as {
@@ -537,7 +535,6 @@ test.describe("Forest genesis registration control plane", () => {
 
     const pendingAfter = await fetch(
       `${coordinatorUrl}/api/logs/${logId}/pending-delegation`,
-      { headers: { Authorization: `Bearer ${appToken}` } },
     );
     expect(pendingAfter.status).toBe(200);
     const afterBody = (await pendingAfter.json()) as { entries?: unknown[] };

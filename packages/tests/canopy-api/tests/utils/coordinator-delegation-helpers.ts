@@ -209,15 +209,15 @@ export async function uploadByokRootPublicKey(opts: {
 
 export async function fetchCoordinatorPublicRoot(opts: {
   coordinatorUrl: string;
-  token: string;
   logId: string;
+  /** @deprecated public-root GET is unauthenticated */
+  token?: string;
 }): Promise<CoordinatorTrustRootCbor> {
   const res = await fetch(
     `${opts.coordinatorUrl}/api/logs/${opts.logId}/public-root`,
     {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${opts.token}`,
         Accept: "application/cbor",
       },
     },

@@ -81,7 +81,7 @@ test.describe("coordinator webhook CRUD", () => {
 
   test("PUT /enabled toggles kill switch", async ({ request }) => {
     const putRes = await request.put(
-      `${coordinatorUrl}/api/logs/${logId}/enabled`,
+      `${coordinatorUrl}/admin/api/logs/${logId}/enabled`,
       {
         headers: authHeaders({ "Content-Type": "application/json" }),
         data: { enabled: false },
@@ -91,7 +91,7 @@ test.describe("coordinator webhook CRUD", () => {
     expect(await putRes.json()).toEqual({ enabled: false });
 
     const getRes = await request.get(
-      `${coordinatorUrl}/api/logs/${logId}/enabled`,
+      `${coordinatorUrl}/admin/api/logs/${logId}/enabled`,
       { headers: authHeaders() },
     );
     expect(getRes.status()).toBe(200);
@@ -120,7 +120,7 @@ test.describe("coordinator webhook CRUD", () => {
 
   test("re-enable via PUT /enabled", async ({ request }) => {
     const putRes = await request.put(
-      `${coordinatorUrl}/api/logs/${logId}/enabled`,
+      `${coordinatorUrl}/admin/api/logs/${logId}/enabled`,
       {
         headers: authHeaders({ "Content-Type": "application/json" }),
         data: { enabled: true },

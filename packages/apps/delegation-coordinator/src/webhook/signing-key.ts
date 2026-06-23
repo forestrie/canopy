@@ -1,5 +1,5 @@
 import type { Env } from "../env.js";
-import { sha256Hex } from "../material-key.js";
+import { sha256Hex } from "../certificate-key.js";
 
 export interface WebhookSigningKeyInfo {
   kid: string;

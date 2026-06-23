@@ -161,9 +161,6 @@ export async function signPendingDelegations(opts: {
 }): Promise<{ signed: number; pendingCount: number }> {
   const pending = await opts.request.get(
     `${opts.coordinatorUrl}/api/logs/${opts.logId}/pending-delegation`,
-    {
-      headers: { Authorization: `Bearer ${opts.coordinatorToken}` },
-    },
   );
   if (!pending.ok()) {
     throw new Error(
@@ -202,7 +199,7 @@ export async function signPendingDelegations(opts: {
       );
     }
     const res = await opts.request.post(
-      `${opts.coordinatorUrl}/api/delegations/material`,
+      `${opts.coordinatorUrl}/api/delegations/certificate`,
       {
         headers: {
           Authorization: `Bearer ${opts.coordinatorToken}`,

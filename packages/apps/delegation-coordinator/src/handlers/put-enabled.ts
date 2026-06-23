@@ -1,9 +1,16 @@
 /**
  * Handler for PUT /api/logs/{logId}/enabled
+ *
+ * User session -> user_enabled (kill switch).
+ * App token (transitional) -> operator_enabled (service gate).
  */
 
 import type { Env } from "../env.js";
-import { checkBearerToken } from "../auth/check-bearer-token.js";
+import {
+  requireOperatorTokenOrAppTokenOrResponse,
+  requireUserSessionOrResponse,
+} from "../auth/authorize.js";
+import { parseBearerSession } from "../auth/wallet-challenge/session-token.js";
 import type { PutEnabledRequest } from "../types/put-enabled-request.js";
 import {
   forwardToStore,
@@ -12,15 +19,16 @@ import {
   problemResponse,
 } from "./handler.js";
 
+function walletChallengeEnabled(env: Env): boolean {
+  return env.ENABLE_WALLET_CHALLENGE?.trim().toLowerCase() === "true";
+}
+
 export async function handlePutEnabled(
   logIdSegment: string,
   request: Request,
   env: Env,
 ): Promise<Response> {
   try {
-    const authErr = checkBearerToken(request, env.COORDINATOR_APP_TOKEN);
-    if (authErr) return authErr;
-
     const logIdHex32 = normalizePathLogId(logIdSegment);
     if (logIdHex32 instanceof Response) return logIdHex32;
 
@@ -34,7 +42,28 @@ export async function handlePutEnabled(
       );
     }
 
-    return forwardToStore(env, logIdHex32, `/enabled/${logIdHex32}`, {
+    const sessionToken = parseBearerSession(request);
+    const useUserAuthority =
+      sessionToken !== null && walletChallengeEnabled(env);
+
+    if (useUserAuthority) {
+      const authErr = requireUserSessionOrResponse(request, env, {
+        scope: "logs:enabled:write",
+        logIdHex32,
+      });
+      if (authErr) return authErr;
+
+      return forwardToStore(env, logIdHex32, `/enabled/${logIdHex32}/user`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    }
+
+    const authErr = requireOperatorTokenOrAppTokenOrResponse(request, env);
+    if (authErr) return authErr;
+
+    return forwardToStore(env, logIdHex32, `/enabled/${logIdHex32}/operator`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

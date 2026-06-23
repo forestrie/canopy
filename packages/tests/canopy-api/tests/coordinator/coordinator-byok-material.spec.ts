@@ -138,7 +138,7 @@ test.describe("delegation-coordinator BYOK material", () => {
     expect(verified).toBe(true);
 
     const res = await request.post(
-      `${coordinatorUrl}/api/delegations/material`,
+      `${coordinatorUrl}/api/delegations/certificate`,
       {
         headers: {
           Authorization: `Bearer ${coordinatorToken}`,

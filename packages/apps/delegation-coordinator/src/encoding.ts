@@ -14,3 +14,16 @@ export function bytesToBase64(value: Uint8Array): string {
   }
   return btoa(binary);
 }
+
+export function bytesToBase64Url(value: Uint8Array): string {
+  return bytesToBase64(value)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+export function base64UrlToBytes(value: string): Uint8Array {
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padLen = (4 - (padded.length % 4)) % 4;
+  return base64ToBytes(padded + "=".repeat(padLen));
+}

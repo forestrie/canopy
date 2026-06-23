@@ -52,7 +52,6 @@ export async function signPendingModeCKs256Delegations(
 ): Promise<{ signed: number; pendingCount: number }> {
   const pending = await request.get(
     `${opts.coordinatorUrl}/api/logs/${opts.logIdUuid}/pending-delegation`,
-    { headers: { Authorization: `Bearer ${opts.coordinatorToken}` } },
   );
   if (!pending.ok()) {
     throw new Error(
@@ -259,7 +258,6 @@ export async function waitForModeCDelegationMaterial(opts: {
 
   const pending = await opts.request.get(
     `${opts.coordinatorUrl}/api/logs/${opts.logIdUuid}/pending-delegation`,
-    { headers: { Authorization: `Bearer ${opts.coordinatorToken}` } },
   );
   if (!pending.ok()) {
     throw new Error(

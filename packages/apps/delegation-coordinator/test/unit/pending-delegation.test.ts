@@ -110,7 +110,6 @@ describe("GET /api/logs/{logId}/pending-delegation", () => {
       `http://localhost/api/logs/${logUuid}/pending-delegation`,
       {
         method: "GET",
-        headers: authHeaders(),
       },
     );
     expect(pendingRes.status).toBe(200);
@@ -178,11 +177,11 @@ describe("GET /api/logs/{logId}/pending-delegation", () => {
     );
     expect(rootRes.status).toBe(200);
 
-    const materialRes = await SELF.fetch(
-      "http://localhost/api/delegations/material",
+    const certificateRes = await SELF.fetch(
+      "http://localhost/api/delegations/certificate",
       {
         method: "POST",
-        headers: authHeaders({ "Content-Type": "application/json" }),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           logId: logUuid,
           mmrStart: 2,
@@ -194,13 +193,12 @@ describe("GET /api/logs/{logId}/pending-delegation", () => {
         }),
       },
     );
-    expect(materialRes.status).toBe(200);
+    expect(certificateRes.status).toBe(200);
 
     const pendingRes = await SELF.fetch(
       `http://localhost/api/logs/${logUuid}/pending-delegation`,
       {
         method: "GET",
-        headers: authHeaders(),
       },
     );
     const body = (await pendingRes.json()) as { entries: PendingEntry[] };

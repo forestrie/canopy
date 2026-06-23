@@ -1,4 +1,5 @@
 import type { DelegationStoreDO } from "./durableobjects/delegation-store.js";
+import type { WalletChallengeNonceDO } from "./durableobjects/wallet-challenge-nonce-do.js";
 
 /**
  * Environment bindings for the delegation-coordinator worker.
@@ -6,6 +7,8 @@ import type { DelegationStoreDO } from "./durableobjects/delegation-store.js";
 export interface Env {
   /** Durable Object namespace for delegation store shards */
   DELEGATION_STORE: DurableObjectNamespace<DelegationStoreDO>;
+  /** Global nonce store for wallet-challenge auth */
+  WALLET_CHALLENGE_NONCE: DurableObjectNamespace<WalletChallengeNonceDO>;
   /** Base URL for Custodian (create-only key orchestration) */
   CUSTODIAN_URL: string;
   /** Environment: dev or prod */
@@ -44,4 +47,12 @@ export interface Env {
   WEBHOOK_RETRY_LADDER?: string;
   /** Retry scale in ms (default 1000). */
   WEBHOOK_RETRY_SCALE_MS?: string;
+  /** HMAC secret for control-plane session tokens. */
+  WALLET_CHALLENGE_SIGNING_SECRET?: string;
+  /** SIWE-style domain string for challenge envelopes. */
+  COORDINATOR_DOMAIN?: string;
+  /** When true, enable POST /api/auth/challenge and /session. */
+  ENABLE_WALLET_CHALLENGE?: string;
+  /** When true, UX routes reject COORDINATOR_APP_TOKEN. */
+  REQUIRE_WALLET_SESSION_FOR_UX?: string;
 }
