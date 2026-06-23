@@ -1,4 +1,4 @@
-import { COSE_ALG_ES256 } from "../../src/cose/cose-key.js";
+import { COSE_ALG_ES256, COSE_ALG_KS256 } from "../../src/cose/cose-key.js";
 import {
   FOREST_GENESIS_LABEL_BOOTSTRAP_KEY,
   FOREST_GENESIS_LABEL_CHAIN_ID,
@@ -22,6 +22,25 @@ export function validGenesisV2Es256CborMap(opts?: {
   return new Map<number, unknown>([
     [FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V2],
     [FOREST_GENESIS_LABEL_GENESIS_ALG, COSE_ALG_ES256],
+    [FOREST_GENESIS_LABEL_BOOTSTRAP_KEY, key],
+    [
+      FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
+      opts?.univocityAddr ?? TEST_GENESIS_UNIVOCITY_ADDR,
+    ],
+    [FOREST_GENESIS_LABEL_CHAIN_ID, opts?.chainId ?? TEST_GENESIS_CHAIN_ID],
+  ]);
+}
+
+/** Valid v2 KS256 genesis POST body for coordinator-forward tests. */
+export function validGenesisV2Ks256CborMap(opts?: {
+  bootstrapKey?: Uint8Array;
+  univocityAddr?: Uint8Array;
+  chainId?: string;
+}): Map<number, unknown> {
+  const key = opts?.bootstrapKey ?? new Uint8Array(20).fill(0xaa);
+  return new Map<number, unknown>([
+    [FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V2],
+    [FOREST_GENESIS_LABEL_GENESIS_ALG, COSE_ALG_KS256],
     [FOREST_GENESIS_LABEL_BOOTSTRAP_KEY, key],
     [
       FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,

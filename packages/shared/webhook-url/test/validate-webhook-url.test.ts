@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  WebhookUrlValidationError,
-  validateWebhookUrl,
-} from "@canopy/webhook-url";
+import { WebhookUrlValidationError, validateWebhookUrl } from "../src/index.js";
 
-describe("validateWebhookUrl (coordinator re-export)", () => {
+describe("validateWebhookUrl", () => {
   it("accepts https URLs with public hostnames", () => {
     expect(validateWebhookUrl("https://hooks.example.com/delegation")).toBe(
       "https://hooks.example.com/delegation",
@@ -23,6 +20,14 @@ describe("validateWebhookUrl (coordinator re-export)", () => {
         allowInsecureLocal: true,
       }),
     ).toBe("http://localhost:8787/webhook");
+  });
+
+  it("allows http 127.0.0.1 when allowInsecureLocal is true", () => {
+    expect(
+      validateWebhookUrl("http://127.0.0.1:8787/webhook", {
+        allowInsecureLocal: true,
+      }),
+    ).toBe("http://127.0.0.1:8787/webhook");
   });
 
   it("rejects loopback https", () => {
@@ -46,6 +51,12 @@ describe("validateWebhookUrl (coordinator re-export)", () => {
     );
     expect(() => validateWebhookUrl("https://foo.local/hook")).toThrow(
       WebhookUrlValidationError,
+    );
+  });
+
+  it("uses custom fieldLabel in error messages", () => {
+    expect(() => validateWebhookUrl("", { fieldLabel: "webhookUrl" })).toThrow(
+      "webhookUrl is required",
     );
   });
 });

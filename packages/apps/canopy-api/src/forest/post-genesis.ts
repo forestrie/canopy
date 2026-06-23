@@ -169,6 +169,8 @@ export interface PostGenesisSuccess {
   logIdWire: Uint8Array;
   storageSeg: string;
   chainBinding: ForestGenesisChainBinding;
+  genesisAlg: number;
+  bootstrapKey: Uint8Array;
   /** True when genesis already existed (idempotent 201). */
   alreadyExisted: boolean;
 }
@@ -219,6 +221,12 @@ export async function postForestGenesis(
   const out = buildV2GenesisOut(m, paddedWire, binding);
   if (out instanceof Response) return out;
 
+  const genesisAlg = out.get(FOREST_GENESIS_LABEL_GENESIS_ALG);
+  const bootstrapKey = out.get(FOREST_GENESIS_LABEL_BOOTSTRAP_KEY);
+  if (typeof genesisAlg !== "number" || !(bootstrapKey instanceof Uint8Array)) {
+    return ClientErrors.badRequest("genesisAlg and bootstrapKey are required");
+  }
+
   const storageSeg = logIdToStorageSegment(logId);
   const body = encodeCbor(out) as Uint8Array;
   const chainBinding: ForestGenesisChainBinding = {
@@ -234,6 +242,8 @@ export async function postForestGenesis(
         logIdWire: logId,
         storageSeg,
         chainBinding,
+        genesisAlg,
+        bootstrapKey,
         alreadyExisted: true,
       };
     }
@@ -256,6 +266,8 @@ export async function postForestGenesis(
       logIdWire: logId,
       storageSeg,
       chainBinding,
+      genesisAlg,
+      bootstrapKey,
       alreadyExisted: true,
     };
   }
@@ -273,6 +285,8 @@ export async function postForestGenesis(
     logIdWire: logId,
     storageSeg,
     chainBinding,
+    genesisAlg,
+    bootstrapKey,
     alreadyExisted: false,
   };
 }

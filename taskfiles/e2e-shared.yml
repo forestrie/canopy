@@ -170,6 +170,14 @@ tasks:
           fi
         fi
 
+        trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+        RPC="$(trim_ws "${E2E_UNIVOCITY_RPC_URL:-}")"
+        if [ -z "$RPC" ]; then
+          echo "E2E_UNIVOCITY_RPC_URL is required for Univocity provision (Doppler project canopy, config {{.ENV}})." >&2
+          exit 1
+        fi
+        export RPC_URL="$RPC"
+
         task e2e-univocity:provision
 
         MANIFEST_ES256="{{.PROPOSAL_DIR}}/provision-${RUN_ID}-es256.manifest"

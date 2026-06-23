@@ -245,6 +245,7 @@ jobs:
             echo "::error::E2E_UNIVOCITY_RPC_URL is required in GitHub Environment."
             exit 1
           fi
+          export RPC_URL="$RPC"
 
           NEED_PROVISION=false
           if [ -z "$ES256_ADDR" ]; then NEED_PROVISION=true; fi
