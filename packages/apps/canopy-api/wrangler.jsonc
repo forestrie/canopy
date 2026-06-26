@@ -68,6 +68,16 @@
       },
     ],
   },
+  "ratelimits": [
+    {
+      "name": "ONBOARD_CREATE_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": {
+        "limit": 30,
+        "period": 60,
+      },
+    },
+  ],
   "env": {
     "dev": {
       "name": "canopy-api-dev",
@@ -87,7 +97,23 @@
         "GRANT_STORAGE_PUBLIC_BASE": "https://grants-dev.forestrie.dev",
         "CUSTODIAN_URL": "https://custodian.a.forest-2.forestrie.dev/v1",
         "ROOT_LOG_ID": "123e4567e89b12d3a456426614174000",
+        // Self-service onboard (FOR-166); UNIVOCITY_CONTRACT_RPC_URL via secret.
+        "ONBOARD_ALLOWED_CHAIN_ID": "84532",
+        "ONBOARD_TOKEN_TTL_SEC": "604800",
+        "ONBOARD_GATE_CACHE_TTL_SEC": "300",
+        "ONBOARD_MAX_PENDING_PER_BINDING": "3",
+        "ONBOARD_RPC_TIMEOUT_MS": "5000",
       },
+      "ratelimits": [
+        {
+          "name": "ONBOARD_CREATE_RATE_LIMITER",
+          "namespace_id": "1001",
+          "simple": {
+            "limit": 30,
+            "period": 60,
+          },
+        },
+      ],
       "r2_buckets": [
         {
           "binding": "R2_MMRS",
@@ -139,8 +165,22 @@
         "X402_PRICE_UPTO_MAX": "$1.00",
         "GRANT_STORAGE_PUBLIC_BASE": "https://grants.forestrie.dev",
         "CUSTODIAN_URL": "https://custodian.prod-1.forestrie.dev/v1",
+        "ONBOARD_TOKEN_TTL_SEC": "604800",
+        "ONBOARD_GATE_CACHE_TTL_SEC": "300",
+        "ONBOARD_MAX_PENDING_PER_BINDING": "3",
+        "ONBOARD_RPC_TIMEOUT_MS": "5000",
         // CUSTODIAN_APP_TOKEN (secret); UNIVOCITY_*
       },
+      "ratelimits": [
+        {
+          "name": "ONBOARD_CREATE_RATE_LIMITER",
+          "namespace_id": "1002",
+          "simple": {
+            "limit": 10,
+            "period": 60,
+          },
+        },
+      ],
       "r2_buckets": [
         {
           "binding": "R2_MMRS",

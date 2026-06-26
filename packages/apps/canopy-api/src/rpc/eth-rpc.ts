@@ -1,0 +1,97 @@
+/** Minimal JSON-RPC helper for chain reads (eth_getCode, eth_call, etc.). */
+
+export interface EthRpcOptions {
+  timeoutMs?: number;
+}
+
+function defaultTimeoutMs(options: EthRpcOptions): number {
+  if (options.timeoutMs != null && options.timeoutMs > 0) {
+    return options.timeoutMs;
+  }
+  return 5000;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  let hex = "";
+  for (const b of bytes) hex += b.toString(16).padStart(2, "0");
+  return hex;
+}
+
+export async function ethRpc(
+  rpcUrl: string,
+  method: string,
+  params: unknown[],
+  options: EthRpcOptions = {},
+): Promise<unknown> {
+  const timeoutMs = defaultTimeoutMs(options);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      throw new Error(`RPC ${method} failed: ${res.status}`);
+    }
+    const json = (await res.json()) as {
+      result?: unknown;
+      error?: { message?: string };
+    };
+    if (json.error?.message) {
+      throw new Error(json.error.message);
+    }
+    return json.result;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`RPC ${method} timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function ethCall(
+  rpcUrl: string,
+  to: string,
+  data: string,
+  options: EthRpcOptions = {},
+): Promise<unknown> {
+  return ethRpc(rpcUrl, "eth_call", [{ to, data }, "latest"], options);
+}
+
+export function normalizeHexAddress(addr: string): string | null {
+  const trimmed = addr.trim().toLowerCase();
+  const hex = trimmed.startsWith("0x") ? trimmed.slice(2) : trimmed;
+  if (!/^[0-9a-f]{40}$/.test(hex)) return null;
+  return hex;
+}
+
+export async function hasContractCodeAt(
+  rpcUrl: string,
+  addressHex: string,
+  options: EthRpcOptions = {},
+): Promise<boolean> {
+  const result = (await ethRpc(
+    rpcUrl,
+    "eth_getCode",
+    [`0x${addressHex}`, "latest"],
+    options,
+  )) as string;
+  if (typeof result !== "string") return false;
+  const stripped = result.replace(/^0x/i, "");
+  return stripped.length > 0 && !/^0+$/.test(stripped);
+}
+
+export function hexAddressToBytes(hex40: string): Uint8Array {
+  const out = new Uint8Array(20);
+  for (let i = 0; i < 20; i++) {
+    out[i] = Number.parseInt(hex40.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+}
+
+export { bytesToHex };
