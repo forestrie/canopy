@@ -30,6 +30,7 @@ export const ClientErrors = {
     pd(404, `${what ?? "Not Found"}`, detail),
   notAcceptable: (detail?: string) => pd(406, "Not Acceptable", detail),
   conflict: (detail?: string) => pd(409, "Conflict", detail),
+  tooManyRequests: (detail?: string) => pd(429, "Too Many Requests", detail),
   unsupportedMediaType: (detail?: string) =>
     pd(415, "Unsupported Media Type", detail),
   payloadTooLarge: (size: number, maxSize: number) =>

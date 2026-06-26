@@ -18,8 +18,6 @@ export interface OnboardRequestRecord {
   createdAt: number;
   expiresAt: number;
   onboardTokenRef?: string;
-  /** Plaintext minted token; cleared after redeem. */
-  approvedToken?: string;
   rejectReason?: string;
   redeemedAt?: number;
 }

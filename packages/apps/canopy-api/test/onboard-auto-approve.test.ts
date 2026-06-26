@@ -54,4 +54,17 @@ describe("onboard auto-approve", () => {
       ),
     ).toBe(false);
   });
+
+  it("never auto-approves when NODE_ENV is prod", () => {
+    expect(
+      shouldAutoApproveRequest(
+        {
+          NODE_ENV: "prod",
+          ONBOARD_AUTO_APPROVE: "true",
+          ONBOARD_AUTO_APPROVE_CHAIN_IDS: "84532",
+        },
+        baseRecord,
+      ),
+    ).toBe(false);
+  });
 });

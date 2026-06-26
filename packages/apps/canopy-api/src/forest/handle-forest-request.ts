@@ -31,7 +31,7 @@ import {
 } from "./validate-genesis-webhook-url.js";
 import type { RegistrationClass } from "../payments/registration-class.js";
 import type { OnboardTokenChainBinding } from "../payments/onboard-token-record.js";
-import { markOnboardTokenConsumed } from "../payments/onboard-token-store.js";
+import { claimOnboardTokenForestRCas } from "../payments/onboard-token-store.js";
 import { normalizeHexAddress } from "../rpc/eth-rpc.js";
 import type { ForestGenesisChainBinding } from "./genesis-wire.js";
 
@@ -216,6 +216,20 @@ export async function handleForestRequest(
           );
         }
 
+        const rUuid = logIdWireToUuid(genesisResult.logIdWire);
+        const claim = await claimOnboardTokenForestRCas(
+          env,
+          auth.tokenHash,
+          rUuid,
+        );
+        if (!claim.ok) {
+          const detail =
+            claim.reason === "conflict"
+              ? "Onboard token already consumed for a different forest"
+              : "Onboard token claim failed";
+          return attachCors(ClientErrors.forbidden(detail), corsHeaders);
+        }
+
         const res = await finishGenesisPost(
           env,
           genesisResult,
@@ -228,11 +242,6 @@ export async function handleForestRequest(
           undefined,
           webhookParsed.webhookUrl,
         );
-
-        if (res.status === 201) {
-          const rUuid = logIdWireToUuid(genesisResult.logIdWire);
-          await markOnboardTokenConsumed(env, auth.tokenHash, rUuid);
-        }
 
         return attachCors(res, corsHeaders);
       }

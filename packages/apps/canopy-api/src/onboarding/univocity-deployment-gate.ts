@@ -1,13 +1,29 @@
-import { hasContractCodeAt, normalizeHexAddress } from "../rpc/eth-rpc.js";
+import { normalizeHexAddress } from "../rpc/eth-rpc.js";
+import {
+  readPositiveGateCache,
+  writePositiveGateCache,
+  type OnboardGateCacheEnv,
+} from "./onboard-gate-cache.js";
+import { probeUnivocityIdentity } from "./univocity-identity-probe.js";
 
-export interface UnivocityGateEnv {
+export interface UnivocityGateEnv extends OnboardGateCacheEnv {
   UNIVOCITY_CONTRACT_RPC_URL?: string;
   ONBOARD_ALLOWED_CHAIN_ID?: string;
+  ONBOARD_RPC_TIMEOUT_MS?: string;
 }
 
 export type UnivocityGateResult =
   | { ok: true; univocityAddr: string }
   | { ok: false; status: number; detail: string };
+
+function rpcTimeoutMs(env: UnivocityGateEnv): number {
+  const raw = env.ONBOARD_RPC_TIMEOUT_MS?.trim();
+  if (raw) {
+    const n = Number.parseInt(raw, 10);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 5000;
+}
 
 export async function verifyUnivocityDeployment(
   env: UnivocityGateEnv,
@@ -32,6 +48,10 @@ export async function verifyUnivocityDeployment(
     };
   }
 
+  if (await readPositiveGateCache(env, chainId.trim(), addr)) {
+    return { ok: true, univocityAddr: addr };
+  }
+
   const rpcUrl = env.UNIVOCITY_CONTRACT_RPC_URL?.trim();
   if (!rpcUrl) {
     return {
@@ -41,13 +61,14 @@ export async function verifyUnivocityDeployment(
     };
   }
 
+  const timeout = rpcTimeoutMs(env);
   try {
-    const deployed = await hasContractCodeAt(rpcUrl, addr);
-    if (!deployed) {
+    const probe = await probeUnivocityIdentity(rpcUrl, addr, timeout);
+    if (!probe.ok) {
       return {
         ok: false,
         status: 422,
-        detail: "No contract code at univocityAddr on chain",
+        detail: probe.detail,
       };
     }
   } catch (error) {
@@ -61,5 +82,6 @@ export async function verifyUnivocityDeployment(
     };
   }
 
+  await writePositiveGateCache(env, chainId.trim(), addr);
   return { ok: true, univocityAddr: addr };
 }

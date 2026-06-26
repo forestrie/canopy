@@ -103,6 +103,13 @@ export interface Env {
   ONBOARD_AUTO_APPROVE?: string;
   ONBOARD_AUTO_APPROVE_CHAIN_IDS?: string;
   ONBOARD_AUTO_APPROVE_LABEL_PREFIX?: string;
+  ONBOARD_TOKEN_TTL_SEC?: string;
+  ONBOARD_GATE_CACHE_TTL_SEC?: string;
+  ONBOARD_MAX_PENDING_PER_BINDING?: string;
+  ONBOARD_RPC_TIMEOUT_MS?: string;
+  ONBOARD_CREATE_RATE_LIMITER?: {
+    limit(options: { key: string }): Promise<{ success: boolean }>;
+  };
   /** Optional: base URL for checkpoint fetch (storage source when R2 not used). */
   OBJECT_STORAGE_ROOT_URL?: string;
 }

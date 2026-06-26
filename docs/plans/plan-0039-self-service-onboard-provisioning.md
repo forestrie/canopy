@@ -36,14 +36,20 @@ See delivery plan grill section; all rows covered by `onboard-request.test.ts`,
 |-----|---------|
 | `ONBOARD_ALLOWED_CHAIN_ID` | v1 single-chain gate |
 | `ONBOARD_REQUEST_TTL_SEC` | Request expiry (default 604800) |
+| `ONBOARD_TOKEN_TTL_SEC` | Minted token expiry at redeem (default 604800) |
+| `ONBOARD_GATE_CACHE_TTL_SEC` | Positive Univocity gate cache TTL (default 300) |
+| `ONBOARD_MAX_PENDING_PER_BINDING` | Max pending+approved per `(chainId, addr)` (default 3) |
+| `ONBOARD_RPC_TIMEOUT_MS` | RPC timeout for gate probes (default 5000) |
+| `ONBOARD_CREATE_RATE_LIMITER` | Wrangler `ratelimit` binding (per-IP on create) |
 | `ONBOARD_REQUEST_WEBHOOK_URL` | Operator notification |
-| `ONBOARD_REQUEST_WEBHOOK_SECRET` | HMAC signing |
-| `ONBOARD_AUTO_APPROVE` | Dev lane auto-approve |
+| `ONBOARD_REQUEST_WEBHOOK_SECRET` | HMAC signing (`timestamp + "." + body`) |
+| `ONBOARD_AUTO_APPROVE` | Dev lane auto-approve (blocked when `NODE_ENV=prod`) |
 | `ONBOARD_AUTO_APPROVE_CHAIN_IDS` | Comma-separated allowlist |
 
 ## R2 layout
 
 - `onboarding/requests/{requestId}.json`
+- `onboarding/gate-cache/{chainId}-{addr}.txt`
 
 ## Validation commands
 

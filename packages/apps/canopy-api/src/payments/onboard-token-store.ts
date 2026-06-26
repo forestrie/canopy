@@ -137,12 +137,49 @@ export async function markOnboardTokenConsumed(
   hash: string,
   forestR: string,
 ): Promise<OnboardTokenRecord | null> {
-  const existing = await readOnboardTokenRecord(env, hash);
-  if (!existing) return null;
-  if (existing.consumedForestR) return existing;
-  const updated: OnboardTokenRecord = { ...existing, consumedForestR: forestR };
-  await env.R2_GRANTS.put(onboardTokenR2Key(hash), encodeRecord(updated), {
-    httpMetadata: { contentType: "application/json" },
-  });
-  return updated;
+  const result = await claimOnboardTokenForestRCas(env, hash, forestR);
+  if (!result.ok) return null;
+  return result.record;
+}
+
+export type ClaimForestRResult =
+  | { ok: true; record: OnboardTokenRecord }
+  | { ok: false; reason: "not_found" | "conflict" | "cas_failed" };
+
+export async function claimOnboardTokenForestRCas(
+  env: OnboardTokenStoreEnv,
+  hash: string,
+  forestR: string,
+): Promise<ClaimForestRResult> {
+  const got = await env.R2_GRANTS.get(onboardTokenR2Key(hash));
+  if (!got) return { ok: false, reason: "not_found" };
+  const existing = decodeRecord(new Uint8Array(await got.arrayBuffer()));
+  if (!existing) return { ok: false, reason: "not_found" };
+  if (existing.consumedForestR) {
+    if (existing.consumedForestR === forestR) {
+      return { ok: true, record: existing };
+    }
+    return { ok: false, reason: "conflict" };
+  }
+  const etag = got.etag;
+  const updated: OnboardTokenRecord = {
+    ...existing,
+    consumedForestR: forestR,
+  };
+  const written = await env.R2_GRANTS.put(
+    onboardTokenR2Key(hash),
+    encodeRecord(updated),
+    {
+      httpMetadata: { contentType: "application/json" },
+      onlyIf: { etagMatches: etag },
+    },
+  );
+  if (!written) {
+    const reread = await readOnboardTokenRecord(env, hash);
+    if (reread?.consumedForestR === forestR) {
+      return { ok: true, record: reread };
+    }
+    return { ok: false, reason: "cas_failed" };
+  }
+  return { ok: true, record: updated };
 }

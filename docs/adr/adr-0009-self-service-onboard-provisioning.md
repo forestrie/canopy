@@ -50,33 +50,50 @@ JSON admin routes exist for the ops admin UI only; mandate CLI uses CBOR.
 
 `pending` → `approved` | `rejected` | `expired` → `redeemed` (after redeem).
 
-Onboard token mint happens on **approve** (or auto-approve), not on create.
+Onboard token mint happens on **redeem** (after CAS transition), not on approve.
+No plaintext token is stored in R2 between approve and redeem; `onboardTokenRef`
+is set only after redeem.
 
 ### Univocity gate (v1)
 
-On create, `eth_getCode(univocityAddr)` via `UNIVOCITY_CONTRACT_RPC_URL`.
-Reject if code empty. Reject `chainId` unless it equals `ONBOARD_ALLOWED_CHAIN_ID`
-(when set).
+Per-fork model: callers supply `univocityAddr`; the gate proves protocol identity
+via `eth_call bootstrapConfig()` and `rootLogId()` (not merely non-empty bytecode).
+Require `bootstrapAlg` in ES256 (-7) or KS256 (-65799) with key length 64 or 20.
+Reject `chainId` unless it equals `ONBOARD_ALLOWED_CHAIN_ID` (when set).
+Positive gate results are cached in R2 (`ONBOARD_GATE_CACHE_TTL_SEC`); RPC uses
+`ONBOARD_RPC_TIMEOUT_MS` (default 5s).
 
-### Token binding and consume
+### Token binding, claim-then-genesis, and consume
 
 Request-minted tokens carry `chainBinding` copied from the request. PA genesis
-must match binding. On first successful PA genesis, set `consumedForestR`.
-Legacy ops-mint tokens without binding remain valid until revoked.
+must match binding. **Claim-then-genesis:** `consumedForestR` is set via R2 etag
+compare-and-set **before** the registration write. Legacy ops-mint tokens without
+binding remain valid until revoked.
 
-### Redeem code
+### Redeem atomicity
 
-32-byte hex secret; stored as SHA-256 hash only. Returned once on create.
+`approved → redeemed` uses R2 etag CAS so only one concurrent redeem succeeds.
+Redeem code compare uses constant-time hex equality.
+
+### Cache control
+
+Create (redeemCode), redeem (token), and public status GET responses send
+`Cache-Control: no-store`.
+
+### Abuse controls (public create)
+
+Cloudflare `ratelimit` binding (per `CF-Connecting-IP`), 16 KiB CBOR body cap,
+field length caps, and `ONBOARD_MAX_PENDING_PER_BINDING` per `(chainId, addr)`.
 
 ### Notifications
 
-Optional `ONBOARD_REQUEST_WEBHOOK_URL` + HMAC secret; best-effort async;
-failures do not fail create.
+Optional `ONBOARD_REQUEST_WEBHOOK_URL` + HMAC over `timestamp + "." + body`;
+`X-Forestrie-Timestamp` header; receivers should tolerate ±300s.
 
 ### Auto-approve (dev only)
 
 `ONBOARD_AUTO_APPROVE=true` with `ONBOARD_AUTO_APPROVE_CHAIN_IDS` allowlist.
-Redeem still required.
+Hard-disabled when `NODE_ENV=prod`. Redeem still required.
 
 ## CBOR map keys
 
