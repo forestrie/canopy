@@ -217,10 +217,9 @@ describe("onboard request create", () => {
     );
     expect(getRes.status).toBe(200);
     expect(getRes.headers.get("cache-control")).toBe("no-store");
-    const body = decodeCbor(new Uint8Array(await getRes.arrayBuffer())) as Record<
-      string,
-      unknown
-    >;
+    const body = decodeCbor(
+      new Uint8Array(await getRes.arrayBuffer()),
+    ) as Record<string, unknown>;
     expect(body.redeemCode).toBeUndefined();
   });
 });
@@ -306,7 +305,10 @@ describe("onboard approve redeem flow", () => {
 
   it("parallel redeem: only one caller receives token", async () => {
     const e = envWithOnboard();
-    const { requestId, redeemCode } = await createApprovedFlow(e, "parallel-redeem");
+    const { requestId, redeemCode } = await createApprovedFlow(
+      e,
+      "parallel-redeem",
+    );
 
     const redeemReq = () =>
       worker.fetch(

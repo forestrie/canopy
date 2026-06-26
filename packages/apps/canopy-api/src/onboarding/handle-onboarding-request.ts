@@ -487,10 +487,7 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function opsAuth(
-  request: Request,
-  env: OnboardingHandlerEnv,
-): Response | null {
+function opsAuth(request: Request, env: OnboardingHandlerEnv): Response | null {
   const token = env.CANOPY_OPS_ADMIN_TOKEN?.trim() ?? "";
   return opsAdminBearerOrUnauthorized(request, token);
 }
@@ -602,8 +599,9 @@ export async function handleOnboardingRequest(
     );
   }
 
-  const approveMatch =
-    /^\/api\/onboarding\/requests\/([^/]+)\/approve$/.exec(pathname);
+  const approveMatch = /^\/api\/onboarding\/requests\/([^/]+)\/approve$/.exec(
+    pathname,
+  );
   if (approveMatch && request.method === "POST") {
     const authErr = opsAuth(request, env);
     if (authErr) return attachCors(authErr, corsHeaders);
@@ -615,8 +613,9 @@ export async function handleOnboardingRequest(
     );
   }
 
-  const rejectMatch =
-    /^\/api\/onboarding\/requests\/([^/]+)\/reject$/.exec(pathname);
+  const rejectMatch = /^\/api\/onboarding\/requests\/([^/]+)\/reject$/.exec(
+    pathname,
+  );
   if (rejectMatch && request.method === "POST") {
     const authErr = opsAuth(request, env);
     if (authErr) return attachCors(authErr, corsHeaders);
@@ -628,8 +627,9 @@ export async function handleOnboardingRequest(
     );
   }
 
-  const redeemMatch =
-    /^\/api\/onboarding\/requests\/([^/]+)\/redeem$/.exec(pathname);
+  const redeemMatch = /^\/api\/onboarding\/requests\/([^/]+)\/redeem$/.exec(
+    pathname,
+  );
   if (redeemMatch && request.method === "POST") {
     return handleRedeem(
       request,

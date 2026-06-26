@@ -101,9 +101,13 @@ export async function createOnboardRequest(
     createdAt: now,
     expiresAt: now + input.ttlSec,
   };
-  await env.R2_GRANTS.put(onboardRequestR2Key(requestId), encodeRecord(record), {
-    httpMetadata: { contentType: "application/json" },
-  });
+  await env.R2_GRANTS.put(
+    onboardRequestR2Key(requestId),
+    encodeRecord(record),
+    {
+      httpMetadata: { contentType: "application/json" },
+    },
+  );
   return { record, redeemCode };
 }
 
