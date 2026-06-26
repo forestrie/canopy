@@ -1,6 +1,6 @@
 # Plan 0039 — Self-service onboard provisioning
 
-**Status:** IMPLEMENTED
+**Status:** ACTIVE — code complete; pending dev-lane deploy smoke and cross-repo E2E (FOR-166).
 **Date:** 2026-06-26
 **Related:**
 [ADR-0009](../adr/adr-0009-self-service-onboard-provisioning.md),
@@ -52,3 +52,12 @@ pnpm --filter @canopy/api test -- test/onboard-request.test.ts
 pnpm --filter @canopy/api test -- test/onboard-notify.test.ts
 pnpm --filter @canopy/api test -- test/onboard-auto-approve.test.ts
 ```
+
+## Dev-lane E2E (post-deploy)
+
+1. Deploy `canopy-api` dev with `ONBOARD_ALLOWED_CHAIN_ID` and
+   `UNIVOCITY_CONTRACT_RPC_URL` secret (see `wrangler.jsonc` dev env).
+2. `task test:live:onboard` (mandate worktree) — request → approve → redeem.
+3. `task onboard:request` / `task onboard:redeem` — operator CLI path.
+4. `task provision` with redeemed token — PA genesis + binding (`consumedForestR`).
+5. Close FOR-166 when steps 2–4 pass on dev lane.

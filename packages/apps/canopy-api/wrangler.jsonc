@@ -87,6 +87,8 @@
         "GRANT_STORAGE_PUBLIC_BASE": "https://grants-dev.forestrie.dev",
         "CUSTODIAN_URL": "https://custodian.a.forest-2.forestrie.dev/v1",
         "ROOT_LOG_ID": "123e4567e89b12d3a456426614174000",
+        // Self-service onboard (FOR-166); UNIVOCITY_CONTRACT_RPC_URL via secret.
+        "ONBOARD_ALLOWED_CHAIN_ID": "84532",
       },
       "r2_buckets": [
         {
