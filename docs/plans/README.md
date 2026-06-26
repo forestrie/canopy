@@ -16,6 +16,7 @@ Platform-wide plans: [devdocs/plans/](../../../devdocs/plans/README.md).
 | [plan-0036](plan-0036-webhook-delivery.md) | IMPLEMENTED | FOR-93: coordinator `delegation.required` webhook delivery |
 | [plan-0037](plan-0037-mode-c-onboarding-coordinator-forward.md) | IMPLEMENTED | Mode C genesis coordinator forward + webhook seal e2e |
 | [plan-0038](plan-0038-wallet-challenge-coordinator-e2e.md) | DRAFT | FOR-129 wallet-challenge coordinator e2e (replace skips/best-effort) |
+| [plan-0039](plan-0039-self-service-onboard-provisioning.md) | ACTIVE | FOR-166 self-service onboard request provisioning |
 | [plan-0032](plan-0032-univocity-imutable-e2e-provision.md) | DRAFT | Fresh Imutable Safe deploy for e2e |
 | [plan-0031](plan-0031-ks256-forest-roots.md) | ACTIVE | KS256 forest roots |
 | [plan-0033](plan-0033-ks256-register-statement.md) | IMPLEMENTED | KS256 register-statement verify |

@@ -1,4 +1,7 @@
-import type { OnboardTokenRecord } from "./onboard-token-record.js";
+import type {
+  OnboardTokenChainBinding,
+  OnboardTokenRecord,
+} from "./onboard-token-record.js";
 import { hashOnboardToken, onboardTokenR2Key } from "./onboard-token-hash.js";
 
 export interface OnboardTokenStoreEnv {
@@ -38,6 +41,8 @@ function generateTokenValue(): string {
 export interface MintOnboardTokenOptions {
   label?: string;
   expiry?: number;
+  requestId?: string;
+  chainBinding?: OnboardTokenChainBinding;
 }
 
 export interface MintOnboardTokenResult {
@@ -57,6 +62,8 @@ export async function mintOnboardToken(
     createdAt: Math.floor(Date.now() / 1000),
     expiry: options.expiry,
     status: "active",
+    requestId: options.requestId,
+    chainBinding: options.chainBinding,
   };
   await env.R2_GRANTS.put(onboardTokenR2Key(hash), encodeRecord(record), {
     httpMetadata: { contentType: "application/json" },
@@ -116,4 +123,26 @@ export async function isOnboardTokenActive(
     return { active: false };
   }
   return { active: true, hash };
+}
+
+export async function readOnboardTokenByHash(
+  env: OnboardTokenStoreEnv,
+  hash: string,
+): Promise<OnboardTokenRecord | null> {
+  return readOnboardTokenRecord(env, hash);
+}
+
+export async function markOnboardTokenConsumed(
+  env: OnboardTokenStoreEnv,
+  hash: string,
+  forestR: string,
+): Promise<OnboardTokenRecord | null> {
+  const existing = await readOnboardTokenRecord(env, hash);
+  if (!existing) return null;
+  if (existing.consumedForestR) return existing;
+  const updated: OnboardTokenRecord = { ...existing, consumedForestR: forestR };
+  await env.R2_GRANTS.put(onboardTokenR2Key(hash), encodeRecord(updated), {
+    httpMetadata: { contentType: "application/json" },
+  });
+  return updated;
 }

@@ -1,0 +1,536 @@
+/**
+ * `/api/onboarding/**` — self-service onboard request + ops admin JSON.
+ */
+
+import { parseCborBody } from "../cbor-api/cbor-request.js";
+import {
+  cborResponse,
+  problemResponse,
+  requireContentTypeCbor,
+} from "../cbor-api/cbor-response.js";
+import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
+import { decodeBodyAsIntKeyMap } from "../cbor-api/cbor-map-utils.js";
+import { opsAdminBearerOrUnauthorized } from "../payments/bearer-auth.js";
+import {
+  listOnboardTokens,
+  mintOnboardToken,
+  type OnboardTokenStoreEnv,
+} from "../payments/onboard-token-store.js";
+import { shouldAutoApproveRequest } from "./onboard-auto-approve.js";
+import { scheduleOnboardWebhook } from "./onboard-notify.js";
+import type { OnboardRequestRecord } from "./onboard-request-record.js";
+import {
+  createOnboardRequest,
+  effectiveStatus,
+  listOnboardRequests,
+  readOnboardRequest,
+  verifyRedeemCode,
+  writeOnboardRequest,
+  type OnboardRequestStoreEnv,
+} from "./onboard-request-store.js";
+import { verifyUnivocityDeployment } from "./univocity-deployment-gate.js";
+
+const CBOR_LABEL = 1;
+const CBOR_CHAIN_ID = 2;
+const CBOR_UNIVOCITY_ADDR = 3;
+const CBOR_CONTACT_EMAIL = 4;
+const CBOR_MANDATE_ORIGIN = 5;
+const CBOR_PLANNED_FOREST_R = 6;
+const CBOR_REDEEM_CODE = 1;
+const CBOR_REJECT_REASON = 1;
+
+export interface OnboardingHandlerEnv
+  extends OnboardRequestStoreEnv,
+    OnboardTokenStoreEnv {
+  CANOPY_OPS_ADMIN_TOKEN?: string;
+  UNIVOCITY_CONTRACT_RPC_URL?: string;
+  ONBOARD_ALLOWED_CHAIN_ID?: string;
+  ONBOARD_REQUEST_TTL_SEC?: string;
+  ONBOARD_REQUEST_WEBHOOK_URL?: string;
+  ONBOARD_REQUEST_WEBHOOK_SECRET?: string;
+  ONBOARD_AUTO_APPROVE?: string;
+  ONBOARD_AUTO_APPROVE_CHAIN_IDS?: string;
+  ONBOARD_AUTO_APPROVE_LABEL_PREFIX?: string;
+}
+
+function attachCors(
+  res: Response,
+  corsHeaders: Record<string, string>,
+): Response {
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(corsHeaders)) {
+    headers.set(k, v);
+  }
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers,
+  });
+}
+
+function defaultTtlSec(env: OnboardingHandlerEnv): number {
+  const raw = env.ONBOARD_REQUEST_TTL_SEC?.trim();
+  if (raw) {
+    const n = Number.parseInt(raw, 10);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 604_800;
+}
+
+function publicRequestView(record: OnboardRequestRecord) {
+  return {
+    requestId: record.requestId,
+    status: effectiveStatus(record),
+    label: record.label,
+    chainBinding: record.chainBinding,
+    createdAt: record.createdAt,
+    expiresAt: record.expiresAt,
+    mandateOrigin: record.mandateOrigin,
+    plannedForestR: record.plannedForestR,
+    onboardTokenRef: record.onboardTokenRef,
+  };
+}
+
+async function approveRequestRecord(
+  env: OnboardingHandlerEnv,
+  record: OnboardRequestRecord,
+): Promise<OnboardRequestRecord | Response> {
+  if (effectiveStatus(record) !== "pending") {
+    return ClientErrors.conflict("Request is not pending");
+  }
+
+  const minted = await mintOnboardToken(env, {
+    label: record.label,
+    requestId: record.requestId,
+    chainBinding: record.chainBinding,
+  });
+
+  const updated: OnboardRequestRecord = {
+    ...record,
+    status: "approved",
+    onboardTokenRef: minted.record.hash,
+    approvedToken: minted.token,
+  };
+  await writeOnboardRequest(env, updated);
+  return updated;
+}
+
+async function handleCreateRequest(
+  request: Request,
+  env: OnboardingHandlerEnv,
+  corsHeaders: Record<string, string>,
+  ctx: ExecutionContext,
+): Promise<Response> {
+  const ctErr = requireContentTypeCbor(request);
+  if (ctErr) return attachCors(ctErr, corsHeaders);
+
+  let label: string | undefined;
+  let chainId: string | undefined;
+  let univocityAddr: string | undefined;
+  let contactEmail: string | undefined;
+  let mandateOrigin: string | undefined;
+  let plannedForestR: string | undefined;
+
+  try {
+    const raw = await parseCborBody(request);
+    const m = decodeBodyAsIntKeyMap(raw);
+    if (m) {
+      label = readString(m, CBOR_LABEL);
+      chainId = readString(m, CBOR_CHAIN_ID);
+      univocityAddr = readString(m, CBOR_UNIVOCITY_ADDR);
+      contactEmail = readString(m, CBOR_CONTACT_EMAIL);
+      mandateOrigin = readString(m, CBOR_MANDATE_ORIGIN);
+      plannedForestR = readString(m, CBOR_PLANNED_FOREST_R);
+    }
+  } catch {
+    return attachCors(
+      ClientErrors.badRequest("Invalid CBOR body"),
+      corsHeaders,
+    );
+  }
+
+  if (!label || !chainId || !univocityAddr || !contactEmail) {
+    return attachCors(
+      ClientErrors.badRequest(
+        "label, chainId, univocityAddr, contactEmail required",
+      ),
+      corsHeaders,
+    );
+  }
+
+  const gate = await verifyUnivocityDeployment(env, chainId, univocityAddr);
+  if (!gate.ok) {
+    return attachCors(
+      problemResponse(gate.status, gate.status === 422 ? "Unprocessable Entity" : gate.status === 503 ? "Service Unavailable" : "Bad Request", "about:blank", {
+        detail: gate.detail,
+      }),
+      corsHeaders,
+    );
+  }
+
+  const { record, redeemCode } = await createOnboardRequest(env, {
+    label,
+    chainBinding: { chainId: chainId.trim(), univocityAddr: gate.univocityAddr },
+    contactEmail,
+    mandateOrigin,
+    plannedForestR,
+    ttlSec: defaultTtlSec(env),
+  });
+
+  scheduleOnboardWebhook(ctx, env, "onboard.request.created", {
+    requestId: record.requestId,
+    label: record.label,
+    chainBinding: record.chainBinding,
+    contactEmail: record.contactEmail,
+    mandateOrigin: record.mandateOrigin,
+  });
+
+  let finalRecord = record;
+  if (shouldAutoApproveRequest(env, record)) {
+    const approved = await approveRequestRecord(env, record);
+    if (approved instanceof Response) {
+      return attachCors(approved, corsHeaders);
+    }
+    finalRecord = approved;
+    scheduleOnboardWebhook(ctx, env, "onboard.request.approved", {
+      requestId: finalRecord.requestId,
+      onboardTokenRef: finalRecord.onboardTokenRef,
+    });
+  }
+
+  return attachCors(
+    cborResponse(
+      {
+        requestId: finalRecord.requestId,
+        status: effectiveStatus(finalRecord),
+        expiresAt: finalRecord.expiresAt,
+        redeemCode,
+      },
+      201,
+    ),
+    corsHeaders,
+  );
+}
+
+function readString(m: Map<number, unknown>, key: number): string | undefined {
+  const v = m.get(key);
+  if (typeof v !== "string") return undefined;
+  const s = v.trim();
+  return s || undefined;
+}
+
+async function handleRedeem(
+  request: Request,
+  requestId: string,
+  env: OnboardingHandlerEnv,
+  corsHeaders: Record<string, string>,
+  ctx: ExecutionContext,
+): Promise<Response> {
+  const ctErr = requireContentTypeCbor(request);
+  if (ctErr) return attachCors(ctErr, corsHeaders);
+
+  let redeemCode: string | undefined;
+  try {
+    const raw = await parseCborBody(request);
+    const m = decodeBodyAsIntKeyMap(raw);
+    if (m) redeemCode = readString(m, CBOR_REDEEM_CODE);
+  } catch {
+    return attachCors(
+      ClientErrors.badRequest("Invalid CBOR body"),
+      corsHeaders,
+    );
+  }
+
+  if (!redeemCode) {
+    return attachCors(
+      ClientErrors.badRequest("redeemCode required"),
+      corsHeaders,
+    );
+  }
+
+  const record = await readOnboardRequest(env, requestId);
+  if (!record) {
+    return attachCors(ClientErrors.notFound("Not Found", "Request not found"), corsHeaders);
+  }
+
+  const status = effectiveStatus(record);
+  if (status === "expired") {
+    return attachCors(
+      problemResponse(410, "Gone", "about:blank", { detail: "Request expired" }),
+      corsHeaders,
+    );
+  }
+  if (status === "redeemed") {
+    return attachCors(ClientErrors.conflict("Request already redeemed"), corsHeaders);
+  }
+  if (status !== "approved") {
+    return attachCors(ClientErrors.conflict("Request not approved"), corsHeaders);
+  }
+
+  const codeOk = await verifyRedeemCode(record, redeemCode);
+  if (!codeOk) {
+    return attachCors(ClientErrors.unauthorized("Invalid redeem code"), corsHeaders);
+  }
+
+  const token = record.approvedToken?.trim();
+  if (!token) {
+    return attachCors(
+      ServerErrors.serviceUnavailable("Approved token unavailable"),
+      corsHeaders,
+    );
+  }
+
+  const redeemed: OnboardRequestRecord = {
+    ...record,
+    status: "redeemed",
+    approvedToken: undefined,
+    redeemedAt: Math.floor(Date.now() / 1000),
+  };
+  await writeOnboardRequest(env, redeemed);
+
+  scheduleOnboardWebhook(ctx, env, "onboard.request.redeemed", {
+    requestId: record.requestId,
+    onboardTokenRef: record.onboardTokenRef,
+  });
+
+  return attachCors(
+    cborResponse(
+      {
+        token,
+        ref: record.onboardTokenRef,
+        label: record.label,
+      },
+      200,
+    ),
+    corsHeaders,
+  );
+}
+
+async function handleOpsApprove(
+  requestId: string,
+  env: OnboardingHandlerEnv,
+  corsHeaders: Record<string, string>,
+  ctx: ExecutionContext,
+): Promise<Response> {
+  const record = await readOnboardRequest(env, requestId);
+  if (!record) {
+    return attachCors(ClientErrors.notFound("Not Found", "Request not found"), corsHeaders);
+  }
+
+  const approved = await approveRequestRecord(env, record);
+  if (approved instanceof Response) {
+    return attachCors(approved, corsHeaders);
+  }
+
+  scheduleOnboardWebhook(ctx, env, "onboard.request.approved", {
+    requestId: approved.requestId,
+    onboardTokenRef: approved.onboardTokenRef,
+  });
+
+  return attachCors(
+    cborResponse(
+      {
+        requestId: approved.requestId,
+        status: approved.status,
+        onboardTokenRef: approved.onboardTokenRef,
+      },
+      200,
+    ),
+    corsHeaders,
+  );
+}
+
+async function handleOpsReject(
+  request: Request,
+  requestId: string,
+  env: OnboardingHandlerEnv,
+  corsHeaders: Record<string, string>,
+): Promise<Response> {
+  const record = await readOnboardRequest(env, requestId);
+  if (!record) {
+    return attachCors(ClientErrors.notFound("Not Found", "Request not found"), corsHeaders);
+  }
+  if (effectiveStatus(record) !== "pending") {
+    return attachCors(ClientErrors.conflict("Request is not pending"), corsHeaders);
+  }
+
+  let rejectReason: string | undefined;
+  const ct = request.headers.get("Content-Type") ?? "";
+  if (ct.includes("application/cbor")) {
+    try {
+      const raw = await parseCborBody(request);
+      const m = decodeBodyAsIntKeyMap(raw);
+      if (m) rejectReason = readString(m, CBOR_REJECT_REASON);
+    } catch {
+      /* optional body */
+    }
+  }
+
+  const updated: OnboardRequestRecord = {
+    ...record,
+    status: "rejected",
+    rejectReason,
+  };
+  await writeOnboardRequest(env, updated);
+
+  return attachCors(
+    cborResponse({ requestId, status: "rejected" }, 200),
+    corsHeaders,
+  );
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function opsAuth(
+  request: Request,
+  env: OnboardingHandlerEnv,
+): Response | null {
+  const token = env.CANOPY_OPS_ADMIN_TOKEN?.trim() ?? "";
+  return opsAdminBearerOrUnauthorized(request, token);
+}
+
+export async function handleOnboardingRequest(
+  request: Request,
+  pathname: string,
+  env: OnboardingHandlerEnv,
+  corsHeaders: Record<string, string>,
+  ctx: ExecutionContext,
+): Promise<Response | null> {
+  if (
+    pathname !== "/api/onboarding" &&
+    !pathname.startsWith("/api/onboarding/")
+  ) {
+    return null;
+  }
+
+  const adminJson =
+    pathname === "/api/onboarding/admin/requests" && request.method === "GET";
+  const adminTokens =
+    pathname === "/api/onboarding/admin/tokens" && request.method === "GET";
+
+  if (adminJson || adminTokens) {
+    const authErr = opsAuth(request, env);
+    if (authErr) return attachCors(authErr, corsHeaders);
+    if (adminJson) {
+      const requests = await listOnboardRequests(env);
+      return attachCors(
+        jsonResponse({
+          requests: requests.map((r) => ({
+            ...publicRequestView(r),
+            contactEmail: r.contactEmail,
+            rejectReason: r.rejectReason,
+          })),
+        }),
+        corsHeaders,
+      );
+    }
+    const tokens = await listOnboardTokens(env);
+    return attachCors(jsonResponse({ tokens }), corsHeaders);
+  }
+
+  const adminApprove = /^\/api\/onboarding\/admin\/requests\/([^/]+)\/approve$/.exec(
+    pathname,
+  );
+  if (adminApprove && request.method === "POST") {
+    const authErr = opsAuth(request, env);
+    if (authErr) return attachCors(authErr, corsHeaders);
+    return handleOpsApprove(
+      decodeURIComponent(adminApprove[1]!),
+      env,
+      corsHeaders,
+      ctx,
+    );
+  }
+
+  const adminReject = /^\/api\/onboarding\/admin\/requests\/([^/]+)\/reject$/.exec(
+    pathname,
+  );
+  if (adminReject && request.method === "POST") {
+    const authErr = opsAuth(request, env);
+    if (authErr) return attachCors(authErr, corsHeaders);
+    return handleOpsReject(
+      request,
+      decodeURIComponent(adminReject[1]!),
+      env,
+      corsHeaders,
+    );
+  }
+
+  if (pathname === "/api/onboarding/requests") {
+    if (request.method === "POST") {
+      return handleCreateRequest(request, env, corsHeaders, ctx);
+    }
+    if (request.method === "GET") {
+      const authErr = opsAuth(request, env);
+      if (authErr) return attachCors(authErr, corsHeaders);
+      const requests = await listOnboardRequests(env);
+      return attachCors(
+        cborResponse({ requests: requests.map(publicRequestView) }, 200),
+        corsHeaders,
+      );
+    }
+  }
+
+  const itemMatch = /^\/api\/onboarding\/requests\/([^/]+)$/.exec(pathname);
+  if (itemMatch && request.method === "GET") {
+    const record = await readOnboardRequest(
+      env,
+      decodeURIComponent(itemMatch[1]!),
+    );
+    if (!record) {
+      return attachCors(
+        ClientErrors.notFound("Not Found", "Request not found"),
+        corsHeaders,
+      );
+    }
+    return attachCors(cborResponse(publicRequestView(record), 200), corsHeaders);
+  }
+
+  const approveMatch =
+    /^\/api\/onboarding\/requests\/([^/]+)\/approve$/.exec(pathname);
+  if (approveMatch && request.method === "POST") {
+    const authErr = opsAuth(request, env);
+    if (authErr) return attachCors(authErr, corsHeaders);
+    return handleOpsApprove(
+      decodeURIComponent(approveMatch[1]!),
+      env,
+      corsHeaders,
+      ctx,
+    );
+  }
+
+  const rejectMatch =
+    /^\/api\/onboarding\/requests\/([^/]+)\/reject$/.exec(pathname);
+  if (rejectMatch && request.method === "POST") {
+    const authErr = opsAuth(request, env);
+    if (authErr) return attachCors(authErr, corsHeaders);
+    return handleOpsReject(
+      request,
+      decodeURIComponent(rejectMatch[1]!),
+      env,
+      corsHeaders,
+    );
+  }
+
+  const redeemMatch =
+    /^\/api\/onboarding\/requests\/([^/]+)\/redeem$/.exec(pathname);
+  if (redeemMatch && request.method === "POST") {
+    return handleRedeem(
+      request,
+      decodeURIComponent(redeemMatch[1]!),
+      env,
+      corsHeaders,
+      ctx,
+    );
+  }
+
+  return attachCors(
+    ClientErrors.notFound("Not Found", `Unknown onboarding route ${pathname}`),
+    corsHeaders,
+  );
+}

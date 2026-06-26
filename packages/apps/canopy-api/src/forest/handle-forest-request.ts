@@ -30,6 +30,10 @@ import {
   validateGenesisWebhookUrl,
 } from "./validate-genesis-webhook-url.js";
 import type { RegistrationClass } from "../payments/registration-class.js";
+import type { OnboardTokenChainBinding } from "../payments/onboard-token-record.js";
+import { markOnboardTokenConsumed } from "../payments/onboard-token-store.js";
+import { normalizeHexAddress } from "../rpc/eth-rpc.js";
+import type { ForestGenesisChainBinding } from "./genesis-wire.js";
 
 export interface ForestHandlerEnv
   extends PostGenesisEnv,
@@ -89,6 +93,21 @@ async function coordinatorStatusForGenesis(
     bootstrapKey: genesisResult.bootstrapKey,
     webhookUrl,
   });
+}
+
+function genesisAddrHex(binding: ForestGenesisChainBinding): string {
+  return Array.from(binding.address)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function onboardChainBindingMatches(
+  expected: OnboardTokenChainBinding,
+  actual: ForestGenesisChainBinding,
+): boolean {
+  if (expected.chainId !== actual.chainId) return false;
+  const actualHex = normalizeHexAddress(genesisAddrHex(actual));
+  return actualHex === expected.univocityAddr;
 }
 
 async function finishGenesisPost(
@@ -184,21 +203,38 @@ export async function handleForestRequest(
       }
 
       if (auth.mode === "onboard") {
-        return attachCors(
-          await finishGenesisPost(
-            env,
-            genesisResult,
-            "payment-authoritative",
-            registrationRecordFromChainBinding({
-              class: "payment-authoritative",
-              onboardTokenRef: auth.tokenHash,
-              chainBinding: genesisResult.chainBinding,
-            }),
-            undefined,
-            webhookParsed.webhookUrl,
-          ),
-          corsHeaders,
+        const tokenBinding = auth.tokenRecord.chainBinding;
+        if (
+          tokenBinding &&
+          !onboardChainBindingMatches(tokenBinding, genesisResult.chainBinding)
+        ) {
+          return attachCors(
+            ClientErrors.badRequest(
+              "Genesis chain binding must match onboard token binding",
+            ),
+            corsHeaders,
+          );
+        }
+
+        const res = await finishGenesisPost(
+          env,
+          genesisResult,
+          "payment-authoritative",
+          registrationRecordFromChainBinding({
+            class: "payment-authoritative",
+            onboardTokenRef: auth.tokenHash,
+            chainBinding: genesisResult.chainBinding,
+          }),
+          undefined,
+          webhookParsed.webhookUrl,
         );
+
+        if (res.status === 201) {
+          const rUuid = logIdWireToUuid(genesisResult.logIdWire);
+          await markOnboardTokenConsumed(env, auth.tokenHash, rUuid);
+        }
+
+        return attachCors(res, corsHeaders);
       }
 
       return attachCors(

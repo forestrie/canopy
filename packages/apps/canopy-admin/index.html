@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Canopy onboard admin</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 960px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
+    button { margin-right: 0.5rem; }
+    .muted { color: #666; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>Canopy onboard admin</h1>
+  <p class="muted">Ops-only. Token stored in sessionStorage for this browser tab.</p>
+  <label>Canopy API base URL <input id="baseUrl" size="48" placeholder="https://api.example" /></label><br />
+  <label>Ops admin token <input id="opsToken" type="password" size="48" /></label>
+  <button id="saveConfig">Save config</button>
+  <button id="refresh">Refresh queue</button>
+  <table>
+    <thead><tr><th>Label</th><th>Status</th><th>Chain</th><th>Contact</th><th>Actions</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <script>
+    const baseUrlEl = document.getElementById('baseUrl');
+    const opsTokenEl = document.getElementById('opsToken');
+    baseUrlEl.value = sessionStorage.getItem('canopyBaseUrl') || '';
+    opsTokenEl.value = sessionStorage.getItem('canopyOpsToken') || '';
+
+    document.getElementById('saveConfig').onclick = () => {
+      sessionStorage.setItem('canopyBaseUrl', baseUrlEl.value.trim());
+      sessionStorage.setItem('canopyOpsToken', opsTokenEl.value.trim());
+    };
+
+    async function api(path, method = 'GET') {
+      const base = baseUrlEl.value.trim().replace(/\/$/, '');
+      const res = await fetch(`${base}${path}`, {
+        method,
+        headers: { Authorization: `Bearer ${opsTokenEl.value.trim()}` },
+      });
+      if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+      return res.json();
+    }
+
+    async function refresh() {
+      const data = await api('/api/onboarding/admin/requests');
+      const tbody = document.getElementById('rows');
+      tbody.innerHTML = '';
+      for (const r of data.requests || []) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${r.label}</td><td>${r.status}</td><td>${r.chainBinding?.chainId}</td><td>${r.contactEmail || ''}</td><td></td>`;
+        const actions = tr.querySelector('td:last-child');
+        if (r.status === 'pending') {
+          const approve = document.createElement('button');
+          approve.textContent = 'Approve';
+          approve.onclick = async () => {
+            await api(`/api/onboarding/admin/requests/${r.requestId}/approve`, 'POST');
+            await refresh();
+          };
+          const reject = document.createElement('button');
+          reject.textContent = 'Reject';
+          reject.onclick = async () => {
+            await api(`/api/onboarding/admin/requests/${r.requestId}/reject`, 'POST');
+            await refresh();
+          };
+          actions.append(approve, reject);
+        }
+        tbody.appendChild(tr);
+      }
+    }
+
+    document.getElementById('refresh').onclick = () => refresh().catch(alert);
+  </script>
+</body>
+</html>
