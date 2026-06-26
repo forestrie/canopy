@@ -1,6 +1,12 @@
 import { problemResponse } from "../cbor-api/cbor-response.js";
 import { isCanopyApiPoolTestMode } from "./runtime-mode";
 
+function pathnameIsOnboardingRoute(pathname: string): boolean {
+  return (
+    pathname === "/api/onboarding" || pathname.startsWith("/api/onboarding/")
+  );
+}
+
 function pathnameIsForestRoute(pathname: string): boolean {
   return pathname === "/api/forest" || pathname.startsWith("/api/forest/");
 }
@@ -58,6 +64,9 @@ export function checkRequestEnv(
     return responseIfPaymentsOpsIncomplete(env, corsHeaders);
   }
   if (pathnameIsForestRoute(pathname)) {
+    return null;
+  }
+  if (pathnameIsOnboardingRoute(pathname)) {
     return null;
   }
   const trio = responseIfBootstrapTrioIncomplete(env, corsHeaders);

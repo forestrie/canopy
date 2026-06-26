@@ -11,6 +11,7 @@ import {
 } from "./env/receipt-authority-resolver.js";
 import { problemResponse } from "./cbor-api/cbor-response.js";
 import { handleForestRequest } from "./forest/handle-forest-request.js";
+import { handleOnboardingRequest } from "./onboarding/handle-onboarding-request.js";
 import { handlePaymentsRequest } from "./payments/handle-payments-request.js";
 import { registerGrant, type RegisterGrantEnv } from "./scrapi/register-grant";
 import { createUnivocityGrantValidator } from "./scrapi/univocity-grant-client.js";
@@ -94,6 +95,21 @@ export interface Env {
   UNIVOCITY_API_TOKEN?: string;
   UNIVOCITY_CONTRACT_RPC_URL?: string;
   UNIVOCITY_CONTRACT_ADDRESS?: string;
+  /** Allowed chainId for onboard request create (v1 single-chain). */
+  ONBOARD_ALLOWED_CHAIN_ID?: string;
+  ONBOARD_REQUEST_TTL_SEC?: string;
+  ONBOARD_REQUEST_WEBHOOK_URL?: string;
+  ONBOARD_REQUEST_WEBHOOK_SECRET?: string;
+  ONBOARD_AUTO_APPROVE?: string;
+  ONBOARD_AUTO_APPROVE_CHAIN_IDS?: string;
+  ONBOARD_AUTO_APPROVE_LABEL_PREFIX?: string;
+  ONBOARD_TOKEN_TTL_SEC?: string;
+  ONBOARD_GATE_CACHE_TTL_SEC?: string;
+  ONBOARD_MAX_PENDING_PER_BINDING?: string;
+  ONBOARD_RPC_TIMEOUT_MS?: string;
+  ONBOARD_CREATE_RATE_LIMITER?: {
+    limit(options: { key: string }): Promise<{ success: boolean }>;
+  };
   /** Optional: base URL for checkpoint fetch (storage source when R2 not used). */
   OBJECT_STORAGE_ROOT_URL?: string;
 }
@@ -183,6 +199,17 @@ export default {
       const misconfigured = checkRequestEnv(request, env, corsHeaders);
       if (misconfigured) {
         return misconfigured;
+      }
+
+      const onboardingResponse = await handleOnboardingRequest(
+        request,
+        pathname,
+        env,
+        corsHeaders,
+        ctx,
+      );
+      if (onboardingResponse) {
+        return onboardingResponse;
       }
 
       const paymentsResponse = await handlePaymentsRequest(
