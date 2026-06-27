@@ -1,6 +1,6 @@
 # Plan 0039 — Self-service onboard provisioning
 
-**Status:** ACTIVE — FOR-176/#41 deployed; FOR-177 merged; closure in
+**Status:** COMPLETE — FOR-178 smoke 8/8 (2026-06-27); FOR-172 admin UI remains in plan-0040.
 [plan-0040](plan-0040-onboard-epic-closure-backlog.md) (FOR-178 smoke, FOR-172 UI).
 **Date:** 2026-06-26
 **Related:**
