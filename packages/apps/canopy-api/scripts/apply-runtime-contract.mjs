@@ -1,7 +1,10 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseSupportedChainsRpc } from "../../../libs/chain-rpc/resolve-for-deploy.mjs";
+import {
+  jsoncToJson,
+  parseSupportedChainsRpc,
+} from "../../../libs/chain-rpc/resolve-for-deploy.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const defaultChainsTemplatePath = resolve(
@@ -115,19 +118,11 @@ function setStringProperty(block, key, value) {
   return block.replace(/\n\s*}$/, `${insert}\n      }`);
 }
 
-function stripJsoncComments(text) {
-  return text
-    .split("\n")
-    .filter((line) => !/^\s*\/\//.test(line))
-    .join("\n")
-    .replace(/\/\*[\s\S]*?\*\//g, "");
-}
-
 function loadSupportedChainsRpcResolved() {
   const envRaw = process.env.SUPPORTED_CHAINS_RPC?.trim();
   const templatePath =
     process.env.SUPPORTED_CHAINS_TEMPLATE?.trim() || defaultChainsTemplatePath;
-  const raw = envRaw || stripJsoncComments(readFileSync(templatePath, "utf8"));
+  const raw = envRaw || jsoncToJson(readFileSync(templatePath, "utf8"));
   const config = parseSupportedChainsRpc(raw, {
     resolveEnv: true,
     env: process.env,

@@ -324,6 +324,7 @@ jobs:
           CUSTODIAN_APP_TOKEN: ${{ secrets.CUSTODIAN_APP_TOKEN }}
           COORDINATOR_RESET_TOKEN: ${{ secrets.COORDINATOR_RESET_TOKEN }}
           WEBHOOK_SIGNING_KEY_PEM: ${{ secrets.WEBHOOK_SIGNING_KEY_PEM }}
+          WALLET_CHALLENGE_SIGNING_SECRET: ${{ secrets.WALLET_CHALLENGE_SIGNING_SECRET }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
@@ -344,6 +345,12 @@ jobs:
             exit 1
           fi
           put_wrangler_secret CUSTODIAN_APP_TOKEN "$CUST"
+          WALLET=$(trim_ws "${WALLET_CHALLENGE_SIGNING_SECRET:-}")
+          if [ -z "$WALLET" ]; then
+            echo "::error::WALLET_CHALLENGE_SIGNING_SECRET is required for delegation-coordinator (wallet-challenge sessions)."
+            exit 1
+          fi
+          put_wrangler_secret WALLET_CHALLENGE_SIGNING_SECRET "$WALLET"
           RESET=$(trim_ws "${COORDINATOR_RESET_TOKEN:-}")
           if [ "${ENV}" = "dev" ] && [ -n "$RESET" ]; then
             put_wrangler_secret COORDINATOR_RESET_TOKEN "$RESET"

@@ -7,6 +7,31 @@ const LITERAL_ENV_PREFIX = "\u0000LIT_ENV\u0000";
 const INLINE_ENV_PATTERN = /\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g;
 const CHAIN_ID_PATTERN = /^[1-9][0-9]*$/;
 
+/** Strip // line comments and block comments from JSONC text. */
+export function stripJsoncComments(text) {
+  return text
+    .split("\n")
+    .filter((line) => !/^\s*\/\//.test(line))
+    .join("\n")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+/** Remove trailing commas before `}` or `]` (JSONC → JSON). */
+export function stripJsonTrailingCommas(text) {
+  let result = text;
+  let prev;
+  do {
+    prev = result;
+    result = result.replace(/,(\s*[}\]])/g, "$1");
+  } while (result !== prev);
+  return result;
+}
+
+/** Normalize JSONC (comments + trailing commas) to strict JSON text. */
+export function jsoncToJson(text) {
+  return stripJsonTrailingCommas(stripJsoncComments(text));
+}
+
 export function substituteEnvTemplates(raw, env) {
   const escaped = raw.replace(/\\\$\{env:/g, LITERAL_ENV_PREFIX);
   const substituted = escaped.replace(INLINE_ENV_PATTERN, (_match, varName) => {
