@@ -103,6 +103,16 @@
       .status-expired {
         color: #6b7280;
       }
+      .status-active {
+        color: #047857;
+      }
+      .status-revoked {
+        color: #b91c1c;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
       .detail-row td {
         background: #f9fafb;
         font-size: 0.9rem;
@@ -254,7 +264,9 @@
           />
         </label>
         <button type="button" id="loadKillSwitch">Load status</button>
-        <button type="button" id="toggleKillSwitch">Toggle enabled</button>
+        <button type="button" id="toggleKillSwitch" disabled>
+          Enable / Disable
+        </button>
         <p id="killStatus" class="kill-status muted">Not loaded</p>
       </div>
     </section>
