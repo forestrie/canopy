@@ -35,6 +35,19 @@ else
 fi
 
 pnpm --filter @canopy/api-e2e exec playwright test --project=integration
+
+OPS="$(trim_ws "${CANOPY_OPS_ADMIN_TOKEN:-}")"
+if [ -z "$OPS" ]; then
+  echo "CANOPY_OPS_ADMIN_TOKEN is required for system e2e (Mode C webhook seal)." >&2
+  exit 1
+fi
+COORD_URL="$(trim_ws "${DELEGATION_COORDINATOR_URL:-}")"
+COORD_TOKEN="$(trim_ws "${COORDINATOR_APP_TOKEN:-}")"
+if [ -z "$COORD_URL" ] || [ -z "$COORD_TOKEN" ]; then
+  echo "DELEGATION_COORDINATOR_URL and COORDINATOR_APP_TOKEN are required for system BYOK e2e." >&2
+  exit 1
+fi
+
 pnpm --filter @canopy/api-e2e exec playwright test --project=system
 pnpm --filter @canopy/api-e2e exec playwright test --project=custodian
 

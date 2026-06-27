@@ -1,6 +1,6 @@
 # Plan 0046 — Package D review remediation
 
-**Status:** DRAFT  
+**Status:** IMPLEMENTED  
 **Date:** 2026-06-27  
 **Related:** [plan-0044](plan-0044-package-d-cross-stack-e2e.md), [FOR-201](https://linear.app/forestrie/issue/FOR-201), PR [#57](https://github.com/forestrie/canopy/pull/57)  
 **Reviewed:** `origin/main...robin/for-202-e2e-prerequisites` (Graphite unavailable; single branch)

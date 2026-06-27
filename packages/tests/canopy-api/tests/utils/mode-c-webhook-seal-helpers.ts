@@ -88,6 +88,25 @@ export async function signPendingModeCKs256Delegations(
   return { signed, pendingCount: body.entries.length };
 }
 
+/**
+ * Advance delegation material during Mode C poll loops.
+ * Default: webhook-push only (receiver handles delivery). Pull when
+ * E2E_MODE_C_ALLOW_PULL_FALLBACK=1.
+ */
+export async function advanceModeCDelegationMaterialForPoll(
+  request: APIRequestContext,
+  opts: ModeCPollCoordinatorOpts & {
+    rootSignerAddress: Uint8Array;
+    receiverStats?: ModeCWebhookReceiverStats;
+  },
+): Promise<{ signed: number; pendingCount: number }> {
+  if (modeCAllowPullFallback()) {
+    return signPendingModeCKs256Delegations(request, opts);
+  }
+  await sleepMs(500);
+  return { signed: 0, pendingCount: 0 };
+}
+
 async function pollReceiptUntil200(opts: {
   request: APIRequestContext;
   receiptUrlAbsolute: string;
@@ -107,7 +126,7 @@ async function pollReceiptUntil200(opts: {
   let attempt = 0;
   while (Date.now() - start < maxWaitMs) {
     if (opts.coordinatorPoll) {
-      await signPendingModeCKs256Delegations(opts.request, {
+      await advanceModeCDelegationMaterialForPoll(opts.request, {
         ...opts.coordinatorPoll,
         rootSignerAddress: opts.rootSignerAddress,
         receiverStats: opts.receiverStats,
@@ -172,7 +191,7 @@ export async function pollRegistrationThroughModeCWebhook(opts: {
   const start = Date.now();
   let attempt = 0;
   while (Date.now() - start < maxWaitMs) {
-    await signPendingModeCKs256Delegations(opts.request, {
+    await advanceModeCDelegationMaterialForPoll(opts.request, {
       ...opts.coordinatorPoll,
       rootSignerAddress: opts.rootSignerAddress,
       receiverStats: opts.receiverStats,

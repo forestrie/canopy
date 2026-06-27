@@ -226,6 +226,8 @@ test.describe("Mode C webhook-driven BYOK seal e2e", () => {
         signedMaterialKeys,
       };
 
+      const webhooksBeforeGrant = ingress.receiver.stats.webhooksReceived;
+
       const grantComplete = await pollRegistrationThroughModeCWebhook({
         request: unauthorizedRequest,
         statusUrlAbsolute,
@@ -234,6 +236,9 @@ test.describe("Mode C webhook-driven BYOK seal e2e", () => {
         rootSignerAddress: rootAddress,
         coordinatorPoll,
       });
+      expect(ingress.receiver.stats.webhooksReceived).toBeGreaterThan(
+        webhooksBeforeGrant,
+      );
       expect(grantComplete.receiptRes.status).toBe(200);
       expect(
         await verifyKs256BootstrapDelegationCertificate({
@@ -266,6 +271,7 @@ test.describe("Mode C webhook-driven BYOK seal e2e", () => {
       expect(entryRes.status()).toBe(303);
 
       const entryStatusUrl = absoluteUrl(baseURL, entryRes.headers().location!);
+      const webhooksBeforeEntry = ingress.receiver.stats.webhooksReceived;
       const entryComplete = await pollRegistrationThroughModeCWebhook({
         request: unauthorizedRequest,
         statusUrlAbsolute: entryStatusUrl,
@@ -274,6 +280,9 @@ test.describe("Mode C webhook-driven BYOK seal e2e", () => {
         rootSignerAddress: rootAddress,
         coordinatorPoll,
       });
+      expect(ingress.receiver.stats.webhooksReceived).toBeGreaterThan(
+        webhooksBeforeEntry,
+      );
       expect(entryComplete.receiptRes.status).toBe(200);
       expect(
         await verifyKs256BootstrapDelegationCertificate({
