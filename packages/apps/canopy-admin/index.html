@@ -5,112 +5,221 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Canopy onboard admin</title>
     <style>
-      body {
+      :root {
+        color-scheme: light dark;
         font-family: system-ui, sans-serif;
-        margin: 2rem;
-        max-width: 960px;
+        line-height: 1.4;
       }
-      table {
-        border-collapse: collapse;
-        width: 100%;
-        margin-top: 1rem;
+      body {
+        margin: 0 auto;
+        max-width: 1100px;
+        padding: 1.5rem;
       }
-      th,
-      td {
-        border: 1px solid #ccc;
-        padding: 0.5rem;
-        text-align: left;
-      }
-      button {
-        margin-right: 0.5rem;
+      h1 {
+        margin-top: 0;
       }
       .muted {
         color: #666;
         font-size: 0.9rem;
+      }
+      .config-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: end;
+        margin-bottom: 1rem;
+      }
+      .config-bar label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        font-size: 0.85rem;
+      }
+      .tabs {
+        display: flex;
+        gap: 0.5rem;
+        margin: 1rem 0;
+        border-bottom: 1px solid #ccc;
+        padding-bottom: 0.5rem;
+      }
+      .tabs button {
+        background: none;
+        border: none;
+        padding: 0.35rem 0.75rem;
+        cursor: pointer;
+        border-radius: 4px;
+      }
+      .tabs button.active {
+        background: #eef;
+        font-weight: 600;
+      }
+      .tabs button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+        margin-bottom: 0.75rem;
+      }
+      .chip {
+        border: 1px solid #aaa;
+        background: #fff;
+        border-radius: 999px;
+        padding: 0.2rem 0.65rem;
+        cursor: pointer;
+        font-size: 0.85rem;
+      }
+      .chip.active {
+        background: #333;
+        color: #fff;
+        border-color: #333;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        border: 1px solid #ccc;
+        padding: 0.45rem 0.5rem;
+        text-align: left;
+        vertical-align: top;
+      }
+      .status-pending {
+        color: #b45309;
+      }
+      .status-approved {
+        color: #047857;
+      }
+      .status-rejected {
+        color: #b91c1c;
+      }
+      .status-redeemed {
+        color: #1d4ed8;
+      }
+      .status-expired {
+        color: #6b7280;
+      }
+      .detail-row td {
+        background: #f9fafb;
+        font-size: 0.9rem;
+      }
+      .toast {
+        position: fixed;
+        right: 1rem;
+        bottom: 1rem;
+        max-width: 24rem;
+        padding: 0.75rem 1rem;
+        border-radius: 6px;
+        background: #1f2937;
+        color: #fff;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      }
+      .toast.error {
+        background: #7f1d1d;
+      }
+      dialog {
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        padding: 1rem;
+        max-width: 28rem;
+      }
+      .hidden {
+        display: none;
+      }
+      .placeholder-panel {
+        padding: 2rem;
+        border: 1px dashed #ccc;
+        border-radius: 8px;
+        color: #666;
       }
     </style>
   </head>
   <body>
     <h1>Canopy onboard admin</h1>
     <p class="muted">
-      Ops-only. Token stored in sessionStorage for this browser tab.
+      Ops-only console. Bearer token stored in sessionStorage for this tab.
     </p>
-    <label
-      >Canopy API base URL
-      <input id="baseUrl" size="48" placeholder="https://api.example" /></label
-    ><br />
-    <label
-      >Ops admin token <input id="opsToken" type="password" size="48"
-    /></label>
-    <button id="saveConfig">Save config</button>
-    <button id="refresh">Refresh queue</button>
-    <table>
-      <thead>
-        <tr>
-          <th>Label</th>
-          <th>Status</th>
-          <th>Chain</th>
-          <th>Contact</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="rows"></tbody>
-    </table>
-    <script>
-      const baseUrlEl = document.getElementById("baseUrl");
-      const opsTokenEl = document.getElementById("opsToken");
-      baseUrlEl.value = sessionStorage.getItem("canopyBaseUrl") || "";
-      opsTokenEl.value = sessionStorage.getItem("canopyOpsToken") || "";
 
-      document.getElementById("saveConfig").onclick = () => {
-        sessionStorage.setItem("canopyBaseUrl", baseUrlEl.value.trim());
-        sessionStorage.setItem("canopyOpsToken", opsTokenEl.value.trim());
-      };
+    <div class="config-bar">
+      <label>
+        Canopy API base URL
+        <input id="baseUrl" size="42" placeholder="https://api.example" />
+      </label>
+      <label>
+        Ops admin token
+        <input id="opsToken" type="password" size="42" autocomplete="off" />
+      </label>
+      <button type="button" id="saveConfig">Save config</button>
+    </div>
 
-      async function api(path, method = "GET") {
-        const base = baseUrlEl.value.trim().replace(/\/$/, "");
-        const res = await fetch(`${base}${path}`, {
-          method,
-          headers: { Authorization: `Bearer ${opsTokenEl.value.trim()}` },
-        });
-        if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
-        return res.json();
-      }
+    <nav class="tabs" aria-label="Admin sections">
+      <button type="button" id="tabRequests" class="active">Requests</button>
+      <button type="button" id="tabTokens" disabled title="FOR-182">
+        Tokens
+      </button>
+      <button type="button" id="tabKillSwitch" disabled title="FOR-182">
+        Kill switch
+      </button>
+    </nav>
 
-      async function refresh() {
-        const data = await api("/api/onboarding/admin/requests");
-        const tbody = document.getElementById("rows");
-        tbody.innerHTML = "";
-        for (const r of data.requests || []) {
-          const tr = document.createElement("tr");
-          tr.innerHTML = `<td>${r.label}</td><td>${r.status}</td><td>${r.chainBinding?.chainId}</td><td>${r.contactEmail || ""}</td><td></td>`;
-          const actions = tr.querySelector("td:last-child");
-          if (r.status === "pending") {
-            const approve = document.createElement("button");
-            approve.textContent = "Approve";
-            approve.onclick = async () => {
-              await api(
-                `/api/onboarding/admin/requests/${r.requestId}/approve`,
-                "POST",
-              );
-              await refresh();
-            };
-            const reject = document.createElement("button");
-            reject.textContent = "Reject";
-            reject.onclick = async () => {
-              await api(
-                `/api/onboarding/admin/requests/${r.requestId}/reject`,
-                "POST",
-              );
-              await refresh();
-            };
-            actions.append(approve, reject);
-          }
-          tbody.appendChild(tr);
-        }
-      }
+    <section id="panelRequests">
+      <div class="toolbar">
+        <span>Status:</span>
+        <button type="button" class="chip active" data-filter="all">All</button>
+        <button type="button" class="chip" data-filter="pending">Pending</button>
+        <button type="button" class="chip" data-filter="approved">Approved</button>
+        <button type="button" class="chip" data-filter="rejected">Rejected</button>
+        <button type="button" class="chip" data-filter="redeemed">Redeemed</button>
+        <button type="button" class="chip" data-filter="expired">Expired</button>
+        <button type="button" id="refresh">Refresh</button>
+        <button type="button" id="loadMore" class="hidden">Load more</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Label</th>
+            <th>Status</th>
+            <th>Chain</th>
+            <th>Univocity</th>
+            <th>Contact</th>
+            <th>Created</th>
+            <th>Expires</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="requestRows"></tbody>
+      </table>
+    </section>
 
-      document.getElementById("refresh").onclick = () => refresh().catch(alert);
-    </script>
+    <section id="panelTokens" class="hidden">
+      <div class="placeholder-panel">Token inventory tab — FOR-182</div>
+    </section>
+
+    <section id="panelKillSwitch" class="hidden">
+      <div class="placeholder-panel">Kill switch tab — FOR-182</div>
+    </section>
+
+    <dialog id="rejectDialog">
+      <form method="dialog" id="rejectForm">
+        <h2>Reject request</h2>
+        <p id="rejectTarget" class="muted"></p>
+        <label>
+          Reason (optional, max 512 chars)
+          <textarea id="rejectReason" rows="3" maxlength="512"></textarea>
+        </label>
+        <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem">
+          <button type="submit" value="confirm">Reject</button>
+          <button type="button" id="rejectCancel">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+
+    <script type="module" src="./admin-app.js"></script>
   </body>
 </html>
