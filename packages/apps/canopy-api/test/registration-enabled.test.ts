@@ -181,4 +181,71 @@ describe("registration enabled kill-switch API", () => {
     expect(body.R).toBe(logId);
     expect(body.enabled).toBe(true);
   });
+
+  it("admin JSON GET returns JSON enabled state", async () => {
+    const logId = await registerPaymentAuthoritativeForest();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ enabled: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const res = await worker.fetch(
+      new Request(
+        `http://localhost/api/payments/admin/registrations/${logId}/enabled`,
+        { method: "GET", headers: { Authorization: `Bearer ${OPS}` } },
+      ),
+      envWithPayments(),
+      {} as ExecutionContext,
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    const body = (await res.json()) as { R?: string; enabled?: boolean };
+    expect(body.R).toBe(logId);
+    expect(body.enabled).toBe(true);
+  });
+
+  it("admin JSON PUT toggles enabled via coordinator", async () => {
+    const logId = await registerPaymentAuthoritativeForest();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ enabled: false }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const res = await worker.fetch(
+      new Request(
+        `http://localhost/api/payments/admin/registrations/${logId}/enabled`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${OPS}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ enabled: false }),
+        },
+      ),
+      envWithPayments(),
+      {} as ExecutionContext,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { R?: string; enabled?: boolean };
+    expect(body.enabled).toBe(false);
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it("admin JSON routes reject without bearer", async () => {
+    const logId = crypto.randomUUID();
+    const res = await worker.fetch(
+      new Request(
+        `http://localhost/api/payments/admin/registrations/${logId}/enabled`,
+        { method: "GET" },
+      ),
+      envWithPayments(),
+      {} as ExecutionContext,
+    );
+    expect(res.status).toBe(401);
+  });
 });

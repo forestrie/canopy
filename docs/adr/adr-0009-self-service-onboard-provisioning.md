@@ -38,6 +38,8 @@ Public and ops onboard-request routes live under **`/api/onboarding/**`**, not
 | `GET` | `/api/onboarding/admin/requests` | Ops admin bearer (JSON) |
 | `POST` | `/api/onboarding/admin/requests/{id}/approve` | Ops admin bearer (JSON) |
 | `POST` | `/api/onboarding/admin/requests/{id}/reject` | Ops admin bearer (JSON) |
+| `GET` | `/api/payments/admin/registrations/{R}/enabled` | Ops admin bearer (JSON) |
+| `PUT` | `/api/payments/admin/registrations/{R}/enabled` | Ops admin bearer (JSON `{ enabled }`) |
 
 JSON admin routes exist for the ops admin UI only; mandate CLI uses CBOR.
 

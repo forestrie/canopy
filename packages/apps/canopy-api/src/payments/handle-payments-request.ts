@@ -92,11 +92,19 @@ function parseRegistrationLogId(segment: string): Uint8Array | Response {
   }
 }
 
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 async function handleRegistrationEnabled(
   request: Request,
   logIdSegment: string,
   env: PaymentsHandlerEnv,
   corsHeaders: Record<string, string>,
+  responseFormat: "json" | "cbor" = "cbor",
 ): Promise<Response> {
   const parsed = parseRegistrationLogId(logIdSegment);
   if (parsed instanceof Response) {
@@ -124,32 +132,47 @@ async function handleRegistrationEnabled(
       );
     }
     return attachCors(
-      cborResponse({ R: logUuid, enabled: result.enabled }, 200),
+      responseFormat === "json"
+        ? jsonResponse({ R: logUuid, enabled: result.enabled }, 200)
+        : cborResponse({ R: logUuid, enabled: result.enabled }, 200),
       corsHeaders,
     );
   }
 
   if (request.method === "PUT") {
-    const ctErr = requireContentTypeCbor(request);
-    if (ctErr) return attachCors(ctErr, corsHeaders);
-
     let enabled: boolean | undefined;
-    try {
-      const raw = await parseCborBody(request);
-      const m = decodeBodyAsIntKeyMap(raw);
-      if (m) {
-        enabled = readEnabledField(m);
+    const ct = request.headers.get("Content-Type") ?? "";
+    if (responseFormat === "json" || ct.includes("application/json")) {
+      try {
+        const body = (await request.json()) as { enabled?: unknown };
+        if (typeof body.enabled === "boolean") enabled = body.enabled;
+      } catch {
+        return attachCors(
+          ClientErrors.badRequest("Invalid JSON body"),
+          corsHeaders,
+        );
       }
-    } catch {
-      return attachCors(
-        ClientErrors.badRequest("Invalid CBOR body"),
-        corsHeaders,
-      );
+    } else {
+      const ctErr = requireContentTypeCbor(request);
+      if (ctErr) return attachCors(ctErr, corsHeaders);
+
+      try {
+        const raw = await parseCborBody(request);
+        const m = decodeBodyAsIntKeyMap(raw);
+        if (m) {
+          enabled = readEnabledField(m);
+        }
+      } catch {
+        return attachCors(
+          ClientErrors.badRequest("Invalid CBOR body"),
+          corsHeaders,
+        );
+      }
     }
 
     if (enabled === undefined) {
       return attachCors(
-        ClientErrors.badRequest("enabled (map key 1) must be a boolean"),
+        ClientErrors.badRequest("enabled must be a boolean"),
         corsHeaders,
       );
     }
@@ -164,7 +187,9 @@ async function handleRegistrationEnabled(
       );
     }
     return attachCors(
-      cborResponse({ R: logUuid, enabled: result.enabled }, 200),
+      responseFormat === "json"
+        ? jsonResponse({ R: logUuid, enabled: result.enabled }, 200)
+        : cborResponse({ R: logUuid, enabled: result.enabled }, 200),
       corsHeaders,
     );
   }
@@ -268,6 +293,18 @@ export async function handlePaymentsRequest(
     return attachCors(
       cborResponse({ ref: revoked.hash, status: revoked.status }, 200),
       corsHeaders,
+    );
+  }
+
+  const adminEnabledMatch =
+    /^\/api\/payments\/admin\/registrations\/([^/]+)\/enabled$/i.exec(pathname);
+  if (adminEnabledMatch) {
+    return handleRegistrationEnabled(
+      request,
+      decodeURIComponent(adminEnabledMatch[1]!),
+      env,
+      corsHeaders,
+      "json",
     );
   }
 
