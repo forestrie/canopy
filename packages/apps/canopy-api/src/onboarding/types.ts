@@ -11,6 +11,7 @@ export type { OnboardNotifyEnv } from "./onboard-notify-env.js";
 export type { OnboardNotifyEvent } from "./onboard-notify-event.js";
 export type { OnboardRequestStoreEnv } from "./onboard-request-store-env.js";
 export type { OnboardRequestWithEtag } from "./onboard-request-with-etag.js";
+export type { PendingTransitionCasResult } from "./pending-transition-cas-result.js";
 export type { RedeemCasResult } from "./redeem-cas-result.js";
 export type { UnivocityGateEnv } from "./univocity-gate-env.js";
 export type { UnivocityGateResult } from "./univocity-gate-result.js";
