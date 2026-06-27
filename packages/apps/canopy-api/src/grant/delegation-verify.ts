@@ -144,7 +144,7 @@ export function extractDelegatedKeyFromPayload(
 export async function verifyDelegationCert(
   delegationCertBytes: Uint8Array,
   custodyKey?: RootVerifyKey,
-  opts?: { rpcUrl?: string },
+  opts?: { rpcUrls?: string[] },
 ): Promise<DelegationVerifyResult | null> {
   const decoded = decodeCoseSign1(delegationCertBytes);
   if (!decoded) {
@@ -158,7 +158,7 @@ export async function verifyDelegationCert(
       signatureVerified = await verifyKs256DelegationCert(
         delegationCertBytes,
         custodyKey,
-        { rpcUrl: opts?.rpcUrl, logFailures: true },
+        { rpcUrls: opts?.rpcUrls, logFailures: true },
       );
     } else {
       signatureVerified = await verifyCoseSign1WithParsedKey(
@@ -202,7 +202,7 @@ export interface ResolveReceiptResult {
 export async function resolveReceiptVerifyKey(
   receiptCoseSign1Bytes: Uint8Array,
   custodyKey: RootVerifyKey,
-  opts?: { rpcUrl?: string },
+  opts?: { rpcUrls?: string[] },
 ): Promise<ResolveReceiptResult | null> {
   const decoded = decodeCoseSign1(receiptCoseSign1Bytes);
   if (!decoded) {

@@ -1,5 +1,5 @@
 /**
- * Handler for GET /api/logs/{logId}/webhook
+ * GET /api/logs/{logId}/webhook — read webhook config (dual-token auth).
  */
 
 import type { Env } from "../env.js";
@@ -11,6 +11,7 @@ import {
   normalizePathLogId,
 } from "./handler.js";
 
+/** GET webhook URL and enabled flags for a log. */
 export async function handleGetWebhook(
   logIdSegment: string,
   request: Request,

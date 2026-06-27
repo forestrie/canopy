@@ -19,10 +19,16 @@ import {
   problemResponse,
 } from "./handler.js";
 
+/** True when wallet-challenge auth endpoints are enabled. */
 function walletChallengeEnabled(env: Env): boolean {
   return env.ENABLE_WALLET_CHALLENGE?.trim().toLowerCase() === "true";
 }
 
+/**
+ * PUT enabled kill-switch — user session or operator app token.
+ *
+ * Session writes user_enabled; app token (transitional) writes operator_enabled.
+ */
 export async function handlePutEnabled(
   logIdSegment: string,
   request: Request,

@@ -1,5 +1,5 @@
 /**
- * Handler for DELETE /api/logs/{logId}/webhook
+ * DELETE /api/logs/{logId}/webhook — clear configured webhook URL.
  */
 
 import type { Env } from "../env.js";
@@ -11,6 +11,7 @@ import {
   normalizePathLogId,
 } from "./handler.js";
 
+/** DELETE webhook config for a log. */
 export async function handleDeleteWebhook(
   logIdSegment: string,
   request: Request,

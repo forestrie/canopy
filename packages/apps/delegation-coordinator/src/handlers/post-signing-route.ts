@@ -1,5 +1,7 @@
 /**
- * Handler for POST /api/logs/{logId}/signing-route
+ * POST /api/logs/{logId}/signing-route — upsert signing route (wallet/http).
+ *
+ * Requires wallet session scope `logs:signing-route:write`.
  */
 
 import type { Env } from "../env.js";
@@ -12,6 +14,7 @@ import {
   problemResponse,
 } from "./handler.js";
 
+/** POST (PUT to store) signing route for a log. */
 export async function handlePostSigningRoute(
   logIdSegment: string,
   request: Request,

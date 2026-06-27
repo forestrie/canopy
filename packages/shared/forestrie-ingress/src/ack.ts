@@ -3,7 +3,7 @@
  *
  * Uses limit-based ack because sequence numbers are allocated globally across
  * all logs, making per-log seq values non-contiguous. See
- * arbor/docs/arc-cloudflare-do-ingress.md section 2.3.
+ * [ingress ack model](https://github.com/forestrie/arbor/blob/main/docs/arc-cloudflare-do-ingress.md#23-ack-model-limit-based).
  *
  * With return path unification (Phase 9), ack also records leaf indices
  * to enable direct registration status queries from the DO.
@@ -23,7 +23,7 @@ export interface AckRequest {
 }
 
 /**
- * Response body from the ack endpoint.
+ * Response body from the ack endpoint after ranger commits a batch.
  */
 export interface AckResponse {
   /** Number of entries marked as sequenced */

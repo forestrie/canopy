@@ -1,6 +1,12 @@
 /**
  * Validates runner-submitted BYOK delegation material before persistence.
- * Mirrors arbor delegationcert rules for payload field 5 (integer-key COSE_Key).
+ *
+ * Legacy module name; mirrors
+ * [arbor sealer](https://github.com/forestrie/arbor/blob/main/services/sealer/)
+ * delegationcert rules for payload field 5 (integer-key COSE_Key). Prefer
+ * {@link validateByokDelegationCertificate} in validate-byok-certificate.ts.
+ *
+ * @deprecated Superseded by validate-byok-certificate.ts; kept for import paths.
  */
 
 import { Decoder } from "cbor-x";
@@ -16,26 +22,32 @@ import {
 } from "@forestrie/delegation-cose";
 import { createKs256RpcVerifyHooks } from "./ks256-rpc-verify-hooks.js";
 
+/** COSE payload map key for embedded delegated COSE_Key. */
 const PAYLOAD_DELEGATED_KEY = 5;
 
+/** CBOR decoder preserving integer map keys for COSE payloads. */
 const intKeyDecoder = new Decoder({ mapsAsObjects: false });
 
+/** ES256 public root coordinates for certificate verify. */
 export interface PublicRootEs256 {
   alg: "ES256";
   x: Uint8Array;
   y: Uint8Array;
 }
 
+/** KS256 contract-address root for ERC-1271 certificate verify. */
 export interface PublicRootKs256 {
   alg: "KS256";
   key: Uint8Array;
 }
 
+/** Registered public root material (ES256 or KS256). */
 export type PublicRootMaterial = PublicRootEs256 | PublicRootKs256;
 
 /** @deprecated use PublicRootMaterial */
 export type PublicRootXY = PublicRootEs256;
 
+/** Thrown when material bytes fail structural or crypto validation. */
 export class ByokMaterialValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -43,6 +55,7 @@ export class ByokMaterialValidationError extends Error {
   }
 }
 
+/** Copy Uint8Array to ArrayBuffer for WebCrypto import. */
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(
     bytes.byteOffset,
@@ -50,6 +63,7 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   ) as ArrayBuffer;
 }
 
+/** Constant-time byte equality. */
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -58,6 +72,7 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return true;
 }
 
+/** Normalize unknown errors into {@link ByokMaterialValidationError}. */
 function wrapValidationError(err: unknown): never {
   if (err instanceof ByokMaterialValidationError) {
     throw err;
@@ -67,6 +82,7 @@ function wrapValidationError(err: unknown): never {
   );
 }
 
+/** Import uncompressed P-256 public key for ES256 verify. */
 async function importEs256PublicKey(
   x: Uint8Array,
   y: Uint8Array,
@@ -84,6 +100,18 @@ async function importEs256PublicKey(
   );
 }
 
+/**
+ * Validate BYOK delegation material before DO persistence.
+ *
+ * @param opts.logIdHex32 - Target log id.
+ * @param opts.mmrStart - Expected MMR range start in payload.
+ * @param opts.mmrEnd - Expected MMR range end in payload.
+ * @param opts.delegatedPublicKey - Submitted delegated key CBOR bytes.
+ * @param opts.certificate - COSE Sign1 certificate bytes.
+ * @param opts.publicRoot - Stored log public root for verify.
+ * @param opts.ks256RpcUrl - Optional JSON-RPC for KS256 ERC-1271.
+ * @throws {@link ByokMaterialValidationError} when validation fails.
+ */
 export async function validateByokDelegationMaterial(opts: {
   logIdHex32: string;
   mmrStart: number;

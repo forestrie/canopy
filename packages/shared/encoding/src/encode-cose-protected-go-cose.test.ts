@@ -1,3 +1,4 @@
+/** Golden-vector tests: {@link encodeCoseProtectedMapBytes} against go-cose fixtures. */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

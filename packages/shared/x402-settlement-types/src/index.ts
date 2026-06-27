@@ -1,114 +1,123 @@
 /**
- * @canopy/x402-settlement-types
+ * @canopy/x402-settlement-types — shared x402 settlement pipeline shapes.
  *
- * Shared types for x402 settlement pipeline.
- * Uses standard x402 exact scheme with EIP-3009 authorization.
+ * Jobs flow canopy-api → Cloudflare Queue → `@canopy/x402-settlement` worker.
+ * Architecture:
+ * [ARC-0015](https://github.com/forestrie/devdocs/blob/main/arc/arc-0015-x402-settlement-architecture.md).
+ * Uses standard x402 **exact** scheme with EIP-3009 `transferWithAuthorization`.
  */
 
-/**
- * EIP-3009 transferWithAuthorization parameters.
- */
+/** EIP-3009 `transferWithAuthorization` fields from the x402 exact EVM payload. */
 export interface ExactEvmAuthorization {
+  /** Payer EOA (`0x` + 40 hex). */
   from: string;
+  /** Payee address (settlement recipient). */
   to: string;
+  /** Amount in token atomic units (decimal string). */
   value: string;
+  /** Unix timestamp after which authorization is valid. */
   validAfter: string;
+  /** Unix timestamp before which authorization expires. */
   validBefore: string;
+  /** EIP-3009 nonce (32-byte hex). */
   nonce: string;
 }
 
-/**
- * x402 exact scheme EVM payload.
- */
+/** x402 exact-scheme EVM payload (authorization + secp256k1 signature). */
 export interface ExactEvmPayload {
+  /** EIP-712 or raw authorization signature hex. */
   signature: string;
+  /** Signed EIP-3009 authorization struct. */
   authorization: ExactEvmAuthorization;
 }
 
-/**
- * Resource information for what's being paid for.
- */
+/** SCRAPI resource metadata embedded in the payment payload. */
 export interface ResourceInfo {
+  /** Paid resource URL (typically the register endpoint). */
   url: string;
+  /** Optional human-readable description. */
   description?: string;
+  /** Optional MIME type of the paid resource. */
   mimeType?: string;
 }
 
-/**
- * Payment requirements option (what was accepted for payment).
- */
+/** Accepted payment requirements option from the x402 negotiation. */
 export interface PaymentRequirementsOption {
+  /** Payment scheme (Forestrie uses `"exact"`). */
   scheme: "exact";
+  /** Chain/network identifier (e.g. `base-sepolia`). */
   network: string;
+  /** Required amount in atomic units. */
   amount: string;
+  /** ERC-20 asset contract address. */
   asset: string;
+  /** Settlement payee address. */
   payTo: string;
+  /** Optional authorization timeout in seconds. */
   maxTimeoutSeconds?: number;
+  /** Scheme-specific extension fields. */
   extra?: Record<string, unknown>;
 }
 
 /**
- * x402 v2 payment payload structure.
- *
- * The v2 format includes resource and accepted requirements.
- * Legacy v1 fields are kept optional for backwards compatibility.
+ * x402 v2 payment payload (authorization + resource + accepted terms).
+ * Legacy v1 top-level fields remain optional for backwards compatibility.
  */
 export interface PaymentPayload {
+  /** x402 protocol version (1 or 2). */
   x402Version: 1 | 2;
-  /** The scheme-specific payload (authorization + signature for exact EVM) */
+  /** Scheme-specific payload (exact EVM authorization + signature). */
   payload: ExactEvmPayload;
-  /** Resource being paid for */
+  /** Resource being paid for. */
   resource: ResourceInfo;
-  /** The accepted payment requirements */
+  /** Accepted payment requirements from the 402 response. */
   accepted: PaymentRequirementsOption;
-  /** Protocol extensions (optional) */
+  /** Optional protocol extensions. */
   extensions?: Record<string, unknown>;
-  // Legacy v1 fields (for backwards compatibility)
+  /** Legacy v1: payment scheme. */
   scheme?: "exact";
+  /** Legacy v1: network identifier. */
   network?: string;
 }
 
 /**
  * Settlement job emitted by canopy-api and consumed by x402-settlement worker.
+ * Idempotency is enforced on {@link SettlementJob.idempotencyKey}.
  */
 export interface SettlementJob {
-  /** Unique identifier for this job */
+  /** Unique job identifier (UUID). */
   jobId: string;
-  /** Authorization ID from x402 header verification */
+  /** Authorization id from x402 header verification in canopy-api. */
   authId: string;
-  /** Payment scheme (currently only "exact" is supported) */
+  /** Payment scheme (currently only `"exact"`). */
   scheme: "exact";
-  /** Payer's Ethereum address */
+  /** Payer Ethereum address. */
   payer: `0x${string}`;
-  /** Amount in atomic units (e.g. "1000" for $0.001 USDC) */
+  /** Amount in atomic units (e.g. `"1000"` for $0.001 USDC). */
   amount: string;
-  /** Log ID the entry was registered to */
+  /** Target transparency log id for the registered entry. */
   logId: string;
-  /** Content hash of the registered statement */
+  /** SHA-256 content hash of the registered statement. */
   contentHash: string;
-  /** Idempotency key: authId:contentHash:logId */
+  /** Dedup key: `authId:contentHash:logId`. */
   idempotencyKey: string;
-  /** Timestamp when job was created */
+  /** Job creation time (Unix ms). */
   createdAt: number;
-  /** Full x402 payment payload for settlement */
+  /** Full x402 payment payload required for on-chain settlement. */
   payload: PaymentPayload;
 }
 
-/**
- * Auth state for tracking authorization health.
- */
+/** Authorization health tracked by the settlement worker. */
 export type AuthState = "active" | "suspect" | "blocked";
 
-/**
- * Result of a settlement attempt.
- */
+/** Outcome of a settlement attempt (retry vs permanent failure). */
 export interface SettlementResult {
-  /** Whether settlement succeeded */
+  /** True when funds were transferred on-chain. */
   ok: boolean;
-  /** Transaction hash if successful */
+  /** Transaction hash when `ok` is true. */
   txHash?: string;
-  /** Error message if failed */
+  /** Error message when `ok` is false. */
   error?: string;
-  /** Whether the error is permanent (no retry) */
+  /** When true, do not retry this job. */
   permanent?: boolean;
 }

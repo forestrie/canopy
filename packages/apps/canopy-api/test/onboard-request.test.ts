@@ -23,12 +23,15 @@ const testCtx = {
   waitUntil: (_p: Promise<unknown>) => {},
 } as ExecutionContext;
 
+const SUPPORTED_CHAINS_RPC = JSON.stringify({
+  [CHAIN]: ["https://rpc.example.invalid"],
+});
+
 function envWithOnboard(overrides: Partial<Env> = {}): Env {
   return {
     ...poolEnv,
     CANOPY_OPS_ADMIN_TOKEN: OPS,
-    ONBOARD_ALLOWED_CHAIN_ID: CHAIN,
-    UNIVOCITY_CONTRACT_RPC_URL: "https://rpc.example.invalid",
+    SUPPORTED_CHAINS_RPC,
     ...overrides,
   };
 }

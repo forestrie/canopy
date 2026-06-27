@@ -1,10 +1,10 @@
 /**
- * Sharding helpers for SequencingQueue Durable Object.
+ * Sharding helpers for SequencingQueue Durable Object routing.
  *
- * Provides deterministic shard assignment based on logId using djb2 hash.
- * Used by both canopy-api (writes) and forestrie-ingress (pulls).
- *
- * See ADR-0006 and ADR-0012 for design rationale.
+ * Deterministic logId → shard mapping used by canopy-api (enqueue) and
+ * forestrie-ingress (pull). Design:
+ * [ADR-0006](https://github.com/forestrie/arbor/blob/main/docs/adr/adr-0006-cf-do-ingress-sharding.md),
+ * [ADR-0012](https://github.com/forestrie/arbor/blob/main/docs/adr/adr-0012-cf-do-ingress-shard-discovery.md).
  */
 
 /**

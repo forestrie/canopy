@@ -1,24 +1,33 @@
 /**
  * Concise Problem Details (RFC 9290) — types and shared encoder.
- * Call sites may keep separate implementations that re-use this interface and encoder.
+ * Canopy SCRAPI error responses use `application/problem+cbor`; call sites may
+ * wrap this encoder or reuse {@link ProblemDetail} for consistent fields.
  */
 
 import { encode } from "cbor-x";
 
-/** Generic problem detail shape (string keys for application/cbor). */
+/** Generic problem detail shape (string keys for application/problem+cbor). */
 export interface ProblemDetail {
+  /** Problem type URI; defaults to `about:blank` when omitted at encode time. */
   type?: string;
+  /** Short human-readable summary. */
   title: string;
+  /** HTTP status code echoed in the problem body. */
   status: number;
+  /** Optional longer explanation. */
   detail?: string;
+  /** URI identifying this occurrence. */
   instance?: string;
+  /** Forestrie-specific machine reason (when present). */
   reason?: string;
   [key: string]: unknown;
 }
 
 /**
- * Encode problem detail to CBOR (application/problem+cbor).
- * Single implementation for consistent encoding; call sites can use this or re-use the interface.
+ * Encode problem detail to CBOR (`application/problem+cbor`).
+ *
+ * @param problem - Problem fields; unknown keys are copied through
+ * @returns CBOR map bytes
  */
 export function encodeProblemDetailsCbor(problem: ProblemDetail): Uint8Array {
   const body: Record<string, unknown> = {

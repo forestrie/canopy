@@ -1,11 +1,12 @@
 /**
  * COSE Sig_structure encoding (RFC 8152).
- * ["Signature1", protected_bstr, external_aad, payload_bstr]
- * Built from primitives so sign and verify use identical bytes.
+ * `["Signature1", protected_bstr, external_aad, payload_bstr]` — must match
+ * arbor Custodian signing and {@link verifyCoseSign1} verification bytes.
  */
 
 import { encodeCborBstr } from "./encode-cbor-bstr.js";
 
+/** Encode a UTF-8 string as a CBOR text string (major type 3). */
 function encodeCborTstr(s: string): Uint8Array {
   const bytes = new TextEncoder().encode(s);
   const len = bytes.length;
@@ -23,6 +24,7 @@ function encodeCborTstr(s: string): Uint8Array {
   return out;
 }
 
+/** Concatenate byte arrays without copying intermediate buffers. */
 function concat(...arrays: Uint8Array[]): Uint8Array {
   const total = arrays.reduce((sum, a) => sum + a.length, 0);
   const out = new Uint8Array(total);
@@ -40,6 +42,9 @@ function concat(...arrays: Uint8Array[]): Uint8Array {
  *
  * @param protectedHeaderMapBytes — CBOR map bytes inside Sign1 `protected` (the bstr
  *   **contents** from COSE_Sign1[0], not a pre-wrapped bstr item).
+ * @param externalAad — Additional authenticated data (empty for Forestrie statements)
+ * @param payloadBstr — Payload bytes as they appear in Sig_structure (may be detached)
+ * @returns CBOR Sig_structure bytes hashed/signed by ES256 verify paths
  */
 export function encodeSigStructure(
   protectedHeaderMapBytes: Uint8Array,

@@ -122,6 +122,8 @@ export interface AuthGrantAuthorizeEnv {
    * Required when `enforceInclusion` is true.
    */
   resolveReceiptAuthority?: ReceiptAuthorityResolver;
+  /** Forest chain binding chainId for KS256 ERC-1271 RPC routing. */
+  ks256ChainId?: string;
 }
 
 /**
@@ -328,6 +330,7 @@ export async function grantAuthorizeDetailed(
     const keys = await env.resolveReceiptAuthority(
       logIdBytesToCustodianLowerHex(grant.ownerLogId),
       receipt.coseSign1Bytes,
+      env.ks256ChainId?.trim() || undefined,
     );
     if (!keys?.length) {
       return {

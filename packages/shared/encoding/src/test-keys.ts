@@ -26,6 +26,8 @@ export const TEST_ES256_PUBLIC_JWK = {
 
 /**
  * Import test public key for verification (test-only).
+ *
+ * @returns P-256 verify CryptoKey from {@link TEST_ES256_PUBLIC_JWK}
  */
 export async function importTestPublicKey(): Promise<CryptoKey> {
   return crypto.subtle.importKey(
@@ -39,6 +41,8 @@ export async function importTestPublicKey(): Promise<CryptoKey> {
 
 /**
  * Import test private key for signing (test-only).
+ *
+ * @returns P-256 sign CryptoKey from {@link TEST_ES256_PRIVATE_JWK}
  */
 export async function importTestPrivateKey(): Promise<CryptoKey> {
   return crypto.subtle.importKey(

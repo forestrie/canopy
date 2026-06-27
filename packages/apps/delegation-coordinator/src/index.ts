@@ -1,8 +1,13 @@
 /**
- * delegation-coordinator Worker
+ * delegation-coordinator Worker entry and HTTP route table.
  *
- * Phase 3 management APIs for signing routes, delegation certificates, pending
- * hints, and custody-key orchestration (plan-0021).
+ * Phase 3 control-plane APIs for signing routes, BYOK delegation certificates,
+ * pending hints, custody-key orchestration, webhooks, and wallet-challenge auth.
+ * Persists per-log state in sharded {@link DelegationStoreDO}; sealer issue
+ * flow per
+ * [arbor sealer](https://github.com/forestrie/arbor/blob/main/services/sealer/)
+ * and
+ * [ARC-0017](https://github.com/forestrie/devdocs/blob/main/arc/arc-0017-hierarchical-authority-logs-and-fee-distribution.md).
  */
 
 import type { Env } from "./env.js";
@@ -36,11 +41,13 @@ export {
   WalletChallengeNonceDO,
 } from "./durableobjects/index.js";
 
+/** Extract log id path segment from /api/logs/{logId}/{suffix}. */
 function matchLogRoute(pathname: string, suffix: string): string | null {
   const match = new RegExp(`^/api/logs/([^/]+)/${suffix}$`).exec(pathname);
   return match ? decodeURIComponent(match[1]!) : null;
 }
 
+/** Extract log id from /admin/api/logs/{logId}/{suffix}. */
 function matchAdminLogRoute(pathname: string, suffix: string): string | null {
   const match = new RegExp(`^/admin/api/logs/([^/]+)/${suffix}$`).exec(
     pathname,
@@ -48,7 +55,15 @@ function matchAdminLogRoute(pathname: string, suffix: string): string | null {
   return match ? decodeURIComponent(match[1]!) : null;
 }
 
+/** Cloudflare Worker default export — HTTP fetch router. */
 export default {
+  /**
+   * Route incoming requests to handlers or Durable Object exports.
+   *
+   * @param request - Incoming HTTP request.
+   * @param env - Worker bindings.
+   * @param _ctx - Execution context (unused).
+   */
   async fetch(
     request: Request,
     env: Env,

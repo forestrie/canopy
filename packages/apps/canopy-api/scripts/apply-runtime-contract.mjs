@@ -1,5 +1,13 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parseSupportedChainsRpc } from "../../../libs/chain-rpc/resolve-for-deploy.mjs";
+
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const defaultChainsTemplatePath = resolve(
+  scriptDir,
+  "../config/supported-chains.jsonc",
+);
 
 const args = new Map();
 for (let i = 2; i < process.argv.length; i += 1) {
@@ -98,10 +106,33 @@ function replaceRange(text, range, replacement) {
 
 function setStringProperty(block, key, value) {
   if (!value) return block;
-  const re = new RegExp(`("${key}"\\s*:\\s*)"[^"]*"`);
-  if (re.test(block)) return block.replace(re, `$1"${value}"`);
-  const insert = `\n        "${key}": "${value}",`;
+  const jsonValue = JSON.stringify(value);
+  const re = new RegExp(
+    `("${key}"\\s*:\\s*)(?:"(?:\\\\.|[^"\\\\])*"|[^,\\n]+)`,
+  );
+  if (re.test(block)) return block.replace(re, `$1${jsonValue}`);
+  const insert = `\n        "${key}": ${jsonValue},`;
   return block.replace(/\n\s*}$/, `${insert}\n      }`);
+}
+
+function stripJsoncComments(text) {
+  return text
+    .split("\n")
+    .filter((line) => !/^\s*\/\//.test(line))
+    .join("\n")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+function loadSupportedChainsRpcResolved() {
+  const envRaw = process.env.SUPPORTED_CHAINS_RPC?.trim();
+  const templatePath =
+    process.env.SUPPORTED_CHAINS_TEMPLATE?.trim() || defaultChainsTemplatePath;
+  const raw = envRaw || stripJsoncComments(readFileSync(templatePath, "utf8"));
+  const config = parseSupportedChainsRpc(raw, {
+    resolveEnv: true,
+    env: process.env,
+  });
+  return JSON.stringify(config);
 }
 
 function hostnameFromFqdnOrUrl(value) {
@@ -241,13 +272,8 @@ varsBlock = setStringProperty(
 );
 varsBlock = setStringProperty(
   varsBlock,
-  "UNIVOCITY_CONTRACT_RPC_URL",
-  process.env.UNIVOCITY_CONTRACT_RPC_URL,
-);
-varsBlock = setStringProperty(
-  varsBlock,
-  "UNIVOCITY_CONTRACT_ADDRESS",
-  process.env.UNIVOCITY_CONTRACT_ADDRESS,
+  "SUPPORTED_CHAINS_RPC",
+  loadSupportedChainsRpcResolved(),
 );
 envBlock = replaceRange(envBlock, vars, varsBlock);
 envBlock = setR2BucketName(

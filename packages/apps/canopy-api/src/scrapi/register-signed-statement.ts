@@ -64,6 +64,11 @@ import type { ReceiptAuthorityResolver } from "../env/receipt-authority-resolver
 import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
 import { getMaxStatementSize } from "./transparency-configuration";
 import { getParsedGenesis } from "../forest/genesis-cache.js";
+import {
+  rpcUrlsForEnvChainId,
+  type SupportedChainsEnv,
+} from "../env/supported-chains-for-env.js";
+import { rpcUrlsForEnvChainId } from "../env/supported-chains-for-env.js";
 
 /**
  * Statement Registration Request
@@ -97,7 +102,7 @@ export async function registerSignedStatement(
   nodeEnv: string | undefined,
   bootstrapLogIdSegment: string,
   r2Grants: R2Bucket,
-  ks256RpcUrl?: string,
+  supportedChainsEnv: SupportedChainsEnv,
 ): Promise<Response> {
   try {
     const nenv = nodeEnv ?? "production";
@@ -107,13 +112,6 @@ export async function registerSignedStatement(
       );
     }
 
-    // Resolve Authorization first so missing **Forestrie-Grant** is **401** before genesis/R2 work.
-    // enforceInclusion is true whenever sequencing is configured; in pool-test mode (no queue)
-    // it is false and grantAuthorize skips. Authorization reads no SequencingQueue state.
-    const authEnv: AuthGrantAuthorizeEnv = {
-      enforceInclusion: Boolean(sequencingQueue),
-      resolveReceiptAuthority,
-    };
     const grantResult = getGrantFromRequest(request);
     if (grantResult instanceof Response) return grantResult;
 
@@ -133,6 +131,13 @@ export async function registerSignedStatement(
       return ServerErrors.internal("Stored genesis for this forest is invalid");
     }
     const bootstrapUrlUuid = bytesToUuid(genesisLookup.wire);
+    const ks256ChainId = genesisLookup.chainBinding?.chainId;
+
+    const authEnv: AuthGrantAuthorizeEnv = {
+      enforceInclusion: Boolean(sequencingQueue),
+      resolveReceiptAuthority,
+      ks256ChainId,
+    };
 
     const { grant } = grantResult;
 
@@ -241,11 +246,14 @@ export async function registerSignedStatement(
         alg: COSE_ALG_KS256,
         address: grantDataBytes,
       };
+      const ks256RpcUrls = ks256ChainId
+        ? (rpcUrlsForEnvChainId(supportedChainsEnv, ks256ChainId) ?? undefined)
+        : undefined;
       const statementSigOk = await verifyKs256CoseSign1(
         statementData,
         ks256Root,
         {
-          rpcUrl: ks256RpcUrl?.trim(),
+          rpcUrls: ks256RpcUrls,
           logFailures: true,
           logPrefix: "register-statement-ks256",
         },

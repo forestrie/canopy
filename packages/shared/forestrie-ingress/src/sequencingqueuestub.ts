@@ -3,20 +3,25 @@ import type { PullResponse } from "./pullresponse.js";
 import type { QueueStats } from "./queuestats.js";
 
 /**
- * Extras object for enqueue.
+ * Optional extra fields attached at enqueue (each ≤32 bytes on wire).
+ * Used by canopy-api register paths when posting to SequencingQueue.
  */
 export interface EnqueueExtras {
+  /** Optional extra field 0 (≤32 bytes on wire). */
   extra0?: ArrayBuffer;
+  /** Optional extra field 1 (≤32 bytes on wire). */
   extra1?: ArrayBuffer;
+  /** Optional extra field 2 (≤32 bytes on wire). */
   extra2?: ArrayBuffer;
+  /** Optional extra field 3 (≤32 bytes on wire). */
   extra3?: ArrayBuffer;
 }
 
 /**
- * Type definition for the SequencingQueue Durable Object's RPC interface.
+ * SequencingQueue Durable Object RPC contract (canopy-api stub calls).
  *
- * This interface describes the methods callable via DO stub from canopy-api.
- * The actual implementation lives in canopy-api's durableobjects/sequencingqueue.ts.
+ * Implementation: `packages/apps/canopy-api` durableobjects/sequencingqueue.
+ * HTTP pull/ack for ranger uses the same shapes via `@canopy/forestrie-ingress`.
  */
 export interface SequencingQueueStub {
   /**
@@ -50,7 +55,8 @@ export interface SequencingQueueStub {
    *
    * massifIndex is derived: floor(leafIndex / (1 << massifHeight))
    *
-   * See: arbor/docs/arc-cloudflare-do-ingress.md section 2.3 and 3.12
+   * See:
+   * [ingress return path](https://github.com/forestrie/arbor/blob/main/docs/arc-cloudflare-do-ingress.md#312-return-path-unification)
    *
    * @param logId - Log identifier (16 bytes)
    * @param seqLo - Starting sequence number
@@ -73,7 +79,8 @@ export interface SequencingQueueStub {
    * Returns the leaf_index and massif_index if the entry has been sequenced,
    * or null if still pending or unknown.
    *
-   * See: arbor/docs/arc-cloudflare-do-ingress.md section 3.12.5
+   * See:
+   * [resolveContent RPC](https://github.com/forestrie/arbor/blob/main/docs/arc-cloudflare-do-ingress.md#3125-resolvecontent)
    *
    * @param contentHash - SHA-256 content hash (32 bytes)
    * @returns Sequencing result or null if not yet sequenced

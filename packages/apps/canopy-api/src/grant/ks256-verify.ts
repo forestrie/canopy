@@ -11,6 +11,11 @@ import {
   decodeCoseSign1,
   encodeSigStructure,
 } from "@canopy/encoding";
+import {
+  bytesToHex,
+  ethRpcWithFailover,
+  hasContractCodeAt,
+} from "@canopy/chain-rpc";
 import type { ParsedKs256RootKey } from "./parsed-ks256-root-key.js";
 
 const ERC1271_ABI = parseAbi([
@@ -19,16 +24,10 @@ const ERC1271_ABI = parseAbi([
 const ERC1271_MAGIC = "0x1626ba7e";
 
 export interface Ks256VerifyOptions {
-  /** JSON-RPC URL for ERC-1271 `eth_call` and `eth_getCode`. */
-  rpcUrl?: string;
+  /** Preference-ordered JSON-RPC URLs for ERC-1271 `eth_call` and `eth_getCode`. */
+  rpcUrls?: string[];
   logFailures?: boolean;
   logPrefix?: string;
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-  let hex = "";
-  for (const b of bytes) hex += b.toString(16).padStart(2, "0");
-  return hex;
 }
 
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
@@ -66,42 +65,6 @@ function recoverSignerAddress(
   }
 }
 
-async function ethRpc(
-  rpcUrl: string,
-  method: string,
-  params: unknown[],
-): Promise<unknown> {
-  const res = await fetch(rpcUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-  });
-  if (!res.ok) {
-    throw new Error(`RPC ${method} failed: ${res.status}`);
-  }
-  const json = (await res.json()) as {
-    result?: unknown;
-    error?: { message?: string };
-  };
-  if (json.error?.message) {
-    throw new Error(json.error.message);
-  }
-  return json.result;
-}
-
-async function hasContractCode(
-  rpcUrl: string,
-  address: Uint8Array,
-): Promise<boolean> {
-  const result = (await ethRpc(rpcUrl, "eth_getCode", [
-    `0x${bytesToHex(address)}`,
-    "latest",
-  ])) as string;
-  if (typeof result !== "string") return false;
-  const stripped = result.replace(/^0x/i, "");
-  return stripped.length > 0 && !/^0+$/.test(stripped);
-}
-
 function encodeIsValidSignatureCall(
   hash: Uint8Array,
   signature: Uint8Array,
@@ -116,13 +79,13 @@ function encodeIsValidSignatureCall(
 }
 
 async function verifyErc1271Signature(
-  rpcUrl: string,
+  rpcUrls: string[],
   signer: Uint8Array,
   hash: Uint8Array,
   signature: Uint8Array,
 ): Promise<boolean> {
   const data = encodeIsValidSignatureCall(hash, signature);
-  const result = (await ethRpc(rpcUrl, "eth_call", [
+  const result = (await ethRpcWithFailover(rpcUrls, "eth_call", [
     { to: `0x${bytesToHex(signer)}`, data },
     "latest",
   ])) as string;
@@ -162,11 +125,11 @@ export async function verifyKs256CoseSign1(
   const hash = keccak_256(sigStructure);
   const signature = decoded.signature;
 
-  const rpcUrl = opts?.rpcUrl?.trim();
-  if (rpcUrl) {
+  const rpcUrls = opts?.rpcUrls?.filter((u) => u.trim().length > 0) ?? [];
+  if (rpcUrls.length > 0) {
     try {
-      if (await hasContractCode(rpcUrl, root.address)) {
-        return verifyErc1271Signature(rpcUrl, root.address, hash, signature);
+      if (await hasContractCodeAt(rpcUrls, bytesToHex(root.address))) {
+        return verifyErc1271Signature(rpcUrls, root.address, hash, signature);
       }
     } catch (e) {
       if (opts?.logFailures) {

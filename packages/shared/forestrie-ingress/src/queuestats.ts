@@ -12,8 +12,8 @@ export interface QueueStats {
   activePollers: number;
   /**
    * True if the poller limit has been reached and new pollers are being
-   * rejected. This indicates a potential misconfiguration.
-   * See: arbor/docs/adr-0007-cf-do-ingress-poller-limits.md
+   * rejected. See
+   * [ADR-0007 poller limits](https://github.com/forestrie/arbor/blob/main/docs/adr/adr-0007-cf-do-ingress-poller-limits.md).
    */
   pollerLimitReached: boolean;
 }

@@ -1,9 +1,13 @@
 /**
  * CBOR trust-root response for GET /api/logs/{logId}/public-root.
  *
- * v1: `{ logId, alg: "ES256", x, y }` (legacy ES256).
- * v2: `{ logId, alg: -7 | -65799, key }` (opaque root key bytes).
+ * Wire format consumed by wallet-challenge session exchange and certificate
+ * validation. ES256 legacy uses x/y; v2 uses COSE alg int and opaque key bytes
+ * (KS256 address or ES256 x‖y) per
+ * [univocity docs/arc](https://github.com/forestrie/univocity/blob/main/docs/arc/).
  */
+
+/** CBOR body returned for a log's registered public root. */
 export interface TrustRootResponseCbor {
   logId: Uint8Array;
   alg: string | number;
@@ -15,8 +19,8 @@ export interface TrustRootResponseCbor {
   domain?: string;
 }
 
-/** COSE KS256 alg int for v2 wire. */
+/** COSE KS256 alg int for v2 wire encoding. */
 export const COSE_ALG_KS256 = -65799;
 
-/** COSE ES256 alg int for v2 wire. */
+/** COSE ES256 alg int for v2 wire encoding. */
 export const COSE_ALG_ES256 = -7;

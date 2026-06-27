@@ -1,5 +1,9 @@
 /**
- * Handler for POST /api/delegations — lookup stored material and return CBOR cert.
+ * Handler for POST /api/delegations — forward CBOR issue to sharded store.
+ *
+ * Authenticates with app token and optional per-log issuerToken. Sealer
+ * polling contract per
+ * [arbor sealer](https://github.com/forestrie/arbor/blob/main/services/sealer/).
  */
 
 import type { Env } from "../env.js";
@@ -16,6 +20,13 @@ import {
 
 const CBOR_CONTENT_TYPE = "application/cbor";
 
+/**
+ * POST /api/delegations — lookup or pending-delegate for MMR range.
+ *
+ * @param request - CBOR {@link DelegationIssueRequest} body.
+ * @param env - Worker bindings.
+ * @returns CBOR certificate, 202 pending, or problem Response.
+ */
 export async function handleIssueDelegation(
   request: Request,
   env: Env,

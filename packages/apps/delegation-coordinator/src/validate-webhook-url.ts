@@ -1,5 +1,8 @@
 /**
- * Syntactic webhook URL validation at registration (no DNS resolve, no fetch).
+ * Webhook URL syntactic validation at registration time.
+ *
+ * Re-exports [@canopy/webhook-url](https://github.com/forestrie/canopy/tree/main/packages/libs/webhook-url)
+ * — no DNS resolve or fetch at PUT /api/logs/{logId}/webhook.
  */
 
 export {

@@ -1,5 +1,8 @@
 /**
- * Handler for PUT /api/logs/{logId}/webhook
+ * PUT /api/logs/{logId}/webhook — register HTTPS webhook URL.
+ *
+ * URL validated via
+ * [@canopy/webhook-url](https://github.com/forestrie/canopy/tree/main/packages/libs/webhook-url).
  */
 
 import type { Env } from "../env.js";
@@ -17,6 +20,7 @@ import {
   problemResponse,
 } from "./handler.js";
 
+/** PUT validated webhook URL for delegation.required events. */
 export async function handlePutWebhook(
   logIdSegment: string,
   request: Request,

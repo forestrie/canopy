@@ -236,6 +236,7 @@ export async function registerGrant(
   const authError = await grantAuthorize(grantResult, {
     enforceInclusion: Boolean(env.queueEnv),
     resolveReceiptAuthority: env.resolveReceiptAuthority,
+    ks256ChainId: genesis.chainBinding?.chainId,
   });
   if (authError) return authError;
   return await enqueueAndStoreGrant(

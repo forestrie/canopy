@@ -1,5 +1,8 @@
 /**
- * Handler for GET /api/logs/{logId}/signing-route
+ * GET /api/logs/{logId}/signing-route — read per-log signing configuration.
+ *
+ * Requires wallet session scope `logs:signing-route:read` or app token
+ * fallback per [ARC-0017](https://github.com/forestrie/devdocs/blob/main/arc/arc-0017-hierarchical-authority-logs-and-fee-distribution.md).
  */
 
 import type { Env } from "../env.js";
@@ -10,6 +13,7 @@ import {
   normalizePathLogId,
 } from "./handler.js";
 
+/** GET signing route JSON for a log. */
 export async function handleGetSigningRoute(
   logIdSegment: string,
   request: Request,

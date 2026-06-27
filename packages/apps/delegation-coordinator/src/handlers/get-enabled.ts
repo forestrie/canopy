@@ -1,5 +1,5 @@
 /**
- * Handler for GET /api/logs/{logId}/enabled (user session)
+ * GET /api/logs/{logId}/enabled — user session read of kill-switch flags.
  */
 
 import type { Env } from "../env.js";
@@ -10,6 +10,7 @@ import {
   normalizePathLogId,
 } from "./handler.js";
 
+/** GET enabled / userEnabled / operatorEnabled for a log. */
 export async function handleGetEnabled(
   logIdSegment: string,
   request: Request,

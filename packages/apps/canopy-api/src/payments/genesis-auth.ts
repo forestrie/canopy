@@ -25,6 +25,7 @@ import type { RegistrationStoreEnv } from "./registration-store.js";
 const FORESTRIE_GRANT_SCHEME = "Forestrie-Grant";
 
 import type { OnboardTokenRecord } from "./onboard-token-record.js";
+import { getParsedGenesis } from "../forest/genesis-cache.js";
 
 export type GenesisAuthContext =
   | { mode: "onboard"; tokenHash: string; tokenRecord: OnboardTokenRecord }
@@ -50,10 +51,14 @@ function isForestrieGrantAuth(request: Request): boolean {
   return auth.startsWith(`${FORESTRIE_GRANT_SCHEME} `);
 }
 
-function grantAuthorizeEnv(env: GenesisAuthEnv): AuthGrantAuthorizeEnv {
+function grantAuthorizeEnv(
+  env: GenesisAuthEnv,
+  ks256ChainId?: string,
+): AuthGrantAuthorizeEnv {
   return {
     enforceInclusion: !isCanopyApiPoolTestMode(env),
     resolveReceiptAuthority: env.resolveReceiptAuthority,
+    ks256ChainId,
   };
 }
 
@@ -88,10 +93,21 @@ export async function resolveGenesisAuth(
       );
     }
 
-    const authErr = await grantAuthorize(grantParsed, grantAuthorizeEnv(env));
+    const endorserUuid = bytesToUuid(grantParsed.grant.ownerLogId);
+    const endorserGenesis = await getParsedGenesis(endorserUuid, {
+      R2_GRANTS: env.R2_GRANTS,
+    });
+    const ks256ChainId =
+      "kind" in endorserGenesis
+        ? undefined
+        : endorserGenesis.chainBinding?.chainId;
+
+    const authErr = await grantAuthorize(
+      grantParsed,
+      grantAuthorizeEnv(env, ks256ChainId),
+    );
     if (authErr) return authErr;
 
-    const endorserUuid = bytesToUuid(grantParsed.grant.ownerLogId);
     const ancestor = await resolvePaymentAncestor(env, endorserUuid);
     if (!ancestor.ok) {
       return ClientErrors.forbidden(

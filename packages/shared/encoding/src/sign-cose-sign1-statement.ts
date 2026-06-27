@@ -1,6 +1,7 @@
 /**
- * Sign COSE Sign1 statement (one place for sign concern).
- * Builds Sig_structure per RFC 8152 and signs with ES256 (P-256).
+ * Sign COSE Sign1 statement (ES256).
+ * Builds Sig_structure via {@link encodeSigStructure}; signing path must stay
+ * byte-identical to {@link verifyCoseSign1} in canopy-api grant auth.
  */
 
 import { encodeCoseProtectedMapBytes } from "./encode-cose-protected.js";

@@ -1,3 +1,4 @@
+/** Golden-vector tests: {@link verifyCoseSign1} against go-cose Sign1 fixtures. */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

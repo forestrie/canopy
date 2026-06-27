@@ -13,6 +13,7 @@
     "NODE_ENV": "test",
     "X402_MODE": "verify-only",
     "GRANT_STORAGE_PUBLIC_BASE": "https://grants-dev.forestrie.dev",
+    "SUPPORTED_CHAINS_RPC": "{\"84532\":[\"https://sepolia.base.org\"]}",
   },
   "r2_buckets": [
     {

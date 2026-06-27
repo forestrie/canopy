@@ -1,10 +1,19 @@
 /**
  * Syntactic webhook URL validation (no DNS resolve, no fetch).
+ * Used before persisting callback URLs on register-statement / grant flows.
  */
 
 import { WebhookUrlValidationError } from "./webhook-url-validation-error.js";
 import type { ValidateWebhookUrlOptions } from "./validate-webhook-url-options.js";
 
+/**
+ * Parse and validate a webhook URL for safe outbound use.
+ *
+ * @param raw - User-supplied URL string
+ * @param options - Dev localhost allowance and error field label
+ * @returns Canonical URL string (`URL#toString()`)
+ * @throws {@link WebhookUrlValidationError} when protocol, host, or IP rules fail
+ */
 export function validateWebhookUrl(
   raw: string,
   options?: ValidateWebhookUrlOptions,
@@ -53,6 +62,7 @@ export function validateWebhookUrl(
   return parsed.toString();
 }
 
+/** Reject internal DNS suffixes unsuitable for public webhooks. */
 function isBlockedHostname(hostname: string): boolean {
   if (hostname.endsWith(".internal") || hostname.endsWith(".local")) {
     return true;
@@ -60,6 +70,7 @@ function isBlockedHostname(hostname: string): boolean {
   return false;
 }
 
+/** Detect loopback and RFC1918/link-local IPv4 literals in the hostname. */
 function isPrivateOrLoopbackIp(hostname: string): boolean {
   if (hostname.includes(":")) {
     return isPrivateOrLoopbackIpv6(hostname);
@@ -81,6 +92,7 @@ function isPrivateOrLoopbackIp(hostname: string): boolean {
   return false;
 }
 
+/** Detect loopback and ULA/link-local IPv6 literals in the hostname. */
 function isPrivateOrLoopbackIpv6(hostname: string): boolean {
   const normalized = hostname.toLowerCase();
   if (normalized === "::1") return true;

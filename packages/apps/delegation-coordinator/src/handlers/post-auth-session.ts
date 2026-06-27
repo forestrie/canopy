@@ -1,5 +1,7 @@
 /**
- * POST /api/auth/session — verify signed envelope and mint control-plane session.
+ * POST /api/auth/session — verify signed envelope and mint session token.
+ *
+ * Binds signer to stored public root (ES256 or KS256) before HMAC mint.
  */
 
 import type { Env } from "../env.js";
@@ -18,10 +20,12 @@ import type { SessionExchangeRequest } from "../types/wallet-challenge.js";
 import { base64ToBytes } from "../encoding.js";
 import { internalError, problemResponse } from "./handler.js";
 
+/** True when wallet-challenge routes are enabled. */
 function walletChallengeEnabled(env: Env): boolean {
   return env.ENABLE_WALLET_CHALLENGE?.trim().toLowerCase() === "true";
 }
 
+/** Exchange signed wcc-1 envelope for HMAC session bearer token. */
 export async function handlePostAuthSession(
   request: Request,
   env: Env,

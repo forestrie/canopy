@@ -1,6 +1,18 @@
+/**
+ * Canonical UTF-8 challenge message for wallet-challenge (wcc-1).
+ *
+ * Signed by KS256 personal_sign or ES256 WebCrypto verify paths in session
+ * exchange. Format is alg-agnostic for both signer types.
+ */
+
 import type { WalletChallengeEnvelope } from "../../types/wallet-challenge.js";
 
-/** Canonical UTF-8 message for KS256 personal_sign (wcc-1). */
+/**
+ * Build the canonical UTF-8 message for KS256 personal_sign (wcc-1).
+ *
+ * @param envelope - Challenge fields presented to the wallet.
+ * @returns Multi-line string the wallet signs.
+ */
 export function buildKs256ControlPlaneMessage(
   envelope: WalletChallengeEnvelope,
 ): string {

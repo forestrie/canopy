@@ -1,5 +1,8 @@
 /**
- * Handler for POST /api/delegations/certificate
+ * POST /api/delegations/certificate — runner BYOK certificate submission.
+ *
+ * Public route with size cap; validated in {@link DelegationStoreDO} via
+ * {@link validateByokDelegationCertificate}.
  */
 
 import type { Env } from "../env.js";
@@ -11,6 +14,7 @@ import { forwardToStore, internalError, problemResponse } from "./handler.js";
 /** Max decoded certificate bytes accepted on the public sealing route. */
 export const MAX_CERTIFICATE_BYTES = 16 * 1024;
 
+/** POST certificate JSON to sharded store after size checks. */
 export async function handlePostCertificate(
   request: Request,
   env: Env,

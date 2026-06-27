@@ -1,7 +1,7 @@
 /**
  * Cryptographic verification of COSE Sign1 (statement).
  * Supports ES256 (P-256 via Web Crypto). KS256 (-65799) verification lives in
- * dedicated modules (keccak + ecrecover / ERC-1271).
+ * canopy-api/arbor paths (Keccak + ecrecover / ERC-1271), not this module.
  */
 
 import { decode as decodeCbor } from "cbor-x";
@@ -12,10 +12,10 @@ export const COSE_ALG_ES256 = -7;
 /** KS256: secp256k1 + Keccak-256 + Ethereum address (COSE private use). */
 export const COSE_ALG_KS256 = -65799;
 
-/** Supported COSE algorithms for receipt/delegated-key verification. */
+/** Supported COSE algorithms for ES256 delegate-key verification in this module. */
 export type CoseAlgorithm = "ES256";
 
-/** Parsed EC public key for multi-curve verification. */
+/** Parsed EC public key coordinates for verification without a CryptoKey. */
 export interface ParsedEcPublicKey {
   /** X coordinate (32 bytes). */
   x: Uint8Array;
@@ -25,11 +25,12 @@ export interface ParsedEcPublicKey {
   curve: "P-256";
 }
 
-/** Verify key: Web Crypto CryptoKey (P-256) or parsed coordinates. */
+/** Verify key accepted by {@link verifyCoseSign1WithParsedKey}. */
 export type ParsedVerifyKey = CryptoKey | ParsedEcPublicKey;
 
-/** Optional structured logging when verification fails (no secrets). */
+/** Optional structured logging when verification fails (no secrets logged). */
 export interface VerifyCoseSign1Options {
+  /** When true, emit JSON warning lines on failure paths. */
   logFailures?: boolean;
   /** Included in JSON log lines under `prefix`. */
   logPrefix?: string;
@@ -75,7 +76,9 @@ function logVerifyFailure(
 
 /**
  * Extract the `alg` value from COSE protected header bytes.
- * Returns the numeric algorithm identifier or null if not found.
+ *
+ * @param protectedBstr - Decoded COSE Sign1 `[0]` protected header contents
+ * @returns Numeric COSE algorithm id, or null when missing or unparseable
  */
 export function extractAlgFromProtected(
   protectedBstr: Uint8Array,
@@ -100,7 +103,10 @@ export function extractAlgFromProtected(
 }
 
 /**
- * Map COSE algorithm number to curve name (ES256 delegate keys only).
+ * Map COSE algorithm number to Web Crypto curve name (ES256 only here).
+ *
+ * @param alg - COSE `alg` header value
+ * @returns `"P-256"` for ES256, otherwise null
  */
 export function algToCurve(alg: number): "P-256" | null {
   if (alg === COSE_ALG_ES256) return "P-256";
@@ -108,9 +114,13 @@ export function algToCurve(alg: number): "P-256" | null {
 }
 
 /**
- * Verify COSE Sign1 signature with a public key (ES256).
- * Builds Sig_structure per RFC 8152 and verifies ECDSA P-256 (ES256).
- * Signature bstr must be IEEE P1363 R‖S (64 bytes); ASN.1 DER is not COSE ES256.
+ * Verify COSE Sign1 signature with a Web Crypto public key (ES256).
+ * Builds Sig_structure per RFC 8152; signature must be IEEE P1363 R‖S (64 bytes).
+ *
+ * @param coseSign1Bytes - CBOR COSE Sign1 tuple
+ * @param publicKey - P-256 verify key
+ * @param opts - Optional detached payload and failure logging
+ * @returns True when signature verifies; false on any malformed input
  */
 export async function verifyCoseSign1(
   coseSign1Bytes: Uint8Array,
@@ -174,7 +184,12 @@ export async function verifyCoseSign1(
 }
 
 /**
- * Verify COSE Sign1 signature using a parsed verify key (P-256 only).
+ * Verify COSE Sign1 with a {@link ParsedVerifyKey} (CryptoKey or raw P-256 coords).
+ *
+ * @param coseSign1Bytes - CBOR COSE Sign1 tuple
+ * @param verifyKey - Web Crypto key or parsed coordinates
+ * @param opts - Optional detached payload and failure logging
+ * @returns True when signature verifies; false on any malformed input
  */
 export async function verifyCoseSign1WithParsedKey(
   coseSign1Bytes: Uint8Array,
@@ -276,15 +291,23 @@ export async function verifyCoseSign1WithParsedKey(
   }
 }
 
+/** Parsed components of a COSE Sign1 four-tuple after CBOR decode. */
 export interface DecodedCoseSign1 {
+  /** COSE Sign1 `[0]` protected header bstr (map bytes inside). */
   protectedBstr: Uint8Array;
+  /** COSE Sign1 `[1]` unprotected header (Map or cbor-x object shape). */
   unprotected: unknown;
+  /** COSE Sign1 `[2]` payload bstr (empty when detached). */
   payloadBstr: Uint8Array;
+  /** COSE Sign1 `[3]` signature bstr. */
   signature: Uint8Array;
 }
 
 /**
- * Decode COSE Sign1 bytes to components. Returns null if malformed.
+ * Decode COSE Sign1 bytes to components.
+ *
+ * @param coseSign1Bytes - CBOR-encoded COSE Sign1
+ * @returns Parsed tuple fields, or null when CBOR shape is invalid
  */
 export function decodeCoseSign1(
   coseSign1Bytes: Uint8Array,

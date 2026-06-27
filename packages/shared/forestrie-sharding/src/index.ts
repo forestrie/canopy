@@ -1,8 +1,6 @@
 /**
- * @canopy/forestrie-sharding
- *
- * Sharding helpers for SequencingQueue Durable Object.
- * Provides deterministic shard assignment based on logId.
+ * @canopy/forestrie-sharding — logId → SequencingQueue shard helpers.
+ * Re-exports {@link shardNameForLog} and related functions from `./sharding.js`.
  */
 
 export {

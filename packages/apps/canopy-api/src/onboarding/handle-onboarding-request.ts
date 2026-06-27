@@ -37,6 +37,7 @@ import {
   type OnboardRequestStoreEnv,
 } from "./onboard-request-store.js";
 import { verifyUnivocityDeployment } from "./univocity-deployment-gate.js";
+import type { UnivocityGateEnv } from "./univocity-deployment-gate.js";
 
 const CBOR_LABEL = 1;
 const CBOR_CHAIN_ID = 2;
@@ -51,11 +52,10 @@ const NO_STORE_HEADERS = { "cache-control": "no-store" };
 
 export interface OnboardingHandlerEnv
   extends OnboardRequestStoreEnv,
-    OnboardTokenStoreEnv {
+    OnboardTokenStoreEnv,
+    UnivocityGateEnv {
   NODE_ENV?: string;
   CANOPY_OPS_ADMIN_TOKEN?: string;
-  UNIVOCITY_CONTRACT_RPC_URL?: string;
-  ONBOARD_ALLOWED_CHAIN_ID?: string;
   ONBOARD_REQUEST_TTL_SEC?: string;
   ONBOARD_TOKEN_TTL_SEC?: string;
   ONBOARD_MAX_PENDING_PER_BINDING?: string;

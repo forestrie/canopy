@@ -1,7 +1,16 @@
 /**
- * Bearer token check (constant-time compare).
+ * Bearer token authorization with constant-time comparison.
  *
- * @returns `null` when authorized, otherwise a **401** JSON problem `Response`.
+ * Used by operator routes and legacy app-token fallbacks when wallet-challenge
+ * sessions are disabled. Returns RFC 7807 JSON problems on failure.
+ */
+
+/**
+ * Verify `Authorization: Bearer` against one or more configured tokens.
+ *
+ * @param request - Incoming HTTP request.
+ * @param expectedTokens - Candidate secrets (trimmed; empty entries ignored).
+ * @returns `null` when authorized, otherwise a **401** JSON problem Response.
  */
 export function checkBearerToken(
   request: Request,
@@ -31,10 +40,12 @@ export function checkBearerToken(
   return unauthorized("Invalid bearer token");
 }
 
+/** Build a 401 Unauthorized problem response. */
 function unauthorized(detail: string): Response {
   return problemResponse(401, "about:blank", "Unauthorized", detail);
 }
 
+/** Minimal RFC 7807 JSON problem builder (local to avoid import cycle). */
 function problemResponse(
   status: number,
   type: string,
@@ -50,6 +61,13 @@ function problemResponse(
   );
 }
 
+/**
+ * Constant-time string equality for bearer token comparison.
+ *
+ * @param a - Presented token.
+ * @param b - Expected token.
+ * @returns True when byte lengths and contents match.
+ */
 function constantTimeEqual(a: string, b: string): boolean {
   const encA = new TextEncoder().encode(a);
   const encB = new TextEncoder().encode(b);

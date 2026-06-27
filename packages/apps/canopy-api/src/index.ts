@@ -5,6 +5,7 @@
  */
 
 import { checkRequestEnv } from "./env/deployment-env";
+import { supportedChainsConfigForEnv } from "./env/supported-chains-for-env.js";
 import {
   createReceiptAuthorityResolver,
   type ReceiptAuthorityResolver,
@@ -93,10 +94,8 @@ export interface Env {
   UNIVOCITY_SERVICE_URL?: string;
   /** Bearer token authorizing canopy -> univocity owned-store calls. */
   UNIVOCITY_API_TOKEN?: string;
-  UNIVOCITY_CONTRACT_RPC_URL?: string;
-  UNIVOCITY_CONTRACT_ADDRESS?: string;
-  /** Allowed chainId for onboard request create (v1 single-chain). */
-  ONBOARD_ALLOWED_CHAIN_ID?: string;
+  /** JSON map: chainId → preference-ordered RPC URLs (deploy-resolved). */
+  SUPPORTED_CHAINS_RPC?: string;
   ONBOARD_REQUEST_TTL_SEC?: string;
   ONBOARD_REQUEST_WEBHOOK_URL?: string;
   ONBOARD_REQUEST_WEBHOOK_SECRET?: string;
@@ -146,7 +145,7 @@ function receiptAuthorityResolverForEnv(env: Env): ReceiptAuthorityResolver {
     env.UNIVOCITY_SERVICE_URL?.trim() ?? "",
     env.UNIVOCITY_API_TOKEN?.trim() ?? "",
     env.FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX ?? "",
-    env.UNIVOCITY_CONTRACT_RPC_URL?.trim() ?? "",
+    env.SUPPORTED_CHAINS_RPC?.trim() ?? "",
   ].join("\0");
   if (
     !receiptAuthorityResolverCache ||
@@ -163,7 +162,7 @@ function receiptAuthorityResolverForEnv(env: Env): ReceiptAuthorityResolver {
         nodeEnv: env.NODE_ENV,
         testReceiptVerifyEs256XyHex:
           env.FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX,
-        ks256RpcUrl: env.UNIVOCITY_CONTRACT_RPC_URL,
+        supportedChains: supportedChainsConfigForEnv(env),
       }),
     };
   }
@@ -333,7 +332,7 @@ export default {
             env.NODE_ENV,
             segments[1],
             env.R2_GRANTS,
-            env.UNIVOCITY_CONTRACT_RPC_URL,
+            env,
           );
           const headers = new Headers(response.headers);
           Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
