@@ -22,6 +22,7 @@ import {
   checkOnboardCreateBodySize,
   checkOnboardCreateRateLimit,
   checkOnboardFieldLengths,
+  checkOnboardRejectReasonLength,
 } from "./onboard-create-guard.js";
 import { scheduleOnboardWebhook } from "./onboard-notify.js";
 import { redeemOrStatusHttpError } from "./onboard-request-http.js";
@@ -407,6 +408,7 @@ async function handleOpsApprove(
   env: OnboardingHandlerEnv,
   corsHeaders: Record<string, string>,
   ctx: ExecutionContext,
+  responseFormat: "json" | "cbor" = "cbor",
 ): Promise<Response> {
   const record = await readOnboardRequest(env, requestId);
   if (!record) {
@@ -425,14 +427,15 @@ async function handleOpsApprove(
     requestId: approved.requestId,
   });
 
+  const payload = {
+    requestId: approved.requestId,
+    status: approved.status,
+  };
+
   return attachCors(
-    cborResponse(
-      {
-        requestId: approved.requestId,
-        status: approved.status,
-      },
-      200,
-    ),
+    responseFormat === "json"
+      ? jsonResponse(payload, 200)
+      : cborResponse(payload, 200),
     corsHeaders,
   );
 }
@@ -442,6 +445,7 @@ async function handleOpsReject(
   requestId: string,
   env: OnboardingHandlerEnv,
   corsHeaders: Record<string, string>,
+  responseFormat: "json" | "cbor" = "cbor",
 ): Promise<Response> {
   const record = await readOnboardRequest(env, requestId);
   if (!record) {
@@ -459,7 +463,17 @@ async function handleOpsReject(
 
   let rejectReason: string | undefined;
   const ct = request.headers.get("Content-Type") ?? "";
-  if (ct.includes("application/cbor")) {
+  if (ct.includes("application/json")) {
+    try {
+      const body = (await request.json()) as { rejectReason?: unknown };
+      if (typeof body.rejectReason === "string") {
+        const trimmed = body.rejectReason.trim();
+        if (trimmed) rejectReason = trimmed;
+      }
+    } catch {
+      /* optional body */
+    }
+  } else if (ct.includes("application/cbor")) {
     try {
       const raw = await parseCborBody(request);
       const m = decodeBodyAsIntKeyMap(raw);
@@ -469,6 +483,11 @@ async function handleOpsReject(
     }
   }
 
+  const reasonErr = checkOnboardRejectReasonLength(rejectReason);
+  if (reasonErr) {
+    return attachCors(reasonErr, corsHeaders);
+  }
+
   const updated: OnboardRequestRecord = {
     ...record,
     status: "rejected",
@@ -476,8 +495,11 @@ async function handleOpsReject(
   };
   await writeOnboardRequest(env, updated);
 
+  const payload = { requestId, status: "rejected" as const };
   return attachCors(
-    cborResponse({ requestId, status: "rejected" }, 200),
+    responseFormat === "json"
+      ? jsonResponse(payload, 200)
+      : cborResponse(payload, 200),
     corsHeaders,
   );
 }
@@ -485,7 +507,10 @@ async function handleOpsReject(
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "cache-control": "no-store",
+    },
   });
 }
 
@@ -545,6 +570,7 @@ export async function handleOnboardingRequest(
       env,
       corsHeaders,
       ctx,
+      "json",
     );
   }
 
@@ -558,6 +584,7 @@ export async function handleOnboardingRequest(
       decodeURIComponent(adminReject[1]!),
       env,
       corsHeaders,
+      "json",
     );
   }
 

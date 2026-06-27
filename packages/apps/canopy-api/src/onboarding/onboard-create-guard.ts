@@ -5,6 +5,7 @@ export const ONBOARD_CREATE_BODY_MAX_BYTES = 16 * 1024;
 export const ONBOARD_LABEL_MAX_LEN = 128;
 export const ONBOARD_EMAIL_MAX_LEN = 320;
 export const ONBOARD_ORIGIN_MAX_LEN = 512;
+export const ONBOARD_REJECT_REASON_MAX_LEN = 512;
 
 export interface OnboardCreateRateLimitEnv {
   ONBOARD_CREATE_RATE_LIMITER?: {
@@ -68,6 +69,15 @@ export function checkOnboardFieldLengths(fields: {
     fields.mandateOrigin.length > ONBOARD_ORIGIN_MAX_LEN
   ) {
     return ClientErrors.badRequest("mandateOrigin too long");
+  }
+  return null;
+}
+
+export function checkOnboardRejectReasonLength(
+  rejectReason: string | undefined,
+): Response | null {
+  if (rejectReason && rejectReason.length > ONBOARD_REJECT_REASON_MAX_LEN) {
+    return ClientErrors.badRequest("rejectReason too long");
   }
   return null;
 }
