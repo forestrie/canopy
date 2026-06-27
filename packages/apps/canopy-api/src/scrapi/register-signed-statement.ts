@@ -68,7 +68,6 @@ import {
   rpcUrlsForEnvChainId,
   type SupportedChainsEnv,
 } from "../env/supported-chains-for-env.js";
-import { rpcUrlsForEnvChainId } from "../env/supported-chains-for-env.js";
 
 /**
  * Statement Registration Request

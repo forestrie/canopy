@@ -15,19 +15,15 @@
  * See plan-0029 (canopy) / plan-0008 (arbor).
  */
 
-/** Configuration for reaching the univocity genesis endpoint. */
-export interface UnivocityGenesisClient {
-  /** Base service URL, e.g. `https://univocity.example`. */
-  serviceUrl: string;
-  /** Bearer token authorizing canopy -> univocity calls. */
-  token: string;
-}
+import type {
+  UnivocityGenesisClient,
+  UnivocityGenesisResult,
+} from "./univocity-genesis-client-config.js";
 
-export type UnivocityGenesisResult =
-  | { kind: "created" }
-  | { kind: "exists" }
-  | { kind: "rejected"; status: number; detail: string }
-  | { kind: "unavailable"; detail: string };
+export type {
+  UnivocityGenesisClient,
+  UnivocityGenesisResult,
+} from "./types.js";
 
 function joinUrl(base: string, path: string): string {
   return `${base.replace(/\/+$/, "")}${path}`;

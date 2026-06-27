@@ -3,24 +3,16 @@ import {
   isSupportedChainIdForEnv,
   rpcUrlsForEnvChainId,
   supportedChainIdsForEnv,
-  type SupportedChainsEnv,
 } from "../env/supported-chains-for-env.js";
 import {
   readPositiveGateCache,
   writePositiveGateCache,
-  type OnboardGateCacheEnv,
 } from "./onboard-gate-cache.js";
 import { probeUnivocityIdentity } from "./univocity-identity-probe.js";
+import type { UnivocityGateEnv } from "./univocity-gate-env.js";
+import type { UnivocityGateResult } from "./univocity-gate-result.js";
 
-export interface UnivocityGateEnv
-  extends OnboardGateCacheEnv,
-    SupportedChainsEnv {
-  ONBOARD_RPC_TIMEOUT_MS?: string;
-}
-
-export type UnivocityGateResult =
-  | { ok: true; univocityAddr: string }
-  | { ok: false; status: number; detail: string };
+export type { UnivocityGateEnv, UnivocityGateResult } from "./types.js";
 
 function rpcTimeoutMs(env: UnivocityGateEnv): number {
   const raw = env.ONBOARD_RPC_TIMEOUT_MS?.trim();

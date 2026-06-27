@@ -6,6 +6,14 @@
  * signatures that facilitators can verify and settle on-chain.
  */
 
+import type { ParsePaymentResult } from "./parse-payment-result.js";
+import type { PaymentPayload } from "./payment-payload.js";
+import type {
+  PaymentRequirements,
+  PaymentRequirementsOption,
+} from "./payment-requirements.js";
+import type { VerifiedPayment } from "./verified-payment.js";
+
 // Standard x402 header names
 export const X402_HEADERS = {
   /** Base64-encoded JSON payment requirements */
@@ -30,93 +38,15 @@ const PRICE_ATOMIC = "1000";
 const USDC_EIP712_NAME = "USDC";
 const USDC_EIP712_VERSION = "2";
 
-/**
- * x402 v2 PaymentRequirements structure.
- *
- * This is returned in the X-PAYMENT-REQUIRED header (base64-encoded)
- * when a 402 response is sent.
- */
-export interface PaymentRequirements {
-  x402Version: 2;
-  accepts: PaymentRequirementsOption[];
-  error?: string;
-  resource?: {
-    url: string;
-    description?: string;
-    mimeType?: string;
-  };
-}
-
-export interface PaymentRequirementsOption {
-  scheme: "exact";
-  network: string;
-  amount: string;
-  asset: string;
-  payTo: string;
-  maxTimeoutSeconds?: number;
-  extra?: Record<string, unknown>;
-}
-
-/**
- * Resource information for what's being paid for.
- */
-export interface ResourceInfo {
-  url: string;
-  description?: string;
-  mimeType?: string;
-}
-
-/**
- * x402 v2 PaymentPayload structure.
- *
- * This is received in the X-PAYMENT header (base64-encoded) from the client.
- * The v2 structure includes resource info and accepted requirements.
- */
-export interface PaymentPayload {
-  x402Version: 1 | 2;
-  /** The scheme-specific payload (authorization + signature for exact EVM) */
-  payload: ExactEvmPayload;
-  /** Resource being paid for */
-  resource: ResourceInfo;
-  /** The accepted payment requirements */
-  accepted: PaymentRequirementsOption;
-  /** Protocol extensions (optional) */
-  extensions?: Record<string, unknown>;
-  // Legacy v1 fields (for backwards compatibility)
-  scheme?: "exact";
-  network?: string;
-}
-
-export interface ExactEvmPayload {
-  signature: string;
-  authorization: {
-    from: string;
-    to: string;
-    value: string;
-    validAfter: string;
-    validBefore: string;
-    nonce: string;
-  };
-}
-
-/**
- * Verified payment info exposed to the worker routing layer.
- */
-export interface VerifiedPayment {
-  scheme: "exact";
-  network: string;
-  payTo: string;
-  /** Payer wallet address from the authorization */
-  payerAddress: `0x${string}`;
-  /** Amount in atomic units */
-  amount: string;
-  /** The full payment payload for facilitator calls */
-  payload: PaymentPayload;
-}
-
-export type ParsePaymentResult =
-  | { ok: true; value: VerifiedPayment }
-  | { ok: false; error: string };
+export type {
+  ExactEvmPayload,
+  ParsePaymentResult,
+  PaymentPayload,
+  PaymentRequirements,
+  PaymentRequirementsOption,
+  ResourceInfo,
+  VerifiedPayment,
+} from "./types.js";
 
 /**
  * Build the X-PAYMENT-REQUIRED header value for POST /register/{bootstrap-logid}/entries.

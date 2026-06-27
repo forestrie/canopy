@@ -3,26 +3,15 @@
  * Rolling window + spike window; unit-tested only in this phase.
  */
 
-export interface RateLimitConfig {
-  /** Rolling window length in ms (e.g. 3600000 = 1 hour). */
-  windowMs: number;
-  /** Spike window length in ms (e.g. 60000 = 1 minute). */
-  spikeWindowMs: number;
-  /** Max requests per rolling window. */
-  maxPerWindow: number;
-  /** Max requests per spike window. */
-  maxPerSpike: number;
-}
+import type { RateLimitConfig } from "./rate-limit-config.js";
+import type { RateLimitResult } from "./rate-limit-result.js";
+import type { RateLimitState } from "./rate-limit-state.js";
 
-export interface RateLimitState {
-  /** Unix timestamps (ms) of recent requests, ascending. */
-  timestamps: number[];
-}
-
-export interface RateLimitResult {
-  allowed: boolean;
-  retryAfterSeconds?: number;
-}
+export type {
+  RateLimitConfig,
+  RateLimitResult,
+  RateLimitState,
+} from "./types.js";
 
 /**
  * Default config: 100/hour, 10/minute.

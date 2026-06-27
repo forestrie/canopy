@@ -27,7 +27,11 @@ export async function verifyDerivedEndorsementEnvelope(
       genesis.bootstrapAlg === COSE_ALG_KS256 &&
       genesis.bootstrapKey.length === 20
     ) {
-      return verifyKs256CoseSign1(bytes, { address: genesis.bootstrapKey });
+      return verifyKs256CoseSign1(bytes, {
+        kind: "KS256",
+        alg: COSE_ALG_KS256,
+        address: genesis.bootstrapKey,
+      });
     }
     return false;
   }

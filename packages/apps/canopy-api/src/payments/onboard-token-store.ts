@@ -3,10 +3,17 @@ import type {
   OnboardTokenRecord,
 } from "./onboard-token-record.js";
 import { hashOnboardToken, onboardTokenR2Key } from "./onboard-token-hash.js";
+import type { ClaimForestRResult } from "./claim-forest-r-result.js";
+import type { MintOnboardTokenOptions } from "./mint-onboard-token.js";
+import type { MintOnboardTokenResult } from "./mint-onboard-token.js";
+import type { OnboardTokenStoreEnv } from "./onboard-token-store-env.js";
 
-export interface OnboardTokenStoreEnv {
-  R2_GRANTS: R2Bucket;
-}
+export type {
+  ClaimForestRResult,
+  MintOnboardTokenOptions,
+  MintOnboardTokenResult,
+  OnboardTokenStoreEnv,
+} from "./types.js";
 
 function encodeRecord(record: OnboardTokenRecord): string {
   return JSON.stringify(record);
@@ -36,18 +43,6 @@ function generateTokenValue(): string {
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-}
-
-export interface MintOnboardTokenOptions {
-  label?: string;
-  expiry?: number;
-  requestId?: string;
-  chainBinding?: OnboardTokenChainBinding;
-}
-
-export interface MintOnboardTokenResult {
-  token: string;
-  record: OnboardTokenRecord;
 }
 
 export async function mintOnboardToken(
@@ -141,10 +136,6 @@ export async function markOnboardTokenConsumed(
   if (!result.ok) return null;
   return result.record;
 }
-
-export type ClaimForestRResult =
-  | { ok: true; record: OnboardTokenRecord }
-  | { ok: false; reason: "not_found" | "conflict" | "cas_failed" };
 
 export async function claimOnboardTokenForestRCas(
   env: OnboardTokenStoreEnv,

@@ -8,16 +8,12 @@ import {
 } from "../grant/log-id-wire.js";
 import { bytesToUuid } from "../grant/uuid-bytes.js";
 import type { GrantResult } from "../grant/types.js";
-import {
-  getGrantFromRequest,
-  grantAuthorize,
-  type AuthGrantAuthorizeEnv,
-} from "../scrapi/auth-grant.js";
+import { getGrantFromRequest, grantAuthorize } from "../scrapi/auth-grant.js";
+import type { AuthGrantAuthorizeEnv } from "../scrapi/auth-grant-authorize-env.js";
 import { isCanopyApiPoolTestMode } from "../env/runtime-mode.js";
 import {
   isOnboardTokenActive,
   readOnboardTokenRecord,
-  type OnboardTokenStoreEnv,
 } from "./onboard-token-store.js";
 import { resolvePaymentAncestor } from "./resolve-payment-ancestor.js";
 import type { RegistrationStoreEnv } from "./registration-store.js";
@@ -26,17 +22,10 @@ const FORESTRIE_GRANT_SCHEME = "Forestrie-Grant";
 
 import type { OnboardTokenRecord } from "./onboard-token-record.js";
 import { getParsedGenesis } from "../forest/genesis-cache.js";
+import type { GenesisAuthContext } from "./genesis-auth-context.js";
+import type { GenesisAuthEnv } from "./genesis-auth-env.js";
 
-export type GenesisAuthContext =
-  | { mode: "onboard"; tokenHash: string; tokenRecord: OnboardTokenRecord }
-  | { mode: "endorsement"; endorserUuid: string; grantResult: GrantResult };
-
-export interface GenesisAuthEnv
-  extends OnboardTokenStoreEnv,
-    RegistrationStoreEnv {
-  NODE_ENV: string;
-  resolveReceiptAuthority?: ReceiptAuthorityResolver;
-}
+export type { GenesisAuthContext, GenesisAuthEnv } from "./types.js";
 
 function readBearerToken(request: Request): string | null {
   const auth = request.headers.get("Authorization")?.trim() ?? "";

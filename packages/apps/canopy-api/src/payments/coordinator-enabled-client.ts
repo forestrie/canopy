@@ -2,18 +2,17 @@
  * Forward registration enabled (kill-switch) to delegation-coordinator.
  */
 
-export interface CoordinatorEnabledResponse {
-  enabled: boolean;
-}
+import type {
+  CoordinatorEnabledClientEnv,
+  CoordinatorEnabledResponse,
+  CoordinatorEnabledResult,
+} from "./coordinator-enabled-result.js";
 
-export interface CoordinatorEnabledClientEnv {
-  DELEGATION_COORDINATOR_URL?: string;
-  COORDINATOR_APP_TOKEN?: string;
-}
-
-export type CoordinatorEnabledResult =
-  | { ok: true; enabled: boolean }
-  | { ok: false; status: number; detail: string };
+export type {
+  CoordinatorEnabledClientEnv,
+  CoordinatorEnabledResponse,
+  CoordinatorEnabledResult,
+} from "./types.js";
 
 function coordinatorBaseUrl(env: CoordinatorEnabledClientEnv): string | null {
   const u = env.DELEGATION_COORDINATOR_URL?.trim();

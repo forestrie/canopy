@@ -17,6 +17,10 @@ import {
 import { isParsedKs256RootKey } from "./parsed-ks256-root-key.js";
 import { verifyKs256DelegationCert } from "./ks256-verify.js";
 import type { RootVerifyKey } from "../env/trust-root-client.js";
+import type { DelegationVerifyResult } from "./delegation-verify-result.js";
+import type { ResolveReceiptResult } from "./resolve-receipt-result.js";
+
+export type { DelegationVerifyResult, ResolveReceiptResult } from "./types.js";
 
 /** Unprotected header label for delegation certificate (sealer embeds via Custodian per-log delegation). */
 export const DELEGATION_CERT_LABEL = 1000;
@@ -35,12 +39,6 @@ const COSE_CRV_P256 = 1;
 
 /** Delegation payload label for delegated key. */
 const PAYLOAD_DELEGATED_KEY = 5;
-
-export interface DelegationVerifyResult {
-  delegatedKey: CryptoKey | null;
-  parsedKey: ParsedEcPublicKey;
-  signatureVerified: boolean;
-}
 
 /**
  * Extract the delegation certificate bytes from a receipt's unprotected header.
@@ -190,10 +188,6 @@ export async function verifyDelegationCert(
     parsedKey: importResult.parsed,
     signatureVerified,
   };
-}
-
-export interface ResolveReceiptResult {
-  verifyKeys: RootVerifyKey[];
 }
 
 /**

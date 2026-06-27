@@ -2,6 +2,7 @@
  * `/api/onboarding/**` — self-service onboard request + ops admin JSON.
  */
 
+import { decode as decodeCbor } from "cbor-x";
 import { parseCborBody } from "../cbor-api/cbor-request.js";
 import {
   cborResponse,
@@ -175,10 +176,11 @@ async function handleCreateRequest(
   let plannedForestR: string | undefined;
 
   try {
-    const raw = await parseCborBody(request);
-    const sizeErr = checkOnboardCreateBodySize(request, raw.length);
+    const bodyBytes = new Uint8Array(await request.arrayBuffer());
+    const sizeErr = checkOnboardCreateBodySize(request, bodyBytes.length);
     if (sizeErr) return attachCors(sizeErr, corsHeaders);
 
+    const raw = decodeCbor(bodyBytes);
     const m = decodeBodyAsIntKeyMap(raw);
     if (m) {
       label = readString(m, CBOR_LABEL);

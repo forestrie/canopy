@@ -71,10 +71,7 @@ export function createKs256RpcVerifyHooks(rpcUrl: string): Ks256VerifyHooks {
             jsonrpc: "2.0",
             id: 1,
             method: "eth_call",
-            params: [
-              { to: `0x${bytesToHex(address)}`, data },
-              "latest",
-            ],
+            params: [{ to: `0x${bytesToHex(address)}`, data }, "latest"],
           }),
         }).then((r) => r.json())) as { result?: string };
         return callResult.result?.toLowerCase() === ERC1271_MAGIC;

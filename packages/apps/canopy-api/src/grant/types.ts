@@ -7,6 +7,8 @@ export { type GrantAssembly, type GrantRequest } from "./grant-assembly.js";
 export { type GrantData, grantDataToBytes } from "./grant-data.js";
 export type { ParsedReceipt } from "./parsed-receipt.js";
 export type { GrantResult } from "./grant-result.js";
+export type { DelegationVerifyResult } from "./delegation-verify-result.js";
+export type { ResolveReceiptResult } from "./resolve-receipt-result.js";
 export {
   isPublishCheckpointStatementAuthGrant,
   isStatementRegistrationGrant,

@@ -62,7 +62,7 @@ export async function handleAdminResetStorage(
   const shardCount = getShardCount(env);
 
   try {
-/** Reset one shard's DelegationStoreDO SQLite via devResetStorage. */
+    /** Reset one shard's DelegationStoreDO SQLite via devResetStorage. */
     const resetOne = async (shardIndex: number) => {
       const stub = getStoreStub(env, shardIndex);
       await stub.devResetStorage();

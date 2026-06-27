@@ -1,12 +1,7 @@
-export type OnboardNotifyEvent =
-  | "onboard.request.created"
-  | "onboard.request.approved"
-  | "onboard.request.redeemed";
+import type { OnboardNotifyEnv } from "./onboard-notify-env.js";
+import type { OnboardNotifyEvent } from "./onboard-notify-event.js";
 
-export interface OnboardNotifyEnv {
-  ONBOARD_REQUEST_WEBHOOK_URL?: string;
-  ONBOARD_REQUEST_WEBHOOK_SECRET?: string;
-}
+export type { OnboardNotifyEvent, OnboardNotifyEnv } from "./types.js";
 
 /** Receiver tolerance window for webhook timestamps (seconds). */
 export const ONBOARD_WEBHOOK_TOLERANCE_SEC = 300;
