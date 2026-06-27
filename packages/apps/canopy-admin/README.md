@@ -29,11 +29,17 @@ Static ops console for [FOR-172](https://linear.app/forestrie/issue/FOR-172)
 - JSON problem-detail error toasts (FOR-185)
 - DOM-safe rendering (no `innerHTML` for operator-supplied fields)
 
-## FOR-182 (next)
+## FOR-182 (tokens + kill switch)
 
-Tokens and kill-switch tabs are stubbed until FOR-182.
+- **Tokens:** `GET /api/onboarding/admin/tokens` — label, status, chain, request
+  ref, hash prefix, consumed forest R, created/expiry
+- Click **Forest R** on a redeemed token to open the kill-switch tab with R
+  prefilled
+- **Kill switch:** load `GET /api/payments/admin/registrations/{R}/enabled`,
+  toggle via `PUT` with `{ enabled: boolean }` (confirm dialog)
+- Error toasts for 404 (not registered) and 503 (coordinator unavailable)
 
 ## Manual smoke
 
-Cross-check plan-0041 scenario rows S1–S7 and S14–S15 against dev lane after
-mandate `onboard request` (see plan-0040 FOR-178 matrix).
+Cross-check plan-0041 scenario rows S1–S15 against dev lane after mandate
+`onboard request` (see plan-0040 FOR-178 matrix).

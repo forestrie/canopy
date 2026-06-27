@@ -1,5 +1,5 @@
 /**
- * Canopy onboard admin — request queue UI (FOR-181).
+ * Canopy onboard admin — request queue, tokens, kill switch (FOR-181, FOR-182).
  * DOM-safe rendering; JSON admin API with problem-detail errors.
  */
 
@@ -9,12 +9,22 @@ const STORAGE_TOKEN = "canopyOpsToken";
 const baseUrlEl = document.getElementById("baseUrl");
 const opsTokenEl = document.getElementById("opsToken");
 const requestRowsEl = document.getElementById("requestRows");
+const tokenRowsEl = document.getElementById("tokenRows");
 const loadMoreEl = document.getElementById("loadMore");
 const toastEl = document.getElementById("toast");
 const rejectDialog = document.getElementById("rejectDialog");
 const rejectForm = document.getElementById("rejectForm");
 const rejectTargetEl = document.getElementById("rejectTarget");
 const rejectReasonEl = document.getElementById("rejectReason");
+const forestREl = document.getElementById("forestR");
+const killStatusEl = document.getElementById("killStatus");
+
+const panelRequests = document.getElementById("panelRequests");
+const panelTokens = document.getElementById("panelTokens");
+const panelKillSwitch = document.getElementById("panelKillSwitch");
+const tabRequests = document.getElementById("tabRequests");
+const tabTokens = document.getElementById("tabTokens");
+const tabKillSwitch = document.getElementById("tabKillSwitch");
 
 /** @type {string | undefined} */
 let listCursor;
@@ -24,6 +34,8 @@ let allRequests = [];
 let statusFilter = "all";
 /** @type {string | null} */
 let pendingRejectId = null;
+/** @type {boolean | null} */
+let killSwitchEnabled = null;
 
 baseUrlEl.value = sessionStorage.getItem(STORAGE_BASE) || "";
 opsTokenEl.value = sessionStorage.getItem(STORAGE_TOKEN) || "";
@@ -36,6 +48,22 @@ document.getElementById("saveConfig").addEventListener("click", () => {
 
 document.getElementById("refresh").addEventListener("click", () => {
   void reloadRequests(true);
+});
+
+document.getElementById("refreshTokens").addEventListener("click", () => {
+  void loadTokens();
+});
+
+tabRequests.addEventListener("click", () => showTab("requests"));
+tabTokens.addEventListener("click", () => showTab("tokens"));
+tabKillSwitch.addEventListener("click", () => showTab("killswitch"));
+
+document.getElementById("loadKillSwitch").addEventListener("click", () => {
+  void fetchKillSwitchStatus();
+});
+
+document.getElementById("toggleKillSwitch").addEventListener("click", () => {
+  void toggleKillSwitch();
 });
 
 loadMoreEl.addEventListener("click", () => {
@@ -132,6 +160,30 @@ function showToast(message, isError = false) {
   toastEl.classList.toggle("error", isError);
   toastEl.classList.remove("hidden");
   window.setTimeout(() => toastEl.classList.add("hidden"), 5000);
+}
+
+/**
+ * @param {"requests" | "tokens" | "killswitch"} tab
+ */
+function showTab(tab) {
+  panelRequests.classList.toggle("hidden", tab !== "requests");
+  panelTokens.classList.toggle("hidden", tab !== "tokens");
+  panelKillSwitch.classList.toggle("hidden", tab !== "killswitch");
+  tabRequests.classList.toggle("active", tab === "requests");
+  tabTokens.classList.toggle("active", tab === "tokens");
+  tabKillSwitch.classList.toggle("active", tab === "killswitch");
+  if (tab === "tokens") void loadTokens();
+}
+
+/**
+ * @param {string} forestR
+ */
+function openKillSwitchTab(forestR) {
+  forestREl.value = forestR;
+  killSwitchEnabled = null;
+  killStatusEl.textContent = "Not loaded";
+  showTab("killswitch");
+  void fetchKillSwitchStatus();
 }
 
 function truncate(value, max = 12) {
@@ -298,6 +350,112 @@ async function loadRequests(reset) {
 async function reloadRequests(reset) {
   if (reset) listCursor = undefined;
   await loadRequests(reset);
+}
+
+/**
+ * @param {Record<string, unknown>} token
+ * @param {HTMLTableSectionElement} tbody
+ */
+function renderTokenRow(token, tbody) {
+  const tr = document.createElement("tr");
+  tr.append(
+    textCell(String(token.label ?? "")),
+    (() => {
+      const td = document.createElement("td");
+      const span = document.createElement("span");
+      const status = String(token.status ?? "");
+      span.textContent = status;
+      span.className = statusClass(status);
+      td.appendChild(span);
+      return td;
+    })(),
+    textCell(String(token.chainBinding?.chainId ?? "")),
+    textCell(truncate(token.requestId, 10)),
+    textCell(truncate(token.hash, 12)),
+    (() => {
+      const td = document.createElement("td");
+      const forestR = token.consumedForestR;
+      if (typeof forestR === "string" && forestR.length > 0) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "linkish";
+        btn.textContent = forestR;
+        btn.addEventListener("click", () => openKillSwitchTab(forestR));
+        td.appendChild(btn);
+      } else {
+        td.textContent = "—";
+      }
+      return td;
+    })(),
+    textCell(formatEpoch(token.createdAt)),
+    textCell(token.expiry ? formatEpoch(token.expiry) : "—"),
+  );
+  tbody.appendChild(tr);
+}
+
+async function loadTokens() {
+  try {
+    const data = await api("/api/onboarding/admin/tokens");
+    const batch = Array.isArray(data.tokens) ? data.tokens : [];
+    tokenRowsEl.replaceChildren();
+    for (const token of batch) {
+      renderTokenRow(token, tokenRowsEl);
+    }
+  } catch (err) {
+    showToast(String(err), true);
+  }
+}
+
+function forestRPath() {
+  const r = forestREl.value.trim();
+  if (!r) throw new Error("Enter forest UUID (R)");
+  return encodeURIComponent(r);
+}
+
+async function fetchKillSwitchStatus() {
+  try {
+    const data = await api(
+      `/api/payments/admin/registrations/${forestRPath()}/enabled`,
+    );
+    killSwitchEnabled = Boolean(data.enabled);
+    const canonicalR = typeof data.R === "string" ? data.R : forestREl.value;
+    killStatusEl.textContent = `Registration ${canonicalR}: enabled=${killSwitchEnabled}`;
+    killStatusEl.classList.remove("muted");
+  } catch (err) {
+    killSwitchEnabled = null;
+    killStatusEl.textContent = "Not loaded";
+    killStatusEl.classList.add("muted");
+    showToast(String(err), true);
+  }
+}
+
+async function toggleKillSwitch() {
+  if (killSwitchEnabled === null) {
+    showToast("Load status before toggling", true);
+    return;
+  }
+  const next = !killSwitchEnabled;
+  const r = forestREl.value.trim();
+  if (
+    !window.confirm(
+      `${next ? "Enable" : "Disable"} payment registration for forest ${r}?`,
+    )
+  ) {
+    return;
+  }
+  try {
+    const data = await api(
+      `/api/payments/admin/registrations/${forestRPath()}/enabled`,
+      "PUT",
+      { enabled: next },
+    );
+    killSwitchEnabled = Boolean(data.enabled);
+    const canonicalR = typeof data.R === "string" ? data.R : r;
+    killStatusEl.textContent = `Registration ${canonicalR}: enabled=${killSwitchEnabled}`;
+    showToast(`Registration ${next ? "enabled" : "disabled"}`);
+  } catch (err) {
+    showToast(String(err), true);
+  }
 }
 
 void reloadRequests(true);
