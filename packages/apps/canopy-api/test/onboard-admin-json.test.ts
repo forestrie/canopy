@@ -34,7 +34,9 @@ function envWithOnboard(overrides: Partial<Env> = {}): Env {
   };
 }
 
-function adminJsonHeaders(extra?: Record<string, string>): Record<string, string> {
+function adminJsonHeaders(
+  extra?: Record<string, string>,
+): Record<string, string> {
   return {
     Authorization: `Bearer ${OPS}`,
     "Content-Type": "application/json",

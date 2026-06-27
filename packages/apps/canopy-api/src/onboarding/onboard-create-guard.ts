@@ -76,10 +76,7 @@ export function checkOnboardFieldLengths(fields: {
 export function checkOnboardRejectReasonLength(
   rejectReason: string | undefined,
 ): Response | null {
-  if (
-    rejectReason &&
-    rejectReason.length > ONBOARD_REJECT_REASON_MAX_LEN
-  ) {
+  if (rejectReason && rejectReason.length > ONBOARD_REJECT_REASON_MAX_LEN) {
     return ClientErrors.badRequest("rejectReason too long");
   }
   return null;
