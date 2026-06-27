@@ -685,6 +685,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
         mmrEnd: body.mmrEnd,
         delegatedPublicKey,
         certificate,
+        issuedAt: body.issuedAt,
+        expiresAt: body.expiresAt,
         publicRoot: this.publicRootMaterialFromRow(rootRow),
         ks256RpcUrl: this.env.KS256_RPC_URL,
       });

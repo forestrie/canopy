@@ -235,6 +235,52 @@ describe("POST /api/delegations/certificate (public sealing)", () => {
     expect(res.status).toBe(400);
   });
 
+  it("returns 400 when submit timestamps do not match certificate payload", async () => {
+    const logUuidMismatch = randomUUID();
+    const logHex32Mismatch = normalizeLogIdToHex32(logUuidMismatch);
+    const rootKeyPair = await generateTestRootKeyPair();
+    const { x, y, certificate, issuedAt, expiresAt } =
+      await buildTestByokMaterial({
+        rootKeyPair,
+        logIdHex32: logHex32Mismatch,
+        mmrStart,
+        mmrEnd,
+        delegatedPublicKey: delegatedKey,
+      });
+
+    const rootRes = await fetchWithDoRetry(
+      `http://localhost/api/logs/${logUuidMismatch}/public-root`,
+      {
+        method: "POST",
+        headers: appTokenHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          alg: "ES256",
+          x: bytesToBase64(x),
+          y: bytesToBase64(y),
+        }),
+      },
+    );
+    expect(rootRes.status).toBe(200);
+
+    const res = await fetchWithDoRetry(
+      "http://localhost/api/delegations/certificate",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          logId: logUuidMismatch,
+          mmrStart,
+          mmrEnd,
+          delegatedPublicKey: bytesToBase64(delegatedKey),
+          certificate: bytesToBase64(certificate),
+          issuedAt,
+          expiresAt: expiresAt + 86_400,
+        }),
+      },
+    );
+    expect(res.status).toBe(400);
+  });
+
   it("accepts valid certificate without credential and replays idempotently", async () => {
     const logUuid2 = randomUUID();
     const logHex32_2 = normalizeLogIdToHex32(logUuid2);
