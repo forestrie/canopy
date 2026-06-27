@@ -2,7 +2,8 @@
  * JSON body for POST /api/delegations/certificate (runner submission).
  *
  * Validated by {@link validateByokDelegationCertificate} before persistence
- * in {@link DelegationStoreDO}.
+ * in {@link DelegationStoreDO}. {@link issuedAt} and {@link expiresAt} must
+ * match the signed COSE payload (fields 8 and 9).
  */
 
 /** Runner-submitted BYOK delegation certificate for storage. */

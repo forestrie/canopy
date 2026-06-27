@@ -109,6 +109,8 @@ async function importEs256PublicKey(
  * @param opts.mmrEnd - Expected MMR range end in payload.
  * @param opts.delegatedPublicKey - Submitted delegated key CBOR bytes.
  * @param opts.certificate - COSE Sign1 certificate bytes.
+ * @param opts.issuedAt - Submit-body issuedAt; must match COSE payload field 8.
+ * @param opts.expiresAt - Submit-body expiresAt; must match COSE payload field 9.
  * @param opts.publicRoot - Stored log public root for verify.
  * @param opts.ks256RpcUrl - Optional JSON-RPC for KS256 ERC-1271.
  * @throws {@link ByokCertificateValidationError} when validation fails.
@@ -119,6 +121,8 @@ export async function validateByokDelegationCertificate(opts: {
   mmrEnd: number;
   delegatedPublicKey: Uint8Array;
   certificate: Uint8Array;
+  issuedAt: number;
+  expiresAt: number;
   publicRoot: PublicRootMaterial;
   ks256RpcUrl?: string;
 }): Promise<void> {
@@ -131,6 +135,16 @@ export async function validateByokDelegationCertificate(opts: {
   }
   if (info.mmrEnd !== opts.mmrEnd) {
     throw new ByokCertificateValidationError("payload mmrEnd mismatch");
+  }
+  if (opts.issuedAt !== info.issuedAt) {
+    throw new ByokCertificateValidationError(
+      "submit issuedAt does not match certificate payload",
+    );
+  }
+  if (opts.expiresAt !== info.expiresAt) {
+    throw new ByokCertificateValidationError(
+      "submit expiresAt does not match certificate payload",
+    );
   }
 
   const { payloadBytes } = decodeCoseSign1Parts(opts.certificate);
