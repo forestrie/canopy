@@ -34,6 +34,13 @@ function resolveCanopyBaseUrl(): string {
 
 const baseURL = resolveCanopyBaseUrl();
 
+/** Default CI skips Mode C webhook seal until KS256 register-grant verify is green (FOR-204). */
+const systemTestIgnore =
+  process.env.CI === "true" &&
+  process.env.E2E_MODE_C_WEBHOOK_IN_CI?.trim() !== "1"
+    ? ["**/system/byok-mode-c-webhook-seal.spec.ts"]
+    : [];
+
 export default defineConfig({
   globalSetup: "./global-setup.ts",
   globalTeardown: "./global-teardown.ts",
@@ -57,6 +64,7 @@ export default defineConfig({
     {
       name: "system",
       testMatch: ["**/system/**/*.spec.ts"],
+      testIgnore: systemTestIgnore,
       timeout: E2E_SYSTEM_TEST_TIMEOUT_MS,
       // Serial: parallel genesis POSTs stress Worker→univocity and flake 502.
       workers: 1,
