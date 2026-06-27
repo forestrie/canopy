@@ -6,30 +6,21 @@
 
 import { decode as decodeCbor } from "cbor-x";
 import type { Hex } from "viem";
+import type { CheckpointFromStorage } from "./checkpoint-from-storage-result.js";
+import type {
+  LogIdUuid,
+  StorageCheckpointEnv,
+  StorageCheckpointEnvR2,
+  StorageCheckpointEnvUrl,
+} from "./storage-checkpoint-env.js";
 
-/** Log ID as UUID string (ownerLogId from grant). */
-export type LogIdUuid = string;
-
-/** Storage config: R2 bucket (Workers binding) for massifs/checkpoints. */
-export interface StorageCheckpointEnvR2 {
-  r2Mmrs: R2Bucket;
-  massifHeight: number;
-}
-
-/** Storage config: base URL to fetch checkpoint objects by path (e.g. public R2 or CDN). */
-export interface StorageCheckpointEnvUrl {
-  objectStorageRootUrl: string;
-  massifHeight: number;
-}
-
-export type StorageCheckpointEnv =
-  | StorageCheckpointEnvR2
-  | StorageCheckpointEnvUrl;
-
-export interface CheckpointFromStorage {
-  /** MMR root when present in checkpoint payload; optional for minimal verification. */
-  mmrRoot?: Hex;
-}
+export type {
+  CheckpointFromStorage,
+  LogIdUuid,
+  StorageCheckpointEnv,
+  StorageCheckpointEnvR2,
+  StorageCheckpointEnvUrl,
+} from "./types.js";
 
 function formatObjectIndex16(massifIndex: number): string {
   return massifIndex.toString(10).padStart(16, "0");

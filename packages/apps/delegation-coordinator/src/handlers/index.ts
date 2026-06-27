@@ -1,3 +1,7 @@
+/**
+ * HTTP route handler re-exports for delegation-coordinator index router.
+ */
+
 export { handleIssueDelegation } from "./issue-delegation.js";
 export { handleGetPendingDelegation } from "./get-pending-delegation.js";
 export { handleGetSigningRoute } from "./get-signing-route.js";

@@ -13,6 +13,13 @@ import {
   problemResponse,
 } from "./handler.js";
 
+/**
+ * Dev-only POST /admin/reset-storage — wipe DelegationStoreDO shard data.
+ *
+ * @param request - Must carry X-Forestrie-Coordinator-Reset header.
+ * @param url - shard query param (index or `all`).
+ * @param env - Worker bindings.
+ */
 export async function handleAdminResetStorage(
   request: Request,
   url: URL,
@@ -55,6 +62,7 @@ export async function handleAdminResetStorage(
   const shardCount = getShardCount(env);
 
   try {
+    /** Reset one shard's DelegationStoreDO SQLite via devResetStorage. */
     const resetOne = async (shardIndex: number) => {
       const stub = getStoreStub(env, shardIndex);
       await stub.devResetStorage();

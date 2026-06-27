@@ -1,3 +1,4 @@
+/** Unit tests for {@link validateWebhookUrl} SSRF and protocol rules. */
 import { describe, expect, it } from "vitest";
 import { WebhookUrlValidationError, validateWebhookUrl } from "../src/index.js";
 

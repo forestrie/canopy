@@ -1,11 +1,7 @@
 /**
  * Statement COSE encoder (artifact).
- * Produces COSE Sign1 for register-statement: 4-element array; protected = bstr with map { 4: kid }; payload bstr; signature bstr.
- *
- * Wire contract (RFC 8152):
- *   COSE_Sign1 = [ protected: bstr, unprotected: map, payload: bstr, signature: bstr ]
- *   protected decodes to CBOR map with 4 (kid) -> bstr
- *   Signature must be CBOR bstr (not raw bytes in the array).
+ * Produces COSE Sign1 for register-statement: 4-element array; protected = bstr
+ * with map `{ 4: kid }`; payload and signature as CBOR bstrs (RFC 8152).
  */
 
 import { encodeCborBstr } from "./encode-cbor-bstr.js";

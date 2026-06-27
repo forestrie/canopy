@@ -1,6 +1,12 @@
 /**
- * DelegationStoreDO — sharded persistence for signing routes, material, and
- * pending delegation hints.
+ * Sharded Durable Object persistence for delegation control-plane state.
+ *
+ * Upstream: HTTP worker forwards per-log routes via {@link forwardToStore};
+ * [arbor sealer](https://github.com/forestrie/arbor/blob/main/services/sealer/)
+ * issues CBOR delegation requests and polls pending. Downstream: signed
+ * webhooks to operator URLs; certificate PUT clears pending rows. Hierarchy and
+ * BYOK flows per
+ * [ARC-0017](https://github.com/forestrie/devdocs/blob/main/arc/arc-0017-hierarchical-authority-logs-and-fee-distribution.md).
  */
 
 import { DurableObject } from "cloudflare:workers";
@@ -42,16 +48,22 @@ import {
   parseRetryConfig,
 } from "../webhook/retry-config.js";
 
+/** Pending row TTL before prune (seconds). */
 const PENDING_TTL_SECONDS = 60 * 60;
+
+/** Max pending hints retained per target log id. */
 const PENDING_CAP_PER_LOG = 32;
 
+/** Per-shard SQLite store for routes, certs, pending, webhooks. */
 export class DelegationStoreDO extends DurableObject<Env> {
   private initialized = false;
 
+  /** Bind Cloudflare DO state and worker env. */
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
   }
 
+  /** Route internal fetch paths to store handlers. */
   async fetch(request: Request): Promise<Response> {
     this.ensureSchema();
 
@@ -156,6 +168,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     }
   }
 
+  /** Create SQLite tables and run one-time migrations. */
   private ensureSchema(): void {
     if (this.initialized) return;
 
@@ -265,6 +278,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     this.initialized = true;
   }
 
+  /** Copy legacy materials rows into delegation_certificates when present. */
   private ensureDelegationCertificatesMigrated(): void {
     try {
       this.ctx.storage.sql.exec(`
@@ -278,6 +292,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     }
   }
 
+  /** Add user_enabled / operator_enabled columns on legacy databases. */
   private ensureEnabledAuthorityColumns(): void {
     try {
       [
@@ -299,6 +314,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     }
   }
 
+  /** Add delegated_public_key column to pending on legacy databases. */
   private ensurePendingDelegatedPublicKeyColumn(): void {
     try {
       [
@@ -313,6 +329,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     }
   }
 
+  /** Drop expired and over-cap pending rows for a log. */
   private prunePending(logIdHex32: string, nowSeconds: number): void {
     const cutoff = nowSeconds - PENDING_TTL_SECONDS;
     this.ctx.storage.sql.exec(
@@ -334,6 +351,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     );
   }
 
+  /** GET /signing-route/{logIdHex32} — read signing route JSON. */
   private handleGetSigningRoute(logIdHex32: string): Response {
     const rows = [
       ...this.ctx.storage.sql.exec(
@@ -362,6 +380,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     return Response.json(route);
   }
 
+  /** PUT /signing-route/{logIdHex32} — upsert signing route. */
   private async handlePutSigningRoute(
     logIdHex32: string,
     request: Request,
@@ -397,6 +416,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     return Response.json({ ok: true });
   }
 
+  /** PUT /public-root/{logIdHex32} — store BYOK public root. */
   private async handlePutPublicRoot(
     logIdHex32: string,
     request: Request,
@@ -517,6 +537,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     return Response.json({ ok: true });
   }
 
+  /** Map SQLite public_roots row to validation PublicRootMaterial. */
   private publicRootMaterialFromRow(row: {
     alg: string;
     x: ArrayBuffer;
@@ -538,6 +559,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     );
   }
 
+  /** Map stored row to trust-root CBOR for GET public-root. */
   private trustRootCborFromRow(
     logIdHex32: string,
     row: { alg: string; x: ArrayBuffer; y: ArrayBuffer },
@@ -562,6 +584,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     throw new Error(`unsupported stored public root alg ${row.alg}`);
   }
 
+  /** GET /public-root/{logIdHex32} — CBOR trust-root response. */
   private handleGetPublicRoot(logIdHex32: string): Response {
     const rows = [
       ...this.ctx.storage.sql.exec(
@@ -626,6 +649,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     });
   }
 
+  /** PUT /certificate — validate and persist delegation certificate. */
   private async handlePutCertificate(request: Request): Promise<Response> {
     const body = (await request.json()) as SubmitDelegationCertificateRequest;
     const logIdHex32 = body.logId;
@@ -716,6 +740,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     return Response.json({ ok: true, certificateKey: key });
   }
 
+  /** POST /issue — return cert CBOR or record pending + webhook. */
   private async handleIssue(request: Request): Promise<Response> {
     const buffer = await request.arrayBuffer();
     const req = decode(new Uint8Array(buffer)) as DelegationIssueRequest;
@@ -806,6 +831,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     });
   }
 
+  /** GET /pending?authLogId= — operator pending list by auth log. */
   private handleGetPending(url: URL): Response {
     const authLogId = url.searchParams.get("authLogId");
     if (!authLogId) {
@@ -878,6 +904,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     return Response.json({ entries, offset, limit });
   }
 
+  /** GET /pending-delegation?logId= — sealer-style pending for one log. */
   private handleGetPendingDelegation(url: URL): Response {
     const logIdHex32 = url.searchParams.get("logId");
     if (!logIdHex32) {
@@ -940,6 +967,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     return Response.json({ entries, limit: PENDING_CAP_PER_LOG });
   }
 
+  /** POST /pending-hint — upsert pending row from worker hint. */
   private async handlePendingHint(request: Request): Promise<Response> {
     const body = (await request.json()) as PendingHintRequest;
     const authLogIdHex32 = body.authLogId;
@@ -980,6 +1008,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     return this.effectiveEnabled(row);
   }
 
+  /** Effective enabled when user and operator flags are both true. */
   private effectiveEnabled(row: {
     user_enabled: number;
     operator_enabled: number;
@@ -987,6 +1016,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     return row.user_enabled !== 0 && row.operator_enabled !== 0;
   }
 
+  /** Read log_delegation_config row or null when unset. */
   private readDelegationConfigRow(logIdHex32: string): {
     webhook_url: string | null;
     enabled: number;
@@ -1014,6 +1044,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     };
   }
 
+  /** Map config row to public webhook JSON (no secrets). */
   private webhookConfigResponseFromRow(row: {
     webhook_url: string | null;
     user_enabled: number;
@@ -1032,6 +1063,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     return resp;
   }
 
+  /** GET /webhook/{logIdHex32} — read webhook config JSON. */
   private handleGetWebhookConfig(logIdHex32: string): Response {
     const row = this.readDelegationConfigRow(logIdHex32);
     if (!row) {
@@ -1043,6 +1075,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     return Response.json(this.webhookConfigResponseFromRow(row));
   }
 
+  /** PUT /webhook/{logIdHex32} — set webhook URL. */
   private async handlePutWebhookConfig(
     logIdHex32: string,
     request: Request,
@@ -1089,6 +1122,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     );
   }
 
+  /** DELETE /webhook/{logIdHex32} — clear webhook URL. */
   private handleDeleteWebhookConfig(logIdHex32: string): Response {
     const now = Date.now();
     const existing = this.readDelegationConfigRow(logIdHex32);
@@ -1107,6 +1141,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     return Response.json({ ok: true });
   }
 
+  /** GET /enabled/{logIdHex32} — read enabled flags JSON. */
   private handleGetEnabled(logIdHex32: string): Response {
     const row = this.readDelegationConfigRow(logIdHex32);
     if (!row) {
@@ -1123,6 +1158,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     return Response.json(resp);
   }
 
+  /** PUT /enabled/{logIdHex32}/user — user kill-switch write. */
   private async handlePutUserEnabled(
     logIdHex32: string,
     request: Request,
@@ -1130,6 +1166,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     return this.handlePutEnabledAuthority(logIdHex32, request, "user");
   }
 
+  /** PUT /enabled/{logIdHex32}/operator — operator kill-switch write. */
   private async handlePutOperatorEnabled(
     logIdHex32: string,
     request: Request,
@@ -1137,6 +1174,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     return this.handlePutEnabledAuthority(logIdHex32, request, "operator");
   }
 
+  /** Shared PUT handler for user or operator enabled authority. */
   private async handlePutEnabledAuthority(
     logIdHex32: string,
     request: Request,
@@ -1201,6 +1239,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     return Response.json(resp);
   }
 
+  /** Public base URL for certificateSubmitUrl in webhook payloads. */
   private coordinatorPublicUrl(): string {
     return (
       this.env.COORDINATOR_PUBLIC_URL?.trim() ||
@@ -1208,6 +1247,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     );
   }
 
+  /** Insert webhook_deliveries row and attempt first delivery. */
   private async enqueueWebhookDelivery(input: {
     logIdHex32: string;
     authLogIdHex32: string;
@@ -1258,6 +1298,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     await this.processWebhookDeliveryAttempt(event.requestKey);
   }
 
+  /** POST webhook once; schedule retry or delete on outcome. */
   private async processWebhookDeliveryAttempt(
     requestKey: string,
   ): Promise<void> {
@@ -1315,6 +1356,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     this.scheduleNextWebhookAlarm();
   }
 
+  /** Set DO alarm to earliest webhook_deliveries.next_attempt_at. */
   private scheduleNextWebhookAlarm(): void {
     const rows = [
       ...this.ctx.storage.sql.exec(
@@ -1326,6 +1368,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     this.ctx.storage.setAlarm(minAt * 1000);
   }
 
+  /** Process due webhook delivery retries. */
   async alarm(): Promise<void> {
     this.ensureSchema();
     const now = Math.floor(Date.now() / 1000);
@@ -1344,7 +1387,12 @@ export class DelegationStoreDO extends DurableObject<Env> {
     this.scheduleNextWebhookAlarm();
   }
 
-  /** @internal Exported for tests */
+  /**
+   * Read stored certificate row (@internal — tests).
+   *
+   * @param logIdHex32 - Target log id.
+   * @param certificateKey - Composite storage key.
+   */
   getDelegationCertificateRecord(
     logIdHex32: string,
     certificateKey: string,

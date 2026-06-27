@@ -1,3 +1,4 @@
+/** Unit tests for djb2 shard assignment (must match canopy-api DO naming). */
 import { describe, it, expect } from "vitest";
 import {
   hashLogId,

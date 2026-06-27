@@ -1,5 +1,8 @@
 /**
- * Handler for POST /api/logs/{logId}/public-root
+ * POST /api/logs/{logId}/public-root — register BYOK public root.
+ *
+ * Operator app token required. Supports ES256 x/y and v2 COSE alg int keys
+ * per [univocity docs/arc](https://github.com/forestrie/univocity/blob/main/docs/arc/).
  */
 
 import type { Env } from "../env.js";
@@ -17,6 +20,7 @@ import {
   problemResponse,
 } from "./handler.js";
 
+/** Parse alg field from submit body to ES256 label or COSE int. */
 function parseAlg(
   raw: SubmitPublicRootRequest["alg"],
 ): number | "ES256" | null {
@@ -25,6 +29,7 @@ function parseAlg(
   return null;
 }
 
+/** POST public root for onboarding / wallet-challenge binding. */
 export async function handlePostPublicRoot(
   logIdSegment: string,
   request: Request,

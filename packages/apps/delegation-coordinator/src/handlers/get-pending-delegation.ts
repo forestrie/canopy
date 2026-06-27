@@ -1,5 +1,7 @@
 /**
- * Handler for GET /api/logs/{logId}/pending-delegation — sealer poll (public).
+ * GET /api/logs/{logId}/pending-delegation — sealer poll (unauthenticated).
+ *
+ * Returns pending hints for one log when delegation surfacing is enabled.
  */
 
 import type { Env } from "../env.js";
@@ -11,6 +13,13 @@ import {
   problemResponse,
 } from "./handler.js";
 
+/**
+ * GET pending-delegation for a log id path segment.
+ *
+ * @param logIdSegment - Raw URL log id segment.
+ * @param _request - Unused (public route).
+ * @param env - Worker bindings.
+ */
 export async function handleGetPendingDelegation(
   logIdSegment: string,
   _request: Request,

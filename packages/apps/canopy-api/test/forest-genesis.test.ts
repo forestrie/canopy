@@ -281,6 +281,18 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
     expect(res.status).toBe(401);
   });
 
+  it("returns 400 when chain-id is not supported", async () => {
+    const logId = crypto.randomUUID();
+    const auth = await genesisAuthHeader(poolEnv);
+    const m = validGenesisV2Es256CborMap({ chainId: "999999" });
+    const res = await worker.fetch(
+      genesisRequest(logId, m, auth),
+      poolEnv,
+      {} as ExecutionContext,
+    );
+    expect(res.status).toBe(400);
+  });
+
   it("returns 201 idempotently when genesis.cbor already exists", async () => {
     const logId = crypto.randomUUID();
     const auth = await genesisAuthHeader(poolEnv);

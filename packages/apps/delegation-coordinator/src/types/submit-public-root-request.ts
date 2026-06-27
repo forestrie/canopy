@@ -1,4 +1,11 @@
-/** JSON body for POST /api/logs/{logId}/public-root. */
+/**
+ * JSON body for POST /api/logs/{logId}/public-root.
+ *
+ * Registers the log owner key for wallet-challenge auth and certificate
+ * verification (ES256 P-256 or KS256 contract address).
+ */
+
+/** User-submitted public root for an authority log. */
 export interface SubmitPublicRootRequest {
   /** ES256 legacy: `"ES256"`. KS256 / ES256 v2: COSE alg int (-65799 or -7). */
   alg: "ES256" | number;

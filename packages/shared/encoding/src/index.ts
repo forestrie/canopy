@@ -1,6 +1,12 @@
 /**
- * @canopy/encoding — shared CBOR and COSE primitives and artifact encoders.
- * Plan 0003: one implementation per artifact; single file per primitive/artifact.
+ * @canopy/encoding — shared CBOR/COSE wire helpers consumed by canopy-api,
+ * forestrie-ingress, and Custodian signing paths. One encoder per artifact;
+ * sign and verify must share identical bytes (see {@link encodeSigStructure}).
+ *
+ * Grant and statement shapes align with
+ * [grants.md](https://github.com/forestrie/canopy/blob/main/docs/grants.md)
+ * and Univocity `PublishGrant` —
+ * [ARC-0019](https://github.com/forestrie/devdocs/blob/main/arc/arc-0019-grant-verification-model.md).
  */
 
 export { encodeCborBstr } from "./encode-cbor-bstr.js";

@@ -1,5 +1,11 @@
 import type { OnboardRequestRecord } from "./onboard-request-record.js";
 import type { OnboardRequestStatus } from "./onboard-request-status.js";
+import type { CreateOnboardRequestInput } from "./create-onboard-request.js";
+import type { CreateOnboardRequestResult } from "./create-onboard-request.js";
+import type { ListOnboardRequestsResult } from "./list-onboard-requests-result.js";
+import type { OnboardRequestStoreEnv } from "./onboard-request-store-env.js";
+import type { OnboardRequestWithEtag } from "./onboard-request-with-etag.js";
+import type { RedeemCasResult } from "./redeem-cas-result.js";
 import {
   generateRedeemCode,
   hashRedeemCode,
@@ -7,23 +13,14 @@ import {
 } from "./onboard-request-hash.js";
 import { secureHexEqual } from "./secure-hex-equal.js";
 
-export interface OnboardRequestStoreEnv {
-  R2_GRANTS: R2Bucket;
-}
-
-export interface OnboardRequestWithEtag {
-  record: OnboardRequestRecord;
-  etag: string;
-}
-
-export interface ListOnboardRequestsResult {
-  requests: OnboardRequestRecord[];
-  cursor?: string;
-}
-
-export type RedeemCasResult =
-  | { ok: true; record: OnboardRequestRecord }
-  | { ok: false; reason: "not_found" | "wrong_state" | "cas_failed" };
+export type {
+  CreateOnboardRequestInput,
+  CreateOnboardRequestResult,
+  ListOnboardRequestsResult,
+  OnboardRequestStoreEnv,
+  OnboardRequestWithEtag,
+  RedeemCasResult,
+} from "./types.js";
 
 function encodeRecord(record: OnboardRequestRecord): string {
   return JSON.stringify(record);
@@ -65,20 +62,6 @@ async function putRecordCas(
     },
   );
   return written != null;
-}
-
-export interface CreateOnboardRequestInput {
-  label: string;
-  chainBinding: OnboardRequestRecord["chainBinding"];
-  contactEmail: string;
-  mandateOrigin?: string;
-  plannedForestR?: string;
-  ttlSec: number;
-}
-
-export interface CreateOnboardRequestResult {
-  record: OnboardRequestRecord;
-  redeemCode: string;
 }
 
 export async function createOnboardRequest(

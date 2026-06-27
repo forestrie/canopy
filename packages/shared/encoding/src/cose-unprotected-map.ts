@@ -1,8 +1,15 @@
 /**
- * Normalize COSE Sign1 unprotected header (CBOR map) to Map<number, unknown>.
- * Handles Map instances and plain objects with numeric string keys (cbor-x decode shapes).
+ * Normalize COSE Sign1 unprotected headers after cbor-x decode.
+ * Custodian and merge helpers expect `Map<number, unknown>`; cbor-x may yield
+ * plain objects with numeric string keys.
  */
 
+/**
+ * Convert a decoded unprotected header to a numeric-key Map.
+ *
+ * @param value - Decoded COSE Sign1 `[1]` (Map, plain object, or unknown)
+ * @returns Map with finite numeric keys; empty map when input is not mappable
+ */
 export function coseUnprotectedToMap(value: unknown): Map<number, unknown> {
   if (value instanceof Map) {
     const out = new Map<number, unknown>();

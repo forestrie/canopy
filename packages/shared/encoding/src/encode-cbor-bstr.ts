@@ -4,7 +4,10 @@
  */
 
 /**
- * Encode bytes as CBOR bstr (major type 2). Returns header + payload.
+ * Encode bytes as CBOR bstr (major type 2).
+ *
+ * @param bytes - Payload to wrap
+ * @returns CBOR header plus payload bytes (canonical short-form lengths)
  */
 export function encodeCborBstr(bytes: Uint8Array): Uint8Array {
   const len = bytes.length;

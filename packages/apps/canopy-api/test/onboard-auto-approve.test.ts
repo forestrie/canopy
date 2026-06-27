@@ -13,6 +13,11 @@ const baseRecord: OnboardRequestRecord = {
   expiresAt: 9999999999,
 };
 
+const SUPPORTED_CHAINS_RPC = JSON.stringify({
+  "84532": ["https://x"],
+  "1": ["https://y"],
+});
+
 describe("onboard auto-approve", () => {
   it("default off does not auto-approve", () => {
     expect(shouldAutoApproveRequest({}, baseRecord)).toBe(false);
@@ -24,6 +29,7 @@ describe("onboard auto-approve", () => {
         {
           ONBOARD_AUTO_APPROVE: "true",
           ONBOARD_AUTO_APPROVE_CHAIN_IDS: "84532,1",
+          SUPPORTED_CHAINS_RPC,
         },
         baseRecord,
       ),
@@ -36,6 +42,7 @@ describe("onboard auto-approve", () => {
         {
           ONBOARD_AUTO_APPROVE: "true",
           ONBOARD_AUTO_APPROVE_CHAIN_IDS: "1",
+          SUPPORTED_CHAINS_RPC,
         },
         baseRecord,
       ),
@@ -49,6 +56,7 @@ describe("onboard auto-approve", () => {
           ONBOARD_AUTO_APPROVE: "true",
           ONBOARD_AUTO_APPROVE_CHAIN_IDS: "84532",
           ONBOARD_AUTO_APPROVE_LABEL_PREFIX: "prod-",
+          SUPPORTED_CHAINS_RPC,
         },
         baseRecord,
       ),

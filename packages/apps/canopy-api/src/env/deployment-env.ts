@@ -1,4 +1,9 @@
 import { problemResponse } from "../cbor-api/cbor-response.js";
+import type { CanopyBootstrapTrioEnv } from "./canopy-bootstrap-trio-env.js";
+import type { CanopyCheckRequestEnv } from "./canopy-check-request-env.js";
+import type { CanopyOpsAdminEnv } from "./canopy-ops-admin-env.js";
+import type { CanopyReceiptVerifierEnv } from "./canopy-receipt-verifier-env.js";
+import type { CanopySequencingEnv } from "./canopy-sequencing-env.js";
 import { isCanopyApiPoolTestMode } from "./runtime-mode";
 
 function pathnameIsOnboardingRoute(pathname: string): boolean {
@@ -15,11 +20,13 @@ function pathnameIsPaymentsOps(pathname: string): boolean {
   return pathname === "/api/payments" || pathname.startsWith("/api/payments/");
 }
 
-/** Ops routes for onboard-token mint/list/revoke. */
-export interface CanopyOpsAdminEnv {
-  NODE_ENV: string;
-  CANOPY_OPS_ADMIN_TOKEN?: string;
-}
+export type {
+  CanopyBootstrapTrioEnv,
+  CanopyCheckRequestEnv,
+  CanopyOpsAdminEnv,
+  CanopyReceiptVerifierEnv,
+  CanopySequencingEnv,
+} from "./types.js";
 
 /**
  * Non-pool workers serving `/api/payments/**` need CANOPY_OPS_ADMIN_TOKEN.
@@ -40,12 +47,6 @@ export function responseIfPaymentsOpsIncomplete(
   }
   return null;
 }
-
-/** Env slice required for {@link checkRequestEnv} (structural typing with worker `Env`). */
-export type CanopyCheckRequestEnv = CanopyOpsAdminEnv &
-  CanopyBootstrapTrioEnv &
-  CanopySequencingEnv &
-  CanopyReceiptVerifierEnv;
 
 /**
  * Route-aware deployment readiness: `/api/payments/**` needs ops admin token;
@@ -76,18 +77,6 @@ export function checkRequestEnv(
   return responseIfReceiptVerifierMisconfigured(env, corsHeaders);
 }
 
-/** Subset of Env needed to validate Custodian URL for grant paths (receipt path uses APP_TOKEN separately). */
-export interface CanopyBootstrapTrioEnv {
-  NODE_ENV: string;
-  CUSTODIAN_URL?: string;
-}
-
-/** Env slice for mandatory sequencing queue outside Vitest pool workers. */
-export interface CanopySequencingEnv {
-  NODE_ENV: string;
-  SEQUENCING_QUEUE?: unknown;
-}
-
 /**
  * Non-pool workers must bind SEQUENCING_QUEUE. Pool tests may omit it.
  */
@@ -106,16 +95,6 @@ export function responseIfSequencingQueueIncomplete(
     });
   }
   return null;
-}
-
-/** Env slice for receipt COSE verification readiness (Custodian app token). */
-export interface CanopyReceiptVerifierEnv {
-  NODE_ENV: string;
-  CUSTODIAN_APP_TOKEN?: string;
-  DELEGATION_COORDINATOR_URL?: string;
-  COORDINATOR_APP_TOKEN?: string;
-  /** Test-only; must not be set outside pool mode (footgun guard). */
-  FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX?: string;
 }
 
 /**

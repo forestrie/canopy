@@ -1,5 +1,7 @@
 /**
  * POST /api/auth/challenge — issue wallet-challenge nonce (wcc-1).
+ *
+ * Stores nonce in {@link WalletChallengeNonceDO} for later session exchange.
  */
 
 import type { Env } from "../env.js";
@@ -12,18 +14,22 @@ import type {
 import { normalizeLogIdToHex32 } from "../log-id.js";
 import { internalError, problemResponse } from "./handler.js";
 
+/** Challenge envelope TTL in milliseconds. */
 const CHALLENGE_TTL_MS = 120_000;
 
+/** True when wallet-challenge routes are enabled. */
 function walletChallengeEnabled(env: Env): boolean {
   return env.ENABLE_WALLET_CHALLENGE?.trim().toLowerCase() === "true";
 }
 
+/** Resolve coordinator origin for challenge response (local duplicate). */
 function coordinatorOrigin(env: Env, request: Request): string {
   const configured = env.COORDINATOR_PUBLIC_URL?.trim();
   if (configured) return configured.replace(/\/$/, "");
   return new URL(request.url).origin;
 }
 
+/** Issue wcc-1 challenge JSON with fresh nonce. */
 export async function handlePostAuthChallenge(
   request: Request,
   env: Env,

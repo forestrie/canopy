@@ -11,43 +11,14 @@ import type {
   PaymentPayload,
   PaymentRequirementsOption,
 } from "./x402";
-import type { X402Mode } from "../index";
+import type { X402Mode } from "../env/x402-mode.js";
+import type {
+  CdpCredentials,
+  SettleResult,
+  VerifyResult,
+} from "./x402-facilitator-result.js";
 
-/**
- * CDP API credentials for JWT authentication.
- */
-export interface CdpCredentials {
-  keyId: string;
-  keySecret: string;
-}
-
-export type VerifyResult =
-  | {
-      ok: true;
-      /** Identifier for this payment authorization */
-      authId: string;
-      /** Whether the payment is valid */
-      isValid: boolean;
-    }
-  | {
-      ok: false;
-      error: string;
-    };
-
-export type SettleResult =
-  | {
-      ok: true;
-      /** Transaction hash from settlement */
-      transaction: string;
-      /** Network the settlement occurred on */
-      network: string;
-    }
-  | {
-      ok: false;
-      error: string;
-      /** Whether this is a permanent error (should not retry) */
-      permanent?: boolean;
-    };
+export type { CdpCredentials, SettleResult, VerifyResult } from "./types.js";
 
 /**
  * Verify a payment payload with the CDP facilitator.

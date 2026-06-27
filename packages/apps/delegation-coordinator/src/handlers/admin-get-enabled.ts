@@ -1,5 +1,5 @@
 /**
- * Handler for GET /admin/api/logs/{logId}/enabled (operator service gate)
+ * GET /admin/api/logs/{logId}/enabled — operator service gate read.
  */
 
 import type { Env } from "../env.js";
@@ -10,6 +10,7 @@ import {
   normalizePathLogId,
 } from "./handler.js";
 
+/** Admin GET enabled flags (operator token). */
 export async function handleAdminGetEnabled(
   logIdSegment: string,
   request: Request,

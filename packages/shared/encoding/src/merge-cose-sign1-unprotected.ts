@@ -7,6 +7,16 @@ import { decodeCoseSign1 } from "./verify-cose-sign1.js";
 import { coseUnprotectedToMap } from "./cose-unprotected-map.js";
 import { encodeCoseSign1Raw } from "./encode-cose-sign1-raw.js";
 
+/**
+ * Add unprotected header labels to an existing COSE Sign1 without re-signing.
+ * Protected header, payload, and signature are preserved; unprotected fields
+ * are not covered by the signature.
+ *
+ * @param coseSign1Bytes - Existing COSE Sign1 CBOR
+ * @param additions - Header label → value pairs to merge (overwrites on clash)
+ * @returns Re-encoded COSE Sign1 with merged unprotected map
+ * @throws When `coseSign1Bytes` is not a valid COSE Sign1
+ */
 export function mergeUnprotectedIntoCoseSign1(
   coseSign1Bytes: Uint8Array,
   additions: ReadonlyMap<number, unknown>,

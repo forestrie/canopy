@@ -1,7 +1,8 @@
 /**
  * Grant request CBOR encoder (Forestrie-Grant **v0**).
- * Emits CBOR map keys **1–6** only (grant content; no idtimestamp). Idtimestamp is supplied
- * separately by the server. Use for POST /register/grants body.
+ * Emits CBOR map keys **1–6** only (grant content; no idtimestamp). Idtimestamp
+ * is supplied separately by canopy-api sequencing. Wire layout:
+ * [grants.md §3.1](https://github.com/forestrie/canopy/blob/main/docs/grants.md#31-inner-grant-payload-cbor).
  */
 
 const WIRE_LOG_ID_OWNER_LOG_ID_BYTES = 32;
@@ -9,6 +10,7 @@ const WIRE_GRANT_FLAGS_BYTES = 8;
 const CBOR_BSTR_LEN_8 = 0x48;
 const CBOR_BSTR_LEN32_LEAD = 0x58;
 
+/** Right-pad or truncate to fixed width (univocity/go-univocity wire convention). */
 function leftPad(b: Uint8Array, length: number): Uint8Array {
   if (b.length >= length) {
     return b.length === length ? b : b.slice(-length);
@@ -18,6 +20,7 @@ function leftPad(b: Uint8Array, length: number): Uint8Array {
   return out;
 }
 
+/** Append a CBOR unsigned integer in canonical form. */
 function appendCborUint(b: number[], v: number): void {
   if (v < 24) b.push(v);
   else if (v <= 0xff) b.push(0x18, v);
@@ -42,6 +45,7 @@ function appendCborUint(b: number[], v: number): void {
   }
 }
 
+/** Append a CBOR bstr item (header + payload bytes). */
 function appendCborBstr(b: number[], s: Uint8Array): void {
   const n = s.length;
   if (n < 24) b.push(0x40 | n);
@@ -65,19 +69,28 @@ export const GRANT_REQUEST_KEYS = {
   grantData: 6,
 } as const;
 
+/** Grant content fields for POST `/register/grants` CBOR body (keys 1–6). */
 export interface GrantRequestInput {
+  /** Target log id (padded to 32 bytes on wire). */
   logId: Uint8Array;
+  /** Owner (authority) log id (padded to 32 bytes on wire). */
   ownerLogId: Uint8Array;
   /** 8-byte grant flags bitmap (`PublishGrant.grant` on-chain). */
   grant: Uint8Array;
+  /** Optional max MMR height bound (defaults to 0). */
   maxHeight?: number;
+  /** Optional minimum growth bound (defaults to 0). */
   minGrowth?: number;
+  /** Opaque grantData committed in the grant preimage. */
   grantData: Uint8Array;
 }
 
 /**
- * Encode grant content as CBOR (keys 1–6 only). Left-pads logId/ownerLogId to 32,
- * grant flags to 8.
+ * Encode grant content as CBOR map keys 1–6. Left-pads log ids to 32 bytes and
+ * grant flags to 8 bytes before encoding.
+ *
+ * @param input - Grant content fields (idtimestamp is not included)
+ * @returns CBOR map bytes suitable for register-grant request bodies
  */
 export function encodeGrantRequest(input: GrantRequestInput): Uint8Array {
   const logId32 = leftPad(input.logId, WIRE_LOG_ID_OWNER_LOG_ID_BYTES);

@@ -1,20 +1,18 @@
-import { normalizeHexAddress } from "../rpc/eth-rpc.js";
+import { normalizeHexAddress } from "@canopy/chain-rpc";
+import {
+  isSupportedChainIdForEnv,
+  rpcUrlsForEnvChainId,
+  supportedChainIdsForEnv,
+} from "../env/supported-chains-for-env.js";
 import {
   readPositiveGateCache,
   writePositiveGateCache,
-  type OnboardGateCacheEnv,
 } from "./onboard-gate-cache.js";
 import { probeUnivocityIdentity } from "./univocity-identity-probe.js";
+import type { UnivocityGateEnv } from "./univocity-gate-env.js";
+import type { UnivocityGateResult } from "./univocity-gate-result.js";
 
-export interface UnivocityGateEnv extends OnboardGateCacheEnv {
-  UNIVOCITY_CONTRACT_RPC_URL?: string;
-  ONBOARD_ALLOWED_CHAIN_ID?: string;
-  ONBOARD_RPC_TIMEOUT_MS?: string;
-}
-
-export type UnivocityGateResult =
-  | { ok: true; univocityAddr: string }
-  | { ok: false; status: number; detail: string };
+export type { UnivocityGateEnv, UnivocityGateResult } from "./types.js";
 
 function rpcTimeoutMs(env: UnivocityGateEnv): number {
   const raw = env.ONBOARD_RPC_TIMEOUT_MS?.trim();
@@ -30,12 +28,20 @@ export async function verifyUnivocityDeployment(
   chainId: string,
   univocityAddrRaw: string,
 ): Promise<UnivocityGateResult> {
-  const allowed = env.ONBOARD_ALLOWED_CHAIN_ID?.trim();
-  if (allowed && chainId.trim() !== allowed) {
+  const trimmedChainId = chainId.trim();
+  const supportedIds = supportedChainIdsForEnv(env);
+  if (supportedIds.length === 0) {
+    return {
+      ok: false,
+      status: 503,
+      detail: "SUPPORTED_CHAINS_RPC not configured",
+    };
+  }
+  if (!isSupportedChainIdForEnv(env, trimmedChainId)) {
     return {
       ok: false,
       status: 400,
-      detail: `chainId must be ${allowed}`,
+      detail: `chainId ${trimmedChainId} is not supported (allowed: ${supportedIds.join(", ")})`,
     };
   }
 
@@ -48,22 +54,22 @@ export async function verifyUnivocityDeployment(
     };
   }
 
-  if (await readPositiveGateCache(env, chainId.trim(), addr)) {
+  if (await readPositiveGateCache(env, trimmedChainId, addr)) {
     return { ok: true, univocityAddr: addr };
   }
 
-  const rpcUrl = env.UNIVOCITY_CONTRACT_RPC_URL?.trim();
-  if (!rpcUrl) {
+  const rpcUrls = rpcUrlsForEnvChainId(env, trimmedChainId);
+  if (!rpcUrls?.length) {
     return {
       ok: false,
       status: 503,
-      detail: "UNIVOCITY_CONTRACT_RPC_URL not configured",
+      detail: `No RPC URLs configured for chainId ${trimmedChainId}`,
     };
   }
 
   const timeout = rpcTimeoutMs(env);
   try {
-    const probe = await probeUnivocityIdentity(rpcUrl, addr, timeout);
+    const probe = await probeUnivocityIdentity(rpcUrls, addr, timeout);
     if (!probe.ok) {
       return {
         ok: false,
@@ -82,6 +88,6 @@ export async function verifyUnivocityDeployment(
     };
   }
 
-  await writePositiveGateCache(env, chainId.trim(), addr);
+  await writePositiveGateCache(env, trimmedChainId, addr);
   return { ok: true, univocityAddr: addr };
 }

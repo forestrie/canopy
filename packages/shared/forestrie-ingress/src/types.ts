@@ -1,9 +1,7 @@
 /**
- * @canopy/forestrie-ingress - Shared type definitions
- *
- * Re-exports all types from their individual implementation files.
- * Types for the SequencingQueue Durable Object's RPC and HTTP interfaces.
- * Used by canopy-api (DO owner) and ranger (HTTP consumer).
+ * Barrel re-export for SequencingQueue RPC and HTTP types.
+ * Each type lives in a single-responsibility module; see {@link SequencingQueueStub}
+ * for the DO surface implemented in canopy-api.
  */
 
 export type { PullRequest } from "./pullrequest.js";

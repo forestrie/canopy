@@ -33,6 +33,11 @@ See [CONTEXT.md](../../CONTEXT.md) for canonical terms (Forest, bootstrap root a
 
 **Policy:** No queue-only profile. System e2e uses ephemeral Imutable contracts from [plan-0032](plan-0032-univocity-imutable-e2e-provision.md). Production curators use real deploy values.
 
+## Consumption (ADR-0034)
+
+- **Genesis POST:** rejects `chain-id` not in `SUPPORTED_CHAINS_RPC` ([ADR-0010](../adr/adr-0010-supported-chains-rpc-config.md)).
+- **KS256 verify:** RPC from forest `chainBinding.chainId` via `SUPPORTED_CHAINS_RPC` (register-grant, register-statement, receipt resolver).
+
 ## Wire format
 
 ### v1 POST (write target)

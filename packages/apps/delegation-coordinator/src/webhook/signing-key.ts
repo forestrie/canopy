@@ -1,15 +1,27 @@
+/**
+ * ES256 webhook signing key load, JWKS metadata, and signature production.
+ *
+ * Signs `delegation.required` payloads for operator subscribers. Private key
+ * from Secrets Store or dev PEM; public JWK exposed at webhook JWKS route.
+ */
+
 import type { Env } from "../env.js";
 import { sha256Hex } from "../certificate-key.js";
 
+/** Public metadata for webhook signature verification (JWKS). */
 export interface WebhookSigningKeyInfo {
   kid: string;
   alg: "ES256";
   publicKeyJwk: JsonWebKey;
 }
 
+/** In-process cache of imported private signing key. */
 let cachedPrivateKey: CryptoKey | null = null;
+
+/** In-process cache of derived public JWKS info. */
 let cachedPublicInfo: WebhookSigningKeyInfo | null = null;
 
+/** Strip PEM armor and decode PKCS#8 body to bytes. */
 function pemToPkcs8Bytes(pem: string): Uint8Array {
   const body = pem
     .replace(/-----BEGIN PRIVATE KEY-----/g, "")
@@ -23,6 +35,7 @@ function pemToPkcs8Bytes(pem: string): Uint8Array {
   return out;
 }
 
+/** Base64url-encode raw bytes without padding. */
 function base64UrlEncode(data: Uint8Array): string {
   let binary = "";
   for (const byte of data) {
@@ -34,6 +47,13 @@ function base64UrlEncode(data: Uint8Array): string {
     .replace(/=+$/g, "");
 }
 
+/**
+ * Resolve PKCS#8 PEM from Secrets Store or dev fallback.
+ *
+ * @param env - Worker bindings.
+ * @returns PEM string for ES256 private key import.
+ * @throws When neither WEBHOOK_SIGNING_KEY nor WEBHOOK_SIGNING_KEY_PEM is set.
+ */
 async function resolveSigningKeyPem(env: Env): Promise<string> {
   if (env.WEBHOOK_SIGNING_KEY) {
     return env.WEBHOOK_SIGNING_KEY.get();
@@ -45,6 +65,12 @@ async function resolveSigningKeyPem(env: Env): Promise<string> {
   );
 }
 
+/**
+ * Import and cache the webhook ES256 private key.
+ *
+ * @param env - Worker bindings.
+ * @returns WebCrypto signing key.
+ */
 export async function loadSigningKey(env: Env): Promise<CryptoKey> {
   if (cachedPrivateKey) return cachedPrivateKey;
   const pem = await resolveSigningKeyPem(env);
@@ -58,6 +84,12 @@ export async function loadSigningKey(env: Env): Promise<CryptoKey> {
   return cachedPrivateKey;
 }
 
+/**
+ * Derive public JWKS entry and key id from the signing key.
+ *
+ * @param env - Worker bindings.
+ * @returns kid, alg, and public JWK for subscriber verification.
+ */
 export async function getWebhookSigningKeyInfo(
   env: Env,
 ): Promise<WebhookSigningKeyInfo> {
@@ -86,6 +118,14 @@ export async function getWebhookSigningKeyInfo(
   return cachedPublicInfo;
 }
 
+/**
+ * Produce X-Forestrie-Webhook-Signature for a payload.
+ *
+ * @param env - Worker bindings.
+ * @param timestamp - Unix seconds string (header value).
+ * @param rawBody - Exact JSON body bytes as string.
+ * @returns Base64url ECDSA signature over `timestamp.rawBody`.
+ */
 export async function signWebhook(
   env: Env,
   timestamp: string,
@@ -101,7 +141,7 @@ export async function signWebhook(
   return base64UrlEncode(new Uint8Array(signature));
 }
 
-/** Test-only: reset in-memory key cache between isolated test files. */
+/** Reset in-memory key cache between isolated test files. */
 export function resetSigningKeyCacheForTests(): void {
   cachedPrivateKey = null;
   cachedPublicInfo = null;

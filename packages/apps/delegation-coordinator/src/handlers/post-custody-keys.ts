@@ -1,5 +1,9 @@
 /**
- * Handler for POST /admin/api/logs/{logId}/custody-keys — Custodian ensure proxy.
+ * POST /admin/api/logs/{logId}/custody-keys — Custodian ensure-key proxy.
+ *
+ * Forwards CBOR to
+ * [arbor custodian](https://github.com/forestrie/arbor/blob/main/services/custodian/)
+ * POST /api/keys with CUSTODIAN_APP_TOKEN.
  */
 
 import { decode, encode as encodeCbor } from "cbor-x";
@@ -13,11 +17,13 @@ import {
   problemResponse,
 } from "./handler.js";
 
+/** Normalize custodian base URL to /v1 API prefix. */
 function custodianApiBase(custodianUrl: string): string {
   const trimmed = custodianUrl.replace(/\/+$/, "");
   return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
 }
 
+/** Shared custodian ensure-key POST for admin and transitional /api route. */
 async function postCustodyKeys(
   logIdHex32: string,
   body: CustodyKeysRequest,
@@ -93,6 +99,7 @@ async function postCustodyKeys(
   return Response.json(response);
 }
 
+/** Read string field from decoded CBOR map. */
 function readStringField(
   obj: Record<string, unknown>,
   key: string,
@@ -101,6 +108,7 @@ function readStringField(
   return typeof value === "string" ? value : undefined;
 }
 
+/** Admin POST custody-keys with operator token auth. */
 export async function handleAdminPostCustodyKeys(
   logIdSegment: string,
   request: Request,
@@ -120,7 +128,9 @@ export async function handleAdminPostCustodyKeys(
   }
 }
 
-/** Transitional alias: POST /api/logs/{logId}/custody-keys */
+/**
+ * @deprecated Transitional alias — POST /api/logs/{logId}/custody-keys.
+ */
 export async function handlePostCustodyKeys(
   logIdSegment: string,
   request: Request,

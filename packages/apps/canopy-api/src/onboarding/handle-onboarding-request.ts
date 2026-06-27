@@ -2,6 +2,7 @@
  * `/api/onboarding/**` — self-service onboard request + ops admin JSON.
  */
 
+import { decode as decodeCbor } from "cbor-x";
 import { parseCborBody } from "../cbor-api/cbor-request.js";
 import {
   cborResponse,
@@ -37,6 +38,7 @@ import {
   type OnboardRequestStoreEnv,
 } from "./onboard-request-store.js";
 import { verifyUnivocityDeployment } from "./univocity-deployment-gate.js";
+import type { UnivocityGateEnv } from "./univocity-deployment-gate.js";
 
 const CBOR_LABEL = 1;
 const CBOR_CHAIN_ID = 2;
@@ -51,11 +53,10 @@ const NO_STORE_HEADERS = { "cache-control": "no-store" };
 
 export interface OnboardingHandlerEnv
   extends OnboardRequestStoreEnv,
-    OnboardTokenStoreEnv {
+    OnboardTokenStoreEnv,
+    UnivocityGateEnv {
   NODE_ENV?: string;
   CANOPY_OPS_ADMIN_TOKEN?: string;
-  UNIVOCITY_CONTRACT_RPC_URL?: string;
-  ONBOARD_ALLOWED_CHAIN_ID?: string;
   ONBOARD_REQUEST_TTL_SEC?: string;
   ONBOARD_TOKEN_TTL_SEC?: string;
   ONBOARD_MAX_PENDING_PER_BINDING?: string;
@@ -175,10 +176,11 @@ async function handleCreateRequest(
   let plannedForestR: string | undefined;
 
   try {
-    const raw = await parseCborBody(request);
-    const sizeErr = checkOnboardCreateBodySize(request, raw.length);
+    const bodyBytes = new Uint8Array(await request.arrayBuffer());
+    const sizeErr = checkOnboardCreateBodySize(request, bodyBytes.length);
     if (sizeErr) return attachCors(sizeErr, corsHeaders);
 
+    const raw = decodeCbor(bodyBytes);
     const m = decodeBodyAsIntKeyMap(raw);
     if (m) {
       label = readString(m, CBOR_LABEL);

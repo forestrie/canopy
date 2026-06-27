@@ -75,18 +75,21 @@ export function rootLogIdCallData(): string {
 }
 
 export async function probeUnivocityIdentity(
-  rpcUrl: string,
+  rpcUrls: string[],
   addressHex: string,
   rpcTimeoutMs: number,
 ): Promise<{ ok: true } | { ok: false; detail: string }> {
-  const { ethCall } = await import("../rpc/eth-rpc.js");
+  const { ethCallWithFailover } = await import("../rpc/eth-rpc.js");
   const to = `0x${addressHex}`;
 
   let bootResult: unknown;
   try {
-    bootResult = await ethCall(rpcUrl, to, bootstrapConfigCallData(), {
-      timeoutMs: rpcTimeoutMs,
-    });
+    bootResult = await ethCallWithFailover(
+      rpcUrls,
+      to,
+      bootstrapConfigCallData(),
+      { timeoutMs: rpcTimeoutMs },
+    );
   } catch (error) {
     return {
       ok: false,
@@ -106,7 +109,7 @@ export async function probeUnivocityIdentity(
 
   let rootResult: unknown;
   try {
-    rootResult = await ethCall(rpcUrl, to, rootLogIdCallData(), {
+    rootResult = await ethCallWithFailover(rpcUrls, to, rootLogIdCallData(), {
       timeoutMs: rpcTimeoutMs,
     });
   } catch (error) {

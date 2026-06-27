@@ -43,25 +43,15 @@ import {
   parseUnivocityAddrOptional,
   type ForestGenesisChainBinding,
 } from "./genesis-wire.js";
+import type { GenesisCacheEnv } from "./genesis-cache-env.js";
+import type { GenesisLookupResult } from "./genesis-lookup-result.js";
+import type { ParsedForestGenesis } from "./parsed-forest-genesis.js";
 
-export interface GenesisCacheEnv {
-  R2_GRANTS: R2Bucket;
-}
-
-export interface ParsedForestGenesis {
-  /** Forest root log id (16-byte UUID). */
-  wire: Uint8Array;
-  schemaVersion: 0 | 1 | 2;
-  chainBinding: ForestGenesisChainBinding | null;
-  /** ES256 P-256 x (v0/v1 EC2 documents). */
-  x?: Uint8Array;
-  /** ES256 P-256 y (v0/v1 EC2 documents). */
-  y?: Uint8Array;
-  /** COSE alg (v2 alg/key documents). */
-  bootstrapAlg?: number;
-  /** 64-byte x‖y (ES256) or 20-byte address (KS256) for v2. */
-  bootstrapKey?: Uint8Array;
-}
+export type {
+  GenesisCacheEnv,
+  GenesisLookupResult,
+  ParsedForestGenesis,
+} from "./types.js";
 
 const cache = new Map<string, ParsedForestGenesis>();
 
@@ -268,12 +258,6 @@ export function parseGenesisCborBytes(
     chainBinding,
   };
 }
-
-export type GenesisLookupResult =
-  | ParsedForestGenesis
-  | { kind: "bad_segment" }
-  | { kind: "not_found" }
-  | { kind: "corrupt" };
 
 /**
  * Load genesis for a bootstrap log-id path segment: cache, then R2.

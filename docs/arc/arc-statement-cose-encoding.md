@@ -173,7 +173,8 @@ When `grantData` is **20 bytes** (KS256 root address), register-statement:
 1. Binds the statement COSE **`kid`** to the full **`grantData`** address via
    `statementSignerBindingBytes` (same helper as ES256; no special case).
 2. Verifies the signature with **`verifyKs256CoseSign1`** (Keccak Sig_structure,
-   65-byte eth sig, ecrecover or ERC-1271 when `UNIVOCITY_CONTRACT_RPC_URL` is set).
+   65-byte eth sig, ecrecover or ERC-1271 when chain-scoped RPC is configured for
+   the forest genesis `chainBinding.chainId`; see ADR-0010).
 3. Does **not** read `alg` from the statement protected header; dispatch is
    grant-driven (64-byte = ES256, 20-byte = KS256).
 

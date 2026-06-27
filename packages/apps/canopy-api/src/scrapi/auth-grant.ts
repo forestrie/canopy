@@ -38,6 +38,11 @@ import { CBOR_CONTENT_TYPES } from "../cbor-api/cbor-content-types.js";
 import { cborResponse } from "../cbor-api/cbor-response.js";
 import { getContentSize } from "../cbor-api/cbor-request.js";
 import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
+import type { AuthGrantAuthorizeEnv } from "./auth-grant-authorize-env.js";
+import type {
+  GrantAuthorizeFailure,
+  GrantAuthorizeResult,
+} from "./grant-authorize-result.js";
 
 const FORESTRIE_GRANT_SCHEME = "Forestrie-Grant";
 
@@ -108,21 +113,11 @@ function unauthorizedGrantRequired(): Response {
   );
 }
 
-/** Env for receipt-based authorization (inclusion verification). */
-export interface AuthGrantAuthorizeEnv {
-  /**
-   * When true, the grant must pass receipt-based inclusion verification.
-   * Set by callers whenever sequencing/inclusion is configured; false only in
-   * pool-test mode with incomplete bindings (auth skipped). This is a
-   * configuration flag, not Durable Object queue state.
-   */
-  enforceInclusion: boolean;
-  /**
-   * Resolves receipt signature verify key candidates (trust root + delegation).
-   * Required when `enforceInclusion` is true.
-   */
-  resolveReceiptAuthority?: ReceiptAuthorityResolver;
-}
+export type {
+  AuthGrantAuthorizeEnv,
+  GrantAuthorizeFailure,
+  GrantAuthorizeResult,
+} from "./types.js";
 
 /**
  * Read the signed grant from `Authorization: Forestrie-Grant <base64>`:
@@ -212,17 +207,6 @@ export async function getParentGrantFromRequest(
   }
   return decodeForestrieGrantBytes(parentGrant);
 }
-
-export interface GrantAuthorizeFailure {
-  response: Response;
-  outcome: ReceiptInclusionVerifyOutcome;
-  verifyKeyCount: number;
-  hasDelegationCert: boolean;
-}
-
-export type GrantAuthorizeResult =
-  | { ok: true }
-  | ({ ok: false } & GrantAuthorizeFailure);
 
 function hasDelegationCertOnReceiptBytes(
   receiptCoseBytes: Uint8Array,
@@ -328,6 +312,7 @@ export async function grantAuthorizeDetailed(
     const keys = await env.resolveReceiptAuthority(
       logIdBytesToCustodianLowerHex(grant.ownerLogId),
       receipt.coseSign1Bytes,
+      env.ks256ChainId?.trim() || undefined,
     );
     if (!keys?.length) {
       return {

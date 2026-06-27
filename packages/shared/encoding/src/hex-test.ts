@@ -1,5 +1,6 @@
 /** Test-only hex helpers (not exported from package index). */
 
+/** Parse contiguous hex (optional whitespace) into bytes. */
 export function hexToBytes(hex: string): Uint8Array {
   const s = hex.replace(/\s+/g, "");
   if (s.length % 2 !== 0) {
@@ -12,6 +13,7 @@ export function hexToBytes(hex: string): Uint8Array {
   return out;
 }
 
+/** Lowercase hex encoding without separators. */
 export function bytesToHex(b: Uint8Array): string {
   let s = "";
   for (let i = 0; i < b.length; i++) {

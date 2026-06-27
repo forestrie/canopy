@@ -1,5 +1,5 @@
 /**
- * Handler for PUT /admin/api/logs/{logId}/enabled (operator service gate)
+ * PUT /admin/api/logs/{logId}/enabled — operator service gate write.
  */
 
 import type { Env } from "../env.js";
@@ -12,6 +12,7 @@ import {
   problemResponse,
 } from "./handler.js";
 
+/** Admin PUT operator_enabled (operator token). */
 export async function handleAdminPutEnabled(
   logIdSegment: string,
   request: Request,

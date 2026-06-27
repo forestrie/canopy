@@ -15,6 +15,7 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
+    "@canopy/chain-rpc": "workspace:*",
     "@canopy/encoding": "workspace:*",
     "@canopy/webhook-url": "workspace:*",
     "@canopy/forestrie-ingress-types": "workspace:*",

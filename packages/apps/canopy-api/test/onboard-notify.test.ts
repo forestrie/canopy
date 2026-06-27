@@ -7,7 +7,9 @@ describe("onboard notify", () => {
   });
 
   it("signs webhook payload when secret configured", async () => {
-    const fetchMock = vi.fn(async () => new Response("ok", { status: 200 }));
+    const fetchMock = vi.fn<typeof fetch>(
+      async () => new Response("ok", { status: 200 }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     await emitOnboardWebhook(

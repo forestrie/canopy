@@ -124,6 +124,16 @@ flowchart LR
   end
 ```
 
+Multi-forest Canopy needs a curator-attested `(chain, contract)` tuple per
+bootstrap log `R` so Sealer and publishers can verify delegations and
+checkpoints without deployment-wide `UNIVOCITY_*` env vars.
+
+**Deployment vs per-forest:** canopy operators configure **supported chains**
+(`SUPPORTED_CHAINS_RPC`, ADR-0010) — which EIP-155 networks this instance
+accepts and how to RPC them. Each forest registration carries its own **chain
+binding** (`chain-id` + Univocity contract address); there is no singleton
+`UNIVOCITY_CONTRACT_ADDRESS` on the worker.
+
 ## Registration = genesis POST; curator token retired (clean cut)
 
 `POST /api/forest/{R}/genesis` **becomes** the Univocity-instance registration

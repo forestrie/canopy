@@ -1,3 +1,4 @@
+/** Golden-vector tests: {@link encodeSigStructure} against go-cose Sig_structure fixtures. */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

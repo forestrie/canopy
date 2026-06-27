@@ -1,5 +1,7 @@
 /**
- * Handler for GET /api/delegations/pending — fan-out all shards.
+ * GET /api/delegations/pending — fan-out pending across all DO shards.
+ *
+ * Requires session scope `delegations:read` bound to authLogId query param.
  */
 
 import type { Env } from "../env.js";
@@ -13,6 +15,7 @@ import {
   problemResponse,
 } from "./handler.js";
 
+/** Query all shards for pending entries by authLogId. */
 export async function handleGetPending(
   request: Request,
   env: Env,

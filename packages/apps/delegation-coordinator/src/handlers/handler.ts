@@ -1,5 +1,11 @@
 /**
- * Common handler utilities for delegation-coordinator HTTP endpoints.
+ * Shared HTTP helpers for delegation-coordinator route handlers.
+ *
+ * Upstream: index.ts route table. Downstream: sharded
+ * {@link DelegationStoreDO} via {@link forwardToStore}. Log id normalization
+ * aligns with [arbor sealer](https://github.com/forestrie/arbor/blob/main/services/sealer/)
+ * wire formats and CBOR bodies from delegation issue flows per
+ * [ARC-0017](https://github.com/forestrie/devdocs/blob/main/arc/arc-0017-hierarchical-authority-logs-and-fee-distribution.md).
  */
 
 import { decode, encode } from "cbor-x";
@@ -10,9 +16,21 @@ import {
   shardNameForIndex,
 } from "@canopy/forestrie-sharding";
 
+/** Expected Content-Type for CBOR request/response bodies. */
 const CBOR_CONTENT_TYPE = "application/cbor";
+
+/** Content-Type for JSON RFC 7807 problem responses. */
 export const PROBLEM_CONTENT_TYPE = "application/problem+json";
 
+/**
+ * Build a JSON RFC 7807 problem response.
+ *
+ * @param status - HTTP status code.
+ * @param type - Problem type URI (often `about:blank`).
+ * @param title - Short human-readable title.
+ * @param detail - Optional longer explanation.
+ * @returns JSON Response with {@link PROBLEM_CONTENT_TYPE}.
+ */
 export function problemResponse(
   status: number,
   type: string,
@@ -28,6 +46,12 @@ export function problemResponse(
   );
 }
 
+/**
+ * Log and return a generic 500 problem response.
+ *
+ * @param error - Caught exception or unknown value.
+ * @returns 500 JSON problem Response.
+ */
 export function internalError(error: unknown): Response {
   console.error("Internal error:", error);
   return problemResponse(
@@ -38,6 +62,12 @@ export function internalError(error: unknown): Response {
   );
 }
 
+/**
+ * Parse {@link Env.COORDINATOR_SHARD_COUNT} with fallback to 1.
+ *
+ * @param env - Worker bindings.
+ * @returns Positive shard count for DO routing.
+ */
 export function getShardCount(env: Env): number {
   const count = parseInt(env.COORDINATOR_SHARD_COUNT, 10);
   if (isNaN(count) || count < 1) {
@@ -49,12 +79,26 @@ export function getShardCount(env: Env): number {
   return count;
 }
 
+/**
+ * Resolve a {@link DelegationStoreDO} stub by shard index.
+ *
+ * @param env - Worker bindings.
+ * @param shardIndex - Zero-based shard index.
+ * @returns Durable Object stub for internal fetch calls.
+ */
 export function getStoreStub(env: Env, shardIndex: number) {
   const shardName = shardNameForIndex(shardIndex);
   const id = env.DELEGATION_STORE.idFromName(shardName);
   return env.DELEGATION_STORE.get(id);
 }
 
+/**
+ * Route a log id to its sharded {@link DelegationStoreDO} stub.
+ *
+ * @param env - Worker bindings.
+ * @param logIdHex32 - Normalized 32-char hex log id.
+ * @returns Durable Object stub owning persistence for the log.
+ */
 export function getStoreStubForLogId(env: Env, logIdHex32: string) {
   const shardCount = getShardCount(env);
   const uuid = hex32ToCanonicalUuid(logIdHex32);
@@ -62,6 +106,12 @@ export function getStoreStubForLogId(env: Env, logIdHex32: string) {
   return getStoreStub(env, shardIndex);
 }
 
+/**
+ * Normalize a path log id segment or return a 400 problem.
+ *
+ * @param logIdSegment - Raw URL path segment (UUID or hex).
+ * @returns Normalized hex32 string or error Response.
+ */
 export function normalizePathLogId(logIdSegment: string): string | Response {
   try {
     return normalizeLogIdToHex32(logIdSegment);
@@ -75,6 +125,12 @@ export function normalizePathLogId(logIdSegment: string): string | Response {
   }
 }
 
+/**
+ * Decode a CBOR request body after Content-Type check.
+ *
+ * @param request - Incoming HTTP request.
+ * @returns Parsed body or 415 problem Response.
+ */
 export async function parseCborBody<T>(
   request: Request,
 ): Promise<T | Response> {
@@ -91,6 +147,12 @@ export async function parseCborBody<T>(
   return decode(new Uint8Array(buffer)) as T;
 }
 
+/**
+ * Encode a value as a CBOR 200 response.
+ *
+ * @param value - Serializable CBOR value.
+ * @returns Response with `application/cbor`.
+ */
 export function encodeCborResponse(value: unknown): Response {
   const encoded = encode(value);
   const bytes =
@@ -103,6 +165,14 @@ export function encodeCborResponse(value: unknown): Response {
   });
 }
 
+/**
+ * Encode an RFC 7807 problem document as CBOR.
+ *
+ * @param status - HTTP status code.
+ * @param title - Problem title.
+ * @param detail - Optional detail string.
+ * @returns CBOR problem Response.
+ */
 export function encodeCborError(
   status: number,
   title: string,
@@ -124,6 +194,15 @@ export function encodeCborError(
   });
 }
 
+/**
+ * Forward an internal request to the sharded store for a log.
+ *
+ * @param env - Worker bindings.
+ * @param logIdHex32 - Normalized log id for shard selection.
+ * @param path - Path on the DO internal URL (e.g. `/issue`).
+ * @param init - Optional fetch init (method, body, headers).
+ * @returns Response from the Durable Object.
+ */
 export async function forwardToStore(
   env: Env,
   logIdHex32: string,

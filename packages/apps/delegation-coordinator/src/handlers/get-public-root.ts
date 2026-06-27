@@ -1,5 +1,7 @@
 /**
- * Handler for GET /api/logs/{logId}/public-root — public trust-root read.
+ * GET /api/logs/{logId}/public-root — CBOR trust-root (public read).
+ *
+ * Wire format matches sealer/univocity public root conventions.
  */
 
 import type { Env } from "../env.js";
@@ -9,6 +11,7 @@ import {
   normalizePathLogId,
 } from "./handler.js";
 
+/** GET CBOR public root for a log. */
 export async function handleGetPublicRoot(
   logIdSegment: string,
   _request: Request,

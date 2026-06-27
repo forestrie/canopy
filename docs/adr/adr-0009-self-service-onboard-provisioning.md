@@ -5,7 +5,8 @@
 **Related:**
 [plan-0039](../plans/plan-0039-self-service-onboard-provisioning.md),
 [devdocs ARC-021.7](../../../devdocs/arc/arc-021-payment-onboarding/07-self-service-onboard-request.md),
-[FOR-166](https://linear.app/forestrie/issue/FOR-166)
+[FOR-166](https://linear.app/forestrie/issue/FOR-166),
+[ADR-0010](adr-0010-supported-chains-rpc-config.md)
 
 ---
 
@@ -44,7 +45,7 @@ JSON admin routes exist for the ops admin UI only; mandate CLI uses CBOR.
 
 `/api/onboarding/**` is exempt from custodian/sequencing/receipt checks in
 `checkRequestEnv` (same pattern as `/api/forest/**`). Requires `R2_GRANTS` and
-`UNIVOCITY_CONTRACT_RPC_URL` for the public create path.
+`SUPPORTED_CHAINS_RPC` for the public create path (see ADR-0010).
 
 ### Request lifecycle
 
@@ -59,7 +60,8 @@ is set only after redeem.
 Per-fork model: callers supply `univocityAddr`; the gate proves protocol identity
 via `eth_call bootstrapConfig()` and `rootLogId()` (not merely non-empty bytecode).
 Require `bootstrapAlg` in ES256 (-7) or KS256 (-65799) with key length 64 or 20.
-Reject `chainId` unless it equals `ONBOARD_ALLOWED_CHAIN_ID` (when set).
+Reject `chainId` unless it is a key in `SUPPORTED_CHAINS_RPC` (`400`).
+RPC for the probe uses the preference-ordered URL list for that chain (failover).
 Positive gate results are cached in R2 (`ONBOARD_GATE_CACHE_TTL_SEC`); RPC uses
 `ONBOARD_RPC_TIMEOUT_MS` (default 5s).
 

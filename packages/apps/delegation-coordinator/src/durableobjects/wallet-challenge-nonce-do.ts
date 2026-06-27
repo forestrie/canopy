@@ -1,16 +1,25 @@
+/**
+ * Global Durable Object for wallet-challenge nonce issuance and consumption.
+ *
+ * Single instance per worker (`wallet-challenge-nonce` name). Upstream:
+ * {@link issueWalletChallengeNonce} from POST /api/auth/challenge. Downstream:
+ * {@link consumeWalletChallengeNonce} at POST /api/auth/session before minting
+ * HMAC session tokens.
+ */
+
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "../env.js";
 
-/**
- * Single global DO for wallet-challenge nonce issuance and consumption.
- */
+/** SQLite-backed one-time nonces for wcc-1 challenges. */
 export class WalletChallengeNonceDO extends DurableObject<Env> {
   private initialized = false;
 
+  /** Bind Cloudflare DO state and worker env. */
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
   }
 
+  /** Route /issue and /consume internal POST paths. */
   async fetch(request: Request): Promise<Response> {
     this.ensureSchema();
 
@@ -24,6 +33,7 @@ export class WalletChallengeNonceDO extends DurableObject<Env> {
     return Response.json({ error: "not found" }, { status: 404 });
   }
 
+  /** Create wallet_challenge_nonces table if missing. */
   private ensureSchema(): void {
     if (this.initialized) return;
     this.ctx.storage.sql.exec(`
@@ -38,6 +48,7 @@ export class WalletChallengeNonceDO extends DurableObject<Env> {
     this.initialized = true;
   }
 
+  /** POST /issue — insert nonce bound to auth log and scopes. */
   private async handleIssue(request: Request): Promise<Response> {
     const body = (await request.json()) as {
       authLogIdHex32: string;
@@ -58,6 +69,7 @@ export class WalletChallengeNonceDO extends DurableObject<Env> {
     return Response.json({ nonce });
   }
 
+  /** POST /consume — mark nonce used when binding matches. */
   private async handleConsume(request: Request): Promise<Response> {
     const body = (await request.json()) as {
       nonce: string;
@@ -115,6 +127,7 @@ export class WalletChallengeNonceDO extends DurableObject<Env> {
     return Response.json({ ok: true });
   }
 
+  /** Delete expired and recently consumed nonce rows. */
   private pruneExpired(now: number): void {
     this.ctx.storage.sql.exec(
       `DELETE FROM wallet_challenge_nonces WHERE expires_at < ? OR consumed = 1`,

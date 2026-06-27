@@ -1,4 +1,11 @@
-/** Pending delegation hint awaiting material submission. */
+/**
+ * Pending delegation hint exposed to operators and sealer polling.
+ *
+ * Surfaced via GET /api/delegations/pending and per-log pending-delegation
+ * when delegation is enabled; cleared on certificate PUT.
+ */
+
+/** Pending delegation awaiting runner certificate submission. */
 export interface PendingEntry {
   id: string;
   authLogIdHex32: string;

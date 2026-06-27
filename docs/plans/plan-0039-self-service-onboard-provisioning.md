@@ -34,7 +34,7 @@ See delivery plan grill section; all rows covered by `onboard-request.test.ts`,
 
 | Var | Purpose |
 |-----|---------|
-| `ONBOARD_ALLOWED_CHAIN_ID` | v1 single-chain gate |
+| `SUPPORTED_CHAINS_RPC` | JSON map chainId → ordered RPC URLs ([ADR-0010](../adr/adr-0010-supported-chains-rpc-config.md)); deploy resolves `${env:ALCHEMY_API_KEY}` etc. |
 | `ONBOARD_REQUEST_TTL_SEC` | Request expiry (default 604800) |
 | `ONBOARD_TOKEN_TTL_SEC` | Minted token expiry at redeem (default 604800) |
 | `ONBOARD_GATE_CACHE_TTL_SEC` | Positive Univocity gate cache TTL (default 300) |
@@ -61,8 +61,9 @@ pnpm --filter @canopy/api test -- test/onboard-auto-approve.test.ts
 
 ## Dev-lane E2E (post-deploy)
 
-1. Deploy `canopy-api` dev with `ONBOARD_ALLOWED_CHAIN_ID` and
-   `UNIVOCITY_CONTRACT_RPC_URL` secret (see `wrangler.jsonc` dev env).
+1. Deploy `canopy-api` dev with `SUPPORTED_CHAINS_RPC` (GitHub Environment var or
+   `apply-runtime-contract` + Doppler `ALCHEMY_API_KEY`). Remove legacy
+   `UNIVOCITY_CONTRACT_*` worker secrets if present.
 2. `task test:live:onboard` (mandate worktree) — request → approve → redeem.
 3. `task onboard:request` / `task onboard:redeem` — operator CLI path.
 4. `task provision` with redeemed token — PA genesis + binding (`consumedForestR`).

@@ -3,6 +3,10 @@
  */
 
 import type { ParsedVerifyKey } from "@canopy/encoding";
+import {
+  rpcUrlsForChainId,
+  type SupportedChainsConfig,
+} from "@canopy/chain-rpc";
 import { resolveReceiptVerifyKey } from "../grant/delegation-verify.js";
 import { isCanopyApiPoolTestMode } from "./runtime-mode.js";
 import {
@@ -50,6 +54,7 @@ export type ReceiptVerifyKey = RootVerifyKey;
 export type ReceiptAuthorityResolver = (
   ownerLogIdLowerHex32: string,
   receiptCoseBytes: Uint8Array,
+  ks256ChainId?: string,
 ) => Promise<ReceiptVerifyKey[] | null>;
 
 /**
@@ -62,7 +67,7 @@ export async function resolveReceiptVerifyKeysFromTrustRoots(
   ownerLogIdLowerHex32: string,
   receiptCoseBytes: Uint8Array,
   trustRootClients: TrustRootClient[],
-  opts?: { rpcUrl?: string },
+  opts?: { rpcUrls?: string[] },
 ): Promise<ReceiptVerifyKey[] | null> {
   const merged: ReceiptVerifyKey[] = [];
   for (const client of trustRootClients) {
@@ -93,12 +98,12 @@ export function createReceiptAuthorityResolver(config: {
   univocityToken?: string;
   nodeEnv: string;
   testReceiptVerifyEs256XyHex?: string;
-  /** JSON-RPC URL for KS256 ERC-1271 delegation cert verify. */
-  ks256RpcUrl?: string;
+  /** chainId → preference-ordered RPC URLs for KS256 ERC-1271 verify. */
+  supportedChains?: SupportedChainsConfig | null;
 }): ReceiptAuthorityResolver {
   const pool = isCanopyApiPoolTestMode({ NODE_ENV: config.nodeEnv });
   const testHex = config.testReceiptVerifyEs256XyHex?.trim();
-  const ks256RpcUrl = config.ks256RpcUrl?.trim();
+  const supportedChains = config.supportedChains ?? null;
 
   let trustRootClients: TrustRootClient[];
   if (pool && testHex) {
@@ -143,16 +148,22 @@ export function createReceiptAuthorityResolver(config: {
   return async (
     ownerLogIdLowerHex32: string,
     receiptCoseBytes: Uint8Array,
+    ks256ChainId?: string,
   ): Promise<ReceiptVerifyKey[] | null> => {
     const receiptSuffix = await receiptResolverCacheKeySuffix(receiptCoseBytes);
-    const cacheKey = `${ownerLogIdLowerHex32}\0${receiptSuffix}`;
+    const chainSuffix = ks256ChainId?.trim() ?? "";
+    const cacheKey = `${ownerLogIdLowerHex32}\0${receiptSuffix}\0${chainSuffix}`;
     let p = cache.get(cacheKey);
     if (!p) {
+      const rpcUrls =
+        chainSuffix && supportedChains
+          ? (rpcUrlsForChainId(supportedChains, chainSuffix) ?? undefined)
+          : undefined;
       p = resolveReceiptVerifyKeysFromTrustRoots(
         ownerLogIdLowerHex32,
         receiptCoseBytes,
         trustRootClients,
-        ks256RpcUrl ? { rpcUrl: ks256RpcUrl } : undefined,
+        rpcUrls?.length ? { rpcUrls } : undefined,
       );
 
       p = p.catch((err: unknown) => {

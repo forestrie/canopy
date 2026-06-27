@@ -1,3 +1,4 @@
+/** Golden-vector tests: {@link mergeUnprotectedIntoCoseSign1} and unprotected map normalization. */
 import { describe, expect, it } from "vitest";
 import { decode as decodeCbor } from "cbor-x";
 import { decodeCoseSign1 } from "./verify-cose-sign1.js";

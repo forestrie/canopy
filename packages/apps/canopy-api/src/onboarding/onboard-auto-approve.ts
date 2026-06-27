@@ -1,10 +1,12 @@
 import type { OnboardRequestRecord } from "./onboard-request-record.js";
+import { isSupportedChainIdForEnv } from "../env/supported-chains-for-env.js";
 
 export interface OnboardAutoApproveEnv {
   NODE_ENV?: string;
   ONBOARD_AUTO_APPROVE?: string;
   ONBOARD_AUTO_APPROVE_CHAIN_IDS?: string;
   ONBOARD_AUTO_APPROVE_LABEL_PREFIX?: string;
+  SUPPORTED_CHAINS_RPC?: string;
 }
 
 export function shouldAutoApproveRequest(
@@ -25,6 +27,11 @@ export function shouldAutoApproveRequest(
     const ids = allowlist.split(",").map((s) => s.trim());
     if (!ids.includes(record.chainBinding.chainId)) {
       return false;
+    }
+    for (const id of ids) {
+      if (!isSupportedChainIdForEnv(env, id)) {
+        return false;
+      }
     }
   }
 

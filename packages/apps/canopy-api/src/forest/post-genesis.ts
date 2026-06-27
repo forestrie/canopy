@@ -34,12 +34,14 @@ import {
   parseUnivocityAddrRequired,
   type ForestGenesisChainBinding,
 } from "./genesis-wire.js";
+import { isSupportedChainIdForEnv } from "../env/supported-chains-for-env.js";
+import type { SupportedChainsEnv } from "../env/supported-chains-for-env.js";
 import {
   postGenesisToUnivocity,
   type UnivocityGenesisClient,
 } from "./univocity-genesis-client.js";
 
-export interface PostGenesisEnv {
+export interface PostGenesisEnv extends SupportedChainsEnv {
   R2_GRANTS: R2Bucket;
   /**
    * When set, the canonical genesis is forwarded to the univocity owned store,
@@ -217,6 +219,12 @@ export async function postForestGenesis(
 
   const binding = validateChainBinding(m);
   if (binding instanceof Response) return binding;
+
+  if (!isSupportedChainIdForEnv(env, binding.chainId)) {
+    return ClientErrors.badRequest(
+      `chain-id ${binding.chainId} is not supported by this canopy deployment`,
+    );
+  }
 
   const out = buildV2GenesisOut(m, paddedWire, binding);
   if (out instanceof Response) return out;

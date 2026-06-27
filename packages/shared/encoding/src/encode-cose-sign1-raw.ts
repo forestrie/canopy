@@ -6,6 +6,15 @@
 
 import { encode as encodeCbor } from "cbor-x";
 
+/**
+ * Serialize a COSE Sign1 four-tuple via cbor-x.
+ *
+ * @param protectedBstr - COSE Sign1 `[0]` protected header bstr
+ * @param unprotected - COSE Sign1 `[1]` unprotected header map
+ * @param payloadBstr - COSE Sign1 `[2]` payload bstr (may be empty)
+ * @param signature - COSE Sign1 `[3]` signature bstr (IEEE P1363 for ES256)
+ * @returns CBOR-encoded COSE Sign1 bytes
+ */
 export function encodeCoseSign1Raw(
   protectedBstr: Uint8Array,
   unprotected: Map<number, unknown>,
