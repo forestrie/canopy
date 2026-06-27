@@ -192,6 +192,29 @@ describe("onboard request create", () => {
     expect(res.status).toBe(400);
   });
 
+  it("returns 429 when create rate limit exceeded", async () => {
+    const e = envWithOnboard({
+      ONBOARD_CREATE_RATE_LIMITER: {
+        limit: async () => ({ success: false }),
+      },
+    });
+    const res = await worker.fetch(
+      new Request("http://localhost/api/onboarding/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/cbor" },
+        body: createBody({
+          1: "rate-limited",
+          2: CHAIN,
+          3: DEPLOYED_ADDR,
+          4: "op@example.com",
+        }),
+      }),
+      e,
+      testCtx,
+    );
+    expect(res.status).toBe(429);
+  });
+
   it("GET status omits redeem code and sends no-store", async () => {
     const e = envWithOnboard();
     const createRes = await worker.fetch(
@@ -332,6 +355,103 @@ describe("onboard approve redeem flow", () => {
     expect(statuses).toEqual([200, 409]);
   });
 
+  it("rejects ops approve without bearer", async () => {
+    const e = envWithOnboard();
+    const createRes = await worker.fetch(
+      new Request("http://localhost/api/onboarding/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/cbor" },
+        body: createBody({
+          1: "ops-auth",
+          2: CHAIN,
+          3: DEPLOYED_ADDR,
+          4: "op@example.com",
+        }),
+      }),
+      e,
+      testCtx,
+    );
+    const created = decodeCbor(
+      new Uint8Array(await createRes.arrayBuffer()),
+    ) as { requestId?: string };
+    const res = await worker.fetch(
+      new Request(
+        `http://localhost/api/onboarding/requests/${created.requestId}/approve`,
+        { method: "POST" },
+      ),
+      e,
+      testCtx,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 409 when redeeming rejected request", async () => {
+    const e = envWithOnboard();
+    const createRes = await worker.fetch(
+      new Request("http://localhost/api/onboarding/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/cbor" },
+        body: createBody({
+          1: "reject-flow",
+          2: CHAIN,
+          3: DEPLOYED_ADDR,
+          4: "op@example.com",
+        }),
+      }),
+      e,
+      testCtx,
+    );
+    const created = decodeCbor(
+      new Uint8Array(await createRes.arrayBuffer()),
+    ) as { requestId?: string; redeemCode?: string };
+    await worker.fetch(
+      new Request(
+        `http://localhost/api/onboarding/requests/${created.requestId}/reject`,
+        { method: "POST", headers: opsHeaders() },
+      ),
+      e,
+      testCtx,
+    );
+    const res = await worker.fetch(
+      new Request(
+        `http://localhost/api/onboarding/requests/${created.requestId}/redeem`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/cbor" },
+          body: createBody({ 1: created.redeemCode }),
+        },
+      ),
+      e,
+      testCtx,
+    );
+    expect(res.status).toBe(409);
+  });
+
+  it("returns 410 when redeeming expired approved request", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    try {
+      const e = envWithOnboard({ ONBOARD_REQUEST_TTL_SEC: "3600" });
+      const { requestId, redeemCode } = await createApprovedFlow(e, "expired");
+      vi.setSystemTime(new Date("2026-01-01T02:00:00Z"));
+      const res = await worker.fetch(
+        new Request(
+          `http://localhost/api/onboarding/requests/${requestId}/redeem`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/cbor" },
+            body: createBody({ 1: redeemCode }),
+          },
+        ),
+        e,
+        testCtx,
+      );
+      expect(res.status).toBe(410);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("invalid redeem code returns 401", async () => {
     const e = envWithOnboard();
     const { requestId } = await createApprovedFlow(e);
@@ -449,6 +569,34 @@ describe("onboard token binding at genesis", () => {
     const [a, b] = await Promise.all([genesisReq(rootA), genesisReq(rootB)]);
     const statuses = [a.status, b.status].sort();
     expect(statuses).toEqual([201, 403]);
+  });
+
+  it("rejects genesis when token chain binding mismatches genesis body", async () => {
+    const e = envWithOnboard();
+    const minted = await mintOnboardToken(e, {
+      label: "bind-mismatch",
+      chainBinding: { chainId: CHAIN, univocityAddr: DEPLOYED_ADDR },
+    });
+    const root = crypto.randomUUID();
+    const wrongAddr = new Uint8Array(20).fill(0xbb);
+    const res = await worker.fetch(
+      new Request(`http://localhost/api/forest/${root}/genesis`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${minted.token}`,
+          "Content-Type": "application/cbor",
+        },
+        body: encodeCbor(
+          validGenesisV2Es256CborMap({
+            chainId: CHAIN,
+            univocityAddr: wrongAddr,
+          }),
+        ) as Uint8Array,
+      }),
+      e,
+      testCtx,
+    );
+    expect(res.status).toBe(422);
   });
 
   it("legacy ops-mint token without binding still works", async () => {
