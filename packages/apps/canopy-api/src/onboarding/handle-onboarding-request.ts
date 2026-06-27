@@ -3,6 +3,11 @@
  */
 
 import { decode as decodeCbor } from "cbor-x";
+import {
+  adminJsonResponse,
+  asAdminJsonResponse,
+  problemResponseToAdminJson,
+} from "../cbor-api/admin-json-response.js";
 import { parseCborBody } from "../cbor-api/cbor-request.js";
 import {
   cborResponse,
@@ -424,7 +429,7 @@ async function handleOpsApprove(
 ): Promise<Response> {
   const approved = await approveRequestRecord(env, requestId);
   if (approved instanceof Response) {
-    return attachCors(approved, corsHeaders);
+    return attachFormat(approved, corsHeaders, responseFormat === "json");
   }
 
   scheduleOnboardWebhook(ctx, env, "onboard.request.approved", {
@@ -438,7 +443,7 @@ async function handleOpsApprove(
 
   return attachCors(
     responseFormat === "json"
-      ? jsonResponse(payload, 200)
+      ? adminJsonResponse(payload, 200)
       : cborResponse(payload, 200),
     corsHeaders,
   );
@@ -476,7 +481,7 @@ async function handleOpsReject(
 
   const reasonErr = checkOnboardRejectReasonLength(rejectReason);
   if (reasonErr) {
-    return attachCors(reasonErr, corsHeaders);
+    return attachFormat(reasonErr, corsHeaders, responseFormat === "json");
   }
 
   const transition = await transitionPendingToRejectedCas(
@@ -486,14 +491,16 @@ async function handleOpsReject(
   );
   if (!transition.ok) {
     if (transition.reason === "not_found") {
-      return attachCors(
+      return attachFormat(
         ClientErrors.notFound("Not Found", "Request not found"),
         corsHeaders,
+        responseFormat === "json",
       );
     }
-    return attachCors(
+    return attachFormat(
       await pendingTransitionConflict(env, requestId),
       corsHeaders,
+      responseFormat === "json",
     );
   }
 
@@ -505,20 +512,28 @@ async function handleOpsReject(
   const payload = { requestId, status: "rejected" as const };
   return attachCors(
     responseFormat === "json"
-      ? jsonResponse(payload, 200)
+      ? adminJsonResponse(payload, 200)
       : cborResponse(payload, 200),
     corsHeaders,
   );
 }
 
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      "cache-control": "no-store",
-    },
-  });
+async function attachFormat(
+  res: Response,
+  corsHeaders: Record<string, string>,
+  useJson: boolean,
+): Promise<Response> {
+  const out = await asAdminJsonResponse(res, useJson);
+  return attachCors(out, corsHeaders);
+}
+
+async function opsAdminJsonAuth(
+  request: Request,
+  env: OnboardingHandlerEnv,
+): Promise<Response | null> {
+  const authErr = opsAuth(request, env);
+  if (!authErr) return null;
+  return problemResponseToAdminJson(authErr);
 }
 
 function opsAuth(request: Request, env: OnboardingHandlerEnv): Response | null {
@@ -546,13 +561,13 @@ export async function handleOnboardingRequest(
     pathname === "/api/onboarding/admin/tokens" && request.method === "GET";
 
   if (adminJson || adminTokens) {
-    const authErr = opsAuth(request, env);
+    const authErr = await opsAdminJsonAuth(request, env);
     if (authErr) return attachCors(authErr, corsHeaders);
     if (adminJson) {
       const { limit, cursor } = parseListPagination(request.url);
       const listed = await listOnboardRequests(env, { limit, cursor });
       return attachCors(
-        jsonResponse({
+        adminJsonResponse({
           requests: listed.requests.map((r) => ({
             ...publicRequestView(r),
             contactEmail: r.contactEmail,
@@ -564,13 +579,13 @@ export async function handleOnboardingRequest(
       );
     }
     const tokens = await listOnboardTokens(env);
-    return attachCors(jsonResponse({ tokens }), corsHeaders);
+    return attachCors(adminJsonResponse({ tokens }), corsHeaders);
   }
 
   const adminApprove =
     /^\/api\/onboarding\/admin\/requests\/([^/]+)\/approve$/.exec(pathname);
   if (adminApprove && request.method === "POST") {
-    const authErr = opsAuth(request, env);
+    const authErr = await opsAdminJsonAuth(request, env);
     if (authErr) return attachCors(authErr, corsHeaders);
     return handleOpsApprove(
       decodeURIComponent(adminApprove[1]!),
@@ -584,7 +599,7 @@ export async function handleOnboardingRequest(
   const adminReject =
     /^\/api\/onboarding\/admin\/requests\/([^/]+)\/reject$/.exec(pathname);
   if (adminReject && request.method === "POST") {
-    const authErr = opsAuth(request, env);
+    const authErr = await opsAdminJsonAuth(request, env);
     if (authErr) return attachCors(authErr, corsHeaders);
     return handleOpsReject(
       request,

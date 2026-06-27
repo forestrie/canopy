@@ -3,6 +3,11 @@
  * `PUT/GET /api/payments/registrations/{R}/enabled` — kill-switch controller.
  */
 
+import {
+  adminJsonResponse,
+  asAdminJsonResponse,
+  problemResponseToAdminJson,
+} from "../cbor-api/admin-json-response.js";
 import { parseCborBody } from "../cbor-api/cbor-request.js";
 import {
   cborResponse,
@@ -92,14 +97,13 @@ function parseRegistrationLogId(segment: string): Uint8Array | Response {
   }
 }
 
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-      "cache-control": "no-store",
-    },
-  });
+async function attachFormat(
+  res: Response,
+  corsHeaders: Record<string, string>,
+  useJson: boolean,
+): Promise<Response> {
+  const out = await asAdminJsonResponse(res, useJson);
+  return attachCors(out, corsHeaders);
 }
 
 async function handleRegistrationEnabled(
@@ -111,14 +115,15 @@ async function handleRegistrationEnabled(
 ): Promise<Response> {
   const parsed = parseRegistrationLogId(logIdSegment);
   if (parsed instanceof Response) {
-    return attachCors(parsed, corsHeaders);
+    return attachFormat(parsed, corsHeaders, responseFormat === "json");
   }
 
   const registration = await readRegistration(env, parsed);
   if (!registration) {
-    return attachCors(
+    return attachFormat(
       ClientErrors.notFound("Not Found", "Registration not found for log"),
       corsHeaders,
+      responseFormat === "json",
     );
   }
 
@@ -127,16 +132,17 @@ async function handleRegistrationEnabled(
   if (request.method === "GET") {
     const result = await getCoordinatorEnabled(env, logUuid);
     if (!result.ok) {
-      return attachCors(
+      return attachFormat(
         problemResponse(result.status, "Service Unavailable", "about:blank", {
           detail: result.detail,
         }),
         corsHeaders,
+        responseFormat === "json",
       );
     }
     return attachCors(
       responseFormat === "json"
-        ? jsonResponse({ R: logUuid, enabled: result.enabled }, 200)
+        ? adminJsonResponse({ R: logUuid, enabled: result.enabled }, 200)
         : cborResponse({ R: logUuid, enabled: result.enabled }, 200),
       corsHeaders,
     );
@@ -150,9 +156,10 @@ async function handleRegistrationEnabled(
         const body = (await request.json()) as { enabled?: unknown };
         if (typeof body.enabled === "boolean") enabled = body.enabled;
       } catch {
-        return attachCors(
+        return attachFormat(
           ClientErrors.badRequest("Invalid JSON body"),
           corsHeaders,
+          responseFormat === "json",
         );
       }
     } else {
@@ -174,24 +181,26 @@ async function handleRegistrationEnabled(
     }
 
     if (enabled === undefined) {
-      return attachCors(
+      return attachFormat(
         ClientErrors.badRequest("enabled must be a boolean"),
         corsHeaders,
+        responseFormat === "json",
       );
     }
 
     const result = await putCoordinatorEnabled(env, logUuid, enabled);
     if (!result.ok) {
-      return attachCors(
+      return attachFormat(
         problemResponse(result.status, "Service Unavailable", "about:blank", {
           detail: result.detail,
         }),
         corsHeaders,
+        responseFormat === "json",
       );
     }
     return attachCors(
       responseFormat === "json"
-        ? jsonResponse({ R: logUuid, enabled: result.enabled }, 200)
+        ? adminJsonResponse({ R: logUuid, enabled: result.enabled }, 200)
         : cborResponse({ R: logUuid, enabled: result.enabled }, 200),
       corsHeaders,
     );
@@ -218,9 +227,15 @@ export async function handlePaymentsRequest(
     return null;
   }
 
+  const isAdminJsonRoute = pathname.startsWith("/api/payments/admin/");
   const token = env.CANOPY_OPS_ADMIN_TOKEN?.trim() ?? "";
   const authErr = opsAdminBearerOrUnauthorized(request, token);
-  if (authErr) return attachCors(authErr, corsHeaders);
+  if (authErr) {
+    if (isAdminJsonRoute) {
+      return attachCors(await problemResponseToAdminJson(authErr), corsHeaders);
+    }
+    return attachCors(authErr, corsHeaders);
+  }
 
   if (pathname === "/api/payments/onboard-tokens") {
     if (request.method === "POST") {
