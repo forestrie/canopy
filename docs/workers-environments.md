@@ -76,6 +76,13 @@ Canopy-api GitHub Environment vars include **`SUPPORTED_CHAINS_RPC`** (JSON map;
 ADR-0010). Legacy **`UNIVOCITY_CONTRACT_ADDRESS`** /
 **`UNIVOCITY_CONTRACT_RPC_URL`** are removed.
 
+**Self-service onboard (dev lane, FOR-166):** `canopy-api` dev worker vars include
+`ONBOARD_AUTO_APPROVE=true` and `ONBOARD_AUTO_APPROVE_CHAIN_IDS=84532` in
+`wrangler.jsonc` (never on prod — `NODE_ENV=prod` blocks auto-approve in code).
+Public routes: `/api/onboarding/requests`. Ops JSON admin:
+`/api/onboarding/admin/**`. Rate limit: `ONBOARD_CREATE_RATE_LIMITER` wrangler
+binding. See [plan-0039](plans/plan-0039-self-service-onboard-provisioning.md).
+
 **Webhook identity (account-level, ADR-0006):** `WEBHOOK_SIGNING_KEY` via Cloudflare
 Secrets Store (`default_secrets_store` / `webhook-signing-key`). Bootstrap PEM in
 Doppler `canopy` dev+prd (`task cf:coordinator:bootstrap-webhook-signing-key`);

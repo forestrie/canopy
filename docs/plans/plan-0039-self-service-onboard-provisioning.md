@@ -1,8 +1,7 @@
 # Plan 0039 — Self-service onboard provisioning
 
-**Status:** ACTIVE — code merged; FOR-175 review pass (2026-06-27) added lifecycle
-tests + 422 binding alignment; pending dev-lane deploy (FOR-176) and live smoke
-(FOR-178).
+**Status:** ACTIVE — FOR-175 merged; FOR-176 adds dev auto-approve in wrangler;
+pending deploy smoke + mandate live CI (FOR-177) and cross-repo close (FOR-178).
 **Date:** 2026-06-26
 **Related:**
 [ADR-0009](../adr/adr-0009-self-service-onboard-provisioning.md),
@@ -63,10 +62,10 @@ pnpm --filter @canopy/api test -- test/onboard-auto-approve.test.ts
 
 ## Dev-lane E2E (post-deploy)
 
-1. Deploy `canopy-api` dev with `SUPPORTED_CHAINS_RPC` (GitHub Environment var or
-   `apply-runtime-contract` + Doppler `ALCHEMY_API_KEY`). Remove legacy
-   `UNIVOCITY_CONTRACT_*` worker secrets if present.
-2. `task test:live:onboard` (mandate worktree) — request → approve → redeem.
-3. `task onboard:request` / `task onboard:redeem` — operator CLI path.
-4. `task provision` with redeemed token — PA genesis + binding (`consumedForestR`).
-5. Close FOR-166 when steps 2–4 pass on dev lane.
+1. Deploy `canopy-api` dev (`deploy-workers.yml` or `task deploy:canopy-api`) with
+   `SUPPORTED_CHAINS_RPC` on GitHub Environment **dev** (Alchemy key resolved at
+   deploy via `apply-runtime-contract` + `config/supported-chains.jsonc`).
+2. Confirm dev worker vars include `ONBOARD_AUTO_APPROVE=true` (wrangler dev only).
+3. `task test:live:onboard` (mandate) — request → auto-approve or ops approve → redeem.
+4. `task provision` with redeemed token — PA genesis + `consumedForestR`.
+5. Close FOR-166 when steps 3–4 pass on dev lane.

@@ -102,6 +102,9 @@
         "ONBOARD_GATE_CACHE_TTL_SEC": "300",
         "ONBOARD_MAX_PENDING_PER_BINDING": "3",
         "ONBOARD_RPC_TIMEOUT_MS": "5000",
+        // Dev lane only: auto-approve after Univocity gate (FOR-174). Blocked when NODE_ENV=prod.
+        "ONBOARD_AUTO_APPROVE": "true",
+        "ONBOARD_AUTO_APPROVE_CHAIN_IDS": "84532",
       },
       "ratelimits": [
         {
