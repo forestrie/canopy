@@ -197,7 +197,9 @@ function renderRow(row, tbody) {
     const rejectBtn = document.createElement("button");
     rejectBtn.type = "button";
     rejectBtn.textContent = "Reject";
-    rejectBtn.addEventListener("click", () => openReject(String(row.requestId), String(row.label ?? "")));
+    rejectBtn.addEventListener("click", () =>
+      openReject(String(row.requestId), String(row.label ?? "")),
+    );
     actionsTd.appendChild(rejectBtn);
   }
 
@@ -274,9 +276,10 @@ function renderRequests() {
 
 async function loadRequests(reset) {
   try {
-    const path = listCursor && !reset
-      ? `/api/onboarding/admin/requests?cursor=${encodeURIComponent(listCursor)}`
-      : "/api/onboarding/admin/requests";
+    const path =
+      listCursor && !reset
+        ? `/api/onboarding/admin/requests?cursor=${encodeURIComponent(listCursor)}`
+        : "/api/onboarding/admin/requests";
     const data = await api(path);
     const batch = Array.isArray(data.requests) ? data.requests : [];
     if (reset) {
