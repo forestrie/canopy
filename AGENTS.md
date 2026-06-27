@@ -41,3 +41,4 @@ Full rules: `.cursor/rules/docs-workflow.mdc`.
 - **Platform design**: [../devdocs/](../devdocs/) — architecture, glossary, arc/, adr/
 - **Grant verification**: [devdocs ARC-0019](../devdocs/arc/arc-0019-grant-verification-model.md) + [canopy implementation](docs/arc/canopy-grant-verification-implementation.md)
 - **Extended commands / conventions**: [docs/agents/commands.md](docs/agents/commands.md), [conventions.md](docs/agents/conventions.md)
+- **Cursor rules**: [branch-naming](.cursor/rules/branch-naming.mdc), [typescript-comments](.cursor/rules/typescript-comments.mdc), [types-single-responsibility](.cursor/rules/types-single-responsibility.mdc)
