@@ -45,20 +45,23 @@ jobs:
           fi
 
       - name: Deploy to Cloudflare Pages
-        id: deploy
         working-directory: packages/apps/canopy-admin
         run: |
           wrangler pages deploy . \
             --project-name=canopy-admin-dev \
-            --commit-dirty=true | tee /tmp/pages-deploy.log
-          DEPLOY_URL="$(grep -Eo 'https://[a-z0-9.-]+\.pages\.dev' /tmp/pages-deploy.log | tail -1)"
-          if [ -n "$DEPLOY_URL" ]; then
-            echo "deploy_url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
-            echo "Deployed to $DEPLOY_URL"
-          fi
+            --commit-dirty=true
 
       - name: Smoke check Pages deployment
-        if: steps.deploy.outputs.deploy_url != ''
         run: |
-          curl -sfI "${{ steps.deploy.outputs.deploy_url }}" | head -5
-          curl -sf "${{ steps.deploy.outputs.deploy_url }}/" | grep -q "Canopy onboard admin"
+          PROD_URL="https://canopy-admin-dev.pages.dev"
+          for i in 1 2 3 4 5; do
+            if curl -sfI "$PROD_URL/" | head -1 | grep -q "200"; then
+              curl -sf "$PROD_URL/" | grep -q "Canopy onboard admin"
+              echo "Smoke check passed: $PROD_URL"
+              exit 0
+            fi
+            echo "Waiting for $PROD_URL (attempt $i)..."
+            sleep 3
+          done
+          echo "Smoke check failed: $PROD_URL not ready" >&2
+          exit 1

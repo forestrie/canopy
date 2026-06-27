@@ -46,6 +46,7 @@ Cross-check plan-0041 scenario rows S1–S15 against dev lane after mandate
 
 ## Deploy (Cloudflare Pages)
 
+- **URL (dev):** https://canopy-admin-dev.pages.dev
 - **Project:** `canopy-admin-dev` (dev lane, deploys on push to `main` when this
   directory changes)
 - **Workflow:** `.github/workflows/deploy-canopy-admin.yml` (also
