@@ -11,6 +11,7 @@ import {
 } from "./arithmetic-backoff-poll.js";
 import type { ModeCWebhookReceiverStats } from "../system/helpers/mode-c-webhook-receiver.js";
 import { submitModeCKs256DelegationMaterial } from "../system/helpers/mode-c-webhook-receiver.js";
+import { modeCAllowPullFallback } from "./mode-c-e2e-env.js";
 import { extractDelegationCertFromReceipt } from "./byok-wallet-seal-helpers.js";
 import {
   bytesToBase64,
@@ -87,6 +88,25 @@ export async function signPendingModeCKs256Delegations(
   return { signed, pendingCount: body.entries.length };
 }
 
+/**
+ * Advance delegation material during Mode C poll loops.
+ * Default: webhook-push only (receiver handles delivery). Pull when
+ * E2E_MODE_C_ALLOW_PULL_FALLBACK=1.
+ */
+export async function advanceModeCDelegationMaterialForPoll(
+  request: APIRequestContext,
+  opts: ModeCPollCoordinatorOpts & {
+    rootSignerAddress: Uint8Array;
+    receiverStats?: ModeCWebhookReceiverStats;
+  },
+): Promise<{ signed: number; pendingCount: number }> {
+  if (modeCAllowPullFallback()) {
+    return signPendingModeCKs256Delegations(request, opts);
+  }
+  await sleepMs(500);
+  return { signed: 0, pendingCount: 0 };
+}
+
 async function pollReceiptUntil200(opts: {
   request: APIRequestContext;
   receiptUrlAbsolute: string;
@@ -106,7 +126,7 @@ async function pollReceiptUntil200(opts: {
   let attempt = 0;
   while (Date.now() - start < maxWaitMs) {
     if (opts.coordinatorPoll) {
-      await signPendingModeCKs256Delegations(opts.request, {
+      await advanceModeCDelegationMaterialForPoll(opts.request, {
         ...opts.coordinatorPoll,
         rootSignerAddress: opts.rootSignerAddress,
         receiverStats: opts.receiverStats,
@@ -171,7 +191,7 @@ export async function pollRegistrationThroughModeCWebhook(opts: {
   const start = Date.now();
   let attempt = 0;
   while (Date.now() - start < maxWaitMs) {
-    await signPendingModeCKs256Delegations(opts.request, {
+    await advanceModeCDelegationMaterialForPoll(opts.request, {
       ...opts.coordinatorPoll,
       rootSignerAddress: opts.rootSignerAddress,
       receiverStats: opts.receiverStats,
@@ -254,6 +274,16 @@ export async function waitForModeCDelegationMaterial(opts: {
       throw new Error("material submitted without webhook delivery");
     }
     return "webhook";
+  }
+
+  if (!modeCAllowPullFallback()) {
+    throw new Error(
+      "Mode C delegation material not received via webhook push " +
+        `(webhooks=${opts.receiverStats.webhooksReceived}, ` +
+        `material=${opts.receiverStats.materialsSubmitted}). ` +
+        "Set E2E_MODE_C_WEBHOOK_PUBLIC_BASE, ensure cloudflared is installed, " +
+        "or set E2E_MODE_C_ALLOW_PULL_FALLBACK=1 for local pull backstop only.",
+    );
   }
 
   const pending = await opts.request.get(

@@ -15,7 +15,9 @@ Platform-wide plans: [devdocs/plans/](../../../devdocs/plans/README.md).
 | [plan-0035](plan-0035-delegation-cose-library.md) | IMPLEMENTED | FOR-94: `@forestrie/delegation-cose` assemble+verify ES256/KS256 |
 | [plan-0036](plan-0036-webhook-delivery.md) | IMPLEMENTED | FOR-93: coordinator `delegation.required` webhook delivery |
 | [plan-0037](plan-0037-mode-c-onboarding-coordinator-forward.md) | IMPLEMENTED | Mode C genesis coordinator forward + webhook seal e2e |
-| [plan-0038](plan-0038-wallet-challenge-coordinator-e2e.md) | DRAFT | FOR-129 wallet-challenge coordinator e2e (replace skips/best-effort) |
+| [plan-0038](plan-0038-wallet-challenge-coordinator-e2e.md) | COMPLETE | FOR-138 wallet-challenge coordinator e2e |
+| [plan-0044](plan-0044-package-d-cross-stack-e2e.md) | IN_PROGRESS | FOR-201 Package D cross-stack e2e confidence |
+| [plan-0046](plan-0046-package-d-review-remediation.md) | IMPLEMENTED | FOR-201 Package D review remediation (PR #57) |
 | [plan-0039](plan-0039-self-service-onboard-provisioning.md) | COMPLETE | FOR-166 self-service onboard (closed 2026-06-27) |
 | [plan-0040](plan-0040-onboard-epic-closure-backlog.md) | DRAFT | FOR-178 closure (complete); FOR-172 → plan-0041 |
 | [plan-0041](plan-0041-canopy-admin-ops-console.md) | DRAFT | FOR-172 admin ops console (FOR-180–183) |

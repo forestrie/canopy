@@ -42,6 +42,7 @@ tasks:
     desc: |
       Fail fast when required e2e secrets/vars are missing (mirrors tests-system.yml).
       Set VALIDATE_SKIP_UNIVOCITY=1 to skip Univocity address checks (fresh provision path).
+      Set VALIDATE_REQUIRE_COORDINATOR=1 to require coordinator env (full system BYOK suite).
     cmds:
       - |
         set -euo pipefail
@@ -80,6 +81,14 @@ tasks:
         if [ -z "$(trim_ws "${CANOPY_OPS_ADMIN_TOKEN:-}")" ]; then
           echo "CANOPY_OPS_ADMIN_TOKEN is required for system e2e (Doppler project canopy, config {{.ENV}})." >&2
           exit 1
+        fi
+        if [ "${VALIDATE_REQUIRE_COORDINATOR:-}" = "1" ]; then
+          COORD_URL="$(trim_ws "${DELEGATION_COORDINATOR_URL:-}")"
+          COORD_TOKEN="$(trim_ws "${COORDINATOR_APP_TOKEN:-}")"
+          if [ -z "$COORD_URL" ] || [ -z "$COORD_TOKEN" ]; then
+            echo "DELEGATION_COORDINATOR_URL and COORDINATOR_APP_TOKEN are required when VALIDATE_REQUIRE_COORDINATOR=1 (system BYOK / Mode C e2e)." >&2
+            exit 1
+          fi
         fi
 
         if [ "${VALIDATE_SKIP_UNIVOCITY:-}" != "1" ]; then

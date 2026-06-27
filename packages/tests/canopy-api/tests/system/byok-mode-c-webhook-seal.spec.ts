@@ -1,5 +1,5 @@
 /**
- * Mode C webhook-driven BYOK seal e2e (plan-0037 / FOR-76).
+ * Mode C webhook-driven BYOK seal e2e (plan-0037 / FOR-126 / Package D).
  * Genesis ?webhookUrl= forwards coordinator setup; in-repo receiver signs material.
  */
 
@@ -8,10 +8,7 @@ import { encode as encodeCbor } from "cbor-x";
 import { expectAPI as expect, test } from "@e2e-fixtures/auth";
 import { buildCompletedGrantBase64 } from "@e2e-utils/bootstrap-grant-flow";
 import { postRegisterGrantExpect303 } from "@e2e-utils/bootstrap-grant-setup";
-import {
-  assertCoordinatorApiE2eEnv,
-  hasCoordinatorApiE2eEnv,
-} from "@e2e-utils/coordinator-api-env";
+import { assertCoordinatorApiE2eEnv } from "@e2e-utils/coordinator-api-env";
 import {
   decodeCoordinatorDelegationIssue,
   generateEphemeralDelegatedPublicKeyCbor,
@@ -31,6 +28,8 @@ import {
   randomKs256PrivateKeyHex,
   signKs256RootStatement,
 } from "@e2e-utils/ks256-wallet-grant";
+import { modeCWebhookSealSkipReason } from "@e2e-utils/mode-c-e2e-env";
+import { startModeCWebhookIngress } from "@e2e-utils/mode-c-webhook-ingress";
 import {
   decodeCoordinatorKs256PublicRootKey,
   pollRegistrationThroughModeCWebhook,
@@ -46,31 +45,15 @@ import {
   univocityProvisionSkipReason,
 } from "@e2e-utils/univocity-genesis-e2e";
 import { extractDelegationCertFromReceipt } from "@e2e-utils/byok-wallet-seal-helpers";
-import { startModeCWebhookReceiver } from "./helpers/mode-c-webhook-receiver.js";
 
-const enabled = process.env.E2E_MODE_C_WEBHOOK_STRETCH === "1";
+const modeCSkip = modeCWebhookSealSkipReason();
 
 test.describe("Mode C webhook-driven BYOK seal e2e", () => {
   test.describe.configure({ mode: "serial" });
 
-  test.skip(
-    !enabled,
-    "Set E2E_MODE_C_WEBHOOK_STRETCH=1 to run Mode C webhook seal stretch e2e.",
-  );
+  test.skip(!!modeCSkip, modeCSkip ?? "");
 
-  test.beforeAll(() => {
-    if (
-      !hasCoordinatorApiE2eEnv() ||
-      !process.env.CANOPY_OPS_ADMIN_TOKEN?.trim()
-    ) {
-      throw new Error(
-        "Mode C webhook seal e2e requires DELEGATION_COORDINATOR_URL, " +
-          "COORDINATOR_APP_TOKEN, and CANOPY_OPS_ADMIN_TOKEN.",
-      );
-    }
-  });
-
-  test("genesis webhook forward, delegation.required, and checkpoint receipt verify", async ({
+  test("genesis webhook forward, delegation.required push, and checkpoint receipt verify", async ({
     unauthorizedRequest,
   }, testInfo) => {
     const skip =
@@ -83,17 +66,14 @@ test.describe("Mode C webhook-driven BYOK seal e2e", () => {
     const baseURL = testInfo.project.use.baseURL ?? "";
     const privateKeyHex = randomKs256PrivateKeyHex();
     const rootAddress = ks256AddressFromPrivateKeyHex(privateKeyHex);
-    const publicWebhookBase =
-      process.env.E2E_MODE_C_WEBHOOK_PUBLIC_BASE?.trim();
     const signedMaterialKeys = new Set<string>();
 
-    const receiver = await startModeCWebhookReceiver({
+    const ingress = await startModeCWebhookIngress({
       coordinatorBaseUrl: coordinator.baseUrl,
       coordinatorAppToken: coordinator.appToken,
       rootSignerAddress: rootAddress,
       privateKeyHex,
       logIdUuid: rootLogId,
-      publicWebhookBaseUrl: publicWebhookBase || undefined,
     });
 
     try {
@@ -105,7 +85,7 @@ test.describe("Mode C webhook-driven BYOK seal e2e", () => {
         ks256Address: rootAddress,
         univocityAddr: ks256BootstrapContractAddrBytes(),
         chainId: univocityGenesisChainId(),
-        webhookUrl: receiver.webhookUrl,
+        webhookUrl: ingress.webhookUrl,
       });
 
       const webhookGet = await unauthorizedRequest.get(
@@ -116,7 +96,7 @@ test.describe("Mode C webhook-driven BYOK seal e2e", () => {
       );
       expect(webhookGet.status()).toBe(200);
       const webhookBody = (await webhookGet.json()) as { webhookUrl?: string };
-      expect(webhookBody.webhookUrl).toBe(receiver.webhookUrl);
+      expect(webhookBody.webhookUrl).toBe(ingress.webhookUrl);
 
       const rootGet = await fetch(
         `${coordinator.baseUrl}/api/logs/${rootLogId}/public-root`,
@@ -180,17 +160,16 @@ test.describe("Mode C webhook-driven BYOK seal e2e", () => {
         coordinatorUrl: coordinator.baseUrl,
         coordinatorToken: coordinator.appToken,
         logIdUuid: rootLogId,
-        receiverStats: receiver.stats,
+        receiverStats: ingress.receiver.stats,
         rootSignerAddress: rootAddress,
         privateKeyHex,
         mmrStart: 1,
         mmrEnd: 8,
         delegatedPublicKey,
       });
-      if (delivery === "webhook") {
-        expect(receiver.stats.webhooksReceived).toBeGreaterThan(0);
-      }
-      expect(receiver.stats.materialsSubmitted).toBeGreaterThan(0);
+      expect(delivery).toBe("webhook");
+      expect(ingress.receiver.stats.webhooksReceived).toBeGreaterThan(0);
+      expect(ingress.receiver.stats.materialsSubmitted).toBeGreaterThan(0);
 
       const issueHit = await unauthorizedRequest.post(
         `${coordinator.baseUrl}/api/delegations`,
@@ -247,14 +226,19 @@ test.describe("Mode C webhook-driven BYOK seal e2e", () => {
         signedMaterialKeys,
       };
 
+      const webhooksBeforeGrant = ingress.receiver.stats.webhooksReceived;
+
       const grantComplete = await pollRegistrationThroughModeCWebhook({
         request: unauthorizedRequest,
         statusUrlAbsolute,
         baseURL,
-        receiverStats: receiver.stats,
+        receiverStats: ingress.receiver.stats,
         rootSignerAddress: rootAddress,
         coordinatorPoll,
       });
+      expect(ingress.receiver.stats.webhooksReceived).toBeGreaterThan(
+        webhooksBeforeGrant,
+      );
       expect(grantComplete.receiptRes.status).toBe(200);
       expect(
         await verifyKs256BootstrapDelegationCertificate({
@@ -287,14 +271,18 @@ test.describe("Mode C webhook-driven BYOK seal e2e", () => {
       expect(entryRes.status()).toBe(303);
 
       const entryStatusUrl = absoluteUrl(baseURL, entryRes.headers().location!);
+      const webhooksBeforeEntry = ingress.receiver.stats.webhooksReceived;
       const entryComplete = await pollRegistrationThroughModeCWebhook({
         request: unauthorizedRequest,
         statusUrlAbsolute: entryStatusUrl,
         baseURL,
-        receiverStats: receiver.stats,
+        receiverStats: ingress.receiver.stats,
         rootSignerAddress: rootAddress,
         coordinatorPoll,
       });
+      expect(ingress.receiver.stats.webhooksReceived).toBeGreaterThan(
+        webhooksBeforeEntry,
+      );
       expect(entryComplete.receiptRes.status).toBe(200);
       expect(
         await verifyKs256BootstrapDelegationCertificate({
@@ -305,7 +293,7 @@ test.describe("Mode C webhook-driven BYOK seal e2e", () => {
         }),
       ).toBe(true);
     } finally {
-      await receiver.close();
+      await ingress.close();
     }
   });
 });

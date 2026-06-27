@@ -1,10 +1,11 @@
-# System e2e — `byok-checkpoint-seal.spec.ts` (stretch)
+# System e2e — `byok-checkpoint-seal.spec.ts`
 
 **Spec:** `tests/system/byok-checkpoint-seal.spec.ts`  
-**Index:** [README.md](./README.md)
+**Index:** [README.md](./README.md)  
+**Playwright project:** `system` (default tier — Package D / FOR-76)
 
-**Opt-in:** `E2E_BYOK_SEAL_STRETCH=1` plus coordinator, curator, and custodian env
-vars. Skipped in default `test:e2e:system`.
+Runs when coordinator + ops admin env is set (same guards as Mode C webhook seal).
+Skipped when prerequisites are missing.
 
 ## Purpose
 
@@ -37,7 +38,7 @@ sequenceDiagram
 
 ## Differences from coordinator BYOK specs
 
-| Aspect               | `coordinator-byok-material`      | This stretch                   |
+| Aspect               | `coordinator-byok-material`      | This spec                      |
 | -------------------- | -------------------------------- | ------------------------------ |
 | Pending creation     | Explicit `POST /api/delegations` | Sealer-driven                  |
 | Checkpoint / receipt | No                               | Full SCRAPI poll               |
@@ -55,10 +56,7 @@ sequenceDiagram
 ## Run
 
 ```bash
-E2E_BYOK_SEAL_STRETCH=1 \
-  CANOPY_BASE_URL=https://api-forest-2.forestrie.dev \
-  CUSTODIAN_URL=https://api-forest-2.forestrie.dev \
-  doppler run --project canopy --config dev -- \
+doppler run --project canopy --config dev -- \
   pnpm --filter @canopy/api-e2e exec playwright test \
     tests/system/byok-checkpoint-seal.spec.ts
 ```

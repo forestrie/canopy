@@ -5,8 +5,8 @@
  * coordinator, then obtains the cert through Custodian POST /api/delegations
  * (proxy to coordinator when KMS has no key for the log id).
  *
- * Opt-in via E2E_COORDINATOR_SEALER_STRETCH=1 (skipped in default test:e2e:system).
- * Coordinator-only twin: tests/coordinator/coordinator-byok-material.spec.ts
+ * Default system tier (Package D / FOR-76). Coordinator-only twin:
+ * tests/coordinator/coordinator-byok-material.spec.ts
  *
  * Does not prove: SCRAPI register-grant, Sealer defer/recover. Public-root:
  * coordinator-byok-public-root.spec.ts.
@@ -30,13 +30,23 @@ import {
 import { normalizeForestrieHexId32 } from "@e2e-utils/forestrie-hex-id.js";
 import { setupEs256WalletSigningRoute } from "@e2e-utils/wallet-challenge-session-e2e.js";
 
-const stretchEnabled = process.env.E2E_COORDINATOR_SEALER_STRETCH === "1";
+const skipReason = (() => {
+  if (!hasCoordinatorApiE2eEnv()) {
+    return (
+      "Coordinator delegation issuance requires DELEGATION_COORDINATOR_URL and " +
+      "COORDINATOR_APP_TOKEN."
+    );
+  }
+  try {
+    assertCustodianApiE2eEnv();
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+  return undefined;
+})();
 
-test.describe("coordinator delegation issuance (stretch)", () => {
-  test.skip(
-    !stretchEnabled || !hasCoordinatorApiE2eEnv(),
-    "Set E2E_COORDINATOR_SEALER_STRETCH=1 and coordinator env vars to run",
-  );
+test.describe("coordinator delegation issuance (system)", () => {
+  test.skip(!!skipReason, skipReason ?? "");
 
   test("BYOK root: custodian proxies runner-signed delegation material", async ({
     request,

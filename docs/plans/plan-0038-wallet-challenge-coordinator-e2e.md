@@ -1,6 +1,6 @@
 # plan-0038 — Wallet-challenge coordinator e2e (FOR-129 follow-up)
 
-**Status:** DRAFT  
+**Status:** COMPLETE (2026-06-27, FOR-138 / canopy #36)  
 **Date:** 2026-06-23  
 **Linear:** FOR-138 (implementation tracker)  
 **Related:** [plan-0021](plan-0021-delegation-coordinator-apis.md),

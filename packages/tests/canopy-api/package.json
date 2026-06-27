@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "test": "vitest --run tests/utils/byok-delegation-cbor.test.ts",
+    "test": "vitest --run tests/utils/byok-delegation-cbor.test.ts tests/utils/mode-c-webhook-tunnel.test.ts",
     "typecheck": "tsc --noEmit",
     "test:e2e": "pnpm exec playwright test --project=integration --project=system --project=custodian",
     "test:e2e:integration": "pnpm exec playwright test --project=integration",
