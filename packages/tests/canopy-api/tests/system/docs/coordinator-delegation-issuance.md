@@ -1,11 +1,11 @@
-# System e2e — `coordinator-delegation-issuance.spec.ts` (stretch)
+# System e2e — `coordinator-delegation-issuance.spec.ts`
 
 **Spec:** `tests/system/coordinator-delegation-issuance.spec.ts`  
-**Index:** [README.md](./README.md)
+**Index:** [README.md](./README.md)  
+**Playwright project:** `system` (default tier — Package D / FOR-76)
 
-**Opt-in:** `E2E_COORDINATOR_SEALER_STRETCH=1` plus coordinator and custodian env vars.
-Skipped in default `test:e2e:system` / CI system project via `test.skip` inside the
-spec (the file also matches the **prod** project but still skips unless the env is set).
+Runs when coordinator and custodian env are set. Skipped when prerequisites are
+missing.
 
 This spec is **not** part of the SCRAPI register-grant / forest hierarchy flows in
 [overview.md](./overview.md). It is the **system-tier** e2e for **log root keys not
@@ -52,7 +52,7 @@ proxy path to succeed. Outbound coordinator calls use `DELEGATION_COORDINATOR_TO
 | Spec                                                                                       | Tier                     | Custodian role                  |
 | ------------------------------------------------------------------------------------------ | ------------------------ | ------------------------------- |
 | [`coordinator-byok-material.spec.ts`](../../coordinator/coordinator-byok-material.spec.ts) | coordinator (default CI) | None — coordinator direct issue |
-| **This stretch spec**                                                                      | system (opt-in)          | Proxy on KMS miss               |
+| **This spec**                                                                      | system (default)         | Proxy on KMS miss               |
 
 Both use `generateEs256RootKeyPair`, `buildByokDelegationMaterial`, and
 `verifyByokDelegationCertificate` from
@@ -60,7 +60,7 @@ Both use `generateEs256RootKeyPair`, `buildByokDelegationMaterial`, and
 
 ---
 
-## What the stretch spec runs
+## What the spec runs
 
 1. Runner generates ES256 root key pair + delegated public key CBOR.
 2. `POST …/signing-route { mode: wallet }` on coordinator (coordinator-internal record).
@@ -90,7 +90,7 @@ sequenceDiagram
     PT->>PT: verifyByokDelegationCertificate
 ```
 
-**Important:** The stretch spec must **not** call coordinator `custody-keys` or
+**Important:** The spec must **not** call coordinator `custody-keys` or
 Custodian local mint for the same log id before step 5 — that would create a KMS
 key and force the local signing path instead of the proxy.
 
@@ -106,8 +106,7 @@ key and force the local signing path instead of the proxy.
 - Canopy receipt verify against non-Custodian root in Playwright:
   **Done** — coordinator-first receipt authority resolver.
 - Full checkpoint seal (Ranger + Sealer + MMRS) with BYOK delegation:
-  **Done/opt-in** — `E2E_BYOK_SEAL_STRETCH=1`
-  `byok-checkpoint-seal.spec.ts`.
+  **Done** — default tier `byok-checkpoint-seal.spec.ts` (FOR-76).
 
 Coordinator `GET …/public-root` is covered by
 [`coordinator-byok-public-root.spec.ts`](../../coordinator/coordinator-byok-public-root.spec.ts)
@@ -134,10 +133,7 @@ E2E_COORDINATOR_SEALER_STRETCH=1 \
 ## How to run
 
 ```bash
-E2E_COORDINATOR_SEALER_STRETCH=1 \
-  CANOPY_FQDN=api-forest-2.forestrie.dev \
-  CANOPY_BASE_URL=https://api-forest-2.forestrie.dev \
-  doppler run --project canopy --config dev -- \
+doppler run --project canopy --config dev -- \
   pnpm --filter @canopy/api-e2e exec playwright test \
     tests/system/coordinator-delegation-issuance.spec.ts
 ```
@@ -152,8 +148,7 @@ doppler run --project canopy --config dev -- \
 Full BYOK checkpoint seal (SCRAPI → ingress → Ranger → Sealer → receipt):
 
 ```bash
-E2E_BYOK_SEAL_STRETCH=1 \
-  doppler run --project canopy --config dev -- \
+doppler run --project canopy --config dev -- \
   pnpm --filter @canopy/api-e2e exec playwright test \
     tests/system/byok-checkpoint-seal.spec.ts
 ```

@@ -24,9 +24,9 @@ that signs **delegation certificates** (BYOK checkpoint authority), **not** the
 delegated checkpoint signer in `grantData`. All SCRAPI specs below mint and sign
 grants/statements via **Custodian KMS custody keys**.
 
-Default `task test:e2e` / `test:e2e:system` does **not** exercise
-non-Custodian log-root signing. For BYOK delegation e2e, run the coordinator tier
-(always) and optionally the stretch spec (Custodian proxy hop).
+Default `task test:e2e` / `test:e2e:system` exercises non-Custodian log-root
+signing when coordinator + ops admin env is present, including Mode C webhook
+push (`byok-mode-c-webhook-seal`) and BYOK checkpoint seal specs.
 
 ### E2e coverage
 
@@ -34,9 +34,9 @@ non-Custodian log-root signing. For BYOK delegation e2e, run the coordinator tie
 | ------------------------------------------------------------------------------------------------- | ------------------ | ---------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------- |
 | [`coordinator-byok-material.spec.ts`](../../coordinator/coordinator-byok-material.spec.ts)        | **coordinator**    | No (`test:e2e:coordinator`)              | Delegation cert (`generateEs256RootKeyPair`)            | None — coordinator direct issue                         |
 | [`coordinator-byok-public-root.spec.ts`](../../coordinator/coordinator-byok-public-root.spec.ts)  | **coordinator**    | No (`test:e2e:coordinator`)              | Root + delegation cert                                  | None — `GET …/public-root` CBOR trust root              |
-| [`coordinator-delegation-issuance.spec.ts`](../../system/coordinator-delegation-issuance.spec.ts) | **system**         | Yes — `E2E_COORDINATOR_SEALER_STRETCH=1` | Same runner-signed delegation cert                      | **Proxy only** — `POST /v1/api/delegations` on KMS miss |
-| [`byok-checkpoint-seal.spec.ts`](../../system/byok-checkpoint-seal.spec.ts)                       | **system**         | Yes — `E2E_BYOK_SEAL_STRETCH=1`          | Runner root + wallet material + full checkpoint receipt | Coordinator + Sealer on deployed stack                  |
-| [`byok-mode-c-webhook-seal.spec.ts`](../../system/byok-mode-c-webhook-seal.spec.ts)               | **system**         | Yes — `E2E_MODE_C_WEBHOOK_STRETCH=1`     | KS256 root + webhook receiver + receipt vs `publicRoot` | Genesis forward + coordinator webhook (FOR-76)          |
+| [`coordinator-delegation-issuance.spec.ts`](../../system/coordinator-delegation-issuance.spec.ts) | **system**         | When coordinator + custodian env set     | Same runner-signed delegation cert                      | **Proxy only** — `POST /v1/api/delegations` on KMS miss |
+| [`byok-checkpoint-seal.spec.ts`](../../system/byok-checkpoint-seal.spec.ts)                       | **system**         | When coordinator + ops admin env set     | Runner root + wallet material + full checkpoint receipt | Coordinator + Sealer on deployed stack                  |
+| [`byok-mode-c-webhook-seal.spec.ts`](../../system/byok-mode-c-webhook-seal.spec.ts)               | **system**         | When coordinator + ops admin env set     | KS256 root + webhook push + receipt vs `publicRoot`     | Genesis forward + coordinator webhook (FOR-126)           |
 
 Both assert crypto via `verifyByokDelegationCertificate` in
 [`coordinator-delegation-helpers.ts`](../../utils/coordinator-delegation-helpers.ts).
@@ -58,8 +58,8 @@ Both assert crypto via `verifyByokDelegationCertificate` in
 doppler run --project canopy --config dev -- \
   pnpm --filter @canopy/api-e2e test:e2e:coordinator
 
-# System tier + Custodian proxy (opt-in)
-E2E_COORDINATOR_SEALER_STRETCH=1 doppler run --project canopy --config dev -- \
+# System tier + Custodian proxy (default when env complete)
+doppler run --project canopy --config dev -- \
   pnpm --filter @canopy/api-e2e exec playwright test \
     tests/system/coordinator-delegation-issuance.spec.ts
 ```
@@ -200,10 +200,10 @@ Sign with auth custody kid (not in D.grantData) ──► signer_mismatch
 
 ## `coordinator-delegation-issuance.spec.ts`
 
-**Focus:** Opt-in stretch (`E2E_COORDINATOR_SEALER_STRETCH=1`). **System-tier e2e**
-for **log root keys not held by Custodian**: runner signs delegation material,
-coordinator stores it, **Custodian proxies** `POST /v1/api/delegations` on KMS miss.
-Not the SCRAPI register-grant chain.
+**Focus:** Default **system-tier e2e** (Package D / FOR-76) for **log root keys not
+held by Custodian**: runner signs delegation material, coordinator stores it,
+**Custodian proxies** `POST /v1/api/delegations` on KMS miss. Skipped when
+coordinator or custodian env is missing. Not the SCRAPI register-grant chain.
 
 Coordinator-only twin (503 pending → material → coordinator direct issue):
 [`coordinator-byok-material.spec.ts`](../../coordinator/coordinator-byok-material.spec.ts).

@@ -1,5 +1,5 @@
 /**
- * In-repo Mode C webhook receiver for stretch e2e (plan-0037).
+ * In-repo Mode C webhook receiver for system e2e (plan-0037 / FOR-126).
  * Verifies coordinator webhook signatures, signs KS256 material, POSTs to coordinator.
  */
 
@@ -47,6 +47,8 @@ export interface ModeCWebhookReceiverStats {
 
 export interface ModeCWebhookReceiver {
   webhookUrl: string;
+  /** Local TCP port bound on 127.0.0.1 (for cloudflared tunnel). */
+  localPort: number;
   stats: ModeCWebhookReceiverStats;
   close(): Promise<void>;
 }
@@ -261,11 +263,12 @@ export async function startModeCWebhookReceiver(
   if (!addr || typeof addr === "string") {
     throw new Error("failed to bind Mode C webhook receiver");
   }
-  const localBase = `http://localhost:${addr.port}`;
+  const localBase = `http://127.0.0.1:${addr.port}`;
   const webhookUrl = `${config.publicWebhookBaseUrl?.replace(/\/$/, "") ?? localBase}/webhook`;
 
   return {
     webhookUrl,
+    localPort: addr.port,
     stats,
     close: () =>
       new Promise((resolve, reject) => {

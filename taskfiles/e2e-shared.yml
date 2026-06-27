@@ -81,6 +81,12 @@ tasks:
           echo "CANOPY_OPS_ADMIN_TOKEN is required for system e2e (Doppler project canopy, config {{.ENV}})." >&2
           exit 1
         fi
+        COORD_URL="$(trim_ws "${DELEGATION_COORDINATOR_URL:-}")"
+        COORD_TOKEN="$(trim_ws "${COORDINATOR_APP_TOKEN:-}")"
+        if [ -z "$COORD_URL" ] || [ -z "$COORD_TOKEN" ]; then
+          echo "DELEGATION_COORDINATOR_URL and COORDINATOR_APP_TOKEN are required for system BYOK e2e (Mode C webhook seal, FOR-202)." >&2
+          exit 1
+        fi
 
         if [ "${VALIDATE_SKIP_UNIVOCITY:-}" != "1" ]; then
           if [ -f "{{.E2E_UNIVOCITY_ENV_FILE}}" ]; then

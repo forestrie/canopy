@@ -53,7 +53,12 @@ Required keys in the Doppler config include at least:
 - **`CANOPY_BASE_URL`** _or_ **`CANOPY_FQDN`** — worker origin. Playwright resolves `CANOPY_BASE_URL` first; if unset, it builds `https://…` from `CANOPY_FQDN` (same logic as `.github/workflows/tests-system.yml`). Doppler `dev` may only define **`CANOPY_FQDN`**.
 - **`SCRAPI_API_KEY`** — bearer token for authorized fixtures (when used)
 - **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**, **`CANOPY_OPS_ADMIN_TOKEN`** — for **system** specs (child custody keys + onboard-token genesis)
-- **`DELEGATION_COORDINATOR_URL`**, **`COORDINATOR_APP_TOKEN`** — optional; when both set, **`task test:e2e`** includes the **coordinator** project
+- **`DELEGATION_COORDINATOR_URL`**, **`COORDINATOR_APP_TOKEN`** — required for default **system** BYOK / Mode C webhook specs (FOR-202)
+- **`E2E_MODE_C_WEBHOOK_PUBLIC_BASE`** — optional manual public HTTPS base for coordinator webhook push (ngrok); CI uses auto **cloudflared** quick tunnel
+- **`E2E_MODE_C_ALLOW_PULL_FALLBACK=1`** — local debug only: allow pending-delegation pull when webhook push fails (not CI)
+
+Install **cloudflared** locally for Mode C webhook push when
+`E2E_MODE_C_WEBHOOK_PUBLIC_BASE` is unset (same as CI `tests-system.yml`).
 
 Deployed coordinator webhook delivery requires Cloudflare Secrets Store
 (`task cf:coordinator:ensure-webhook-signing-key`). Local `wrangler dev` uses

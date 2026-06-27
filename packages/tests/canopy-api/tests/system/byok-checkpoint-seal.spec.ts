@@ -8,7 +8,6 @@ import { expectAPI as expect, test } from "@e2e-fixtures/auth";
 import { buildCompletedGrantBase64 } from "@e2e-utils/bootstrap-grant-flow";
 import {
   assertCoordinatorApiE2eEnv,
-  hasCoordinatorApiE2eEnv,
   coordinatorAppToken,
   delegationCoordinatorBaseUrl,
 } from "@e2e-utils/coordinator-api-env";
@@ -38,26 +37,21 @@ import {
 import { sha256Hex } from "@e2e-utils/statement-sign-bytes";
 import { postRegisterGrantExpect303 } from "@e2e-utils/bootstrap-grant-setup";
 import { mintOnboardTokenE2e } from "@e2e-utils/onboard-token-e2e";
+import {
+  hasModeCWebhookSealE2eEnv,
+  modeCWebhookSealSkipReason,
+} from "@e2e-utils/mode-c-e2e-env";
 
-const enabled = process.env.E2E_BYOK_SEAL_STRETCH === "1";
+const byokSealSkip = modeCWebhookSealSkipReason();
 
 test.describe("BYOK checkpoint seal e2e", () => {
   test.describe.configure({ mode: "serial" });
 
-  test.skip(
-    !enabled,
-    "Set E2E_BYOK_SEAL_STRETCH=1 to run deployed BYOK checkpoint seal e2e.",
-  );
+  test.skip(!!byokSealSkip, byokSealSkip ?? "");
 
   test.beforeAll(() => {
-    if (
-      !hasCoordinatorApiE2eEnv() ||
-      !process.env.CANOPY_OPS_ADMIN_TOKEN?.trim()
-    ) {
-      throw new Error(
-        "BYOK seal e2e requires DELEGATION_COORDINATOR_URL, " +
-          "COORDINATOR_APP_TOKEN, and CANOPY_OPS_ADMIN_TOKEN.",
-      );
+    if (!hasModeCWebhookSealE2eEnv()) {
+      throw new Error(modeCWebhookSealSkipReason() ?? "missing BYOK seal env");
     }
   });
 

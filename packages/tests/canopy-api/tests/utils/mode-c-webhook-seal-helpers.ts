@@ -11,6 +11,7 @@ import {
 } from "./arithmetic-backoff-poll.js";
 import type { ModeCWebhookReceiverStats } from "../system/helpers/mode-c-webhook-receiver.js";
 import { submitModeCKs256DelegationMaterial } from "../system/helpers/mode-c-webhook-receiver.js";
+import { modeCAllowPullFallback } from "./mode-c-e2e-env.js";
 import { extractDelegationCertFromReceipt } from "./byok-wallet-seal-helpers.js";
 import {
   bytesToBase64,
@@ -254,6 +255,16 @@ export async function waitForModeCDelegationMaterial(opts: {
       throw new Error("material submitted without webhook delivery");
     }
     return "webhook";
+  }
+
+  if (!modeCAllowPullFallback()) {
+    throw new Error(
+      "Mode C delegation material not received via webhook push " +
+        `(webhooks=${opts.receiverStats.webhooksReceived}, ` +
+        `material=${opts.receiverStats.materialsSubmitted}). ` +
+        "Set E2E_MODE_C_WEBHOOK_PUBLIC_BASE, ensure cloudflared is installed, " +
+        "or set E2E_MODE_C_ALLOW_PULL_FALLBACK=1 for local pull backstop only.",
+    );
   }
 
   const pending = await opts.request.get(
