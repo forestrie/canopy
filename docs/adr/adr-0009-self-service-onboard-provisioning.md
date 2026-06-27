@@ -42,6 +42,8 @@ Public and ops onboard-request routes live under **`/api/onboarding/**`**, not
 | `PUT` | `/api/payments/admin/registrations/{R}/enabled` | Ops admin bearer (JSON `{ enabled }`) |
 
 JSON admin routes exist for the ops admin UI only; mandate CLI uses CBOR.
+JSON admin responses send `Cache-Control: no-store` (PII in request list).
+Reject reason max length: 512 characters.
 
 ### Deployment env
 
@@ -82,7 +84,13 @@ Redeem code compare uses constant-time hex equality.
 ### Cache control
 
 Create (redeemCode), redeem (token), and public status GET responses send
-`Cache-Control: no-store`.
+`Cache-Control: no-store`. JSON admin list/approve/reject/token responses
+also send `no-store` (PII and ops metadata).
+
+### Reject reason
+
+Optional on ops reject (JSON `{ "rejectReason" }` or CBOR key 1). Max length
+512 characters (same order of magnitude as `mandateOrigin`).
 
 ### Abuse controls (public create)
 

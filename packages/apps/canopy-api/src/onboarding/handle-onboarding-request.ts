@@ -22,6 +22,7 @@ import {
   checkOnboardCreateBodySize,
   checkOnboardCreateRateLimit,
   checkOnboardFieldLengths,
+  checkOnboardRejectReasonLength,
 } from "./onboard-create-guard.js";
 import { scheduleOnboardWebhook } from "./onboard-notify.js";
 import { redeemOrStatusHttpError } from "./onboard-request-http.js";
@@ -482,6 +483,11 @@ async function handleOpsReject(
     }
   }
 
+  const reasonErr = checkOnboardRejectReasonLength(rejectReason);
+  if (reasonErr) {
+    return attachCors(reasonErr, corsHeaders);
+  }
+
   const updated: OnboardRequestRecord = {
     ...record,
     status: "rejected",
@@ -501,7 +507,10 @@ async function handleOpsReject(
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "cache-control": "no-store",
+    },
   });
 }
 

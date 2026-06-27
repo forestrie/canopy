@@ -142,6 +142,49 @@ describe("onboarding admin JSON routes", () => {
     const body = (await res.json()) as { requestId?: string; status?: string };
     expect(body.requestId).toBe(requestId);
     expect(body.status).toBe("approved");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("admin list GET returns JSON with contactEmail and no-store", async () => {
+    const e = envWithOnboard({ ONBOARD_AUTO_APPROVE: undefined });
+    const requestId = await createPendingRequest(e, "list-json");
+
+    const listRes = await worker.fetch(
+      new Request("http://localhost/api/onboarding/admin/requests", {
+        headers: { Authorization: `Bearer ${OPS}` },
+      }),
+      e,
+      testCtx,
+    );
+    expect(listRes.status).toBe(200);
+    expect(listRes.headers.get("content-type")).toContain("application/json");
+    expect(listRes.headers.get("cache-control")).toBe("no-store");
+    const list = (await listRes.json()) as {
+      requests?: Array<{
+        requestId?: string;
+        contactEmail?: string;
+        label?: string;
+      }>;
+    };
+    const row = list.requests?.find((r) => r.requestId === requestId);
+    expect(row?.contactEmail).toBe("op@example.com");
+    expect(row?.label).toBe("list-json");
+  });
+
+  it("admin tokens GET returns JSON array with no-store", async () => {
+    const e = envWithOnboard();
+    const res = await worker.fetch(
+      new Request("http://localhost/api/onboarding/admin/tokens", {
+        headers: { Authorization: `Bearer ${OPS}` },
+      }),
+      e,
+      testCtx,
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    const body = (await res.json()) as { tokens?: unknown[] };
+    expect(Array.isArray(body.tokens)).toBe(true);
   });
 
   it("admin reject with JSON reason persists rejectReason", async () => {
@@ -161,11 +204,8 @@ describe("onboarding admin JSON routes", () => {
       testCtx,
     );
     expect(rejectRes.status).toBe(200);
-    expect(rejectRes.headers.get("content-type")).toContain("application/json");
-    const rejected = (await rejectRes.json()) as {
-      requestId?: string;
-      status?: string;
-    };
+    expect(rejectRes.headers.get("cache-control")).toBe("no-store");
+    const rejected = (await rejectRes.json()) as { status?: string };
     expect(rejected.status).toBe("rejected");
 
     const listRes = await worker.fetch(
@@ -180,6 +220,78 @@ describe("onboarding admin JSON routes", () => {
     };
     const row = list.requests?.find((r) => r.requestId === requestId);
     expect(row?.rejectReason).toBe("Unverified operator");
+  });
+
+  it("admin reject with empty body rejects without reason", async () => {
+    const e = envWithOnboard({ ONBOARD_AUTO_APPROVE: undefined });
+    const requestId = await createPendingRequest(e, "reject-empty");
+
+    const rejectRes = await worker.fetch(
+      new Request(
+        `http://localhost/api/onboarding/admin/requests/${requestId}/reject`,
+        { method: "POST", headers: adminJsonHeaders() },
+      ),
+      e,
+      testCtx,
+    );
+    expect(rejectRes.status).toBe(200);
+
+    const listRes = await worker.fetch(
+      new Request("http://localhost/api/onboarding/admin/requests", {
+        headers: { Authorization: `Bearer ${OPS}` },
+      }),
+      e,
+      testCtx,
+    );
+    const list = (await listRes.json()) as {
+      requests?: Array<{ requestId?: string; rejectReason?: string }>;
+    };
+    const row = list.requests?.find((r) => r.requestId === requestId);
+    expect(row?.rejectReason).toBeUndefined();
+  });
+
+  it("admin reject rejects reason over max length", async () => {
+    const e = envWithOnboard({ ONBOARD_AUTO_APPROVE: undefined });
+    const requestId = await createPendingRequest(e, "reject-long");
+
+    const rejectRes = await worker.fetch(
+      new Request(
+        `http://localhost/api/onboarding/admin/requests/${requestId}/reject`,
+        {
+          method: "POST",
+          headers: adminJsonHeaders(),
+          body: JSON.stringify({ rejectReason: "x".repeat(513) }),
+        },
+      ),
+      e,
+      testCtx,
+    );
+    expect(rejectRes.status).toBe(400);
+  });
+
+  it("admin approve on non-pending returns 409", async () => {
+    const e = envWithOnboard({ ONBOARD_AUTO_APPROVE: undefined });
+    const requestId = await createPendingRequest(e, "double-approve");
+
+    const first = await worker.fetch(
+      new Request(
+        `http://localhost/api/onboarding/admin/requests/${requestId}/approve`,
+        { method: "POST", headers: adminJsonHeaders() },
+      ),
+      e,
+      testCtx,
+    );
+    expect(first.status).toBe(200);
+
+    const second = await worker.fetch(
+      new Request(
+        `http://localhost/api/onboarding/admin/requests/${requestId}/approve`,
+        { method: "POST", headers: adminJsonHeaders() },
+      ),
+      e,
+      testCtx,
+    );
+    expect(second.status).toBe(409);
   });
 
   it("CBOR ops approve route still returns CBOR", async () => {
@@ -215,6 +327,19 @@ describe("CORS preflight for admin UI", () => {
       new Request("http://localhost/api/onboarding/admin/requests", {
         method: "OPTIONS",
       }),
+      envWithOnboard(),
+      testCtx,
+    );
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-methods")).toContain("PUT");
+  });
+
+  it("OPTIONS on payments admin enabled includes PUT", async () => {
+    const res = await worker.fetch(
+      new Request(
+        "http://localhost/api/payments/admin/registrations/00000000-0000-4000-8000-000000000001/enabled",
+        { method: "OPTIONS" },
+      ),
       envWithOnboard(),
       testCtx,
     );
