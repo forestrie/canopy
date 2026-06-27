@@ -69,7 +69,12 @@ serving the Lane A catalog hostname.
 | **`dev`** (Lane A) | **delegation-coordinator-dev**  | **`coordinator-a.{DNS_SUB}.{DNS_APEX}`** | Sharded `DelegationStoreDO`. Local `wrangler dev` on port **8793**. |
 | **`prod`** (Lane B) | **delegation-coordinator-prod** | **`coordinator-b.{DNS_SUB}.{DNS_APEX}`** + alias **`coordinator.{DNS_SUB}.{DNS_APEX}`** | Distinct canonical hostnames; prod alias for public traffic. |
 
-Secrets (per env): **`COORDINATOR_APP_TOKEN`**, **`CUSTODIAN_APP_TOKEN`**.
+Secrets (per env): **`COORDINATOR_APP_TOKEN`**, **`CUSTODIAN_APP_TOKEN`**,
+**`WALLET_CHALLENGE_SIGNING_SECRET`** (wallet-challenge session HMAC; ADR-0007).
+
+Canopy-api GitHub Environment vars include **`SUPPORTED_CHAINS_RPC`** (JSON map;
+ADR-0010). Legacy **`UNIVOCITY_CONTRACT_ADDRESS`** /
+**`UNIVOCITY_CONTRACT_RPC_URL`** are removed.
 
 **Webhook identity (account-level, ADR-0006):** `WEBHOOK_SIGNING_KEY` via Cloudflare
 Secrets Store (`default_secrets_store` / `webhook-signing-key`). Bootstrap PEM in
