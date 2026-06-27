@@ -9,6 +9,7 @@ import worker from "../src/index";
 import type { Env } from "../src/index";
 import { mintOnboardToken } from "../src/payments/onboard-token-store.js";
 import { validGenesisV2Es256CborMap } from "./helpers/genesis-v2-body.js";
+import { expectAdminJsonProblem } from "./helpers/admin-json.js";
 
 const poolEnv = env as unknown as Env;
 const OPS = "vitest-ops-admin-token";
@@ -246,6 +247,6 @@ describe("registration enabled kill-switch API", () => {
       envWithPayments(),
       {} as ExecutionContext,
     );
-    expect(res.status).toBe(401);
+    await expectAdminJsonProblem(res, 401, "CANOPY_OPS_ADMIN_TOKEN");
   });
 });

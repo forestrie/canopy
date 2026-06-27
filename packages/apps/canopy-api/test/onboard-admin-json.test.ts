@@ -11,6 +11,7 @@ import {
   bootstrapConfigCallData,
   rootLogIdCallData,
 } from "../src/onboarding/univocity-identity-probe.js";
+import { expectAdminJsonProblem } from "./helpers/admin-json.js";
 
 const poolEnv = env as unknown as Env;
 const OPS = "vitest-ops-admin-token";
@@ -320,6 +321,39 @@ describe("onboarding admin JSON routes", () => {
       status?: string;
     };
     expect(body.status).toBe("approved");
+  });
+
+  it("admin list without bearer returns JSON 401 problem", async () => {
+    const res = await worker.fetch(
+      new Request("http://localhost/api/onboarding/admin/requests"),
+      envWithOnboard(),
+      testCtx,
+    );
+    await expectAdminJsonProblem(res, 401, "CANOPY_OPS_ADMIN_TOKEN");
+  });
+
+  it("admin approve conflict returns JSON 409 problem", async () => {
+    const e = envWithOnboard({ ONBOARD_AUTO_APPROVE: undefined });
+    const requestId = await createPendingRequest(e, "json-409");
+
+    await worker.fetch(
+      new Request(
+        `http://localhost/api/onboarding/admin/requests/${requestId}/approve`,
+        { method: "POST", headers: adminJsonHeaders() },
+      ),
+      e,
+      testCtx,
+    );
+
+    const second = await worker.fetch(
+      new Request(
+        `http://localhost/api/onboarding/admin/requests/${requestId}/approve`,
+        { method: "POST", headers: adminJsonHeaders() },
+      ),
+      e,
+      testCtx,
+    );
+    await expectAdminJsonProblem(second, 409, "not pending");
   });
 });
 
