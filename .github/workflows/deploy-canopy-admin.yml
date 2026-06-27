@@ -35,9 +35,30 @@ jobs:
           echo "Authenticating with Cloudflare..."
           yes n | wrangler whoami
 
+      - name: Ensure Pages project exists
+        run: |
+          if wrangler pages project list 2>/dev/null | grep -q "canopy-admin-dev"; then
+            echo "Pages project canopy-admin-dev already exists"
+          else
+            echo "Creating Pages project canopy-admin-dev..."
+            wrangler pages project create canopy-admin-dev --production-branch=main
+          fi
+
       - name: Deploy to Cloudflare Pages
+        id: deploy
         working-directory: packages/apps/canopy-admin
         run: |
           wrangler pages deploy . \
             --project-name=canopy-admin-dev \
-            --commit-dirty=true
+            --commit-dirty=true | tee /tmp/pages-deploy.log
+          DEPLOY_URL="$(grep -Eo 'https://[a-z0-9.-]+\.pages\.dev' /tmp/pages-deploy.log | tail -1)"
+          if [ -n "$DEPLOY_URL" ]; then
+            echo "deploy_url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
+            echo "Deployed to $DEPLOY_URL"
+          fi
+
+      - name: Smoke check Pages deployment
+        if: steps.deploy.outputs.deploy_url != ''
+        run: |
+          curl -sfI "${{ steps.deploy.outputs.deploy_url }}" | head -5
+          curl -sf "${{ steps.deploy.outputs.deploy_url }}/" | grep -q "Canopy onboard admin"
