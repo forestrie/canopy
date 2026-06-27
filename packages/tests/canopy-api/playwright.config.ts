@@ -34,7 +34,7 @@ function resolveCanopyBaseUrl(): string {
 
 const baseURL = resolveCanopyBaseUrl();
 
-/** Default CI skips Mode C webhook seal until KS256 register-grant verify is green (FOR-204). */
+/** Default CI runs Mode C webhook seal when E2E_MODE_C_WEBHOOK_IN_CI=1 (FOR-204). */
 const systemTestIgnore =
   process.env.CI === "true" &&
   process.env.E2E_MODE_C_WEBHOOK_IN_CI?.trim() !== "1"

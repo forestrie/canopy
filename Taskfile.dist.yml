@@ -77,6 +77,7 @@ tasks:
           E2E_DOPPLER_TASK: test:e2e:preflight
       - task: e2e-shared:provision-univocity
       - task: e2e-shared:validate-env
+      - task: e2e-shared:validate-univocity-deploy
 
   build:
     desc: build everything

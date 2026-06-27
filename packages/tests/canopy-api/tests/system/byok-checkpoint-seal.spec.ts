@@ -46,7 +46,7 @@ const byokSealSkip = (() => {
   if (process.env.E2E_BYOK_SEAL_STRETCH?.trim() !== "1") {
     return (
       "BYOK checkpoint seal e2e requires E2E_BYOK_SEAL_STRETCH=1 " +
-      "(default CI runs Mode C webhook seal; checkpoint stretch is opt-in until FOR-204)."
+      "(default CI runs Mode C webhook seal; checkpoint stretch remains opt-in)."
     );
   }
   return modeCWebhookSealSkipReason();

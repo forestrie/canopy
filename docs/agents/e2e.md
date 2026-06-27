@@ -17,7 +17,9 @@ doppler run --project canopy --config dev -- task test:e2e:preflight
 doppler run --project canopy --config dev -- task test:e2e
 ```
 
-**Preflight** installs tooling, validates Doppler env (including Canopy health), and
+**Preflight** installs tooling, validates Doppler env (including Canopy health), checks
+**deployed arbor univocity** includes FOR-123 when `UNIVOCITY_SERVICE_URL` is set
+(see [plan-0047](../plans/plan-0047-ks256-byok-register-grant-remediation.md)), and
 **provisions ephemeral Univocity es256+ks256 by default** (writes **`.work/e2e-univocity.env`**).
 
 **Opt out:** `SKIP_UNIVOCITY_PROVISION=true` or `E2E_SKIP_UNIVOCITY_PROVISION=true`.
@@ -40,6 +42,8 @@ custodian → coordinator (when coordinator vars are set).
 - Coordinator: `DELEGATION_COORDINATOR_URL`, `COORDINATOR_APP_TOKEN`
 - Univocity chain-binding: from **`.work/e2e-univocity.env`** after preflight (see
   [plan-0032](../plans/plan-0032-univocity-imutable-e2e-provision.md))
+- **`UNIVOCITY_SERVICE_URL`** — arbor service base for genesis/grant forwarding; preflight
+  deploy-readiness probe (plan-0047)
 - Provision secrets: **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`** (stored config; preflight
   bridges to **`RPC_URL`** for deployer/`cast` during provision; `task ... RPC_URL=` overrides
   without touching Doppler)

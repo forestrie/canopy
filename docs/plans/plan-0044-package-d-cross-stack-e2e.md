@@ -33,7 +33,7 @@
 | 2 | [FOR-126](https://linear.app/forestrie/issue/FOR-126) | `robin/for-126-mode-c-default-tier` |
 | 3 | [FOR-76](https://linear.app/forestrie/issue/FOR-76) | `robin/for-76-stretch-promotion` |
 | R1 | [FOR-203](https://linear.app/forestrie/issue/FOR-203) | `robin/for-203-e2e-review-pass` |
-| Close | [FOR-204](https://linear.app/forestrie/issue/FOR-204) | _(no branch)_ |
+| Close | [FOR-204](https://linear.app/forestrie/issue/FOR-204) | [plan-0047](plan-0047-ks256-byok-register-grant-remediation.md) |
 
 ---
 

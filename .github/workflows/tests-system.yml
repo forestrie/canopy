@@ -411,6 +411,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Install go-task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: System API tests (Playwright)
         env:
           CANOPY_FQDN: ${{ vars.CANOPY_FQDN }}
@@ -423,6 +429,8 @@ jobs:
           CANOPY_OPS_ADMIN_TOKEN: ${{ secrets.CANOPY_OPS_ADMIN_TOKEN }}
           DELEGATION_COORDINATOR_URL: ${{ vars.DELEGATION_COORDINATOR_URL }}
           COORDINATOR_APP_TOKEN: ${{ secrets.COORDINATOR_APP_TOKEN }}
+          UNIVOCITY_SERVICE_URL: ${{ vars.UNIVOCITY_SERVICE_URL }}
+          E2E_MODE_C_WEBHOOK_IN_CI: "1"
           E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP: ${{ needs.prepare-univocity.outputs.ks256_address }}
           E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP: ${{ needs.prepare-univocity.outputs.es256_address }}
           E2E_UNIVOCITY_RPC_URL: ${{ vars.E2E_UNIVOCITY_RPC_URL }}
@@ -502,6 +510,7 @@ jobs:
               echo "${CLOUDFLARED_SHA256}  /tmp/cloudflared.deb" | sha256sum -c -
               sudo dpkg -i /tmp/cloudflared.deb || sudo apt-get install -f -y
             fi
+            task e2e-shared:validate-univocity-deploy
             pnpm --filter @canopy/api-e2e exec playwright install chromium
             pnpm --filter @canopy/api-e2e exec playwright test \
               --project=integration \
