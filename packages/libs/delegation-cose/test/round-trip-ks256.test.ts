@@ -1,3 +1,8 @@
+/**
+ * KS256 round-trip tests — EOA ecrecover path and ERC-1271 hook delegation
+ * when the root address has contract code (delegation-coordinator RPC path).
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   buildDelegationCertificateKs256,
@@ -15,6 +20,7 @@ import {
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
 
+/** Build a valid delegated EC2 P-256 COSE_Key CBOR blob for test inputs. */
 async function generateDelegatedPublicKeyCbor(): Promise<Uint8Array> {
   const keyPair = await crypto.subtle.generateKey(
     { name: "ECDSA", namedCurve: "P-256" },

@@ -1,3 +1,10 @@
+/**
+ * ES256 protected-header and TBS construction for delegation certificates.
+ * Alg `-7`, cty {@link DELEGATION_CONTENT_TYPE}, kid = truncated SHA-256 of
+ * raw P-256 pubkey — same rules as arbor
+ * [delegationcert ES256](https://github.com/forestrie/arbor/tree/main/services/pkgs/delegationcert).
+ */
+
 import { DELEGATION_CONTENT_TYPE } from "./delegation-content-type.js";
 import type { DelegationInput } from "./delegation-input.js";
 import type { DelegationToBeSigned } from "./delegation-tbs.js";
@@ -13,7 +20,12 @@ import {
   COSE_HEADER_KID,
 } from "./payload-labels.js";
 
-/** SHA-256(raw P-256 pubkey)[0:16] — ES256 protected header kid. */
+/**
+ * Derive the 16-byte ES256 protected-header `kid` from a raw P-256 public key.
+ *
+ * @param publicKey - Web Crypto EC P-256 public key (exportable as `raw`).
+ * @returns First 16 bytes of SHA-256(raw uncompressed point).
+ */
 export async function deriveEs256KidFromPublicKey(
   publicKey: CryptoKey,
 ): Promise<Uint8Array> {
@@ -24,6 +36,13 @@ export async function deriveEs256KidFromPublicKey(
   return digest.slice(0, 16);
 }
 
+/**
+ * Build ES256 delegation TBS: protected header, payload, and Sig_structure
+ * bytes for root signing.
+ *
+ * @param input - Delegation scope and delegated public key material.
+ * @param rootKid - 16-byte kid placed in protected header label 4.
+ */
 export function buildDelegationToBeSignedEs256(
   input: DelegationInput,
   rootKid: Uint8Array,

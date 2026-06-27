@@ -1,3 +1,10 @@
+/**
+ * Payload field 5 contract tests — inline integer-key COSE_Key rules shared
+ * with arbor
+ * [delegationcert](https://github.com/forestrie/arbor/tree/main/services/pkgs/delegationcert)
+ * and plan-0024 BYOK checkpoint seal RCA.
+ */
+
 import { describe, expect, it } from "vitest";
 import {
   assertDelegatedKeyInCertificate,

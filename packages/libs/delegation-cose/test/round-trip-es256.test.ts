@@ -1,3 +1,9 @@
+/**
+ * ES256 round-trip tests — build, verify, and parse against the arbor
+ * [delegationcert](https://github.com/forestrie/arbor/tree/main/services/pkgs/delegationcert)
+ * wire profile (inline field 5, int-key maps).
+ */
+
 import { decode } from "cbor-x";
 import { describe, expect, it } from "vitest";
 import {
@@ -17,6 +23,7 @@ import {
 import { encodeIntKeyCbor } from "../src/encode-int-map.js";
 import { normalizeIntKeyedMap } from "../src/parse-delegated-cose-key.js";
 
+/** Build a valid delegated EC2 P-256 COSE_Key CBOR blob for test inputs. */
 async function generateDelegatedPublicKeyCbor(): Promise<Uint8Array> {
   const keyPair = await crypto.subtle.generateKey(
     { name: "ECDSA", namedCurve: "P-256" },

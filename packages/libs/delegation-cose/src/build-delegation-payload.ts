@@ -1,3 +1,10 @@
+/**
+ * Delegation certificate payload and Sig_structure construction. Payload int-key
+ * labels and field-5 inline COSE_Key rules match arbor
+ * [delegationcert](https://github.com/forestrie/arbor/tree/main/services/pkgs/delegationcert)
+ * so sealer and delegation-coordinator parse the same bytes.
+ */
+
 import { encodeSigStructure } from "./encode-sig-structure.js";
 import type { DelegationInput } from "./delegation-input.js";
 import type { DelegationToBeSigned } from "./delegation-tbs.js";
@@ -15,6 +22,13 @@ import {
   PAYLOAD_SCHEMA_VER,
 } from "./payload-labels.js";
 
+/**
+ * Resolve issuance and expiry timestamps from optional {@link DelegationInput}
+ * fields, applying default TTL when neither bound is supplied.
+ *
+ * @param input - Delegation parameters; reads `issuedAt`, `expiresAt`, and
+ *   `ttlSeconds` only.
+ */
 function resolveTimestamps(input: DelegationInput): {
   issuedAt: number;
   expiresAt: number;
@@ -25,6 +39,13 @@ function resolveTimestamps(input: DelegationInput): {
   return { issuedAt, expiresAt };
 }
 
+/**
+ * Resolve or generate the 16-byte delegation correlation id carried in
+ * payload label 10.
+ *
+ * @param input - Reads `delegationId` when present; otherwise generates random
+ *   bytes.
+ */
 function resolveDelegationId(input: DelegationInput): Uint8Array {
   if (input.delegationId) {
     if (input.delegationId.length !== 16) {
@@ -35,6 +56,15 @@ function resolveDelegationId(input: DelegationInput): Uint8Array {
   return crypto.getRandomValues(new Uint8Array(16));
 }
 
+/**
+ * CBOR-encode the integer-key delegation payload map (log id, MMR bounds,
+ * delegated key, validity window). Field 5 embeds the delegated EC2 P-256
+ * COSE_Key inline — never as a nested bstr.
+ *
+ * @param input - Full delegation parameters including
+ *   `delegatedPublicKeyCbor`.
+ * @returns Payload bstr bytes for COSE Sign1 and Sig_structure.
+ */
 export function buildDelegationPayloadBytes(
   input: DelegationInput,
 ): Uint8Array {
@@ -57,6 +87,13 @@ export function buildDelegationPayloadBytes(
   );
 }
 
+/**
+ * Combine protected header and payload into a {@link DelegationToBeSigned}
+ * ready for root signing over `sigStructureBytes`.
+ *
+ * @param protectedBytes - CBOR bstr of the COSE protected header map.
+ * @param payloadBytes - CBOR bstr from {@link buildDelegationPayloadBytes}.
+ */
 export function buildDelegationToBeSigned(
   protectedBytes: Uint8Array,
   payloadBytes: Uint8Array,

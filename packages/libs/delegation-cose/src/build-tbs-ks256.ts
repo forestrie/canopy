@@ -1,3 +1,10 @@
+/**
+ * KS256 protected-header and TBS construction for delegation certificates.
+ * Alg `-65799`, cty {@link DELEGATION_CONTENT_TYPE}, kid = 20-byte root
+ * signer address — matches arbor
+ * [delegationcert KS256](https://github.com/forestrie/arbor/tree/main/services/pkgs/delegationcert).
+ */
+
 import { DELEGATION_CONTENT_TYPE } from "./delegation-content-type.js";
 import type { DelegationInput } from "./delegation-input.js";
 import type { DelegationToBeSigned } from "./delegation-tbs.js";
@@ -13,6 +20,14 @@ import {
   COSE_HEADER_KID,
 } from "./payload-labels.js";
 
+/**
+ * Build KS256 delegation TBS: protected header, payload, and Sig_structure
+ * bytes for root signing (digest keccak256 at sign/verify time).
+ *
+ * @param input - Delegation scope and delegated public key material.
+ * @param rootSignerAddress - 20-byte Ethereum address for protected header
+ *   label 4.
+ */
 export function buildDelegationToBeSignedKs256(
   input: DelegationInput,
   rootSignerAddress: Uint8Array,

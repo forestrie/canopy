@@ -1,0 +1,131 @@
+---
+description: TypeScript comment policy — purpose, cross-repo signposts, and coverage
+globs: **/*.ts
+alwaysApply: false
+---
+
+# TypeScript comments
+
+Forestrie is a **highly distributed system**. The "why" of local code often
+depends on adjacent apps or repositories. Comments must make that context
+reachable without duplicating platform docs.
+
+## Principles
+
+1. **Signpost, don't silo.** At file and function level, state how the local
+   code fits the wider picture: assumptions about other components, contracts
+   honoured, and where to read more. Cross-cutting concerns cannot be inferred
+   from local code alone.
+2. **Brief with a pointer.** One or two sentences plus a reference is enough
+   in most cases. Only the most delicate interactions warrant longer prose.
+3. **Explain purpose, not syntax.** Comments describe the **problem** or
+   **role** of the following code so human and agent readers can cross-check
+   the implementation. Restating what the code literally does is pointless.
+4. **Non-obvious details only at line level.** Imperative logic that a typical
+   engineer would read straight through needs no comment. Line comments are for
+   implementation details that are surprising, constrained, or easy to get
+   wrong — not for narrating control flow.
+5. **Full coverage of public surfaces.** Every **function**, **method**, and
+   **type** (interface, type alias, class, enum) must have a comment describing
+   its role and intended use. **Parameters** and **return values** must be
+   briefly described in JSDoc `@param` / `@returns` tags where applicable.
+
+## Cross-repo and cross-app signposts
+
+Prefer stable **GitHub blob links** with heading anchors for cross-repo
+references:
+
+```typescript
+/**
+ * Verifies grant inclusion against the owner log's receipt authority.
+ * Assumes {@link ReceiptAuthorityResolver} was seeded from Univocity
+ * `GET /api/logs/{logId}/public-root` — see
+ * [ARC-0019 grant verification](https://github.com/forestrie/devdocs/blob/main/arc/arc-0019-grant-verification-model.md).
+ */
+```
+
+| Target | Link form |
+|--------|-----------|
+| Same repo doc | `https://github.com/forestrie/canopy/blob/main/docs/…#anchor` |
+| Platform ADR/ARC | `https://github.com/forestrie/devdocs/blob/main/arc/…` or `adr/…` |
+| Sibling service | `https://github.com/forestrie/arbor/blob/main/services/…` |
+| On-chain behaviour | `https://github.com/forestrie/univocity/blob/main/docs/arc/…` |
+
+Within a comment, name the **remote component** (worker, DO, Go service,
+contract method), the **contract** (API route, queue message, env binding,
+grant field), and what this code **assumes** vs **guarantees**.
+
+Same-repo implementation detail may use `{@link symbol}` in addition to a doc
+link when the symbol is the canonical local entry point.
+
+## What to write at each level
+
+| Level | Comment answers |
+|-------|-----------------|
+| **File** | What problem this module solves in the distributed flow; primary upstream/downstream dependencies. |
+| **Type** | What domain object or boundary this type represents; invariants callers must respect. |
+| **Function / method** | What operation this performs in the flow; preconditions, side effects, and error semantics worth knowing. |
+| **Stanza** (non-trivial block) | Why this branch or block exists when the surrounding function comment is not enough. |
+| **Line** | Only non-obvious mechanics (wire format quirks, platform limits, ordering constraints). |
+
+Good file-level example (from existing practice):
+
+```typescript
+/**
+ * Grant auth primitives. Two distinct artifacts flow through these helpers —
+ * see [grants.md §10](https://github.com/forestrie/canopy/blob/main/docs/grants.md#10-authorization-and-evidence-model).
+ * {@link grantAuthorize} verifies from the embedded SCITT receipt only; it does
+ * not call the SequencingQueue DO.
+ */
+```
+
+Bad — restates syntax:
+
+```typescript
+// Loop over grants and push each one into the array
+for (const grant of grants) {
+  result.push(grant);
+}
+```
+
+Good — non-obvious constraint:
+
+```typescript
+// SCRAPI register-grant bodies are CBOR; parent evidence is capped because the
+// route is unauthenticated — see MAX_PARENT_GRANT_BODY_SIZE.
+```
+
+## Options and config buckets
+
+Describe **options**, **env bindings**, and **config objects** at the
+**innermost function that reads each field** — not repeated at every callsite.
+
+- On that function, document **only the fields it uses directly**.
+- Each documented field: name, meaning, valid values or source, and behaviour
+  when missing or invalid.
+- Parent callers may mention that options exist; defer field-level detail to
+  the consumer.
+
+```typescript
+/**
+ * @param options.enforceInclusion — when true, require a verifiable MMR inclusion
+ *   proof in the grant receipt; false only in pool-test mode with incomplete
+ *   bindings (see forestrie-ingress SequencingQueue configuration).
+ */
+```
+
+## JSDoc conventions
+
+- Use `/** … */` for files (module banner), types, functions, methods, and
+  non-exported constants that encode policy limits.
+- Use `@param`, `@returns`, `@throws` sparingly — only when they add contract
+  information not obvious from types.
+- Use `{@link Name}` for local symbols; markdown links for docs and other repos.
+- Keep line length readable; wrap prose naturally (soft wrap ~79 chars is fine).
+
+## When editing
+
+- Adding or changing behaviour that crosses a repo or service boundary → add or
+  update signpost comments in the same change.
+- Do not copy ARC/ADR prose into source — link and state the local obligation.
+- If a function or type lacks a comment, add one before merging.

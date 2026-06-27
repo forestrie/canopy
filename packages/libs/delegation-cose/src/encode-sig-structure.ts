@@ -1,10 +1,12 @@
 /**
- * COSE Sig_structure encoding (RFC 8152).
- * Inlined from @canopy/encoding for standalone publish consumption.
+ * COSE Sig_structure encoding (RFC 8152 / RFC 9052). Inlined here so the
+ * package publishes standalone without `@canopy/encoding`; output must match
+ * arbor delegationcert and canopy grant signing paths byte-for-byte.
  */
 
 import { encodeCborBstr } from "./encode-cbor-bstr.js";
 
+/** CBOR-encode a UTF-8 text string (major type 3). */
 function encodeCborTstr(s: string): Uint8Array {
   const bytes = new TextEncoder().encode(s);
   const len = bytes.length;
@@ -22,6 +24,7 @@ function encodeCborTstr(s: string): Uint8Array {
   return out;
 }
 
+/** Concatenate byte arrays without allocation churn for small structures. */
 function concat(...arrays: Uint8Array[]): Uint8Array {
   const total = arrays.reduce((sum, a) => sum + a.length, 0);
   const out = new Uint8Array(total);
@@ -34,7 +37,12 @@ function concat(...arrays: Uint8Array[]): Uint8Array {
 }
 
 /**
- * Encode Sig_structure for COSE Sign1 (RFC 8152 / RFC 9052).
+ * Encode COSE Sign1 Sig_structure: `["Signature1", protected, AAD, payload]`.
+ *
+ * @param protectedHeaderMapBytes - Serialized protected header map (bstr body).
+ * @param externalAad - External AAD; empty for Forestrie delegations.
+ * @param payloadBstr - Serialized delegation payload (bstr body).
+ * @returns Bytes hashed/signed by ES256 (SHA-256) or KS256 (keccak256).
  */
 export function encodeSigStructure(
   protectedHeaderMapBytes: Uint8Array,

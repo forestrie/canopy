@@ -1,3 +1,10 @@
+/**
+ * Delegation certificate payload parsing (post-verification). Extracts log
+ * scope and validity fields from the COSE payload map; does not verify the
+ * root signature — use {@link verifyDelegationCertificateEs256} or
+ * {@link verifyDelegationCertificateKs256} first.
+ */
+
 import { decode } from "cbor-x";
 import type { CertificateInfo } from "./certificate-info.js";
 import { bytesFromUnknown } from "./bytes-utils.js";
@@ -15,6 +22,14 @@ import {
   PAYLOAD_SCHEMA_VER,
 } from "./payload-labels.js";
 
+/**
+ * Parse delegation scope and validity metadata from a COSE_Sign1 certificate.
+ *
+ * @param certificate - Full delegation certificate bytes.
+ * @returns Structured payload fields for coordinator persistence or sealer
+ *   lease checks.
+ * @throws When required payload labels are missing or malformed.
+ */
 export function parseDelegationCertificate(
   certificate: Uint8Array,
 ): CertificateInfo {

@@ -1,3 +1,12 @@
+/**
+ * Public API for `@forestrie/delegation-cose` — assemble and verify Forestrie
+ * delegation COSE Sign1 certificates (ES256 and KS256). Canonical wire format
+ * matches arbor
+ * [delegationcert](https://github.com/forestrie/arbor/tree/main/services/pkgs/delegationcert);
+ * consumed by delegation-coordinator BYOK validation and sealer verification.
+ * Spec: [plan-0035](https://github.com/forestrie/canopy/blob/main/docs/plans/plan-0035-delegation-cose-library.md).
+ */
+
 export type { CertificateInfo } from "./certificate-info.js";
 export type { DelegationInput } from "./delegation-input.js";
 export type { DelegationToBeSigned } from "./delegation-tbs.js";

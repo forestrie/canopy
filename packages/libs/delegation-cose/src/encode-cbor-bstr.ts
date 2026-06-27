@@ -1,9 +1,15 @@
 /**
- * CBOR byte string (major type 2) primitive.
- * Inlined from @canopy/encoding for standalone publish consumption.
+ * Minimal CBOR byte-string (major type 2) encoder. Shared building block for
+ * {@link encodeSigStructure}; kept local so published `@forestrie/delegation-cose`
+ * does not depend on `@canopy/encoding`.
  */
 
-/** Encode bytes as CBOR bstr (major type 2). Returns header + payload. */
+/**
+ * Encode bytes as a CBOR bstr (major type 2) with appropriate length prefix.
+ *
+ * @param bytes - Raw payload to wrap.
+ * @returns CBOR header + payload suitable for Sig_structure or COSE bstr fields.
+ */
 export function encodeCborBstr(bytes: Uint8Array): Uint8Array {
   const len = bytes.length;
   let header: Uint8Array;
