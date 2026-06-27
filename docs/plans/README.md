@@ -18,6 +18,7 @@ Platform-wide plans: [devdocs/plans/](../../../devdocs/plans/README.md).
 | [plan-0038](plan-0038-wallet-challenge-coordinator-e2e.md) | COMPLETE | FOR-138 wallet-challenge coordinator e2e |
 | [plan-0044](plan-0044-package-d-cross-stack-e2e.md) | IN_PROGRESS | FOR-201 Package D cross-stack e2e confidence |
 | [plan-0046](plan-0046-package-d-review-remediation.md) | IMPLEMENTED | FOR-201 Package D review remediation (PR #57) |
+| [plan-0047](plan-0047-ks256-byok-register-grant-remediation.md) | IMPLEMENTED | FOR-204 KS256 BYOK register-grant + deploy readiness |
 | [plan-0045](plan-0045-package-c-review-remediation.md) | DRAFT | FOR-115 Package C delegation console review |
 | [plan-0048](plan-0048-package-f-hygiene-batch.md) | DRAFT | FOR-214 Package F hygiene batch (orchestration index) |
 | [plan-0039](plan-0039-self-service-onboard-provisioning.md) | COMPLETE | FOR-166 self-service onboard (closed 2026-06-27) |

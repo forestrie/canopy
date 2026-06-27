@@ -32,7 +32,7 @@ Bare **`task test:e2e`** self-wraps with `doppler run` when `DOPPLER_CONFIG` is 
 
 | Task | Purpose |
 | ---- | ------- |
-| **`task test:e2e:preflight`** | `pnpm install`, Playwright Chromium, Doppler env validation, Canopy health probe; **provisions ephemeral Univocity es256+ks256 by default** (see opt-out below). |
+| **`task test:e2e:preflight`** | `pnpm install`, Playwright Chromium, Doppler env validation, Canopy health probe, **univocity deploy readiness** (`UNIVOCITY_SERVICE_URL/version` ≥ FOR-123); **provisions ephemeral Univocity es256+ks256 by default** (see opt-out below). |
 | **`task test:e2e`** | Full dev Playwright sequence via **`taskfiles/e2e-run-playwright.sh`** (depends on preflight). |
 
 Use **`ENV=prd task test:e2e`** when the Doppler config should be **`prd`** (project stays **`canopy`**).
@@ -56,7 +56,8 @@ Required keys in the Doppler config include at least:
 - **`DELEGATION_COORDINATOR_URL`**, **`COORDINATOR_APP_TOKEN`** — required for full **`task test:e2e`** system BYOK / Mode C specs; optional for preflight-only (set **`VALIDATE_REQUIRE_COORDINATOR=1`** to enforce in preflight)
 - **`E2E_MODE_C_WEBHOOK_PUBLIC_BASE`** — optional manual public HTTPS base for coordinator webhook push (ngrok); CI uses auto **cloudflared** quick tunnel
 - **`E2E_MODE_C_ALLOW_PULL_FALLBACK=1`** — local debug only: allow pending-delegation pull when webhook push fails (not CI)
-- **`E2E_MODE_C_WEBHOOK_IN_CI=1`** — run Mode C webhook seal in GitHub system tests (default off until FOR-204 KS256 register-grant verify)
+- **`E2E_MODE_C_WEBHOOK_IN_CI=1`** — run Mode C webhook seal in GitHub system tests (set in `tests-system.yml` since plan-0047 / FOR-204)
+- **`UNIVOCITY_SERVICE_URL`** — arbor univocity HTTP base (no path suffix); preflight calls **`/version`** to verify FOR-123 deploy (ADR-0006). Opt out: **`E2E_SKIP_UNIVOCITY_DEPLOY_READINESS=true`**
 
 Install **cloudflared** locally for Mode C webhook push when
 `E2E_MODE_C_WEBHOOK_PUBLIC_BASE` is unset (CI pins **2026.6.1** with SHA256 verify in

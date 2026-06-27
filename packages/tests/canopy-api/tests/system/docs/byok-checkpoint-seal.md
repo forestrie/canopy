@@ -4,7 +4,7 @@
 **Index:** [README.md](./README.md)
 
 **Opt-in:** `E2E_BYOK_SEAL_STRETCH=1` plus coordinator and ops admin env.
-Skipped in default CI system tier (FOR-204); Mode C webhook seal covers default BYOK push path.
+Skipped in default CI system tier; Mode C webhook seal (`E2E_MODE_C_WEBHOOK_IN_CI=1`) covers default BYOK push path (plan-0047).
 
 ## Purpose
 

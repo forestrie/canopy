@@ -27,7 +27,7 @@ grants/statements via **Custodian KMS custody keys**.
 Default `task test:e2e` / `test:e2e:system` exercises non-Custodian log-root
 signing when coordinator + ops admin env is present, including Mode C webhook
 push (`byok-mode-c-webhook-seal`) when `E2E_MODE_C_WEBHOOK_IN_CI=1` is set in CI
-(until KS256 register-grant verify is green — FOR-204).
+(plan-0047 / FOR-204).
 
 ### E2e coverage
 

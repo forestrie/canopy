@@ -137,6 +137,82 @@ tasks:
         fi
         echo "e2e env OK (Canopy ${CANOPY_BASE_URL})"
 
+  validate-univocity-deploy:
+    desc: |
+      Fail when deployed arbor univocity lacks FOR-123 (ADR-0006 BYOK genesis).
+      Uses UNIVOCITY_SERVICE_URL/version. Opt out: E2E_SKIP_UNIVOCITY_DEPLOY_READINESS=true
+    cmds:
+      - |
+        set -euo pipefail
+        MIN_COMMIT="${E2E_UNIVOCITY_MIN_COMMIT:-366b223}"
+        KNOWN_BAD_PREFIX="af7c340"
+        SKIP_FLAG="$(printf '%s' "${E2E_SKIP_UNIVOCITY_DEPLOY_READINESS:-}" | tr 'A-Z' 'a-z')"
+        trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+
+        if [ "$SKIP_FLAG" = "true" ] || [ "$SKIP_FLAG" = "1" ]; then
+          echo "Skipping univocity deploy readiness (E2E_SKIP_UNIVOCITY_DEPLOY_READINESS)."
+          exit 0
+        fi
+
+        URL="$(trim_ws "${UNIVOCITY_SERVICE_URL:-}")"
+        if [ -z "$URL" ]; then
+          echo "UNIVOCITY_SERVICE_URL not set; skipping arbor univocity deploy readiness."
+          exit 0
+        fi
+
+        TIMEOUT_SEC="${E2E_UNIVOCITY_VERSION_TIMEOUT_SEC:-15}"
+        if [ "$TIMEOUT_SEC" -lt 1 ]; then
+          TIMEOUT_SEC=1
+        fi
+        VERSION_URL="${URL%/}/version"
+
+        if ! BODY="$(curl -fsS --max-time "$TIMEOUT_SEC" "$VERSION_URL" 2>&1)"; then
+          echo "Univocity deploy readiness failed: GET ${VERSION_URL} — ${BODY}" >&2
+          echo "Check Flux Kustomization arbor-flux-a, univocity rollout, and ingress." >&2
+          echo "See plan-0047 / arbor ADR-0006 (FOR-123 genesis-authoritative BYOK)." >&2
+          exit 1
+        fi
+
+        COMMIT=""
+        if command -v jq >/dev/null 2>&1; then
+          COMMIT="$(printf '%s' "$BODY" | jq -r '.commit // empty' 2>/dev/null || true)"
+        fi
+        if [ -z "$COMMIT" ]; then
+          COMMIT="$(printf '%s' "$BODY" | sed -n 's/.*"commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+        fi
+        if [ -z "$COMMIT" ]; then
+          echo "Univocity /version response missing commit: ${BODY}" >&2
+          exit 1
+        fi
+
+        SHORT="${COMMIT:0:7}"
+        if [ "$SHORT" = "$KNOWN_BAD_PREFIX" ]; then
+          echo "Univocity runtime commit ${SHORT} is pre-FOR-123; Mode C BYOK register-grant returns 403." >&2
+          echo "Promote arbor-flux image tags (flux/image-updates merge) and reconcile cluster." >&2
+          exit 1
+        fi
+
+        ARBOR_REPO="$(trim_ws "${E2E_ARBOR_REPO:-}")"
+        if [ -z "$ARBOR_REPO" ]; then
+          for candidate in "{{.ROOT_DIR}}/../arbor" "{{.ROOT_DIR}}/../../arbor"; do
+            if [ -d "${candidate}/.git" ]; then
+              ARBOR_REPO="$candidate"
+              break
+            fi
+          done
+        fi
+        if [ -n "$ARBOR_REPO" ] && [ -d "${ARBOR_REPO}/.git" ]; then
+          if git -C "$ARBOR_REPO" cat-file -e "${MIN_COMMIT}^{commit}" 2>/dev/null; then
+            if ! git -C "$ARBOR_REPO" merge-base --is-ancestor "$MIN_COMMIT" "$COMMIT" 2>/dev/null; then
+              echo "Univocity commit ${SHORT} does not include FOR-123 (${MIN_COMMIT})." >&2
+              echo "Mode C BYOK register-grant requires genesis-authoritative bootstrap (ADR-0006)." >&2
+              exit 1
+            fi
+          fi
+        fi
+
+        echo "Univocity deploy readiness OK (commit ${SHORT}; FOR-123 / ADR-0006)."
+
   provision-univocity:
     desc: |
       Deploy ephemeral es256+ks256 ImutableUnivocity (default in preflight).

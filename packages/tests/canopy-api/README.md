@@ -135,7 +135,7 @@ Opt out: **`SKIP_UNIVOCITY_PROVISION=true`** (bootstrap system specs skip per va
 - **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**: required by `coordinator-api.spec.ts` for custodial pre-wallet mint and custody-keys orchestration.
 - Deployed **Custodian** must have **`DELEGATION_COORDINATOR_URL`** configured for the stretch spec’s proxy path (ledger env; not a Playwright env var).
 - CI runs this project after **custodian** when both coordinator env vars are set (`.github/workflows/tests-system.yml`); **`deploy-workers`** on **dev** requires coordinator e2e (fails if vars/secrets missing).
-- Default **system** tier includes `coordinator-delegation-issuance` and `byok-mode-c-webhook-seal` when env is complete (Package D / FOR-201). `byok-checkpoint-seal` remains opt-in (`E2E_BYOK_SEAL_STRETCH=1`).
+- Default **system** tier includes `coordinator-delegation-issuance` and `byok-mode-c-webhook-seal` when env is complete (Package D / FOR-201; CI sets **`E2E_MODE_C_WEBHOOK_IN_CI=1`** per plan-0047). Preflight checks **`UNIVOCITY_SERVICE_URL/version`** ≥ FOR-123 before system tests. `byok-checkpoint-seal` remains opt-in (`E2E_BYOK_SEAL_STRETCH=1`).
 - **`E2E_MODE_C_WEBHOOK_PUBLIC_BASE`**: optional manual public HTTPS base for webhook push; CI installs **cloudflared** for auto quick tunnel.
 - **`E2E_MODE_C_ALLOW_PULL_FALLBACK=1`**: local debug only — pending-delegation pull when push fails (not CI).
 
