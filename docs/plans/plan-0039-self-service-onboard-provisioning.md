@@ -1,7 +1,7 @@
 # Plan 0039 — Self-service onboard provisioning
 
-**Status:** ACTIVE — FOR-175 merged; FOR-176 adds dev auto-approve in wrangler;
-pending deploy smoke + mandate live CI (FOR-177) and cross-repo close (FOR-178).
+**Status:** ACTIVE — FOR-176/#41 deployed; FOR-177 merged; closure in
+[plan-0040](plan-0040-onboard-epic-closure-backlog.md) (FOR-178 smoke, FOR-172 UI).
 **Date:** 2026-06-26
 **Related:**
 [ADR-0009](../adr/adr-0009-self-service-onboard-provisioning.md),
