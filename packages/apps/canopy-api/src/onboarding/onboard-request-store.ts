@@ -177,7 +177,10 @@ export function effectiveStatus(
   record: OnboardRequestRecord,
   nowSec = Math.floor(Date.now() / 1000),
 ): OnboardRequestStatus {
-  if (record.status === "pending" && record.expiresAt <= nowSec) {
+  if (
+    (record.status === "pending" || record.status === "approved") &&
+    record.expiresAt <= nowSec
+  ) {
     return "expired";
   }
   return record.status;

@@ -1,6 +1,8 @@
 # Plan 0039 — Self-service onboard provisioning
 
-**Status:** ACTIVE — code complete; pending dev-lane deploy smoke and cross-repo E2E (FOR-166).
+**Status:** ACTIVE — code merged; FOR-175 review pass (2026-06-27) added lifecycle
+tests + 422 binding alignment; pending dev-lane deploy (FOR-176) and live smoke
+(FOR-178).
 **Date:** 2026-06-26
 **Related:**
 [ADR-0009](../adr/adr-0009-self-service-onboard-provisioning.md),

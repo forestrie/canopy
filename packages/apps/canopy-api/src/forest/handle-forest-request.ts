@@ -209,9 +209,9 @@ export async function handleForestRequest(
           !onboardChainBindingMatches(tokenBinding, genesisResult.chainBinding)
         ) {
           return attachCors(
-            ClientErrors.badRequest(
-              "Genesis chain binding must match onboard token binding",
-            ),
+            problemResponse(422, "Unprocessable Entity", "about:blank", {
+              detail: "Genesis chain binding must match onboard token binding",
+            }),
             corsHeaders,
           );
         }
