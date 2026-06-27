@@ -34,6 +34,8 @@ import {
   listOnboardRequests,
   readOnboardRequest,
   transitionApprovedToRedeemedCas,
+  transitionPendingToApprovedCas,
+  transitionPendingToRejectedCas,
   verifyRedeemCode,
   writeOnboardRequest,
   type OnboardRequestStoreEnv,
@@ -141,20 +143,30 @@ function publicRequestView(record: OnboardRequestRecord) {
   };
 }
 
-async function approveRequestRecord(
+async function pendingTransitionConflict(
   env: OnboardingHandlerEnv,
-  record: OnboardRequestRecord,
-): Promise<OnboardRequestRecord | Response> {
-  if (effectiveStatus(record) !== "pending") {
+  requestId: string,
+): Promise<Response> {
+  const reread = await readOnboardRequest(env, requestId);
+  if (!reread) {
+    return ClientErrors.notFound("Not Found", "Request not found");
+  }
+  if (effectiveStatus(reread) !== "pending") {
     return ClientErrors.conflict("Request is not pending");
   }
+  return ClientErrors.conflict("Request is not pending");
+}
 
-  const updated: OnboardRequestRecord = {
-    ...record,
-    status: "approved",
-  };
-  await writeOnboardRequest(env, updated);
-  return updated;
+async function approveRequestRecord(
+  env: OnboardingHandlerEnv,
+  requestId: string,
+): Promise<OnboardRequestRecord | Response> {
+  const transition = await transitionPendingToApprovedCas(env, requestId);
+  if (transition.ok) return transition.record;
+  if (transition.reason === "not_found") {
+    return ClientErrors.notFound("Not Found", "Request not found");
+  }
+  return pendingTransitionConflict(env, requestId);
 }
 
 async function handleCreateRequest(
@@ -267,7 +279,7 @@ async function handleCreateRequest(
 
   let finalRecord = record;
   if (shouldAutoApproveRequest(env, record)) {
-    const approved = await approveRequestRecord(env, record);
+    const approved = await approveRequestRecord(env, record.requestId);
     if (approved instanceof Response) {
       return attachCors(approved, corsHeaders);
     }
@@ -410,15 +422,7 @@ async function handleOpsApprove(
   ctx: ExecutionContext,
   responseFormat: "json" | "cbor" = "cbor",
 ): Promise<Response> {
-  const record = await readOnboardRequest(env, requestId);
-  if (!record) {
-    return attachCors(
-      ClientErrors.notFound("Not Found", "Request not found"),
-      corsHeaders,
-    );
-  }
-
-  const approved = await approveRequestRecord(env, record);
+  const approved = await approveRequestRecord(env, requestId);
   if (approved instanceof Response) {
     return attachCors(approved, corsHeaders);
   }
@@ -445,22 +449,9 @@ async function handleOpsReject(
   requestId: string,
   env: OnboardingHandlerEnv,
   corsHeaders: Record<string, string>,
+  ctx: ExecutionContext,
   responseFormat: "json" | "cbor" = "cbor",
 ): Promise<Response> {
-  const record = await readOnboardRequest(env, requestId);
-  if (!record) {
-    return attachCors(
-      ClientErrors.notFound("Not Found", "Request not found"),
-      corsHeaders,
-    );
-  }
-  if (effectiveStatus(record) !== "pending") {
-    return attachCors(
-      ClientErrors.conflict("Request is not pending"),
-      corsHeaders,
-    );
-  }
-
   let rejectReason: string | undefined;
   const ct = request.headers.get("Content-Type") ?? "";
   if (ct.includes("application/json")) {
@@ -488,12 +479,28 @@ async function handleOpsReject(
     return attachCors(reasonErr, corsHeaders);
   }
 
-  const updated: OnboardRequestRecord = {
-    ...record,
-    status: "rejected",
+  const transition = await transitionPendingToRejectedCas(
+    env,
+    requestId,
     rejectReason,
-  };
-  await writeOnboardRequest(env, updated);
+  );
+  if (!transition.ok) {
+    if (transition.reason === "not_found") {
+      return attachCors(
+        ClientErrors.notFound("Not Found", "Request not found"),
+        corsHeaders,
+      );
+    }
+    return attachCors(
+      await pendingTransitionConflict(env, requestId),
+      corsHeaders,
+    );
+  }
+
+  scheduleOnboardWebhook(ctx, env, "onboard.request.rejected", {
+    requestId,
+    rejectReason,
+  });
 
   const payload = { requestId, status: "rejected" as const };
   return attachCors(
@@ -584,6 +591,7 @@ export async function handleOnboardingRequest(
       decodeURIComponent(adminReject[1]!),
       env,
       corsHeaders,
+      ctx,
       "json",
     );
   }
@@ -653,6 +661,7 @@ export async function handleOnboardingRequest(
       decodeURIComponent(rejectMatch[1]!),
       env,
       corsHeaders,
+      ctx,
     );
   }
 

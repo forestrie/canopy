@@ -81,6 +81,9 @@ binding remain valid until revoked.
 `approved → redeemed` uses R2 etag CAS so only one concurrent redeem succeeds.
 Redeem code compare uses constant-time hex equality.
 
+`pending → approved` and `pending → rejected` use the same R2 etag CAS pattern
+so concurrent ops transitions cannot clobber a redeemed or terminal record.
+
 ### Cache control
 
 Create (redeemCode), redeem (token), and public status GET responses send
@@ -100,7 +103,9 @@ field length caps, and `ONBOARD_MAX_PENDING_PER_BINDING` per `(chainId, addr)`.
 ### Notifications
 
 Optional `ONBOARD_REQUEST_WEBHOOK_URL` + HMAC over `timestamp + "." + body`;
-`X-Forestrie-Timestamp` header; receivers should tolerate ±300s.
+`X-Forestrie-Timestamp` header; receivers should tolerate ±300s. Events:
+`onboard.request.created`, `onboard.request.approved`,
+`onboard.request.rejected`, `onboard.request.redeemed`.
 
 ### Auto-approve (dev only)
 

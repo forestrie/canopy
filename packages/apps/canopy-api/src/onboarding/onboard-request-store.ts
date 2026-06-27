@@ -5,6 +5,7 @@ import type { CreateOnboardRequestResult } from "./create-onboard-request.js";
 import type { ListOnboardRequestsResult } from "./list-onboard-requests-result.js";
 import type { OnboardRequestStoreEnv } from "./onboard-request-store-env.js";
 import type { OnboardRequestWithEtag } from "./onboard-request-with-etag.js";
+import type { PendingTransitionCasResult } from "./pending-transition-cas-result.js";
 import type { RedeemCasResult } from "./redeem-cas-result.js";
 import {
   generateRedeemCode,
@@ -19,6 +20,7 @@ export type {
   ListOnboardRequestsResult,
   OnboardRequestStoreEnv,
   OnboardRequestWithEtag,
+  PendingTransitionCasResult,
   RedeemCasResult,
 } from "./types.js";
 
@@ -192,6 +194,46 @@ export async function verifyRedeemCode(
 ): Promise<boolean> {
   const hash = await hashRedeemCode(presented.trim());
   return secureHexEqual(hash, record.redeemCodeHash);
+}
+
+export async function transitionPendingToApprovedCas(
+  env: OnboardRequestStoreEnv,
+  requestId: string,
+): Promise<PendingTransitionCasResult> {
+  const current = await readOnboardRequestWithEtag(env, requestId);
+  if (!current) return { ok: false, reason: "not_found" };
+  const status = effectiveStatus(current.record);
+  if (status !== "pending") {
+    return { ok: false, reason: "wrong_state" };
+  }
+  const approved: OnboardRequestRecord = {
+    ...current.record,
+    status: "approved",
+  };
+  const ok = await putRecordCas(env, approved, current.etag);
+  if (!ok) return { ok: false, reason: "cas_failed" };
+  return { ok: true, record: approved };
+}
+
+export async function transitionPendingToRejectedCas(
+  env: OnboardRequestStoreEnv,
+  requestId: string,
+  rejectReason?: string,
+): Promise<PendingTransitionCasResult> {
+  const current = await readOnboardRequestWithEtag(env, requestId);
+  if (!current) return { ok: false, reason: "not_found" };
+  const status = effectiveStatus(current.record);
+  if (status !== "pending") {
+    return { ok: false, reason: "wrong_state" };
+  }
+  const rejected: OnboardRequestRecord = {
+    ...current.record,
+    status: "rejected",
+    rejectReason,
+  };
+  const ok = await putRecordCas(env, rejected, current.etag);
+  if (!ok) return { ok: false, reason: "cas_failed" };
+  return { ok: true, record: rejected };
 }
 
 export async function transitionApprovedToRedeemedCas(
