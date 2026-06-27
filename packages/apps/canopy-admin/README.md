@@ -43,3 +43,38 @@ Static ops console for [FOR-172](https://linear.app/forestrie/issue/FOR-172)
 
 Cross-check plan-0041 scenario rows S1–S15 against dev lane after mandate
 `onboard request` (see plan-0040 FOR-178 matrix).
+
+## Deploy (Cloudflare Pages)
+
+- **Project:** `canopy-admin-dev` (dev lane, deploys on push to `main` when this
+  directory changes)
+- **Workflow:** `.github/workflows/deploy-canopy-admin.yml` (also
+  `workflow_dispatch`)
+- Requires GitHub **dev** environment: `CLOUDFLARE_API_TOKEN`,
+  `CLOUDFLARE_ACCOUNT_ID`
+
+## Manual acceptance checklist (S1–S15)
+
+Cross-check [plan-0041](../../docs/plans/plan-0041-canopy-admin-ops-console.md)
+scenario matrix on the dev lane with Doppler ops token and mandate onboard smoke.
+
+| #   | Scenario                 | Check                                              |
+| --- | ------------------------ | -------------------------------------------------- |
+| S1  | Pending request visible  | Pending row shows label, chain, contact, expiresAt |
+| S2  | Approve pending          | Status → approved; mandate redeem works            |
+| S3  | Reject with reason       | Status → rejected; reason in detail + list         |
+| S4  | Reject without reason    | Status → rejected; no reason stored                |
+| S5  | Approve non-pending      | Error toast; no state change                       |
+| S6  | Missing ops token        | Config prompt; API calls blocked                   |
+| S7  | Invalid ops token        | 401 on fetch; clear error message                  |
+| S8  | Token list after redeem  | Entry with requestId, hash prefix, active status   |
+| S9  | Token list after genesis | `consumedForestR` populated on token row           |
+| S10 | Kill switch read         | Shows enabled true/false for registered R          |
+| S11 | Kill switch disable      | PUT `enabled=false`; coordinator updated           |
+| S12 | Kill switch re-enable    | PUT `enabled=true`; coordinator updated            |
+| S13 | Unknown forest R         | 404 registration not found toast                   |
+| S14 | Pagination               | Load more requests when cursor present             |
+| S15 | CORS from Pages origin   | Preflight succeeds for GET/POST/PUT from Pages URL |
+
+Rows S1–S7, S14–S15: API unit tests + manual UI. Rows S8–S13: manual UI after
+mandate provision smoke (FOR-178).
