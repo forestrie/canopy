@@ -42,7 +42,15 @@ import {
   modeCWebhookSealSkipReason,
 } from "@e2e-utils/mode-c-e2e-env";
 
-const byokSealSkip = modeCWebhookSealSkipReason();
+const byokSealSkip = (() => {
+  if (process.env.E2E_BYOK_SEAL_STRETCH?.trim() !== "1") {
+    return (
+      "BYOK checkpoint seal e2e requires E2E_BYOK_SEAL_STRETCH=1 " +
+      "(default CI runs Mode C webhook seal; checkpoint stretch is opt-in until FOR-204)."
+    );
+  }
+  return modeCWebhookSealSkipReason();
+})();
 
 test.describe("BYOK checkpoint seal e2e", () => {
   test.describe.configure({ mode: "serial" });

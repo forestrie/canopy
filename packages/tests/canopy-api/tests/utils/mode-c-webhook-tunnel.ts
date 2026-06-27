@@ -113,3 +113,29 @@ export async function startModeCWebhookTunnel(opts: {
     });
   });
 }
+
+/**
+ * Poll the public tunnel origin until traffic reaches the local receiver (GET / → 404).
+ */
+export async function waitForModeCWebhookTunnelReachable(
+  publicBaseUrl: string,
+  opts?: { timeoutMs?: number },
+): Promise<void> {
+  const timeoutMs = opts?.timeoutMs ?? 90_000;
+  const probeUrl = `${publicBaseUrl.replace(/\/$/, "")}/`;
+  const deadline = Date.now() + timeoutMs;
+  let lastError = "unknown";
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(probeUrl, { method: "GET", redirect: "follow" });
+      if (res.status === 404) return;
+      lastError = `unexpected status ${res.status}`;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+    await new Promise((r) => setTimeout(r, 1_000));
+  }
+  throw new Error(
+    `cloudflared origin ${publicBaseUrl} not reachable within ${timeoutMs}ms (${lastError})`,
+  );
+}

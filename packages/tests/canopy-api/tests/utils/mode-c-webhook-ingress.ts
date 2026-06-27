@@ -7,6 +7,7 @@ import { startModeCWebhookReceiver } from "../system/helpers/mode-c-webhook-rece
 import { modeCWebhookPublicBaseFromEnv } from "./mode-c-e2e-env.js";
 import {
   startModeCWebhookTunnel,
+  waitForModeCWebhookTunnelReachable,
   type ModeCWebhookTunnel,
 } from "./mode-c-webhook-tunnel.js";
 
@@ -36,6 +37,8 @@ export async function startModeCWebhookIngress(
     tunnel = await startModeCWebhookTunnel({ localPort: receiver.localPort });
     publicBase = tunnel.publicBaseUrl;
   }
+
+  await waitForModeCWebhookTunnelReachable(publicBase);
 
   const webhookUrl = `${publicBase.replace(/\/$/, "")}/webhook`;
 
