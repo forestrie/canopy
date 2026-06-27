@@ -101,79 +101,11 @@ Row 6 can use mandate CLI with intentional wrong addr or curl CBOR create.
 
 ## FOR-172 — Canopy admin UI completion
 
-**Goal:** Static ops console for pending queue, tokens, reject reason, kill switch.
+**Superseded by [plan-0041](plan-0041-canopy-admin-ops-console.md)** — grill-validated
+design, scenario matrix, and Linear stack FOR-180–FOR-183.
 
-**Repo:** canopy  
-**Worktree:** `~/Dev/personal/forestrie-wt/canopy-onboard-close`  
-**Branch:** `for/onboard-close-3-admin-ui`  
-**Stack:** on `main` after FOR-176 merge
-
-```bash
-cd ~/Dev/personal/forestrie-wt/canopy-onboard-close
-git fetch origin && git checkout -B for/onboard-close-3-admin-ui origin/main
-gt create for/onboard-close-3-admin-ui -m "feat(canopy-admin): FOR-172 ops console"
-```
-
-### Current state (~40%)
-
-`packages/apps/canopy-admin/index.html`:
-
-- SessionStorage config (base URL + ops bearer)
-- Pending queue via `GET /api/onboarding/admin/requests`
-- Approve / reject (no reason) via admin JSON POST routes
-
-### API surfaces (already implemented)
-
-| UI need | Route | Notes |
-|---------|-------|-------|
-| Request list | `GET /api/onboarding/admin/requests` | JSON; pagination `limit`/`cursor` |
-| Approve | `POST .../admin/requests/{id}/approve` | JSON |
-| Reject | `POST .../admin/requests/{id}/reject` | **Reject reason: CBOR body today** — add JSON `{ rejectReason }` on admin route or bundle `cbor-x` in static UI |
-| Token list | `GET /api/onboarding/admin/tokens` | ref, label, status, chainBinding, `consumedForestR` |
-| Kill switch GET | `GET /api/payments/registrations/{R}/enabled` | Per-forest UUID |
-| Kill switch PUT | `PUT /api/payments/registrations/{R}/enabled` | JSON `{ enabled: boolean }` |
-
-No list-all-registrations API — derive `R` from token list `consumedForestR` or
-manual UUID input.
-
-### Implementation slices (vertical)
-
-1. **Navigation + layout** — tabs: Requests | Tokens | Kill switch; shared config bar
-2. **Request detail** — expand row: mandateOrigin, univocityAddr, expiresAt,
-   rejectReason display; reject modal with reason textarea
-3. **Reject body** — prefer small API change: accept `application/json` on admin
-   reject (mirror CBOR `rejectReason` key) over pulling cbor-x into static HTML
-4. **Token list** — table from `/admin/tokens`; link `consumedForestR` to kill-switch tab
-5. **Kill switch** — input forest `R` + toggle; GET then PUT; show enabled state
-6. **CORS smoke** — verify browser fetch from Pages origin to dev API (existing
-   CORS on onboarding + payments ops routes)
-7. **Deploy** — Cloudflare Pages project `canopy-admin` or document static
-   hosting; update `packages/apps/canopy-admin/README.md`
-
-### Acceptance criteria (from FOR-172)
-
-- [ ] Operator approves pending request without curl
-- [ ] Operator rejects with reason persisted on record
-- [ ] Token list shows `consumedForestR` after mandate genesis
-- [ ] Kill switch toggle changes coordinator enabled state
-- [ ] Manual test against dev lane documented in PR
-
-### Tests
-
-- No new unit test package required for static HTML
-- Optional: Playwright smoke in `@canopy/api-e2e` **only if** we add a served
-  Pages URL in CI (defer unless requested)
-- Manual checklist in PR is sufficient for v1
-
-### Estimated effort
-
-**~1–2 days** (UI polish + optional JSON reject + Pages deploy).
-
-### Out of scope (v1)
-
-- Auth beyond sessionStorage bearer
-- Webhook inbox / email (FOR-171)
-- Replacing mandate CLI for fork operators
+Quick summary: static `canopy-admin` Pages app; prerequisite API JSON parity
+(FOR-180); then request queue, tokens, kill switch tabs; deploy + runbook.
 
 ---
 
