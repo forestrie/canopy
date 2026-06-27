@@ -30,13 +30,13 @@ push (`byok-mode-c-webhook-seal`) and BYOK checkpoint seal specs.
 
 ### E2e coverage
 
-| Spec                                                                                              | Playwright project | Opt-in?                                  | Non-Custodian key signs                                 | Custodian role                                          |
-| ------------------------------------------------------------------------------------------------- | ------------------ | ---------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------- |
-| [`coordinator-byok-material.spec.ts`](../../coordinator/coordinator-byok-material.spec.ts)        | **coordinator**    | No (`test:e2e:coordinator`)              | Delegation cert (`generateEs256RootKeyPair`)            | None — coordinator direct issue                         |
-| [`coordinator-byok-public-root.spec.ts`](../../coordinator/coordinator-byok-public-root.spec.ts)  | **coordinator**    | No (`test:e2e:coordinator`)              | Root + delegation cert                                  | None — `GET …/public-root` CBOR trust root              |
-| [`coordinator-delegation-issuance.spec.ts`](../../system/coordinator-delegation-issuance.spec.ts) | **system**         | When coordinator + custodian env set     | Same runner-signed delegation cert                      | **Proxy only** — `POST /v1/api/delegations` on KMS miss |
-| [`byok-checkpoint-seal.spec.ts`](../../system/byok-checkpoint-seal.spec.ts)                       | **system**         | When coordinator + ops admin env set     | Runner root + wallet material + full checkpoint receipt | Coordinator + Sealer on deployed stack                  |
-| [`byok-mode-c-webhook-seal.spec.ts`](../../system/byok-mode-c-webhook-seal.spec.ts)               | **system**         | When coordinator + ops admin env set     | KS256 root + webhook push + receipt vs `publicRoot`     | Genesis forward + coordinator webhook (FOR-126)           |
+| Spec                                                                                              | Playwright project | Opt-in?                              | Non-Custodian key signs                                 | Custodian role                                          |
+| ------------------------------------------------------------------------------------------------- | ------------------ | ------------------------------------ | ------------------------------------------------------- | ------------------------------------------------------- |
+| [`coordinator-byok-material.spec.ts`](../../coordinator/coordinator-byok-material.spec.ts)        | **coordinator**    | No (`test:e2e:coordinator`)          | Delegation cert (`generateEs256RootKeyPair`)            | None — coordinator direct issue                         |
+| [`coordinator-byok-public-root.spec.ts`](../../coordinator/coordinator-byok-public-root.spec.ts)  | **coordinator**    | No (`test:e2e:coordinator`)          | Root + delegation cert                                  | None — `GET …/public-root` CBOR trust root              |
+| [`coordinator-delegation-issuance.spec.ts`](../../system/coordinator-delegation-issuance.spec.ts) | **system**         | When coordinator + custodian env set | Same runner-signed delegation cert                      | **Proxy only** — `POST /v1/api/delegations` on KMS miss |
+| [`byok-checkpoint-seal.spec.ts`](../../system/byok-checkpoint-seal.spec.ts)                       | **system**         | When coordinator + ops admin env set | Runner root + wallet material + full checkpoint receipt | Coordinator + Sealer on deployed stack                  |
+| [`byok-mode-c-webhook-seal.spec.ts`](../../system/byok-mode-c-webhook-seal.spec.ts)               | **system**         | When coordinator + ops admin env set | KS256 root + webhook push + receipt vs `publicRoot`     | Genesis forward + coordinator webhook (FOR-126)         |
 
 Both assert crypto via `verifyByokDelegationCertificate` in
 [`coordinator-delegation-helpers.ts`](../../utils/coordinator-delegation-helpers.ts).

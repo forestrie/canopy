@@ -52,7 +52,7 @@ proxy path to succeed. Outbound coordinator calls use `DELEGATION_COORDINATOR_TO
 | Spec                                                                                       | Tier                     | Custodian role                  |
 | ------------------------------------------------------------------------------------------ | ------------------------ | ------------------------------- |
 | [`coordinator-byok-material.spec.ts`](../../coordinator/coordinator-byok-material.spec.ts) | coordinator (default CI) | None — coordinator direct issue |
-| **This spec**                                                                      | system (default)         | Proxy on KMS miss               |
+| **This spec**                                                                              | system (default)         | Proxy on KMS miss               |
 
 Both use `generateEs256RootKeyPair`, `buildByokDelegationMaterial`, and
 `verifyByokDelegationCertificate` from

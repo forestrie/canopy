@@ -6,8 +6,7 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 
-const TRY_CLOUDFLARE_URL_RE =
-  /https:\/\/[a-z0-9-]+\.trycloudflare\.com\/?/i;
+const TRY_CLOUDFLARE_URL_RE = /https:\/\/[a-z0-9-]+\.trycloudflare\.com\/?/i;
 
 export interface ModeCWebhookTunnel {
   /** HTTPS origin without trailing slash. */

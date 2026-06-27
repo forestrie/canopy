@@ -2,9 +2,7 @@
  * Env guards for Mode C webhook seal system e2e (Package D / FOR-201).
  */
 
-import {
-  hasCoordinatorApiE2eEnv,
-} from "./coordinator-api-env.js";
+import { hasCoordinatorApiE2eEnv } from "./coordinator-api-env.js";
 
 /** True when pending-delegation pull backstop is allowed (local debug only). */
 export function modeCAllowPullFallback(): boolean {

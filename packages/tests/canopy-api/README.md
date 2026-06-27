@@ -60,13 +60,13 @@ statement signing (ES256: 32-byte `kid` = x; KS256: 20-byte `kid` = address).
 the delegated checkpoint signer in `grantData`. Default `task test:e2e` includes
 non-Custodian log-root signing when coordinator + ops admin env is set (Package D).
 
-| Spec                                               | Project     | Default tier?                            | Role                                                                                             |
-| -------------------------------------------------- | ----------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `coordinator/coordinator-byok-material.spec.ts`    | coordinator | Yes (when env set)                       | Runner-owned root; coordinator 503 pending → material → issue; `verifyByokDelegationCertificate` |
-| `coordinator/coordinator-byok-public-root.spec.ts` | coordinator | Yes (when env set)                       | Upload root + GET CBOR `public-root`; cert verifies against rehydrated coordinator root          |
+| Spec                                               | Project     | Default tier?                          | Role                                                                                             |
+| -------------------------------------------------- | ----------- | -------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `coordinator/coordinator-byok-material.spec.ts`    | coordinator | Yes (when env set)                     | Runner-owned root; coordinator 503 pending → material → issue; `verifyByokDelegationCertificate` |
+| `coordinator/coordinator-byok-public-root.spec.ts` | coordinator | Yes (when env set)                     | Upload root + GET CBOR `public-root`; cert verifies against rehydrated coordinator root          |
 | `system/coordinator-delegation-issuance.spec.ts`   | system      | Yes (when coordinator + custodian set) | Same runner-signed material; **Custodian proxy** on KMS miss                                     |
-| `system/byok-checkpoint-seal.spec.ts`              | system      | Yes (when coordinator + ops admin set)   | Full SCRAPI checkpoint seal with wallet-signed material                                          |
-| `system/byok-mode-c-webhook-seal.spec.ts`          | system      | Yes (when coordinator + ops admin set)   | Mode C genesis webhook push + KS256 seal (FOR-126)                                                 |
+| `system/byok-checkpoint-seal.spec.ts`              | system      | Yes (when coordinator + ops admin set) | Full SCRAPI checkpoint seal with wallet-signed material                                          |
+| `system/byok-mode-c-webhook-seal.spec.ts`          | system      | Yes (when coordinator + ops admin set) | Mode C genesis webhook push + KS256 seal (FOR-126)                                               |
 
 **Not BYOK:** `coordinator-api.spec.ts` (custodial pre-mint before wallet route);
 all other `tests/system/*` (Custodian grant/statement keys).
@@ -165,19 +165,19 @@ Set **`COORDINATOR_APP_TOKEN`** in Doppler **`canopy/dev`** (masked) after fores
 
 ## Test layout (by file)
 
-| File                                             | Area                                                                                                                                                                                |
-| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `integration/api.spec.ts`                        | Cross-cutting HTTP (e.g. CORS OPTIONS).                                                                                                                                             |
-| `integration/observability.spec.ts`              | `/api/health`, `/.well-known/scitt-configuration`.                                                                                                                                  |
-| `system/grants-bootstrap.spec.ts`                | Ephemeral Imutable bootstrap: genesis + contract-signed root grant + register-grant (ES256 + KS256). [Doc](tests/system/docs/grants-bootstrap.md).                                  |
-| `system/forest-genesis-registration.spec.ts`     | Onboard-token mint + payment-authoritative genesis; `GF_DERIVED` endorsement descendant registration (ES256). Mutating — ignored on prod project.                                   |
-| `system/bootstrap-log-first-entry.spec.ts`       | `POST /register/{bootstrap}/entries` (ES256 + KS256). [Doc](tests/system/docs/bootstrap-log-first-entry.md).                                                                        |
-| `system/bootstrap-child-auth-grant.spec.ts`      | Root contract bootstrap + child auth grant (owner-root envelope); ES256 + KS256. [Doc](tests/system/docs/bootstrap-child-auth-grant.md).                                            |
-| `system/auth-data-log-chain.spec.ts`             | Root → child auth log → data log delegation chain; ES256 + KS256. [Doc](tests/system/docs/auth-data-log-chain.md).                                                                  |
-| `custodian/custodian-api.spec.ts`                | Direct **`fetch`** to deployed Custodian: ops + **`/v1/api/…`** custody key routes.                                                                                                 |
-| `coordinator/coordinator-api.spec.ts`            | Phase 3 coordinator APIs; **coordinator** direct issue of stored material (custodial pre-mint).                                                                                     |
-| `coordinator/coordinator-byok-material.spec.ts`  | **BYOK:** runner-owned log root; pending → material → coordinator issue. [System doc](tests/system/docs/README.md#non-custodian-log-root-signing-key-byok-delegation).              |
-| `system/coordinator-delegation-issuance.spec.ts` | Default system tier: **Custodian proxy** on KMS miss with runner-signed BYOK material. [Doc](tests/system/docs/coordinator-delegation-issuance.md). |
+| File                                             | Area                                                                                                                                                                   |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `integration/api.spec.ts`                        | Cross-cutting HTTP (e.g. CORS OPTIONS).                                                                                                                                |
+| `integration/observability.spec.ts`              | `/api/health`, `/.well-known/scitt-configuration`.                                                                                                                     |
+| `system/grants-bootstrap.spec.ts`                | Ephemeral Imutable bootstrap: genesis + contract-signed root grant + register-grant (ES256 + KS256). [Doc](tests/system/docs/grants-bootstrap.md).                     |
+| `system/forest-genesis-registration.spec.ts`     | Onboard-token mint + payment-authoritative genesis; `GF_DERIVED` endorsement descendant registration (ES256). Mutating — ignored on prod project.                      |
+| `system/bootstrap-log-first-entry.spec.ts`       | `POST /register/{bootstrap}/entries` (ES256 + KS256). [Doc](tests/system/docs/bootstrap-log-first-entry.md).                                                           |
+| `system/bootstrap-child-auth-grant.spec.ts`      | Root contract bootstrap + child auth grant (owner-root envelope); ES256 + KS256. [Doc](tests/system/docs/bootstrap-child-auth-grant.md).                               |
+| `system/auth-data-log-chain.spec.ts`             | Root → child auth log → data log delegation chain; ES256 + KS256. [Doc](tests/system/docs/auth-data-log-chain.md).                                                     |
+| `custodian/custodian-api.spec.ts`                | Direct **`fetch`** to deployed Custodian: ops + **`/v1/api/…`** custody key routes.                                                                                    |
+| `coordinator/coordinator-api.spec.ts`            | Phase 3 coordinator APIs; **coordinator** direct issue of stored material (custodial pre-mint).                                                                        |
+| `coordinator/coordinator-byok-material.spec.ts`  | **BYOK:** runner-owned log root; pending → material → coordinator issue. [System doc](tests/system/docs/README.md#non-custodian-log-root-signing-key-byok-delegation). |
+| `system/coordinator-delegation-issuance.spec.ts` | Default system tier: **Custodian proxy** on KMS miss with runner-signed BYOK material. [Doc](tests/system/docs/coordinator-delegation-issuance.md).                    |
 
 - Shared e2e utils: `e2e-env-guards.ts`, `e2e-bootstrap-variant.ts`, `e2e-grant-flags.ts`, …
 

@@ -21,22 +21,22 @@ polls `pending-delegation` and signs material), this spec exercises the
 
 ## Push vs pull
 
-| Path | When | Meaning |
-|------|------|---------|
-| **Webhook push** | Default CI and local runs | Coordinator POSTs `delegation.required` to registered URL; receiver signs material |
-| **Pending-delegation pull** | `E2E_MODE_C_ALLOW_PULL_FALLBACK=1` only | Test polls `GET …/pending-delegation` and signs (ADR-0005 backstop); local debug |
+| Path                        | When                                    | Meaning                                                                            |
+| --------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------- |
+| **Webhook push**            | Default CI and local runs               | Coordinator POSTs `delegation.required` to registered URL; receiver signs material |
+| **Pending-delegation pull** | `E2E_MODE_C_ALLOW_PULL_FALLBACK=1` only | Test polls `GET …/pending-delegation` and signs (ADR-0005 backstop); local debug   |
 
 Default tier **requires push**. Pull without the opt-in env throws.
 
 ## Env
 
-| Variable | Required | Purpose |
-| -------- | -------- | ------- |
-| `DELEGATION_COORDINATOR_URL` | yes | Coordinator + JWKS |
-| `COORDINATOR_APP_TOKEN` | yes | Certificate POST auth |
-| `CANOPY_OPS_ADMIN_TOKEN` | yes | Onboard token mint |
-| `E2E_MODE_C_WEBHOOK_PUBLIC_BASE` | no | Manual public base (ngrok); skips auto cloudflared |
-| `E2E_MODE_C_ALLOW_PULL_FALLBACK` | no | Local only: allow pending-delegation pull when push fails |
+| Variable                         | Required | Purpose                                                   |
+| -------------------------------- | -------- | --------------------------------------------------------- |
+| `DELEGATION_COORDINATOR_URL`     | yes      | Coordinator + JWKS                                        |
+| `COORDINATOR_APP_TOKEN`          | yes      | Certificate POST auth                                     |
+| `CANOPY_OPS_ADMIN_TOKEN`         | yes      | Onboard token mint                                        |
+| `E2E_MODE_C_WEBHOOK_PUBLIC_BASE` | no       | Manual public base (ngrok); skips auto cloudflared        |
+| `E2E_MODE_C_ALLOW_PULL_FALLBACK` | no       | Local only: allow pending-delegation pull when push fails |
 
 **CI:** `cloudflared` quick tunnel starts automatically when
 `E2E_MODE_C_WEBHOOK_PUBLIC_BASE` is unset (`tests-system.yml`).
