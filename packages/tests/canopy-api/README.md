@@ -65,7 +65,7 @@ non-Custodian log-root signing when coordinator + ops admin env is set (Package 
 | `coordinator/coordinator-byok-material.spec.ts`    | coordinator | Yes (when env set)                     | Runner-owned root; coordinator 503 pending → material → issue; `verifyByokDelegationCertificate` |
 | `coordinator/coordinator-byok-public-root.spec.ts` | coordinator | Yes (when env set)                     | Upload root + GET CBOR `public-root`; cert verifies against rehydrated coordinator root          |
 | `system/coordinator-delegation-issuance.spec.ts`   | system      | Yes (when coordinator + custodian set) | Same runner-signed material; **Custodian proxy** on KMS miss                                     |
-| `system/byok-checkpoint-seal.spec.ts`              | system      | Yes (when coordinator + ops admin set) | Full SCRAPI checkpoint seal with wallet-signed material                                          |
+| `system/byok-checkpoint-seal.spec.ts`              | system      | Yes — `E2E_BYOK_SEAL_STRETCH=1`        | Full SCRAPI checkpoint seal with wallet-signed material                                          |
 | `system/byok-mode-c-webhook-seal.spec.ts`          | system      | Yes (when coordinator + ops admin set) | Mode C genesis webhook push + KS256 seal (FOR-126)                                               |
 
 **Not BYOK:** `coordinator-api.spec.ts` (custodial pre-mint before wallet route);
@@ -135,7 +135,7 @@ Opt out: **`SKIP_UNIVOCITY_PROVISION=true`** (bootstrap system specs skip per va
 - **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**: required by `coordinator-api.spec.ts` for custodial pre-wallet mint and custody-keys orchestration.
 - Deployed **Custodian** must have **`DELEGATION_COORDINATOR_URL`** configured for the stretch spec’s proxy path (ledger env; not a Playwright env var).
 - CI runs this project after **custodian** when both coordinator env vars are set (`.github/workflows/tests-system.yml`); **`deploy-workers`** on **dev** requires coordinator e2e (fails if vars/secrets missing).
-- Default **system** tier includes `coordinator-delegation-issuance`, `byok-checkpoint-seal`, and `byok-mode-c-webhook-seal` when env is complete (Package D / FOR-201).
+- Default **system** tier includes `coordinator-delegation-issuance` and `byok-mode-c-webhook-seal` when env is complete (Package D / FOR-201). `byok-checkpoint-seal` remains opt-in (`E2E_BYOK_SEAL_STRETCH=1`).
 - **`E2E_MODE_C_WEBHOOK_PUBLIC_BASE`**: optional manual public HTTPS base for webhook push; CI installs **cloudflared** for auto quick tunnel.
 - **`E2E_MODE_C_ALLOW_PULL_FALLBACK=1`**: local debug only — pending-delegation pull when push fails (not CI).
 

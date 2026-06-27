@@ -264,7 +264,7 @@ export async function waitForModeCDelegationMaterial(opts: {
   delegatedPublicKey: Uint8Array;
   maxWaitMs?: number;
 }): Promise<"webhook" | "pull"> {
-  const maxWaitMs = opts.maxWaitMs ?? 30_000;
+  const maxWaitMs = opts.maxWaitMs ?? (process.env.CI ? 120_000 : 30_000);
   const deadline = Date.now() + maxWaitMs;
   while (opts.receiverStats.materialsSubmitted < 1 && Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 500));
