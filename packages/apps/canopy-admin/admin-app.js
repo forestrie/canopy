@@ -1,5 +1,5 @@
 /**
- * Canopy onboard admin — request queue UI (FOR-181).
+ * Canopy onboard admin — request queue, tokens, kill switch (FOR-181, FOR-182).
  * DOM-safe rendering; JSON admin API with problem-detail errors.
  */
 
@@ -9,12 +9,24 @@ const STORAGE_TOKEN = "canopyOpsToken";
 const baseUrlEl = document.getElementById("baseUrl");
 const opsTokenEl = document.getElementById("opsToken");
 const requestRowsEl = document.getElementById("requestRows");
+const tokenRowsEl = document.getElementById("tokenRows");
 const loadMoreEl = document.getElementById("loadMore");
 const toastEl = document.getElementById("toast");
 const rejectDialog = document.getElementById("rejectDialog");
 const rejectForm = document.getElementById("rejectForm");
 const rejectTargetEl = document.getElementById("rejectTarget");
 const rejectReasonEl = document.getElementById("rejectReason");
+const forestREl = document.getElementById("forestR");
+const killStatusEl = document.getElementById("killStatus");
+const loadKillSwitchEl = document.getElementById("loadKillSwitch");
+const toggleKillSwitchEl = document.getElementById("toggleKillSwitch");
+
+const panelRequests = document.getElementById("panelRequests");
+const panelTokens = document.getElementById("panelTokens");
+const panelKillSwitch = document.getElementById("panelKillSwitch");
+const tabRequests = document.getElementById("tabRequests");
+const tabTokens = document.getElementById("tabTokens");
+const tabKillSwitch = document.getElementById("tabKillSwitch");
 
 /** @type {string | undefined} */
 let listCursor;
@@ -24,6 +36,12 @@ let allRequests = [];
 let statusFilter = "all";
 /** @type {string | null} */
 let pendingRejectId = null;
+/** @type {boolean | null} */
+let killSwitchEnabled = null;
+/** @type {string | null} */
+let loadedForestR = null;
+/** @type {boolean} */
+let killSwitchBusy = false;
 
 baseUrlEl.value = sessionStorage.getItem(STORAGE_BASE) || "";
 opsTokenEl.value = sessionStorage.getItem(STORAGE_TOKEN) || "";
@@ -36,6 +54,39 @@ document.getElementById("saveConfig").addEventListener("click", () => {
 
 document.getElementById("refresh").addEventListener("click", () => {
   void reloadRequests(true);
+});
+
+document.getElementById("refreshTokens").addEventListener("click", () => {
+  void loadTokens();
+});
+
+tabRequests.addEventListener("click", () => showTab("requests"));
+tabTokens.addEventListener("click", () => showTab("tokens"));
+tabKillSwitch.addEventListener("click", () => showTab("killswitch"));
+
+loadKillSwitchEl.addEventListener("click", () => {
+  void fetchKillSwitchStatus();
+});
+
+toggleKillSwitchEl.addEventListener("click", () => {
+  void toggleKillSwitch();
+});
+
+forestREl.addEventListener("input", () => {
+  if (loadedForestR !== null && forestREl.value.trim() !== loadedForestR) {
+    loadedForestR = null;
+    killSwitchEnabled = null;
+    killStatusEl.textContent = "R changed — load status again";
+    killStatusEl.classList.add("muted");
+  }
+  updateKillSwitchControls();
+});
+
+forestREl.addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter") {
+    ev.preventDefault();
+    void fetchKillSwitchStatus();
+  }
 });
 
 loadMoreEl.addEventListener("click", () => {
@@ -132,6 +183,50 @@ function showToast(message, isError = false) {
   toastEl.classList.toggle("error", isError);
   toastEl.classList.remove("hidden");
   window.setTimeout(() => toastEl.classList.add("hidden"), 5000);
+}
+
+/**
+ * @param {"requests" | "tokens" | "killswitch"} tab
+ */
+function showTab(tab) {
+  panelRequests.classList.toggle("hidden", tab !== "requests");
+  panelTokens.classList.toggle("hidden", tab !== "tokens");
+  panelKillSwitch.classList.toggle("hidden", tab !== "killswitch");
+  tabRequests.classList.toggle("active", tab === "requests");
+  tabTokens.classList.toggle("active", tab === "tokens");
+  tabKillSwitch.classList.toggle("active", tab === "killswitch");
+  if (tab === "tokens") void loadTokens();
+}
+
+/**
+ * @param {string} forestR
+ */
+function openKillSwitchTab(forestR) {
+  forestREl.value = forestR;
+  loadedForestR = null;
+  killSwitchEnabled = null;
+  killStatusEl.textContent = "Loading…";
+  killStatusEl.classList.add("muted");
+  updateKillSwitchControls();
+  showTab("killswitch");
+  void fetchKillSwitchStatus();
+}
+
+function updateKillSwitchControls() {
+  const r = forestREl.value.trim();
+  const inSync = loadedForestR !== null && r === loadedForestR;
+  const canToggle = inSync && killSwitchEnabled !== null && !killSwitchBusy;
+  loadKillSwitchEl.disabled = killSwitchBusy;
+  toggleKillSwitchEl.disabled = !canToggle;
+  if (killSwitchBusy) {
+    toggleKillSwitchEl.textContent = "Working…";
+  } else if (!inSync || killSwitchEnabled === null) {
+    toggleKillSwitchEl.textContent = "Enable / Disable";
+  } else if (killSwitchEnabled) {
+    toggleKillSwitchEl.textContent = "Disable registration";
+  } else {
+    toggleKillSwitchEl.textContent = "Enable registration";
+  }
 }
 
 function truncate(value, max = 12) {
@@ -300,4 +395,147 @@ async function reloadRequests(reset) {
   await loadRequests(reset);
 }
 
+/**
+ * @param {Record<string, unknown>} token
+ * @param {HTMLTableSectionElement} tbody
+ */
+function renderTokenRow(token, tbody) {
+  const tr = document.createElement("tr");
+  tr.append(
+    textCell(String(token.label ?? "")),
+    (() => {
+      const td = document.createElement("td");
+      const span = document.createElement("span");
+      const status = String(token.status ?? "");
+      span.textContent = status;
+      span.className = statusClass(status);
+      td.appendChild(span);
+      return td;
+    })(),
+    textCell(String(token.chainBinding?.chainId ?? "")),
+    textCell(truncate(token.requestId, 10)),
+    textCell(truncate(token.hash, 12)),
+    (() => {
+      const td = document.createElement("td");
+      const forestR = token.consumedForestR;
+      if (typeof forestR === "string" && forestR.length > 0) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "linkish";
+        btn.textContent = forestR;
+        btn.addEventListener("click", () => openKillSwitchTab(forestR));
+        td.appendChild(btn);
+      } else {
+        td.textContent = "—";
+      }
+      return td;
+    })(),
+    textCell(formatEpoch(token.createdAt)),
+    textCell(token.expiry ? formatEpoch(token.expiry) : "—"),
+  );
+  tbody.appendChild(tr);
+}
+
+async function loadTokens() {
+  try {
+    const data = await api("/api/onboarding/admin/tokens");
+    const batch = Array.isArray(data.tokens) ? data.tokens : [];
+    tokenRowsEl.replaceChildren();
+    if (batch.length === 0) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 8;
+      td.textContent = "No onboard tokens";
+      td.className = "muted";
+      tr.appendChild(td);
+      tokenRowsEl.appendChild(tr);
+      return;
+    }
+    for (const token of batch) {
+      renderTokenRow(token, tokenRowsEl);
+    }
+  } catch (err) {
+    showToast(String(err), true);
+  }
+}
+
+function forestRPath() {
+  const r = forestREl.value.trim();
+  if (!r) throw new Error("Enter forest UUID (R)");
+  return encodeURIComponent(r);
+}
+
+async function fetchKillSwitchStatus() {
+  if (killSwitchBusy) return;
+  killSwitchBusy = true;
+  updateKillSwitchControls();
+  try {
+    const data = await api(
+      `/api/payments/admin/registrations/${forestRPath()}/enabled`,
+    );
+    killSwitchEnabled = Boolean(data.enabled);
+    loadedForestR =
+      typeof data.R === "string" ? data.R : forestREl.value.trim();
+    if (typeof data.R === "string") {
+      forestREl.value = data.R;
+    }
+    killStatusEl.textContent = `Registration ${loadedForestR}: enabled=${killSwitchEnabled}`;
+    killStatusEl.classList.remove("muted");
+  } catch (err) {
+    loadedForestR = null;
+    killSwitchEnabled = null;
+    killStatusEl.textContent = "Not loaded";
+    killStatusEl.classList.add("muted");
+    showToast(String(err), true);
+  } finally {
+    killSwitchBusy = false;
+    updateKillSwitchControls();
+  }
+}
+
+async function toggleKillSwitch() {
+  const r = forestREl.value.trim();
+  if (loadedForestR === null || r !== loadedForestR) {
+    showToast("Load status for this R before toggling", true);
+    return;
+  }
+  if (killSwitchEnabled === null || killSwitchBusy) {
+    showToast("Load status before toggling", true);
+    return;
+  }
+  const next = !killSwitchEnabled;
+  if (
+    !window.confirm(
+      `${next ? "Enable" : "Disable"} payment registration for forest ${loadedForestR}?`,
+    )
+  ) {
+    return;
+  }
+  killSwitchBusy = true;
+  updateKillSwitchControls();
+  try {
+    await api(
+      `/api/payments/admin/registrations/${forestRPath()}/enabled`,
+      "PUT",
+      { enabled: next },
+    );
+    const verify = await api(
+      `/api/payments/admin/registrations/${forestRPath()}/enabled`,
+    );
+    killSwitchEnabled = Boolean(verify.enabled);
+    loadedForestR = typeof verify.R === "string" ? verify.R : r;
+    if (typeof verify.R === "string") {
+      forestREl.value = verify.R;
+    }
+    killStatusEl.textContent = `Registration ${loadedForestR}: enabled=${killSwitchEnabled}`;
+    showToast(`Registration ${killSwitchEnabled ? "enabled" : "disabled"}`);
+  } catch (err) {
+    showToast(String(err), true);
+  } finally {
+    killSwitchBusy = false;
+    updateKillSwitchControls();
+  }
+}
+
+updateKillSwitchControls();
 void reloadRequests(true);

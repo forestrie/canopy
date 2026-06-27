@@ -103,6 +103,16 @@
       .status-expired {
         color: #6b7280;
       }
+      .status-active {
+        color: #047857;
+      }
+      .status-revoked {
+        color: #b91c1c;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
       .detail-row td {
         background: #f9fafb;
         font-size: 0.9rem;
@@ -136,6 +146,26 @@
         border-radius: 8px;
         color: #666;
       }
+      .linkish {
+        background: none;
+        border: none;
+        padding: 0;
+        color: #1d4ed8;
+        cursor: pointer;
+        text-decoration: underline;
+        font: inherit;
+      }
+      .kill-panel label {
+        display: block;
+        margin-bottom: 0.75rem;
+      }
+      .kill-panel input[type="text"] {
+        width: min(100%, 28rem);
+      }
+      .kill-status {
+        margin: 1rem 0;
+        font-weight: 600;
+      }
     </style>
   </head>
   <body>
@@ -158,12 +188,8 @@
 
     <nav class="tabs" aria-label="Admin sections">
       <button type="button" id="tabRequests" class="active">Requests</button>
-      <button type="button" id="tabTokens" disabled title="FOR-182">
-        Tokens
-      </button>
-      <button type="button" id="tabKillSwitch" disabled title="FOR-182">
-        Kill switch
-      </button>
+      <button type="button" id="tabTokens">Tokens</button>
+      <button type="button" id="tabKillSwitch">Kill switch</button>
     </nav>
 
     <section id="panelRequests">
@@ -206,11 +232,43 @@
     </section>
 
     <section id="panelTokens" class="hidden">
-      <div class="placeholder-panel">Token inventory tab — FOR-182</div>
+      <div class="toolbar">
+        <button type="button" id="refreshTokens">Refresh</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Label</th>
+            <th>Status</th>
+            <th>Chain</th>
+            <th>Request</th>
+            <th>Ref</th>
+            <th>Forest R</th>
+            <th>Created</th>
+            <th>Expiry</th>
+          </tr>
+        </thead>
+        <tbody id="tokenRows"></tbody>
+      </table>
     </section>
 
     <section id="panelKillSwitch" class="hidden">
-      <div class="placeholder-panel">Kill switch tab — FOR-182</div>
+      <div class="kill-panel">
+        <label>
+          Payment-authoritative forest UUID (R)
+          <input
+            id="forestR"
+            type="text"
+            placeholder="00000000-0000-4000-8000-000000000001"
+            size="42"
+          />
+        </label>
+        <button type="button" id="loadKillSwitch">Load status</button>
+        <button type="button" id="toggleKillSwitch" disabled>
+          Enable / Disable
+        </button>
+        <p id="killStatus" class="kill-status muted">Not loaded</p>
+      </div>
     </section>
 
     <dialog id="rejectDialog">
