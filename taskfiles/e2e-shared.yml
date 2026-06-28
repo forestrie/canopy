@@ -276,12 +276,6 @@ tasks:
         MANIFEST_ES256=$(cat "$MANIFEST_ES256")
         MANIFEST_KS256=$(cat "$MANIFEST_KS256")
 
-        task e2e-univocity:verify MANIFEST="$MANIFEST_ES256"
-        task e2e-univocity:verify MANIFEST="$MANIFEST_KS256"
-        task e2e-univocity:verify-pair \
-          MANIFEST_ES256="$MANIFEST_ES256" \
-          MANIFEST_KS256="$MANIFEST_KS256"
-
         task e2e-univocity:write-env-file \
           MANIFEST_ES256="$MANIFEST_ES256" \
           MANIFEST_KS256="$MANIFEST_KS256"

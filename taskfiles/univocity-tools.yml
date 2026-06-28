@@ -3,7 +3,7 @@ version: "3"
 
 vars:
   INSTALL_DIR: '{{.INSTALL_DIR | default ".cache/univocity-tools"}}'
-  UNIVOCITY_TOOLS_VERSION: '{{.UNIVOCITY_TOOLS_VERSION | default "latest"}}'
+  UNIVOCITY_TOOLS_VERSION: '{{.UNIVOCITY_TOOLS_VERSION | default "v0.6.0"}}'
   UNIVOCITY_TOOLS_TASKFILE:
     sh: |
       set -euo pipefail

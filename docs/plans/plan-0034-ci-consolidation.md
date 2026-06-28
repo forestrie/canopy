@@ -21,7 +21,8 @@ Retired **`pr-dev-deploy-e2e.yml`** and **`api-e2e-playwright.yml`**.
 
 Per alg (ES256 / KS256), independently:
 
-- **No address input** → ephemeral Imutable deploy (`task e2e-univocity:deploy-one`);
+- **No address input** → ephemeral Imutable deploy (`deploy provision e2e` via
+  `task e2e-univocity:ci-prepare`; see [plan-0049](plan-0049-e2e-imutable-provision-consolidation.md));
   `E2E_UNIVOCITY_*_ALLOW_BOOTSTRAP=true`; full bootstrap specs run.
 - **Address supplied** → require matching bootstrap key (PEM b64 / key b64); derive
   log id from address; `ALLOW_BOOTSTRAP=false`; bootstrap mutating specs skip for

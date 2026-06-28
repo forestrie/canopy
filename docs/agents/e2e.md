@@ -41,7 +41,8 @@ custodian → coordinator (when coordinator vars are set).
 - Bootstrap/system: `CUSTODIAN_APP_TOKEN`, `CANOPY_OPS_ADMIN_TOKEN`, Custodian URL
 - Coordinator: `DELEGATION_COORDINATOR_URL`, `COORDINATOR_APP_TOKEN`
 - Univocity chain-binding: from **`.work/e2e-univocity.env`** after preflight (see
-  [plan-0032](../plans/plan-0032-univocity-imutable-e2e-provision.md))
+  [plan-0032](../plans/plan-0032-univocity-imutable-e2e-provision.md),
+  [plan-0049](../plans/plan-0049-e2e-imutable-provision-consolidation.md))
 - **`UNIVOCITY_SERVICE_URL`** — arbor service base for genesis/grant forwarding; preflight
   deploy-readiness probe (plan-0047)
 - Provision secrets: **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`** (stored config; preflight
