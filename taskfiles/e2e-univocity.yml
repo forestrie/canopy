@@ -82,93 +82,20 @@ tasks:
           exit 1
         }
         RUN_ID="${E2E_PROVISION_RUN_ID:-$(date +%s)}"
-        PROPOSAL="{{.PROPOSAL_DIR}}/proposal-{{.ALG}}-${RUN_ID}.json"
-        BOOTSTRAP_ARGS=()
-        if [ "{{.ALG}}" = "es256" ]; then
-          BOOTSTRAP_ARGS=(
-            --bootstrap-es256-generate
-            --bootstrap-es256-pem-out "{{.ES256_BOOTSTRAP_PEM}}"
-          )
-        elif [ "{{.ALG}}" = "ks256" ]; then
-          BOOTSTRAP_ARGS=(
-            --bootstrap-ks256-generate
-            --bootstrap-ks256-key-out "{{.KS256_BOOTSTRAP_KEY}}"
-          )
-        else
-          echo "unknown ALG: {{.ALG}}" >&2
-          exit 1
-        fi
-        "{{.DEPLOYER_BIN}}" deploy propose imutable \
+        export E2E_PROVISION_RUN_ID="$RUN_ID"
+        "{{.DEPLOYER_BIN}}" deploy provision e2e \
           --source-root "{{.ROOT_DIR}}" \
+          --work-dir "{{.ROOT_DIR}}/.work" \
           --release-root "{{.RELEASE_ROOT}}" \
-          --bootstrap-alg "{{.ALG}}" \
-          --deploy-key "${DEPLOY_KEY:?DEPLOY_KEY is required}" \
           --rpc-url "$RPC" \
-          "${BOOTSTRAP_ARGS[@]}" \
-          --out "$PROPOSAL"
-        EXEC_LOG=$(mktemp)
-        "{{.DEPLOYER_BIN}}" deploy execute "$PROPOSAL" \
-          --source-root "{{.ROOT_DIR}}" \
-          --deploy-key "$DEPLOY_KEY" \
-          --rpc-url "$RPC" 2>&1 | tee "$EXEC_LOG"
-        CHAIN_ID=$(jq -r '.chainId' "$PROPOSAL")
-        ADDR=$(jq -r '.imutableUnivocity' "$PROPOSAL")
-        DEPLOYED=$(
-          grep -oE 'ImutableUnivocity deployed at: 0x[a-fA-F0-9]{40}' "$EXEC_LOG" \
-            | tail -1 \
-            | awk '{print $NF}'
-        )
-        rm -f "$EXEC_LOG"
-        if [ -n "$DEPLOYED" ]; then
-          DEPLOYED_LC=$(echo "$DEPLOYED" | tr 'A-Z' 'a-z')
-          ADDR_LC=$(echo "$ADDR" | tr 'A-Z' 'a-z')
-          if [ "$DEPLOYED_LC" != "$ADDR_LC" ]; then
-            echo "using execute receipt address ${DEPLOYED} (proposal had ${ADDR})" >&2
-            jq --arg addr "$DEPLOYED" '.imutableUnivocity = $addr' "$PROPOSAL" > "${PROPOSAL}.tmp"
-            mv "${PROPOSAL}.tmp" "$PROPOSAL"
-            ADDR="$DEPLOYED"
-          fi
-        fi
-        if [ -z "$ADDR" ] || [ "$ADDR" = "null" ]; then
-          echo "proposal missing imutableUnivocity address after execute" >&2
-          exit 1
-        fi
-        FROM=$(jq -r '.from' "$PROPOSAL")
-        echo "waiting for contract code at ${ADDR}..."
-        for i in $(seq 1 30); do
-          CODE=$(cast code "$ADDR" --rpc-url "$RPC" 2>/dev/null || echo "0x")
-          if [ -n "$CODE" ] && [ "$CODE" != "0x" ]; then
-            echo "contract confirmed at ${ADDR}"
-            break
-          fi
-          if [ "$i" -eq 30 ]; then
-            echo "timeout waiting for contract code at ${ADDR}" >&2
-            exit 1
-          fi
-          sleep 2
-        done
-        NONCE=$(cast nonce "$FROM" --rpc-url "$RPC" --block latest 2>/dev/null || cast nonce "$FROM" --rpc-url "$RPC")
-        echo "deployer ${FROM} nonce after deploy: ${NONCE}"
-        SHORT=$(echo "$ADDR" | tr 'A-Z' 'a-z' | sed 's/^0x//' | cut -c1-8)
-        MANIFEST="{{.PROPOSAL_DIR}}/manifest-{{.ALG}}-${CHAIN_ID}-${SHORT}.json"
-        jq -n \
-          --arg kind "imutable-deployment" \
-          --argjson version 1 \
-          --arg bootstrapAlg "{{.ALG}}" \
-          --argjson chainId "$CHAIN_ID" \
-          --arg imutableUnivocity "$ADDR" \
-          --arg publishMode "eoa" \
-          --arg from "$(jq -r '.from' "$PROPOSAL")" \
-          '{
-            kind: $kind,
-            version: $version,
-            bootstrapAlg: $bootstrapAlg,
-            chainId: $chainId,
-            imutableUnivocity: $imutableUnivocity,
-            publishMode: $publishMode,
-            from: $from
-          }' > "$MANIFEST"
-        echo "$MANIFEST" > "{{.PROPOSAL_DIR}}/provision-${RUN_ID}-{{.ALG}}.manifest"
+          --deploy-key "${DEPLOY_KEY:?DEPLOY_KEY is required}" \
+          --run-id "$RUN_ID" \
+          --alg "{{.ALG}}" \
+          --skip-fetch \
+          --proposal-dir "{{.PROPOSAL_DIR}}" \
+          --bootstrap-es256-pem-out "{{.ES256_BOOTSTRAP_PEM}}" \
+          --bootstrap-ks256-key-out "{{.KS256_BOOTSTRAP_KEY}}"
+        MANIFEST=$(cat "{{.PROPOSAL_DIR}}/provision-${RUN_ID}-{{.ALG}}.manifest")
         echo "manifest: $MANIFEST"
         cat "$MANIFEST"
 
@@ -180,12 +107,46 @@ tasks:
       Usage: doppler run -- task e2e-univocity:provision
     deps: [extract]
     cmds:
-      - task: deploy-one
-        vars:
-          ALG: es256
-      - task: deploy-one
-        vars:
-          ALG: ks256
+      - mkdir -p "{{.PROPOSAL_DIR}}" "{{.ROOT_DIR}}/.work"
+      - |
+        set -euo pipefail
+        trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+        resolve_rpc_url() {
+          local from_rpc from_e2e
+          from_rpc="$(trim_ws "${RPC_URL:-}")"
+          from_e2e="$(trim_ws "${E2E_UNIVOCITY_RPC_URL:-}")"
+          if [ -n "$from_rpc" ]; then
+            printf '%s' "$from_rpc"
+          elif [ -n "$from_e2e" ]; then
+            printf '%s' "$from_e2e"
+          else
+            return 1
+          fi
+        }
+        RPC="$(resolve_rpc_url)" || {
+          echo "E2E_UNIVOCITY_RPC_URL or RPC_URL is required" >&2
+          exit 1
+        }
+        RUN_ID="${E2E_PROVISION_RUN_ID:-$(date +%s)}"
+        export E2E_PROVISION_RUN_ID="$RUN_ID"
+        "{{.DEPLOYER_BIN}}" deploy provision e2e \
+          --source-root "{{.ROOT_DIR}}" \
+          --work-dir "{{.ROOT_DIR}}/.work" \
+          --release-root "{{.RELEASE_ROOT}}" \
+          --rpc-url "$RPC" \
+          --deploy-key "${DEPLOY_KEY:?DEPLOY_KEY is required}" \
+          --run-id "$RUN_ID" \
+          --skip-fetch \
+          --proposal-dir "{{.PROPOSAL_DIR}}" \
+          --bootstrap-es256-pem-out "{{.ES256_BOOTSTRAP_PEM}}" \
+          --bootstrap-ks256-key-out "{{.KS256_BOOTSTRAP_KEY}}"
+
+  ci-prepare:
+    desc: |
+      CI prepare Univocity per alg (tests-system.yml). Writes GITHUB_OUTPUT when set.
+      Requires DEPLOY_KEY, E2E_UNIVOCITY_RPC_URL, INPUT_* env vars, GH_TOKEN for fetch.
+    cmds:
+      - bash taskfiles/e2e-univocity-ci-prepare.sh
 
   env-from-manifest:
     desc: |

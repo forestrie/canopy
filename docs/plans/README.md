@@ -19,6 +19,7 @@ Platform-wide plans: [devdocs/plans/](../../../devdocs/plans/README.md).
 | [plan-0044](plan-0044-package-d-cross-stack-e2e.md) | IN_PROGRESS | FOR-201 Package D cross-stack e2e confidence |
 | [plan-0046](plan-0046-package-d-review-remediation.md) | IMPLEMENTED | FOR-201 Package D review remediation (PR #57) |
 | [plan-0047](plan-0047-ks256-byok-register-grant-remediation.md) | IMPLEMENTED | FOR-204 KS256 BYOK register-grant + deploy readiness |
+| [plan-0049](plan-0049-e2e-imutable-provision-consolidation.md) | IMPLEMENTED | E2e Imutable provision library + CI consolidation |
 | [plan-0045](plan-0045-package-c-review-remediation.md) | DRAFT | FOR-115 Package C delegation console review |
 | [plan-0048](plan-0048-package-f-hygiene-batch.md) | DRAFT | FOR-214 Package F hygiene batch (orchestration index) |
 | [plan-0039](plan-0039-self-service-onboard-provisioning.md) | COMPLETE | FOR-166 self-service onboard (closed 2026-06-27) |
@@ -26,7 +27,7 @@ Platform-wide plans: [devdocs/plans/](../../../devdocs/plans/README.md).
 | [plan-0041](plan-0041-canopy-admin-ops-console.md) | DRAFT | FOR-172 admin ops console (FOR-180–183) |
 | [plan-0042](plan-0042-admin-ops-remediation.md) | DRAFT | FOR-172 review remediation (FOR-184–188) |
 | [plan-0043](plan-0043-admin-ops-followup-remediation.md) | DRAFT | FOR-172 post-FOR-181 review follow-up |
-| [plan-0032](plan-0032-univocity-imutable-e2e-provision.md) | DRAFT | Fresh Imutable Safe deploy for e2e |
+| [plan-0032](plan-0032-univocity-imutable-e2e-provision.md) | IMPLEMENTED | Ephemeral Imutable EOA deploy for e2e (see plan-0049) |
 | [plan-0031](plan-0031-ks256-forest-roots.md) | ACTIVE | KS256 forest roots |
 | [plan-0033](plan-0033-ks256-register-statement.md) | IMPLEMENTED | KS256 register-statement verify |
 | [plan-0028](plan-0028-forest-genesis-chain-binding.md) | DRAFT | Genesis v1 chain binding POST |

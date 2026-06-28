@@ -69,7 +69,7 @@ Deployed coordinator webhook delivery requires Cloudflare Secrets Store
 
 **Univocity ephemeral provision** (bootstrap **system** specs):
 
-Provisioned automatically in preflight (see [plan-0032](../docs/plans/plan-0032-univocity-imutable-e2e-provision.md)). Playwright reads **`.work/e2e-univocity.env`**:
+Provisioned automatically in preflight (see [plan-0032](../docs/plans/plan-0032-univocity-imutable-e2e-provision.md), [plan-0049](../docs/plans/plan-0049-e2e-imutable-provision-consolidation.md)). Playwright reads **`.work/e2e-univocity.env`**:
 
 - **`E2E_UNIVOCITY_ADDRESS_*_BOOTSTRAP`**, **`E2E_UNIVOCITY_GENESIS_LOG_ID_*`**
 - **`E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE`** — ES256 root grant signing
@@ -82,9 +82,9 @@ bootstrap system specs skip; other projects still run.
 
 **Manual provision:** `doppler run -- task e2e-univocity:provision`
 
-Requires **`gh`** auth, Foundry **`cast`**, Doppler **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`**, and **univocity-tools v0.5.1+** (sibling `task install:dev` or release binaries).
+Requires **`gh`** auth, Foundry **`cast`**, Doppler **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`**, and **univocity-tools v0.6.0+** (`deploy provision e2e`; sibling `task install:dev` or release binaries pinned in CI).
 
-**CI:** **`prepare-univocity`** in **tests-system.yml** provisions ephemeral contracts by default (or accepts supplied addresses + keys).
+**CI:** **`task e2e-univocity:ci-prepare`** in **tests-system.yml** provisions ephemeral contracts by default (or accepts supplied addresses + keys).
 
 Run ES256 bootstrap specs only:
 
