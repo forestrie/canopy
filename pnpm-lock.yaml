@@ -299,6 +299,9 @@ importers:
       '@canopy/encoding':
         specifier: workspace:*
         version: link:../../shared/encoding
+      '@forestrie/canopy-e2e-kit':
+        specifier: workspace:*
+        version: link:../e2e-kit
       '@forestrie/delegation-cose':
         specifier: workspace:*
         version: link:../../libs/delegation-cose
@@ -324,6 +327,22 @@ importers:
       viem:
         specifier: ^2.21.0
         version: 2.45.0(typescript@5.9.3)(zod@3.25.76)
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@24.8.1)(tsx@4.21.0)
+
+  packages/tests/e2e-kit:
+    dependencies:
+      cbor-x:
+        specifier: ^1.5.9
+        version: 1.6.0
+    devDependencies:
+      '@playwright/test':
+        specifier: ^1.48.0
+        version: 1.56.0
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@24.8.1)(tsx@4.21.0)

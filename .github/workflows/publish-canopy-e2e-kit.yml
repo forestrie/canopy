@@ -1,0 +1,43 @@
+name: Publish canopy-e2e-kit
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'canopy-e2e-kit-v*'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Publish @forestrie/canopy-e2e-kit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.6.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          registry-url: https://npm.pkg.github.com
+          scope: '@forestrie'
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Test kit
+        run: pnpm --filter @forestrie/canopy-e2e-kit test
+
+      - name: Build kit
+        run: pnpm --filter @forestrie/canopy-e2e-kit build
+
+      - name: Publish to GitHub Packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm --filter @forestrie/canopy-e2e-kit publish --no-git-checks
