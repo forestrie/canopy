@@ -47,8 +47,8 @@ Deferred hygiene from post-Mode-C productization:
 
 ```bash
 # Mandate stack (sequential)
-git worktree add ~/Dev/personal/forestrie-wt/mandate-hygiene main
-cd ~/Dev/personal/forestrie-wt/mandate-hygiene
+git worktree add ~/Dev/personal/forestrie/.worktrees/mandate-hygiene main
+cd ~/Dev/personal/forestrie/.worktrees/mandate-hygiene
 gt trunk
 gt create robin/for-215-hygiene-design -m "docs: Package F design lock (FOR-215)"
 gt create robin/for-119-packages-install -m "fix(deps): GitHub Packages delegation-cose (FOR-119)"
@@ -59,14 +59,14 @@ gt create robin/for-216-hygiene-review -m "chore: Package F review pass (FOR-216
 gt submit --stack
 
 # Canopy (parallel, if FOR-119 needs publish fix)
-git worktree add ~/Dev/personal/forestrie-wt/canopy-hygiene main
-cd ~/Dev/personal/forestrie-wt/canopy-hygiene
+git worktree add ~/Dev/personal/forestrie/.worktrees/canopy-hygiene main
+cd ~/Dev/personal/forestrie/.worktrees/canopy-hygiene
 gt trunk
 gt create robin/for-119-packages-publish -m "fix(publish): delegation-cose tarball (FOR-119)"
 
 # Devdocs (parallel, FOR-137)
-git worktree add ~/Dev/personal/forestrie-wt/devdocs-hygiene main
-cd ~/Dev/personal/forestrie-wt/devdocs-hygiene
+git worktree add ~/Dev/personal/forestrie/.worktrees/devdocs-hygiene main
+cd ~/Dev/personal/forestrie/.worktrees/devdocs-hygiene
 gt trunk
 gt create robin/for-137-cert-edge-rate-limit -m "docs(ops): certificate POST edge RL (FOR-137)"
 ```

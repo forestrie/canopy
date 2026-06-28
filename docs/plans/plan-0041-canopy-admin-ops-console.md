@@ -163,7 +163,7 @@ Rows S8–S13: manual UI against dev lane after mandate provision smoke.
 ## Implementation stack
 
 **Repo:** canopy  
-**Worktree:** `~/Dev/personal/forestrie-wt/canopy-onboard-close`  
+**Worktree:** `~/Dev/personal/forestrie/.worktrees/canopy-for-183-smoke-check`  
 **Graphite branch:** `for/admin-ui-1-api-json` → `for/admin-ui-2-requests` →
 `for/admin-ui-3-tokens-killswitch` → `for/admin-ui-4-pages-deploy`
 

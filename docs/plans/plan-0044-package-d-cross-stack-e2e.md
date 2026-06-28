@@ -40,8 +40,8 @@
 ## Worktree + Graphite
 
 ```bash
-git worktree add ~/Dev/personal/forestrie-wt/canopy-e2e main
-cd ~/Dev/personal/forestrie-wt/canopy-e2e
+git worktree add ~/Dev/personal/forestrie/.worktrees/canopy-e2e main
+cd ~/Dev/personal/forestrie/.worktrees/canopy-e2e
 gt trunk
 gt create robin/for-202-e2e-prerequisites -m "chore(e2e): Package D CI prerequisites (FOR-202)"
 gt create robin/for-127-webhook-push-tunnel -m "test(e2e): webhook push tunnel (FOR-127)"

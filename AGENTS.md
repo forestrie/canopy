@@ -7,6 +7,27 @@ Human setup: [README.md](README.md). Platform glossary:
 **Plans:** After a Cursor-built plan exists, persist under `docs/plans/`.
 Full rules: `.cursor/rules/docs-workflow.mdc`.
 
+## Git worktrees
+
+The **home clone** (`~/Dev/personal/forestrie/canopy`) stays on **`main`**
+(fast-forwarded to `origin/main`). Do not check out feature branches here.
+
+**Agents and parallel work** use a git worktree under **`../.worktrees/`**
+(resolves to `~/Dev/personal/forestrie/.worktrees/`):
+
+```bash
+# from this repo root
+git fetch origin
+git worktree add ../.worktrees/canopy-for-<issue>-<slug> \
+  -b robin/for-<issue>-<slug> origin/main
+# existing branch:
+git worktree add ../.worktrees/canopy-for-<issue>-<slug> robin/for-<issue>-<slug>
+```
+
+When work merges to `main`, remove the worktree:
+`git worktree remove ../.worktrees/<name>`. Do **not** use
+`~/Dev/personal/forestrie-wt/` (retired).
+
 ## Services (ports)
 
 | Package | Port | Purpose |
