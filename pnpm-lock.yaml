@@ -333,6 +333,15 @@ importers:
 
   packages/tests/e2e-kit:
     dependencies:
+      '@forestrie/delegation-cose':
+        specifier: workspace:^
+        version: link:../../libs/delegation-cose
+      '@noble/curves':
+        specifier: ^1.9.7
+        version: 1.9.7
+      '@noble/hashes':
+        specifier: ^1.7.1
+        version: 1.8.0
       cbor-x:
         specifier: ^1.5.9
         version: 1.6.0
@@ -343,6 +352,9 @@ importers:
       typescript:
         specifier: ^5.9.2
         version: 5.9.3
+      viem:
+        specifier: ^2.21.0
+        version: 2.45.0(typescript@5.9.3)(zod@3.25.76)
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@24.8.1)(tsx@4.21.0)
@@ -2586,6 +2598,7 @@ packages:
 
   uuid@10.0.0:
     resolution: {integrity: sha512-8XkAphELsDnEGrDxUOHB3RGvXz6TeuYSGEZBOjtTtPm2lwhGBjLgOzLHB63IUWfBpNucQjND6d3AOudO+H3RWQ==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uuid@11.1.0:
@@ -2594,6 +2607,7 @@ packages:
 
   uuid@9.0.1:
     resolution: {integrity: sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uvu@0.5.6:
