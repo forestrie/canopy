@@ -211,7 +211,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
         run: task e2e-univocity:ci-prepare
 
-	system-tests:
+  system-tests:
     name: System tests (${{ github.event_name == 'push' && 'dev' || inputs.environment }})
     needs: [prepare-univocity]
     if: always() && needs.prepare-univocity.result == 'success'
@@ -259,7 +259,6 @@ jobs:
           DELEGATION_COORDINATOR_URL: ${{ vars.DELEGATION_COORDINATOR_URL }}
           COORDINATOR_APP_TOKEN: ${{ secrets.COORDINATOR_APP_TOKEN }}
           UNIVOCITY_SERVICE_URL: ${{ vars.UNIVOCITY_SERVICE_URL }}
-          E2E_MODE_C_WEBHOOK_IN_CI: "1"
           E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP: ${{ needs.prepare-univocity.outputs.ks256_address }}
           E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP: ${{ needs.prepare-univocity.outputs.es256_address }}
           E2E_UNIVOCITY_RPC_URL: ${{ vars.E2E_UNIVOCITY_RPC_URL }}
@@ -321,24 +320,11 @@ jobs:
           else
             OPS="$(trim_ws "${CANOPY_OPS_ADMIN_TOKEN:-}")"
             if [ -z "$OPS" ]; then
-              echo "::error::CANOPY_OPS_ADMIN_TOKEN is required for system e2e (Mode C webhook seal, FOR-202)."
+              echo "::error::CANOPY_OPS_ADMIN_TOKEN is required for bootstrap system e2e (onboard-token genesis)."
               exit 1
             fi
             COORD_URL="$(trim_ws "${DELEGATION_COORDINATOR_URL:-}")"
             COORD_TOKEN="$(trim_ws "${COORDINATOR_APP_TOKEN:-}")"
-            if [ -z "$COORD_URL" ] || [ -z "$COORD_TOKEN" ]; then
-              echo "::error::DELEGATION_COORDINATOR_URL and COORDINATOR_APP_TOKEN are required for system BYOK e2e."
-              exit 1
-            fi
-            if ! command -v cloudflared >/dev/null 2>&1; then
-              CLOUDFLARED_VERSION="2026.6.1"
-              CLOUDFLARED_SHA256="ccd02ec216c62bfa573395d8f72cb2e91e95cbdf8726a8acc06b3e2d9aa31526"
-              echo "Installing cloudflared ${CLOUDFLARED_VERSION} for Mode C webhook push e2e (FOR-127)..."
-              curl -fsSL -o /tmp/cloudflared.deb \
-                "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64.deb"
-              echo "${CLOUDFLARED_SHA256}  /tmp/cloudflared.deb" | sha256sum -c -
-              sudo dpkg -i /tmp/cloudflared.deb || sudo apt-get install -f -y
-            fi
             task e2e-shared:validate-univocity-deploy
             pnpm --filter @canopy/api-e2e exec playwright install chromium
             pnpm --filter @canopy/api-e2e exec playwright test \

@@ -53,15 +53,11 @@ Required keys in the Doppler config include at least:
 - **`CANOPY_BASE_URL`** _or_ **`CANOPY_FQDN`** — worker origin. Playwright resolves `CANOPY_BASE_URL` first; if unset, it builds `https://…` from `CANOPY_FQDN` (same logic as `.github/workflows/tests-system.yml`). Doppler `dev` may only define **`CANOPY_FQDN`**.
 - **`SCRAPI_API_KEY`** — bearer token for authorized fixtures (when used)
 - **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**, **`CANOPY_OPS_ADMIN_TOKEN`** — for **system** specs (child custody keys + onboard-token genesis)
-- **`DELEGATION_COORDINATOR_URL`**, **`COORDINATOR_APP_TOKEN`** — required for full **`task test:e2e`** system BYOK / Mode C specs; optional for preflight-only (set **`VALIDATE_REQUIRE_COORDINATOR=1`** to enforce in preflight)
-- **`E2E_MODE_C_WEBHOOK_PUBLIC_BASE`** — optional manual public HTTPS base for coordinator webhook push (ngrok); CI uses auto **cloudflared** quick tunnel
-- **`E2E_MODE_C_ALLOW_PULL_FALLBACK=1`** — local debug only: allow pending-delegation pull when webhook push fails (not CI)
-- **`E2E_MODE_C_WEBHOOK_IN_CI=1`** — run Mode C webhook seal in GitHub system tests (set in `tests-system.yml` since plan-0047 / FOR-204)
+- **`DELEGATION_COORDINATOR_URL`**, **`COORDINATOR_APP_TOKEN`** — required for **`coordinator`** Playwright project; optional on push when coordinator env is unset (`tests-system.yml` skips coordinator tier with a warning)
 - **`UNIVOCITY_SERVICE_URL`** — arbor univocity HTTP base (no path suffix); preflight calls **`/version`** to verify FOR-123 deploy (ADR-0006). Opt out: **`E2E_SKIP_UNIVOCITY_DEPLOY_READINESS=true`**
 
-Install **cloudflared** locally for Mode C webhook push when
-`E2E_MODE_C_WEBHOOK_PUBLIC_BASE` is unset (CI pins **2026.6.1** with SHA256 verify in
-`tests-system.yml`).
+Cross-repo Mode C webhook seal and forest genesis registration run in
+**`forestrie/system-testing`** — not `tests-system.yml`.
 
 Deployed coordinator webhook delivery requires Cloudflare Secrets Store
 (`task cf:coordinator:ensure-webhook-signing-key`). Local `wrangler dev` uses

@@ -57,40 +57,23 @@ statement signing (ES256: 32-byte `kid` = x; KS256: 20-byte `kid` = address).
 ### Non-Custodian log-root signing key (BYOK)
 
 **Terminology:** the **log root key** that signs **delegation certificates** — not
-the delegated checkpoint signer in `grantData`. Default `task test:e2e` includes
-non-Custodian log-root signing when coordinator + ops admin env is set (Package D).
+the delegated checkpoint signer in `grantData`. Cross-repo Package D flows (Mode C
+webhook seal, forest genesis registration, coordinator Custodian proxy) run in
+[`forestrie/system-testing`](https://github.com/forestrie/system-testing).
 
-| Spec                                               | Project     | Default tier?                          | Role                                                                                             |
-| -------------------------------------------------- | ----------- | -------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `coordinator/coordinator-byok-material.spec.ts`    | coordinator | Yes (when env set)                     | Runner-owned root; coordinator 503 pending → material → issue; `verifyByokDelegationCertificate` |
-| `coordinator/coordinator-byok-public-root.spec.ts` | coordinator | Yes (when env set)                     | Upload root + GET CBOR `public-root`; cert verifies against rehydrated coordinator root          |
-| `system/coordinator-delegation-issuance.spec.ts`   | system      | Yes (when coordinator + custodian set) | Same runner-signed material; **Custodian proxy** on KMS miss                                     |
-| `system/byok-checkpoint-seal.spec.ts`              | system      | Yes — `E2E_BYOK_SEAL_STRETCH=1`        | Full SCRAPI checkpoint seal with wallet-signed material                                          |
-| `system/byok-mode-c-webhook-seal.spec.ts`          | system      | Yes (when coordinator + ops admin set) | Mode C genesis webhook push + KS256 seal (FOR-126)                                               |
+| Spec                                               | Project     | Default tier?                   | Role                                                                                             |
+| -------------------------------------------------- | ----------- | ------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `coordinator/coordinator-byok-material.spec.ts`    | coordinator | Yes (when env set)              | Runner-owned root; coordinator 503 pending → material → issue; `verifyByokDelegationCertificate` |
+| `coordinator/coordinator-byok-public-root.spec.ts` | coordinator | Yes (when env set)              | Upload root + GET CBOR `public-root`; cert verifies against rehydrated coordinator root          |
+| `system/byok-checkpoint-seal.spec.ts`              | system      | Yes — `E2E_BYOK_SEAL_STRETCH=1` | Full SCRAPI checkpoint seal with wallet-signed material                                          |
 
 **Not BYOK:** `coordinator-api.spec.ts` (custodial pre-mint before wallet route);
 all other `tests/system/*` (Custodian grant/statement keys).
-
-**Not yet in e2e:** SCRAPI register-grant with non-Custodian grant signer
-([arbor plan-0003](https://github.com/forestrie/arbor/blob/main/docs/plan-0003-non-custodial-checkpoint-support.md));
-Sealer consuming coordinator `public-root` on deployed stack
-([arbor plan-0005](https://github.com/forestrie/arbor/blob/main/docs/plan-0005-sealer-trust-root-end-to-end.md));
-Canopy receipt verify BYOK in Playwright.
 
 ```bash
 # Primary BYOK (coordinator tier, CI when env set)
 doppler run --project canopy --config dev -- \
   pnpm --filter @canopy/api-e2e test:e2e:coordinator
-
-# System tier + Custodian proxy (default when env complete)
-doppler run --project canopy --config dev -- \
-  pnpm --filter @canopy/api-e2e exec playwright test \
-    tests/system/coordinator-delegation-issuance.spec.ts
-
-# Mode C webhook push seal (cloudflared auto-tunnel when public base unset)
-doppler run --project canopy --config dev -- \
-  pnpm --filter @canopy/api-e2e exec playwright test \
-    tests/system/byok-mode-c-webhook-seal.spec.ts
 ```
 
 Flow docs: [`tests/system/docs/README.md`](tests/system/docs/README.md).
@@ -135,9 +118,7 @@ Opt out: **`SKIP_UNIVOCITY_PROVISION=true`** (bootstrap system specs skip per va
 - **`CUSTODIAN_URL`**, **`CUSTODIAN_APP_TOKEN`**: required by `coordinator-api.spec.ts` for custodial pre-wallet mint and custody-keys orchestration.
 - Deployed **Custodian** must have **`DELEGATION_COORDINATOR_URL`** configured for the stretch spec’s proxy path (ledger env; not a Playwright env var).
 - CI runs this project after **custodian** when both coordinator env vars are set (`.github/workflows/tests-system.yml`); **`deploy-workers`** on **dev** requires coordinator e2e (fails if vars/secrets missing).
-- Default **system** tier includes `coordinator-delegation-issuance` and `byok-mode-c-webhook-seal` when env is complete (Package D / FOR-201; CI sets **`E2E_MODE_C_WEBHOOK_IN_CI=1`** per plan-0047). Preflight checks **`UNIVOCITY_SERVICE_URL/version`** ≥ FOR-123 before system tests. `byok-checkpoint-seal` remains opt-in (`E2E_BYOK_SEAL_STRETCH=1`).
-- **`E2E_MODE_C_WEBHOOK_PUBLIC_BASE`**: optional manual public HTTPS base for webhook push; CI installs **cloudflared** for auto quick tunnel.
-- **`E2E_MODE_C_ALLOW_PULL_FALLBACK=1`**: local debug only — pending-delegation pull when push fails (not CI).
+- `byok-checkpoint-seal` remains opt-in (`E2E_BYOK_SEAL_STRETCH=1`). Cross-repo Package D specs run in **`forestrie/system-testing`**.
 
 **Hydrating coordinator secrets locally**
 
@@ -170,14 +151,12 @@ Set **`COORDINATOR_APP_TOKEN`** in Doppler **`canopy/dev`** (masked) after fores
 | `integration/api.spec.ts`                        | Cross-cutting HTTP (e.g. CORS OPTIONS).                                                                                                                                |
 | `integration/observability.spec.ts`              | `/api/health`, `/.well-known/scitt-configuration`.                                                                                                                     |
 | `system/grants-bootstrap.spec.ts`                | Ephemeral Imutable bootstrap: genesis + contract-signed root grant + register-grant (ES256 + KS256). [Doc](tests/system/docs/grants-bootstrap.md).                     |
-| `system/forest-genesis-registration.spec.ts`     | Onboard-token mint + payment-authoritative genesis; `GF_DERIVED` endorsement descendant registration (ES256). Mutating — ignored on prod project.                      |
 | `system/bootstrap-log-first-entry.spec.ts`       | `POST /register/{bootstrap}/entries` (ES256 + KS256). [Doc](tests/system/docs/bootstrap-log-first-entry.md).                                                           |
 | `system/bootstrap-child-auth-grant.spec.ts`      | Root contract bootstrap + child auth grant (owner-root envelope); ES256 + KS256. [Doc](tests/system/docs/bootstrap-child-auth-grant.md).                               |
 | `system/auth-data-log-chain.spec.ts`             | Root → child auth log → data log delegation chain; ES256 + KS256. [Doc](tests/system/docs/auth-data-log-chain.md).                                                     |
 | `custodian/custodian-api.spec.ts`                | Direct **`fetch`** to deployed Custodian: ops + **`/v1/api/…`** custody key routes.                                                                                    |
 | `coordinator/coordinator-api.spec.ts`            | Phase 3 coordinator APIs; **coordinator** direct issue of stored material (custodial pre-mint).                                                                        |
 | `coordinator/coordinator-byok-material.spec.ts`  | **BYOK:** runner-owned log root; pending → material → coordinator issue. [System doc](tests/system/docs/README.md#non-custodian-log-root-signing-key-byok-delegation). |
-| `system/coordinator-delegation-issuance.spec.ts` | Default system tier: **Custodian proxy** on KMS miss with runner-signed BYOK material. [Doc](tests/system/docs/coordinator-delegation-issuance.md).                    |
 
 - Shared e2e utils: `e2e-env-guards.ts`, `e2e-bootstrap-variant.ts`, `e2e-grant-flags.ts`, …
 

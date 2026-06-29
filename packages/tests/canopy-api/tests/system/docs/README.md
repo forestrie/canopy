@@ -5,15 +5,20 @@ Spec files: `tests/system/*.spec.ts`. Shared flows:
 
 **Playwright project:** `system` (`pnpm --filter @canopy/api-e2e test:e2e:system`).
 
+Cross-repo Package D flows (`forest-genesis-registration`, Mode C webhook seal,
+coordinator delegation issuance) live in
+[`forestrie/system-testing`](https://github.com/forestrie/system-testing) —
+see [devdocs plan-0017](https://github.com/forestrie/devdocs/blob/main/plans/plan-0017-system-testing-phase3.md).
+
 ## Spec map
 
-| Spec file                                 | Doc                                                                        | Depends on base flow   |
-| ----------------------------------------- | -------------------------------------------------------------------------- | ---------------------- |
-| `grants-bootstrap.spec.ts`                | [grants-bootstrap.md](./grants-bootstrap.md)                               | A, B                   |
-| `bootstrap-log-first-entry.spec.ts`       | [bootstrap-log-first-entry.md](./bootstrap-log-first-entry.md)             | A, B, C                |
-| `bootstrap-child-auth-grant.spec.ts`      | [bootstrap-child-auth-grant.md](./bootstrap-child-auth-grant.md)           | A, B                   |
-| `auth-data-log-chain.spec.ts`             | [auth-data-log-chain.md](./auth-data-log-chain.md)                         | A, B, C                |
-| `coordinator-delegation-issuance.spec.ts` | [coordinator-delegation-issuance.md](./coordinator-delegation-issuance.md) | _(opt-in; not SCRAPI)_ |
+| Spec file                            | Doc                                                              | Depends on base flow |
+| ------------------------------------ | ---------------------------------------------------------------- | -------------------- |
+| `grants-bootstrap.spec.ts`           | [grants-bootstrap.md](./grants-bootstrap.md)                     | A, B                 |
+| `bootstrap-log-first-entry.spec.ts`  | [bootstrap-log-first-entry.md](./bootstrap-log-first-entry.md) | A, B, C              |
+| `bootstrap-child-auth-grant.spec.ts` | [bootstrap-child-auth-grant.md](./bootstrap-child-auth-grant.md) | A, B               |
+| `auth-data-log-chain.spec.ts`        | [auth-data-log-chain.md](./auth-data-log-chain.md)               | A, B, C              |
+| `byok-checkpoint-seal.spec.ts`       | [byok-checkpoint-seal.md](./byok-checkpoint-seal.md)             | opt-in stretch       |
 
 ---
 
@@ -24,20 +29,17 @@ that signs **delegation certificates** (BYOK checkpoint authority), **not** the
 delegated checkpoint signer in `grantData`. All SCRAPI specs below mint and sign
 grants/statements via **Custodian KMS custody keys**.
 
-Default `task test:e2e` / `test:e2e:system` exercises non-Custodian log-root
-signing when coordinator + ops admin env is present, including Mode C webhook
-push (`byok-mode-c-webhook-seal`) when `E2E_MODE_C_WEBHOOK_IN_CI=1` is set in CI
-(plan-0047 / FOR-204).
+### E2e coverage (canopy repo)
 
-### E2e coverage
+| Spec                                                                                             | Playwright project | Opt-in?                         | Role                                              |
+| ------------------------------------------------------------------------------------------------ | ------------------ | ------------------------------- | ------------------------------------------------- |
+| [`coordinator-byok-material.spec.ts`](../../coordinator/coordinator-byok-material.spec.ts)       | **coordinator**    | No (`test:e2e:coordinator`)     | Runner-owned root; coordinator direct issue       |
+| [`coordinator-byok-public-root.spec.ts`](../../coordinator/coordinator-byok-public-root.spec.ts) | **coordinator**    | No (`test:e2e:coordinator`)     | Upload root + GET CBOR `public-root`              |
+| [`byok-checkpoint-seal.spec.ts`](../../system/byok-checkpoint-seal.spec.ts)                    | **system**         | Yes — `E2E_BYOK_SEAL_STRETCH=1` | Full SCRAPI checkpoint seal with wallet material    |
 
-| Spec                                                                                              | Playwright project | Opt-in?                              | Non-Custodian key signs                                 | Custodian role                                          |
-| ------------------------------------------------------------------------------------------------- | ------------------ | ------------------------------------ | ------------------------------------------------------- | ------------------------------------------------------- |
-| [`coordinator-byok-material.spec.ts`](../../coordinator/coordinator-byok-material.spec.ts)        | **coordinator**    | No (`test:e2e:coordinator`)          | Delegation cert (`generateEs256RootKeyPair`)            | None — coordinator direct issue                         |
-| [`coordinator-byok-public-root.spec.ts`](../../coordinator/coordinator-byok-public-root.spec.ts)  | **coordinator**    | No (`test:e2e:coordinator`)          | Root + delegation cert                                  | None — `GET …/public-root` CBOR trust root              |
-| [`coordinator-delegation-issuance.spec.ts`](../../system/coordinator-delegation-issuance.spec.ts) | **system**         | When coordinator + custodian env set | Same runner-signed delegation cert                      | **Proxy only** — `POST /v1/api/delegations` on KMS miss |
-| [`byok-checkpoint-seal.spec.ts`](../../system/byok-checkpoint-seal.spec.ts)                       | **system**         | Yes — `E2E_BYOK_SEAL_STRETCH=1`      | Runner root + wallet material + full checkpoint receipt | Coordinator + Sealer on deployed stack                  |
-| [`byok-mode-c-webhook-seal.spec.ts`](../../system/byok-mode-c-webhook-seal.spec.ts)               | **system**         | When coordinator + ops admin env set | KS256 root + webhook push + receipt vs `publicRoot`     | Genesis forward + coordinator webhook (FOR-126)         |
+Cross-repo Mode C webhook seal and coordinator Custodian-proxy issuance:
+**`forestrie/system-testing`** (`byok-mode-c-webhook-seal.spec.ts`,
+`coordinator-delegation-issuance.spec.ts`, `forest-genesis-registration.spec.ts`).
 
 Both assert crypto via `verifyByokDelegationCertificate` in
 [`coordinator-delegation-helpers.ts`](../../utils/coordinator-delegation-helpers.ts).
@@ -45,24 +47,10 @@ Both assert crypto via `verifyByokDelegationCertificate` in
 **Not BYOK:** `coordinator-api.spec.ts` (custodial pre-mint); all other
 `tests/system/*.spec.ts`; `bootstrap-log-first-entry` negative (ephemeral key → **403** only).
 
-### Not yet covered in e2e
-
-| Gap                                                   | Future work                                                                                                        |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| SCRAPI register-grant with non-Custodian grant signer | [arbor plan-0003](https://github.com/forestrie/arbor/blob/main/docs/plan-0003-non-custodial-checkpoint-support.md) |
-| Sealer consuming coordinator `public-root` on stack   | [arbor plan-0005](https://github.com/forestrie/arbor/blob/main/docs/plan-0005-sealer-trust-root-end-to-end.md)     |
-| Canopy receipt verify BYOK in Playwright              | plan-0003 receipt-authority phase                                                                                  |
-| Full checkpoint seal with BYOK delegation             | plan-0005                                                                                                          |
-
 ```bash
 # Primary BYOK (coordinator tier)
 doppler run --project canopy --config dev -- \
   pnpm --filter @canopy/api-e2e test:e2e:coordinator
-
-# System tier + Custodian proxy (default when env complete)
-doppler run --project canopy --config dev -- \
-  pnpm --filter @canopy/api-e2e exec playwright test \
-    tests/system/coordinator-delegation-issuance.spec.ts
 ```
 
 ---
@@ -196,20 +184,6 @@ Canopy: kid matches grantData on D ──► enqueue on T=D
 Same completedGrant(D)
 Sign with auth custody kid (not in D.grantData) ──► signer_mismatch
 ```
-
----
-
-## `coordinator-delegation-issuance.spec.ts`
-
-**Focus:** Default **system-tier e2e** (Package D / FOR-76) for **log root keys not
-held by Custodian**: runner signs delegation material, coordinator stores it,
-**Custodian proxies** `POST /v1/api/delegations` on KMS miss. Skipped when
-coordinator or custodian env is missing. Not the SCRAPI register-grant chain.
-
-Coordinator-only twin (503 pending → material → coordinator direct issue):
-[`coordinator-byok-material.spec.ts`](../../coordinator/coordinator-byok-material.spec.ts).
-
-See [coordinator-delegation-issuance.md](./coordinator-delegation-issuance.md).
 
 ---
 
