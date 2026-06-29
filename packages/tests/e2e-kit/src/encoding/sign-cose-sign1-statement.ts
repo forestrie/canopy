@@ -1,0 +1,44 @@
+/**
+ * Sign COSE Sign1 statement (ES256).
+ * Builds Sig_structure via {@link encodeSigStructure}; signing path must stay
+ * byte-identical to {@link verifyCoseSign1} in canopy-api grant auth.
+ */
+
+import { encodeCoseProtectedMapBytes } from "./encode-cose-protected.js";
+import { encodeCoseSign1Statement } from "./encode-cose-sign1-statement.js";
+import { encodeSigStructure } from "./encode-sig-structure.js";
+
+/**
+ * Sign a statement and produce COSE Sign1 bytes (ES256).
+ *
+ * @param payload - Statement payload bytes
+ * @param kid - Key id (signer binding)
+ * @param privateKey - CryptoKey (EC P-256, usage sign)
+ * @returns COSE Sign1 bytes
+ */
+export async function signCoseSign1Statement(
+  payload: Uint8Array,
+  kid: Uint8Array,
+  privateKey: CryptoKey,
+): Promise<Uint8Array> {
+  const protectedMapBytes = encodeCoseProtectedMapBytes(kid);
+  const externalAad = new Uint8Array(0);
+
+  const sigStructureBytes = encodeSigStructure(
+    protectedMapBytes,
+    externalAad,
+    payload,
+  );
+
+  const sigBuffer = sigStructureBytes.buffer.slice(
+    sigStructureBytes.byteOffset,
+    sigStructureBytes.byteOffset + sigStructureBytes.byteLength,
+  ) as ArrayBuffer;
+  const signature = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    privateKey,
+    sigBuffer,
+  );
+
+  return encodeCoseSign1Statement(payload, kid, new Uint8Array(signature));
+}

@@ -34,12 +34,7 @@ function resolveCanopyBaseUrl(): string {
 
 const baseURL = resolveCanopyBaseUrl();
 
-/** Default CI runs Mode C webhook seal when E2E_MODE_C_WEBHOOK_IN_CI=1 (FOR-204). */
-const systemTestIgnore =
-  process.env.CI === "true" &&
-  process.env.E2E_MODE_C_WEBHOOK_IN_CI?.trim() !== "1"
-    ? ["**/system/byok-mode-c-webhook-seal.spec.ts"]
-    : [];
+const systemTestIgnore: string[] = [];
 
 export default defineConfig({
   globalSetup: "./global-setup.ts",

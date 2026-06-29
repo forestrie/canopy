@@ -1,6 +1,6 @@
 {
 	"name": "@forestrie/canopy-e2e-kit",
-	"version": "0.1.0",
+	"version": "0.3.0",
 	"type": "module",
 	"description": "Reusable Playwright e2e helpers for canopy system tests (ARC-0024 Layer 1)",
 	"exports": {
@@ -27,14 +27,19 @@
 		"pnpm": ">=9.0.0"
 	},
 	"peerDependencies": {
-		"@playwright/test": "^1.48.0"
+		"@playwright/test": "^1.48.0",
+		"viem": "^2.21.0"
 	},
 	"dependencies": {
+		"@forestrie/delegation-cose": "workspace:*",
+		"@noble/curves": "^1.9.7",
+		"@noble/hashes": "^1.7.1",
 		"cbor-x": "^1.5.9"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.48.0",
 		"typescript": "^5.9.2",
+		"viem": "^2.21.0",
 		"vitest": "^3.2.4"
 	}
 }
