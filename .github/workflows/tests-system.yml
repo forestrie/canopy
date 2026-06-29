@@ -211,7 +211,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
         run: task e2e-univocity:ci-prepare
 
-	system-tests:
+  system-tests:
     name: System tests (${{ github.event_name == 'push' && 'dev' || inputs.environment }})
     needs: [prepare-univocity]
     if: always() && needs.prepare-univocity.result == 'success'
