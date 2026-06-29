@@ -37,6 +37,21 @@ jobs:
       - name: Build kit
         run: pnpm --filter @forestrie/canopy-e2e-kit build
 
+      - name: Verify packed dependency graph
+        run: |
+          set -euo pipefail
+          pnpm --filter @forestrie/canopy-e2e-kit pack --pack-destination /tmp/e2e-kit-pack
+          TARBALL=$(ls -1 /tmp/e2e-kit-pack/forestrie-canopy-e2e-kit-*.tgz | head -1)
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('packages/tests/e2e-kit/package.json','utf8'));
+            const dep = pkg.dependencies['@forestrie/delegation-cose'];
+            if (!dep || dep === 'workspace:*') {
+              throw new Error('delegation-cose must be workspace:^ or semver for publish, got ' + dep);
+            }
+          "
+          echo "pack ok: ${TARBALL}"
+
       - name: Publish to GitHub Packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

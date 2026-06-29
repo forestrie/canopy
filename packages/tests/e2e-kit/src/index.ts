@@ -1,24 +1,24 @@
 /** Phase 2 minimum slice */
 export {
-	delegationCoordinatorBaseUrl,
-	coordinatorAppToken,
-	hasCoordinatorApiE2eEnv,
-	assertCoordinatorApiE2eEnv,
+  delegationCoordinatorBaseUrl,
+  coordinatorAppToken,
+  hasCoordinatorApiE2eEnv,
+  assertCoordinatorApiE2eEnv,
 } from "./coordinator-api-env.js";
 export {
-	E2E_POLL_MAX_WAIT_MS,
-	E2E_SYSTEM_TEST_TIMEOUT_MS,
-	sequencingBackoff,
-	sleepMs,
-	pollQueryRegistrationUntilReceiptRedirect,
-	pollResolveReceiptUntil200,
-	type PollUntilReceiptOptions,
-	type PollUntilReceiptResult,
-	type PollReceiptBodyOptions,
+  E2E_POLL_MAX_WAIT_MS,
+  E2E_SYSTEM_TEST_TIMEOUT_MS,
+  sequencingBackoff,
+  sleepMs,
+  pollQueryRegistrationUntilReceiptRedirect,
+  pollResolveReceiptUntil200,
+  type PollUntilReceiptOptions,
+  type PollUntilReceiptResult,
+  type PollReceiptBodyOptions,
 } from "./arithmetic-backoff-poll.js";
 export {
-	assertOpsAdminE2eEnv,
-	mintOnboardTokenE2e,
+  assertOpsAdminE2eEnv,
+  mintOnboardTokenE2e,
 } from "./onboard-token-e2e.js";
 
 /** Phase 3 — genesis slice (0.2.0) */
@@ -71,9 +71,15 @@ export * from "./forestrie-operator-labels.js";
 /** Wire types (re-export for cross-repo consumers) */
 export type { Grant } from "./wire/grant/grant.js";
 export {
-	HEADER_RECEIPT,
-	HEADER_IDTIMESTAMP,
-	HEADER_FORESTRIE_GRANT_V0,
+  uuidToBytes,
+  bytesToUuid,
+  toPaddedWire32,
+} from "./wire/grant/uuid-bytes.js";
+export { KS256_UNIVOCITY_MANIFEST_PLACEHOLDER } from "./system-test-manifest-constants.js";
+export {
+  HEADER_RECEIPT,
+  HEADER_IDTIMESTAMP,
+  HEADER_FORESTRIE_GRANT_V0,
 } from "./wire/grant/transparent-statement.js";
 
 /** Encoding helpers */

@@ -12,10 +12,7 @@ import {
   FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
   FOREST_GENESIS_SCHEMA_V2,
 } from "./wire/forest/forest-genesis-labels.js";
-import {
-  COSE_ALG_ES256,
-  COSE_ALG_KS256,
-} from "./wire/cose/cose-key.js";
+import { COSE_ALG_ES256, COSE_ALG_KS256 } from "./wire/cose/cose-key.js";
 
 export interface GenesisCoordinatorForwardStatus {
   publicRoot: "ok" | "skipped" | "error";

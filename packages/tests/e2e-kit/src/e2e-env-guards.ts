@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { custodianCustodySignEnv } from "./custodian-custody-grant.js";
 import { hasCoordinatorApiE2eEnv } from "./coordinator-api-env.js";
 import { univocityProvisionSkipReason } from "./univocity-genesis-e2e.js";
+import { KS256_UNIVOCITY_MANIFEST_PLACEHOLDER } from "./system-test-manifest-constants.js";
 
 /**
  * New bootstrap forest log id for e2e (genesis + contract-bootstrap root grant + register).
@@ -17,15 +18,13 @@ const BOOTSTRAP_MINT_E2E_HELP =
   "Run via Doppler (project canopy, config dev or prod), e.g. task test:e2e. " +
   "See packages/tests/canopy-api/README.md.";
 
-/** Manifest KS256 placeholder — Lane A may pin ES256 only until KS256 deploy exists. */
-const KS256_MANIFEST_PLACEHOLDER =
-  "0x0000000000000000000000000000000000000002";
-
 /** KS256 bootstrap signing material is required when a real KS256 contract is pinned. */
 export function ks256BootstrapMaterialRequired(): boolean {
   const addr = process.env.E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP?.trim();
   if (!addr) return false;
-  return addr.toLowerCase() !== KS256_MANIFEST_PLACEHOLDER;
+  return (
+    addr.toLowerCase() !== KS256_UNIVOCITY_MANIFEST_PLACEHOLDER.toLowerCase()
+  );
 }
 
 /**

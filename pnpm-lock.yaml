@@ -334,7 +334,7 @@ importers:
   packages/tests/e2e-kit:
     dependencies:
       '@forestrie/delegation-cose':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../../libs/delegation-cose
       '@noble/curves':
         specifier: ^1.9.7

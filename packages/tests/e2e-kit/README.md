@@ -48,7 +48,28 @@ pnpm --filter @forestrie/canopy-e2e-kit test
 
 Publish tag: `canopy-e2e-kit-v*`.
 
-## Dogfooding in `@canopy/api-e2e`
+Published dependency: `@forestrie/delegation-cose` `^0.1.1` (GitHub Packages;
+`workspace:^` in monorepo, rewritten on `pnpm publish`).
+
+## Wire / encoding sync policy
+
+Kit vendors a minimal subset of `@canopy/encoding` and grant wire types under
+`src/encoding/` and `src/wire/`. When changing canopy-api grant or COSE paths,
+update the kit copy in the **same PR** and bump the kit semver slice.
+
+| Kit path            | Canonical source                       |
+| ------------------- | -------------------------------------- |
+| `src/encoding/*`    | `packages/shared/encoding/src/`        |
+| `src/wire/grant/*`  | `packages/apps/canopy-api/src/grant/`  |
+| `src/wire/forest/*` | `packages/apps/canopy-api/src/forest/` |
+| `src/wire/cose/*`   | `packages/apps/canopy-api/src/cose/`   |
+
+Drift guard: `test/merge-cose-sign1-unprotected.test.ts` mirrors
+`@canopy/encoding` golden vectors for `mergeUnprotectedIntoCoseSign1`.
+
+Manifest placeholder: `KS256_UNIVOCITY_MANIFEST_PLACEHOLDER` in
+`system-test-manifest-constants.ts` — keep aligned with
+`system-testing/manifests/lane-a.example.yaml`.
 
 Moved helpers live in this package; `packages/tests/canopy-api/tests/utils/*.ts`
 files re-export from `@forestrie/canopy-e2e-kit` so Playwright specs keep

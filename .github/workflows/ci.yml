@@ -27,6 +27,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Build e2e-kit for dogfood consumers
+        run: pnpm --filter @forestrie/canopy-e2e-kit build
+
       - name: Lint and format
         run: pnpm run check
 
