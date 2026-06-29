@@ -40,7 +40,8 @@ jobs:
       - name: Verify packed dependency graph
         run: |
           set -euo pipefail
-          pnpm --filter @forestrie/canopy-e2e-kit pack --pack-destination /tmp/e2e-kit-pack
+          mkdir -p /tmp/e2e-kit-pack
+          pnpm --filter @forestrie/canopy-e2e-kit exec pnpm pack --pack-destination /tmp/e2e-kit-pack
           TARBALL=$(ls -1 /tmp/e2e-kit-pack/forestrie-canopy-e2e-kit-*.tgz | head -1)
           node -e "
             const fs = require('fs');
