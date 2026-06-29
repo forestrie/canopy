@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@canopy/api": "workspace:*",
+    "@forestrie/canopy-e2e-kit": "workspace:*",
     "@forestrie/delegation-cose": "workspace:*",
     "@canopy/encoding": "workspace:*",
     "@noble/curves": "^1.9.7",
