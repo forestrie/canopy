@@ -146,17 +146,17 @@ Set **`COORDINATOR_APP_TOKEN`** in Doppler **`canopy/dev`** (masked) after fores
 
 ## Test layout (by file)
 
-| File                                             | Area                                                                                                                                                                   |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `integration/api.spec.ts`                        | Cross-cutting HTTP (e.g. CORS OPTIONS).                                                                                                                                |
-| `integration/observability.spec.ts`              | `/api/health`, `/.well-known/scitt-configuration`.                                                                                                                     |
-| `system/grants-bootstrap.spec.ts`                | Ephemeral Imutable bootstrap: genesis + contract-signed root grant + register-grant (ES256 + KS256). [Doc](tests/system/docs/grants-bootstrap.md).                     |
-| `system/bootstrap-log-first-entry.spec.ts`       | `POST /register/{bootstrap}/entries` (ES256 + KS256). [Doc](tests/system/docs/bootstrap-log-first-entry.md).                                                           |
-| `system/bootstrap-child-auth-grant.spec.ts`      | Root contract bootstrap + child auth grant (owner-root envelope); ES256 + KS256. [Doc](tests/system/docs/bootstrap-child-auth-grant.md).                               |
-| `system/auth-data-log-chain.spec.ts`             | Root → child auth log → data log delegation chain; ES256 + KS256. [Doc](tests/system/docs/auth-data-log-chain.md).                                                     |
-| `custodian/custodian-api.spec.ts`                | Direct **`fetch`** to deployed Custodian: ops + **`/v1/api/…`** custody key routes.                                                                                    |
-| `coordinator/coordinator-api.spec.ts`            | Phase 3 coordinator APIs; **coordinator** direct issue of stored material (custodial pre-mint).                                                                        |
-| `coordinator/coordinator-byok-material.spec.ts`  | **BYOK:** runner-owned log root; pending → material → coordinator issue. [System doc](tests/system/docs/README.md#non-custodian-log-root-signing-key-byok-delegation). |
+| File                                            | Area                                                                                                                                                                   |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `integration/api.spec.ts`                       | Cross-cutting HTTP (e.g. CORS OPTIONS).                                                                                                                                |
+| `integration/observability.spec.ts`             | `/api/health`, `/.well-known/scitt-configuration`.                                                                                                                     |
+| `system/grants-bootstrap.spec.ts`               | Ephemeral Imutable bootstrap: genesis + contract-signed root grant + register-grant (ES256 + KS256). [Doc](tests/system/docs/grants-bootstrap.md).                     |
+| `system/bootstrap-log-first-entry.spec.ts`      | `POST /register/{bootstrap}/entries` (ES256 + KS256). [Doc](tests/system/docs/bootstrap-log-first-entry.md).                                                           |
+| `system/bootstrap-child-auth-grant.spec.ts`     | Root contract bootstrap + child auth grant (owner-root envelope); ES256 + KS256. [Doc](tests/system/docs/bootstrap-child-auth-grant.md).                               |
+| `system/auth-data-log-chain.spec.ts`            | Root → child auth log → data log delegation chain; ES256 + KS256. [Doc](tests/system/docs/auth-data-log-chain.md).                                                     |
+| `custodian/custodian-api.spec.ts`               | Direct **`fetch`** to deployed Custodian: ops + **`/v1/api/…`** custody key routes.                                                                                    |
+| `coordinator/coordinator-api.spec.ts`           | Phase 3 coordinator APIs; **coordinator** direct issue of stored material (custodial pre-mint).                                                                        |
+| `coordinator/coordinator-byok-material.spec.ts` | **BYOK:** runner-owned log root; pending → material → coordinator issue. [System doc](tests/system/docs/README.md#non-custodian-log-root-signing-key-byok-delegation). |
 
 - Shared e2e utils: `e2e-env-guards.ts`, `e2e-bootstrap-variant.ts`, `e2e-grant-flags.ts`, …
 

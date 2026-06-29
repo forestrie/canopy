@@ -15,8 +15,8 @@ see [devdocs plan-0017](https://github.com/forestrie/devdocs/blob/main/plans/pla
 | Spec file                            | Doc                                                              | Depends on base flow |
 | ------------------------------------ | ---------------------------------------------------------------- | -------------------- |
 | `grants-bootstrap.spec.ts`           | [grants-bootstrap.md](./grants-bootstrap.md)                     | A, B                 |
-| `bootstrap-log-first-entry.spec.ts`  | [bootstrap-log-first-entry.md](./bootstrap-log-first-entry.md) | A, B, C              |
-| `bootstrap-child-auth-grant.spec.ts` | [bootstrap-child-auth-grant.md](./bootstrap-child-auth-grant.md) | A, B               |
+| `bootstrap-log-first-entry.spec.ts`  | [bootstrap-log-first-entry.md](./bootstrap-log-first-entry.md)   | A, B, C              |
+| `bootstrap-child-auth-grant.spec.ts` | [bootstrap-child-auth-grant.md](./bootstrap-child-auth-grant.md) | A, B                 |
 | `auth-data-log-chain.spec.ts`        | [auth-data-log-chain.md](./auth-data-log-chain.md)               | A, B, C              |
 | `byok-checkpoint-seal.spec.ts`       | [byok-checkpoint-seal.md](./byok-checkpoint-seal.md)             | opt-in stretch       |
 
@@ -31,11 +31,11 @@ grants/statements via **Custodian KMS custody keys**.
 
 ### E2e coverage (canopy repo)
 
-| Spec                                                                                             | Playwright project | Opt-in?                         | Role                                              |
-| ------------------------------------------------------------------------------------------------ | ------------------ | ------------------------------- | ------------------------------------------------- |
-| [`coordinator-byok-material.spec.ts`](../../coordinator/coordinator-byok-material.spec.ts)       | **coordinator**    | No (`test:e2e:coordinator`)     | Runner-owned root; coordinator direct issue       |
-| [`coordinator-byok-public-root.spec.ts`](../../coordinator/coordinator-byok-public-root.spec.ts) | **coordinator**    | No (`test:e2e:coordinator`)     | Upload root + GET CBOR `public-root`              |
-| [`byok-checkpoint-seal.spec.ts`](../../system/byok-checkpoint-seal.spec.ts)                    | **system**         | Yes — `E2E_BYOK_SEAL_STRETCH=1` | Full SCRAPI checkpoint seal with wallet material    |
+| Spec                                                                                             | Playwright project | Opt-in?                         | Role                                             |
+| ------------------------------------------------------------------------------------------------ | ------------------ | ------------------------------- | ------------------------------------------------ |
+| [`coordinator-byok-material.spec.ts`](../../coordinator/coordinator-byok-material.spec.ts)       | **coordinator**    | No (`test:e2e:coordinator`)     | Runner-owned root; coordinator direct issue      |
+| [`coordinator-byok-public-root.spec.ts`](../../coordinator/coordinator-byok-public-root.spec.ts) | **coordinator**    | No (`test:e2e:coordinator`)     | Upload root + GET CBOR `public-root`             |
+| [`byok-checkpoint-seal.spec.ts`](../../system/byok-checkpoint-seal.spec.ts)                      | **system**         | Yes — `E2E_BYOK_SEAL_STRETCH=1` | Full SCRAPI checkpoint seal with wallet material |
 
 Cross-repo Mode C webhook seal and coordinator Custodian-proxy issuance:
 **`forestrie/system-testing`** (`byok-mode-c-webhook-seal.spec.ts`,
