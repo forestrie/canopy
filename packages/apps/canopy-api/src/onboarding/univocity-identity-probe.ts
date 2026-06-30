@@ -74,6 +74,14 @@ export function rootLogIdCallData(): string {
   return SELECTOR_ROOT_LOG_ID;
 }
 
+/**
+ * On-chain Univocity identity check for onboarding (not genesis).
+ *
+ * Validates `bootstrapConfig()` and that `rootLogId()` returns a bytes32 —
+ * it does **not** compare on-chain `rootLogId` to the forest path logId.
+ * Counterfactual UUPS roots keep logId off-chain (ADR-0042); genesis
+ * `postForestGenesis` re-derives and asserts the proxy address instead.
+ */
 export async function probeUnivocityIdentity(
   rpcUrls: string[],
   addressHex: string,

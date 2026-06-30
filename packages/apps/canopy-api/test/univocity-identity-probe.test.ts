@@ -29,4 +29,14 @@ describe("univocity identity probe decode", () => {
     expect(root!.length).toBe(32);
     expect(root!.every((b) => b === 0)).toBe(true);
   });
+
+  it("accepts arbitrary rootLogId bytes (no path logId comparison at probe)", () => {
+    const pathLogId = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+    const onChainRootHex =
+      "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
+    const decoded = decodeRootLogIdResult(onChainRootHex);
+    expect(decoded).not.toBeNull();
+    const pathAsHex = pathLogId.replace(/-/g, "");
+    expect(Buffer.from(decoded!).toString("hex")).not.toBe(pathAsHex);
+  });
 });

@@ -26,8 +26,15 @@ import {
   FOREST_GENESIS_LABEL_GENESIS_VERSION,
   FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
   FOREST_GENESIS_LABEL_UNIVOCITY_CHAIN_IDS,
+  FOREST_GENESIS_LABEL_UNIVOCITY_DEPLOYER,
+  FOREST_GENESIS_LABEL_UNIVOCITY_VARIANT,
   FOREST_GENESIS_SCHEMA_V2,
+  FOREST_GENESIS_UNIVOCITY_VARIANT_UUPS_COUNTERFACTUAL,
 } from "./forest-genesis-labels.js";
+import {
+  assertCounterfactualUupsAddress,
+  parseUnivocityDeployerRequired,
+} from "./uups-genesis-binding.js";
 import {
   asGenesisUint8Array,
   parseChainIdString,
@@ -70,6 +77,8 @@ const V2_KEYS = new Set([
   FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID,
   FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
   FOREST_GENESIS_LABEL_CHAIN_ID,
+  FOREST_GENESIS_LABEL_UNIVOCITY_VARIANT,
+  FOREST_GENESIS_LABEL_UNIVOCITY_DEPLOYER,
 ]);
 
 function parseGenesisAlg(raw: unknown): number | "invalid" {
@@ -97,10 +106,15 @@ function validateBootstrapLogId(
   return null;
 }
 
-function validateChainBinding(m: Map<number, unknown>):
+function validateChainBinding(
+  m: Map<number, unknown>,
+  logIdRouteSegment: string,
+):
   | {
       addr: Uint8Array;
       chainId: string;
+      variant?: string;
+      deployer?: Uint8Array;
     }
   | Response {
   const addrRes = parseUnivocityAddrRequired(
@@ -115,13 +129,52 @@ function validateChainBinding(m: Map<number, unknown>):
       "chain-id must be a non-empty decimal EIP-155 id string (-68013)",
     );
   }
-  return { addr: addrRes, chainId };
+
+  const variantRaw = m.get(FOREST_GENESIS_LABEL_UNIVOCITY_VARIANT);
+  if (variantRaw === undefined) {
+    return { addr: addrRes, chainId };
+  }
+  if (typeof variantRaw !== "string") {
+    return ClientErrors.badRequest("univocity-variant must be a text string");
+  }
+  if (variantRaw !== FOREST_GENESIS_UNIVOCITY_VARIANT_UUPS_COUNTERFACTUAL) {
+    return ClientErrors.badRequest(
+      `unsupported univocity-variant ${JSON.stringify(variantRaw)}`,
+    );
+  }
+
+  const deployer = parseUnivocityDeployerRequired(
+    m.get(FOREST_GENESIS_LABEL_UNIVOCITY_DEPLOYER),
+  );
+  if (deployer === "invalid") {
+    return ClientErrors.badRequest(
+      "univocity-deployer (-68017) must be a 20-byte bstr for uups-counterfactual",
+    );
+  }
+
+  if (!assertCounterfactualUupsAddress(logIdRouteSegment, deployer, addrRes)) {
+    return ClientErrors.badRequest(
+      "univocity-addr does not match counterfactual CREATE3 address for log-id and deployer",
+    );
+  }
+
+  return {
+    addr: addrRes,
+    chainId,
+    variant: variantRaw,
+    deployer,
+  };
 }
 
 function buildV2GenesisOut(
   m: Map<number, unknown>,
   paddedWire: Uint8Array,
-  binding: { addr: Uint8Array; chainId: string },
+  binding: {
+    addr: Uint8Array;
+    chainId: string;
+    variant?: string;
+    deployer?: Uint8Array;
+  },
 ): Map<number, unknown> | Response {
   const genesisAlg = parseGenesisAlg(m.get(FOREST_GENESIS_LABEL_GENESIS_ALG));
   if (genesisAlg === "invalid") {
@@ -164,6 +217,12 @@ function buildV2GenesisOut(
   out.set(FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID, paddedWire);
   out.set(FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, binding.addr);
   out.set(FOREST_GENESIS_LABEL_CHAIN_ID, binding.chainId);
+  if (binding.variant !== undefined) {
+    out.set(FOREST_GENESIS_LABEL_UNIVOCITY_VARIANT, binding.variant);
+  }
+  if (binding.deployer !== undefined) {
+    out.set(FOREST_GENESIS_LABEL_UNIVOCITY_DEPLOYER, binding.deployer);
+  }
   return out;
 }
 
@@ -217,7 +276,7 @@ export async function postForestGenesis(
   const bootErr = validateBootstrapLogId(m, paddedWire);
   if (bootErr) return bootErr;
 
-  const binding = validateChainBinding(m);
+  const binding = validateChainBinding(m, logIdRouteSegment);
   if (binding instanceof Response) return binding;
 
   if (!isSupportedChainIdForEnv(env, binding.chainId)) {
