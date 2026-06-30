@@ -121,21 +121,3 @@ jobs:
       require_coordinator_e2e: true
       playwright_project: system
       ignore_deploy_path_overlap: true
-
-  promote-prod:
-    name: Promote to prod (Lane B)
-    needs: system-e2e-dev
-    uses: ./.github/workflows/deploy-workers.yml
-    secrets: inherit
-    with:
-      environment: prod
-      run_e2e: false
-
-  health-check-prod:
-    name: Health check (prod)
-    needs: promote-prod
-    if: always() && needs.promote-prod.result == 'success'
-    uses: ./.github/workflows/health-check.yml
-    secrets: inherit
-    with:
-      environment: prod

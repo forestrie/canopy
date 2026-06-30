@@ -1,0 +1,196 @@
+# FOR-264: Orchestrator-triggered prod Workers deploy at hydrated manifest ref.
+#
+# Downloads hydrated-manifest-lane-b from the promote run, deploys services.canopy.ref
+# to prod, health-checks, and reports workers-canopy readiness to release-orchestrator.
+name: Promote Workers lane B
+
+on:
+  workflow_call:
+    inputs:
+      run_id:
+        description: "Orchestrator promote run id"
+        required: true
+        type: string
+      manifest_artifact_run_id:
+        description: "GitHub Actions run id that uploaded hydrated-manifest-lane-b"
+        required: true
+        type: string
+      manifest_artifact_name:
+        description: "Hydrated manifest artifact name"
+        required: false
+        type: string
+        default: hydrated-manifest-lane-b
+
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Orchestrator promote run id"
+        required: true
+        type: string
+      manifest_artifact_run_id:
+        description: "GitHub Actions run id that uploaded hydrated-manifest-lane-b"
+        required: true
+        type: string
+      manifest_artifact_name:
+        description: "Hydrated manifest artifact name"
+        required: false
+        type: string
+        default: hydrated-manifest-lane-b
+
+  repository_dispatch:
+    types: [promote-workers-lane-b]
+
+jobs:
+  resolve:
+    name: Resolve canopy ref from manifest
+    runs-on: ubuntu-latest
+    outputs:
+      orchestrator_run_id: ${{ steps.ctx.outputs.run_id }}
+      canopy_ref: ${{ steps.manifest.outputs.canopy_ref }}
+      deploy_sha: ${{ steps.sha.outputs.deploy_sha }}
+    steps:
+      - name: Resolve inputs
+        id: ctx
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "run_id=${{ github.event.client_payload.run_id }}" >> "$GITHUB_OUTPUT"
+            echo "manifest_run_id=${{ github.event.client_payload.manifest_artifact_run_id }}" >> "$GITHUB_OUTPUT"
+            echo "manifest_name=${{ github.event.client_payload.manifest_artifact_name || 'hydrated-manifest-lane-b' }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_id=${{ inputs.run_id }}" >> "$GITHUB_OUTPUT"
+            echo "manifest_run_id=${{ inputs.manifest_artifact_run_id }}" >> "$GITHUB_OUTPUT"
+            echo "manifest_name=${{ inputs.manifest_artifact_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate GitHub App token
+        id: gitapp
+        uses: tibdex/github-app-token@v1
+        with:
+          app_id: ${{ vars.GITAPP_ID }}
+          private_key: ${{ secrets.GITAPP_PRIVATE_KEY }}
+
+      - name: Download hydrated manifest
+        env:
+          GH_TOKEN: ${{ steps.gitapp.outputs.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p manifest
+          gh run download "${{ steps.ctx.outputs.manifest_run_id }}" \
+            --repo forestrie/release-orchestrator \
+            -n "${{ steps.ctx.outputs.manifest_name }}" \
+            -D manifest
+
+      - name: Read services.canopy.ref
+        id: manifest
+        run: |
+          set -euo pipefail
+          MANIFEST=$(find manifest -name '*.json' -type f | head -1)
+          if [ -z "${MANIFEST}" ]; then
+            echo "No manifest JSON found in artifact" >&2
+            exit 1
+          fi
+          CANOPY_REF=$(jq -r '.services.canopy.ref // empty' "${MANIFEST}")
+          if [ -z "${CANOPY_REF}" ]; then
+            echo "services.canopy.ref missing from hydrated manifest" >&2
+            exit 1
+          fi
+          echo "canopy_ref=${CANOPY_REF}" >> "$GITHUB_OUTPUT"
+          echo "Resolved services.canopy.ref=${CANOPY_REF}"
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.manifest.outputs.canopy_ref }}
+
+      - name: Resolve deploy SHA
+        id: sha
+        run: |
+          SHA=$(git rev-parse HEAD)
+          echo "deploy_sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "Deploy SHA: ${SHA}"
+
+  deploy:
+    name: Deploy Workers prod
+    needs: resolve
+    uses: ./.github/workflows/deploy-workers.yml
+    with:
+      environment: prod
+      ref: ${{ needs.resolve.outputs.canopy_ref }}
+      run_e2e: false
+    secrets: inherit
+
+  health:
+    name: Health check prod
+    needs: [resolve, deploy]
+    if: needs.deploy.result == 'success'
+    uses: ./.github/workflows/health-check.yml
+    with:
+      environment: prod
+    secrets: inherit
+
+  report:
+    name: Report lane B Workers readiness
+    needs: [resolve, deploy, health]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine status
+        id: status
+        run: |
+          if [ "${{ needs.deploy.result }}" = "success" ] && \
+             [ "${{ needs.health.result }}" = "success" ]; then
+            echo "status=ready" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=failed" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate GitHub App token
+        id: gitapp
+        uses: tibdex/github-app-token@v1
+        with:
+          app_id: ${{ vars.GITAPP_ID }}
+          private_key: ${{ secrets.GITAPP_PRIVATE_KEY }}
+
+      - name: Dispatch lane-readiness to orchestrator
+        env:
+          GH_TOKEN: ${{ steps.gitapp.outputs.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/forestrie/release-orchestrator/dispatches \
+            -f event_type=lane-readiness \
+            -f "client_payload[runId]=${{ needs.resolve.outputs.orchestrator_run_id }}" \
+            -f "client_payload[lane]=b" \
+            -f "client_payload[status]=${{ steps.status.outputs.status }}" \
+            -f "client_payload[surface]=workers-canopy" \
+            -f "client_payload[deployRef]=${{ needs.resolve.outputs.deploy_sha }}" \
+            -f "client_payload[repo]=forestrie/canopy" \
+            -f "client_payload[workflowRun]=${{ github.run_id }}"
+
+      - name: Upload promote metadata artifact
+        run: |
+          set -euo pipefail
+          RUN_ID="${{ needs.resolve.outputs.orchestrator_run_id }}"
+          jq -n \
+            --arg run_id "${RUN_ID}" \
+            --arg canopy_ref "${{ needs.resolve.outputs.canopy_ref }}" \
+            --arg deploy_sha "${{ needs.resolve.outputs.deploy_sha }}" \
+            --arg status "${{ steps.status.outputs.status }}" \
+            --arg workflow_run "${{ github.run_id }}" \
+            '{
+              run_id: $run_id,
+              canopy_ref: $canopy_ref,
+              deploy_ref: $deploy_sha,
+              status: $status,
+              workflow_run: $workflow_run
+            }' > "promote-workers-${RUN_ID}.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: promote-workers-${{ needs.resolve.outputs.orchestrator_run_id }}
+          path: promote-workers-${{ needs.resolve.outputs.orchestrator_run_id }}.json
+          retention-days: 14
+
+      - name: Fail when deploy or health did not succeed
+        if: steps.status.outputs.status != 'ready'
+        run: exit 1
