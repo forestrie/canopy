@@ -1,5 +1,5 @@
 # E2e Univocity provisioning (canopy-native fetch + deploy).
-# CI mirrors prepare-univocity in tests-system.yml.
+# CI: T2 → ci-prepare (ephemeral); T3 → ci-resolve-pins (pinned lane contracts).
 # Prerequisite: task install:dev  (or install:release on Linux without checkout)
 # Local: doppler run -- task e2e-univocity:provision
 version: "3"
@@ -143,10 +143,18 @@ tasks:
 
   ci-prepare:
     desc: |
-      CI prepare Univocity per alg (tests-system.yml). Writes GITHUB_OUTPUT when set.
-      Requires DEPLOY_KEY, E2E_UNIVOCITY_RPC_URL, INPUT_* env vars, GH_TOKEN for fetch.
+      T2 CI — ephemeral Imutable bootstrap provision (tests-system.yml e2e_tier=t2).
+      Writes GITHUB_OUTPUT when set. Requires DEPLOY_KEY, E2E_UNIVOCITY_RPC_URL,
+      INPUT_* env vars, GH_TOKEN for fetch.
     cmds:
       - bash taskfiles/e2e-univocity-ci-prepare.sh
+
+  ci-resolve-pins:
+    desc: |
+      T3 CI — resolve pinned Univocity contracts from GitHub Environment (no provision).
+      Writes GITHUB_OUTPUT when set. Requires ES256 pin (+ optional KS256 pin / keys).
+    cmds:
+      - bash taskfiles/e2e-univocity-ci-resolve-pins.sh
 
   env-from-manifest:
     desc: |
