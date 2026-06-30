@@ -28,6 +28,7 @@ import {
   signKs256RootStatement,
 } from "./ks256-wallet-grant.js";
 import {
+  COSE_ALG_KS256,
   es256BootstrapContractAddr,
   es256BootstrapContractAddrBytes,
   es256ChainBindingSkipReason,
@@ -38,6 +39,7 @@ import {
   univocityGenesisChainId,
   type OnChainBootstrapConfig,
 } from "./univocity-genesis-e2e.js";
+import { KS256_UNIVOCITY_MANIFEST_PLACEHOLDER } from "./system-test-manifest-constants.js";
 
 export type BootstrapVariantId = "es256" | "ks256";
 
@@ -214,6 +216,37 @@ export function getBootstrapVariant(
   const v = E2E_BOOTSTRAP_VARIANTS.find((x) => x.id === id);
   if (!v) throw new Error(`unknown bootstrap variant: ${id}`);
   return v;
+}
+
+/**
+ * Pick ES256 vs KS256 for bootstrap-grant and GF_DERIVED system e2e.
+ *
+ * Prefers the manifest ks256 pin when it is a live EOA-backed contract; otherwise
+ * reads `bootstrapConfig()` at the es256 pin (mandate-register slot).
+ */
+export async function bootstrapVariantForGrantE2e(): Promise<E2eBootstrapVariant> {
+  const ks256Addr = process.env.E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP?.trim();
+  if (
+    ks256Addr &&
+    ks256Addr.toLowerCase() !==
+      KS256_UNIVOCITY_MANIFEST_PLACEHOLDER.toLowerCase()
+  ) {
+    const ks256Skip = await ks256ChainBindingSkipReason();
+    if (!ks256Skip) {
+      return getBootstrapVariant("ks256");
+    }
+  }
+
+  let boot: OnChainBootstrapConfig;
+  try {
+    boot = await fetchOnChainBootstrapConfig(es256BootstrapContractAddr());
+  } catch {
+    return getBootstrapVariant("es256");
+  }
+  if (boot.alg === COSE_ALG_KS256 && boot.key.length === 20) {
+    return getBootstrapVariant("ks256");
+  }
+  return getBootstrapVariant("es256");
 }
 
 /** Register a describe block per ephemeral bootstrap variant (ES256 + KS256). */
