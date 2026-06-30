@@ -1,0 +1,9 @@
+{
+  "description": "Shared parity vector for counterfactual UUPS CREATE3 salt (ADR-0042). Mirrored in canopy test fixtures.",
+  "logId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "logIdHex32": "a1b2c3d4e5f67890abcdef1234567890",
+  "saltString": "forestrie.eth/univocity/UUPSUnivocity/v1/a1b2c3d4e5f67890abcdef1234567890",
+  "deployer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "factory": "0x988e1Ef32F200E84197266eC0Fd36cC9a1d849dF",
+  "expectedProxyAddress": "0xbFb9Ef37B28BD71a89a6D8aFe27eB368CEF17347"
+}

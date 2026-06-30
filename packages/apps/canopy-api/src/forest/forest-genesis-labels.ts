@@ -27,6 +27,16 @@ export const FOREST_GENESIS_LABEL_GENESIS_ALG = -68014;
 /** `bootstrapKey`: bstr 64 (ES256 x‖y) or 20 (KS256 address); v2 POST. */
 export const FOREST_GENESIS_LABEL_BOOTSTRAP_KEY = -68015;
 
+/** `univocity-variant`: tstr anchor variant (e.g. uups-counterfactual). */
+export const FOREST_GENESIS_LABEL_UNIVOCITY_VARIANT = -68016;
+
+/** `univocity-deployer`: bstr 20 CREATE3 deployer for counterfactual UUPS. */
+export const FOREST_GENESIS_LABEL_UNIVOCITY_DEPLOYER = -68017;
+
+/** Counterfactual UUPS anchor variant value on v2 POST. */
+export const FOREST_GENESIS_UNIVOCITY_VARIANT_UUPS_COUNTERFACTUAL =
+  "uups-counterfactual" as const;
+
 /** Stored genesis schema version for legacy EC2 POST writes. */
 export const FOREST_GENESIS_SCHEMA_V1 = 1;
 
