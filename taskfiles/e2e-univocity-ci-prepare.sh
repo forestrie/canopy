@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CI prepare Univocity for tests-system.yml (plan-0049).
+# T2 CI — ephemeral Imutable bootstrap provision (tests-system.yml e2e_tier=t2).
 # Writes GitHub Actions outputs when GITHUB_OUTPUT is set.
 set -euo pipefail
 

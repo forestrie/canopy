@@ -80,7 +80,8 @@ bootstrap system specs skip; other projects still run.
 
 Requires **`gh`** auth, Foundry **`cast`**, Doppler **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`**, and **univocity-tools v0.6.0+** (`deploy provision e2e`; sibling `task install:dev` or release binaries pinned in CI).
 
-**CI:** **`task e2e-univocity:ci-prepare`** in **tests-system.yml** provisions ephemeral contracts by default (or accepts supplied addresses + keys).
+**CI:** **`task e2e-univocity:ci-prepare`** (T2 ephemeral) or **`task e2e-univocity:ci-resolve-pins`**
+(T3 pinned) in **tests-system.yml** — default **`e2e_tier=t3`** (no re-provision).
 
 Run ES256 bootstrap specs only:
 
@@ -100,7 +101,7 @@ The **worker** must have **`CUSTODIAN_APP_TOKEN`** (Wrangler secret) for SCITT r
 | -------- | ---- |
 | **`ci.yml`** | Lint, format, unit tests on every push and PR |
 | **`tests-integration.yml`** | Playwright **integration** vs deployed **dev** |
-| **`tests-system.yml`** | Univocity prepare + full dev suite (integration → system → custodian → coordinator); `workflow_dispatch`, `workflow_call`, push to **main** when deploy-workers did not run |
+| **`tests-system.yml`** | T3 pinned Univocity + canopy component Playwright (default); T2 bootstrap via `e2e_tier=t2` |
 | **`deploy-workers.yml`** | Deploy workers; chains **tests-system.yml** on **dev** after health |
 | **`release.yaml`** | Tag → deploy **dev** → **tests-system.yml** → promote **prod** → prod health |
 

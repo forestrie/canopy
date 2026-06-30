@@ -3,8 +3,11 @@ name: System tests
 permissions:
   contents: read
 
-# Provision-or-accept ephemeral Univocity Imutable contracts, then run the full
-# dev Playwright suite (integration → system → custodian → coordinator).
+# Canopy component e2e (T2 bootstrap or T3 system Playwright).
+#
+# - **T2** (`e2e_tier=t2`): ephemeral Imutable provision — bootstrap path only.
+# - **T3** (`e2e_tier=t3`, default): pinned lane contracts; no re-provision.
+#   Cross-repo lane specs live in forestrie/system-testing (T3), not here.
 #
 # Triggers: manual dispatch, workflow_call (deploy-workers, release), and
 # push to main when deploy-workers did not run (non-overlapping paths).
@@ -33,6 +36,14 @@ on:
         options:
           - system
           - prod
+      e2e_tier:
+        description: "t2 = ephemeral bootstrap provision; t3 = pinned contracts (default)"
+        required: false
+        default: t3
+        type: choice
+        options:
+          - t3
+          - t2
       es256_address:
         description: "Optional ImutableUnivocity address (skip es256 provision)"
         required: false
@@ -81,6 +92,11 @@ on:
         required: false
         type: string
         default: system
+      e2e_tier:
+        description: "t2 = ephemeral bootstrap; t3 = pinned contracts (default)"
+        required: false
+        type: string
+        default: t3
       es256_address:
         required: false
         type: string
@@ -135,11 +151,12 @@ jobs:
               - "taskfiles/wrangler.yml"
               - ".github/workflows/deploy-workers.yml"
 
-  prepare-univocity:
-    name: Prepare Univocity (provision or accept)
+  t2-bootstrap-univocity:
+    name: T2 bootstrap Univocity (ephemeral)
     needs: [paths]
     if: |
       always() &&
+      inputs.e2e_tier == 't2' &&
       (
         github.event_name == 'workflow_dispatch' ||
         inputs.ignore_deploy_path_overlap == true ||
@@ -205,16 +222,76 @@ jobs:
           app_id: ${{ vars.GITAPP_ID }}
           private_key: ${{ secrets.GITAPP_PRIVATE_KEY }}
 
-      - name: Prepare Univocity per alg
+      - name: T2 ephemeral bootstrap provision
         id: prepare
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
         run: task e2e-univocity:ci-prepare
 
+  t3-resolve-univocity:
+    name: T3 resolve Univocity pins (no provision)
+    needs: [paths]
+    if: |
+      always() &&
+      inputs.e2e_tier != 't2' &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        inputs.ignore_deploy_path_overlap == true ||
+        (
+          github.event_name == 'push' &&
+          needs.paths.result == 'success' &&
+          needs.paths.outputs.deploy_workers != 'true'
+        )
+      )
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}
+    outputs:
+      es256_address: ${{ steps.resolve.outputs.es256_address }}
+      ks256_address: ${{ steps.resolve.outputs.ks256_address }}
+      es256_log_id: ${{ steps.resolve.outputs.es256_log_id }}
+      ks256_log_id: ${{ steps.resolve.outputs.ks256_log_id }}
+      es256_bootstrap_pem_b64: ${{ steps.resolve.outputs.es256_bootstrap_pem_b64 }}
+      ks256_bootstrap_signer: ${{ steps.resolve.outputs.ks256_bootstrap_signer }}
+      ks256_bootstrap_key_b64: ${{ steps.resolve.outputs.ks256_bootstrap_key_b64 }}
+      es256_fresh: ${{ steps.resolve.outputs.es256_fresh }}
+      ks256_fresh: ${{ steps.resolve.outputs.ks256_fresh }}
+    env:
+      E2E_UNIVOCITY_RPC_URL: ${{ vars.E2E_UNIVOCITY_RPC_URL }}
+      UNIVOCITY_CONTRACT_ADDRESS: ${{ vars.UNIVOCITY_CONTRACT_ADDRESS }}
+      E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP: ${{ vars.E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP }}
+      E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP: ${{ vars.E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP }}
+      INPUT_ES256_ADDRESS: ${{ inputs.es256_address || '' }}
+      INPUT_KS256_ADDRESS: ${{ inputs.ks256_address || '' }}
+      INPUT_ES256_PEM_B64: ${{ inputs.es256_bootstrap_pem_b64 || secrets.E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64 || '' }}
+      INPUT_KS256_KEY_B64: ${{ inputs.ks256_bootstrap_key_b64 || secrets.E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_B64 || '' }}
+      INPUT_ES256_LOG_ID: ${{ inputs.es256_genesis_log_id || '' }}
+      INPUT_KS256_LOG_ID: ${{ inputs.ks256_genesis_log_id || '' }}
+      PLAYWRIGHT_PROJECT: ${{ github.event_name == 'push' && 'system' || inputs.playwright_project || 'system' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install go-task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: foundry-rs/foundry-toolchain@v1
+
+      - name: T3 resolve pinned Univocity contracts
+        id: resolve
+        run: task e2e-univocity:ci-resolve-pins
+
   system-tests:
     name: System tests (${{ github.event_name == 'push' && 'dev' || inputs.environment }})
-    needs: [prepare-univocity]
-    if: always() && needs.prepare-univocity.result == 'success'
+    needs: [t2-bootstrap-univocity, t3-resolve-univocity]
+    if: |
+      always() &&
+      (
+        needs.t2-bootstrap-univocity.result == 'success' ||
+        needs.t3-resolve-univocity.result == 'success'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 40
     environment: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}
@@ -259,17 +336,18 @@ jobs:
           DELEGATION_COORDINATOR_URL: ${{ vars.DELEGATION_COORDINATOR_URL }}
           COORDINATOR_APP_TOKEN: ${{ secrets.COORDINATOR_APP_TOKEN }}
           UNIVOCITY_SERVICE_URL: ${{ vars.UNIVOCITY_SERVICE_URL }}
-          E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP: ${{ needs.prepare-univocity.outputs.ks256_address }}
-          E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP: ${{ needs.prepare-univocity.outputs.es256_address }}
+          E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP: ${{ needs.t3-resolve-univocity.outputs.ks256_address || needs.t2-bootstrap-univocity.outputs.ks256_address }}
+          E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP: ${{ needs.t3-resolve-univocity.outputs.es256_address || needs.t2-bootstrap-univocity.outputs.es256_address }}
           E2E_UNIVOCITY_RPC_URL: ${{ vars.E2E_UNIVOCITY_RPC_URL }}
           E2E_UNIVOCITY_CHAIN_ID: ${{ vars.E2E_UNIVOCITY_CHAIN_ID }}
-          E2E_UNIVOCITY_GENESIS_LOG_ID_KS256: ${{ needs.prepare-univocity.outputs.ks256_log_id }}
-          E2E_UNIVOCITY_GENESIS_LOG_ID_ES256: ${{ needs.prepare-univocity.outputs.es256_log_id }}
-          E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64: ${{ needs.prepare-univocity.outputs.es256_bootstrap_pem_b64 }}
-          E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER: ${{ needs.prepare-univocity.outputs.ks256_bootstrap_signer }}
-          E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_B64: ${{ needs.prepare-univocity.outputs.ks256_bootstrap_key_b64 }}
-          E2E_UNIVOCITY_ES256_ALLOW_BOOTSTRAP: ${{ needs.prepare-univocity.outputs.es256_fresh }}
-          E2E_UNIVOCITY_KS256_ALLOW_BOOTSTRAP: ${{ needs.prepare-univocity.outputs.ks256_fresh }}
+          E2E_UNIVOCITY_GENESIS_LOG_ID_KS256: ${{ needs.t3-resolve-univocity.outputs.ks256_log_id || needs.t2-bootstrap-univocity.outputs.ks256_log_id }}
+          E2E_UNIVOCITY_GENESIS_LOG_ID_ES256: ${{ needs.t3-resolve-univocity.outputs.es256_log_id || needs.t2-bootstrap-univocity.outputs.es256_log_id }}
+          E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64: ${{ needs.t3-resolve-univocity.outputs.es256_bootstrap_pem_b64 || needs.t2-bootstrap-univocity.outputs.es256_bootstrap_pem_b64 }}
+          E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER: ${{ needs.t3-resolve-univocity.outputs.ks256_bootstrap_signer || needs.t2-bootstrap-univocity.outputs.ks256_bootstrap_signer }}
+          E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_B64: ${{ needs.t3-resolve-univocity.outputs.ks256_bootstrap_key_b64 || needs.t2-bootstrap-univocity.outputs.ks256_bootstrap_key_b64 }}
+          E2E_UNIVOCITY_ES256_ALLOW_BOOTSTRAP: ${{ needs.t2-bootstrap-univocity.outputs.es256_fresh || needs.t3-resolve-univocity.outputs.es256_fresh }}
+          E2E_UNIVOCITY_KS256_ALLOW_BOOTSTRAP: ${{ needs.t2-bootstrap-univocity.outputs.ks256_fresh || needs.t3-resolve-univocity.outputs.ks256_fresh }}
+          E2E_TESTING_TIER: ${{ inputs.e2e_tier || 't3' }}
           PLAYWRIGHT_PROJECT: ${{ github.event_name == 'push' && 'system' || inputs.playwright_project || 'system' }}
           REQUIRE_COORDINATOR_E2E: ${{ github.event_name == 'push' && 'false' || inputs.require_coordinator_e2e || 'false' }}
         run: |

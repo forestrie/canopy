@@ -1,4 +1,4 @@
-/** Phase 2 minimum slice */
+/** T2 minimum slice (coordinator env + onboard token) */
 export {
   delegationCoordinatorBaseUrl,
   coordinatorAppToken,
@@ -21,7 +21,9 @@ export {
   mintOnboardTokenE2e,
 } from "./onboard-token-e2e.js";
 
-/** Phase 3 — genesis slice (0.2.0) */
+export * from "./e2e-testing-tier.js";
+
+/** T2 bootstrap + T3 genesis slice (0.2.0) */
 export { attachReceiptAndIdtimestampToTransparentStatement } from "./attach-transparent-statement-receipt.js";
 export { genesisBodyEs256 } from "./genesis-body-es256.js";
 export * from "./univocity-genesis-e2e.js";
@@ -46,7 +48,7 @@ export * from "./forestrie-hex-id.js";
 export * from "./statement-sign-bytes.js";
 export * from "./cbor-int-key.js";
 
-/** Phase 3 — Mode C slice (0.3.0) */
+/** T3 Mode C slice (0.3.0) */
 export * from "./mode-c-e2e-env.js";
 export * from "./mode-c-webhook-ingress.js";
 export * from "./mode-c-webhook-seal-helpers.js";

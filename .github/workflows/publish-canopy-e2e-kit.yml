@@ -5,6 +5,7 @@ on:
   push:
     tags:
       - 'canopy-e2e-kit-v*'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
 
 permissions:
   contents: read
@@ -30,6 +31,30 @@ jobs:
 
       - name: Install
         run: pnpm install --frozen-lockfile
+
+      - name: Sync package version from git tag
+        env:
+          GIT_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          TAG="${GIT_TAG}"
+          if [[ "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+          elif [[ "$TAG" =~ ^canopy-e2e-kit-v(.+)$ ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+          else
+            echo "::error::Unsupported publish tag: ${TAG}" >&2
+            exit 1
+          fi
+          export VERSION
+          node -e "
+            const fs = require('fs');
+            const p = 'packages/tests/e2e-kit/package.json';
+            const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
+            pkg.version = process.env.VERSION;
+            fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
+          "
+          echo "Publishing @forestrie/canopy-e2e-kit@${VERSION}"
 
       - name: Test kit
         run: pnpm --filter @forestrie/canopy-e2e-kit test
