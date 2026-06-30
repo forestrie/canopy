@@ -1,5 +1,9 @@
 name: Release
 
+# Tag push: deploy lanes, then emit RC metadata for release-orchestrator
+# hydration (ADR-0042 / FOR-245). Lane-b promotion is owned by the
+# orchestrator promotion gate (ARC-0025), not this workflow.
+
 on:
   push:
     tags:
@@ -41,6 +45,71 @@ jobs:
     with:
       environment: dev
       run_e2e: false
+
+  capture-release-metadata:
+    name: Capture release metadata (RC)
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write release metadata artifact
+        env:
+          TAG: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-metadata
+          jq -n \
+            --arg repo "forestrie/canopy" \
+            --arg tag "$TAG" \
+            --arg sha "$SHA" \
+            --arg capturedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --argjson workflowRunId "${{ github.run_id }}" \
+            '{
+              schemaVersion: 1,
+              repo: $repo,
+              tag: $tag,
+              sha: $sha,
+              capturedAt: $capturedAt,
+              workflowRunId: $workflowRunId,
+              serviceSnapshotFragment: {
+                canopy: {
+                  channels: { main: $sha }
+                }
+              }
+            }' > release-metadata/release-metadata.json
+          cat release-metadata/release-metadata.json
+
+      - name: Upload release metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-metadata
+          path: release-metadata/release-metadata.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Generate GitHub App Token
+        id: app-token
+        if: vars.GITAPP_ID != ''
+        uses: tibdex/github-app-token@v1
+        with:
+          app_id: ${{ vars.GITAPP_ID }}
+          private_key: ${{ secrets.GITAPP_PRIVATE_KEY }}
+
+      - name: Dispatch release-candidate to orchestrator
+        if: vars.GITAPP_ID != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TAG: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          gh api repos/forestrie/release-orchestrator/dispatches \
+            --method POST \
+            -f event_type=release-candidate \
+            -f "client_payload[repo]=forestrie/canopy" \
+            -f "client_payload[tag]=$TAG" \
+            -f "client_payload[sha]=$SHA" \
+            -f "client_payload[source_run_id]=${{ github.run_id }}"
 
   system-e2e-dev:
     name: System tests (dev gate)
