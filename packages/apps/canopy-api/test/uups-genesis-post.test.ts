@@ -123,4 +123,48 @@ describe("postForestGenesis uups-counterfactual", () => {
       expect(result.status).toBe(400);
     }
   });
+
+  it("rejects when CREATE3 factory env differs from deployer prediction", async () => {
+    const padded = toPaddedWire32(logIdToWireBytes(LOG_ID));
+    const body = new Map<number, unknown>([
+      [FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V2],
+      [FOREST_GENESIS_LABEL_GENESIS_ALG, COSE_ALG_KS256],
+      [
+        FOREST_GENESIS_LABEL_BOOTSTRAP_KEY,
+        deployerBytes("0x1528b86ff561f617602356efdbD05908a07AA788"),
+      ],
+      [FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID, padded],
+      [
+        FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
+        proxyBytes(vector.expectedProxyAddress),
+      ],
+      [FOREST_GENESIS_LABEL_CHAIN_ID, CHAIN_ID],
+      [
+        FOREST_GENESIS_LABEL_UNIVOCITY_VARIANT,
+        FOREST_GENESIS_UNIVOCITY_VARIANT_UUPS_COUNTERFACTUAL,
+      ],
+      [FOREST_GENESIS_LABEL_UNIVOCITY_DEPLOYER, deployerBytes(vector.deployer)],
+    ]);
+
+    const result = await postForestGenesis(
+      new Request("http://localhost/genesis", {
+        method: "POST",
+        headers: { "Content-Type": "application/cbor" },
+        body: encodeCbor(body) as Uint8Array,
+      }),
+      LOG_ID,
+      {
+        R2_GRANTS: {} as R2Bucket,
+        SUPPORTED_CHAINS_RPC: JSON.stringify({
+          [CHAIN_ID]: ["http://127.0.0.1:8545"],
+        }),
+        CREATE3_FACTORY_ADDRESS: "0x0000000000000000000000000000000000000001",
+      },
+    );
+
+    expect(result instanceof Response).toBe(true);
+    if (result instanceof Response) {
+      expect(result.status).toBe(400);
+    }
+  });
 });

@@ -4,6 +4,7 @@
  */
 
 import { encode as encodeCbor } from "cbor-x";
+import type { Address } from "viem";
 
 import { COSE_ALG_ES256, COSE_ALG_KS256 } from "../cose/cose-key.js";
 import {
@@ -34,6 +35,7 @@ import {
 import {
   assertCounterfactualUupsAddress,
   parseUnivocityDeployerRequired,
+  resolveCreate3FactoryAddress,
 } from "./uups-genesis-binding.js";
 import {
   asGenesisUint8Array,
@@ -50,6 +52,8 @@ import {
 
 export interface PostGenesisEnv extends SupportedChainsEnv {
   R2_GRANTS: R2Bucket;
+  /** CREATE3 factory for uups-counterfactual address re-derivation (optional). */
+  CREATE3_FACTORY_ADDRESS?: string;
   /**
    * When set, the canonical genesis is forwarded to the univocity owned store,
    * which anchors genesis.key to the on-chain bootstrapConfig(). Canopy also
@@ -109,6 +113,7 @@ function validateBootstrapLogId(
 function validateChainBinding(
   m: Map<number, unknown>,
   logIdRouteSegment: string,
+  create3Factory: Address,
 ):
   | {
       addr: Uint8Array;
@@ -152,7 +157,14 @@ function validateChainBinding(
     );
   }
 
-  if (!assertCounterfactualUupsAddress(logIdRouteSegment, deployer, addrRes)) {
+  if (
+    !assertCounterfactualUupsAddress(
+      logIdRouteSegment,
+      deployer,
+      addrRes,
+      create3Factory,
+    )
+  ) {
     return ClientErrors.badRequest(
       "univocity-addr does not match counterfactual CREATE3 address for log-id and deployer",
     );
@@ -276,7 +288,11 @@ export async function postForestGenesis(
   const bootErr = validateBootstrapLogId(m, paddedWire);
   if (bootErr) return bootErr;
 
-  const binding = validateChainBinding(m, logIdRouteSegment);
+  const binding = validateChainBinding(
+    m,
+    logIdRouteSegment,
+    resolveCreate3FactoryAddress(env),
+  );
   if (binding instanceof Response) return binding;
 
   if (!isSupportedChainIdForEnv(env, binding.chainId)) {

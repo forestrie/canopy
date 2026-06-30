@@ -74,6 +74,8 @@ export interface Env {
   UNIVOCITY_API_TOKEN?: string;
   /** JSON map: chainId → preference-ordered RPC URLs (deploy-resolved). */
   SUPPORTED_CHAINS_RPC?: string;
+  /** CREATE3 factory for uups-counterfactual genesis binding (optional). */
+  CREATE3_FACTORY_ADDRESS?: string;
   ONBOARD_REQUEST_TTL_SEC?: string;
   ONBOARD_REQUEST_WEBHOOK_URL?: string;
   ONBOARD_REQUEST_WEBHOOK_SECRET?: string;
