@@ -4,7 +4,10 @@ import {
   getBootstrapVariant,
 } from "../src/e2e-bootstrap-variant.js";
 import * as univocityGenesis from "../src/univocity-genesis-e2e.js";
-import { COSE_ALG_ES256, COSE_ALG_KS256 } from "../src/univocity-genesis-e2e.js";
+import {
+  COSE_ALG_ES256,
+  COSE_ALG_KS256,
+} from "../src/univocity-genesis-e2e.js";
 import { KS256_UNIVOCITY_MANIFEST_PLACEHOLDER } from "../src/system-test-manifest-constants.js";
 
 describe("bootstrapVariantForGrantE2e", () => {
@@ -32,10 +35,12 @@ describe("bootstrapVariantForGrantE2e", () => {
       KS256_UNIVOCITY_MANIFEST_PLACEHOLDER;
     process.env.E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP =
       "0x7A4E8ad88D6Df29FEBEc0d546d148Ed4bea8Cb94";
-    vi.spyOn(univocityGenesis, "fetchOnChainBootstrapConfig").mockResolvedValue({
-      alg: COSE_ALG_KS256,
-      key: new Uint8Array(20).fill(0xab),
-    });
+    vi.spyOn(univocityGenesis, "fetchOnChainBootstrapConfig").mockResolvedValue(
+      {
+        alg: COSE_ALG_KS256,
+        key: new Uint8Array(20).fill(0xab),
+      },
+    );
 
     const variant = await bootstrapVariantForGrantE2e();
     expect(variant.id).toBe("ks256");
@@ -46,10 +51,12 @@ describe("bootstrapVariantForGrantE2e", () => {
       KS256_UNIVOCITY_MANIFEST_PLACEHOLDER;
     process.env.E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP =
       "0x611dd70B2D36c87B29878089eD8a7aDc68E4441B";
-    vi.spyOn(univocityGenesis, "fetchOnChainBootstrapConfig").mockResolvedValue({
-      alg: COSE_ALG_ES256,
-      key: new Uint8Array(64).fill(0xcd),
-    });
+    vi.spyOn(univocityGenesis, "fetchOnChainBootstrapConfig").mockResolvedValue(
+      {
+        alg: COSE_ALG_ES256,
+        key: new Uint8Array(64).fill(0xcd),
+      },
+    );
 
     const variant = await bootstrapVariantForGrantE2e();
     expect(variant.id).toBe("es256");
