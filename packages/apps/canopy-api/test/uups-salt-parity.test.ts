@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { predictCreate3Address } from "../src/univocity/create3-address.js";
-import { logIdToHex32, uupsProxySaltString } from "../src/univocity/uups-proxy-salt.js";
+import {
+  logIdToHex32,
+  uupsProxySaltString,
+} from "../src/univocity/uups-proxy-salt.js";
 
 /** Mirrors deploy-core/packages/deploy-core/test/fixtures/uups-salt-parity.vector.json */
 const vector = {
