@@ -1,12 +1,28 @@
 name: Release
 
-# Tag push: deploy lanes. Orchestrator owns qualify/release capture (ADR-0043).
+# Tag push: deploy dev + system gate. Orchestrator dispatch (ADR-0043): same
+# path from main with optional skip of cross-repo T3 when qualify-dev is green.
 # Lane-b promotion is owned by the orchestrator promotion gate (ARC-0025).
 
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      orchestrator_run_id:
+        description: Correlation id from release-orchestrator release.yml
+        required: true
+        type: string
+      skip_cross_repo_tests:
+        description: Skip system-tests when orchestrator already qualified dev
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -18,6 +34,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
@@ -45,49 +63,12 @@ jobs:
       environment: dev
       run_e2e: false
 
-  capture-release-metadata:
-    name: Capture release metadata (RC)
-    needs: deploy-dev
-    runs-on: ubuntu-latest
-    steps:
-      - name: Write release metadata artifact
-        env:
-          TAG: ${{ github.ref_name }}
-          SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          mkdir -p release-metadata
-          jq -n \
-            --arg repo "forestrie/canopy" \
-            --arg tag "$TAG" \
-            --arg sha "$SHA" \
-            --arg capturedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --argjson workflowRunId "${{ github.run_id }}" \
-            '{
-              schemaVersion: 1,
-              repo: $repo,
-              tag: $tag,
-              sha: $sha,
-              capturedAt: $capturedAt,
-              workflowRunId: $workflowRunId,
-              serviceSnapshotFragment: {
-                canopy: {
-                  channels: { main: $sha }
-                }
-              }
-            }' > release-metadata/release-metadata.json
-          cat release-metadata/release-metadata.json
-
-      - name: Upload release metadata
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-metadata
-          path: release-metadata/release-metadata.json
-          retention-days: 90
-          if-no-files-found: error
-
+  system-tests:
     name: System tests (dev gate)
     needs: deploy-dev
+    if: >-
+      github.event_name == 'push' ||
+      github.event.inputs.skip_cross_repo_tests != 'true'
     uses: ./.github/workflows/tests-system.yml
     secrets: inherit
     with:
@@ -95,3 +76,105 @@ jobs:
       require_coordinator_e2e: true
       playwright_project: system
       ignore_deploy_path_overlap: true
+
+  capture-release-fragment:
+    name: Capture release fragment
+    needs: [deploy-dev, system-tests]
+    if: >-
+      always() &&
+      needs.deploy-dev.result == 'success' &&
+      (needs.system-tests.result == 'success' ||
+       needs.system-tests.result == 'skipped')
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - name: Resolve release metadata
+        id: meta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          sha="${{ github.sha }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            latest=$(gh release list --repo "${{ github.repository }}" --limit 1 \
+              --json tagName -q '.[0].tagName // empty')
+            if [ -z "$latest" ]; then
+              tag="v0.1.0"
+            else
+              base="${latest#v}"
+              IFS=. read -r major minor patch <<< "${base%%-*}"
+              patch=$((patch + 1))
+              tag="v${major}.${minor}.${patch}"
+            fi
+          else
+            tag="${{ github.ref_name }}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Write release fragment
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          SHA: ${{ steps.meta.outputs.sha }}
+          ORCH_RUN_ID: >-
+            ${{ github.event_name == 'workflow_dispatch' &&
+            github.event.inputs.orchestrator_run_id || github.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-metadata
+          jq -n \
+            --arg repo "${{ github.repository }}" \
+            --arg tag "$TAG" \
+            --arg sha "$SHA" \
+            --arg ref "${{ github.event_name == 'workflow_dispatch' && 'main' || github.ref_name }}" \
+            --arg orchestratorRunId "$ORCH_RUN_ID" \
+            --arg capturedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{
+              schemaVersion: 3,
+              repo: $repo,
+              ref: $ref,
+              tag: $tag,
+              sha: $sha,
+              orchestratorRunId: $orchestratorRunId,
+              capturedAt: $capturedAt,
+              services: {
+                canopy: { repo: "forestrie/canopy", ref: $sha }
+              }
+            }' > release-metadata/release-fragment.jsonc
+          cat release-metadata/release-fragment.jsonc
+
+      - name: Upload release fragment
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-fragment
+          path: release-metadata/release-fragment.jsonc
+          retention-days: 90
+          if-no-files-found: error
+
+  publish-github-release:
+    name: Publish GitHub Release (orchestrator dispatch)
+    needs: capture-release-fragment
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Create annotated tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.capture-release-fragment.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Orchestrator release $TAG"
+          git push origin "$TAG"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes "Orchestrator-driven release (run ${{ github.event.inputs.orchestrator_run_id }})."
