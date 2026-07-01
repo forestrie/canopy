@@ -1,8 +1,7 @@
 name: Release
 
-# Tag push: deploy lanes, then emit RC metadata for release-orchestrator
-# hydration (ADR-0042 / FOR-245). Lane-b promotion is owned by the
-# orchestrator promotion gate (ARC-0025), not this workflow.
+# Tag push: deploy lanes. Orchestrator owns qualify/release capture (ADR-0043).
+# Lane-b promotion is owned by the orchestrator promotion gate (ARC-0025).
 
 on:
   push:
@@ -87,31 +86,6 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
-      - name: Generate GitHub App Token
-        id: app-token
-        if: vars.GITAPP_ID != ''
-        uses: tibdex/github-app-token@v1
-        with:
-          app_id: ${{ vars.GITAPP_ID }}
-          private_key: ${{ secrets.GITAPP_PRIVATE_KEY }}
-
-      - name: Dispatch release-candidate to orchestrator
-        if: vars.GITAPP_ID != ''
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          TAG: ${{ github.ref_name }}
-          SHA: ${{ github.sha }}
-        run: |
-          gh api repos/forestrie/release-orchestrator/dispatches \
-            --method POST \
-            -f event_type=release-candidate \
-            -f "client_payload[repo]=forestrie/canopy" \
-            -f "client_payload[tag]=$TAG" \
-            -f "client_payload[sha]=$SHA" \
-            -f "client_payload[source_run_id]=${{ github.run_id }}"
-
-  system-e2e-dev:
     name: System tests (dev gate)
     needs: deploy-dev
     uses: ./.github/workflows/tests-system.yml
