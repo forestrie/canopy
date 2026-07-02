@@ -52,7 +52,13 @@ jobs:
         run: pnpm install
 
       - name: Unit tests
-        run: pnpm -r test
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && \
+             [ "${{ github.event.inputs.skip_cross_repo_tests }}" = "true" ]; then
+            pnpm --filter '!@canopy/api-e2e' -r test
+          else
+            pnpm -r test
+          fi
 
   deploy-dev:
     name: Deploy release to dev (Lane A)
