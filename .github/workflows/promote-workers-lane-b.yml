@@ -115,7 +115,7 @@ jobs:
             echo "No manifest file found in artifact" >&2
             exit 1
           fi
-          CANOPY_REF=$(grep -A3 '^  canopy:' "${MANIFEST}" | grep '^\s*ref:' | awk '{print $2}' | tr -d '"')
+          CANOPY_REF=$(jq -r '.services.canopy.ref // empty' "$MANIFEST")
           if [ -z "${CANOPY_REF}" ]; then
             echo "services.canopy.ref missing from hydrated manifest" >&2
             exit 1

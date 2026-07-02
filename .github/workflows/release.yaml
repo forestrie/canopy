@@ -175,6 +175,15 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$TAG" -m "Orchestrator release $TAG"
           git push origin "$TAG"
+          KIT_VERSION=$(node -p "require('./packages/tests/e2e-kit/package.json').version")
+          jq -n \
+            --arg ecosystem "pnpm" \
+            --arg pkg "@forestrie/canopy-e2e-kit" \
+            --arg ver "$KIT_VERSION" \
+            '{ ecosystem: $ecosystem, components: { ($pkg): $ver } }' \
+            > components.jsonc
+          cat components.jsonc
           gh release create "$TAG" \
             --title "$TAG" \
-            --notes "Orchestrator-driven release (run ${{ github.event.inputs.orchestrator_run_id }})."
+            --notes "Orchestrator-driven release (run ${{ github.event.inputs.orchestrator_run_id }})." \
+            components.jsonc
