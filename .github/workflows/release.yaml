@@ -162,7 +162,12 @@ jobs:
   publish-github-release:
     name: Publish GitHub Release (orchestrator dispatch)
     needs: capture-release-fragment
-    if: github.event_name == 'workflow_dispatch'
+    # always() required: system-tests may skip on orchestrator dispatch; skip
+    # propagates down the needs chain unless each downstream job opts in.
+    if: >-
+      always() &&
+      github.event_name == 'workflow_dispatch' &&
+      needs.capture-release-fragment.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -180,8 +185,12 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "Orchestrator release $TAG"
-          git push origin "$TAG"
+          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists; skipping tag create"
+          else
+            git tag -a "$TAG" -m "Orchestrator release $TAG"
+            git push origin "$TAG"
+          fi
           KIT_VERSION=$(node -p "require('./packages/tests/e2e-kit/package.json').version")
           jq -n \
             --arg ecosystem "pnpm" \
@@ -190,7 +199,11 @@ jobs:
             '{ ecosystem: $ecosystem, components: { ($pkg): $ver } }' \
             > components.jsonc
           cat components.jsonc
-          gh release create "$TAG" \
-            --title "$TAG" \
-            --notes "Orchestrator-driven release (run ${{ github.event.inputs.orchestrator_run_id }})." \
-            components.jsonc
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$TAG" --repo "${{ github.repository }}" components.jsonc --clobber
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes "Orchestrator-driven release (run ${{ github.event.inputs.orchestrator_run_id }})." \
+              components.jsonc
+          fi
