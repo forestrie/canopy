@@ -41,7 +41,10 @@ function mapToGrant(m: Map<number, unknown> | Record<number, unknown>): Grant {
   return {
     logId: fromPaddedWire32(requireBstr(get(CBOR_KEY_LOG_ID))),
     ownerLogId: fromPaddedWire32(requireBstr(get(CBOR_KEY_OWNER_LOG_ID))),
-    grant: leftPad(requireBstr(get(CBOR_KEY_GRANT_FLAGS)), WIRE_GRANT_FLAGS_BYTES),
+    grant: leftPad(
+      requireBstr(get(CBOR_KEY_GRANT_FLAGS)),
+      WIRE_GRANT_FLAGS_BYTES,
+    ),
     maxHeight: requireUint(get(CBOR_KEY_MAX_HEIGHT)),
     minGrowth: requireUint(get(CBOR_KEY_MIN_GROWTH)),
     grantData:
@@ -94,7 +97,10 @@ export function encodeGrantPayload(grant: Grant): Uint8Array {
     [CBOR_KEY_GRANT_FLAGS, leftPad(grant.grant, WIRE_GRANT_FLAGS_BYTES)],
     [CBOR_KEY_MAX_HEIGHT, grant.maxHeight ?? 0],
     [CBOR_KEY_MIN_GROWTH, grant.minGrowth ?? 0],
-    [CBOR_KEY_GRANT_DATA, grantDataToBytes(grant.grantData ?? new Uint8Array(0))],
+    [
+      CBOR_KEY_GRANT_DATA,
+      grantDataToBytes(grant.grantData ?? new Uint8Array(0)),
+    ],
   ]);
   return new Uint8Array(encodeCbor(map));
 }

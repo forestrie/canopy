@@ -8,7 +8,4 @@ export { parseReceipt } from "./parse-receipt.js";
 export { decodeTrustRootFromGenesis } from "./decode-trust-root-from-genesis.js";
 export { verifyGrantReceiptOffline } from "./verify-grant-receipt-offline.js";
 export { decodeForestrieGrantCose } from "./decode-forestrie-grant-cose.js";
-export {
-  decodeGrantPayload,
-  decodeGrantResponse,
-} from "./grant-codec.js";
+export { decodeGrantPayload, decodeGrantResponse } from "./grant-codec.js";

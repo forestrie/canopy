@@ -1,5 +1,9 @@
 /** Failure stage for falsifiable tests and CLI exit messaging (ADR-0045). */
-export type ReceiptVerifyStage = "parse" | "signature" | "inclusion" | "binding";
+export type ReceiptVerifyStage =
+  | "parse"
+  | "signature"
+  | "inclusion"
+  | "binding";
 
 export type ReceiptVerifyResult = {
   ok: boolean;

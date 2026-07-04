@@ -112,7 +112,10 @@ export async function buildGrantReceiptFixture(): Promise<{
 }> {
   const rootKeyPair = await generateP256KeyPair();
   const rootRaw = new Uint8Array(
-    (await crypto.subtle.exportKey("raw", rootKeyPair.publicKey)) as ArrayBuffer,
+    (await crypto.subtle.exportKey(
+      "raw",
+      rootKeyPair.publicKey,
+    )) as ArrayBuffer,
   );
   const bootstrapKey = rootRaw.slice(1);
 
@@ -143,10 +146,7 @@ export async function buildGrantReceiptFixture(): Promise<{
       [FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V2],
       [FOREST_GENESIS_LABEL_GENESIS_ALG, COSE_ALG_ES256],
       [FOREST_GENESIS_LABEL_BOOTSTRAP_KEY, bootstrapKey],
-      [
-        FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
-        new Uint8Array(20).fill(0xab),
-      ],
+      [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, new Uint8Array(20).fill(0xab)],
       [FOREST_GENESIS_LABEL_CHAIN_ID, "84532"],
       [-68010, toPaddedWire32(uuidToBytes(logId))],
     ]),

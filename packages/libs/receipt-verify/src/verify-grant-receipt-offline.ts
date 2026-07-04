@@ -1,9 +1,5 @@
 import { verifyCoseSign1WithParsedKey } from "@canopy/encoding";
-import {
-  calculateRoot,
-  verifyInclusion,
-  type Proof,
-} from "@canopy/merklelog";
+import { calculateRoot, verifyInclusion, type Proof } from "@canopy/merklelog";
 import type { Grant } from "./grant.js";
 import { grantCommitmentHashFromGrant } from "./grant-commitment.js";
 import { decodeTrustRootFromGenesis } from "./decode-trust-root-from-genesis.js";
@@ -27,11 +23,7 @@ function readIdtimestampBe8(bytes: Uint8Array): bigint {
   const view =
     bytes.length === 8
       ? new DataView(bytes.buffer, bytes.byteOffset, 8)
-      : new DataView(
-          bytes.buffer,
-          bytes.byteOffset + bytes.length - 8,
-          8,
-        );
+      : new DataView(bytes.buffer, bytes.byteOffset + bytes.length - 8, 8);
   return view.getBigUint64(0, false);
 }
 
@@ -54,14 +46,10 @@ async function verifySignatureAndInclusion(opts: {
 
   let sigOk = false;
   for (const candidateKey of opts.verifyKeys) {
-    sigOk = await verifyCoseSign1WithParsedKey(
-      opts.receiptCbor,
-      candidateKey,
-      {
-        logPrefix: "grant-receipt-offline",
-        detachedPayload: peak,
-      },
-    );
+    sigOk = await verifyCoseSign1WithParsedKey(opts.receiptCbor, candidateKey, {
+      logPrefix: "grant-receipt-offline",
+      detachedPayload: peak,
+    });
     if (sigOk) break;
     if (opts.explicitPeak !== null) {
       sigOk = await verifyCoseSign1WithParsedKey(

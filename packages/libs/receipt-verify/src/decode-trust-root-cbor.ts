@@ -1,7 +1,4 @@
-import {
-  COSE_ALG_ES256,
-  COSE_ALG_KS256,
-} from "@canopy/encoding";
+import { COSE_ALG_ES256, COSE_ALG_KS256 } from "@canopy/encoding";
 import type { ParsedVerifyKey } from "@canopy/encoding";
 import { isParsedKs256RootKey, type RootVerifyKey } from "./root-verify-key.js";
 

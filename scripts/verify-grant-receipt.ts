@@ -90,7 +90,9 @@ async function main(): Promise<void> {
   });
 
   if (!result.ok) {
-    console.error(`verify failed: stage=${result.stage} reason=${result.reason ?? "unknown"}`);
+    console.error(
+      `verify failed: stage=${result.stage} reason=${result.reason ?? "unknown"}`,
+    );
     process.exit(1);
   }
   console.log("ok");
