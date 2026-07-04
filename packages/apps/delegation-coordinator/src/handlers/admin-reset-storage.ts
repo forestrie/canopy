@@ -14,7 +14,9 @@ import {
 } from "./handler.js";
 
 /**
- * Dev-only POST /admin/reset-storage — wipe DelegationStoreDO shard data.
+ * POST /admin/reset-storage — wipe DelegationStoreDO shard data. Dev-only
+ * unless COORDINATOR_RESET_ALLOWED=1 opts a non-dev worker in (dev-forest
+ * prod lanes for content-reset); always token-gated.
  *
  * @param request - Must carry X-Forestrie-Coordinator-Reset header.
  * @param url - shard query param (index or `all`).
@@ -25,7 +27,7 @@ export async function handleAdminResetStorage(
   url: URL,
   env: Env,
 ): Promise<Response> {
-  if (env.NODE_ENV !== "dev") {
+  if (env.NODE_ENV !== "dev" && env.COORDINATOR_RESET_ALLOWED !== "1") {
     return new Response("Not Found", { status: 404 });
   }
 

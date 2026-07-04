@@ -162,12 +162,6 @@ jobs:
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
-          if [ -n "$(trim_ws "${INGRESS_RESET_TOKEN:-}")" ]; then
-            printf '%s' "${INGRESS_RESET_TOKEN}" | wrangler secret put INGRESS_RESET_TOKEN --env prod --quiet
-            echo "Configured INGRESS_RESET_TOKEN on forestrie-ingress (prod wrangler env)."
-          else
-            echo "INGRESS_RESET_TOKEN not set; skipping (content-reset ingress wipe unavailable until synced)."
-          fi
           node scripts/apply-runtime-contract.mjs --env prod --out wrangler.runtime.jsonc
           DOMAIN_FLAGS="$(
             cd "${GITHUB_WORKSPACE}"
@@ -175,3 +169,12 @@ jobs:
           )"
           # shellcheck disable=SC2086
           wrangler deploy --config wrangler.runtime.jsonc --env prod ${DOMAIN_FLAGS}
+          # Secret put targets the per-slot script, so it must use the runtime
+          # config (the static config names forestrie-ingress-prod) and run
+          # after the deploy so the script exists on first bootstrap.
+          if [ -n "$(trim_ws "${INGRESS_RESET_TOKEN:-}")" ]; then
+            printf '%s' "${INGRESS_RESET_TOKEN}" | wrangler secret put INGRESS_RESET_TOKEN --config wrangler.runtime.jsonc --env prod
+            echo "Configured INGRESS_RESET_TOKEN on ${SEQUENCING_QUEUE_SCRIPT_NAME}."
+          else
+            echo "INGRESS_RESET_TOKEN not set; skipping (content-reset ingress wipe unavailable until synced)."
+          fi
