@@ -1,5 +1,11 @@
 # Canopy implementation plans
 
+> **Plan numbering.** Plans `plan-0001…` (created on or before 2026-07) are
+> frozen legacy absolute ids — do not renumber them. New plans use **date
+> cohorts**: `plan-YYMM-NN-<slug>.md` (e.g. `plan-2607-01-…` = 1st plan of
+> July 2026); larger multi-part plans use a `plan-YYMM-NN-<slug>/` directory.
+> Forward-only.
+
 Read this index first. Do not bulk-read [archived/](archived/) unless a task
 cites a specific plan id.
 
