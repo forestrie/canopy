@@ -40,6 +40,13 @@ export interface Env {
    */
   COORDINATOR_RESET_TOKEN?: string;
   /**
+   * Opt-in for /admin/reset-storage on non-dev workers ("1" to allow). Set as
+   * a wrangler secret on prod-lane workers of DEV forests only (content-reset
+   * needs to wipe both lanes); never set on true production forests. The
+   * endpoint remains token-gated by COORDINATOR_RESET_TOKEN either way.
+   */
+  COORDINATOR_RESET_ALLOWED?: string;
+  /**
    * Optional JSON-RPC URL for KS256 ERC-1271 delegation certificate verify.
    */
   KS256_RPC_URL?: string;
