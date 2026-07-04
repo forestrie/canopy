@@ -13,7 +13,14 @@ import {
   completeBootstrapGrantWithReceipt,
   mintBootstrapGrant,
 } from "@e2e-utils/bootstrap-grant-flow";
-import { decodeEntryIdHex } from "@e2e-utils/entry-id-e2e";
+import {
+  decodeEntryIdHex,
+  entryIdHexToIdtimestampBe8,
+} from "@e2e-utils/entry-id-e2e";
+import {
+  decodeForestrieGrantCose,
+  verifyGrantReceiptOffline,
+} from "@forestrie/receipt-verify";
 import {
   assertBootstrapMintE2eEnv,
   e2eReceiptBootstrapRootLogId,
@@ -31,6 +38,14 @@ import {
   getForestGenesisParsed,
 } from "@e2e-utils/univocity-genesis-e2e";
 import { mintOnboardTokenE2e } from "@e2e-utils/onboard-token-e2e";
+
+function forestrieGrantBase64ToBytes(b64: string): Uint8Array {
+  const normalized = b64.replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(normalized);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
 
 /**
  * Ephemeral Imutable chain-bound bootstrap: genesis POST, contract-bootstrap-signed
@@ -169,6 +184,25 @@ describeForEachBootstrapVariant(
 
       const { mmrIndex } = decodeEntryIdHex(entryIdHex);
       expect(mmrIndex, "first leaf on fresh logId").toBe(0n);
+
+      const genesisRes = await unauthorizedRequest.get(
+        `/api/forest/${logId}/genesis`,
+      );
+      expect(genesisRes.status(), "GET genesis for offline verify").toBe(200);
+      const genesisCbor = new Uint8Array(await genesisRes.body());
+      const { grant: decodedGrant } = decodeForestrieGrantCose(
+        forestrieGrantBase64ToBytes(grantBase64),
+      );
+      const offlineVerify = await verifyGrantReceiptOffline({
+        genesisCbor,
+        receiptCbor: receiptBytes,
+        grant: decodedGrant,
+        idtimestampBe8: entryIdHexToIdtimestampBe8(entryIdHex),
+      });
+      expect(
+        offlineVerify.ok,
+        `offline verify failed: stage=${offlineVerify.stage} reason=${offlineVerify.reason ?? "unknown"}`,
+      ).toBe(true);
 
       const completedB64 = buildCompletedGrantBase64(
         grantBase64,
