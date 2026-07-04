@@ -127,10 +127,16 @@ function removePropertyWithComma(text, property, openChar, closeChar) {
   if (close < 0) return text;
   let start = idx;
   while (start > 0 && /[\s]/.test(text[start - 1])) start -= 1;
-  if (start > 0 && text[start - 1] === ",") start -= 1;
   let end = close + 1;
   while (end < text.length && /[\s]/.test(text[end])) end += 1;
-  if (text[end] === ",") end += 1;
+  // Consume exactly one separating comma: the trailing one when present,
+  // otherwise the preceding one (last property in an object). Consuming
+  // both orphans the previous property from its comma.
+  if (text[end] === ",") {
+    end += 1;
+  } else if (start > 0 && text[start - 1] === ",") {
+    start -= 1;
+  }
   return text.slice(0, start) + text.slice(end);
 }
 
