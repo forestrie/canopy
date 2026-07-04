@@ -21,6 +21,7 @@
     "@canopy/forestrie-ingress-types": "workspace:*",
     "@canopy/forestrie-sharding": "workspace:*",
     "@canopy/merklelog": "workspace:*",
+    "@forestrie/receipt-verify": "workspace:*",
     "@canopy/x402-settlement-types": "workspace:*",
     "@noble/curves": "^1.9.7",
     "@noble/hashes": "^1.7.1",

@@ -71,6 +71,9 @@ importers:
       '@canopy/x402-settlement-types':
         specifier: workspace:*
         version: link:../../shared/x402-settlement-types
+      '@forestrie/receipt-verify':
+        specifier: workspace:*
+        version: link:../../libs/receipt-verify
       '@noble/curves':
         specifier: ^1.9.7
         version: 1.9.7
@@ -327,6 +330,9 @@ importers:
       '@forestrie/delegation-cose':
         specifier: workspace:*
         version: link:../../libs/delegation-cose
+      '@forestrie/receipt-verify':
+        specifier: workspace:*
+        version: link:../../libs/receipt-verify
       '@noble/curves':
         specifier: ^1.9.7
         version: 1.9.7

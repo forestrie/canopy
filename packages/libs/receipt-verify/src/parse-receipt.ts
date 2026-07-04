@@ -60,6 +60,7 @@ export function parseReceipt(receiptBytes: Uint8Array): {
   explicitPeak: Uint8Array | null;
   proof: Proof;
   receiptCbor: Uint8Array;
+  coseSign1: CoseSign1;
 } {
   const decoded = decodeCbor(receiptBytes) as unknown;
   const unwrapped = unwrapCoseSign1Tag(decoded);
@@ -114,5 +115,6 @@ export function parseReceipt(receiptBytes: Uint8Array): {
     explicitPeak,
     proof: { path, mmrIndex },
     receiptCbor: receiptBytes,
+    coseSign1,
   };
 }
