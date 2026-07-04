@@ -163,7 +163,7 @@ jobs:
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
           if [ -n "$(trim_ws "${INGRESS_RESET_TOKEN:-}")" ]; then
-            printf '%s' "${INGRESS_RESET_TOKEN}" | wrangler secret put INGRESS_RESET_TOKEN --env prod --quiet
+            printf '%s' "${INGRESS_RESET_TOKEN}" | wrangler secret put INGRESS_RESET_TOKEN --env prod
             echo "Configured INGRESS_RESET_TOKEN on forestrie-ingress (prod wrangler env)."
           else
             echo "INGRESS_RESET_TOKEN not set; skipping (content-reset ingress wipe unavailable until synced)."
