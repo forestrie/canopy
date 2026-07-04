@@ -236,6 +236,28 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@24.8.1)(tsx@4.21.0)
 
+  packages/libs/receipt-verify:
+    dependencies:
+      '@canopy/encoding':
+        specifier: workspace:*
+        version: link:../../shared/encoding
+      '@canopy/merklelog':
+        specifier: workspace:*
+        version: link:../../merklelog
+      '@noble/hashes':
+        specifier: ^1.7.1
+        version: 1.8.0
+      cbor-x:
+        specifier: ^1.5.9
+        version: 1.6.0
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@24.8.1)(tsx@4.21.0)
+
   packages/merklelog:
     devDependencies:
       typescript:
@@ -383,6 +405,9 @@ importers:
       '@canopy/encoding':
         specifier: workspace:*
         version: link:../packages/shared/encoding
+      '@forestrie/receipt-verify':
+        specifier: workspace:*
+        version: link:../packages/libs/receipt-verify
       cbor-x:
         specifier: ^1.5.9
         version: 1.6.0
