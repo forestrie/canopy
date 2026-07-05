@@ -74,9 +74,7 @@ function decodeCheckpointPayload(bytes: Uint8Array): unknown {
     return null;
   }
   const proofBstr =
-    vdp instanceof Map
-      ? vdp.get(-2)
-      : (vdp as Record<string, unknown>)["-2"];
+    vdp instanceof Map ? vdp.get(-2) : (vdp as Record<string, unknown>)["-2"];
   if (!(proofBstr instanceof Uint8Array)) {
     return null;
   }
