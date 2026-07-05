@@ -348,6 +348,11 @@ jobs:
           E2E_UNIVOCITY_ES256_ALLOW_BOOTSTRAP: ${{ needs.t2-bootstrap-univocity.outputs.es256_fresh || needs.t3-resolve-univocity.outputs.es256_fresh }}
           E2E_UNIVOCITY_KS256_ALLOW_BOOTSTRAP: ${{ needs.t2-bootstrap-univocity.outputs.ks256_fresh || needs.t3-resolve-univocity.outputs.ks256_fresh }}
           E2E_TESTING_TIER: ${{ inputs.e2e_tier || 't3' }}
+          # Run the BYOK checkpoint seal stretch on the dev lane: it is the
+          # only automated guard on the live entry -> sealer -> v3 checkpoint
+          # -> receipt path (~25s; caught two live regressions during the
+          # FOR-316 cutover). All env it needs is exported above.
+          E2E_BYOK_SEAL_STRETCH: ${{ (inputs.environment || 'dev') == 'dev' && '1' || '' }}
           PLAYWRIGHT_PROJECT: ${{ github.event_name == 'push' && 'system' || inputs.playwright_project || 'system' }}
           REQUIRE_COORDINATOR_E2E: ${{ github.event_name == 'push' && 'false' || inputs.require_coordinator_e2e || 'false' }}
         run: |
