@@ -157,7 +157,7 @@ describe("SCRAPI flow", () => {
     const idtimestampBytes = new Uint8Array(8).fill(42);
 
     const flags = new Uint8Array(8);
-    flags[4] = 0x03; // GF_CREATE | GF_EXTEND
+    flags[3] = 0x03; // GF_CREATE | GF_EXTEND
     flags[7] = 0x02; // GF_DATA_LOG
     const grant: Grant = {
       logId: uuidToBytes(logId),

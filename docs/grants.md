@@ -134,7 +134,7 @@ That does **not** weaken **register-signed-statement**: §6 still requires **kid
 The API allows `**POST /register/entries**` only when this predicate holds (`statement-signer-binding.ts`):
 
 1. **Data-log path:** `**GF_DATA_LOG**` set in the low class byte, `**GF_AUTH_LOG` not** set for class, and **extend capability** (including **GF_CREATE|GF_EXTEND\*\* first-grant pattern): `isDataLogStatementGrantFlags`.
-2. **Root auth bootstrap / checkpoint shape:** low byte is **auth-only** (`GF_AUTH_LOG`, not `GF_DATA_LOG` in the **0x03** nibble) **and** `**GF_CREATE|GF_EXTEND**` on byte 4.
+2. **Root auth bootstrap / checkpoint shape:** low byte is **auth-only** (`GF_AUTH_LOG`, not `GF_DATA_LOG` in the **0x03** nibble) **and** `**GF_CREATE|GF_EXTEND**` on byte 3 (so they land on contract bits `1<<32`/`1<<33`; FOR-328).
 
 So **statement registration** is **either** a **data-log checkpoint grant** **or** the **root auth bootstrap-style** grant (same `statementSignerBindingBytes` rule from `**grantData**`).
 

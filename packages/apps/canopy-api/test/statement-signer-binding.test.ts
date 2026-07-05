@@ -11,7 +11,7 @@ import type { Grant } from "../src/grant/types.js";
 
 function assembly(overrides: Partial<Grant> = {}): Grant {
   const grant = new Uint8Array(8);
-  grant[4] = 0x03; // GF_CREATE | GF_EXTEND
+  grant[3] = 0x03; // GF_CREATE | GF_EXTEND
   grant[7] = 0x02; // GF_DATA_LOG
   return {
     logId: new Uint8Array(32),
@@ -31,14 +31,14 @@ describe("isStatementRegistrationGrant", () => {
 
   it("is true for bootstrap-shaped auth grant (GF_AUTH_LOG + GF_CREATE|GF_EXTEND)", () => {
     const g = new Uint8Array(8);
-    g[4] = 0x03;
+    g[3] = 0x03;
     g[7] = 0x01;
     expect(isStatementRegistrationGrant(assembly({ grant: g }))).toBe(true);
   });
 
   it("is false for GF_AUTH_LOG without GF_CREATE|GF_EXTEND", () => {
     const g = new Uint8Array(8);
-    g[4] = 0x02;
+    g[3] = 0x02;
     g[7] = 0x01;
     expect(isStatementRegistrationGrant(assembly({ grant: g }))).toBe(false);
   });
