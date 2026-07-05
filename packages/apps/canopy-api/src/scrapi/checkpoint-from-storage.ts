@@ -52,20 +52,39 @@ function unwrapCoseSign1Tag(value: unknown): unknown {
 }
 
 /**
- * Decode checkpoint .sth: CBOR, optionally COSE Sign1-tagged; payload is state (e.g. MMR size at key 1).
- * MMR root may be in state; for now we only require that we could read and decode the checkpoint.
+ * Decode checkpoint .sth (format v3, ADR-0046): a COSE Sign1 with a detached
+ * (null) payload carrying its consistency proof under the verifiable-proofs
+ * unprotected header (draft-bryce label 396, key -2). We require that the
+ * object decodes and carries the proof; the sealed size is tree-size-2.
  */
 function decodeCheckpointPayload(bytes: Uint8Array): unknown {
   const decoded = decodeCbor(bytes) as unknown;
   const unwrapped = unwrapCoseSign1Tag(decoded);
-  if (!Array.isArray(unwrapped) || unwrapped.length < 3) {
+  if (!Array.isArray(unwrapped) || unwrapped.length < 4) {
     return null;
   }
-  const payload = (unwrapped as [unknown, unknown, Uint8Array | null])[2];
-  if (!(payload instanceof Uint8Array) || payload.length === 0) {
+  const unprotected = (unwrapped as [unknown, unknown, unknown, unknown])[1];
+  let vdp: unknown;
+  if (unprotected instanceof Map) {
+    vdp = unprotected.get(396);
+  } else if (unprotected && typeof unprotected === "object") {
+    vdp = (unprotected as Record<string, unknown>)["396"];
+  }
+  if (vdp === undefined || vdp === null) {
     return null;
   }
-  return decodeCbor(payload) as unknown;
+  const proofBstr =
+    vdp instanceof Map
+      ? vdp.get(-2)
+      : (vdp as Record<string, unknown>)["-2"];
+  if (!(proofBstr instanceof Uint8Array)) {
+    return null;
+  }
+  const proof = decodeCbor(proofBstr) as unknown;
+  if (!Array.isArray(proof) || proof.length < 2) {
+    return null;
+  }
+  return proof;
 }
 
 /**

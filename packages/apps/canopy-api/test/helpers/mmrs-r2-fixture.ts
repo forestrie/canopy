@@ -101,9 +101,14 @@ export function buildV2CheckpointBytes(opts: {
   peakReceipts: Uint8Array[];
   delegationCert?: Uint8Array;
 }): Uint8Array {
-  const state = new Map<number, unknown>([[1, opts.mmrSize]]);
-  const stateBytes = cborBytes(state);
+  // Checkpoint format v3 (ADR-0046): detached (null) payload; the sealed
+  // size travels as tree-size-2 of the consistency proof under the
+  // verifiable-proofs unprotected header (draft-bryce: label 396, key -2,
+  // `bstr .cbor [tree-size-1, tree-size-2, paths, right-peaks]`).
+  const consistencyProof = cborBytes([0n, opts.mmrSize, [], []]);
+  const verifiableProofs = new Map<number, unknown>([[-2, consistencyProof]]);
   const checkpointUnprotected = new Map<number, unknown>([
+    [396, verifiableProofs],
     [SEAL_PEAK_RECEIPTS_LABEL, opts.peakReceipts],
   ]);
   if (opts.delegationCert?.length) {
@@ -111,12 +116,7 @@ export function buildV2CheckpointBytes(opts: {
   }
   const emptyProtected = new Uint8Array();
   const emptySig = new Uint8Array();
-  return cborBytes([
-    emptyProtected,
-    checkpointUnprotected,
-    stateBytes,
-    emptySig,
-  ]);
+  return cborBytes([emptyProtected, checkpointUnprotected, null, emptySig]);
 }
 
 export async function putMmrsFixture(
