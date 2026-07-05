@@ -1,6 +1,10 @@
 import { COSE_ALG_ES256, COSE_ALG_KS256 } from "@canopy/encoding";
 import type { ParsedVerifyKey } from "@canopy/encoding";
-import { isParsedKs256RootKey, type RootVerifyKey } from "./root-verify-key.js";
+import {
+  isParsedKs256RootKey,
+  type ParsedKs256RootKey,
+  type RootVerifyKey,
+} from "./root-verify-key.js";
 
 export async function importEs256PublicKeyFromGrantDataXy64(
   xy: Uint8Array,
@@ -105,5 +109,5 @@ export async function decodeTrustRootCbor(
 export function es256ReceiptVerifyKeys(
   keys: RootVerifyKey[],
 ): ParsedVerifyKey[] {
-  return keys.filter((k): k is ParsedVerifyKey => !isParsedKs256RootKey(k));
+  return keys.filter((k): k is CryptoKey => !isParsedKs256RootKey(k));
 }
