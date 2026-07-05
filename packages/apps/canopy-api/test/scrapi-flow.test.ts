@@ -239,19 +239,22 @@ describe("SCRAPI flow", () => {
     ];
     const peakReceiptBytes = encodeCbor(peakReceipt) as Uint8Array;
 
-    // Checkpoint payload: CBOR map with key 1 => mmrSize.
+    // Checkpoint format v3 (ADR-0046): detached (null) payload; sealed size
+    // is tree-size-2 of the consistency proof under the verifiable-proofs
+    // unprotected header (label 396, key -2).
     const mmrSize = 3n;
-    const state = new Map<number, unknown>([[1, mmrSize]]);
-    const stateBytes = encodeCbor(state) as Uint8Array;
+    const consistencyProof = encodeCbor([0n, mmrSize, [], []]) as Uint8Array;
+    const verifiableProofs = new Map<number, unknown>([[-2, consistencyProof]]);
 
-    // Checkpoint COSE_Sign1: unprotected contains the peak receipts.
+    // Checkpoint COSE_Sign1: unprotected carries the proof and peak receipts.
     const checkpointUnprotected = new Map<number, unknown>([
+      [396, verifiableProofs],
       [SEAL_PEAK_RECEIPTS_LABEL, [peakReceiptBytes]],
     ]);
     const checkpoint: any[] = [
       emptyBstr,
       checkpointUnprotected,
-      stateBytes,
+      null,
       emptySig,
     ];
     const checkpointBytes = encodeCbor(checkpoint) as Uint8Array;

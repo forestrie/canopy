@@ -170,18 +170,13 @@ export async function resolveReceipt(
 
     const peakReceipts = peakReceiptsRaw as unknown[];
 
-    const checkpointPayload = checkpointSign1[2];
-    if (!(checkpointPayload instanceof Uint8Array)) {
+    // Checkpoint format v3 (ADR-0046): the payload is detached (null); the
+    // sealed size is tree-size-2 of the consistency proof carried in the
+    // verifiable-proofs unprotected header (draft-bryce label 396, key -2).
+    const mmrSize = sealedSizeFromCheckpoint(checkpointUnprotected);
+    if (mmrSize === null || mmrSize <= 0n) {
       return ClientErrors.notFound(
-        "Entry receipt not found (checkpoint payload missing)",
-      );
-    }
-
-    const state = decodeCbor(checkpointPayload) as unknown;
-    const mmrSize = readStateMMRSize(state);
-    if (mmrSize <= 0n) {
-      return ClientErrors.notFound(
-        "Entry receipt not found (invalid MMR size)",
+        "Entry receipt not found (checkpoint carries no consistency proof)",
       );
     }
 
@@ -346,6 +341,42 @@ function requireCoseSign1(value: unknown, label: string): CoseSign1 {
   }
 
   return [p, u, payload, sig];
+}
+
+/** Verifiable-proofs unprotected header label (draft-bryce vdp). */
+const VDP_LABEL = 396;
+/** Verifiable-proofs map key for the checkpoint's single consistency proof. */
+const VDP_CONSISTENCY_PROOF_KEY = -2;
+
+/**
+ * Sealed mmr size from a format-v3 checkpoint: tree-size-2 of the consistency
+ * proof (`bstr .cbor [tree-size-1, tree-size-2, paths, right-peaks]`) under
+ * the verifiable-proofs unprotected header.
+ */
+function sealedSizeFromCheckpoint(
+  unprotected: Map<number, unknown>,
+): bigint | null {
+  const vdpRaw = unprotected.get(VDP_LABEL);
+  if (vdpRaw === undefined || vdpRaw === null) {
+    return null;
+  }
+  const vdp = toHeaderMap(vdpRaw as Map<number, unknown>);
+  const proofBstr = vdp.get(VDP_CONSISTENCY_PROOF_KEY);
+  if (!(proofBstr instanceof Uint8Array)) {
+    return null;
+  }
+  const proof = decodeCbor(proofBstr) as unknown;
+  if (!Array.isArray(proof) || proof.length < 2) {
+    return null;
+  }
+  const treeSize2 = proof[1];
+  if (typeof treeSize2 === "bigint") {
+    return treeSize2;
+  }
+  if (typeof treeSize2 === "number" && Number.isSafeInteger(treeSize2)) {
+    return BigInt(treeSize2);
+  }
+  return null;
 }
 
 function toHeaderMap(
@@ -757,11 +788,9 @@ export async function buildReceiptForEntry(
     if (!Array.isArray(peakReceiptsRaw)) return null;
     const peakReceipts = peakReceiptsRaw as unknown[];
 
-    const checkpointPayload = checkpointSign1[2];
-    if (!(checkpointPayload instanceof Uint8Array)) return null;
-    const state = decodeCbor(checkpointPayload) as unknown;
-    const mmrSize = readStateMMRSize(state);
-    if (mmrSize <= 0n) return null;
+    // Format v3: sealed size from the consistency proof (detached payload).
+    const mmrSize = sealedSizeFromCheckpoint(checkpointUnprotected);
+    if (mmrSize === null || mmrSize <= 0n) return null;
     const mmrLastIndex = mmrSize - 1n;
     if (mmrIndex > mmrLastIndex) return null;
 
