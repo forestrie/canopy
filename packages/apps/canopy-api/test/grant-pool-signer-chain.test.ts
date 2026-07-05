@@ -25,7 +25,7 @@ const GRANT_FLAGS_BYTES = 8;
 
 function dataLogExtendFlags(): Uint8Array {
   const f = new Uint8Array(GRANT_FLAGS_BYTES);
-  f[4] = 0x03; // GF_CREATE | GF_EXTEND
+  f[3] = 0x03; // GF_CREATE | GF_EXTEND
   f[7] = 0x02; // GF_DATA_LOG
   return f;
 }

@@ -128,7 +128,7 @@ describe.skipIf(!integration)(
 
       const id16 = uuidToBytes(logUuid);
       const grantBitmap = new Uint8Array(8);
-      grantBitmap[4] = 0x03;
+      grantBitmap[3] = 0x03;
       grantBitmap[7] = 0x01;
 
       const grant: Grant = {

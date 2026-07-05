@@ -113,7 +113,7 @@ export async function mintByokBootstrapGrant(opts: {
     chainId: univocityGenesisChainId(),
   });
   const grantBitmap = new Uint8Array(8);
-  grantBitmap[4] = 0x03;
+  grantBitmap[3] = 0x03;
   grantBitmap[7] = 0x01;
   const id16 = uuidToBytes(opts.rootLogId);
   const grant: Grant = {

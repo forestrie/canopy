@@ -61,7 +61,7 @@ const TEST_KID = new Uint8Array(16).fill(0x42);
 
 function authFlags(): Uint8Array {
   const g = new Uint8Array(8);
-  g[4] = 0x03;
+  g[3] = 0x03;
   g[7] = 0x01;
   return g;
 }

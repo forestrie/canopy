@@ -197,8 +197,9 @@ The endorsement is purely cross-forest bookkeeping appended to the endorser's
 log.
 
 - **Marker:** `GF_DERIVED` (univocity `constants.sol`, bit 34; canopy 8-byte
-  wire **byte 4, mask `0x04`** — the same byte that already carries
-  `GF_CREATE` / `GF_EXTEND`). It is in the leaf commitment (tamper-evident) but
+  wire **byte 3, mask `0x04`** — the same byte that already carries
+  `GF_CREATE` / `GF_EXTEND`, so the wire bits align with the contract's
+  `1<<32`/`1<<33`/`1<<34`; FOR-328). It is in the leaf commitment (tamper-evident) but
   is **not** enforced by native on-chain logic, and the arbor univocity service
   ignores bytes 0–6 (`grantClassFromFlags` reads byte 7 only). It marks the leaf
   as an external-protocol leaf, not a native log-creation grant.

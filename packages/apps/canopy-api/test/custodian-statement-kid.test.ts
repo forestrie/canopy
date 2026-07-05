@@ -33,7 +33,7 @@ const EXPECTED_G_KID_PREFIX = (() => {
 
 function authBootstrapGrant(grantData: Uint8Array): Grant {
   const g = new Uint8Array(8);
-  g[4] = 0x03;
+  g[3] = 0x03;
   g[7] = 0x01;
   return {
     logId: new Uint8Array(32),
