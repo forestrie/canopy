@@ -400,8 +400,48 @@ jobs:
           # shellcheck disable=SC2086
           wrangler deploy --config wrangler.runtime.jsonc --env "$ENV" ${DOMAIN_FLAGS}
 
+      # forestrie-ingress is deployed per slot (script name + custom domain
+      # injected via the runtime contract), matching
+      # deploy-forestrie-ingress.yml. The generic wrangler path would target
+      # the static forestrie-ingress-prod script, so promotions previously
+      # never updated the per-slot ingress workers.
+      - name: Deploy forestrie-ingress (per-slot runtime contract)
+        if: matrix.target.app == 'forestrie-ingress'
+        working-directory: packages/apps/forestrie-ingress
+        env:
+          INGRESS_RESET_TOKEN: ${{ secrets.INGRESS_RESET_TOKEN }}
+        run: |
+          set -euo pipefail
+          trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+          : "${SEQUENCING_QUEUE_SCRIPT_NAME:?SEQUENCING_QUEUE_SCRIPT_NAME environment variable is required (per-slot ingress script name)}"
+          : "${CANOPY_FQDN:?CANOPY_FQDN environment variable is required}"
+          # CANOPY_FQDN is api-<slot>.<sub>.<apex>; the per-slot ingress
+          # custom domain is ingress.<slot>.<sub>.<apex>.
+          case "${CANOPY_FQDN}" in
+            api-*) INGRESS_FQDN="ingress.${CANOPY_FQDN#api-}" ;;
+            *)
+              echo "::error::CANOPY_FQDN must start with api-<slot>. (got ${CANOPY_FQDN})"
+              exit 1
+              ;;
+          esac
+          export INGRESS_FQDN
+          echo "Deploying ${SEQUENCING_QUEUE_SCRIPT_NAME} with custom domain ${INGRESS_FQDN}"
+          node scripts/apply-runtime-contract.mjs --env prod --out wrangler.runtime.jsonc
+          DOMAIN_FLAGS="$(
+            cd "${GITHUB_WORKSPACE}"
+            PRIMARY="${INGRESS_FQDN}" task wrangler:domain-flags
+          )"
+          # shellcheck disable=SC2086
+          wrangler deploy --config wrangler.runtime.jsonc --env prod ${DOMAIN_FLAGS}
+          if [ -n "$(trim_ws "${INGRESS_RESET_TOKEN:-}")" ]; then
+            printf '%s' "${INGRESS_RESET_TOKEN}" | wrangler secret put INGRESS_RESET_TOKEN --config wrangler.runtime.jsonc --env prod
+            echo "Configured INGRESS_RESET_TOKEN on ${SEQUENCING_QUEUE_SCRIPT_NAME}."
+          else
+            echo "INGRESS_RESET_TOKEN not set; skipping (content-reset ingress wipe unavailable until synced)."
+          fi
+
       - name: Deploy ${{ matrix.target.app }} (${{ env.DEPLOY_ENV }})
-        if: matrix.target.app != 'canopy-api' && matrix.target.app != 'delegation-coordinator'
+        if: matrix.target.app != 'canopy-api' && matrix.target.app != 'delegation-coordinator' && matrix.target.app != 'forestrie-ingress'
         run: task wrangler:deploy:${{ matrix.target.app }} ENV=${{ env.DEPLOY_ENV }}
 
   health-check:
