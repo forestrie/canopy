@@ -304,7 +304,9 @@ export async function verifyOnchainDelegationSignatureKs256(
   }
   let v = signature[64]!;
   if (v >= 27) v -= 27;
-  if (v > 3) return false;
+  // Contract: `v < 27 → v += 27` then ecrecover. Recovery ids 2/3 cannot
+  // succeed on-chain; reject them for exact parity (noble may still recover).
+  if (v > 1) return false;
   try {
     const sig = secp256k1.Signature.fromCompact(
       signature.slice(0, 64),
@@ -336,6 +338,12 @@ export async function verifyOnchainDelegationSignatureEs256(
     throw new Error("ES256 root coordinates must be 32 bytes each");
   }
   if (signature.length !== ES256_SIG_BYTES) {
+    return false;
+  }
+  // OZ P256.verify rejects malleable high-s; WebCrypto accepts both. Require
+  // the low-s form so a true result means the bytes are contract-acceptable.
+  const lowS = normalizeEs256SignatureLowS(signature);
+  if (!bytesEqual(signature, lowS)) {
     return false;
   }
   const tbs = buildOnchainDelegationToBeSignedEs256(input);

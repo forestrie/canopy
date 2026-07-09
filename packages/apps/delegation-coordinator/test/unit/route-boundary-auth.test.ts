@@ -131,7 +131,7 @@ describe("route-boundary auth (ENABLE_WALLET_CHALLENGE=true)", () => {
 });
 
 describe("public reads (no credential)", () => {
-  const logUuid = "a1234567-89ab-cdef-0123-456789abcdef";
+  const logUuid = randomUUID();
 
   it("GET public-root succeeds without Authorization", async () => {
     const res = await fetchWithDoRetry(

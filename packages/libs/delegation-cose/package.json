@@ -37,6 +37,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "export-onchain-vectors": "pnpm build && node scripts/export-onchain-vectors.mjs",
     "prepack": "pnpm run build"
   },
   "dependencies": {

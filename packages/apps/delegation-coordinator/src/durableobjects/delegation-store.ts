@@ -65,6 +65,15 @@ const PENDING_TTL_SECONDS = 60 * 60;
 /** Max pending hints retained per target log id. */
 const PENDING_CAP_PER_LOG = 32;
 
+function parseStoredOnchainRootAlg(
+  value: string | null | undefined,
+): "KS256" | "ES256" | null {
+  if (value === "KS256" || value === "ES256") {
+    return value;
+  }
+  return null;
+}
+
 /** Per-shard SQLite store for routes, certs, pending, webhooks. */
 export class DelegationStoreDO extends DurableObject<Env> {
   private initialized = false;
@@ -206,6 +215,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
     this.ensureDelegationCertificatesMigrated();
     this.ensureOnchainSignatureColumn();
+    this.ensureOnchainRootAlgColumn();
 
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS materials (
@@ -315,6 +325,24 @@ export class DelegationStoreDO extends DurableObject<Env> {
     } catch {
       this.ctx.storage.sql.exec(
         `ALTER TABLE delegation_certificates ADD COLUMN onchain_signature BLOB`,
+      );
+    }
+  }
+
+  /**
+   * Add onchain_root_alg column so issue rebuilds the proof under the alg the
+   * signature was validated against (roots are replaceable via POST /public-root).
+   */
+  private ensureOnchainRootAlgColumn(): void {
+    try {
+      [
+        ...this.ctx.storage.sql.exec(
+          `SELECT onchain_root_alg FROM delegation_certificates LIMIT 0`,
+        ),
+      ];
+    } catch {
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE delegation_certificates ADD COLUMN onchain_root_alg TEXT`,
       );
     }
   }
@@ -736,6 +764,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     }
 
     let onchainSignature: Uint8Array | null = null;
+    let onchainRootAlg: "KS256" | "ES256" | null = null;
     if (body.onchainSignature) {
       const root = this.publicRootMaterialFromRow(rootRow);
       let signature: Uint8Array;
@@ -796,6 +825,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
         );
       }
       onchainSignature = signature;
+      onchainRootAlg = root.alg;
     }
 
     const key = await certificateKeyFor(
@@ -807,19 +837,21 @@ export class DelegationStoreDO extends DurableObject<Env> {
     this.ctx.storage.sql.exec(
       `INSERT INTO delegation_certificates
          (log_id_hex32, certificate_key, certificate, issued_at, expires_at,
-          onchain_signature)
-       VALUES (?, ?, ?, ?, ?, ?)
+          onchain_signature, onchain_root_alg)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(log_id_hex32, certificate_key) DO UPDATE SET
          certificate = excluded.certificate,
          issued_at = excluded.issued_at,
          expires_at = excluded.expires_at,
-         onchain_signature = excluded.onchain_signature`,
+         onchain_signature = excluded.onchain_signature,
+         onchain_root_alg = excluded.onchain_root_alg`,
       logIdHex32,
       key,
       certificate,
       body.issuedAt,
       body.expiresAt,
       onchainSignature,
+      onchainRootAlg,
     );
 
     const pubkeyHash = await sha256Hex(delegatedPublicKey);
@@ -853,7 +885,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
     const rows = [
       ...this.ctx.storage.sql.exec(
-        `SELECT certificate, issued_at, expires_at, onchain_signature
+        `SELECT certificate, issued_at, expires_at, onchain_signature,
+                onchain_root_alg
        FROM delegation_certificates
        WHERE log_id_hex32 = ? AND certificate_key = ?`,
         logIdHex32,
@@ -906,6 +939,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
       issued_at: number;
       expires_at: number;
       onchain_signature: ArrayBuffer | null;
+      onchain_root_alg: string | null;
     };
 
     const certificateBytes = new Uint8Array(row.certificate);
@@ -917,16 +951,31 @@ export class DelegationStoreDO extends DurableObject<Env> {
     };
 
     if (row.onchain_signature) {
-      const onchainProof = this.onchainProofFromStored(
-        logIdHex32,
-        req.mmrStart,
-        req.mmrEnd,
-        req.delegatedPublicKey,
-        new Uint8Array(row.onchain_signature),
-        this.rootAlgForLog(logIdHex32),
-      );
-      if (onchainProof) {
-        resp.onchainProof = onchainProof;
+      const storedAlg = parseStoredOnchainRootAlg(row.onchain_root_alg);
+      const currentAlg = this.rootAlgForLog(logIdHex32);
+      if (
+        storedAlg !== null &&
+        currentAlg !== null &&
+        storedAlg !== currentAlg
+      ) {
+        console.warn(
+          "onchainProofFromStored: omitting proof after public-root alg rotation",
+          { logIdHex32, storedAlg, currentAlg },
+        );
+      } else {
+        // Prefer the alg persisted at validation time; legacy rows (null)
+        // fall back to the live root — same behaviour as pre-R1.
+        const onchainProof = this.onchainProofFromStored(
+          logIdHex32,
+          req.mmrStart,
+          req.mmrEnd,
+          req.delegatedPublicKey,
+          new Uint8Array(row.onchain_signature),
+          storedAlg ?? currentAlg,
+        );
+        if (onchainProof) {
+          resp.onchainProof = onchainProof;
+        }
       }
     }
 
@@ -969,8 +1018,10 @@ export class DelegationStoreDO extends DurableObject<Env> {
    * Rebuild the wire onchainProof from stored signature bytes plus the issue
    * request's scope (the certificate key already binds range and key). The
    * protected header carries the root's algorithm, so the builder is chosen
-   * by root alg. Returns null when the delegated key CBOR cannot be parsed
-   * or the root alg is unknown.
+   * by the alg the signature was validated against (persisted at submit).
+   * Returns null when the delegated key CBOR cannot be parsed or the root
+   * alg is unknown — callers must log; silent omission surfaces later as a
+   * publisher revert.
    */
   private onchainProofFromStored(
     logIdHex32: string,
@@ -981,6 +1032,9 @@ export class DelegationStoreDO extends DurableObject<Env> {
     rootAlg: "KS256" | "ES256" | null,
   ): OnchainDelegationProofWire | null {
     if (rootAlg === null) {
+      console.warn("onchainProofFromStored: unknown root alg", {
+        logIdHex32,
+      });
       return null;
     }
     try {
@@ -1005,7 +1059,12 @@ export class DelegationStoreDO extends DurableObject<Env> {
         mmrEnd: BigInt(mmrEnd),
         signature,
       };
-    } catch {
+    } catch (error) {
+      console.warn("onchainProofFromStored: delegated-key parse failed", {
+        logIdHex32,
+        rootAlg,
+        detail: error instanceof Error ? error.message : String(error),
+      });
       return null;
     }
   }

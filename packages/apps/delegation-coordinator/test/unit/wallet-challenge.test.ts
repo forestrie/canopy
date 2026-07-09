@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { SELF } from "cloudflare:test";
 import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it } from "vitest";
@@ -17,7 +18,7 @@ const SESSION_SECRET = "test-wallet-challenge-secret";
 const TEST_PRIVATE_KEY =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as const;
 
-const logUuid = "01234567-89ab-cdef-0123-456789abcdef";
+const logUuid = randomUUID();
 const logHex32 = normalizeLogIdToHex32(logUuid);
 
 async function fetchWithDoRetry(

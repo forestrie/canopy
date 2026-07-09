@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { encode } from "cbor-x";
 import { SELF, fetchMock } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
@@ -135,7 +136,7 @@ describe("webhook delivery", () => {
     fetchMock.activate();
     fetchMock.disableNetConnect();
     try {
-      const logUuid = "51234567-89ab-cdef-0123-456789abcdef";
+      const logUuid = randomUUID();
       const logHex32 = normalizeLogIdToHex32(logUuid);
       const key = delegatedKey(42);
       const webhookUrl = `${WEBHOOK_ORIGIN}${WEBHOOK_PATH}`;
@@ -207,7 +208,7 @@ describe("webhook delivery", () => {
   });
 
   it("enabled=false suppresses webhook emit", async () => {
-    const logUuid = "61234567-89ab-cdef-0123-456789abcdef";
+    const logUuid = randomUUID();
     const logHex32 = normalizeLogIdToHex32(logUuid);
     const webhookUrl = `${WEBHOOK_ORIGIN}${WEBHOOK_PATH}`;
 
@@ -233,7 +234,7 @@ describe("webhook delivery", () => {
   });
 
   it("no webhook url suppresses emit", async () => {
-    const logUuid = "71234567-89ab-cdef-0123-456789abcdef";
+    const logUuid = randomUUID();
     const logHex32 = normalizeLogIdToHex32(logUuid);
 
     const miss = await postIssue({

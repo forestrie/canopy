@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { encode } from "cbor-x";
 import { describe, expect, it } from "vitest";
 import { bytesToBase64 } from "../../src/encoding.js";
@@ -126,7 +127,7 @@ async function seedCertificate(
 
 describe("kill switch (enabled flag)", () => {
   it("disabled issue returns 202 even when material exists", async () => {
-    const logUuid = "81234567-89ab-cdef-0123-456789abcdef";
+    const logUuid = randomUUID();
     const logHex32 = normalizeLogIdToHex32(logUuid);
     const delegatedKey = testDelegatedCoseKey(92);
 
@@ -156,7 +157,7 @@ describe("kill switch (enabled flag)", () => {
   });
 
   it("disabled pending-delegation returns empty then restores on re-enable", async () => {
-    const logUuid = "91234567-89ab-cdef-0123-456789abcdef";
+    const logUuid = randomUUID();
     const logHex32 = normalizeLogIdToHex32(logUuid);
     const delegatedKey = testDelegatedCoseKey(93);
 
