@@ -1,28 +1,33 @@
 /**
- * On-chain delegation proof construction for KS256 forest roots. The univocity
- * contract (`delegationVerifier.verifyDelegationProofKS256`) requires the root
- * to sign a COSE Sig_structure over a packed payload
- * `domain ‖ logId32 ‖ mmrStart ‖ mmrEnd ‖ delegatedX ‖ delegatedY` with a
- * KS256-only protected header `{1: -65799}`. Byte-identical to arbor
- * `delegationcert.BuildOnchainDelegationToBeSigned` (KS256 variant) — the
- * proof travels coordinator → custodian → sealer → publisher → contract.
+ * On-chain delegation proof construction (univocity delegationVerifier). The
+ * contract requires the log root to sign a COSE Sig_structure over the packed
+ * payload `domain ‖ logId32 ‖ mmrStart ‖ mmrEnd ‖ delegatedX ‖ delegatedY`
+ * whenever a delegated key signs the checkpoint receipt — which is always the
+ * case for sealer-produced checkpoints. Byte-identical to arbor
+ * `delegationcert.BuildOnchainDelegationToBeSigned`; the proof travels
+ * coordinator → custodian → sealer → publisher → contract.
  *
- * The contract requires an on-chain proof whenever a delegated key signs the
- * checkpoint receipt, regardless of root algorithm. This module covers the
- * BYOK KS256 wallet leg only: ES256 roots can either sign receipts directly
- * or (custodial path) have the custodian KMS sign the ES256-header proof in
- * arbor; a BYOK ES256 wallet leg does not exist yet.
+ * Both root algorithms are supported uniformly:
+ * - KS256 roots (`{1: -65799}` header) sign keccak256 of the Sig_structure
+ *   with secp256k1 (65-byte `r‖s‖v`; ecrecover or ERC-1271 on-chain). The
+ *   proof is unconditionally required — a secp256k1 address cannot sign an
+ *   ES256 receipt itself.
+ * - ES256 roots (`{1: -7}` header) sign SHA-256 of the Sig_structure with
+ *   P-256 (64-byte IEEE P1363 `r‖s`, low-s normalized: the on-chain verifier
+ *   rejects malleable high-s signatures).
  */
 
 import { keccak_256 } from "@noble/hashes/sha3";
 import { secp256k1 } from "@noble/curves/secp256k1";
-import { bytesEqual } from "./bytes-utils.js";
+import { bytesEqual, toArrayBuffer } from "./bytes-utils.js";
 import { encodeIntKeyCbor } from "./encode-int-map.js";
 import { encodeSigStructure } from "./encode-sig-structure.js";
 import type { Ks256VerifyHooks } from "./ks256-verify-hooks.js";
 import {
+  COSE_ALG_ES256,
   COSE_ALG_KS256,
   COSE_HEADER_ALG,
+  ES256_SIG_BYTES,
   KS256_EOA_SIG_BYTES,
 } from "./payload-labels.js";
 
@@ -43,13 +48,13 @@ export interface OnchainDelegationInput {
   delegatedKeyY: Uint8Array;
 }
 
-/** To-be-signed material for a KS256 on-chain delegation proof. */
+/** To-be-signed material for an on-chain delegation proof. */
 export interface OnchainDelegationToBeSigned {
-  /** KS256 protected header bytes `{1: -65799}`. */
+  /** Protected header bytes carrying the root alg (`{1: -65799}` or `{1: -7}`). */
   protectedHeader: Uint8Array;
   /** Delegated key `x ‖ y` (64 bytes) as the contract expects. */
   delegationKey: Uint8Array;
-  /** Sig_structure bytes; root signs keccak256 of these. */
+  /** Sig_structure bytes; root signs keccak256 (KS256) or SHA-256 (ES256). */
   sigStructureBytes: Uint8Array;
 }
 
@@ -87,21 +92,15 @@ function logId32FromHex(logIdHex: string): Uint8Array {
   return out;
 }
 
-/**
- * Build the KS256 on-chain delegation TBS: protected header, packed
- * delegation key, and the Sig_structure bytes the root wallet must sign
- * (keccak256 digest, secp256k1, 65-byte `r‖s‖v`).
- *
- * @param input - Delegation scope and delegated P-256 key coordinates.
- */
-export function buildOnchainDelegationToBeSigned(
+function buildOnchainDelegationToBeSignedWithAlg(
   input: OnchainDelegationInput,
+  alg: number,
 ): OnchainDelegationToBeSigned {
   if (input.delegatedKeyX.length !== 32 || input.delegatedKeyY.length !== 32) {
     throw new Error("delegated key coordinates must be 32 bytes each");
   }
   const protectedHeader = encodeIntKeyCbor(
-    new Map<number, unknown>([[COSE_HEADER_ALG, COSE_ALG_KS256]]),
+    new Map<number, unknown>([[COSE_HEADER_ALG, alg]]),
   );
   const logId32 = logId32FromHex(input.logIdHex);
   const domain = new TextEncoder().encode(ONCHAIN_DELEGATION_DOMAIN);
@@ -138,6 +137,32 @@ export function buildOnchainDelegationToBeSigned(
 }
 
 /**
+ * Build the KS256 on-chain delegation TBS: protected header, packed
+ * delegation key, and the Sig_structure bytes the root wallet must sign
+ * (keccak256 digest, secp256k1, 65-byte `r‖s‖v`).
+ *
+ * @param input - Delegation scope and delegated P-256 key coordinates.
+ */
+export function buildOnchainDelegationToBeSignedKs256(
+  input: OnchainDelegationInput,
+): OnchainDelegationToBeSigned {
+  return buildOnchainDelegationToBeSignedWithAlg(input, COSE_ALG_KS256);
+}
+
+/**
+ * Build the ES256 on-chain delegation TBS: protected header, packed
+ * delegation key, and the Sig_structure bytes the root must sign (SHA-256
+ * digest, P-256, 64-byte IEEE P1363 `r‖s`, low-s).
+ *
+ * @param input - Delegation scope and delegated P-256 key coordinates.
+ */
+export function buildOnchainDelegationToBeSignedEs256(
+  input: OnchainDelegationInput,
+): OnchainDelegationToBeSigned {
+  return buildOnchainDelegationToBeSignedWithAlg(input, COSE_ALG_ES256);
+}
+
+/**
  * Sign an on-chain delegation proof with an in-process secp256k1 root key
  * (tests and local tooling; production wallets sign externally over
  * `sigStructureBytes`).
@@ -149,7 +174,7 @@ export function signOnchainDelegationKs256(
   input: OnchainDelegationInput,
   privateKeyHex: string,
 ): OnchainDelegationProofParts {
-  const tbs = buildOnchainDelegationToBeSigned(input);
+  const tbs = buildOnchainDelegationToBeSignedKs256(input);
   const hash = keccak_256(tbs.sigStructureBytes);
   const hex = privateKeyHex.trim().replace(/^0x/, "");
   if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
@@ -169,6 +194,75 @@ export function signOnchainDelegationKs256(
     mmrStart: BigInt(input.mmrStart),
     mmrEnd: BigInt(input.mmrEnd),
     signature,
+  };
+}
+
+/** P-256 group order (SEC 2) for low-s normalization. */
+const P256_N = BigInt(
+  "0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
+);
+const P256_HALF_N = P256_N >> 1n;
+
+/**
+ * Return the low-s form of a raw 64-byte P-256 signature: `(r, n-s)` verifies
+ * for exactly the same digest and key. Mirrors arbor
+ * `delegationcert.NormalizeES256SignatureLowS`; the on-chain P256 verifier
+ * rejects malleable high-s signatures and WebCrypto/KMS make no low-s
+ * guarantee. Inputs that are not 64 bytes are returned unchanged.
+ *
+ * @param signature - IEEE P1363 `r‖s` signature bytes.
+ */
+export function normalizeEs256SignatureLowS(signature: Uint8Array): Uint8Array {
+  if (signature.length !== ES256_SIG_BYTES) {
+    return signature;
+  }
+  let s = 0n;
+  for (let i = 32; i < 64; i++) {
+    s = (s << 8n) | BigInt(signature[i]!);
+  }
+  if (s <= P256_HALF_N) {
+    return signature;
+  }
+  s = P256_N - s;
+  const out = new Uint8Array(64);
+  out.set(signature.slice(0, 32), 0);
+  for (let i = 0; i < 32; i++) {
+    out[63 - i] = Number((s >> BigInt(8 * i)) & 0xffn);
+  }
+  return out;
+}
+
+/**
+ * Sign an on-chain delegation proof with an in-process P-256 root
+ * {@link CryptoKeyPair} (tests and local tooling; production roots sign
+ * externally over `sigStructureBytes`). The signature is normalized to low-s.
+ *
+ * @param input - Delegation scope and delegated P-256 key coordinates.
+ * @param rootKeyPair - P-256 root key authorizing the delegation.
+ */
+export async function signOnchainDelegationEs256(
+  input: OnchainDelegationInput,
+  rootKeyPair: CryptoKeyPair,
+): Promise<OnchainDelegationProofParts> {
+  const tbs = buildOnchainDelegationToBeSignedEs256(input);
+  const signature = new Uint8Array(
+    await crypto.subtle.sign(
+      { name: "ECDSA", hash: "SHA-256" },
+      rootKeyPair.privateKey,
+      toArrayBuffer(tbs.sigStructureBytes),
+    ),
+  );
+  if (signature.length !== ES256_SIG_BYTES) {
+    throw new Error(
+      `expected P-256 signature to be ${ES256_SIG_BYTES} bytes, got ${signature.length}`,
+    );
+  }
+  return {
+    protectedHeader: tbs.protectedHeader,
+    delegationKey: tbs.delegationKey,
+    mmrStart: BigInt(input.mmrStart),
+    mmrEnd: BigInt(input.mmrEnd),
+    signature: normalizeEs256SignatureLowS(signature),
   };
 }
 
@@ -195,7 +289,7 @@ export async function verifyOnchainDelegationSignatureKs256(
   if (rootSignerAddress.length !== 20) {
     throw new Error("KS256 root signer address must be 20 bytes");
   }
-  const tbs = buildOnchainDelegationToBeSigned(input);
+  const tbs = buildOnchainDelegationToBeSignedKs256(input);
   const hash = keccak_256(tbs.sigStructureBytes);
 
   if (hooks) {
@@ -220,4 +314,51 @@ export async function verifyOnchainDelegationSignatureKs256(
   } catch {
     return false;
   }
+}
+
+/**
+ * Verify a root's on-chain delegation signature against the expected ES256
+ * root public key coordinates. Mirrors the contract's
+ * `verifyDelegationProofES256` (SHA-256 digest, P-256 verify).
+ *
+ * @param input - Delegation scope the signature must bind.
+ * @param signature - 64-byte IEEE P1363 `r‖s` over the Sig_structure.
+ * @param rootX - Root P-256 public key x coordinate (32 bytes).
+ * @param rootY - Root P-256 public key y coordinate (32 bytes).
+ */
+export async function verifyOnchainDelegationSignatureEs256(
+  input: OnchainDelegationInput,
+  signature: Uint8Array,
+  rootX: Uint8Array,
+  rootY: Uint8Array,
+): Promise<boolean> {
+  if (rootX.length !== 32 || rootY.length !== 32) {
+    throw new Error("ES256 root coordinates must be 32 bytes each");
+  }
+  if (signature.length !== ES256_SIG_BYTES) {
+    return false;
+  }
+  const tbs = buildOnchainDelegationToBeSignedEs256(input);
+  const raw = new Uint8Array(65);
+  raw[0] = 0x04;
+  raw.set(rootX, 1);
+  raw.set(rootY, 33);
+  let rootKey: CryptoKey;
+  try {
+    rootKey = await crypto.subtle.importKey(
+      "raw",
+      toArrayBuffer(raw),
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["verify"],
+    );
+  } catch {
+    return false;
+  }
+  return crypto.subtle.verify(
+    { name: "ECDSA", hash: "SHA-256" },
+    rootKey,
+    toArrayBuffer(signature),
+    toArrayBuffer(tbs.sigStructureBytes),
+  );
 }

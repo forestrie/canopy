@@ -35,8 +35,12 @@ export type {
 } from "./build-onchain-delegation.js";
 export {
   ONCHAIN_DELEGATION_DOMAIN,
-  buildOnchainDelegationToBeSigned,
+  buildOnchainDelegationToBeSignedEs256,
+  buildOnchainDelegationToBeSignedKs256,
+  normalizeEs256SignatureLowS,
+  signOnchainDelegationEs256,
   signOnchainDelegationKs256,
+  verifyOnchainDelegationSignatureEs256,
   verifyOnchainDelegationSignatureKs256,
 } from "./build-onchain-delegation.js";
 

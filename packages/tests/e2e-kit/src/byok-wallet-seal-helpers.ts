@@ -213,6 +213,9 @@ export async function signPendingDelegations(opts: {
           certificate: bytesToBase64(material.certificate),
           issuedAt: material.issuedAt,
           expiresAt: material.expiresAt,
+          ...(material.onchainSignature
+            ? { onchainSignature: bytesToBase64(material.onchainSignature) }
+            : {}),
         },
       },
     );

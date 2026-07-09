@@ -10,6 +10,7 @@ import {
   decodeDelegatedCoseKeyFromBytes,
   parseDelegatedCoseKeyFromPayload,
   parseDelegationCertificate,
+  signOnchainDelegationEs256,
   signOnchainDelegationKs256,
   verifyDelegationCertificateEs256,
   verifyDelegationCertificateKs256,
@@ -71,14 +72,13 @@ export interface ByokDelegationMaterial {
   issuedAt: number;
   expiresAt: number;
   /**
-   * Root wallet's signature over the univocity on-chain delegation
-   * Sig_structure, submitted as `onchainSignature` so the coordinator can
-   * return `onchainProof` to the sealer (plan-2607-10). The contract requires
-   * this proof whenever a delegated key signed the checkpoint receipt —
-   * unconditionally for KS256 roots, which cannot sign ES256 receipts
-   * themselves. Currently populated only by the KS256 builder (65-byte
-   * `r‖s‖v`, keccak256 digest); custodial ES256 proofs are signed by the
-   * custodian KMS, and the BYOK ES256 wallet leg is not implemented yet.
+   * Root's signature over the univocity on-chain delegation Sig_structure,
+   * submitted as `onchainSignature` so the coordinator can return
+   * `onchainProof` to the sealer (plan-2607-10). The contract requires this
+   * proof whenever a delegated key signed the checkpoint receipt, regardless
+   * of root algorithm, so every BYOK material builder populates it: KS256
+   * roots produce 65-byte `r‖s‖v` (keccak256 digest), ES256 roots 64-byte
+   * IEEE P1363 `r‖s` (SHA-256 digest, low-s normalized).
    */
   onchainSignature?: Uint8Array;
 }
@@ -396,10 +396,24 @@ export async function buildByokDelegationMaterial(opts: {
     opts.rootKeyPair,
   );
   const info = parseDelegationCertificate(certificate);
+  const delegated = parseDelegatedCoseKeyFromPayload(
+    decodeDelegatedCoseKeyFromBytes(opts.delegatedPublicKey),
+  );
+  const onchainProof = await signOnchainDelegationEs256(
+    {
+      logIdHex: opts.logIdHex32,
+      mmrStart: opts.mmrStart,
+      mmrEnd: opts.mmrEnd,
+      delegatedKeyX: delegated.x,
+      delegatedKeyY: delegated.y,
+    },
+    opts.rootKeyPair,
+  );
   return {
     certificate,
     issuedAt: info.issuedAt,
     expiresAt: info.expiresAt,
+    onchainSignature: onchainProof.signature,
   };
 }
 

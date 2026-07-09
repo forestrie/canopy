@@ -1,8 +1,9 @@
 /**
- * BYOK on-chain delegation proof flow (plan-2607-10): a KS256-root wallet
- * submits `onchainSignature` alongside the delegation certificate; the
- * coordinator validates it against the stored root and returns `onchainProof`
- * from POST /api/delegations with CBOR keys matching arbor
+ * BYOK on-chain delegation proof flow (plan-2607-10): the root submits
+ * `onchainSignature` alongside the delegation certificate; the coordinator
+ * validates it against the stored public root (KS256 wallet address or ES256
+ * P-256 key — uniform across variants) and returns `onchainProof` from
+ * POST /api/delegations with CBOR keys matching arbor
  * `delegationcert.OnchainDelegationProof`.
  */
 
@@ -13,6 +14,7 @@ import { keccak_256 } from "@noble/hashes/sha3";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import {
   buildDelegationCertificateKs256,
+  signOnchainDelegationEs256,
   signOnchainDelegationKs256,
 } from "@forestrie/delegation-cose";
 import { bytesToBase64 } from "../../src/encoding.js";
@@ -20,7 +22,11 @@ import {
   hex32ToWireLogIdBytes,
   normalizeLogIdToHex32,
 } from "../../src/log-id.js";
-import { testDelegatedCoseKey } from "./byok-material-fixture.js";
+import {
+  buildTestByokMaterial,
+  generateTestRootKeyPair,
+  testDelegatedCoseKey,
+} from "./byok-material-fixture.js";
 import { fetchWithDoRetry } from "./fetch-with-do-retry.js";
 
 const TEST_TOKEN = "test-coordinator-token";
@@ -69,6 +75,26 @@ async function registerKs256Root(
       method: "POST",
       headers: { ...authHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify({ alg: -65799, key: bytesToBase64(address) }),
+    },
+  );
+  expect(res.status).toBe(200);
+}
+
+async function registerEs256Root(
+  logUuid: string,
+  x: Uint8Array,
+  y: Uint8Array,
+): Promise<void> {
+  const res = await fetchWithDoRetry(
+    `http://localhost/api/logs/${logUuid}/public-root`,
+    {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        alg: "ES256",
+        x: bytesToBase64(x),
+        y: bytesToBase64(y),
+      }),
     },
   );
   expect(res.status).toBe(200);
@@ -167,7 +193,7 @@ interface OnchainProofWire {
 
 describe("BYOK on-chain delegation proof", () => {
   it("accepts onchainSignature and returns onchainProof from issue", async () => {
-    const logUuid = "41234567-89ab-cdef-0123-456789abcdef";
+    const logUuid = "b1234567-89ab-cdef-0123-456789abcdef";
     const address = rootAddress(ROOT_PRIVATE_KEY_HEX);
     await registerKs256Root(logUuid, address);
 
@@ -213,7 +239,7 @@ describe("BYOK on-chain delegation proof", () => {
   });
 
   it("rejects an onchainSignature by a different key with 400", async () => {
-    const logUuid = "51234567-89ab-cdef-0123-456789abcdef";
+    const logUuid = "c1234567-89ab-cdef-0123-456789abcdef";
     const address = rootAddress(ROOT_PRIVATE_KEY_HEX);
     await registerKs256Root(logUuid, address);
 
@@ -246,8 +272,111 @@ describe("BYOK on-chain delegation proof", () => {
     expect(issueRes.status).toBe(202);
   });
 
+  it("accepts an ES256 onchainSignature and returns the ES256-header proof", async () => {
+    const logUuid = "e1234567-89ab-cdef-0123-456789abcdef";
+    const logHex32 = normalizeLogIdToHex32(logUuid);
+    const rootKeyPair = await generateTestRootKeyPair();
+    const seed = 13;
+    const delegatedPublicKey = testDelegatedCoseKey(seed);
+    const material = await buildTestByokMaterial({
+      rootKeyPair,
+      logIdHex32: logHex32,
+      mmrStart: 0,
+      mmrEnd: 16383,
+      delegatedPublicKey,
+    });
+    await registerEs256Root(logUuid, material.x, material.y);
+
+    const { x, y } = delegatedXY(seed);
+    const proof = await signOnchainDelegationEs256(
+      {
+        logIdHex: logHex32,
+        mmrStart: 0,
+        mmrEnd: 16383,
+        delegatedKeyX: x,
+        delegatedKeyY: y,
+      },
+      rootKeyPair,
+    );
+
+    const sub = {
+      logHex32,
+      mmrStart: 0,
+      mmrEnd: 16383,
+      delegatedPublicKey,
+      issuedAt: material.issuedAt,
+      expiresAt: material.expiresAt,
+      certificate: material.certificate,
+    };
+    const putRes = await submitCertificate(sub, proof.signature);
+    expect(putRes.status).toBe(200);
+
+    const issueRes = await issueDelegation(sub);
+    expect(issueRes.status).toBe(200);
+    const resp = decode(new Uint8Array(await issueRes.arrayBuffer())) as {
+      certificate?: Uint8Array;
+      onchainProof?: OnchainProofWire;
+    };
+    expect(resp.certificate).toBeInstanceOf(Uint8Array);
+    expect(resp.onchainProof).toBeDefined();
+    const wire = resp.onchainProof!;
+    // ES256 protected header {1: -7}.
+    expect(Array.from(wire.protectedHeader)).toEqual([0xa1, 0x01, 0x26]);
+    expect(Array.from(wire.delegationKey)).toEqual(
+      Array.from(proof.delegationKey),
+    );
+    expect(Number(wire.mmrStart)).toBe(0);
+    expect(Number(wire.mmrEnd)).toBe(16383);
+    expect(wire.signature.length).toBe(64);
+    expect(Array.from(wire.signature)).toEqual(Array.from(proof.signature));
+  });
+
+  it("rejects an ES256 onchainSignature by a different key with 400", async () => {
+    const logUuid = "f1234567-89ab-cdef-0123-456789abcdef";
+    const logHex32 = normalizeLogIdToHex32(logUuid);
+    const rootKeyPair = await generateTestRootKeyPair();
+    const otherKeyPair = await generateTestRootKeyPair();
+    const seed = 17;
+    const delegatedPublicKey = testDelegatedCoseKey(seed);
+    const material = await buildTestByokMaterial({
+      rootKeyPair,
+      logIdHex32: logHex32,
+      mmrStart: 0,
+      mmrEnd: 16383,
+      delegatedPublicKey,
+    });
+    await registerEs256Root(logUuid, material.x, material.y);
+
+    const { x, y } = delegatedXY(seed);
+    const proof = await signOnchainDelegationEs256(
+      {
+        logIdHex: logHex32,
+        mmrStart: 0,
+        mmrEnd: 16383,
+        delegatedKeyX: x,
+        delegatedKeyY: y,
+      },
+      otherKeyPair,
+    );
+
+    const sub = {
+      logHex32,
+      mmrStart: 0,
+      mmrEnd: 16383,
+      delegatedPublicKey,
+      issuedAt: material.issuedAt,
+      expiresAt: material.expiresAt,
+      certificate: material.certificate,
+    };
+    const putRes = await submitCertificate(sub, proof.signature);
+    expect(putRes.status).toBe(400);
+
+    const issueRes = await issueDelegation(sub);
+    expect(issueRes.status).toBe(202);
+  });
+
   it("still stores and returns the certificate without onchainSignature", async () => {
-    const logUuid = "61234567-89ab-cdef-0123-456789abcdef";
+    const logUuid = "d1234567-89ab-cdef-0123-456789abcdef";
     const address = rootAddress(ROOT_PRIVATE_KEY_HEX);
     await registerKs256Root(logUuid, address);
 

@@ -25,6 +25,10 @@ export interface DelegationIssueResponse {
   issuedAt: number;
   expiresAt: number;
   certificate?: Uint8Array;
-  /** Present when the root wallet also signed the on-chain Sig_structure. */
+  /**
+   * Present when the root (KS256 wallet or ES256 key) also signed the
+   * on-chain delegation Sig_structure; the protected header carries the root
+   * algorithm.
+   */
   onchainProof?: OnchainDelegationProofWire;
 }

@@ -39,9 +39,12 @@ import {
   validateByokDelegationCertificate,
 } from "../validate-byok-certificate.js";
 import {
-  buildOnchainDelegationToBeSigned,
+  buildOnchainDelegationToBeSignedEs256,
+  buildOnchainDelegationToBeSignedKs256,
   decodeDelegatedCoseKeyFromBytes,
+  normalizeEs256SignatureLowS,
   parseDelegatedCoseKeyFromPayload,
+  verifyOnchainDelegationSignatureEs256,
   verifyOnchainDelegationSignatureKs256,
 } from "@forestrie/delegation-cose";
 import { createKs256RpcVerifyHooks } from "../ks256-rpc-verify-hooks.js";
@@ -735,17 +738,6 @@ export class DelegationStoreDO extends DurableObject<Env> {
     let onchainSignature: Uint8Array | null = null;
     if (body.onchainSignature) {
       const root = this.publicRootMaterialFromRow(rootRow);
-      if (root.alg !== "KS256") {
-        return Response.json(
-          {
-            type: "about:blank",
-            title: "Invalid request",
-            status: 400,
-            detail: "onchainSignature is only valid for KS256 public roots",
-          },
-          { status: 400 },
-        );
-      }
       let signature: Uint8Array;
       try {
         signature = base64ToBytes(body.onchainSignature);
@@ -763,21 +755,35 @@ export class DelegationStoreDO extends DurableObject<Env> {
       const delegated = parseDelegatedCoseKeyFromPayload(
         decodeDelegatedCoseKeyFromBytes(delegatedPublicKey),
       );
-      const hooks = this.env.KS256_RPC_URL
-        ? createKs256RpcVerifyHooks(this.env.KS256_RPC_URL)
-        : undefined;
-      const ok = await verifyOnchainDelegationSignatureKs256(
-        {
-          logIdHex: logIdHex32,
-          mmrStart: body.mmrStart,
-          mmrEnd: body.mmrEnd,
-          delegatedKeyX: delegated.x,
-          delegatedKeyY: delegated.y,
-        },
-        signature,
-        root.key,
-        hooks,
-      );
+      const scope = {
+        logIdHex: logIdHex32,
+        mmrStart: body.mmrStart,
+        mmrEnd: body.mmrEnd,
+        delegatedKeyX: delegated.x,
+        delegatedKeyY: delegated.y,
+      };
+      let ok: boolean;
+      if (root.alg === "KS256") {
+        const hooks = this.env.KS256_RPC_URL
+          ? createKs256RpcVerifyHooks(this.env.KS256_RPC_URL)
+          : undefined;
+        ok = await verifyOnchainDelegationSignatureKs256(
+          scope,
+          signature,
+          root.key,
+          hooks,
+        );
+      } else {
+        // The contract's P256 verifier rejects malleable high-s signatures;
+        // store the normalized form since signers make no low-s guarantee.
+        signature = normalizeEs256SignatureLowS(signature);
+        ok = await verifyOnchainDelegationSignatureEs256(
+          scope,
+          signature,
+          root.x,
+          root.y,
+        );
+      }
       if (!ok) {
         return Response.json(
           {
@@ -917,6 +923,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
         req.mmrEnd,
         req.delegatedPublicKey,
         new Uint8Array(row.onchain_signature),
+        this.rootAlgForLog(logIdHex32),
       );
       if (onchainProof) {
         resp.onchainProof = onchainProof;
@@ -935,9 +942,35 @@ export class DelegationStoreDO extends DurableObject<Env> {
   }
 
   /**
+   * Root algorithm for a log ("KS256" | "ES256"), or null when no public
+   * root is stored (a stored onchainSignature always implies one — it was
+   * validated against the root on submission).
+   */
+  private rootAlgForLog(logIdHex32: string): "KS256" | "ES256" | null {
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT alg, x, y FROM public_roots WHERE log_id_hex32 = ?`,
+        logIdHex32,
+      ),
+    ];
+    if (rows.length === 0) {
+      return null;
+    }
+    try {
+      return this.publicRootMaterialFromRow(
+        rows[0] as { alg: string; x: ArrayBuffer; y: ArrayBuffer },
+      ).alg;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Rebuild the wire onchainProof from stored signature bytes plus the issue
-   * request's scope (the certificate key already binds range and key).
-   * Returns null when the delegated key CBOR cannot be parsed.
+   * request's scope (the certificate key already binds range and key). The
+   * protected header carries the root's algorithm, so the builder is chosen
+   * by root alg. Returns null when the delegated key CBOR cannot be parsed
+   * or the root alg is unknown.
    */
   private onchainProofFromStored(
     logIdHex32: string,
@@ -945,12 +978,20 @@ export class DelegationStoreDO extends DurableObject<Env> {
     mmrEnd: number,
     delegatedPublicKey: Uint8Array,
     signature: Uint8Array,
+    rootAlg: "KS256" | "ES256" | null,
   ): OnchainDelegationProofWire | null {
+    if (rootAlg === null) {
+      return null;
+    }
     try {
       const delegated = parseDelegatedCoseKeyFromPayload(
         decodeDelegatedCoseKeyFromBytes(delegatedPublicKey),
       );
-      const tbs = buildOnchainDelegationToBeSigned({
+      const buildTbs =
+        rootAlg === "KS256"
+          ? buildOnchainDelegationToBeSignedKs256
+          : buildOnchainDelegationToBeSignedEs256;
+      const tbs = buildTbs({
         logIdHex: logIdHex32,
         mmrStart,
         mmrEnd,
