@@ -28,6 +28,22 @@ export {
   PAYLOAD_DELEGATED_KEY,
 } from "./payload-labels.js";
 
+export type {
+  OnchainDelegationInput,
+  OnchainDelegationProofParts,
+  OnchainDelegationToBeSigned,
+} from "./build-onchain-delegation.js";
+export {
+  ONCHAIN_DELEGATION_DOMAIN,
+  buildOnchainDelegationToBeSignedEs256,
+  buildOnchainDelegationToBeSignedKs256,
+  normalizeEs256SignatureLowS,
+  signOnchainDelegationEs256,
+  signOnchainDelegationKs256,
+  verifyOnchainDelegationSignatureEs256,
+  verifyOnchainDelegationSignatureKs256,
+} from "./build-onchain-delegation.js";
+
 export { assembleDelegationCertificate } from "./assemble-certificate.js";
 export {
   buildDelegationCertificateEs256,
