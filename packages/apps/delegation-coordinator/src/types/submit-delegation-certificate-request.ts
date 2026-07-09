@@ -18,9 +18,14 @@ export interface SubmitDelegationCertificateRequest {
   issuedAt: number;
   expiresAt: number;
   /**
-   * Base64 65-byte `r‖s‖v` KS256 signature over the univocity on-chain
-   * delegation Sig_structure (keccak256 digest). KS256 roots only; when
-   * present the coordinator returns `onchainProof` from issue responses.
+   * Base64 root-wallet signature over the univocity on-chain delegation
+   * Sig_structure. The contract needs this proof whenever a delegated key
+   * signs the checkpoint receipt (always, for sealer-produced checkpoints);
+   * for KS256 roots it is unconditionally required since a secp256k1 address
+   * cannot sign an ES256 receipt. Validation currently accepts KS256 roots
+   * only (65-byte `r‖s‖v`, keccak256 digest, ecrecover/ERC-1271); the BYOK
+   * ES256 variant (SHA-256/P-256) is not implemented. When present the
+   * coordinator returns `onchainProof` from issue responses.
    */
   onchainSignature?: string;
 }

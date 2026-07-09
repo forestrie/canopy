@@ -6,6 +6,12 @@
  * KS256-only protected header `{1: -65799}`. Byte-identical to arbor
  * `delegationcert.BuildOnchainDelegationToBeSigned` (KS256 variant) — the
  * proof travels coordinator → custodian → sealer → publisher → contract.
+ *
+ * The contract requires an on-chain proof whenever a delegated key signs the
+ * checkpoint receipt, regardless of root algorithm. This module covers the
+ * BYOK KS256 wallet leg only: ES256 roots can either sign receipts directly
+ * or (custodial path) have the custodian KMS sign the ES256-header proof in
+ * arbor; a BYOK ES256 wallet leg does not exist yet.
  */
 
 import { keccak_256 } from "@noble/hashes/sha3";

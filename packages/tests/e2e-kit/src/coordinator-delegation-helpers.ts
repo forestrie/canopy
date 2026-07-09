@@ -71,9 +71,14 @@ export interface ByokDelegationMaterial {
   issuedAt: number;
   expiresAt: number;
   /**
-   * KS256 roots only: 65-byte `r‖s‖v` wallet signature over the univocity
-   * on-chain delegation Sig_structure. Submitted as `onchainSignature` so the
-   * coordinator can return `onchainProof` to the sealer (plan-2607-10).
+   * Root wallet's signature over the univocity on-chain delegation
+   * Sig_structure, submitted as `onchainSignature` so the coordinator can
+   * return `onchainProof` to the sealer (plan-2607-10). The contract requires
+   * this proof whenever a delegated key signed the checkpoint receipt —
+   * unconditionally for KS256 roots, which cannot sign ES256 receipts
+   * themselves. Currently populated only by the KS256 builder (65-byte
+   * `r‖s‖v`, keccak256 digest); custodial ES256 proofs are signed by the
+   * custodian KMS, and the BYOK ES256 wallet leg is not implemented yet.
    */
   onchainSignature?: Uint8Array;
 }
