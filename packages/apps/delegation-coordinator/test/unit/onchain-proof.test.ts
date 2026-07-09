@@ -7,8 +7,8 @@
  * `delegationcert.OnchainDelegationProof`.
  */
 
+import { randomUUID } from "node:crypto";
 import { decode, encode } from "cbor-x";
-import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { secp256k1 } from "@noble/curves/secp256k1";
@@ -193,7 +193,7 @@ interface OnchainProofWire {
 
 describe("BYOK on-chain delegation proof", () => {
   it("accepts onchainSignature and returns onchainProof from issue", async () => {
-    const logUuid = "b1234567-89ab-cdef-0123-456789abcdef";
+    const logUuid = randomUUID();
     const address = rootAddress(ROOT_PRIVATE_KEY_HEX);
     await registerKs256Root(logUuid, address);
 
@@ -239,7 +239,7 @@ describe("BYOK on-chain delegation proof", () => {
   });
 
   it("rejects an onchainSignature by a different key with 400", async () => {
-    const logUuid = "c1234567-89ab-cdef-0123-456789abcdef";
+    const logUuid = randomUUID();
     const address = rootAddress(ROOT_PRIVATE_KEY_HEX);
     await registerKs256Root(logUuid, address);
 
@@ -273,7 +273,7 @@ describe("BYOK on-chain delegation proof", () => {
   });
 
   it("accepts an ES256 onchainSignature and returns the ES256-header proof", async () => {
-    const logUuid = "e1234567-89ab-cdef-0123-456789abcdef";
+    const logUuid = randomUUID();
     const logHex32 = normalizeLogIdToHex32(logUuid);
     const rootKeyPair = await generateTestRootKeyPair();
     const seed = 13;
@@ -332,7 +332,7 @@ describe("BYOK on-chain delegation proof", () => {
   });
 
   it("rejects an ES256 onchainSignature by a different key with 400", async () => {
-    const logUuid = "f1234567-89ab-cdef-0123-456789abcdef";
+    const logUuid = randomUUID();
     const logHex32 = normalizeLogIdToHex32(logUuid);
     const rootKeyPair = await generateTestRootKeyPair();
     const otherKeyPair = await generateTestRootKeyPair();
@@ -376,7 +376,7 @@ describe("BYOK on-chain delegation proof", () => {
   });
 
   it("still stores and returns the certificate without onchainSignature", async () => {
-    const logUuid = "d1234567-89ab-cdef-0123-456789abcdef";
+    const logUuid = randomUUID();
     const address = rootAddress(ROOT_PRIVATE_KEY_HEX);
     await registerKs256Root(logUuid, address);
 
@@ -389,6 +389,53 @@ describe("BYOK on-chain delegation proof", () => {
 
     const putRes = await submitCertificate(sub);
     expect(putRes.status).toBe(200);
+
+    const issueRes = await issueDelegation(sub);
+    expect(issueRes.status).toBe(200);
+    const resp = decode(new Uint8Array(await issueRes.arrayBuffer())) as {
+      certificate?: Uint8Array;
+      onchainProof?: unknown;
+    };
+    expect(resp.certificate).toBeInstanceOf(Uint8Array);
+    expect(resp.onchainProof).toBeUndefined();
+  });
+
+  it("omits onchainProof when the public root alg rotates after submission", async () => {
+    // Signature was validated against the KS256 root at submit time; a later
+    // ES256 root replace must not rebuild the proof under the new header.
+    const logUuid = randomUUID();
+    const address = rootAddress(ROOT_PRIVATE_KEY_HEX);
+    await registerKs256Root(logUuid, address);
+
+    const sub = await buildKs256Submission({
+      logUuid,
+      seed: 19,
+      mmrStart: 0,
+      mmrEnd: 16383,
+    });
+    const { x, y } = delegatedXY(19);
+    const proof = signOnchainDelegationKs256(
+      {
+        logIdHex: sub.logHex32,
+        mmrStart: sub.mmrStart,
+        mmrEnd: sub.mmrEnd,
+        delegatedKeyX: x,
+        delegatedKeyY: y,
+      },
+      ROOT_PRIVATE_KEY_HEX,
+    );
+    const putRes = await submitCertificate(sub, proof.signature);
+    expect(putRes.status).toBe(200);
+
+    const es256Root = await generateTestRootKeyPair();
+    const material = await buildTestByokMaterial({
+      rootKeyPair: es256Root,
+      logIdHex32: sub.logHex32,
+      mmrStart: 0,
+      mmrEnd: 16383,
+      delegatedPublicKey: sub.delegatedPublicKey,
+    });
+    await registerEs256Root(logUuid, material.x, material.y);
 
     const issueRes = await issueDelegation(sub);
     expect(issueRes.status).toBe(200);

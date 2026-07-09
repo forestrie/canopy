@@ -176,6 +176,45 @@ describe("verifyOnchainDelegationSignatureEs256", () => {
     );
     expect(ok).toBe(false);
   });
+
+  it("rejects high-s signatures the contract would reject", async () => {
+    // OZ P256.verify rejects s > n/2; WebCrypto accepts both forms. Verify
+    // must match the contract so "true" ⇒ on-chain-acceptable bytes.
+    const rootKeyPair = await generateEs256RootKeyPair();
+    const { x, y } = await exportEs256Xy(rootKeyPair.publicKey);
+    const proof = await signOnchainDelegationEs256(fixtureInput(), rootKeyPair);
+    const n = BigInt(
+      "0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
+    );
+    let s = 0n;
+    for (let i = 32; i < 64; i++) {
+      s = (s << 8n) | BigInt(proof.signature[i]!);
+    }
+    // Force the malleable high-s form (n - s). Sign already low-s-normalized.
+    const sHigh = n - s;
+    const high = new Uint8Array(64);
+    high.set(proof.signature.slice(0, 32), 0);
+    for (let i = 0; i < 32; i++) {
+      high[63 - i] = Number((sHigh >> BigInt(8 * i)) & 0xffn);
+    }
+    expect(Array.from(normalizeEs256SignatureLowS(high))).toEqual(
+      Array.from(proof.signature),
+    );
+    const okHigh = await verifyOnchainDelegationSignatureEs256(
+      fixtureInput(),
+      high,
+      x,
+      y,
+    );
+    expect(okHigh).toBe(false);
+    const okLow = await verifyOnchainDelegationSignatureEs256(
+      fixtureInput(),
+      proof.signature,
+      x,
+      y,
+    );
+    expect(okLow).toBe(true);
+  });
 });
 
 describe("normalizeEs256SignatureLowS", () => {
@@ -250,5 +289,100 @@ describe("verifyOnchainDelegationSignatureKs256", () => {
       hexToBytes(TEST_ADDRESS_HEX),
     );
     expect(ok).toBe(false);
+  });
+
+  it("rejects recovery ids outside {0, 1} (contract parity)", async () => {
+    // Contract does `v < 27 → v += 27` then ecrecover; recovery ids 2/3
+    // cannot succeed on-chain. Reachable only when r ≥ n (≈2⁻¹²⁸).
+    const proof = signOnchainDelegationKs256(
+      fixtureInput(),
+      TEST_PRIVATE_KEY_HEX,
+    );
+    const mutated = new Uint8Array(proof.signature);
+    mutated[64] = 2;
+    const ok = await verifyOnchainDelegationSignatureKs256(
+      fixtureInput(),
+      mutated,
+      hexToBytes(TEST_ADDRESS_HEX),
+    );
+    expect(ok).toBe(false);
+  });
+});
+
+describe("exported on-chain vectors (FOR-332)", () => {
+  it("KS256 vector signature verifies against the fixture root", async () => {
+    // Pins testdata/onchain-delegation-vectors.json to the live signer so a
+    // stale checked-in copy fails here before the univocity forge consumer.
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const { dirname, join } = await import("node:path");
+    const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+    const vectors = JSON.parse(
+      readFileSync(
+        join(root, "testdata/onchain-delegation-vectors.json"),
+        "utf8",
+      ),
+    ) as {
+      ks256: {
+        signature: string;
+        rootAddress: string;
+        logIdHex: string;
+        mmrStart: string;
+        mmrEnd: string;
+        delegatedKeyX: string;
+        delegatedKeyY: string;
+      };
+    };
+    const v = vectors.ks256;
+    const ok = await verifyOnchainDelegationSignatureKs256(
+      {
+        logIdHex: v.logIdHex,
+        mmrStart: BigInt(v.mmrStart),
+        mmrEnd: BigInt(v.mmrEnd),
+        delegatedKeyX: hexToBytes(v.delegatedKeyX),
+        delegatedKeyY: hexToBytes(v.delegatedKeyY),
+      },
+      hexToBytes(v.signature),
+      hexToBytes(v.rootAddress),
+    );
+    expect(ok).toBe(true);
+  });
+
+  it("ES256 vector signature verifies against the fixture root", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const { dirname, join } = await import("node:path");
+    const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+    const vectors = JSON.parse(
+      readFileSync(
+        join(root, "testdata/onchain-delegation-vectors.json"),
+        "utf8",
+      ),
+    ) as {
+      es256: {
+        signature: string;
+        rootX: string;
+        rootY: string;
+        logIdHex: string;
+        mmrStart: string;
+        mmrEnd: string;
+        delegatedKeyX: string;
+        delegatedKeyY: string;
+      };
+    };
+    const v = vectors.es256;
+    const ok = await verifyOnchainDelegationSignatureEs256(
+      {
+        logIdHex: v.logIdHex,
+        mmrStart: BigInt(v.mmrStart),
+        mmrEnd: BigInt(v.mmrEnd),
+        delegatedKeyX: hexToBytes(v.delegatedKeyX),
+        delegatedKeyY: hexToBytes(v.delegatedKeyY),
+      },
+      hexToBytes(v.signature),
+      hexToBytes(v.rootX),
+      hexToBytes(v.rootY),
+    );
+    expect(ok).toBe(true);
   });
 });

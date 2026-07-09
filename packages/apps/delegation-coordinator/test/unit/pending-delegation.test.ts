@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { encode } from "cbor-x";
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
@@ -76,7 +77,7 @@ async function postIssue(opts: {
 
 describe("GET /api/logs/{logId}/pending-delegation", () => {
   it("returns full delegated keys and dedupes repeated issue requests", async () => {
-    const logUuid = "31234567-89ab-cdef-0123-456789abcdef";
+    const logUuid = randomUUID();
     const logHex32 = normalizeLogIdToHex32(logUuid);
     const firstKey = delegatedKey(1);
     const secondKey = delegatedKey(101);
@@ -128,7 +129,7 @@ describe("GET /api/logs/{logId}/pending-delegation", () => {
   });
 
   it("material submission clears only the matching key", async () => {
-    const logUuid = "41234567-89ab-cdef-0123-456789abcdef";
+    const logUuid = randomUUID();
     const logHex32 = normalizeLogIdToHex32(logUuid);
     const firstKey = testDelegatedCoseKey(11);
     const secondKey = testDelegatedCoseKey(121);

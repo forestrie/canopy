@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { decode } from "cbor-x";
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
@@ -45,7 +46,7 @@ async function fetchWithDoRetry(
 
 describe("GET /api/logs/{logId}/public-root", () => {
   it("POST then GET round-trips CBOR trust root with 16-byte logId", async () => {
-    const logUuid = "01234567-89ab-cdef-0123-456789abcdef";
+    const logUuid = randomUUID();
     const logHex32 = normalizeLogIdToHex32(logUuid);
     const { x, y } = sampleXy();
 
@@ -100,7 +101,7 @@ describe("GET /api/logs/{logId}/public-root", () => {
   });
 
   it("second POST upserts and GET reflects new bytes", async () => {
-    const logUuid = "11234567-89ab-cdef-0123-456789abcdef";
+    const logUuid = randomUUID();
     const first = sampleXy();
     const second = {
       x: new Uint8Array(32).fill(7),
@@ -157,7 +158,7 @@ describe("GET /api/logs/{logId}/public-root", () => {
 });
 
 describe("POST /api/logs/{logId}/public-root validation", () => {
-  const logUuid = "21234567-89ab-cdef-0123-456789abcdef";
+  const logUuid = randomUUID();
 
   it("rejects alg other than ES256 with 400 problem+json", async () => {
     const { x, y } = sampleXy();
