@@ -7,7 +7,10 @@ import { decode, encode } from "cbor-x";
 import {
   buildDelegationCertificateEs256,
   buildDelegationCertificateKs256,
+  decodeDelegatedCoseKeyFromBytes,
+  parseDelegatedCoseKeyFromPayload,
   parseDelegationCertificate,
+  signOnchainDelegationKs256,
   verifyDelegationCertificateEs256,
   verifyDelegationCertificateKs256,
 } from "@forestrie/delegation-cose";
@@ -67,6 +70,12 @@ export interface ByokDelegationMaterial {
   certificate: Uint8Array;
   issuedAt: number;
   expiresAt: number;
+  /**
+   * KS256 roots only: 65-byte `r‖s‖v` wallet signature over the univocity
+   * on-chain delegation Sig_structure. Submitted as `onchainSignature` so the
+   * coordinator can return `onchainProof` to the sealer (plan-2607-10).
+   */
+  onchainSignature?: Uint8Array;
 }
 
 /** POST /v1/api/delegations — local KMS sign or coordinator proxy. */
@@ -329,10 +338,24 @@ export async function buildKs256BootstrapDelegationMaterial(opts: {
     opts.privateKeyHex,
   );
   const info = parseDelegationCertificate(certificate);
+  const delegated = parseDelegatedCoseKeyFromPayload(
+    decodeDelegatedCoseKeyFromBytes(opts.delegatedPublicKey),
+  );
+  const onchainProof = signOnchainDelegationKs256(
+    {
+      logIdHex: opts.logIdHex32,
+      mmrStart: opts.mmrStart,
+      mmrEnd: opts.mmrEnd,
+      delegatedKeyX: delegated.x,
+      delegatedKeyY: delegated.y,
+    },
+    opts.privateKeyHex,
+  );
   return {
     certificate,
     issuedAt: info.issuedAt,
     expiresAt: info.expiresAt,
+    onchainSignature: onchainProof.signature,
   };
 }
 

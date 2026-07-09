@@ -17,4 +17,10 @@ export interface SubmitDelegationCertificateRequest {
   certificate: string;
   issuedAt: number;
   expiresAt: number;
+  /**
+   * Base64 65-byte `r‖s‖v` KS256 signature over the univocity on-chain
+   * delegation Sig_structure (keccak256 digest). KS256 roots only; when
+   * present the coordinator returns `onchainProof` from issue responses.
+   */
+  onchainSignature?: string;
 }

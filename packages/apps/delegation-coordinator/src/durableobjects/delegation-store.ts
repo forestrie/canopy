@@ -39,6 +39,14 @@ import {
   validateByokDelegationCertificate,
 } from "../validate-byok-certificate.js";
 import {
+  buildOnchainDelegationToBeSigned,
+  decodeDelegatedCoseKeyFromBytes,
+  parseDelegatedCoseKeyFromPayload,
+  verifyOnchainDelegationSignatureKs256,
+} from "@forestrie/delegation-cose";
+import { createKs256RpcVerifyHooks } from "../ks256-rpc-verify-hooks.js";
+import type { OnchainDelegationProofWire } from "../types/delegation-issue-response.js";
+import {
   buildDelegationRequiredEvent,
   certificateSubmitUrlFromEnv,
 } from "../webhook/build-delegation-required-event.js";
@@ -194,6 +202,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     `);
 
     this.ensureDelegationCertificatesMigrated();
+    this.ensureOnchainSignatureColumn();
 
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS materials (
@@ -289,6 +298,21 @@ export class DelegationStoreDO extends DurableObject<Env> {
       `);
     } catch {
       // materials table may not exist on fresh installs
+    }
+  }
+
+  /** Add onchain_signature column to delegation_certificates on legacy DBs. */
+  private ensureOnchainSignatureColumn(): void {
+    try {
+      [
+        ...this.ctx.storage.sql.exec(
+          `SELECT onchain_signature FROM delegation_certificates LIMIT 0`,
+        ),
+      ];
+    } catch {
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE delegation_certificates ADD COLUMN onchain_signature BLOB`,
+      );
     }
   }
 
@@ -708,6 +732,66 @@ export class DelegationStoreDO extends DurableObject<Env> {
       );
     }
 
+    let onchainSignature: Uint8Array | null = null;
+    if (body.onchainSignature) {
+      const root = this.publicRootMaterialFromRow(rootRow);
+      if (root.alg !== "KS256") {
+        return Response.json(
+          {
+            type: "about:blank",
+            title: "Invalid request",
+            status: 400,
+            detail: "onchainSignature is only valid for KS256 public roots",
+          },
+          { status: 400 },
+        );
+      }
+      let signature: Uint8Array;
+      try {
+        signature = base64ToBytes(body.onchainSignature);
+      } catch {
+        return Response.json(
+          {
+            type: "about:blank",
+            title: "Invalid request",
+            status: 400,
+            detail: "onchainSignature must be valid base64",
+          },
+          { status: 400 },
+        );
+      }
+      const delegated = parseDelegatedCoseKeyFromPayload(
+        decodeDelegatedCoseKeyFromBytes(delegatedPublicKey),
+      );
+      const hooks = this.env.KS256_RPC_URL
+        ? createKs256RpcVerifyHooks(this.env.KS256_RPC_URL)
+        : undefined;
+      const ok = await verifyOnchainDelegationSignatureKs256(
+        {
+          logIdHex: logIdHex32,
+          mmrStart: body.mmrStart,
+          mmrEnd: body.mmrEnd,
+          delegatedKeyX: delegated.x,
+          delegatedKeyY: delegated.y,
+        },
+        signature,
+        root.key,
+        hooks,
+      );
+      if (!ok) {
+        return Response.json(
+          {
+            type: "about:blank",
+            title: "Invalid request",
+            status: 400,
+            detail: "onchainSignature does not verify against the public root",
+          },
+          { status: 400 },
+        );
+      }
+      onchainSignature = signature;
+    }
+
     const key = await certificateKeyFor(
       body.mmrStart,
       body.mmrEnd,
@@ -716,17 +800,20 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
     this.ctx.storage.sql.exec(
       `INSERT INTO delegation_certificates
-         (log_id_hex32, certificate_key, certificate, issued_at, expires_at)
-       VALUES (?, ?, ?, ?, ?)
+         (log_id_hex32, certificate_key, certificate, issued_at, expires_at,
+          onchain_signature)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(log_id_hex32, certificate_key) DO UPDATE SET
          certificate = excluded.certificate,
          issued_at = excluded.issued_at,
-         expires_at = excluded.expires_at`,
+         expires_at = excluded.expires_at,
+         onchain_signature = excluded.onchain_signature`,
       logIdHex32,
       key,
       certificate,
       body.issuedAt,
       body.expiresAt,
+      onchainSignature,
     );
 
     const pubkeyHash = await sha256Hex(delegatedPublicKey);
@@ -760,7 +847,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
     const rows = [
       ...this.ctx.storage.sql.exec(
-        `SELECT certificate, issued_at, expires_at
+        `SELECT certificate, issued_at, expires_at, onchain_signature
        FROM delegation_certificates
        WHERE log_id_hex32 = ? AND certificate_key = ?`,
         logIdHex32,
@@ -812,6 +899,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
       certificate: ArrayBuffer;
       issued_at: number;
       expires_at: number;
+      onchain_signature: ArrayBuffer | null;
     };
 
     const certificateBytes = new Uint8Array(row.certificate);
@@ -822,6 +910,19 @@ export class DelegationStoreDO extends DurableObject<Env> {
       certificate: certificateBytes,
     };
 
+    if (row.onchain_signature) {
+      const onchainProof = this.onchainProofFromStored(
+        logIdHex32,
+        req.mmrStart,
+        req.mmrEnd,
+        req.delegatedPublicKey,
+        new Uint8Array(row.onchain_signature),
+      );
+      if (onchainProof) {
+        resp.onchainProof = onchainProof;
+      }
+    }
+
     const encoded = encode(resp);
     const out =
       encoded instanceof Uint8Array
@@ -831,6 +932,41 @@ export class DelegationStoreDO extends DurableObject<Env> {
       status: 200,
       headers: { "Content-Type": "application/cbor" },
     });
+  }
+
+  /**
+   * Rebuild the wire onchainProof from stored signature bytes plus the issue
+   * request's scope (the certificate key already binds range and key).
+   * Returns null when the delegated key CBOR cannot be parsed.
+   */
+  private onchainProofFromStored(
+    logIdHex32: string,
+    mmrStart: number,
+    mmrEnd: number,
+    delegatedPublicKey: Uint8Array,
+    signature: Uint8Array,
+  ): OnchainDelegationProofWire | null {
+    try {
+      const delegated = parseDelegatedCoseKeyFromPayload(
+        decodeDelegatedCoseKeyFromBytes(delegatedPublicKey),
+      );
+      const tbs = buildOnchainDelegationToBeSigned({
+        logIdHex: logIdHex32,
+        mmrStart,
+        mmrEnd,
+        delegatedKeyX: delegated.x,
+        delegatedKeyY: delegated.y,
+      });
+      return {
+        protectedHeader: tbs.protectedHeader,
+        delegationKey: tbs.delegationKey,
+        mmrStart: BigInt(mmrStart),
+        mmrEnd: BigInt(mmrEnd),
+        signature,
+      };
+    } catch {
+      return null;
+    }
   }
 
   /** GET /pending?authLogId= — operator pending list by auth log. */

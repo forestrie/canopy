@@ -9,6 +9,7 @@ import {
   buildByokDelegationMaterial,
   buildKs256BootstrapDelegationMaterial,
   bytesToBase64,
+  type ByokDelegationMaterial,
   exportEs256RootXy,
   importEs256PemKeyPair,
   uploadBootstrapKs256PublicRoot,
@@ -241,11 +242,7 @@ export async function signPendingBootstrapDelegations(opts: {
     if (opts.signedMaterialKeys.has(key)) continue;
     const delegatedPublicKey = base64ToBytes(entry.delegatedPublicKey);
 
-    let material: {
-      certificate: Uint8Array;
-      issuedAt: number;
-      expiresAt: number;
-    };
+    let material: ByokDelegationMaterial;
     if (opts.signingContext.es256RootKeyPair) {
       material = await buildByokDelegationMaterial({
         rootKeyPair: opts.signingContext.es256RootKeyPair,
@@ -301,6 +298,9 @@ export async function signPendingBootstrapDelegations(opts: {
           certificate: bytesToBase64(material.certificate),
           issuedAt: material.issuedAt,
           expiresAt: material.expiresAt,
+          ...(material.onchainSignature
+            ? { onchainSignature: bytesToBase64(material.onchainSignature) }
+            : {}),
         },
       },
     );
