@@ -102,9 +102,7 @@ export function buildOnchainDelegationToBeSigned(
   const mmrStart = bigEndianUint64(input.mmrStart);
   const mmrEnd = bigEndianUint64(input.mmrEnd);
 
-  const payload = new Uint8Array(
-    domain.length + 32 + 8 + 8 + 32 + 32,
-  );
+  const payload = new Uint8Array(domain.length + 32 + 8 + 8 + 32 + 32);
   let off = 0;
   for (const part of [
     domain,
