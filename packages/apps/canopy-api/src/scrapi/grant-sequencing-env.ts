@@ -1,5 +1,5 @@
 export interface GrantSequencingResult {
-  /** Status URL path: /logs/{bootstrapLogId}/{ownerLogId}/entries/{innerHex} (caller prepends origin). */
+  /** Status URL path: /logs/{bootstrap}/{owner}/entries/{inner}[?subject=T] (caller prepends origin). */
   statusUrlPath: string;
   /** Lowercase hex inner hash (for storage path and status URL). */
   innerHex: string;

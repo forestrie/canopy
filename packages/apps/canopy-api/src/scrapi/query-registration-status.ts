@@ -6,7 +6,8 @@
  * sequencing is complete, by consulting the SequencingQueue Durable Object.
  *
  * On cache hit, reads the idtimestamp from the massif using an efficient
- * byte-range request.
+ * byte-range request, then (best-effort) patches the univocity grant store
+ * so publishers bind the sequenced leaf.
  *
  * See: arbor/docs/arc-cloudflare-do-ingress.md section 3.12
  */
@@ -23,6 +24,8 @@ import {
 import { logIdSegmentToCanonicalUuid } from "../grant/log-id-wire.js";
 import { bytesToUuid } from "../grant/uuid-bytes.js";
 import { getParsedGenesis } from "../forest/genesis-cache.js";
+import { patchGrantIdtimestamp } from "./patch-grant-idtimestamp.js";
+import type { UnivocityGrantClient } from "./univocity-grant-client-config.js";
 
 function isSha256Hex(id: string): boolean {
   return /^[0-9a-f]{64}$/i.test(id);
@@ -55,6 +58,8 @@ export async function queryRegistrationStatus(
   massifHeight: number,
   shardCountStr: string,
   r2Grants: R2Bucket,
+  /** When set, patch univocity grant store with the sequenced idtimestamp. */
+  univocityGrantClient?: UnivocityGrantClient,
 ): Promise<Response> {
   const [bootstrapSeg, logIDRaw, _, contentHashRaw] = entrySegments;
 
@@ -86,10 +91,20 @@ export async function queryRegistrationStatus(
   }
 
   const contentHash = contentHashRaw.toLowerCase();
+  const subjectParam = new URL(request.url).searchParams.get("subject");
+  let subjectLogId = logID;
+  if (subjectParam) {
+    try {
+      subjectLogId = logIdSegmentToCanonicalUuid(subjectParam);
+    } catch {
+      return ClientErrors.badRequest("subject query must be a valid log id");
+    }
+  }
 
   console.log("[query-registration-status] begin", {
     logID,
     contentHash,
+    subjectLogId,
     url: request.url,
   });
 
@@ -113,7 +128,7 @@ export async function queryRegistrationStatus(
 
       // Still processing - return 303 with current location and short retry.
       const requestUrl = new URL(request.url);
-      const currentLocation = `${requestUrl.origin}${requestUrl.pathname}`;
+      const currentLocation = `${requestUrl.origin}${requestUrl.pathname}${requestUrl.search}`;
       return seeOtherResponse(currentLocation, 1);
     }
 
@@ -137,6 +152,26 @@ export async function queryRegistrationStatus(
       idtimestamp: idtimestamp.toString(16),
       mmrIndex: mmrIndex.toString(),
     });
+
+    if (univocityGrantClient && idtimestamp !== 0n) {
+      const patched = await patchGrantIdtimestamp({
+        client: univocityGrantClient,
+        rootLogId: bootstrapUrlUuid,
+        subjectLogId,
+        idtimestamp,
+      });
+      if (!patched.ok) {
+        console.warn(
+          "[query-registration-status] grant idtimestamp patch failed",
+          {
+            rootLogId: bootstrapUrlUuid,
+            subjectLogId,
+            status: patched.status,
+            detail: patched.detail,
+          },
+        );
+      }
+    }
 
     const entryId = encodeEntryId({
       idtimestamp,
