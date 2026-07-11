@@ -364,6 +364,9 @@ importers:
       '@forestrie/delegation-cose':
         specifier: workspace:^
         version: link:../../libs/delegation-cose
+      '@forestrie/encoding':
+        specifier: workspace:*
+        version: link:../../shared/encoding
       '@noble/curves':
         specifier: ^1.9.7
         version: 1.9.7

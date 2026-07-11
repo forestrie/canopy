@@ -2,7 +2,7 @@
  * Attach resolve-receipt bytes and idtimestamp to SCITT transparent statement
  * unprotected headers (Plan 0005).
  */
-import { mergeUnprotectedIntoCoseSign1 } from "./encoding/merge-cose-sign1-unprotected.js";
+import { mergeUnprotectedIntoCoseSign1 } from "@forestrie/encoding";
 import {
   HEADER_IDTIMESTAMP,
   HEADER_RECEIPT,

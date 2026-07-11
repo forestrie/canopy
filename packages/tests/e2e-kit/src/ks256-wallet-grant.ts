@@ -6,9 +6,11 @@
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { decode } from "cbor-x";
-import { encodeCoseProtectedMapBytes } from "./encoding/encode-cose-protected.js";
-import { encodeCoseSign1Statement } from "./encoding/encode-cose-sign1-statement.js";
-import { encodeSigStructure } from "./encoding/encode-sig-structure.js";
+import {
+  encodeCoseProtectedMapBytes,
+  encodeCoseSign1Statement,
+  encodeSigStructure,
+} from "@forestrie/encoding";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import type { Grant } from "./wire/grant/grant.js";

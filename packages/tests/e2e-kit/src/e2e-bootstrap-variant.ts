@@ -4,7 +4,7 @@
 
 import type { APIRequestContext } from "@playwright/test";
 import { createPrivateKey } from "node:crypto";
-import { signCoseSign1Statement } from "./encoding/sign-cose-sign1-statement.js";
+import { signCoseSign1Statement } from "@forestrie/encoding";
 import { test } from "@playwright/test";
 import type { Grant } from "./wire/grant/grant.js";
 import {

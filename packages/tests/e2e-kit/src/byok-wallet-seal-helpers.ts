@@ -1,6 +1,6 @@
 import type { APIRequestContext } from "@playwright/test";
 import { decode, Encoder } from "cbor-x";
-import { encodeSigStructure } from "./encoding/encode-sig-structure.js";
+import { encodeSigStructure } from "@forestrie/encoding";
 import { encodeGrantPayload } from "./wire/grant/codec.js";
 import type { Grant } from "./wire/grant/grant.js";
 import { uuidToBytes } from "./wire/grant/uuid-bytes.js";
