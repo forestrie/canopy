@@ -1,4 +1,15 @@
 import type { APIRequestContext } from "@playwright/test";
+import {
+  queryRegistrationOnce,
+  resolveReceiptOnce,
+} from "@forestrie/scrapi-client";
+import { playwrightFetch } from "./playwright-fetch.js";
+
+/**
+ * Backoff ladders + poll loops over the @forestrie/scrapi-client poll-once
+ * primitives (plan-2607-12 Phase 2, FOR-351): the package interprets one GET;
+ * the kit owns pacing, timeouts and Playwright plumbing.
+ */
 
 /**
  * Max wall-clock for one poll-until-done loop (registration status redirect,
@@ -22,26 +33,6 @@ export let sequencingBackoff: number[] = [
 
 export function sleepMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function toAbsoluteUrl(baseURL: string, location: string): string {
-  if (location.startsWith("http")) return location;
-  const base = baseURL.replace(/\/$/, "");
-  return `${base}${location.startsWith("/") ? location : `/${location}`}`;
-}
-
-/** Location points at GET resolve-receipt (permanent URL with massif height). */
-const RECEIPT_LOCATION_RE =
-  /\/logs\/[^/]+\/[^/]+\/\d+\/entries\/[0-9a-f]{32}\/receipt(?:\?|$)/i;
-
-function parseEntryIdFromReceiptLocation(location: string): string {
-  const m = location.match(/\/entries\/([0-9a-f]{32})\/receipt/i);
-  if (!m) {
-    throw new Error(
-      `Could not parse entryId from receipt Location: ${location}`,
-    );
-  }
-  return m[1]!.toLowerCase();
 }
 
 export interface PollUntilReceiptOptions {
@@ -72,45 +63,39 @@ export async function pollQueryRegistrationUntilReceiptRedirect(
     throw new Error("sequencingBackoff / ladderMs must be non-empty");
   }
 
+  const fetchImpl = playwrightFetch(opts.request);
   const maxWaitMs = opts.maxWaitMs ?? E2E_POLL_MAX_WAIT_MS;
-  const accept = opts.accept ?? "application/cbor";
   const start = Date.now();
   let attempt = 0;
 
   while (Date.now() - start < maxWaitMs) {
-    const res = await opts.request.get(opts.statusUrlAbsolute, {
-      maxRedirects: 0,
-      headers: { Accept: accept },
+    const polled = await queryRegistrationOnce({
+      statusUrl: opts.statusUrlAbsolute,
+      baseUrl: opts.baseURL,
+      accept: opts.accept,
+      fetchImpl,
     });
 
-    if (res.status() !== 303) {
-      throw new Error(
-        `poll registration status: expected 303, got ${res.status()} for ${opts.statusUrlAbsolute}`,
-      );
-    }
-
-    const loc = res.headers()["location"];
-    if (!loc) {
+    if (polled.status === "error") {
+      if (polled.httpStatus !== 303) {
+        throw new Error(
+          `poll registration status: expected 303, got ${polled.httpStatus} for ${opts.statusUrlAbsolute}`,
+        );
+      }
       throw new Error("poll registration status: 303 without Location");
     }
 
-    if (RECEIPT_LOCATION_RE.test(loc)) {
-      const entryIdHex = parseEntryIdFromReceiptLocation(loc);
+    if (polled.status === "receipt") {
       return {
-        receiptUrlAbsolute: toAbsoluteUrl(opts.baseURL, loc),
-        entryIdHex,
+        receiptUrlAbsolute: polled.receiptUrl,
+        entryIdHex: polled.entryIdHex,
       };
     }
 
     const ladderStep = ladder[Math.min(attempt, ladder.length - 1)]!;
-    const retryAfterSec = Number.parseInt(
-      res.headers()["retry-after"] ?? "0",
-      10,
-    );
-    const waitMs =
-      Number.isFinite(retryAfterSec) && retryAfterSec > 0
-        ? Math.max(ladderStep, retryAfterSec * 1000)
-        : ladderStep;
+    const waitMs = polled.retryAfterMs
+      ? Math.max(ladderStep, polled.retryAfterMs)
+      : ladderStep;
     await sleepMs(waitMs);
     attempt++;
   }
@@ -143,25 +128,27 @@ export async function pollResolveReceiptUntil200(
   body: Uint8Array;
 }> {
   const ladder = opts.ladderMs ?? sequencingBackoff;
+  const fetchImpl = playwrightFetch(opts.request);
   const maxWaitMs = opts.maxWaitMs ?? E2E_POLL_MAX_WAIT_MS;
-  const accept = opts.accept ?? "application/cbor";
   const start = Date.now();
   let attempt = 0;
 
   while (Date.now() - start < maxWaitMs) {
-    const res = await opts.request.get(opts.receiptUrlAbsolute, {
-      headers: { Accept: accept },
+    const resolved = await resolveReceiptOnce({
+      receiptUrl: opts.receiptUrlAbsolute,
+      accept: opts.accept,
+      fetchImpl,
     });
-    if (res.status() === 200) {
+    if (resolved.status === "receipt") {
       return {
-        status: res.status(),
-        headers: res.headers(),
-        body: new Uint8Array(await res.body()),
+        status: resolved.httpStatus,
+        headers: resolved.headers,
+        body: resolved.body,
       };
     }
-    if (res.status() !== 404) {
+    if (resolved.status === "error") {
       throw new Error(
-        `resolve-receipt: expected 200 or retryable 404, got ${res.status()} for ${opts.receiptUrlAbsolute}`,
+        `resolve-receipt: expected 200 or retryable 404, got ${resolved.httpStatus} for ${opts.receiptUrlAbsolute}`,
       );
     }
     const ladderStep = ladder[Math.min(attempt, ladder.length - 1)]!;

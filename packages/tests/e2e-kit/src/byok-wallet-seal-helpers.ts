@@ -1,13 +1,13 @@
 import type { APIRequestContext } from "@playwright/test";
 import { decode, Encoder } from "cbor-x";
 import { encodeSigStructure } from "@forestrie/encoding";
-import { encodeGrantPayload } from "./wire/grant/codec.js";
-import type { Grant } from "./wire/grant/grant.js";
-import { uuidToBytes } from "./wire/grant/uuid-bytes.js";
 import {
+  encodeGrantPayload,
   HEADER_FORESTRIE_GRANT_V0,
   HEADER_IDTIMESTAMP,
-} from "./wire/grant/transparent-statement.js";
+  uuidToBytes,
+} from "@forestrie/grant-builder";
+import type { Grant } from "@forestrie/grant-builder";
 import { ensureForestGenesisEs256E2e } from "./forest-genesis-e2e.js";
 import {
   es256BootstrapContractAddrBytes,
@@ -24,7 +24,7 @@ import {
   sequencingBackoff,
   sleepMs,
 } from "./arithmetic-backoff-poll.js";
-import { bytesToForestrieGrantBase64 } from "./bootstrap-grant-flow.js";
+import { bytesToForestrieGrantBase64 } from "@forestrie/grant-builder";
 
 const RECEIPT_LOCATION_RE =
   /\/logs\/[^/]+\/[^/]+\/\d+\/entries\/[0-9a-f]{32}\/receipt(?:\?|$)/i;

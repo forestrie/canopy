@@ -1,17 +1,12 @@
 /**
- * 8-byte Forestrie-Grant bitmaps for e2e (univocity / ARC-0017).
+ * 8-byte Forestrie-Grant bitmaps for e2e (univocity / ARC-0017) — moved to
+ * @forestrie/grant-builder (plan-2607-12 Phase 2, FOR-350); re-exported here
+ * for compatibility.
  * @see packages/apps/canopy-api/src/grant/grant-flags.ts
  */
 
 export {
   authLogBootstrapShapedFlags,
+  dataLogCreateExtendFlags,
   derivedEndorsementGrantFlags,
-} from "./wire/grant/grant-flags.js";
-
-/** GF_CREATE|GF_EXTEND (byte 3), GF_DATA_LOG (byte 7) only. */
-export function dataLogCreateExtendFlags(): Uint8Array {
-  const grant = new Uint8Array(8);
-  grant[3] = 0x03;
-  grant[7] = 0x02;
-  return grant;
-}
+} from "@forestrie/grant-builder";

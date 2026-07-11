@@ -1,4 +1,8 @@
-/** Decode permanent SCRAPI entryId (32 hex chars = idtimestamp_be8 || mmrIndex_be8). */
+/**
+ * Decode permanent SCRAPI entryId (32 hex chars = idtimestamp_be8 ||
+ * mmrIndex_be8). Deterministic receipt helpers moved from
+ * @forestrie/canopy-e2e-kit (plan-2607-12 Phase 2, FOR-353).
+ */
 
 export interface DecodedEntryId {
   idtimestamp: bigint;

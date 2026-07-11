@@ -36,6 +36,8 @@
   "dependencies": {
     "@forestrie/delegation-cose": "workspace:^",
     "@forestrie/encoding": "workspace:*",
+    "@forestrie/grant-builder": "workspace:*",
+    "@forestrie/scrapi-client": "workspace:*",
     "@forestrie/receipt-verify": "workspace:*",
     "@noble/curves": "^1.9.7",
     "@noble/hashes": "^1.7.1",

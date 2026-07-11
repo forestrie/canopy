@@ -1,13 +1,13 @@
 {
-  "name": "@forestrie/receipt-verify",
-  "version": "0.2.0",
+  "name": "@forestrie/scrapi-client",
+  "version": "0.1.0",
   "license": "MIT",
   "type": "module",
-  "description": "Offline SCITT grant receipt verification (ADR-0045)",
+  "description": "Fetch-injectable SCRAPI registration client for Forestrie transparency logs",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/forestrie/canopy.git",
-    "directory": "packages/libs/receipt-verify"
+    "directory": "packages/libs/scrapi-client"
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -42,9 +42,6 @@
     "prepack": "pnpm run build"
   },
   "dependencies": {
-    "@forestrie/encoding": "workspace:*",
-    "@forestrie/merklelog": "workspace:*",
-    "@noble/hashes": "^1.7.1",
     "cbor-x": "^1.5.9"
   },
   "devDependencies": {

@@ -1,13 +1,13 @@
 {
-  "name": "@forestrie/receipt-verify",
-  "version": "0.2.0",
+  "name": "@forestrie/grant-builder",
+  "version": "0.1.0",
   "license": "MIT",
   "type": "module",
-  "description": "Offline SCITT grant receipt verification (ADR-0045)",
+  "description": "Deterministic Forestrie grant construction (wire encoding, ES256/KS256 assembly)",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/forestrie/canopy.git",
-    "directory": "packages/libs/receipt-verify"
+    "directory": "packages/libs/grant-builder"
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -43,11 +43,12 @@
   },
   "dependencies": {
     "@forestrie/encoding": "workspace:*",
-    "@forestrie/merklelog": "workspace:*",
+    "@noble/curves": "^1.9.7",
     "@noble/hashes": "^1.7.1",
     "cbor-x": "^1.5.9"
   },
   "devDependencies": {
+    "@types/node": "^24.8.1",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   }
