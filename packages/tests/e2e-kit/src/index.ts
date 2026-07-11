@@ -54,7 +54,8 @@ export type {
 export * from "./e2e-testing-tier.js";
 
 /** T2 bootstrap + T3 genesis slice (0.2.0) */
-export { attachReceiptAndIdtimestampToTransparentStatement } from "./attach-transparent-statement-receipt.js";
+/** Receipt create/attach — re-exported from @forestrie/receipt-verify (FOR-353). */
+export { attachReceiptAndIdtimestampToTransparentStatement } from "@forestrie/receipt-verify";
 export { genesisBodyEs256 } from "./genesis-body-es256.js";
 export * from "./univocity-genesis-e2e.js";
 export * from "./e2e-env-guards.js";
@@ -77,7 +78,11 @@ export * from "./coordinator-delegation-helpers.js";
 export * from "./wallet-challenge-session-e2e.js";
 export * from "./delegation-cbor-contract.js";
 export * from "./byok-wallet-seal-helpers.js";
-export * from "./entry-id-e2e.js";
+export {
+  decodeEntryIdHex,
+  entryIdHexToIdtimestampBe8,
+  type DecodedEntryId,
+} from "@forestrie/receipt-verify";
 export * from "./forestrie-hex-id.js";
 export * from "./statement-sign-bytes.js";
 export * from "./cbor-int-key.js";

@@ -9,3 +9,11 @@ export { decodeTrustRootFromGenesis } from "./decode-trust-root-from-genesis.js"
 export { verifyGrantReceiptOffline } from "./verify-grant-receipt-offline.js";
 export { decodeForestrieGrantCose } from "./decode-forestrie-grant-cose.js";
 export { decodeGrantPayload, decodeGrantResponse } from "./grant-codec.js";
+
+/** Deterministic receipt construction (plan-2607-12 Phase 2, FOR-353). */
+export {
+  HEADER_RECEIPT,
+  attachReceiptAndIdtimestampToTransparentStatement,
+} from "./attach-transparent-statement-receipt.js";
+export { decodeEntryIdHex, entryIdHexToIdtimestampBe8 } from "./entry-id.js";
+export type { DecodedEntryId } from "./entry-id.js";

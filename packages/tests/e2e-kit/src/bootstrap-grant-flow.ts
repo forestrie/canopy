@@ -4,13 +4,15 @@ import {
   base64ToBytes,
   bytesToForestrieGrantBase64,
 } from "@forestrie/grant-builder";
-import { attachReceiptAndIdtimestampToTransparentStatement } from "./attach-transparent-statement-receipt.js";
+import {
+  attachReceiptAndIdtimestampToTransparentStatement,
+  entryIdHexToIdtimestampBe8,
+} from "@forestrie/receipt-verify";
 import {
   assertBootstrapMintE2eEnv,
   assertBootstrapReceiptE2eEnv,
 } from "./e2e-env-guards.js";
 import { mintOnboardTokenE2e } from "./onboard-token-e2e.js";
-import { entryIdHexToIdtimestampBe8 } from "./entry-id-e2e.js";
 import type { E2eBootstrapVariant } from "./e2e-bootstrap-variant.js";
 import { mintRootGrantForVariant } from "./mint-root-grant-e2e.js";
 import {
