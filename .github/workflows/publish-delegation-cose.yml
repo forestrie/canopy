@@ -45,7 +45,7 @@ jobs:
           scope: "@forestrie"
           cache: "pnpm"
 
-      - name: Upgrade npm for trusted publishing (>= 11.5.1, < 12: node 22 compat)
+      - name: Upgrade npm for trusted publishing (11.x - node 22 compatible)
         run: |
           npm install -g npm@11
           npm --version
