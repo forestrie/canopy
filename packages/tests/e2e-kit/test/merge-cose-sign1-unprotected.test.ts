@@ -1,4 +1,4 @@
-/** Golden-vector tests: kit copy of @canopy/encoding merge-cose-sign1-unprotected. */
+/** Golden-vector tests: kit copy of @forestrie/encoding merge-cose-sign1-unprotected. */
 import { describe, expect, it } from "vitest";
 import { decodeCoseSign1 } from "../src/encoding/verify-cose-sign1.js";
 import { coseUnprotectedToMap } from "../src/encoding/cose-unprotected-map.js";

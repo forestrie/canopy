@@ -1,5 +1,5 @@
 import { decode, Encoder } from "cbor-x";
-import { encodeSigStructure } from "@canopy/encoding";
+import { encodeSigStructure } from "@forestrie/encoding";
 
 const cborEncoder = new Encoder({ mapsAsObjects: false });
 

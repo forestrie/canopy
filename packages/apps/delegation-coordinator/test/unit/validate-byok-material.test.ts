@@ -1,5 +1,5 @@
 import { Encoder } from "cbor-x";
-import { encodeSigStructure } from "@canopy/encoding";
+import { encodeSigStructure } from "@forestrie/encoding";
 import { describe, expect, it } from "vitest";
 import {
   ByokMaterialValidationError,

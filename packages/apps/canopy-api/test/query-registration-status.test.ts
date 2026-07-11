@@ -10,7 +10,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import {
   urkleLeafTableStartByteOffset,
   leafCountForMassifHeight,
-} from "@canopy/merklelog";
+} from "@forestrie/merklelog";
 
 import type { Env } from "../src/index";
 

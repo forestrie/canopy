@@ -1,5 +1,5 @@
 /**
- * @canopy/encoding — shared CBOR/COSE wire helpers consumed by canopy-api,
+ * @forestrie/encoding — shared CBOR/COSE wire helpers consumed by canopy-api,
  * forestrie-ingress, and Custodian signing paths. One encoder per artifact;
  * sign and verify must share identical bytes (see {@link encodeSigStructure}).
  *

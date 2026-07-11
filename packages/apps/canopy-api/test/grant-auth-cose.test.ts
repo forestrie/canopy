@@ -15,7 +15,7 @@ import {
   encodeCoseSign1Statement,
   signCoseSign1Statement,
   verifyCoseSign1,
-} from "@canopy/encoding";
+} from "@forestrie/encoding";
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 import { describe, expect, it } from "vitest";
 import { encodeCoseSign1WithKid } from "./cose-sign1-k6-encoder";

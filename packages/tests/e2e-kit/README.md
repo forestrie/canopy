@@ -72,7 +72,7 @@ Published dependency: `@forestrie/delegation-cose` `^0.1.1` (GitHub Packages;
 
 ## Wire / encoding sync policy
 
-Kit vendors a minimal subset of `@canopy/encoding` and grant wire types under
+Kit vendors a minimal subset of `@forestrie/encoding` and grant wire types under
 `src/encoding/` and `src/wire/`. When changing canopy-api grant or COSE paths,
 update the kit copy in the **same PR** and bump the kit semver slice.
 
@@ -84,7 +84,7 @@ update the kit copy in the **same PR** and bump the kit semver slice.
 | `src/wire/cose/*`   | `packages/apps/canopy-api/src/cose/`   |
 
 Drift guard: `test/merge-cose-sign1-unprotected.test.ts` mirrors
-`@canopy/encoding` golden vectors for `mergeUnprotectedIntoCoseSign1`.
+`@forestrie/encoding` golden vectors for `mergeUnprotectedIntoCoseSign1`.
 
 Manifest placeholder: `KS256_UNIVOCITY_MANIFEST_PLACEHOLDER` in
 `system-test-manifest-constants.ts` — keep aligned with

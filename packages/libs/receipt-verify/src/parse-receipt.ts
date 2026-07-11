@@ -1,5 +1,5 @@
 import { decode as decodeCbor } from "cbor-x";
-import type { Proof } from "@canopy/merklelog";
+import type { Proof } from "@forestrie/merklelog";
 
 const VDS_COSE_RECEIPT_PROOFS_TAG = 396;
 

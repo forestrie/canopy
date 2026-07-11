@@ -13,7 +13,7 @@ import {
   decodeCoseSign1,
   type ParsedEcPublicKey,
   verifyCoseSign1WithParsedKey,
-} from "@canopy/encoding";
+} from "@forestrie/encoding";
 import { isParsedKs256RootKey } from "./parsed-ks256-root-key.js";
 import { verifyKs256DelegationCert } from "./ks256-verify.js";
 import type { RootVerifyKey } from "../env/trust-root-client.js";

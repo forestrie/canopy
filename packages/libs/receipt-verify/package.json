@@ -18,8 +18,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@canopy/encoding": "workspace:*",
-    "@canopy/merklelog": "workspace:*",
+    "@forestrie/encoding": "workspace:*",
+    "@forestrie/merklelog": "workspace:*",
     "@noble/hashes": "^1.7.1",
     "cbor-x": "^1.5.9"
   },

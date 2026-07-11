@@ -1,7 +1,7 @@
 /**
  * Minimal CBOR byte-string (major type 2) encoder. Shared building block for
  * {@link encodeSigStructure}; kept local so published `@forestrie/delegation-cose`
- * does not depend on `@canopy/encoding`.
+ * does not depend on `@forestrie/encoding`.
  */
 
 /**

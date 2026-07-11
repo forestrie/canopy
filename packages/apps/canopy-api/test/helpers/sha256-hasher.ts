@@ -1,4 +1,4 @@
-import type { Hasher } from "@canopy/merklelog";
+import type { Hasher } from "@forestrie/merklelog";
 
 /** SHA-256 hasher matching grant receipt-verify (Workers crypto.subtle). */
 export class Sha256Hasher implements Hasher {

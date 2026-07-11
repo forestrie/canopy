@@ -2,14 +2,14 @@
  * Receipt inclusion from parsed grant: COSE Sign1 must match trust anchor before MMR.
  */
 
-import { encodeSigStructure } from "@canopy/encoding";
+import { encodeSigStructure } from "@forestrie/encoding";
 import { encode } from "cbor-x";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import type { Grant } from "../src/grant/grant.js";
 import { verifyReceiptInclusionFromParsed } from "../src/grant/receipt-verify.js";
 import { uuidToBytes } from "../src/grant/uuid-bytes.js";
-import type { Proof } from "@canopy/merklelog";
+import type { Proof } from "@forestrie/merklelog";
 
 let signerA: CryptoKeyPair;
 let signerB: CryptoKeyPair;

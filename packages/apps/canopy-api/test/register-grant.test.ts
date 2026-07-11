@@ -3,7 +3,7 @@
  * Auth: Authorization: Forestrie-Grant <base64> (Custodian COSE profile).
  */
 
-import { encodeGrantRequest } from "@canopy/encoding";
+import { encodeGrantRequest } from "@forestrie/encoding";
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";

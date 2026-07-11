@@ -1,4 +1,4 @@
-import { signCoseSign1Statement } from "@canopy/encoding";
+import { signCoseSign1Statement } from "@forestrie/encoding";
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";

@@ -18,7 +18,7 @@
     "@forestrie/canopy-e2e-kit": "workspace:*",
     "@forestrie/delegation-cose": "workspace:*",
     "@forestrie/receipt-verify": "workspace:*",
-    "@canopy/encoding": "workspace:*",
+    "@forestrie/encoding": "workspace:*",
     "@noble/curves": "^1.9.7",
     "@noble/hashes": "^1.7.1",
     "cbor-x": "^1.5.9",

@@ -4,7 +4,7 @@
  *
  * LEGACY: Outputs COSE Sign1 with **empty protected** (no kid).
  * Does not satisfy the current statement contract for grant-based auth.
- * For grant flow use the canonical encoder in @canopy/encoding (encodeCoseSign1Statement).
+ * For grant flow use the canonical encoder in @forestrie/encoding (encodeCoseSign1Statement).
  *
  * Usage:
  *   pnpm --filter @canopy/scripts run gen-cose-sign1              # Random UUID message
@@ -17,7 +17,7 @@
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { v4 as uuidv4 } from "uuid";
-import { encodeCborBstr } from "@canopy/encoding";
+import { encodeCborBstr } from "@forestrie/encoding";
 
 // pnpm run script -- arg1 arg2 → argv has "--" before user args; strip it
 const raw = process.argv.slice(2);

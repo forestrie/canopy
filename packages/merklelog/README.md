@@ -1,4 +1,4 @@
-# @canopy/merklelog
+# @forestrie/merklelog
 
 TypeScript implementation of the MMR (Merkle Mountain Range) merklelog format.
 
@@ -15,7 +15,7 @@ The package is organized into three main modules:
 ## Installation
 
 ```bash
-pnpm add @canopy/merklelog
+pnpm add @forestrie/merklelog
 ```
 
 ## Usage
@@ -23,7 +23,7 @@ pnpm add @canopy/merklelog
 ### Uint64
 
 ```typescript
-import { Uint64 } from "@canopy/merklelog";
+import { Uint64 } from "@forestrie/merklelog";
 
 const a = new Uint64(42);
 const b = new Uint64(10);
@@ -34,7 +34,7 @@ console.log(sum.toBigInt()); // 52n
 ### Massif
 
 ```typescript
-import { Massif } from "@canopy/merklelog";
+import { Massif } from "@forestrie/merklelog";
 
 const buffer = new Uint8Array(/* massif blob data */);
 const massif = new Massif(buffer);
@@ -53,7 +53,7 @@ const field = massif.fieldref(0); // Returns 32-byte field at index 0
 ### MMR Algorithms
 
 ```typescript
-import { bagPeaks, verifyInclusion, Hasher } from "@canopy/merklelog";
+import { bagPeaks, verifyInclusion, Hasher } from "@forestrie/merklelog";
 
 // Bag peaks to compute root (hasher.digest() is async)
 const root = await bagPeaks(hasher, peakHashes);

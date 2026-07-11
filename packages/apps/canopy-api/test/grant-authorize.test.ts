@@ -8,7 +8,7 @@
  * queue inclusion check was safe to remove.
  */
 
-import { encodeSigStructure, type ParsedVerifyKey } from "@canopy/encoding";
+import { encodeSigStructure, type ParsedVerifyKey } from "@forestrie/encoding";
 import { encode } from "cbor-x";
 import { beforeAll, describe, expect, it } from "vitest";
 

@@ -2,11 +2,11 @@
  * Decode CBOR trust-root responses: v2 `{ alg: int, key: bstr }` and v1 `{ alg: "ES256", x, y }`.
  */
 
-import { COSE_ALG_ES256, COSE_ALG_KS256 } from "@canopy/encoding";
+import { COSE_ALG_ES256, COSE_ALG_KS256 } from "@forestrie/encoding";
 import { importEs256PublicKeyFromGrantDataXy64 } from "../scrapi/custodian-grant.js";
 import type { ParsedKs256RootKey } from "../grant/parsed-ks256-root-key.js";
 import { isParsedKs256RootKey } from "../grant/parsed-ks256-root-key.js";
-import type { ParsedVerifyKey } from "@canopy/encoding";
+import type { ParsedVerifyKey } from "@forestrie/encoding";
 
 export type RootVerifyKey = ParsedVerifyKey | ParsedKs256RootKey;
 

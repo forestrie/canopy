@@ -38,7 +38,7 @@ import { getQueueForLog } from "../sequeue/logshard.js";
 import { getContentSize, parseCborBody } from "../cbor-api/cbor-request.js";
 import { seeOtherResponse } from "../cbor-api/cbor-response.js";
 
-import { verifyCoseSign1 } from "@canopy/encoding";
+import { verifyCoseSign1 } from "@forestrie/encoding";
 import { grantDataToBytes } from "../grant/grant-data.js";
 import type { ParsedKs256RootKey } from "../grant/parsed-ks256-root-key.js";
 import { verifyKs256CoseSign1, COSE_ALG_KS256 } from "../grant/ks256-verify.js";

@@ -2,8 +2,8 @@
  * Build delegated peak receipts for offline receipt / grantAuthorize tests.
  */
 
-import { encodeSigStructure } from "@canopy/encoding";
-import { calculateRoot, type Proof } from "@canopy/merklelog";
+import { encodeSigStructure } from "@forestrie/encoding";
+import { calculateRoot, type Proof } from "@forestrie/merklelog";
 import { encode as encodeCbor } from "cbor-x";
 import { DELEGATION_CERT_LABEL } from "../../src/grant/delegation-verify.js";
 import { Sha256Hasher } from "./sha256-hasher.js";

@@ -1,4 +1,4 @@
-import type { Hasher } from "@canopy/merklelog";
+import type { Hasher } from "@forestrie/merklelog";
 
 /** Web Crypto SHA-256 hasher for Node and browser offline verify. */
 export class SubtleHasher implements Hasher {

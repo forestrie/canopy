@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@forestrie/delegation-cose": "workspace:*",
-    "@canopy/encoding": "workspace:*",
+    "@forestrie/encoding": "workspace:*",
     "@canopy/webhook-url": "workspace:*",
     "@canopy/forestrie-sharding": "workspace:*",
     "@noble/curves": "^1.9.7",
@@ -23,7 +23,7 @@
     "viem": "^2.21.0"
   },
   "devDependencies": {
-    "@canopy/encoding": "workspace:*",
+    "@forestrie/encoding": "workspace:*",
     "@cloudflare/vitest-pool-workers": "^0.9.13",
     "@cloudflare/workers-types": "^4.20241218.0",
     "cbor-x": "^1.5.9",
