@@ -1,7 +1,7 @@
 import { encodeSigStructure } from "@forestrie/encoding";
 import { calculateRoot, type Proof } from "@forestrie/merklelog";
 import { encode as encodeCbor } from "cbor-x";
-import type { Grant } from "../../src/grant.js";
+import type { Grant } from "@forestrie/grant-builder";
 import { grantCommitmentHashFromGrant } from "../../src/grant-commitment.js";
 import { COSE_ALG_ES256 } from "../../src/cose-key.js";
 import {

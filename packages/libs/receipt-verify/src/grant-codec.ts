@@ -1,6 +1,6 @@
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
-import type { Grant } from "./grant.js";
-import { grantDataToBytes } from "./grant-data.js";
+import type { Grant } from "@forestrie/grant-builder";
+import { grantDataToBytes } from "@forestrie/grant-builder";
 import { fromPaddedWire32, toPaddedWire32 } from "./uuid-bytes.js";
 
 const CBOR_KEY_IDTIMESTAMP = 0;

@@ -2,7 +2,8 @@ export type {
   ReceiptVerifyResult,
   ReceiptVerifyStage,
 } from "./receipt-verify-result.js";
-export type { Grant } from "./grant.js";
+/** Canonical grant wire type — converged on @forestrie/grant-builder (FOR-353). */
+export type { Grant } from "@forestrie/grant-builder";
 export type { VerifyGrantReceiptOfflineInput } from "./verify-grant-receipt-offline.js";
 export { parseReceipt } from "./parse-receipt.js";
 export { decodeTrustRootFromGenesis } from "./decode-trust-root-from-genesis.js";

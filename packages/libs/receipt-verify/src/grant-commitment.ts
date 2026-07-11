@@ -1,5 +1,5 @@
-import { grantDataToBytes } from "./grant-data.js";
-import type { Grant } from "./grant.js";
+import { grantDataToBytes } from "@forestrie/grant-builder";
+import type { Grant } from "@forestrie/grant-builder";
 import { toPaddedWire32 } from "./uuid-bytes.js";
 
 const GRANT_FLAGS_32_BYTES = 32;

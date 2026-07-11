@@ -269,6 +269,9 @@ importers:
       '@forestrie/encoding':
         specifier: workspace:*
         version: link:../../shared/encoding
+      '@forestrie/grant-builder':
+        specifier: workspace:*
+        version: link:../grant-builder
       '@forestrie/merklelog':
         specifier: workspace:*
         version: link:../../merklelog

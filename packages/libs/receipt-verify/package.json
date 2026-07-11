@@ -1,6 +1,6 @@
 {
   "name": "@forestrie/receipt-verify",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
   "type": "module",
   "description": "Offline SCITT grant receipt verification (ADR-0045)",
@@ -43,6 +43,7 @@
   },
   "dependencies": {
     "@forestrie/encoding": "workspace:*",
+    "@forestrie/grant-builder": "workspace:*",
     "@forestrie/merklelog": "workspace:*",
     "@noble/hashes": "^1.7.1",
     "cbor-x": "^1.5.9"
