@@ -1,6 +1,7 @@
 {
   "name": "@forestrie/canopy-e2e-kit",
-  "version": "0.4.0",
+  "version": "0.5.0",
+  "license": "MIT",
   "type": "module",
   "description": "Reusable Playwright e2e helpers for canopy system tests (ARC-0024 Layer 1)",
   "exports": {
@@ -16,7 +17,7 @@
     "README.md"
   ],
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com",
+    "registry": "https://registry.npmjs.org",
     "access": "public"
   },
   "scripts": {

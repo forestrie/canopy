@@ -52,10 +52,23 @@ Cross-repo lane specs (forest genesis, Mode B/C registration, BYOK) run in
 - Lets T3 system-testing specs verify receipts in-process instead of shelling
   out to a subprocess script
 
+### 0.5.0 — npmjs release (includes 0.4.0)
+
+- Publish moved from GitHub Packages to public npmjs (FOR-361): the kit
+  depends on `@forestrie/grant-builder` / `@forestrie/scrapi-client`, which
+  exist only on npmjs, so a GitHub Packages release would be uninstallable
+  for consumers whose `@forestrie` scope maps to GitHub Packages
+- Picks up `@forestrie/receipt-verify` 0.3.0 (canonical `Grant` from
+  `@forestrie/grant-builder`, FOR-353)
+
 ## Install
 
-Same GitHub Packages auth as `@forestrie/delegation-cose` — local installs need
-`gh auth refresh -h github.com -s read:packages`.
+Published to public [npmjs.org](https://www.npmjs.com/package/@forestrie/canopy-e2e-kit)
+(0.5.0+; 0.4.x and earlier were on GitHub Packages) — no registry auth needed:
+
+```bash
+pnpm add -D @forestrie/canopy-e2e-kit
+```
 
 Workspace consumers: `"@forestrie/canopy-e2e-kit": "workspace:*"`.
 
@@ -68,17 +81,14 @@ pnpm --filter @forestrie/canopy-e2e-kit build
 pnpm --filter @forestrie/canopy-e2e-kit test
 ```
 
-Publish tags (GitHub Packages):
+Publish tag (npmjs, trusted publishing / OIDC): `canopy-e2e-kit-v*`.
+Workflow: `.github/workflows/publish-canopy-e2e-kit.yml` (mirrors
+`publish-delegation-cose.yml`).
 
-- **Repo release:** `vMAJOR.MINOR.PATCH` (e.g. `v0.3.2`) — kit version matches tag.
-- **Kit-only:** `canopy-e2e-kit-v*` (legacy / independent kit bumps).
-
-Workflow: `.github/workflows/publish-canopy-e2e-kit.yml` (also runs on canopy
-`release.yaml` `v*` tags).
-
-Published dependencies: `@forestrie/delegation-cose` (GitHub Packages),
-`@forestrie/encoding` and `@forestrie/receipt-verify` (npmjs) — `workspace:*`/`workspace:^`
-in monorepo, rewritten to concrete versions on `pnpm publish`.
+Published dependencies (all npmjs): `@forestrie/delegation-cose`,
+`@forestrie/encoding`, `@forestrie/grant-builder`, `@forestrie/scrapi-client`
+and `@forestrie/receipt-verify` — `workspace:*`/`workspace:^` in monorepo,
+rewritten to concrete versions on pack.
 
 ## Wire / encoding sync policy
 

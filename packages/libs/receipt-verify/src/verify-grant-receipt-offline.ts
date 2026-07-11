@@ -4,7 +4,7 @@ import {
   verifyInclusion,
   type Proof,
 } from "@forestrie/merklelog";
-import type { Grant } from "./grant.js";
+import type { Grant } from "@forestrie/encoding";
 import { grantCommitmentHashFromGrant } from "./grant-commitment.js";
 import { decodeTrustRootFromGenesis } from "./decode-trust-root-from-genesis.js";
 import { es256ReceiptVerifyKeys } from "./decode-trust-root-cbor.js";

@@ -1,9 +1,9 @@
 {
   "name": "@forestrie/encoding",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "license": "MIT",
   "type": "module",
-  "description": "Shared CBOR/COSE wire helpers for Forestrie grant and statement encoding",
+  "description": "Shared CBOR/COSE wire helpers and the Forestrie grant wire types/codecs (ADR-0048)",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/forestrie/canopy.git",

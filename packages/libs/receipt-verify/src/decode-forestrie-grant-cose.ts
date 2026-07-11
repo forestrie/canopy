@@ -1,6 +1,6 @@
 import { sha256 } from "@noble/hashes/sha256";
 import { decode as decodeCbor } from "cbor-x";
-import type { Grant } from "./grant.js";
+import type { Grant } from "@forestrie/encoding";
 import {
   HEADER_FORESTRIE_GRANT_V0,
   HEADER_IDTIMESTAMP,

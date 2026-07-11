@@ -2,7 +2,8 @@ export type {
   ReceiptVerifyResult,
   ReceiptVerifyStage,
 } from "./receipt-verify-result.js";
-export type { Grant } from "./grant.js";
+/** Canonical grant wire type — owned by @forestrie/encoding (FOR-353, ADR-0048). */
+export type { Grant } from "@forestrie/encoding";
 export type { VerifyGrantReceiptOfflineInput } from "./verify-grant-receipt-offline.js";
 export { parseReceipt } from "./parse-receipt.js";
 export { decodeTrustRootFromGenesis } from "./decode-trust-root-from-genesis.js";
