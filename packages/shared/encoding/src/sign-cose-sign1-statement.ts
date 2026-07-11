@@ -4,7 +4,10 @@
  * byte-identical to {@link verifyCoseSign1} in canopy-api grant auth.
  */
 
-import { encodeCoseProtectedMapBytes } from "./encode-cose-protected.js";
+import {
+  type CoseProtectedHeaderOptions,
+  encodeCoseProtectedMapBytes,
+} from "./encode-cose-protected.js";
 import { encodeCoseSign1Statement } from "./encode-cose-sign1-statement.js";
 import { encodeSigStructure } from "./encode-sig-structure.js";
 
@@ -14,14 +17,17 @@ import { encodeSigStructure } from "./encode-sig-structure.js";
  * @param payload - Statement payload bytes
  * @param kid - Key id (signer binding)
  * @param privateKey - CryptoKey (EC P-256, usage sign)
+ * @param options - Optional protected `alg` / `cty` labels; the signature
+ *   covers them (they are part of the protected map in Sig_structure)
  * @returns COSE Sign1 bytes
  */
 export async function signCoseSign1Statement(
   payload: Uint8Array,
   kid: Uint8Array,
   privateKey: CryptoKey,
+  options?: CoseProtectedHeaderOptions,
 ): Promise<Uint8Array> {
-  const protectedMapBytes = encodeCoseProtectedMapBytes(kid);
+  const protectedMapBytes = encodeCoseProtectedMapBytes(kid, options);
   const externalAad = new Uint8Array(0);
 
   const sigStructureBytes = encodeSigStructure(
@@ -40,5 +46,10 @@ export async function signCoseSign1Statement(
     sigBuffer,
   );
 
-  return encodeCoseSign1Statement(payload, kid, new Uint8Array(signature));
+  return encodeCoseSign1Statement(
+    payload,
+    kid,
+    new Uint8Array(signature),
+    options,
+  );
 }
