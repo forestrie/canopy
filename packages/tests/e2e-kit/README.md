@@ -43,6 +43,15 @@ Cross-repo lane specs (forest genesis, Mode B/C registration, BYOK) run in
 - Post-entries helpers (`postEntriesExpectAccepted`, etc.)
 - `mode-c-webhook-receiver` (in-process webhook receiver for coordinator e2e)
 
+### 0.4.0 — Offline receipt verify slice (includes 0.3.0)
+
+- Offline grant receipt verification re-exported from `@forestrie/receipt-verify`
+  ([plan-0030](https://github.com/forestrie/devdocs/blob/main/plans/plan-0030-offline-receipt-verification-gates.md), FOR-286):
+  `verifyGrantReceiptOffline`, `parseReceipt`, `decodeTrustRootFromGenesis`,
+  plus types `VerifyGrantReceiptOfflineInput`, `ReceiptVerifyResult`, `ReceiptVerifyStage`
+- Lets T3 system-testing specs verify receipts in-process instead of shelling
+  out to a subprocess script
+
 ## Install
 
 Same GitHub Packages auth as `@forestrie/delegation-cose` — local installs need
@@ -67,8 +76,9 @@ Publish tags (GitHub Packages):
 Workflow: `.github/workflows/publish-canopy-e2e-kit.yml` (also runs on canopy
 `release.yaml` `v*` tags).
 
-Published dependency: `@forestrie/delegation-cose` `^0.1.1` (GitHub Packages;
-`workspace:^` in monorepo, rewritten on `pnpm publish`).
+Published dependencies: `@forestrie/delegation-cose` (GitHub Packages),
+`@forestrie/encoding` and `@forestrie/receipt-verify` (npmjs) — `workspace:*`/`workspace:^`
+in monorepo, rewritten to concrete versions on `pnpm publish`.
 
 ## Wire / encoding sync policy
 
