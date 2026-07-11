@@ -8,8 +8,9 @@ import { parseReceipt } from "../src/parse-receipt.js";
 import { verifyGrantReceiptOffline } from "../src/verify-grant-receipt-offline.js";
 import { grantCommitmentHashFromGrant } from "../src/grant-commitment.js";
 import { univocityLeafHash } from "../src/leaf-commitment.js";
-import type { Grant } from "../src/grant.js";
+import type { Grant } from "@forestrie/encoding";
 import {
+  buildDetachedPeakReceipt,
   buildGenesisCbor,
   generateP256KeyPair,
   grantWithData,
@@ -153,6 +154,49 @@ describe("buildReceiptOffline", () => {
       idtimestampBe8: fx.leaf0.idtimestampBe8,
     });
     expect(result0).toEqual({ ok: true, stage: "binding" });
+  });
+
+  it("verify-equivalence: derived and API-shaped receipts for the same leaf verify identically", async () => {
+    // FOR-334 AC (plan-2607-15 §2): a self-derived receipt and an
+    // API-issued receipt for the same leaf both pass
+    // verifyGrantReceiptOffline with identical results. Deliberately NOT a
+    // byte comparison — encoder variation is known-benign (FOR-370).
+    const fx = await buildFixture();
+    const checkpointBytes = buildV2CheckpointBytes({
+      mmrSize: 3n,
+      peakReceipts: [await signDetachedPeakReceipt(fx.rootKeyPair, fx.n2)],
+    });
+
+    const derived = buildReceiptOffline({
+      massifBytes: fx.massifBytes,
+      checkpointBytes,
+      mmrIndex: 1n,
+    });
+    // API shape: the pre-signed peak receipt with the proof already spliced
+    // at header 396, as canopy-api resolve-receipt emits it.
+    const apiShaped = await buildDetachedPeakReceipt({
+      signer: fx.rootKeyPair,
+      peak: fx.n2,
+      proof: { path: [fx.n0], mmrIndex: 1n },
+    });
+
+    const verifyInput = (receiptCbor: Uint8Array) => ({
+      genesisCbor: fx.genesisCbor,
+      receiptCbor,
+      grant: fx.leaf1.grant,
+      idtimestampBe8: fx.leaf1.idtimestampBe8,
+    });
+    const derivedResult = await verifyGrantReceiptOffline(verifyInput(derived));
+    const apiResult = await verifyGrantReceiptOffline(verifyInput(apiShaped));
+    expect(derivedResult).toEqual({ ok: true, stage: "binding" });
+    expect(apiResult).toEqual(derivedResult);
+
+    // Structural equivalence of the computed field (header 396 content).
+    const parsedDerived = parseReceipt(derived);
+    const parsedApi = parseReceipt(apiShaped);
+    expect(parsedDerived.proof).toEqual(parsedApi.proof);
+    expect(parsedDerived.explicitPeak).toBeNull();
+    expect(parsedApi.explicitPeak).toBeNull();
   });
 
   it("rejects a receipt built from tampered massif content", async () => {

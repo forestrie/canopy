@@ -4,7 +4,7 @@
  * resolve-receipt.ts.
  */
 
-import { encodeSigStructure } from "@canopy/encoding";
+import { encodeSigStructure } from "@forestrie/encoding";
 import { encode as encodeCbor } from "cbor-x";
 
 export const SEAL_PEAK_RECEIPTS_LABEL = -65931;

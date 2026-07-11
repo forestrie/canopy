@@ -84,7 +84,12 @@ export async function peakForLeafProof(
   return calculateRoot(hasher, leafHash, proof, leafIdx);
 }
 
-async function buildDetachedPeakReceipt(opts: {
+/**
+ * API-shaped receipt: pre-signed detached peak receipt with the inclusion
+ * proof already spliced at header 396, exactly as canopy-api
+ * resolve-receipt emits it. Exported for the FOR-334 verify-equivalence AC.
+ */
+export async function buildDetachedPeakReceipt(opts: {
   signer: CryptoKeyPair;
   peak: Uint8Array;
   proof: Proof;

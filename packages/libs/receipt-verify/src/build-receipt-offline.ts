@@ -6,7 +6,9 @@
  * signature covers only the accumulator, so the inclusion path is free to
  * rebuild client-side: read massif nodes, build the leaf→peak path, attach it
  * at header 396 to the checkpoint's pre-signed peak receipt. The result is
- * byte-compatible with an API-issued receipt.
+ * verify-equivalent with an API-issued receipt (FOR-334 AC: both pass
+ * verifyGrantReceiptOffline identically; byte-equality is intentionally not
+ * claimed — encoder-level variation is known-benign, see plan-2607-15 §2).
  *
  * `computeAccumulatorPeak` supports the chain-anchored variant: build the path
  * at an externally attested tree size (e.g. Univocity `logState` on Base
@@ -19,7 +21,7 @@ import {
   Massif,
   peakStackEnd,
   type Proof,
-} from "@canopy/merklelog";
+} from "@forestrie/merklelog";
 import {
   requireCoseSign1,
   toHeaderMap,

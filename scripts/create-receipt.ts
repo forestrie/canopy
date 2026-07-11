@@ -4,8 +4,9 @@
  *
  * Local mode (sealer-signed receipt): rebuild the inclusion path from the
  * massif blob and attach it to the checkpoint's pre-signed peak receipt. The
- * output is byte-compatible with an API-issued receipt and passes
- * verify-grant-receipt unchanged.
+ * output is verify-equivalent with an API-issued receipt and passes
+ * verify-grant-receipt unchanged (FOR-334 AC: verify-equivalence, not
+ * byte-equality).
  *
  * Chain-anchored mode: fetch the accumulator published by the Univocity
  * contract (`logState(bytes32)`), rebuild the inclusion path at the on-chain
