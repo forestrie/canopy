@@ -21,7 +21,10 @@ export {
   type ProblemDetail,
 } from "./problem-details.js";
 export {
+  COSE_ALG,
+  COSE_CTY,
   COSE_KID,
+  type CoseProtectedHeaderOptions,
   encodeCoseProtectedMapBytes,
   encodeCoseProtectedWithKid,
 } from "./encode-cose-protected.js";
