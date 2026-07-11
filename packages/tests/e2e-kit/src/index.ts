@@ -84,8 +84,10 @@ export {
   HEADER_FORESTRIE_GRANT_V0,
 } from "./wire/grant/transparent-statement.js";
 
-/** Encoding helpers */
-export { mergeUnprotectedIntoCoseSign1 } from "./encoding/merge-cose-sign1-unprotected.js";
-export { signCoseSign1Statement } from "./encoding/sign-cose-sign1-statement.js";
-export { encodeSigStructure } from "./encoding/encode-sig-structure.js";
-export { decodeCoseSign1 } from "./encoding/verify-cose-sign1.js";
+/** Encoding helpers (re-exported from @forestrie/encoding) */
+export {
+  decodeCoseSign1,
+  encodeSigStructure,
+  mergeUnprotectedIntoCoseSign1,
+  signCoseSign1Statement,
+} from "@forestrie/encoding";
