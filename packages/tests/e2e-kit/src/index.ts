@@ -20,6 +20,36 @@ export {
   assertOpsAdminE2eEnv,
   mintOnboardTokenE2e,
 } from "./onboard-token-e2e.js";
+export { playwrightFetch } from "./playwright-fetch.js";
+
+/** SCRAPI registration primitives — re-exported from @forestrie/scrapi-client
+ * (plan-2607-12 Phase 2, FOR-351); the kit poll loops above are thin ladders
+ * over these. */
+export {
+  COSE_SIGN1_CONTENT_TYPE,
+  RECEIPT_LOCATION_RE,
+  ScrapiRegistrationError,
+  decodeProblemDetailsBytes,
+  forestrieGrantAuthorization,
+  interpretRegisterRedirect,
+  parseEntryIdFromReceiptLocation,
+  queryRegistrationOnce,
+  registerGrant,
+  registerSignedStatement,
+  resolveReceiptOnce,
+  toAbsoluteScrapiUrl,
+} from "@forestrie/scrapi-client";
+export type {
+  ProblemDetails,
+  QueryRegistrationOnceOptions,
+  ReceiptResolution,
+  RegisterGrantOptions,
+  RegisterRedirect,
+  RegisterResponseView,
+  RegisterSignedStatementOptions,
+  RegistrationPollStatus,
+  ResolveReceiptOnceOptions,
+} from "@forestrie/scrapi-client";
 
 export * from "./e2e-testing-tier.js";
 

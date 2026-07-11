@@ -286,6 +286,19 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.12)(@types/node@24.8.1)(tsx@4.21.0)
 
+  packages/libs/scrapi-client:
+    dependencies:
+      cbor-x:
+        specifier: ^1.5.9
+        version: 1.6.0
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@24.8.1)(tsx@4.21.0)
+
   packages/merklelog:
     devDependencies:
       typescript:
@@ -398,6 +411,9 @@ importers:
       '@forestrie/receipt-verify':
         specifier: workspace:*
         version: link:../../libs/receipt-verify
+      '@forestrie/scrapi-client':
+        specifier: workspace:*
+        version: link:../../libs/scrapi-client
       '@noble/curves':
         specifier: ^1.9.7
         version: 1.9.7
