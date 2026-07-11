@@ -49,5 +49,10 @@
     "typescript": "^5.9.2",
     "viem": "^2.21.0",
     "vitest": "^3.2.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/forestrie/canopy.git",
+    "directory": "packages/tests/e2e-kit"
   }
 }
