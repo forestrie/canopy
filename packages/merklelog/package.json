@@ -1,8 +1,14 @@
 {
   "name": "@forestrie/merklelog",
-  "private": true,
   "version": "0.0.1",
+  "license": "MIT",
   "type": "module",
+  "description": "MMR (merkle mountain range) proofs and massif storage format for Forestrie transparency logs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/forestrie/canopy.git",
+    "directory": "packages/merklelog"
+  },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -11,11 +17,30 @@
       "default": "./src/index.ts"
     }
   },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest --run",
     "test:watch": "vitest",
-    "test:debug": "vitest --inspect --no-file-parallelism"
+    "test:debug": "vitest --inspect --no-file-parallelism",
+    "prepack": "pnpm run build"
   },
   "dependencies": {},
   "devDependencies": {
