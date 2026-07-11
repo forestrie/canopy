@@ -30,7 +30,11 @@ export * from "./univocity-genesis-e2e.js";
 export * from "./e2e-env-guards.js";
 export * from "./e2e-grant-flags.js";
 export * from "./forest-genesis-e2e.js";
-export * from "./es256-pem-grant.js";
+export {
+  encodeGrantPayloadV0Canonical,
+  es256GrantData64FromPrivateKeyPem,
+  signGrantPayloadWithEs256Pem,
+} from "@forestrie/grant-builder";
 export * from "./mint-es256-root-grant-e2e.js";
 export * from "./ks256-wallet-grant.js";
 export * from "./e2e-bootstrap-variant.js";
@@ -70,19 +74,19 @@ export * from "./e2e-custodian-labels.js";
 export * from "./e2e-static-log-ids.js";
 export * from "./forestrie-operator-labels.js";
 
-/** Wire types (re-export for cross-repo consumers) */
-export type { Grant } from "./wire/grant/grant.js";
+/** Wire types (re-exported from @forestrie/grant-builder for cross-repo consumers) */
+export type { Grant } from "@forestrie/grant-builder";
 export {
   uuidToBytes,
   bytesToUuid,
   toPaddedWire32,
-} from "./wire/grant/uuid-bytes.js";
+} from "@forestrie/grant-builder";
 export { KS256_UNIVOCITY_MANIFEST_PLACEHOLDER } from "./system-test-manifest-constants.js";
 export {
   HEADER_RECEIPT,
   HEADER_IDTIMESTAMP,
   HEADER_FORESTRIE_GRANT_V0,
-} from "./wire/grant/transparent-statement.js";
+} from "@forestrie/grant-builder";
 
 /** Encoding helpers (re-exported from @forestrie/encoding) */
 export {

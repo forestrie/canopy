@@ -3,10 +3,7 @@
  * unprotected headers (Plan 0005).
  */
 import { mergeUnprotectedIntoCoseSign1 } from "@forestrie/encoding";
-import {
-  HEADER_IDTIMESTAMP,
-  HEADER_RECEIPT,
-} from "./wire/grant/transparent-statement.js";
+import { HEADER_IDTIMESTAMP, HEADER_RECEIPT } from "@forestrie/grant-builder";
 
 export function attachReceiptAndIdtimestampToTransparentStatement(
   statementBytes: Uint8Array,

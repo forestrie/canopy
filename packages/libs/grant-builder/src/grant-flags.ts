@@ -49,6 +49,14 @@ export function authLogBootstrapShapedFlags(): Uint8Array {
   return grant;
 }
 
+/** GF_CREATE|GF_EXTEND (byte 3), GF_DATA_LOG (byte 7) only. */
+export function dataLogCreateExtendFlags(): Uint8Array {
+  const grant = new Uint8Array(8);
+  grant[3] = 0x03;
+  grant[7] = 0x02;
+  return grant;
+}
+
 /** Register-signed-statement: data-log grant with extend (or create+extend) capability. */
 export function isDataLogStatementGrantFlags(grant: Uint8Array): boolean {
   return hasExtendCapability(grant) && hasDataLogClass(grant);
