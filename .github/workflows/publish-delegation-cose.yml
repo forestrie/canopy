@@ -1,5 +1,18 @@
 name: Publish delegation-cose
 
+# Publishes @forestrie/delegation-cose to public npmjs.org via trusted
+# publishing (OIDC): no registry token — npmjs is configured to trust this
+# repo+workflow (plan-2607-12 Phase 0, FOR-348). Provenance is attested
+# automatically. The FIRST publish of the package was manual; this workflow
+# handles every subsequent release.
+#
+# Pattern notes (copy for other @forestrie packages):
+# - `id-token: write` is required for the OIDC exchange.
+# - Trusted publishing needs npm >= 11.5.1; node 22 ships npm 10, so we
+#   upgrade npm explicitly.
+# - Build and pack with pnpm (rewrites workspace: deps), publish the tarball
+#   with npm (does the OIDC publish).
+
 on:
   workflow_dispatch:
   push:
@@ -8,7 +21,7 @@ on:
 
 permissions:
   contents: read
-  packages: write
+  id-token: write
 
 jobs:
   publish:
@@ -28,9 +41,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22.14.0
-          registry-url: https://npm.pkg.github.com
+          registry-url: https://registry.npmjs.org
           scope: "@forestrie"
           cache: "pnpm"
+
+      - name: Upgrade npm for trusted publishing (>= 11.5.1)
+        run: |
+          npm install -g npm@latest
+          npm --version
 
       - name: Install dependencies
         run: pnpm install
@@ -41,7 +59,8 @@ jobs:
       - name: Build delegation-cose
         run: pnpm --filter @forestrie/delegation-cose build
 
-      - name: Publish to GitHub Packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm --filter @forestrie/delegation-cose publish --no-git-checks
+      - name: Publish to npmjs (trusted publishing)
+        working-directory: packages/libs/delegation-cose
+        run: |
+          pnpm pack
+          npm publish ./forestrie-delegation-cose-*.tgz
