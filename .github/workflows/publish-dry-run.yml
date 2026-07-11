@@ -1,0 +1,108 @@
+name: Publish dry-run
+
+# PR gate for the release path (FOR-365 C12): actionlint over every workflow,
+# then — for each publishable @forestrie package — the exact build/pack
+# sequence the publish-*.yml workflows run, finishing with
+# `npm publish --dry-run` against the tarball. The release path is exercised
+# on every PR, before a live tag ever exists.
+#
+# Ignored pre-existing actionlint findings are grandfathered in
+# .github/actionlint.yaml (debt register, not policy).
+#
+# @forestrie/canopy-e2e-kit is deliberately absent from the matrix while its
+# publish workflow is rewritten (FOR-353, #108); add it once that merges.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    name: Lint workflows (actionlint)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Run actionlint
+        # Download script and binary version both pinned to the same release.
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
+          ./actionlint -color
+
+      - name: Self-test assert-publish-version.sh
+        # The publish workflows gate on this script (FOR-365 C3); prove both
+        # the pass and fail paths of its tag mode on every PR.
+        run: |
+          version=$(node -p "require('./packages/shared/encoding/package.json').version")
+          GITHUB_REF="refs/tags/encoding-v${version}" \
+            ./scripts/assert-publish-version.sh packages/shared/encoding encoding
+          if GITHUB_REF="refs/tags/encoding-v0.0.0-mismatch" \
+            ./scripts/assert-publish-version.sh packages/shared/encoding encoding; then
+            echo "::error::assert-publish-version.sh accepted a mismatched tag"
+            exit 1
+          fi
+          echo "self-test OK: matching tag accepted, mismatched tag rejected"
+
+  publish-dry-run:
+    name: Dry-run publish ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: "@forestrie/delegation-cose"
+            dir: packages/libs/delegation-cose
+          - package: "@forestrie/encoding"
+            dir: packages/shared/encoding
+          - package: "@forestrie/merklelog"
+            dir: packages/merklelog
+          - package: "@forestrie/receipt-verify"
+            dir: packages/libs/receipt-verify
+          - package: "@forestrie/chain-rpc"
+            dir: packages/libs/chain-rpc
+          - package: "@forestrie/grant-builder"
+            dir: packages/libs/grant-builder
+          - package: "@forestrie/scrapi-client"
+            dir: packages/libs/scrapi-client
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        with:
+          version: 9.6.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.14.0
+          cache: "pnpm"
+
+      - name: Upgrade npm (same pinned client as the publish workflows)
+        run: |
+          npm install -g npm@11.18.0
+          npm --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build ${{ matrix.package }}
+        run: pnpm --filter ${{ matrix.package }} build
+
+      - name: Pack and dry-run publish
+        # npm refuses `publish --dry-run` over an already-published version,
+        # and the workspace version is usually live. Stamp a unique,
+        # never-published prerelease version first so the full tarball build
+        # and publish validation always run. Dependency versions are
+        # untouched, so `pnpm pack` rewrites workspace: deps exactly as the
+        # release path does.
+        working-directory: ${{ matrix.dir }}
+        run: |
+          npm pkg set version="0.0.0-dryrun-${GITHUB_SHA}"
+          pnpm pack
+          npm publish --dry-run --tag dryrun ./forestrie-*.tgz
