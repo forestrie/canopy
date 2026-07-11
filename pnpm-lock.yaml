@@ -367,6 +367,9 @@ importers:
       '@forestrie/encoding':
         specifier: workspace:*
         version: link:../../shared/encoding
+      '@forestrie/receipt-verify':
+        specifier: workspace:*
+        version: link:../../libs/receipt-verify
       '@noble/curves':
         specifier: ^1.9.7
         version: 1.9.7

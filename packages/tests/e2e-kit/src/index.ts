@@ -91,3 +91,13 @@ export {
   mergeUnprotectedIntoCoseSign1,
   signCoseSign1Statement,
 } from "@forestrie/encoding";
+
+/** Offline receipt verify slice (0.4.0) — re-exported from @forestrie/receipt-verify (plan-0030, FOR-286) */
+export {
+  verifyGrantReceiptOffline,
+  parseReceipt,
+  decodeTrustRootFromGenesis,
+  type VerifyGrantReceiptOfflineInput,
+  type ReceiptVerifyResult,
+  type ReceiptVerifyStage,
+} from "@forestrie/receipt-verify";
