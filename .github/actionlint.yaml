@@ -4,7 +4,6 @@
 # below grandfather PRE-EXISTING findings in legacy workflows so the gate can
 # land green; they are debt, not policy. Do not add new paths here — fix the
 # finding instead. Remove an entry when its workflow is cleaned up (the
-# publish-canopy-e2e-kit.yml entry should go away with the FOR-353/#108
 # rewrite).
 paths:
   .github/workflows/perf-canopy.yml:
@@ -14,9 +13,6 @@ paths:
     ignore:
       - "shellcheck reported issue in this script"
   .github/workflows/cloudflare-bootstrap.yml:
-    ignore:
-      - "shellcheck reported issue in this script"
-  .github/workflows/publish-canopy-e2e-kit.yml:
     ignore:
       - "shellcheck reported issue in this script"
   .github/workflows/deploy-workers.yml:
