@@ -1,5 +1,5 @@
 {
-  "name": "@canopy/chain-rpc",
+  "name": "@forestrie/chain-rpc",
   "version": "0.1.0",
   "type": "module",
   "description": "Supported chains RPC config parsing, env substitution, and JSON-RPC failover",

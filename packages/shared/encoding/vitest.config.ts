@@ -1,4 +1,4 @@
-/** Vitest config for @canopy/encoding unit and go-cose golden-vector tests. */
+/** Vitest config for @forestrie/encoding unit and go-cose golden-vector tests. */
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

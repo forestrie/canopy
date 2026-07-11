@@ -1,5 +1,9 @@
-import { verifyCoseSign1WithParsedKey } from "@canopy/encoding";
-import { calculateRoot, verifyInclusion, type Proof } from "@canopy/merklelog";
+import { verifyCoseSign1WithParsedKey } from "@forestrie/encoding";
+import {
+  calculateRoot,
+  verifyInclusion,
+  type Proof,
+} from "@forestrie/merklelog";
 import type { Grant } from "./grant.js";
 import { grantCommitmentHashFromGrant } from "./grant-commitment.js";
 import { decodeTrustRootFromGenesis } from "./decode-trust-root-from-genesis.js";

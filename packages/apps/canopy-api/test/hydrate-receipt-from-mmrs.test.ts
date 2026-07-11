@@ -5,7 +5,7 @@
  * - (B) inclusion proof + detached peak verify through grantAuthorize
  */
 
-import { encodeSigStructure } from "@canopy/encoding";
+import { encodeSigStructure } from "@forestrie/encoding";
 import { encode as encodeCbor } from "cbor-x";
 import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";

@@ -2,11 +2,11 @@
  * Receipt authority resolver: trust root + local delegation verification.
  */
 
-import type { ParsedVerifyKey } from "@canopy/encoding";
+import type { ParsedVerifyKey } from "@forestrie/encoding";
 import {
   rpcUrlsForChainId,
   type SupportedChainsConfig,
-} from "@canopy/chain-rpc";
+} from "@forestrie/chain-rpc";
 import { resolveReceiptVerifyKey } from "../grant/delegation-verify.js";
 import { isCanopyApiPoolTestMode } from "./runtime-mode.js";
 import {

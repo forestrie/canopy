@@ -8,7 +8,7 @@ import { encode as encodeCbor } from "cbor-x";
 import {
   encodeSigStructure,
   verifyCoseSign1WithParsedKey,
-} from "@canopy/encoding";
+} from "@forestrie/encoding";
 import { describe, expect, it } from "vitest";
 import {
   createReceiptAuthorityResolver,

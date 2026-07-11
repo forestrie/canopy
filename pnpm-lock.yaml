@@ -50,27 +50,27 @@ importers:
 
   packages/apps/canopy-api:
     dependencies:
-      '@canopy/chain-rpc':
-        specifier: workspace:*
-        version: link:../../libs/chain-rpc
-      '@canopy/encoding':
-        specifier: workspace:*
-        version: link:../../shared/encoding
       '@canopy/forestrie-ingress-types':
         specifier: workspace:*
         version: link:../../shared/forestrie-ingress
       '@canopy/forestrie-sharding':
         specifier: workspace:*
         version: link:../../shared/forestrie-sharding
-      '@canopy/merklelog':
-        specifier: workspace:*
-        version: link:../../merklelog
       '@canopy/webhook-url':
         specifier: workspace:*
         version: link:../../shared/webhook-url
       '@canopy/x402-settlement-types':
         specifier: workspace:*
         version: link:../../shared/x402-settlement-types
+      '@forestrie/chain-rpc':
+        specifier: workspace:*
+        version: link:../../libs/chain-rpc
+      '@forestrie/encoding':
+        specifier: workspace:*
+        version: link:../../shared/encoding
+      '@forestrie/merklelog':
+        specifier: workspace:*
+        version: link:../../merklelog
       '@forestrie/receipt-verify':
         specifier: workspace:*
         version: link:../../libs/receipt-verify
@@ -117,9 +117,6 @@ importers:
 
   packages/apps/delegation-coordinator:
     dependencies:
-      '@canopy/encoding':
-        specifier: workspace:*
-        version: link:../../shared/encoding
       '@canopy/forestrie-sharding':
         specifier: workspace:*
         version: link:../../shared/forestrie-sharding
@@ -129,6 +126,9 @@ importers:
       '@forestrie/delegation-cose':
         specifier: workspace:*
         version: link:../../libs/delegation-cose
+      '@forestrie/encoding':
+        specifier: workspace:*
+        version: link:../../shared/encoding
       '@noble/curves':
         specifier: ^1.9.7
         version: 1.9.7
@@ -241,10 +241,10 @@ importers:
 
   packages/libs/receipt-verify:
     dependencies:
-      '@canopy/encoding':
+      '@forestrie/encoding':
         specifier: workspace:*
         version: link:../../shared/encoding
-      '@canopy/merklelog':
+      '@forestrie/merklelog':
         specifier: workspace:*
         version: link:../../merklelog
       '@noble/hashes':
@@ -321,15 +321,15 @@ importers:
       '@canopy/api':
         specifier: workspace:*
         version: link:../../apps/canopy-api
-      '@canopy/encoding':
-        specifier: workspace:*
-        version: link:../../shared/encoding
       '@forestrie/canopy-e2e-kit':
         specifier: workspace:*
         version: link:../e2e-kit
       '@forestrie/delegation-cose':
         specifier: workspace:*
         version: link:../../libs/delegation-cose
+      '@forestrie/encoding':
+        specifier: workspace:*
+        version: link:../../shared/encoding
       '@forestrie/receipt-verify':
         specifier: workspace:*
         version: link:../../libs/receipt-verify
@@ -389,7 +389,7 @@ importers:
 
   perf:
     dependencies:
-      '@canopy/encoding':
+      '@forestrie/encoding':
         specifier: workspace:*
         version: link:../packages/shared/encoding
     devDependencies:
@@ -408,7 +408,7 @@ importers:
 
   scripts:
     dependencies:
-      '@canopy/encoding':
+      '@forestrie/encoding':
         specifier: workspace:*
         version: link:../packages/shared/encoding
       '@forestrie/receipt-verify':

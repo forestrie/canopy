@@ -1,4 +1,4 @@
-/** Vitest config for `@canopy/chain-rpc` unit tests. */
+/** Vitest config for `@forestrie/chain-rpc` unit tests. */
 
 import { defineConfig } from "vitest/config";
 

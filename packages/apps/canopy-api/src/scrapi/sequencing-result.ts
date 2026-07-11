@@ -6,7 +6,7 @@
 import {
   leafCountForMassifHeight,
   urkleLeafTableStartByteOffset,
-} from "@canopy/merklelog";
+} from "@forestrie/merklelog";
 
 /** Leaf record size in bytes (from Urkle.LeafRecordBytes). */
 const LEAF_RECORD_BYTES = 128;

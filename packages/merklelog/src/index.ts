@@ -1,5 +1,5 @@
 /**
- * @canopy/merklelog - TypeScript implementation of MMR Merklelog format
+ * @forestrie/merklelog - TypeScript implementation of MMR Merklelog format
  *
  * This package provides TypeScript implementations of the MMR (Merkle Mountain Range)
  * merklelog format as defined by the go-merklelog project.

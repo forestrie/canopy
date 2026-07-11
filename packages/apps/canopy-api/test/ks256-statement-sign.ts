@@ -6,7 +6,7 @@ import {
   encodeCoseProtectedMapBytes,
   encodeCoseSign1Statement,
   encodeSigStructure,
-} from "@canopy/encoding";
+} from "@forestrie/encoding";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { secp256k1 } from "@noble/curves/secp256k1";
 

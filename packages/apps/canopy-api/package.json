@@ -15,12 +15,12 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
-    "@canopy/chain-rpc": "workspace:*",
-    "@canopy/encoding": "workspace:*",
+    "@forestrie/chain-rpc": "workspace:*",
+    "@forestrie/encoding": "workspace:*",
     "@canopy/webhook-url": "workspace:*",
     "@canopy/forestrie-ingress-types": "workspace:*",
     "@canopy/forestrie-sharding": "workspace:*",
-    "@canopy/merklelog": "workspace:*",
+    "@forestrie/merklelog": "workspace:*",
     "@forestrie/receipt-verify": "workspace:*",
     "@canopy/x402-settlement-types": "workspace:*",
     "@noble/curves": "^1.9.7",

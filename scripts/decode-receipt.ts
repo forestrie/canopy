@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
  * Decode a SCITT receipt (COSE_Sign1) and display in CDDL-like diagnostic notation.
- * Uses decodeCoseSign1 from @canopy/encoding (same structure as API).
+ * Uses decodeCoseSign1 from @forestrie/encoding (same structure as API).
  */
 import { readFileSync } from "fs";
 import { join } from "path";
 import { decode as decodeCbor } from "cbor-x";
-import { decodeCoseSign1 } from "@canopy/encoding";
+import { decodeCoseSign1 } from "@forestrie/encoding";
 
 const rawArgs = process.argv.slice(2);
 const args = rawArgs[0] === "--" ? rawArgs.slice(1) : rawArgs;

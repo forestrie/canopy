@@ -3,7 +3,7 @@
  */
 
 import { encode as encodeCbor } from "cbor-x";
-import { encodeSigStructure } from "@canopy/encoding";
+import { encodeSigStructure } from "@forestrie/encoding";
 import { describe, expect, it, vi } from "vitest";
 import {
   createReceiptAuthorityResolver,
@@ -11,7 +11,7 @@ import {
 } from "../src/env/receipt-authority-resolver.js";
 import { es256ReceiptVerifyKeys } from "../src/env/decode-trust-root-cbor.js";
 import { importEs256PublicKeyFromGrantDataXy64 } from "../src/scrapi/custodian-grant.js";
-import { verifyCoseSign1WithParsedKey } from "@canopy/encoding";
+import { verifyCoseSign1WithParsedKey } from "@forestrie/encoding";
 import { DELEGATION_CERT_LABEL } from "../src/grant/delegation-verify.js";
 
 describe("createReceiptAuthorityResolver", () => {

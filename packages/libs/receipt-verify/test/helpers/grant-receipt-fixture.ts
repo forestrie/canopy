@@ -1,5 +1,5 @@
-import { encodeSigStructure } from "@canopy/encoding";
-import { calculateRoot, type Proof } from "@canopy/merklelog";
+import { encodeSigStructure } from "@forestrie/encoding";
+import { calculateRoot, type Proof } from "@forestrie/merklelog";
 import { encode as encodeCbor } from "cbor-x";
 import type { Grant } from "../../src/grant.js";
 import { grantCommitmentHashFromGrant } from "../../src/grant-commitment.js";

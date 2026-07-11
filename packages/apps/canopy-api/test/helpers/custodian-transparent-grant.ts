@@ -3,7 +3,7 @@
  * for tests: Sign1 payload = SHA-256(grant v0 CBOR); unprotected -65538 = grant payload.
  */
 
-import { encodeCoseSign1Raw, encodeSigStructure } from "@canopy/encoding";
+import { encodeCoseSign1Raw, encodeSigStructure } from "@forestrie/encoding";
 import { encode as encodeCbor } from "cbor-x";
 import { sha256 } from "@noble/hashes/sha256";
 import { encodeGrantPayload } from "../../src/grant/codec.js";

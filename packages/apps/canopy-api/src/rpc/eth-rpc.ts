@@ -8,4 +8,4 @@ export {
   hasContractCodeAt,
   hexAddressToBytes,
   normalizeHexAddress,
-} from "@canopy/chain-rpc";
+} from "@forestrie/chain-rpc";

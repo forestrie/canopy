@@ -1,9 +1,9 @@
 /**
- * COSE Sign1 with kid — re-exports canonical encoder from @canopy/encoding.
+ * COSE Sign1 with kid — re-exports canonical encoder from @forestrie/encoding.
  * Uses 64-byte placeholder signature to match k6 encoder byte-for-byte (Plan 0003).
  */
 
-import { encodeCoseSign1Statement } from "@canopy/encoding";
+import { encodeCoseSign1Statement } from "@forestrie/encoding";
 
 /** Placeholder signature length used by k6 (64 bytes). */
 const K6_SIGNATURE_PLACEHOLDER_LENGTH = 64;

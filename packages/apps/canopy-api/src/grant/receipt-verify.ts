@@ -4,7 +4,7 @@
  * runtime paths (trust-root resolver, delegation verify keys).
  */
 
-import { verifyCoseSign1WithParsedKey } from "@canopy/encoding";
+import { verifyCoseSign1WithParsedKey } from "@forestrie/encoding";
 import { parseReceipt } from "@forestrie/receipt-verify";
 import type { RootVerifyKey } from "../env/trust-root-client.js";
 import { es256ReceiptVerifyKeys } from "../env/decode-trust-root-cbor.js";
@@ -13,7 +13,7 @@ import {
   verifyInclusion,
   type Hasher,
   type Proof,
-} from "@canopy/merklelog";
+} from "@forestrie/merklelog";
 import type { Grant } from "./grant.js";
 import { grantCommitmentHashFromGrant } from "./grant-commitment.js";
 import { univocityLeafHash } from "./leaf-commitment.js";
@@ -51,7 +51,7 @@ type CoseSign1 = ReturnType<typeof parseReceipt>["coseSign1"];
 
 /**
  * Verify the inclusion proof in the receipt: leaf (grant) is in the MMR with the signed root.
- * Uses @canopy/merklelog verifyInclusion (single async implementation).
+ * Uses @forestrie/merklelog verifyInclusion (single async implementation).
  */
 export async function verifyReceiptInclusion(
   grant: Grant,

@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it, beforeAll } from "vitest";
-import { verifyCoseSign1 } from "@canopy/encoding";
+import { verifyCoseSign1 } from "@forestrie/encoding";
 import type { Grant } from "../src/grant/grant.js";
 import { attachReceiptAndIdtimestampToTransparentStatement } from "../src/scrapi/attach-scitt-transparent-statement-receipt.js";
 import { uuidToBytes } from "../src/grant/uuid-bytes.js";
