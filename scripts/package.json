@@ -4,6 +4,7 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
+    "create-receipt": "tsx create-receipt.ts",
     "decode-receipt": "tsx decode-receipt.ts",
     "gen-cose-sign1": "tsx gen-cose-sign1.ts",
     "verify-grant-receipt": "tsx verify-grant-receipt.ts"

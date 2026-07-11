@@ -11,9 +11,14 @@ service, register a **signed statement**, collect a **SCITT receipt**, and verif
 that receipt **offline**. Forestrie-specific setup is confined to an appendix —
 organizers run it once; participants use pre-provisioned credentials.
 
-> **Tooling note:** This doc describes the target flow. Participant helper scripts
-> (`sign-statement`, `verify-receipt`, etc.) are planned follow-up work. Until
-> those land, use the placeholders in [§5](#5-tooling-gaps-and-workarounds).
+> **Tooling note:** Offline **receipt verification and self-created receipts
+> have landed** — the `@forestrie/receipt-verify` package and the
+> `verify-grant-receipt`, `decode-receipt`, and `create-receipt` CLIs are all
+> real (see [Step 7](#step-7--verify-offline) and
+> [Step 9](#step-9--self-create-a-receipt-from-local-content)). What is still
+> missing is a **`sign-statement`** helper; statement signing uses the library
+> encoder (`encodeCoseSign1Statement`) or organizer/e2e helpers today. See
+> [§5](#5-tooling-gaps-and-workarounds).
 
 ---
 
@@ -25,6 +30,12 @@ organizers run it once; participants use pre-provisioned credentials.
    inclusion proof) tying your statement to a verifiable log position.
 3. The receipt can be checked **without** calling the API again — inclusion and
    signature verify against the forest trust anchor.
+4. **You can create the receipt yourself.** Given the log content locally and a
+   checkpoint — either the sealer-signed `.sth` blob, or just the **accumulator
+   published on Base Sepolia** by the Univocity contract — a client can build
+   the inclusion path and assemble a receipt with no API call at all
+   ([Step 8](#step-8--fetch-the-accumulator-checkpoint-from-base-sepolia),
+   [Step 9](#step-9--self-create-a-receipt-from-local-content)).
 
 ---
 
@@ -39,6 +50,8 @@ Participants need these values before starting. Organizers provision them once
 | `BOOTSTRAP_LOG_ID` | Root forest UUID (same as bootstrap path segment in SCRAPI URLs) |
 | `COMPLETED_GRANT_B64` | Base64 **Forestrie-Grant** transparent statement: inner grant + receipt + idtimestamp |
 | Statement signing key | ES256 PEM or equivalent — must match `grantData` in the completed grant |
+| `UNIVOCITY_ADDRESS` | (Steps 8–9 only) Univocity contract address from the genesis chain binding |
+| `RPC_URL` | (Steps 8–9 only) Base Sepolia RPC; public default `https://sepolia.base.org` |
 
 Optional sanity check:
 
@@ -166,8 +179,11 @@ esac
 echo "Receipt URL: $RECEIPT_URL"
 ```
 
-Typical wait: **30–90 seconds** on a healthy dev stack. If polling times out,
-Ranger or Sealer may not be running — ask organizers.
+Typically a **few seconds** latency with the current configuration and
+internal notification setup; allow up to **30–90 seconds** on an idle dev lane
+(Ranger/Sealer poll ceilings, R2 event-notification delivery, and delegation
+leases can stack). If polling times out beyond that, Ranger or Sealer may not
+be running — ask organizers.
 
 Permanent receipt URL shape:
 
@@ -190,27 +206,148 @@ at header label **396**).
 Inspect structure (decode only — no cryptographic verify yet):
 
 ```bash
-# From canopy repo, when checked out:
-cd scripts && pnpm exec tsx decode-receipt.ts ../../receipt.cbor
+# From canopy repo root, with receipt.cbor in the current directory:
+pnpm --filter @canopy/scripts decode-receipt receipt.cbor
 ```
 
-### Step 7 — Verify offline (stretch goal)
+### Step 7 — Verify offline
 
-Offline verification confirms:
+This is the point of the profile. Offline verification confirms, with **no**
+API call:
 
 1. **MMR inclusion** — the statement's leaf commitment appears in the log at the
    claimed index (inclusion path in receipt header 396).
-2. **Receipt signature** — signed by the log's checkpoint authority (from trust
-   root / genesis chain).
+2. **Receipt signature** — the MMR peak is signed by the log's checkpoint
+   authority (the ES256 trust key derived from `genesis.cbor`).
+
+Real offline verification is shipped (ADR-0045). Run the human-facing CLI over
+your artifacts:
 
 ```bash
-# Planned: verify-receipt helper (not yet published)
-# verify-receipt --receipt receipt.cbor --genesis genesis.cbor \
-#   --grant-inner-hash <hex> --trust-anchor-from-genesis
+pnpm --filter @canopy/scripts verify-grant-receipt \
+  --genesis genesis.cbor --receipt receipt.cbor \
+  --grant-b64 "$COMPLETED_GRANT_B64" --idtimestamp-be8 idts.be8
+# prints: ok    (or: verify failed: stage=... reason=...)
 ```
 
-Until this helper ships, treat Step 6 decode output as structural confirmation
-only. Full verify logic lives in `packages/apps/canopy-api/src/grant/receipt-verify.ts`.
+You do **not** need a live service, credentials, or even a provisioned forest to
+see offline verify work end-to-end — the package's self-contained test generates
+a keypair, genesis, grant, and signed receipt in-process and verifies it, and a
+companion negatives suite proves tampering is rejected:
+
+```bash
+pnpm --filter @forestrie/receipt-verify test
+```
+
+Verify logic lives in
+[`packages/libs/receipt-verify/src/verify-grant-receipt-offline.ts`](../../packages/libs/receipt-verify/src/verify-grant-receipt-offline.ts);
+negative-path coverage in
+[`packages/libs/receipt-verify/test/negatives.test.ts`](../../packages/libs/receipt-verify/test/negatives.test.ts).
+
+### Step 8 — Fetch the accumulator checkpoint from Base Sepolia
+
+Each forest's genesis binds a **Univocity contract** (chain id + address; the
+dev lanes anchor to **Base Sepolia**, chain id 84532). Per log, the contract
+stores exactly two things: the **MMR accumulator** (peak hashes) and the **tree
+size** — updated only by `publishCheckpoint`, which verifies the sealer's
+checkpoint signature and a consistency proof against the previous on-chain
+state before accepting
+([`IUnivocity.logState`](https://github.com/forestrie/univocity/blob/main/src/interfaces/IUnivocity.sol),
+[`types.LogState`](https://github.com/forestrie/univocity/blob/main/src/interfaces/types.sol)).
+
+Anyone can read it back with a plain RPC call — no API, no credentials:
+
+```bash
+# logId bytes32 = the log UUID right-aligned in 32 bytes (16 zero bytes || uuid)
+LOG_ID_B32=0x00000000000000000000000000000000${BOOTSTRAP_LOG_ID//-/}
+
+cast call "$UNIVOCITY_ADDRESS" \
+  "logState(bytes32)((bytes32[],uint64))" "$LOG_ID_B32" \
+  --rpc-url "${RPC_URL:-https://sepolia.base.org}"
+# → ([peak0, peak1, ...], size)
+```
+
+Two facts worth stressing to participants:
+
+- The COSE checkpoint signature is **verified at publish time but not stored**
+  — the chain holds only the accumulator and size. The trust anchor for
+  chain-anchored verification is the contract state itself (the contract
+  refused any checkpoint that wasn't sealer-signed and consistent).
+- Anchoring is **periodic and may lag** the log head. If the on-chain `size` is
+  ≤ your statement's `mmrIndex`, your leaf is not yet covered on-chain — wait
+  for the next anchor (or use variant A below, which needs no chain at all).
+
+### Step 9 — Self-create a receipt from local content
+
+Interior MMR nodes are recomputable from log content, so the inclusion path in
+a receipt is **not secret and not signed** — the checkpoint signature covers
+only the accumulator (peaks). A client holding the massif blob locally can
+therefore build the path itself; the API's receipt endpoint is a convenience,
+not an authority. Two variants:
+
+**Variant A — sealer-signed receipt, fully offline (no chain, no API).**
+Format-v3 checkpoints (`.sth`) carry one **pre-signed peak receipt per
+accumulator peak** (COSE Sign1 with detached payload, unprotected label
+`-65931`). Self-creating a receipt is:
+
+1. Read massif nodes and build the inclusion path from your leaf to its peak
+   (same MMR math the server uses).
+2. Pick the pre-signed peak receipt covering that peak from the checkpoint.
+3. Attach the path at header label **396** — the result is byte-compatible
+   with an API-issued receipt and passes the Step 7 verifier unchanged.
+
+This is exactly how the API assembles receipts internally — see
+`buildReceiptForEntry` in
+[`resolve-receipt.ts`](../../packages/apps/canopy-api/src/scrapi/resolve-receipt.ts)
+— and how the publisher rebuilds proof segments from massif nodes when
+anchoring on-chain (arbor `publishproof/assemble.go`). Peak-receipt signing
+lives in go-merklelog
+([`checkpointsign.go`](../../../arbor/services/_deps/go-merklelog/massifs/checkpointsign.go)).
+
+**Variant B — chain-anchored proof (no sealer artifact at all).** Using only
+local log content plus the Step 8 read:
+
+1. Fetch `(accumulator, size)` from Base Sepolia.
+2. Build the inclusion path for your leaf **at tree size = on-chain `size`**
+   (your local massif data must cover nodes up to that size).
+3. Check the computed peak equals the corresponding on-chain accumulator
+   entry.
+
+No COSE signature is checked in variant B — the contract already enforced the
+sealer signature and split-view consistency when the checkpoint was published,
+so equality with contract state is the proof.
+
+Both variants are packaged in the **`create-receipt`** CLI. The library lives
+in `@forestrie/receipt-verify`
+([`build-receipt-offline.ts`](../../packages/libs/receipt-verify/src/build-receipt-offline.ts):
+`buildReceiptOffline`, `computeAccumulatorPeak`); self-contained round-trip
+coverage — synthesize massif + checkpoint in-process, self-create, verify —
+in
+[`build-receipt-offline.test.ts`](../../packages/libs/receipt-verify/test/build-receipt-offline.test.ts).
+
+```bash
+# Variant A — sealer-signed receipt from local blobs (no network at all):
+pnpm --filter @canopy/scripts create-receipt \
+  --massif 0000000000000000.log --checkpoint 0000000000000000.sth \
+  --mmr-index "$MMR_INDEX" --out self-receipt.cbor
+# → local: wrote self-receipt.cbor (144 bytes, sealed size N)
+# Then verify with the Step 7 CLI — the self-created receipt is
+# indistinguishable from an API-issued one.
+
+# Variant B — chain-anchored check against the Univocity accumulator.
+# The only network access is a single eth_call; --log-id accepts the log
+# UUID or a raw 32-byte hex id. Combine with --checkpoint/--out to also
+# emit the receipt in the same run.
+pnpm --filter @canopy/scripts create-receipt \
+  --massif 0000000000000000.log --mmr-index "$MMR_INDEX" \
+  --univocity "$UNIVOCITY_ADDRESS" --log-id "$BOOTSTRAP_LOG_ID" \
+  --rpc-url "${RPC_URL:-https://sepolia.base.org}"
+# → chain-anchored: ok — computed peak i/n matches on-chain accumulator at size S
+```
+
+Blob distribution is still organizer-mediated: the massif `.log` / checkpoint
+`.sth` blobs live in internal R2 today (no public download endpoint yet) — see
+[§5](#5-tooling-gaps-and-workarounds).
 
 ---
 
@@ -222,6 +359,7 @@ sequenceDiagram
     participant API as Canopy SCRAPI
     participant Q as Sequencing queue
     participant R2 as MMRS storage
+    participant Chain as Univocity (Base Sepolia)
 
     You->>You: Sign statement (COSE Sign1 + kid)
     You->>API: POST /register/{R}/entries<br/>Forestrie-Grant + Sign1
@@ -239,6 +377,10 @@ sequenceDiagram
     API-->>You: SCITT receipt (CBOR)
 
     You->>You: Offline verify (no API)
+
+    Note over You,Chain: Steps 8–9 — self-created receipts
+    You->>Chain: logState(logId) — accumulator + size
+    You->>You: Build inclusion path from local massif<br/>→ self-created receipt (no API)
 ```
 
 ---
@@ -355,15 +497,19 @@ requires `SCRAPI_API_KEY` in some configs — verify against your deployment).
 
 ## §5 Tooling gaps and workarounds
 
-The deployed API supports the full flow. Participant ergonomics do not yet.
+The deployed API supports the full flow. Offline-verify and receipt
+self-creation ergonomics have now landed; statement-signing ergonomics have
+not.
 
 | Gap | Impact | Workaround today | Planned |
 | --- | ------ | ---------------- | ------- |
-| No `sign-statement` CLI | Cannot build valid COSE Sign1 + kid from curl alone | Organizer pre-signs or runs Custodian / e2e helpers | `sign-statement` script |
-| No `verify-receipt` CLI | Offline verify is manual / repo-internal | `decode-receipt.ts` for structure only | `verify-receipt` script |
+| No `sign-statement` CLI | Cannot build a valid COSE Sign1 + `kid` from curl alone (`scripts/gen-cose-sign1.ts` is **legacy** — empty protected header, no `kid`, does not satisfy the statement contract) | Use the library encoder `encodeCoseSign1Statement` (`@canopy/encoding`), or organizer pre-signs / Custodian + e2e helpers | `sign-statement` script |
+| ~~No `create-receipt` CLI~~ **Shipped** | — | `pnpm --filter @canopy/scripts create-receipt …` — local `.log`/`.sth` → receipt, and `--univocity` chain-anchored check ([Step 9](#step-9--self-create-a-receipt-from-local-content)); library `buildReceiptOffline` / `computeAccumulatorPeak` in `@forestrie/receipt-verify` | Done |
+| No public massif/checkpoint download | Participants cannot fetch log content for Step 9 themselves (`.log`/`.sth` blobs live in internal R2) | Organizers distribute the blobs directly | Public `GET` endpoint for massif + checkpoint blobs |
+| ~~No `verify-receipt` CLI~~ **Shipped** | — | `pnpm --filter @canopy/scripts verify-grant-receipt …` (real offline verify); `pnpm --filter @forestrie/receipt-verify test` (zero-secret); `decode-receipt` for structure | Done (ADR-0045) |
 | Forest bootstrap not self-serve | New forests need curator + contract + coordinator | Shared pre-provisioned forest | Hackathon provisioning task |
 | CBOR payloads | Raw curl is awkward for encoding | Ship binary artifacts + thin shell wrappers | Helper scripts |
-| Async receipt latency | Poll may take 30–90s | Document wait; verify stack health | — |
+| Async receipt latency | Typically a few seconds; up to 30–90s on an idle lane | Document wait; verify stack health | Tune poll ceilings / notification path if it matters |
 | Stale `verify-grant-flow.ts` | References removed `/api/grants/bootstrap` | Do not use; follow this doc | Update or remove script |
 
 ### Cannot self-bootstrap today
