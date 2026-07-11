@@ -13,13 +13,13 @@ import {
 } from "@forestrie/encoding";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { secp256k1 } from "@noble/curves/secp256k1";
-import type { Grant } from "./grant.js";
+import type { Grant } from "@forestrie/encoding";
 import { authLogBootstrapShapedFlags } from "./grant-flags.js";
-import { uuidToBytes } from "./uuid-bytes.js";
 import {
   appendCborBstr,
   encodeGrantPayloadV0Canonical,
-} from "./grant-payload-canonical.js";
+  uuidToBytes,
+} from "@forestrie/encoding";
 import { bytesToForestrieGrantBase64 } from "./grant-base64.js";
 
 /** COSE protected header `{1: -65799}` (KS256), canonical wire bytes. */

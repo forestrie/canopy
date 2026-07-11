@@ -10,10 +10,10 @@
  * shape.
  */
 
-import type { Grant } from "./grant.js";
-import { uuidToBytes } from "./uuid-bytes.js";
+import type { Grant } from "@forestrie/encoding";
+import { uuidToBytes } from "@forestrie/encoding";
 import { authLogBootstrapShapedFlags } from "./grant-flags.js";
-import { encodeGrantPayloadV0Canonical } from "./grant-payload-canonical.js";
+import { encodeGrantPayloadV0Canonical } from "@forestrie/encoding";
 import {
   es256GrantData64FromPrivateKeyPem,
   signGrantPayloadWithEs256Pem,

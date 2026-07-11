@@ -269,9 +269,6 @@ importers:
       '@forestrie/encoding':
         specifier: workspace:*
         version: link:../../shared/encoding
-      '@forestrie/grant-builder':
-        specifier: workspace:*
-        version: link:../grant-builder
       '@forestrie/merklelog':
         specifier: workspace:*
         version: link:../../merklelog
@@ -282,6 +279,9 @@ importers:
         specifier: ^1.5.9
         version: 1.6.0
     devDependencies:
+      esbuild:
+        specifier: ^0.24.0
+        version: 0.24.2
       typescript:
         specifier: ^5.9.2
         version: 5.9.3

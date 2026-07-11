@@ -20,7 +20,7 @@
  */
 
 import { createHash, createPrivateKey, sign as nodeSign } from "node:crypto";
-import { appendCborBstr, appendCborText } from "./grant-payload-canonical.js";
+import { appendCborBstr, appendCborText } from "@forestrie/encoding";
 
 /** COSE protected header `{1: -7}` (ES256), canonical wire bytes. */
 const ES256_PROTECTED_HEADER = new Uint8Array([0xa1, 0x01, 0x26]);

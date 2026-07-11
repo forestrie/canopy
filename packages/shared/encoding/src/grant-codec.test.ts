@@ -4,16 +4,27 @@ import {
   bytesToUuid,
   decodeGrantPayload,
   decodeGrantResponse,
-  dataLogCreateExtendFlags,
   encodeGrantForResponse,
   encodeGrantPayload,
   encodeGrantPayloadV0Canonical,
   uuidToBytes,
   type Grant,
-} from "../src/index.js";
+} from "./index.js";
 
 const LOG_ID = "0198c1a2-3b4c-7d5e-8f60-718293a4b5c6";
 const OWNER_ID = "0198c1a2-3b4c-7d5e-8f60-718293a4b5c7";
+
+/**
+ * GF_DATA_LOG | GF_CREATE | GF_EXTEND 8-byte wire flags. Mirrors
+ * grant-builder's `dataLogCreateExtendFlags` — semantic flag constructors
+ * stay in @forestrie/grant-builder; only the wire codec lives here.
+ */
+function dataLogCreateExtendFlags(): Uint8Array {
+  const grant = new Uint8Array(8);
+  grant[3] = 0x03;
+  grant[7] = 0x02;
+  return grant;
+}
 
 function testGrant(): Grant {
   return {
