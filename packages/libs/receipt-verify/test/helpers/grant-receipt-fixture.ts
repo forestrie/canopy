@@ -58,6 +58,22 @@ export function grantWithData(logId: string, grantData: Uint8Array): Grant {
   };
 }
 
+export function buildGenesisCbor(
+  bootstrapKey: Uint8Array,
+  logId: string,
+): Uint8Array {
+  return cborBytes(
+    new Map<number, unknown>([
+      [FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V2],
+      [FOREST_GENESIS_LABEL_GENESIS_ALG, COSE_ALG_ES256],
+      [FOREST_GENESIS_LABEL_BOOTSTRAP_KEY, bootstrapKey],
+      [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, new Uint8Array(20).fill(0xab)],
+      [FOREST_GENESIS_LABEL_CHAIN_ID, "84532"],
+      [-68010, toPaddedWire32(uuidToBytes(logId))],
+    ]),
+  );
+}
+
 export async function peakForLeafProof(
   leafHash: Uint8Array,
   proof: Proof,
@@ -68,7 +84,12 @@ export async function peakForLeafProof(
   return calculateRoot(hasher, leafHash, proof, leafIdx);
 }
 
-async function buildDetachedPeakReceipt(opts: {
+/**
+ * API-shaped receipt: pre-signed detached peak receipt with the inclusion
+ * proof already spliced at header 396, exactly as canopy-api
+ * resolve-receipt emits it. Exported for the FOR-334 verify-equivalence AC.
+ */
+export async function buildDetachedPeakReceipt(opts: {
   signer: CryptoKeyPair;
   peak: Uint8Array;
   proof: Proof;
@@ -141,16 +162,7 @@ export async function buildGrantReceiptFixture(): Promise<{
     proof,
   });
 
-  const genesisCbor = cborBytes(
-    new Map<number, unknown>([
-      [FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V2],
-      [FOREST_GENESIS_LABEL_GENESIS_ALG, COSE_ALG_ES256],
-      [FOREST_GENESIS_LABEL_BOOTSTRAP_KEY, bootstrapKey],
-      [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, new Uint8Array(20).fill(0xab)],
-      [FOREST_GENESIS_LABEL_CHAIN_ID, "84532"],
-      [-68010, toPaddedWire32(uuidToBytes(logId))],
-    ]),
-  );
+  const genesisCbor = buildGenesisCbor(bootstrapKey, logId);
 
   return {
     genesisCbor,
