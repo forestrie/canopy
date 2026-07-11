@@ -9,8 +9,6 @@ name: Publish dry-run
 # Ignored pre-existing actionlint findings are grandfathered in
 # .github/actionlint.yaml (debt register, not policy).
 #
-# @forestrie/canopy-e2e-kit is deliberately absent from the matrix while its
-# publish workflow is rewritten (FOR-353, #108); add it once that merges.
 
 on:
   pull_request:
@@ -68,6 +66,8 @@ jobs:
             dir: packages/libs/grant-builder
           - package: "@forestrie/scrapi-client"
             dir: packages/libs/scrapi-client
+          - package: "@forestrie/canopy-e2e-kit"
+            dir: packages/tests/e2e-kit
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
