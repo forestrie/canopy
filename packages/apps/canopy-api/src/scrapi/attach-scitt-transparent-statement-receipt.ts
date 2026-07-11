@@ -1,10 +1,10 @@
 /**
  * Assemble SCITT transparent statement after sequencing: attach resolve-receipt
  * bytes and idtimestamp to unprotected headers (Plan 0005). COSE merge is generic
- * (@canopy/encoding); header labels are Forestrie profile.
+ * (@forestrie/encoding); header labels are Forestrie profile.
  */
 
-import { mergeUnprotectedIntoCoseSign1 } from "@canopy/encoding";
+import { mergeUnprotectedIntoCoseSign1 } from "@forestrie/encoding";
 import {
   HEADER_IDTIMESTAMP,
   HEADER_RECEIPT,

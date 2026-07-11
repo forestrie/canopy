@@ -1,5 +1,5 @@
 /**
- * @canopy/encoding — shared CBOR/COSE wire helpers consumed by canopy-api,
+ * @forestrie/encoding — shared CBOR/COSE wire helpers consumed by canopy-api,
  * forestrie-ingress, and Custodian signing paths. One encoder per artifact;
  * sign and verify must share identical bytes (see {@link encodeSigStructure}).
  *
@@ -21,7 +21,10 @@ export {
   type ProblemDetail,
 } from "./problem-details.js";
 export {
+  COSE_ALG,
+  COSE_CTY,
   COSE_KID,
+  type CoseProtectedHeaderOptions,
   encodeCoseProtectedMapBytes,
   encodeCoseProtectedWithKid,
 } from "./encode-cose-protected.js";
@@ -44,9 +47,46 @@ export {
 export { coseUnprotectedToMap } from "./cose-unprotected-map.js";
 export { encodeCoseSign1Raw } from "./encode-cose-sign1-raw.js";
 export { mergeUnprotectedIntoCoseSign1 } from "./merge-cose-sign1-unprotected.js";
+
+/**
+ * Grant wire layer (ADR-0048): encoding is the single owner of grant wire
+ * shapes and codecs. `@forestrie/grant-builder` (signs) and
+ * `@forestrie/receipt-verify` (verifies) both import from here; neither
+ * depends on the other.
+ */
+
+/** Grant wire type + grantData variants. */
+export type { Grant } from "./grant.js";
+export { grantDataToBytes } from "./grant-data.js";
+export type { GrantData, GrantDataEs256Xy } from "./grant-data.js";
+
+/** Grant CBOR encode/decode (Forestrie-Grant v0). */
 export {
-  importTestPrivateKey,
-  importTestPublicKey,
-  TEST_ES256_PRIVATE_JWK,
-  TEST_ES256_PUBLIC_JWK,
-} from "./test-keys.js";
+  decodeGrantPayload,
+  decodeGrantResponse,
+  encodeGrantForResponse,
+  encodeGrantPayload,
+} from "./grant-codec.js";
+
+/** Canonical (tag-free) grant v0 payload CBOR + raw CBOR emit helpers. */
+export {
+  appendCborBstr,
+  appendCborText,
+  appendCborUint,
+  encodeGrantPayloadV0Canonical,
+  leftPadBytes,
+} from "./grant-payload-canonical.js";
+
+/** Log id (UUID) wire helpers. */
+export {
+  LOG_ID_BYTES,
+  WIRE_LOG_ID_BYTES,
+  bytesToUuid,
+  fromPaddedWire32,
+  logIdBytesToCustodianLowerHex,
+  logIdToStorageSegment,
+  parseLogIdSegment,
+  toPaddedWire32,
+  uuidToBytes,
+} from "./uuid-bytes.js";
+export type { LogId } from "./uuid-bytes.js";

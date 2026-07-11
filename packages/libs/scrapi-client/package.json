@@ -1,0 +1,51 @@
+{
+  "name": "@forestrie/scrapi-client",
+  "version": "0.1.1",
+  "license": "MIT",
+  "type": "module",
+  "description": "Fetch-injectable SCRAPI registration client for Forestrie transparency logs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/forestrie/canopy.git",
+    "directory": "packages/libs/scrapi-client"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "prepack": "pnpm run build"
+  },
+  "dependencies": {
+    "cbor-x": "^1.5.9"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

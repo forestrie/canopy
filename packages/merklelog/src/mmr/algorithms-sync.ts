@@ -27,7 +27,13 @@ function concatChunks(chunks: Uint8Array[]): Uint8Array {
  * Only available in Node.js; throws if node:crypto is not available.
  */
 export async function createSyncHasher(): Promise<Hasher> {
-  const { createHash } = await import("node:crypto");
+  // Keep the specifier opaque so bundlers do not resolve node:crypto at
+  // build time: this factory is documented runtime-guarded Node-only, and
+  // browser consumers of the package index (e.g. @forestrie/receipt-verify's
+  // ADR-0048 browser-safety guard) must not get node builtins in their
+  // module graph merely by importing it.
+  const nodeCryptoSpecifier = "node:crypto";
+  const { createHash } = await import(/* @vite-ignore */ nodeCryptoSpecifier);
   const chunks: Uint8Array[] = [];
   return {
     reset(): void {

@@ -1,14 +1,13 @@
-import type { APIResponse } from "@playwright/test";
-import { decode as decodeCbor } from "cbor-x";
+/**
+ * Playwright wrapper over the @forestrie/scrapi-client problem-details decode
+ * (plan-2607-12 Phase 2, FOR-351).
+ */
 
-export type ProblemDetails = {
-  type?: string;
-  title?: string;
-  status?: number;
-  detail?: string;
-  instance?: string;
-  [key: string]: unknown;
-};
+import type { APIResponse } from "@playwright/test";
+import { decodeProblemDetailsBytes } from "@forestrie/scrapi-client";
+import type { ProblemDetails } from "@forestrie/scrapi-client";
+
+export type { ProblemDetails };
 
 export async function decodeProblemDetails(
   response: APIResponse,
@@ -17,11 +16,7 @@ export async function decodeProblemDetails(
     return undefined;
   }
   try {
-    const body = await response.body();
-    if (!body || body.length === 0) {
-      return undefined;
-    }
-    return decodeCbor(body) as ProblemDetails;
+    return decodeProblemDetailsBytes(new Uint8Array(await response.body()));
   } catch {
     return undefined;
   }

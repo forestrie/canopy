@@ -10,7 +10,7 @@
     "verify-grant-receipt": "tsx verify-grant-receipt.ts"
   },
   "dependencies": {
-    "@canopy/encoding": "workspace:*",
+    "@forestrie/encoding": "workspace:*",
     "@forestrie/receipt-verify": "workspace:*",
     "cbor-x": "^1.5.9"
   },

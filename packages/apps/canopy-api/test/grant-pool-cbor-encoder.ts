@@ -1,9 +1,9 @@
 /**
- * Grant request CBOR — re-exports canonical encoder from @canopy/encoding.
+ * Grant request CBOR — re-exports canonical encoder from @forestrie/encoding.
  * Helpers for tests that need hex ↔ signer bytes (matching k6 / generate-grant-pool).
  */
 
-import { encodeGrantRequest } from "@canopy/encoding";
+import { encodeGrantRequest } from "@forestrie/encoding";
 
 export { encodeGrantRequest };
 

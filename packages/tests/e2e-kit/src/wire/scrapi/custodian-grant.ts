@@ -17,11 +17,11 @@ import {
   type VerifyCoseSign1Options,
   verifyCoseSign1,
   verifyCoseSign1WithParsedKey,
-} from "../../encoding/verify-cose-sign1.js";
+} from "@forestrie/encoding";
 import {
   HEADER_FORESTRIE_GRANT_V0,
   HEADER_IDTIMESTAMP,
-} from "../grant/transparent-statement.js";
+} from "@forestrie/grant-builder";
 
 function trimBase(url: string): string {
   return url.trim().replace(/\/$/, "");

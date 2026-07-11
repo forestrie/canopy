@@ -10,12 +10,12 @@ import {
   COSE_ALG_KS256,
   decodeCoseSign1,
   encodeSigStructure,
-} from "@canopy/encoding";
+} from "@forestrie/encoding";
 import {
   bytesToHex,
   ethRpcWithFailover,
   hasContractCodeAt,
-} from "@canopy/chain-rpc";
+} from "@forestrie/chain-rpc";
 import type { ParsedKs256RootKey } from "./parsed-ks256-root-key.js";
 
 const ERC1271_ABI = parseAbi([

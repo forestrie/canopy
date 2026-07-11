@@ -17,7 +17,7 @@ import {
   type VerifyCoseSign1Options,
   verifyCoseSign1,
   verifyCoseSign1WithParsedKey,
-} from "@canopy/encoding";
+} from "@forestrie/encoding";
 import {
   HEADER_FORESTRIE_GRANT_V0,
   HEADER_IDTIMESTAMP,

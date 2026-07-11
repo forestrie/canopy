@@ -1,0 +1,55 @@
+{
+  "name": "@forestrie/grant-builder",
+  "version": "0.1.1",
+  "license": "MIT",
+  "type": "module",
+  "description": "Deterministic Forestrie grant construction (wire encoding, ES256/KS256 assembly)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/forestrie/canopy.git",
+    "directory": "packages/libs/grant-builder"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "prepack": "pnpm run build"
+  },
+  "dependencies": {
+    "@forestrie/encoding": "workspace:*",
+    "@noble/curves": "^1.9.7",
+    "@noble/hashes": "^1.7.1",
+    "cbor-x": "^1.5.9"
+  },
+  "devDependencies": {
+    "@types/node": "^24.8.1",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

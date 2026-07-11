@@ -1,6 +1,6 @@
 /**
  * Deploy-time resolver for SUPPORTED_CHAINS_RPC (plain JS for apply-runtime-contract).
- * Logic mirrors @canopy/chain-rpc/src — keep in sync when changing substitution rules.
+ * Logic mirrors @forestrie/chain-rpc/src — keep in sync when changing substitution rules.
  */
 
 const LITERAL_ENV_PREFIX = "\u0000LIT_ENV\u0000";

@@ -1,0 +1,88 @@
+name: Publish chain-rpc
+
+# Publishes @forestrie/chain-rpc to public npmjs.org via trusted
+# publishing (OIDC): no registry token — npmjs is configured to trust this
+# repo+workflow (plan-2607-12 Phase 1, FOR-336). Provenance is attested
+# automatically. The FIRST publish of the package must be manual; this
+# workflow handles every subsequent release.
+#
+# Release discipline (FOR-365):
+# - Tags (`chain-rpc-v<version>`) are the normal release trigger;
+#   workflow_dispatch is recovery-only. Both run in the `npm-publish` GitHub
+#   environment, whose deployment branch/tag policy allows only `main` and
+#   `*-v*` tags. Paired with the npm trusted-publisher registration requiring
+#   that environment, this closes ref laundering: a dispatch from an arbitrary
+#   ref can no longer publish with valid provenance.
+# - Actions are SHA-pinned, the npm client is pinned exactly, installs are
+#   frozen-lockfile, and tag<->package.json version agreement is asserted
+#   before anything is built (scripts/assert-publish-version.sh).
+#
+# Pattern notes (copied from publish-delegation-cose.yml):
+# - `id-token: write` is required for the OIDC exchange.
+# - Trusted publishing needs npm >= 11.5.1; node 22 ships npm 10, so we
+#   upgrade npm explicitly.
+# - Build and pack with pnpm (rewrites workspace: deps), publish the tarball
+#   with npm (does the OIDC publish).
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "chain-rpc-v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish @forestrie/chain-rpc
+    runs-on: ubuntu-latest
+    environment: npm-publish
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        with:
+          version: 9.6.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.14.0
+          registry-url: https://registry.npmjs.org
+          scope: "@forestrie"
+          cache: "pnpm"
+
+      - name: Upgrade npm for trusted publishing
+        # Pinned to an exact version (not a floating `npm@11`) so the release
+        # path is reproducible and cannot pick up a brand-new client at
+        # release time (FOR-365 C1). Trusted publishing needs npm >= 11.5.1;
+        # npm@12 requires a newer node than the pinned 22.14.0 toolchain.
+        run: |
+          npm install -g npm@11.18.0
+          npm --version
+
+      - name: Assert publish version discipline
+        # Tag builds: the tag must name exactly the package.json version.
+        # Dispatch (recovery) builds: the version must not already be on the
+        # registry (FOR-365 C3). Fails before build/publish.
+        run: ./scripts/assert-publish-version.sh packages/libs/chain-rpc chain-rpc
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test chain-rpc
+        run: pnpm --filter @forestrie/chain-rpc test
+
+      - name: Build chain-rpc
+        run: pnpm --filter @forestrie/chain-rpc build
+
+      - name: Publish to npmjs (trusted publishing)
+        working-directory: packages/libs/chain-rpc
+        run: |
+          pnpm pack
+          npm publish ./forestrie-chain-rpc-*.tgz

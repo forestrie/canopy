@@ -1,9 +1,11 @@
-/** Golden-vector tests: kit copy of @canopy/encoding merge-cose-sign1-unprotected. */
+/** Golden-vector tests: @forestrie/encoding merge-cose-sign1-unprotected as consumed by the kit. */
 import { describe, expect, it } from "vitest";
-import { decodeCoseSign1 } from "../src/encoding/verify-cose-sign1.js";
-import { coseUnprotectedToMap } from "../src/encoding/cose-unprotected-map.js";
-import { encodeCoseSign1Raw } from "../src/encoding/encode-cose-sign1-raw.js";
-import { mergeUnprotectedIntoCoseSign1 } from "../src/encoding/merge-cose-sign1-unprotected.js";
+import {
+  coseUnprotectedToMap,
+  decodeCoseSign1,
+  encodeCoseSign1Raw,
+  mergeUnprotectedIntoCoseSign1,
+} from "@forestrie/encoding";
 
 describe("encodeCoseSign1Raw + mergeUnprotectedIntoCoseSign1 (kit drift guard)", () => {
   const protectedBstr = new Uint8Array([0xa1, 0x01, 0x38, 0x20]);

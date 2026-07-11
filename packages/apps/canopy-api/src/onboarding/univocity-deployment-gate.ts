@@ -1,4 +1,4 @@
-import { normalizeHexAddress } from "@canopy/chain-rpc";
+import { normalizeHexAddress } from "@forestrie/chain-rpc";
 import {
   isSupportedChainIdForEnv,
   rpcUrlsForEnvChainId,

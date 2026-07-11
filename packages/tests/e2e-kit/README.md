@@ -43,10 +43,32 @@ Cross-repo lane specs (forest genesis, Mode B/C registration, BYOK) run in
 - Post-entries helpers (`postEntriesExpectAccepted`, etc.)
 - `mode-c-webhook-receiver` (in-process webhook receiver for coordinator e2e)
 
+### 0.4.0 — Offline receipt verify slice (includes 0.3.0)
+
+- Offline grant receipt verification re-exported from `@forestrie/receipt-verify`
+  ([plan-0030](https://github.com/forestrie/devdocs/blob/main/plans/plan-0030-offline-receipt-verification-gates.md), FOR-286):
+  `verifyGrantReceiptOffline`, `parseReceipt`, `decodeTrustRootFromGenesis`,
+  plus types `VerifyGrantReceiptOfflineInput`, `ReceiptVerifyResult`, `ReceiptVerifyStage`
+- Lets T3 system-testing specs verify receipts in-process instead of shelling
+  out to a subprocess script
+
+### 0.5.0 — npmjs release (includes 0.4.0)
+
+- Publish moved from GitHub Packages to public npmjs (FOR-361): the kit
+  depends on `@forestrie/grant-builder` / `@forestrie/scrapi-client`, which
+  exist only on npmjs, so a GitHub Packages release would be uninstallable
+  for consumers whose `@forestrie` scope maps to GitHub Packages
+- Picks up `@forestrie/receipt-verify` 0.3.0 (canonical `Grant` from
+  `@forestrie/grant-builder`, FOR-353)
+
 ## Install
 
-Same GitHub Packages auth as `@forestrie/delegation-cose` — local installs need
-`gh auth refresh -h github.com -s read:packages`.
+Published to public [npmjs.org](https://www.npmjs.com/package/@forestrie/canopy-e2e-kit)
+(0.5.0+; 0.4.x and earlier were on GitHub Packages) — no registry auth needed:
+
+```bash
+pnpm add -D @forestrie/canopy-e2e-kit
+```
 
 Workspace consumers: `"@forestrie/canopy-e2e-kit": "workspace:*"`.
 
@@ -59,20 +81,18 @@ pnpm --filter @forestrie/canopy-e2e-kit build
 pnpm --filter @forestrie/canopy-e2e-kit test
 ```
 
-Publish tags (GitHub Packages):
+Publish tag (npmjs, trusted publishing / OIDC): `canopy-e2e-kit-v*`.
+Workflow: `.github/workflows/publish-canopy-e2e-kit.yml` (mirrors
+`publish-delegation-cose.yml`).
 
-- **Repo release:** `vMAJOR.MINOR.PATCH` (e.g. `v0.3.2`) — kit version matches tag.
-- **Kit-only:** `canopy-e2e-kit-v*` (legacy / independent kit bumps).
-
-Workflow: `.github/workflows/publish-canopy-e2e-kit.yml` (also runs on canopy
-`release.yaml` `v*` tags).
-
-Published dependency: `@forestrie/delegation-cose` `^0.1.1` (GitHub Packages;
-`workspace:^` in monorepo, rewritten on `pnpm publish`).
+Published dependencies (all npmjs): `@forestrie/delegation-cose`,
+`@forestrie/encoding`, `@forestrie/grant-builder`, `@forestrie/scrapi-client`
+and `@forestrie/receipt-verify` — `workspace:*`/`workspace:^` in monorepo,
+rewritten to concrete versions on pack.
 
 ## Wire / encoding sync policy
 
-Kit vendors a minimal subset of `@canopy/encoding` and grant wire types under
+Kit vendors a minimal subset of `@forestrie/encoding` and grant wire types under
 `src/encoding/` and `src/wire/`. When changing canopy-api grant or COSE paths,
 update the kit copy in the **same PR** and bump the kit semver slice.
 
@@ -84,7 +104,7 @@ update the kit copy in the **same PR** and bump the kit semver slice.
 | `src/wire/cose/*`   | `packages/apps/canopy-api/src/cose/`   |
 
 Drift guard: `test/merge-cose-sign1-unprotected.test.ts` mirrors
-`@canopy/encoding` golden vectors for `mergeUnprotectedIntoCoseSign1`.
+`@forestrie/encoding` golden vectors for `mergeUnprotectedIntoCoseSign1`.
 
 Manifest placeholder: `KS256_UNIVOCITY_MANIFEST_PLACEHOLDER` in
 `system-test-manifest-constants.ts` — keep aligned with

@@ -1,6 +1,7 @@
 {
   "name": "@forestrie/delegation-cose",
-  "version": "0.1.2",
+  "version": "0.1.3",
+  "license": "MIT",
   "type": "module",
   "description": "Forestrie delegation certificate assembly and verification (ES256, KS256)",
   "repository": {
@@ -17,7 +18,7 @@
     }
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com",
+    "registry": "https://registry.npmjs.org",
     "access": "public",
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",

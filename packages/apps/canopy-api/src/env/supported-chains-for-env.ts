@@ -4,7 +4,7 @@ import {
   rpcUrlsForChainId,
   supportedChainIds,
   type SupportedChainsConfig,
-} from "@canopy/chain-rpc";
+} from "@forestrie/chain-rpc";
 
 export interface SupportedChainsEnv {
   SUPPORTED_CHAINS_RPC?: string;
