@@ -1,0 +1,71 @@
+name: Publish receipt-verify
+
+# Publishes @forestrie/receipt-verify to public npmjs.org via trusted
+# publishing (OIDC): no registry token — npmjs is configured to trust this
+# repo+workflow (plan-2607-12 Phase 1, FOR-336). Provenance is attested
+# automatically. The FIRST publish of the package must be manual; this
+# workflow handles every subsequent release.
+#
+# NOTE - @forestrie/receipt-verify depends on @forestrie/encoding and
+# @forestrie/merklelog via workspace protocol. `pnpm pack` rewrites those to
+# the concrete workspace versions, so publish encoding and merklelog FIRST
+# and keep their published versions in step with the workspace.
+#
+# Pattern notes (copied from publish-delegation-cose.yml):
+# - `id-token: write` is required for the OIDC exchange.
+# - Trusted publishing needs npm >= 11.5.1; node 22 ships npm 10, so we
+#   upgrade npm explicitly.
+# - Build and pack with pnpm (rewrites workspace: deps), publish the tarball
+#   with npm (does the OIDC publish).
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "receipt-verify-v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish @forestrie/receipt-verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.6.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          registry-url: https://registry.npmjs.org
+          scope: "@forestrie"
+          cache: "pnpm"
+
+      - name: Upgrade npm for trusted publishing (11.x - node 22 compatible)
+        run: |
+          npm install -g npm@11
+          npm --version
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Test receipt-verify
+        run: pnpm --filter @forestrie/receipt-verify test
+
+      - name: Build receipt-verify
+        run: pnpm --filter @forestrie/receipt-verify build
+
+      - name: Publish to npmjs (trusted publishing)
+        working-directory: packages/libs/receipt-verify
+        run: |
+          pnpm pack
+          npm publish ./forestrie-receipt-verify-*.tgz

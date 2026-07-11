@@ -1,0 +1,66 @@
+name: Publish encoding
+
+# Publishes @forestrie/encoding to public npmjs.org via trusted
+# publishing (OIDC): no registry token — npmjs is configured to trust this
+# repo+workflow (plan-2607-12 Phase 1, FOR-336). Provenance is attested
+# automatically. The FIRST publish of the package must be manual; this
+# workflow handles every subsequent release.
+#
+# Pattern notes (copied from publish-delegation-cose.yml):
+# - `id-token: write` is required for the OIDC exchange.
+# - Trusted publishing needs npm >= 11.5.1; node 22 ships npm 10, so we
+#   upgrade npm explicitly.
+# - Build and pack with pnpm (rewrites workspace: deps), publish the tarball
+#   with npm (does the OIDC publish).
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "encoding-v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish @forestrie/encoding
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.6.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          registry-url: https://registry.npmjs.org
+          scope: "@forestrie"
+          cache: "pnpm"
+
+      - name: Upgrade npm for trusted publishing (11.x - node 22 compatible)
+        run: |
+          npm install -g npm@11
+          npm --version
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Test encoding
+        run: pnpm --filter @forestrie/encoding test
+
+      - name: Build encoding
+        run: pnpm --filter @forestrie/encoding build
+
+      - name: Publish to npmjs (trusted publishing)
+        working-directory: packages/shared/encoding
+        run: |
+          pnpm pack
+          npm publish ./forestrie-encoding-*.tgz

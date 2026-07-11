@@ -1,6 +1,7 @@
 {
   "name": "@forestrie/chain-rpc",
   "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
   "description": "Supported chains RPC config parsing, env substitution, and JSON-RPC failover",
   "repository": {
@@ -16,15 +17,29 @@
       "default": "./src/index.ts"
     }
   },
-  "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
+      }
+    }
   },
   "files": [
     "dist",
     "src"
   ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepack": "pnpm run build"
+  },
   "devDependencies": {
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
