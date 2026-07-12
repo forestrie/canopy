@@ -3,7 +3,7 @@
  * Used by SCRAPI routes scoped by bootstrap log id in the URL path.
  */
 
-import { decode as decodeCbor } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 
 import {
   COSE_ALG_ES256,
@@ -171,7 +171,7 @@ export function parseGenesisCborBytes(
 ): ParsedForestGenesis | null {
   let raw: unknown;
   try {
-    raw = decodeCbor(bytes);
+    raw = decodeCborDeterministic(bytes);
   } catch {
     return null;
   }

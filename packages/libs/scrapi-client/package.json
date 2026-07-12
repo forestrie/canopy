@@ -42,7 +42,7 @@
     "prepack": "pnpm run build"
   },
   "dependencies": {
-    "cbor-x": "^1.5.9"
+    "@forestrie/encoding": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.2",

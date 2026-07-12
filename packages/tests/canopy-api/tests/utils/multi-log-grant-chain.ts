@@ -3,7 +3,7 @@
  * (`auth-data-log-chain.spec.ts`).
  */
 
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic as encodeCbor } from "@forestrie/encoding";
 
 /** Deterministic statement bytes for delegated data-log register-statement. */
 export function e2eDataLogDelegationStatementPayload(

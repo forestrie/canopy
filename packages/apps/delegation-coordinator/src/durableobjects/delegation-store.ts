@@ -10,7 +10,7 @@
  */
 
 import { DurableObject } from "cloudflare:workers";
-import { decode, encode } from "cbor-x";
+import { decodeCborStruct, encodeCbor } from "../cbor.js";
 import type { Env } from "../env.js";
 import { certificateKeyFor, sha256Hex } from "../certificate-key.js";
 import { hex32ToWireLogIdBytes, logIdWireBytesToHex32 } from "../log-id.js";
@@ -649,16 +649,12 @@ export class DelegationStoreDO extends DurableObject<Env> {
     ];
 
     if (rows.length === 0) {
-      const problem = encode({
+      const bytes = encodeCbor({
         type: "about:blank",
         title: "Not Found",
         status: 404,
         detail: "public root not uploaded for log",
       });
-      const bytes =
-        problem instanceof Uint8Array
-          ? problem
-          : new Uint8Array(problem as ArrayLike<number>);
       return new Response(bytes, {
         status: 404,
         headers: { "Content-Type": "application/problem+cbor" },
@@ -677,27 +673,19 @@ export class DelegationStoreDO extends DurableObject<Env> {
     } catch (error) {
       const detail =
         error instanceof Error ? error.message : "invalid stored public root";
-      const problem = encode({
+      const bytes = encodeCbor({
         type: "about:blank",
         title: "Internal error",
         status: 500,
         detail,
       });
-      const bytes =
-        problem instanceof Uint8Array
-          ? problem
-          : new Uint8Array(problem as ArrayLike<number>);
       return new Response(bytes, {
         status: 500,
         headers: { "Content-Type": "application/problem+cbor" },
       });
     }
 
-    const encoded = encode(resp);
-    const out =
-      encoded instanceof Uint8Array
-        ? encoded
-        : new Uint8Array(encoded as ArrayLike<number>);
+    const out = encodeCbor(resp);
     return new Response(out, {
       status: 200,
       headers: { "Content-Type": "application/cbor" },
@@ -870,7 +858,9 @@ export class DelegationStoreDO extends DurableObject<Env> {
   /** POST /issue — return cert CBOR or record pending + webhook. */
   private async handleIssue(request: Request): Promise<Response> {
     const buffer = await request.arrayBuffer();
-    const req = decode(new Uint8Array(buffer)) as DelegationIssueRequest;
+    const req = decodeCborStruct<DelegationIssueRequest>(
+      new Uint8Array(buffer),
+    );
 
     const logIdHex32 = logIdWireBytesToHex32(req.logId);
     if (!this.isDelegationSurfacingEnabled(logIdHex32)) {
@@ -979,11 +969,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
       }
     }
 
-    const encoded = encode(resp);
-    const out =
-      encoded instanceof Uint8Array
-        ? encoded
-        : new Uint8Array(encoded as ArrayLike<number>);
+    const out = encodeCbor(resp);
     return new Response(out, {
       status: 200,
       headers: { "Content-Type": "application/cbor" },

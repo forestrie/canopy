@@ -2,7 +2,8 @@
  * R2 CAS transitions for pending → approved/rejected (FOR-184).
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
+import { decodeCborAsObject } from "./helpers/cbor-decode-object.js";
 import { env } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
@@ -42,7 +43,7 @@ function createBody(fields: Record<number, unknown>): Uint8Array {
   for (const [k, v] of Object.entries(fields)) {
     m.set(Number(k), v);
   }
-  return encodeCbor(m) as Uint8Array;
+  return encodeCborDeterministic(m);
 }
 
 function validBootstrapConfigResultHex(): string {
@@ -114,7 +115,7 @@ describe("onboard request CAS transitions", () => {
       testCtx,
     );
     expect(createRes.status).toBe(201);
-    const created = decodeCbor(
+    const created = decodeCborAsObject(
       new Uint8Array(await createRes.arrayBuffer()),
     ) as { requestId?: string; redeemCode?: string };
     return {
@@ -172,7 +173,7 @@ describe("onboard request CAS transitions", () => {
       e,
       testCtx,
     );
-    const status = decodeCbor(
+    const status = decodeCborAsObject(
       new Uint8Array(await statusRes.arrayBuffer()),
     ) as { status?: string };
     expect(status.status).toBe("redeemed");

@@ -97,9 +97,10 @@ class Reader {
       case 3: {
         // text string
         const len = Number(this.argument(ai));
-        return new TextDecoder("utf-8", { fatal: true }).decode(
-          this.bytes(len),
-        );
+        return new TextDecoder("utf-8", {
+          fatal: true,
+          ignoreBOM: false,
+        }).decode(this.bytes(len));
       }
       case 4: {
         // array

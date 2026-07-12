@@ -2,7 +2,7 @@
  * Grant format unit tests (Plan 0001 Step 1; Forestrie-Grant wire **v0**: keys 1–6 / 0–6).
  */
 
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import { describe, expect, it } from "vitest";
 import {
   decodeGrantPayload,
@@ -105,7 +105,7 @@ describe("Grant format (decode validation)", () => {
       [6, new Uint8Array(0)],
       [7, new Uint8Array([1])],
     ]);
-    const bad = new Uint8Array(encodeCbor(m));
+    const bad = encodeCborDeterministic(m);
     expect(() => decodeGrantPayload(bad)).toThrow("obsolete CBOR keys");
   });
 

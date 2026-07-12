@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decode } from "cbor-x";
+import { decodeCborDeterministic as decode } from "@forestrie/encoding";
 import worker from "../../../src/index";
 import type { ProblemDetails } from "@canopy/forestrie-ingress-types";
 import { testEnv, createRequest, createCborRequest } from "./fixture";

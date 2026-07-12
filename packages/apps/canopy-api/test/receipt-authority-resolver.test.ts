@@ -2,7 +2,7 @@
  * Unit tests for receipt authority resolver factory (no Workers pool).
  */
 
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import { encodeSigStructure } from "@forestrie/encoding";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -290,7 +290,7 @@ function buildReceiptWithDelegation(delegationCert: Uint8Array): Uint8Array {
 }
 
 function cborBytes(value: unknown): Uint8Array {
-  const encoded = encodeCbor(value);
+  const encoded = encodeCborDeterministic(value);
   return encoded instanceof Uint8Array
     ? encoded
     : new Uint8Array(encoded as ArrayLike<number>);

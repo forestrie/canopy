@@ -4,7 +4,7 @@
  * full grant v0 CBOR embedded in unprotected header -65538.
  */
 
-import { decode } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import { base64ToBytes } from "./grant-base64.js";
 import { HEADER_FORESTRIE_GRANT_V0 } from "./transparent-statement.js";
 
@@ -30,7 +30,7 @@ export function assertCustodianProfileTransparentStatement(
 ): void {
   const bytes = base64ToBytes(base64);
 
-  const sign1 = decode(bytes) as unknown;
+  const sign1 = decodeCborDeterministic(bytes);
   if (!Array.isArray(sign1) || sign1.length !== 4) {
     throw new Error("Expected untagged COSE Sign1 (CBOR array of 4 elements)");
   }
@@ -64,7 +64,7 @@ function algFromProtectedHeader(
   protectedBytes: Uint8Array,
 ): number | undefined {
   try {
-    const decoded = decode(protectedBytes) as unknown;
+    const decoded = decodeCborDeterministic(protectedBytes);
     const m = toHeaderMap(decoded);
     const alg = m.get(COSE_HEADER_ALG);
     return typeof alg === "number" ? alg : undefined;
@@ -77,7 +77,7 @@ function algFromProtectedHeader(
 export function assertRootGrantTransparentStatement(base64: string): void {
   const bytes = base64ToBytes(base64);
 
-  const sign1 = decode(bytes) as unknown;
+  const sign1 = decodeCborDeterministic(bytes);
   if (!Array.isArray(sign1) || sign1.length !== 4) {
     throw new Error("Expected untagged COSE Sign1 (CBOR array of 4 elements)");
   }

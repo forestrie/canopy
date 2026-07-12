@@ -3,7 +3,7 @@
  * grant store so publishers bind the correct leaf commitment.
  */
 
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import type { UnivocityGrantClient } from "./univocity-grant-client-config.js";
 
 function joinUrl(base: string, path: string): string {
@@ -32,7 +32,7 @@ export async function patchGrantIdtimestamp(opts: {
   subjectLogId: string;
   idtimestamp: bigint;
 }): Promise<{ ok: true } | { ok: false; status: number; detail: string }> {
-  const body = encodeCbor({
+  const body = encodeCborDeterministic({
     idtimestamp: u64Be8(opts.idtimestamp),
   }) as Uint8Array;
 

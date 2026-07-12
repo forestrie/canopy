@@ -15,7 +15,10 @@
  * Sepolia) and compare the computed peak with the published accumulator.
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import {
   calculateRoot,
   Massif,
@@ -113,7 +116,7 @@ export type ParsedCheckpoint = {
 
 /** Parse a format-v3 checkpoint (`.sth`) COSE Sign1. */
 export function parseCheckpoint(checkpointBytes: Uint8Array): ParsedCheckpoint {
-  const decoded = decodeCbor(checkpointBytes) as unknown;
+  const decoded = decodeCborDeterministic(checkpointBytes);
   const coseSign1 = requireCoseSign1(unwrapCoseSign1Tag(decoded));
   const unprotected = toHeaderMap(coseSign1[1]);
 
@@ -198,7 +201,7 @@ export function buildReceiptOffline(
   }
 
   const receiptSign1 = requireCoseSign1(
-    unwrapCoseSign1Tag(decodeCbor(receiptBytes) as unknown),
+    unwrapCoseSign1Tag(decodeCborDeterministic(receiptBytes)),
   );
   const receiptUnprotected = toHeaderMap(receiptSign1[1]);
 
@@ -275,10 +278,7 @@ export async function computeAccumulatorPeak(opts: {
 // --- helpers ---
 
 function cborBytes(value: unknown): Uint8Array {
-  const encoded = encodeCbor(value);
-  return encoded instanceof Uint8Array
-    ? encoded
-    : new Uint8Array(encoded as ArrayLike<number>);
+  return encodeCborDeterministic(value);
 }
 
 function slice32(buf: Uint8Array, offset: bigint, label: string): Uint8Array {
@@ -304,7 +304,7 @@ function sealedSizeFromCheckpoint(
   const vdp = toHeaderMap(vdpRaw as Map<number, unknown>);
   const proofBstr = vdp.get(VDP_CONSISTENCY_PROOF_KEY);
   if (!(proofBstr instanceof Uint8Array)) return null;
-  const proof = decodeCbor(proofBstr) as unknown;
+  const proof = decodeCborDeterministic(proofBstr);
   if (!Array.isArray(proof) || proof.length < 2) return null;
   const treeSize2 = proof[1];
   if (typeof treeSize2 === "bigint") return treeSize2;

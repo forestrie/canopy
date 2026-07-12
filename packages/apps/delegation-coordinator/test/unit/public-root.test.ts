@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { decode } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { bytesToBase64 } from "../../src/encoding.js";
@@ -77,9 +77,11 @@ describe("GET /api/logs/{logId}/public-root", () => {
     expect(getRes.status).toBe(200);
     expect(getRes.headers.get("Content-Type")).toBe("application/cbor");
 
-    const decoded = decode(
-      new Uint8Array(await getRes.arrayBuffer()),
-    ) as TrustRootResponseCbor;
+    const decoded = Object.fromEntries(
+      decodeCborDeterministic(
+        new Uint8Array(await getRes.arrayBuffer()),
+      ) as Map<string, unknown>,
+    ) as unknown as TrustRootResponseCbor;
     expect(decoded.alg).toBe("ES256");
     expect(decoded.x).toEqual(x);
     expect(decoded.y).toEqual(y);
@@ -149,9 +151,11 @@ describe("GET /api/logs/{logId}/public-root", () => {
         headers: authHeaders({ Accept: "application/cbor" }),
       },
     );
-    const decoded = decode(
-      new Uint8Array(await getRes.arrayBuffer()),
-    ) as TrustRootResponseCbor;
+    const decoded = Object.fromEntries(
+      decodeCborDeterministic(
+        new Uint8Array(await getRes.arrayBuffer()),
+      ) as Map<string, unknown>,
+    ) as unknown as TrustRootResponseCbor;
     expect(decoded.x).toEqual(second.x);
     expect(decoded.y).toEqual(second.y);
   });

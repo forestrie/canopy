@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import {
   COSE_SIGN1_CONTENT_TYPE,
   ScrapiRegistrationError,
@@ -67,13 +70,13 @@ describe("registerGrant", () => {
     const headers = captured[0]!.init.headers as Record<string, string>;
     expect(headers["Content-Type"]).toBe("application/cbor");
     const body = captured[0]!.init.body as Uint8Array;
-    const decoded = decodeCbor(body) as { parentGrant: Uint8Array };
-    expect(new Uint8Array(decoded.parentGrant)).toEqual(parentBytes);
+    const decoded = decodeCborDeterministic(body) as Map<string, Uint8Array>;
+    expect(new Uint8Array(decoded.get("parentGrant")!)).toEqual(parentBytes);
   });
 
   it("raises ScrapiRegistrationError with problem details on non-303", async () => {
     const problem = { title: "conflict", status: 409, detail: "already open" };
-    const res = new Response(new Uint8Array(encodeCbor(problem)), {
+    const res = new Response(encodeCborDeterministic(problem) as BodyInit, {
       status: 409,
     });
     const err = await registerGrant({

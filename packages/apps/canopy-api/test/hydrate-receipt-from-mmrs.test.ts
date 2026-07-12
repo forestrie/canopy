@@ -6,7 +6,7 @@
  */
 
 import { encodeSigStructure } from "@forestrie/encoding";
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -104,7 +104,7 @@ async function signPeakReceipt(
 }
 
 function cborBytes(value: unknown): Uint8Array {
-  const encoded = encodeCbor(value);
+  const encoded = encodeCborDeterministic(value);
   return encoded instanceof Uint8Array
     ? encoded
     : new Uint8Array(encoded as ArrayLike<number>);

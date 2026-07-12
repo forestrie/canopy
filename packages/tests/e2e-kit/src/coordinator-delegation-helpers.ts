@@ -3,7 +3,10 @@
  */
 
 import { createPrivateKey, createPublicKey } from "node:crypto";
-import { decode, encode } from "cbor-x";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import {
   buildDelegationCertificateEs256,
   buildDelegationCertificateKs256,
@@ -22,6 +25,20 @@ import { normalizeForestrieHexId32 } from "./forestrie-hex-id.js";
 
 function cborBytes(value: unknown): Uint8Array {
   return cborIntKeyBytes(value);
+}
+
+/**
+ * Normalize a decoded CBOR value to a string-keyed record. The deterministic
+ * decoder always yields a `Map` for CBOR maps; server responses here use
+ * string keys.
+ */
+function cborMapToRecord(raw: unknown): Record<string, unknown> {
+  if (raw instanceof Map) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of raw.entries()) out[String(k)] = v;
+    return out;
+  }
+  return (raw ?? {}) as Record<string, unknown>;
 }
 
 export function hex32ToWireLogId(hex32: string): Uint8Array {
@@ -103,7 +120,7 @@ export async function postCustodianDelegationIssue(opts: {
     delegatedPublicKey: opts.delegatedPublicKey,
     requestedTtlSeconds: opts.requestedTtlSeconds ?? 3600,
   };
-  const encoded = encode(body);
+  const encoded = encodeCborDeterministic(body);
   const u8 =
     encoded instanceof Uint8Array
       ? encoded
@@ -127,7 +144,7 @@ export async function postCustodianDelegationIssue(opts: {
       `Custodian delegation issue: ${res.status} (${buf.byteLength} bytes): ${preview}`,
     );
   }
-  const raw = custodianDecodeCbor(buf) as Record<string, unknown>;
+  const raw = cborMapToRecord(custodianDecodeCbor(buf));
   const cert = raw.certificate;
   let certificate: Uint8Array;
   if (cert instanceof Uint8Array) {
@@ -145,7 +162,7 @@ export async function postCustodianDelegationIssue(opts: {
 export function decodeCoordinatorDelegationIssue(
   buf: Uint8Array,
 ): CustodianDelegationIssueResult {
-  const raw = decode(buf) as Record<string, unknown>;
+  const raw = cborMapToRecord(decodeCborDeterministic(buf));
   const cert = raw.certificate;
   if (!(cert instanceof Uint8Array)) {
     throw new Error("coordinator issue response missing certificate bytes");
@@ -240,7 +257,7 @@ export async function fetchCoordinatorPublicRoot(opts: {
   if (!res.ok) {
     throw new Error(`GET public-root: ${res.status} (${buf.byteLength} bytes)`);
   }
-  const raw = decode(buf) as Record<string, unknown>;
+  const raw = cborMapToRecord(decodeCborDeterministic(buf));
   const logId = raw.logId;
   const x = raw.x;
   const y = raw.y;

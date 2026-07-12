@@ -4,7 +4,8 @@
  * Vitest pool uses NODE_ENV "test" and skips these checks — see AGENTS.md.
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
+import { decodeCborAsObject } from "./helpers/cbor-decode-object.js";
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import worker from "../src/index";
@@ -40,7 +41,7 @@ describe("CUSTODIAN_URL validation (non-pool NODE_ENV)", () => {
     );
 
     expect(response.status).toBe(503);
-    const decoded = decodeCbor(
+    const decoded = decodeCborAsObject(
       new Uint8Array(await response.arrayBuffer()),
     ) as { detail?: string };
     expect(decoded.detail).toMatch(/CUSTODIAN_URL/);
@@ -62,7 +63,7 @@ describe("Sequencing + receipt verifier env (non-pool NODE_ENV)", () => {
     );
 
     expect(response.status).toBe(503);
-    const decoded = decodeCbor(
+    const decoded = decodeCborAsObject(
       new Uint8Array(await response.arrayBuffer()),
     ) as { detail?: string };
     expect(decoded.detail).toMatch(/SEQUENCING_QUEUE/);
@@ -82,7 +83,7 @@ describe("Sequencing + receipt verifier env (non-pool NODE_ENV)", () => {
     );
 
     expect(response.status).toBe(503);
-    const decoded = decodeCbor(
+    const decoded = decodeCborAsObject(
       new Uint8Array(await response.arrayBuffer()),
     ) as { detail?: string };
     expect(decoded.detail).toMatch(/CUSTODIAN_APP_TOKEN/);
@@ -102,7 +103,7 @@ describe("Sequencing + receipt verifier env (non-pool NODE_ENV)", () => {
     );
 
     expect(response.status).toBe(503);
-    const decoded = decodeCbor(
+    const decoded = decodeCborAsObject(
       new Uint8Array(await response.arrayBuffer()),
     ) as { detail?: string };
     expect(decoded.detail).toMatch(
@@ -128,7 +129,7 @@ describe("Payments ops env (non-pool NODE_ENV)", () => {
     );
 
     expect(response.status).toBe(503);
-    const decoded = decodeCbor(
+    const decoded = decodeCborAsObject(
       new Uint8Array(await response.arrayBuffer()),
     ) as { detail?: string };
     expect(decoded.detail).toMatch(/CANOPY_OPS_ADMIN_TOKEN/);
@@ -158,7 +159,7 @@ describe("Forest genesis route env (non-pool NODE_ENV)", () => {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/cbor",
         },
-        body: encodeCbor(validGenesisV2Es256CborMap()) as Uint8Array,
+        body: encodeCborDeterministic(validGenesisV2Es256CborMap()) as Uint8Array,
       }),
       okEnv,
       {} as ExecutionContext,

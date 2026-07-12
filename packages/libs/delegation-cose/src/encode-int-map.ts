@@ -1,12 +1,10 @@
 /**
- * Integer-key CBOR encoding for delegation maps. Uses `mapsAsObjects: false`
- * so numeric keys round-trip like Go `delegationcert` and cbor-x decode in
- * arbor sealer.
+ * Integer-key CBOR encoding for delegation maps. Uses canonical
+ * (deterministic RFC 8949 §4.2) encoding so numeric keys round-trip like Go
+ * `delegationcert` and the deterministic decoder in arbor sealer.
  */
 
-import { Encoder } from "cbor-x";
-
-const cborEncoder = new Encoder({ mapsAsObjects: false });
+import { encodeCborDeterministic } from "@forestrie/encoding";
 
 /**
  * CBOR-encode a value preserving integer map keys (not stringified).
@@ -16,8 +14,5 @@ const cborEncoder = new Encoder({ mapsAsObjects: false });
  * @returns Encoded bytes for COSE bstr fields or outer Sign1 array.
  */
 export function encodeIntKeyCbor(value: unknown): Uint8Array {
-  const encoded = cborEncoder.encode(value);
-  return encoded instanceof Uint8Array
-    ? encoded
-    : new Uint8Array(encoded as ArrayLike<number>);
+  return encodeCborDeterministic(value);
 }

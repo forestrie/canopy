@@ -7,7 +7,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { decode as decodeCbor } from "cbor-x";
+import { decodeCborAsObject } from "./helpers/cbor-decode-object.js";
 import { createUnivocityGrantValidator } from "../src/scrapi/univocity-grant-client.js";
 
 const CLIENT = { serviceUrl: "https://univocity.test", token: "tok" };
@@ -44,7 +44,7 @@ describe("createUnivocityGrantValidator", () => {
     const headers = init.headers as Record<string, string>;
     expect(headers["Authorization"]).toBe("Bearer tok");
     expect(headers["Content-Type"]).toBe("application/cbor");
-    const decoded = decodeCbor(new Uint8Array(init.body as ArrayBuffer)) as {
+    const decoded = decodeCborAsObject(new Uint8Array(init.body as ArrayBuffer)) as {
       rootLogId: Uint8Array;
       statement: Uint8Array;
     };

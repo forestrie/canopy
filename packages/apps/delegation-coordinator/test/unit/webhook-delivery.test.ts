@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { encode } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import { SELF, fetchMock } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { bytesToBase64 } from "../../src/encoding.js";
@@ -23,10 +23,7 @@ function authHeaders(extra?: HeadersInit): HeadersInit {
 }
 
 function cborBody(value: unknown): Uint8Array {
-  const encoded = encode(value);
-  return encoded instanceof Uint8Array
-    ? encoded
-    : new Uint8Array(encoded as ArrayLike<number>);
+  return encodeCborDeterministic(value);
 }
 
 function delegatedKey(seed: number): Uint8Array {

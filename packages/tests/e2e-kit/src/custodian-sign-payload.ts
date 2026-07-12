@@ -3,7 +3,7 @@
  * Bearer token must match the key class (e.g. `CUSTODIAN_APP_TOKEN` for custody keys).
  */
 
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 
 function trimBase(url: string): string {
   return url.trim().replace(/\/$/, "");
@@ -17,7 +17,7 @@ export async function postCustodianSignRawPayloadBytes(opts: {
 }): Promise<Uint8Array> {
   const base = trimBase(opts.baseUrl);
   const keySeg = encodeURIComponent(opts.keyIdSegment);
-  const encoded = encodeCbor({ payload: opts.payloadBytes });
+  const encoded = encodeCborDeterministic({ payload: opts.payloadBytes });
   const u8 =
     encoded instanceof Uint8Array
       ? encoded

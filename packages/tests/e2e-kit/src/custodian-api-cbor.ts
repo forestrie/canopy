@@ -2,10 +2,10 @@
  * CBOR helpers for Custodian `application/cbor` and `application/problem+cbor` bodies.
  */
 
-import { decode as decodeCbor } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 
 export function custodianDecodeCbor(buf: Uint8Array): unknown {
-  return decodeCbor(buf);
+  return decodeCborDeterministic(buf);
 }
 
 export function custodianReadCborStringField(

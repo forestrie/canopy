@@ -5,7 +5,7 @@
  * — sealer rejects nested-bstr field 5 and non-EC2 keys.
  */
 
-import { decode } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import { bytesFromUnknown } from "./bytes-utils.js";
 import {
   COSE_CRV,
@@ -93,7 +93,7 @@ export function parseDelegatedCoseKeyFromPayload(
 export function decodeDelegatedCoseKeyFromBytes(
   bytes: Uint8Array,
 ): Map<number, unknown> {
-  const raw = decode(bytes) as unknown;
+  const raw = decodeCborDeterministic(bytes);
   return normalizeIntKeyedMap(raw);
 }
 
@@ -106,7 +106,7 @@ export function decodeDelegatedCoseKeyFromBytes(
  */
 export function assertDelegatedKeyInCertificate(certificate: Uint8Array): void {
   const { payloadBytes } = decodeCoseSign1Parts(certificate);
-  const payloadMap = normalizeIntKeyedMap(decode(payloadBytes));
+  const payloadMap = normalizeIntKeyedMap(decodeCborDeterministic(payloadBytes));
   parseDelegatedCoseKeyFromPayload(payloadMap.get(PAYLOAD_DELEGATED_KEY));
 }
 
@@ -123,7 +123,7 @@ export function decodeCoseSign1Parts(certificate: Uint8Array): {
   payloadBytes: Uint8Array;
   signature: Uint8Array;
 } {
-  const cert = decode(certificate) as unknown[];
+  const cert = decodeCborDeterministic(certificate) as unknown[];
   if (!Array.isArray(cert) || cert.length !== 4) {
     throw new Error("delegation certificate must be COSE_Sign1 array");
   }

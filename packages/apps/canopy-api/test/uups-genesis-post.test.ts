@@ -1,4 +1,4 @@
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import { describe, expect, it } from "vitest";
 import {
   FOREST_GENESIS_LABEL_BOOTSTRAP_KEY,
@@ -70,7 +70,7 @@ describe("postForestGenesis uups-counterfactual", () => {
       new Request("http://localhost/genesis", {
         method: "POST",
         headers: { "Content-Type": "application/cbor" },
-        body: encodeCbor(body) as Uint8Array,
+        body: encodeCborDeterministic(body),
       }),
       LOG_ID,
       {
@@ -107,7 +107,7 @@ describe("postForestGenesis uups-counterfactual", () => {
       new Request("http://localhost/genesis", {
         method: "POST",
         headers: { "Content-Type": "application/cbor" },
-        body: encodeCbor(body) as Uint8Array,
+        body: encodeCborDeterministic(body),
       }),
       LOG_ID,
       {
@@ -150,7 +150,7 @@ describe("postForestGenesis uups-counterfactual", () => {
       new Request("http://localhost/genesis", {
         method: "POST",
         headers: { "Content-Type": "application/cbor" },
-        body: encodeCbor(body) as Uint8Array,
+        body: encodeCborDeterministic(body),
       }),
       LOG_ID,
       {

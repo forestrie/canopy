@@ -1,4 +1,4 @@
-import { decode as decodeCbor } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import type { Proof } from "@forestrie/merklelog";
 
 const VDS_COSE_RECEIPT_PROOFS_TAG = 396;
@@ -62,7 +62,7 @@ export function parseReceipt(receiptBytes: Uint8Array): {
   receiptCbor: Uint8Array;
   coseSign1: CoseSign1;
 } {
-  const decoded = decodeCbor(receiptBytes) as unknown;
+  const decoded = decodeCborDeterministic(receiptBytes);
   const unwrapped = unwrapCoseSign1Tag(decoded);
   requireCoseSign1(unwrapped);
 

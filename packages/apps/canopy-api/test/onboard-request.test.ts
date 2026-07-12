@@ -2,7 +2,8 @@
  * Self-service onboard request API (FOR-168/169/170/174 + hardening).
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
+import { decodeCborAsObject } from "./helpers/cbor-decode-object.js";
 import { env } from "cloudflare:test";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import worker from "../src/index";
@@ -49,7 +50,7 @@ function createBody(fields: Record<number, unknown>): Uint8Array {
   for (const [k, v] of Object.entries(fields)) {
     m.set(Number(k), v);
   }
-  return encodeCbor(m) as Uint8Array;
+  return encodeCborDeterministic(m);
 }
 
 function validBootstrapConfigResultHex(): string {
@@ -139,7 +140,7 @@ describe("onboard request create", () => {
     );
     expect(res.status).toBe(201);
     expect(res.headers.get("cache-control")).toBe("no-store");
-    const body = decodeCbor(new Uint8Array(await res.arrayBuffer())) as {
+    const body = decodeCborAsObject(new Uint8Array(await res.arrayBuffer())) as {
       requestId?: string;
       status?: string;
       redeemCode?: string;
@@ -231,7 +232,7 @@ describe("onboard request create", () => {
       e,
       testCtx,
     );
-    const created = decodeCbor(
+    const created = decodeCborAsObject(
       new Uint8Array(await createRes.arrayBuffer()),
     ) as { requestId?: string };
     const getRes = await worker.fetch(
@@ -243,7 +244,7 @@ describe("onboard request create", () => {
     );
     expect(getRes.status).toBe(200);
     expect(getRes.headers.get("cache-control")).toBe("no-store");
-    const body = decodeCbor(
+    const body = decodeCborAsObject(
       new Uint8Array(await getRes.arrayBuffer()),
     ) as Record<string, unknown>;
     expect(body.redeemCode).toBeUndefined();
@@ -277,7 +278,7 @@ describe("onboard approve redeem flow", () => {
       e,
       testCtx,
     );
-    const created = decodeCbor(
+    const created = decodeCborAsObject(
       new Uint8Array(await createRes.arrayBuffer()),
     ) as { requestId?: string; redeemCode?: string };
     await worker.fetch(
@@ -309,7 +310,7 @@ describe("onboard approve redeem flow", () => {
     );
     expect(redeemRes.status).toBe(200);
     expect(redeemRes.headers.get("cache-control")).toBe("no-store");
-    const body = decodeCbor(new Uint8Array(await redeemRes.arrayBuffer())) as {
+    const body = decodeCborAsObject(new Uint8Array(await redeemRes.arrayBuffer())) as {
       token?: string;
     };
     expect(body.token?.length).toBeGreaterThan(0);
@@ -371,7 +372,7 @@ describe("onboard approve redeem flow", () => {
       e,
       testCtx,
     );
-    const created = decodeCbor(
+    const created = decodeCborAsObject(
       new Uint8Array(await createRes.arrayBuffer()),
     ) as { requestId?: string };
     const res = await worker.fetch(
@@ -401,7 +402,7 @@ describe("onboard approve redeem flow", () => {
       e,
       testCtx,
     );
-    const created = decodeCbor(
+    const created = decodeCborAsObject(
       new Uint8Array(await createRes.arrayBuffer()),
     ) as { requestId?: string; redeemCode?: string };
     await worker.fetch(
@@ -478,7 +479,7 @@ describe("onboard approve redeem flow", () => {
       e,
       testCtx,
     );
-    const body = decodeCbor(new Uint8Array(await getRes.arrayBuffer())) as {
+    const body = decodeCborAsObject(new Uint8Array(await getRes.arrayBuffer())) as {
       status?: string;
       onboardTokenRef?: string;
     };
@@ -497,7 +498,7 @@ describe("onboard token binding at genesis", () => {
 
     const rootA = crypto.randomUUID();
     const addrBytes = new Uint8Array(20).fill(0xaa);
-    const genesisBody = encodeCbor(
+    const genesisBody = encodeCborDeterministic(
       validGenesisV2Es256CborMap({
         chainId: CHAIN,
         univocityAddr: addrBytes,
@@ -542,7 +543,7 @@ describe("onboard token binding at genesis", () => {
     });
 
     const addrBytes = new Uint8Array(20).fill(0xaa);
-    const genesisBody = encodeCbor(
+    const genesisBody = encodeCborDeterministic(
       validGenesisV2Es256CborMap({
         chainId: CHAIN,
         univocityAddr: addrBytes,
@@ -586,7 +587,7 @@ describe("onboard token binding at genesis", () => {
           Authorization: `Bearer ${minted.token}`,
           "Content-Type": "application/cbor",
         },
-        body: encodeCbor(
+        body: encodeCborDeterministic(
           validGenesisV2Es256CborMap({
             chainId: CHAIN,
             univocityAddr: wrongAddr,
@@ -610,7 +611,7 @@ describe("onboard token binding at genesis", () => {
           Authorization: `Bearer ${minted.token}`,
           "Content-Type": "application/cbor",
         },
-        body: encodeCbor(validGenesisV2Es256CborMap()) as Uint8Array,
+        body: encodeCborDeterministic(validGenesisV2Es256CborMap()) as Uint8Array,
       }),
       e,
       testCtx,

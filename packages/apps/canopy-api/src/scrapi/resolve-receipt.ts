@@ -15,7 +15,7 @@
  * - Attach the inclusion proof to the appropriate peak receipt at header label 396.
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import { decodeCborDeterministic, encodeCborDeterministic } from "@forestrie/encoding";
 
 import { CBOR_CONTENT_TYPES } from "../cbor-api/cbor-content-types.js";
 import { cborResponse } from "../cbor-api/cbor-response.js";
@@ -129,7 +129,7 @@ export async function resolveReceipt(
     const checkpointBytes = new Uint8Array(
       await checkpointObject.arrayBuffer(),
     );
-    const checkpointDecoded = decodeCbor(checkpointBytes) as unknown;
+    const checkpointDecoded = decodeCborDeterministic(checkpointBytes) as unknown;
     const checkpoint = unwrapCoseSign1Tag(checkpointDecoded, "checkpoint");
 
     // Temporary diagnostics to understand real-world checkpoint encoding.
@@ -244,7 +244,7 @@ export async function resolveReceipt(
       );
     }
 
-    const receiptDecoded = decodeCbor(receiptBytes) as unknown;
+    const receiptDecoded = decodeCborDeterministic(receiptBytes) as unknown;
     const receipt = unwrapCoseSign1Tag(receiptDecoded, "peak receipt");
     const receiptSign1 = requireCoseSign1(receipt, "peak receipt");
 
@@ -365,7 +365,7 @@ function sealedSizeFromCheckpoint(
   if (!(proofBstr instanceof Uint8Array)) {
     return null;
   }
-  const proof = decodeCbor(proofBstr) as unknown;
+  const proof = decodeCborDeterministic(proofBstr) as unknown;
   if (!Array.isArray(proof) || proof.length < 2) {
     return null;
   }
@@ -779,7 +779,7 @@ export async function buildReceiptForEntry(
     const checkpointBytes = new Uint8Array(
       await checkpointObject.arrayBuffer(),
     );
-    const checkpointDecoded = decodeCbor(checkpointBytes) as unknown;
+    const checkpointDecoded = decodeCborDeterministic(checkpointBytes) as unknown;
     const checkpoint = unwrapCoseSign1Tag(checkpointDecoded, "checkpoint");
     const checkpointSign1 = requireCoseSign1(checkpoint, "checkpoint");
 
@@ -828,7 +828,7 @@ export async function buildReceiptForEntry(
     const receiptBytes = peakReceipts[peakIndex];
     if (!(receiptBytes instanceof Uint8Array)) return null;
 
-    const receiptDecoded = decodeCbor(receiptBytes) as unknown;
+    const receiptDecoded = decodeCborDeterministic(receiptBytes) as unknown;
     const receipt = unwrapCoseSign1Tag(receiptDecoded, "peak receipt");
     const receiptSign1 = requireCoseSign1(receipt, "peak receipt");
     const receiptUnprotected = toHeaderMap(receiptSign1[1]);
@@ -855,7 +855,7 @@ export async function buildReceiptForEntry(
       null,
       receiptSign1[3],
     ];
-    return encodeCbor(assembled) as Uint8Array;
+    return encodeCborDeterministic(assembled);
   } catch {
     return null;
   }

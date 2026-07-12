@@ -5,12 +5,13 @@
  * full grant bytes are carried in unprotected header HEADER_FORESTRIE_GRANT_V0.
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 import {
   algToCurve,
   COSE_ALG_ES256,
   COSE_ALG_KS256,
+  decodeCborDeterministic,
   decodeCoseSign1,
+  encodeCborDeterministic,
   extractAlgFromProtected,
   type ParsedEcPublicKey,
   type ParsedVerifyKey,
@@ -94,7 +95,7 @@ export async function fetchCustodianCuratorLogKey(
     );
   }
   const buf = new Uint8Array(await res.arrayBuffer());
-  const raw = decodeCbor(buf) as unknown;
+  const raw = decodeCborDeterministic(buf) as unknown;
   const keyId = readCborStringField(raw, "keyId");
   if (!keyId) {
     throw new Error("Custodian curator/log-key response missing keyId");
@@ -119,7 +120,7 @@ export async function fetchCustodianPublicKey(
     );
   }
   const buf = new Uint8Array(await res.arrayBuffer());
-  const raw = decodeCbor(buf) as unknown;
+  const raw = decodeCborDeterministic(buf) as unknown;
   const keyIdOut = readCborStringField(raw, "keyId");
   const publicKey = readCborStringField(raw, "publicKey");
   const alg = readCborStringField(raw, "alg");
@@ -141,7 +142,7 @@ export async function postCustodianSignGrantPayload(
 ): Promise<Uint8Array> {
   const base = trimBase(custodianBaseUrl);
   const keySeg = encodeURIComponent(keyId);
-  const cborBody = encodeCbor({ payload: grantPayloadBytes });
+  const cborBody = encodeCborDeterministic({ payload: grantPayloadBytes });
   const u8 =
     cborBody instanceof Uint8Array
       ? cborBody
@@ -173,7 +174,7 @@ export function mergeGrantHeadersIntoCustodianSign1(
   coseSign1Bytes: Uint8Array,
   grantPayloadBytes: Uint8Array,
 ): Uint8Array {
-  const raw = decodeCbor(coseSign1Bytes) as unknown;
+  const raw = decodeCborDeterministic(coseSign1Bytes) as unknown;
   const arr = Array.isArray(raw) ? raw : null;
   if (!arr || arr.length !== 4) {
     throw new Error("Invalid COSE Sign1 from Custodian");
@@ -182,7 +183,7 @@ export function mergeGrantHeadersIntoCustodianSign1(
   unprotected.set(HEADER_FORESTRIE_GRANT_V0, grantPayloadBytes);
   unprotected.set(HEADER_IDTIMESTAMP, new Uint8Array(8));
   const next = [arr[0], unprotected, arr[2], arr[3]];
-  return new Uint8Array(encodeCbor(next));
+  return new Uint8Array(encodeCborDeterministic(next));
 }
 
 function pemBodyToDer(pem: string): Uint8Array {

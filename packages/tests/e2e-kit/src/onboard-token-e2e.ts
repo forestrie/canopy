@@ -2,7 +2,10 @@
  * Mint CANOPY_PAYMENTS_ONBOARD_TOKEN via ops API for genesis POST e2e.
  */
 
-import { encode as encodeCbor, decode as decodeCbor } from "cbor-x";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import type { APIRequestContext } from "@playwright/test";
 
 const BOOTSTRAP_MINT_E2E_HELP =
@@ -29,17 +32,16 @@ export async function mintOnboardTokenE2e(
       Authorization: `Bearer ${ops}`,
       "Content-Type": "application/cbor",
     },
-    data: Buffer.from(encodeCbor(new Map([[1, label]])) as Uint8Array),
+    data: Buffer.from(encodeCborDeterministic(new Map([[1, label]]))),
   });
   if (res.status() !== 201) {
     throw new Error(
       `mint onboard token: expected 201, got ${res.status()}: ${(await res.text()).slice(0, 300)}`,
     );
   }
-  const body = decodeCbor(new Uint8Array(await res.body().then((b) => b))) as {
-    token?: string;
-  };
-  const token = body.token?.trim();
+  const body = decodeCborDeterministic(new Uint8Array(await res.body()));
+  const tokenRaw = body instanceof Map ? body.get("token") : undefined;
+  const token = typeof tokenRaw === "string" ? tokenRaw.trim() : undefined;
   if (!token) {
     throw new Error("mint onboard token: response missing token field");
   }

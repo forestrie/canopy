@@ -3,7 +3,7 @@
  */
 
 import { env } from "cloudflare:test";
-import { encode } from "cbor-x";
+import { encodeCborDeterministic as encode } from "@forestrie/encoding";
 import { shardNameForIndex } from "@canopy/forestrie-sharding";
 import type { Env } from "../../../src/env";
 

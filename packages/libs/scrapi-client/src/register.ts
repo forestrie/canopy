@@ -7,7 +7,7 @@
  * Playwright-backed shim); redirects are never followed.
  */
 
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import {
   decodeProblemDetailsBytes,
   type ProblemDetails,
@@ -121,9 +121,9 @@ export async function registerGrant(
   let body: Uint8Array | undefined;
   if (opts.parentGrantBase64) {
     headers["Content-Type"] = "application/cbor";
-    body = new Uint8Array(
-      encodeCbor({ parentGrant: base64ToBytes(opts.parentGrantBase64) }),
-    );
+    body = encodeCborDeterministic({
+      parentGrant: base64ToBytes(opts.parentGrantBase64),
+    });
   }
   const res = await doFetch(
     `${opts.baseUrl.replace(/\/$/, "")}/register/${opts.bootstrapLogId}/grants`,

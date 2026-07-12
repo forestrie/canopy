@@ -5,7 +5,10 @@
  * See: arbor/docs/adr-0005-cf-do-ingress-pull-encoding.md
  */
 
-import { encode, decode } from "cbor-x";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import type {
   PullResponse,
   LogGroup,
@@ -33,12 +36,12 @@ export function encodePullResponse(response: PullResponse): ArrayBuffer {
   ]);
 
   // Use BigInt for numeric fields to ensure CBOR encodes them as uint64
-  const encoded = encode([
+  const encoded = encodeCborDeterministic([
     response.version,
     BigInt(response.leaseExpiry),
     logGroups,
   ]);
-  // Convert to ArrayBuffer (cbor-x returns Uint8Array)
+  // Copy into a standalone ArrayBuffer (decoder returns a Uint8Array view)
   return new Uint8Array(encoded).buffer;
 }
 
@@ -47,7 +50,7 @@ export function encodePullResponse(response: PullResponse): ArrayBuffer {
  * Used primarily for testing round-trip encoding.
  */
 export function decodePullResponse(data: ArrayBuffer): PullResponse {
-  const decoded = decode(new Uint8Array(data)) as [
+  const decoded = decodeCborDeterministic(new Uint8Array(data)) as [
     number | bigint,
     number | bigint,
     [
@@ -90,7 +93,7 @@ export function decodePullResponse(data: ArrayBuffer): PullResponse {
  * Encode an ack response to CBOR.
  */
 export function encodeAckResponse(acked: number): ArrayBuffer {
-  const encoded = encode({ acked });
+  const encoded = encodeCborDeterministic({ acked });
   return new Uint8Array(encoded).buffer;
 }
 
@@ -98,5 +101,11 @@ export function encodeAckResponse(acked: number): ArrayBuffer {
  * Decode a CBOR-encoded ack response.
  */
 export function decodeAckResponse(data: ArrayBuffer): { acked: number } {
-  return decode(new Uint8Array(data)) as { acked: number };
+  // Maps always decode to a JS Map; read the field by key.
+  const decoded = decodeCborDeterministic(new Uint8Array(data));
+  const acked =
+    decoded instanceof Map
+      ? decoded.get("acked")
+      : (decoded as { acked: unknown }).acked;
+  return { acked: Number(acked) };
 }

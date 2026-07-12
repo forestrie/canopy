@@ -1,13 +1,11 @@
-import { decode, Encoder } from "cbor-x";
-import { encodeSigStructure } from "@forestrie/encoding";
-
-const cborEncoder = new Encoder({ mapsAsObjects: false });
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+  encodeSigStructure,
+} from "@forestrie/encoding";
 
 function cborBytes(value: unknown): Uint8Array {
-  const encoded = cborEncoder.encode(value);
-  return encoded instanceof Uint8Array
-    ? encoded
-    : new Uint8Array(encoded as ArrayLike<number>);
+  return encodeCborDeterministic(value);
 }
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
@@ -97,7 +95,7 @@ export async function buildTestByokMaterial(opts: {
 }
 
 function decodeDelegatedKey(bytes: Uint8Array): Map<number, unknown> {
-  const raw = decode(bytes) as unknown;
+  const raw = decodeCborDeterministic(bytes);
   if (raw instanceof Map) {
     return new Map([...raw.entries()].map(([k, v]) => [Number(k), v] as const));
   }

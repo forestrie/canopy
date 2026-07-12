@@ -5,7 +5,7 @@
  * `bootstrapConfig()`.
  */
 
-import { decode as decodeCbor } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import type { APIRequestContext } from "@playwright/test";
 import { decodeBodyAsIntKeyMap } from "./wire/cbor-api/cbor-map-utils.js";
 import { COSE_EC2_X, COSE_EC2_Y } from "./wire/cose/cose-key.js";
@@ -328,7 +328,7 @@ export async function getForestGenesisParsed(
     );
   }
   const body = new Uint8Array(await res.body());
-  const m = decodeBodyAsIntKeyMap(decodeCbor(body));
+  const m = decodeBodyAsIntKeyMap(decodeCborDeterministic(body));
   if (!m) throw new Error("genesis response is not a CBOR map");
 
   const chainId = m.get(FOREST_GENESIS_LABEL_CHAIN_ID);

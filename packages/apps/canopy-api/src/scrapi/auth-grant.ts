@@ -23,7 +23,7 @@
  */
 
 import type { ReceiptVerifyKey } from "../env/receipt-authority-resolver.js";
-import { decode as decodeCbor } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import type { GrantResult } from "../grant/types.js";
 import { decodeTransparentStatement } from "../grant/transparent-statement.js";
 import { parseReceipt } from "../grant/receipt-verify.js";
@@ -192,7 +192,7 @@ export async function getParentGrantFromRequest(
 
   let body: unknown;
   try {
-    body = decodeCbor(bytes);
+    body = decodeCborDeterministic(bytes);
   } catch {
     return ClientErrors.badRequest(
       "register-grant body must be a CBOR map (e.g. { parentGrant: <bytes> }).",

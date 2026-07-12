@@ -1,5 +1,6 @@
 import { signCoseSign1Statement } from "@forestrie/encoding";
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import { decodeCborDeterministic, encodeCborDeterministic } from "@forestrie/encoding";
+import { decodeCborAsObject } from "./helpers/cbor-decode-object.js";
 import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -39,7 +40,7 @@ beforeAll(async () => {
   flowBootstrapLogId = crypto.randomUUID();
   const { token } = await mintTestOnboardToken(testEnv, "scrapi-flow");
 
-  const genesisBody = encodeCbor(
+  const genesisBody = encodeCborDeterministic(
     validGenesisV2Es256CborMap({
       bootstrapKey: flowGrantData64,
     }),
@@ -115,7 +116,7 @@ describe("SCRAPI flow", () => {
 
     expect(response.status).toBe(401);
     const bodyBytes = new Uint8Array(await response.arrayBuffer());
-    const decoded = decodeCbor(bodyBytes) as any;
+    const decoded = decodeCborAsObject(bodyBytes) as any;
     expect(decoded).toMatchObject({
       title: "Unauthorized",
       status: 401,
@@ -146,7 +147,7 @@ describe("SCRAPI flow", () => {
 
     expect([400, 401]).toContain(response.status);
     const bodyBytes = new Uint8Array(await response.arrayBuffer());
-    const decoded = decodeCbor(bodyBytes) as any;
+    const decoded = decodeCborAsObject(bodyBytes) as any;
     expect(decoded).toMatchObject({ status: response.status });
   });
 
@@ -206,7 +207,7 @@ describe("SCRAPI flow", () => {
         `/logs/${flowBootstrapLogId}/${logId}/entries/`,
       );
     } else {
-      const problem = decodeCbor(
+      const problem = decodeCborAsObject(
         new Uint8Array(await response.arrayBuffer()),
       ) as { detail?: string };
       expect(String(problem.detail ?? "")).toContain("SEQUENCING_QUEUE");
@@ -254,8 +255,8 @@ describe("SCRAPI flow", () => {
     );
 
     // Prove the statement under test really carries {1,3,4} protected.
-    const tuple = decodeCbor(coseSign1) as unknown[];
-    const protectedMap = decodeCbor(tuple[0] as Uint8Array) as unknown;
+    const tuple = decodeCborDeterministic(coseSign1) as unknown[];
+    const protectedMap = decodeCborDeterministic(tuple[0] as Uint8Array) as unknown;
     expect(headerGet(protectedMap, 1)).toBe(-7);
     expect(headerGet(protectedMap, 3)).toBe("application/json");
     expect(headerGet(protectedMap, 4)).toBeInstanceOf(Uint8Array);
@@ -286,7 +287,7 @@ describe("SCRAPI flow", () => {
         `/logs/${flowBootstrapLogId}/${logId}/entries/`,
       );
     } else {
-      const problem = decodeCbor(
+      const problem = decodeCborAsObject(
         new Uint8Array(await response.arrayBuffer()),
       ) as { detail?: string };
       // Post-verification 503: enqueue unavailable, not a statement rejection.
@@ -317,13 +318,13 @@ describe("SCRAPI flow", () => {
       null,
       emptySig,
     ];
-    const peakReceiptBytes = encodeCbor(peakReceipt) as Uint8Array;
+    const peakReceiptBytes = encodeCborDeterministic(peakReceipt);
 
     // Checkpoint format v3 (ADR-0046): detached (null) payload; sealed size
     // is tree-size-2 of the consistency proof under the verifiable-proofs
     // unprotected header (label 396, key -2).
     const mmrSize = 3n;
-    const consistencyProof = encodeCbor([0n, mmrSize, [], []]) as Uint8Array;
+    const consistencyProof = encodeCborDeterministic([0n, mmrSize, [], []]);
     const verifiableProofs = new Map<number, unknown>([[-2, consistencyProof]]);
 
     // Checkpoint COSE_Sign1: unprotected carries the proof and peak receipts.
@@ -337,7 +338,7 @@ describe("SCRAPI flow", () => {
       null,
       emptySig,
     ];
-    const checkpointBytes = encodeCbor(checkpoint) as Uint8Array;
+    const checkpointBytes = encodeCborDeterministic(checkpoint);
 
     // Massif blob layout (v2):
     // fixed header (256) + index header (32) + v2 index data + peak stack (2048) + log data
@@ -416,7 +417,7 @@ describe("SCRAPI flow", () => {
       "application/scitt-receipt+cbor",
     );
 
-    const decoded = decodeCbor(
+    const decoded = decodeCborDeterministic(
       new Uint8Array(await response.arrayBuffer()),
     ) as any;
     expect(Array.isArray(decoded)).toBe(true);
@@ -430,7 +431,8 @@ describe("SCRAPI flow", () => {
     expect(inclusionProofs).toHaveLength(1);
 
     const p0 = inclusionProofs[0];
-    expect(headerGet(p0, 1)).toBe(0n);
+    // Canonical codec decodes small ints as number (cbor-x returned bigint here).
+    expect(headerGet(p0, 1)).toBe(0);
 
     const path = headerGet(p0, 2);
     expect(Array.isArray(path)).toBe(true);

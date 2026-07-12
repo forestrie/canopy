@@ -12,9 +12,9 @@
 export interface OnchainDelegationProofWire {
   protectedHeader: Uint8Array;
   delegationKey: Uint8Array;
-  /** BigInt so cbor-x emits uint64, never float64 (Go uint64 decode). */
+  /** BigInt so the encoder emits uint64, never float64 (Go uint64 decode). */
   mmrStart: bigint;
-  /** BigInt so cbor-x emits uint64, never float64 (Go uint64 decode). */
+  /** BigInt so the encoder emits uint64, never float64 (Go uint64 decode). */
   mmrEnd: bigint;
   signature: Uint8Array;
 }

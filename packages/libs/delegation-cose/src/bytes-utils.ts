@@ -1,6 +1,6 @@
 /**
  * Shared byte coercion and comparison helpers for COSE parsing and Web Crypto
- * interop. Normalizes cbor-x decode outputs and ArrayBuffer views into
+ * interop. Normalizes CBOR decode outputs and ArrayBuffer views into
  * `Uint8Array` for consistent length checks across the package.
  */
 
