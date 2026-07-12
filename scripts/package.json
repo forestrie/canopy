@@ -11,8 +11,7 @@
   },
   "dependencies": {
     "@forestrie/encoding": "workspace:*",
-    "@forestrie/receipt-verify": "workspace:*",
-    "cbor-x": "^1.5.9"
+    "@forestrie/receipt-verify": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.8.1",

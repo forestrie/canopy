@@ -2,8 +2,9 @@
  * Unit tests for grant-completion helpers (no network).
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 import { describe, expect, it } from "vitest";
+import { encodeCborDeterministic } from "@forestrie/encoding";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import {
   buildCompletedGrant,
   entryIdToIdtimestamp,
@@ -52,7 +53,7 @@ describe("signerHexFromGrantPayload", () => {
   it("returns first 32 bytes of key 6 grantData as hex", () => {
     const gd = new Uint8Array(40);
     for (let i = 0; i < 32; i++) gd[i] = i;
-    const payload = new Uint8Array(encodeCbor(new Map([[6, gd]])));
+    const payload = new Uint8Array(encodeCborDeterministic(new Map([[6, gd]])));
     expect(signerHexFromGrantPayload(payload)).toBe(
       "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
     );
@@ -63,7 +64,7 @@ describe("signerHexFromGrantPayload", () => {
     gd.fill(0xab);
     gd[0] = 0;
     gd[31] = 0xff;
-    const payload = new Uint8Array(encodeCbor(new Map([[6, gd]])));
+    const payload = new Uint8Array(encodeCborDeterministic(new Map([[6, gd]])));
     const hex = signerHexFromGrantPayload(payload);
     expect(hex.length).toBe(64);
     expect(hex.slice(0, 2)).toBe("00");
@@ -71,7 +72,7 @@ describe("signerHexFromGrantPayload", () => {
   });
 
   it("throws when key 6 missing or empty", () => {
-    const empty = new Uint8Array(encodeCbor(new Map()));
+    const empty = new Uint8Array(encodeCborDeterministic(new Map()));
     expect(() => signerHexFromGrantPayload(empty)).toThrow("grantData (key 6)");
   });
 });
@@ -81,18 +82,18 @@ describe("buildCompletedGrant", () => {
     const entryId = "0123456789abcdef0123456789abcdef";
     const idtimestamp = entryIdToIdtimestamp(entryId);
     const receiptBytes = new Uint8Array([0xca, 0xfe]);
-    const protectedHeader = new Uint8Array(encodeCbor(new Map([[1, -7]])));
-    const payload = new Uint8Array(encodeCbor(new Map([[6, new Uint8Array(32)]])));
+    const protectedHeader = new Uint8Array(encodeCborDeterministic(new Map([[1, -7]])));
+    const payload = new Uint8Array(encodeCborDeterministic(new Map([[6, new Uint8Array(32)]])));
     const signature = new Uint8Array(64);
     const originalCose = [protectedHeader, new Map(), payload, signature];
-    const originalBytes = new Uint8Array(encodeCbor(originalCose));
+    const originalBytes = new Uint8Array(encodeCborDeterministic(originalCose));
     const originalBase64 = btoa(String.fromCharCode(...originalBytes));
 
     const receiptUrl = `https://api.example.com/logs/x/entries/${entryId}/receipt`;
     const completedBase64 = buildCompletedGrant(originalBase64, receiptUrl, receiptBytes);
 
     const completedBytes = Uint8Array.from(atob(completedBase64), (c) => c.charCodeAt(0));
-    const completed = decodeCbor(completedBytes) as unknown[];
+    const completed = decodeCborDeterministic(completedBytes) as unknown[];
     expect(completed).toHaveLength(4);
     const unprotected = completed[1] as Map<number, Uint8Array>;
     expect(unprotected).toBeInstanceOf(Map);

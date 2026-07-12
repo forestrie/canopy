@@ -12,9 +12,9 @@
  */
 
 import { mkdirSync, writeFileSync } from "fs";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
-import { decode as decodeCbor } from "cbor-x";
 import {
   buildCompletedGrant,
   signerHexFromGrantPayload,
@@ -117,7 +117,7 @@ for (const logId of LOG_IDS) {
       atob(grantBase64.replace(/-/g, "+").replace(/_/g, "/")),
       (c) => c.charCodeAt(0),
     );
-    const cose = decodeCbor(grantBytes) as unknown[];
+    const cose = decodeCborDeterministic(grantBytes) as unknown[];
     const payload = (cose as [unknown, unknown, Uint8Array, unknown])[2];
     signerHex = signerHexFromGrantPayload(payload);
   }

@@ -4,8 +4,8 @@
  * Uses decodeCoseSign1 from @forestrie/encoding (same structure as API).
  */
 import { readFileSync } from "fs";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import { join } from "path";
-import { decode as decodeCbor } from "cbor-x";
 import { decodeCoseSign1 } from "@forestrie/encoding";
 
 const rawArgs = process.argv.slice(2);
@@ -68,7 +68,7 @@ function formatValue(v: unknown, indent = 0): string {
 const protectedDecoded =
   protectedBstr.length <= 1
     ? new Map<number, unknown>()
-    : decodeCbor(protectedBstr);
+    : decodeCborDeterministic(protectedBstr);
 
 console.log("/ COSE_Sign1 SCITT Receipt /");
 console.log("18([");
