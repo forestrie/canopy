@@ -179,7 +179,9 @@ describe("POST genesis coordinator forward", () => {
       {} as ExecutionContext,
     );
     expect(res.status).toBe(201);
-    const body = decodeCborAsObject(new Uint8Array(await res.arrayBuffer())) as {
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as {
       coordinator?: unknown;
     };
     expect(body.coordinator).toBeUndefined();
@@ -257,7 +259,9 @@ describe("POST genesis coordinator forward", () => {
       {} as ExecutionContext,
     );
     expect(res.status).toBe(201);
-    const body = decodeCborAsObject(new Uint8Array(await res.arrayBuffer())) as {
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as {
       coordinator?: { publicRoot: string; webhook: string };
     };
     expect(body.coordinator).toEqual({ publicRoot: "ok", webhook: "ok" });

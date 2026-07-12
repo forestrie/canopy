@@ -159,7 +159,9 @@ describe("Forest genesis route env (non-pool NODE_ENV)", () => {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/cbor",
         },
-        body: encodeCborDeterministic(validGenesisV2Es256CborMap()) as Uint8Array,
+        body: encodeCborDeterministic(
+          validGenesisV2Es256CborMap(),
+        ) as Uint8Array,
       }),
       okEnv,
       {} as ExecutionContext,

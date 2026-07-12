@@ -44,7 +44,9 @@ describe("createUnivocityGrantValidator", () => {
     const headers = init.headers as Record<string, string>;
     expect(headers["Authorization"]).toBe("Bearer tok");
     expect(headers["Content-Type"]).toBe("application/cbor");
-    const decoded = decodeCborAsObject(new Uint8Array(init.body as ArrayBuffer)) as {
+    const decoded = decodeCborAsObject(
+      new Uint8Array(init.body as ArrayBuffer),
+    ) as {
       rootLogId: Uint8Array;
       statement: Uint8Array;
     };

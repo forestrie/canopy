@@ -58,7 +58,9 @@ describe("grant payload codec (keys 1-6)", () => {
 
   it("rejects obsolete wire keys 7 (signer) and 8 (kind)", () => {
     const bytes = new Uint8Array(
-      encodeCborDeterministic(new Map<number, unknown>([[7, new Uint8Array(20)]])),
+      encodeCborDeterministic(
+        new Map<number, unknown>([[7, new Uint8Array(20)]]),
+      ),
     );
     expect(() => decodeGrantPayload(bytes)).toThrow(/obsolete CBOR keys/);
   });

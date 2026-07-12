@@ -1,5 +1,8 @@
 import { signCoseSign1Statement } from "@forestrie/encoding";
-import { decodeCborDeterministic, encodeCborDeterministic } from "@forestrie/encoding";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import { decodeCborAsObject } from "./helpers/cbor-decode-object.js";
 import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -256,7 +259,9 @@ describe("SCRAPI flow", () => {
 
     // Prove the statement under test really carries {1,3,4} protected.
     const tuple = decodeCborDeterministic(coseSign1) as unknown[];
-    const protectedMap = decodeCborDeterministic(tuple[0] as Uint8Array) as unknown;
+    const protectedMap = decodeCborDeterministic(
+      tuple[0] as Uint8Array,
+    ) as unknown;
     expect(headerGet(protectedMap, 1)).toBe(-7);
     expect(headerGet(protectedMap, 3)).toBe("application/json");
     expect(headerGet(protectedMap, 4)).toBeInstanceOf(Uint8Array);

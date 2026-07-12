@@ -16,7 +16,10 @@ import {
   signCoseSign1Statement,
   verifyCoseSign1,
 } from "@forestrie/encoding";
-import { decodeCborDeterministic, encodeCborDeterministic } from "@forestrie/encoding";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import { describe, expect, it } from "vitest";
 import { encodeCoseSign1WithKid } from "./cose-sign1-k6-encoder";
 

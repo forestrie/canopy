@@ -53,13 +53,17 @@ describe("ops onboard-token API", () => {
       new Request("http://localhost/api/payments/onboard-tokens", {
         method: "POST",
         headers: opsHeaders(),
-        body: encodeCborDeterministic(new Map([[1, "mint-spec"]])) as Uint8Array,
+        body: encodeCborDeterministic(
+          new Map([[1, "mint-spec"]]),
+        ) as Uint8Array,
       }),
       envWithOps(),
       {} as ExecutionContext,
     );
     expect(postRes.status).toBe(201);
-    const minted = decodeCborAsObject(new Uint8Array(await postRes.arrayBuffer())) as {
+    const minted = decodeCborAsObject(
+      new Uint8Array(await postRes.arrayBuffer()),
+    ) as {
       token?: string;
       ref?: string;
       status?: string;
@@ -79,7 +83,9 @@ describe("ops onboard-token API", () => {
       {} as ExecutionContext,
     );
     expect(listRes.status).toBe(200);
-    const listed = decodeCborAsObject(new Uint8Array(await listRes.arrayBuffer())) as {
+    const listed = decodeCborAsObject(
+      new Uint8Array(await listRes.arrayBuffer()),
+    ) as {
       tokens?: { hash: string }[];
     };
     expect(listed.tokens?.some((t) => t.hash === minted.ref)).toBe(true);
@@ -126,13 +132,17 @@ describe("genesis onboard-token auth", () => {
           Authorization: `Bearer ${minted.token}`,
           "Content-Type": "application/cbor",
         },
-        body: encodeCborDeterministic(validGenesisV2Es256CborMap()) as Uint8Array,
+        body: encodeCborDeterministic(
+          validGenesisV2Es256CborMap(),
+        ) as Uint8Array,
       }),
       poolEnv,
       {} as ExecutionContext,
     );
     expect(res.status).toBe(201);
-    const body = decodeCborAsObject(new Uint8Array(await res.arrayBuffer())) as {
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as {
       R?: string;
       class?: string;
       chainBinding?: { chainId?: string };
@@ -148,7 +158,9 @@ describe("genesis onboard-token auth", () => {
       new Request(`http://localhost/api/forest/${logId}/genesis`, {
         method: "POST",
         headers: { "Content-Type": "application/cbor" },
-        body: encodeCborDeterministic(validGenesisV2Es256CborMap()) as Uint8Array,
+        body: encodeCborDeterministic(
+          validGenesisV2Es256CborMap(),
+        ) as Uint8Array,
       }),
       poolEnv,
       {} as ExecutionContext,
@@ -168,7 +180,9 @@ describe("genesis endorsement-grant auth", () => {
           Authorization: `Bearer ${paToken.token}`,
           "Content-Type": "application/cbor",
         },
-        body: encodeCborDeterministic(validGenesisV2Es256CborMap()) as Uint8Array,
+        body: encodeCborDeterministic(
+          validGenesisV2Es256CborMap(),
+        ) as Uint8Array,
       }),
       poolEnv,
       {} as ExecutionContext,
@@ -208,13 +222,17 @@ describe("genesis endorsement-grant auth", () => {
           Authorization: authHeader,
           "Content-Type": "application/cbor",
         },
-        body: encodeCborDeterministic(validGenesisV2Es256CborMap()) as Uint8Array,
+        body: encodeCborDeterministic(
+          validGenesisV2Es256CborMap(),
+        ) as Uint8Array,
       }),
       poolEnv,
       {} as ExecutionContext,
     );
     expect(res.status).toBe(201);
-    const body = decodeCborAsObject(new Uint8Array(await res.arrayBuffer())) as {
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as {
       class?: string;
       endorsedBy?: string;
       R?: string;
@@ -234,7 +252,9 @@ describe("genesis endorsement-grant auth", () => {
           Authorization: `Bearer ${paToken.token}`,
           "Content-Type": "application/cbor",
         },
-        body: encodeCborDeterministic(validGenesisV2Es256CborMap()) as Uint8Array,
+        body: encodeCborDeterministic(
+          validGenesisV2Es256CborMap(),
+        ) as Uint8Array,
       }),
       poolEnv,
       {} as ExecutionContext,
@@ -270,7 +290,9 @@ describe("genesis endorsement-grant auth", () => {
           Authorization: authHeader,
           "Content-Type": "application/cbor",
         },
-        body: encodeCborDeterministic(validGenesisV2Es256CborMap()) as Uint8Array,
+        body: encodeCborDeterministic(
+          validGenesisV2Es256CborMap(),
+        ) as Uint8Array,
       }),
       poolEnv,
       {} as ExecutionContext,

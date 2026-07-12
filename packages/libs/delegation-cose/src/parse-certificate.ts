@@ -34,7 +34,9 @@ export function parseDelegationCertificate(
   certificate: Uint8Array,
 ): CertificateInfo {
   const { payloadBytes } = decodeCoseSign1Parts(certificate);
-  const payloadMap = normalizeIntKeyedMap(decodeCborDeterministic(payloadBytes));
+  const payloadMap = normalizeIntKeyedMap(
+    decodeCborDeterministic(payloadBytes),
+  );
   const logIdHex32 = payloadMap.get(PAYLOAD_LOG_ID);
   if (typeof logIdHex32 !== "string") {
     throw new Error("payload missing log id");

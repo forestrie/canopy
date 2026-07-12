@@ -106,7 +106,9 @@ export function decodeDelegatedCoseKeyFromBytes(
  */
 export function assertDelegatedKeyInCertificate(certificate: Uint8Array): void {
   const { payloadBytes } = decodeCoseSign1Parts(certificate);
-  const payloadMap = normalizeIntKeyedMap(decodeCborDeterministic(payloadBytes));
+  const payloadMap = normalizeIntKeyedMap(
+    decodeCborDeterministic(payloadBytes),
+  );
   parseDelegatedCoseKeyFromPayload(payloadMap.get(PAYLOAD_DELEGATED_KEY));
 }
 

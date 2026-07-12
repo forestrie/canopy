@@ -70,7 +70,12 @@ async function buildReceiptForGrant(
   )) as ArrayBuffer;
   const sig = new Uint8Array(sigBuf);
   const coseSign1Bytes = new Uint8Array(
-    encodeCborDeterministic([protectedInner, new Map<number, unknown>(), peak, sig]),
+    encodeCborDeterministic([
+      protectedInner,
+      new Map<number, unknown>(),
+      peak,
+      sig,
+    ]),
   );
   return { coseSign1Bytes, explicitPeak: peak };
 }

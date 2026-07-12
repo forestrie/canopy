@@ -318,7 +318,9 @@ describe("onboarding admin JSON routes", () => {
     );
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("application/cbor");
-    const body = decodeCborAsObject(new Uint8Array(await res.arrayBuffer())) as {
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as {
       status?: string;
     };
     expect(body.status).toBe("approved");

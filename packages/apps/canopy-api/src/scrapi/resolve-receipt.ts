@@ -15,7 +15,10 @@
  * - Attach the inclusion proof to the appropriate peak receipt at header label 396.
  */
 
-import { decodeCborDeterministic, encodeCborDeterministic } from "@forestrie/encoding";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 
 import { CBOR_CONTENT_TYPES } from "../cbor-api/cbor-content-types.js";
 import { cborResponse } from "../cbor-api/cbor-response.js";
@@ -129,7 +132,9 @@ export async function resolveReceipt(
     const checkpointBytes = new Uint8Array(
       await checkpointObject.arrayBuffer(),
     );
-    const checkpointDecoded = decodeCborDeterministic(checkpointBytes) as unknown;
+    const checkpointDecoded = decodeCborDeterministic(
+      checkpointBytes,
+    ) as unknown;
     const checkpoint = unwrapCoseSign1Tag(checkpointDecoded, "checkpoint");
 
     // Temporary diagnostics to understand real-world checkpoint encoding.
@@ -779,7 +784,9 @@ export async function buildReceiptForEntry(
     const checkpointBytes = new Uint8Array(
       await checkpointObject.arrayBuffer(),
     );
-    const checkpointDecoded = decodeCborDeterministic(checkpointBytes) as unknown;
+    const checkpointDecoded = decodeCborDeterministic(
+      checkpointBytes,
+    ) as unknown;
     const checkpoint = unwrapCoseSign1Tag(checkpointDecoded, "checkpoint");
     const checkpointSign1 = requireCoseSign1(checkpoint, "checkpoint");
 

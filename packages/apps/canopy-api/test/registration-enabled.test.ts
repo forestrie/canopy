@@ -140,7 +140,9 @@ describe("registration enabled kill-switch API", () => {
       {} as ExecutionContext,
     );
     expect(res.status).toBe(200);
-    const body = decodeCborAsObject(new Uint8Array(await res.arrayBuffer())) as {
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as {
       R?: string;
       enabled?: boolean;
     };
@@ -176,7 +178,9 @@ describe("registration enabled kill-switch API", () => {
       {} as ExecutionContext,
     );
     expect(res.status).toBe(200);
-    const body = decodeCborAsObject(new Uint8Array(await res.arrayBuffer())) as {
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as {
       R?: string;
       enabled?: boolean;
     };

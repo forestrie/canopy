@@ -95,7 +95,9 @@ export async function postRegisterGrantExpect303(
       Buffer.from(opts.parentGrantBase64, "base64"),
     );
     headers["Content-Type"] = "application/cbor";
-    post.data = Buffer.from(encodeCborDeterministic({ parentGrant: parentBytes }));
+    post.data = Buffer.from(
+      encodeCborDeterministic({ parentGrant: parentBytes }),
+    );
   }
   const registerRes = await unauthorizedRequest.post(
     `/register/${opts.bootstrapLogId}/grants`,

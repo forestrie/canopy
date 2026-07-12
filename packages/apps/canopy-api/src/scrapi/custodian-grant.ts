@@ -5,7 +5,10 @@
  * full grant bytes are carried in unprotected header HEADER_FORESTRIE_GRANT_V0.
  */
 
-import { decodeCborDeterministic, encodeCborDeterministic } from "@forestrie/encoding";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import {
   algToCurve,
   COSE_ALG_ES256,

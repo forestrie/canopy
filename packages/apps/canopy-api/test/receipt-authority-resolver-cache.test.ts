@@ -110,7 +110,9 @@ async function buildSignedPeakReceipt(
   delegateRaw: Uint8Array,
 ): Promise<Uint8Array> {
   const peak = new Uint8Array(32).fill(0x11);
-  const protectedInner = new Uint8Array(encodeCborDeterministic(new Map([[1, -7]])));
+  const protectedInner = new Uint8Array(
+    encodeCborDeterministic(new Map([[1, -7]])),
+  );
   const sigStructure = encodeSigStructure(
     protectedInner,
     new Uint8Array(0),

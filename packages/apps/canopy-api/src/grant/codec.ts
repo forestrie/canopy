@@ -7,7 +7,10 @@
  * response encoding only.
  */
 
-import { decodeCborDeterministic, encodeCborDeterministic } from "@forestrie/encoding";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import type { Grant } from "./grant.js";
 import { grantDataToBytes } from "./grant-data.js";
 import { fromPaddedWire32, toPaddedWire32 } from "./uuid-bytes.js";

@@ -5,7 +5,6 @@ import { encodeCborDeterministic } from "./encode-cbor-deterministic.js";
  * wrap this encoder or reuse {@link ProblemDetail} for consistent fields.
  */
 
-
 /** Generic problem detail shape (string keys for application/problem+cbor). */
 export interface ProblemDetail {
   /** Problem type URI; defaults to `about:blank` when omitted at encode time. */

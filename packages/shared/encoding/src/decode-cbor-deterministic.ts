@@ -67,7 +67,8 @@ class Reader {
     if (ai === 27) {
       this.need(8);
       let v = 0n;
-      for (let i = 0; i < 8; i++) v = (v << 8n) | BigInt(this.buf[this.pos + i]!);
+      for (let i = 0; i < 8; i++)
+        v = (v << 8n) | BigInt(this.buf[this.pos + i]!);
       this.pos += 8;
       return v <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(v) : v;
     }
@@ -79,7 +80,8 @@ class Reader {
     const ib = this.u8();
     const major = ib >> 5;
     const ai = ib & 0x1f;
-    if (ai === 31) throw new Error("decodeCbor: indefinite lengths not allowed");
+    if (ai === 31)
+      throw new Error("decodeCbor: indefinite lengths not allowed");
 
     switch (major) {
       case 0: // unsigned int

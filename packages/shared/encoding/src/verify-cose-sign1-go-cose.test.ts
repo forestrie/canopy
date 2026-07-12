@@ -54,7 +54,12 @@ describe("verifyCoseSign1 + go-cose Sig_structure bytes", () => {
     expect(sig64.byteLength).toBe(64);
 
     const sign1Bytes = new Uint8Array(
-      encodeCborDeterministic([protectedInner, new Map<number, Uint8Array>(), payload, sig64]),
+      encodeCborDeterministic([
+        protectedInner,
+        new Map<number, Uint8Array>(),
+        payload,
+        sig64,
+      ]),
     );
 
     await expect(verifyCoseSign1(sign1Bytes, pair.publicKey)).resolves.toBe(
@@ -91,7 +96,12 @@ describe("verifyCoseSign1 + go-cose Sig_structure bytes", () => {
     expect(sig64.byteLength).toBe(64);
 
     const sign1Bytes = new Uint8Array(
-      encodeCborDeterministic([protectedInner, new Map<number, unknown>(), null, sig64]),
+      encodeCborDeterministic([
+        protectedInner,
+        new Map<number, unknown>(),
+        null,
+        sig64,
+      ]),
     );
 
     await expect(verifyCoseSign1(sign1Bytes, pair.publicKey)).resolves.toBe(

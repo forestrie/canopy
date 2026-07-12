@@ -2,7 +2,10 @@
  * Plan 0018 / 0028 / 0032: POST /api/forest/{log-id}/genesis — v2-only writes, v0/v1 read.
  */
 
-import { decodeCborDeterministic, encodeCborDeterministic } from "@forestrie/encoding";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import {
@@ -168,10 +171,9 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
     const key = `forests/forest/${storageSeg}/genesis.cbor`;
     const obj = await e.R2_GRANTS.get(key);
     expect(obj).not.toBeNull();
-    const map = decodeCborDeterministic(new Uint8Array(await obj!.arrayBuffer())) as Map<
-      number,
-      unknown
-    >;
+    const map = decodeCborDeterministic(
+      new Uint8Array(await obj!.arrayBuffer()),
+    ) as Map<number, unknown>;
     expect(map.get(FOREST_GENESIS_LABEL_GENESIS_VERSION)).toBe(2);
     expect(map.get(FOREST_GENESIS_LABEL_GENESIS_ALG)).toBe(COSE_ALG_ES256);
     expect(map.get(FOREST_GENESIS_LABEL_BOOTSTRAP_KEY)).toEqual(bootstrapKey);

@@ -44,7 +44,12 @@ async function detachedEs256Sign1(priv: CryptoKey): Promise<Uint8Array> {
   )) as ArrayBuffer;
   const sig64 = new Uint8Array(sigBuf);
   return new Uint8Array(
-    encodeCborDeterministic([protectedInner, new Map<number, unknown>(), null, sig64]),
+    encodeCborDeterministic([
+      protectedInner,
+      new Map<number, unknown>(),
+      null,
+      sig64,
+    ]),
   );
 }
 

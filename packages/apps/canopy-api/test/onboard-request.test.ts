@@ -140,7 +140,9 @@ describe("onboard request create", () => {
     );
     expect(res.status).toBe(201);
     expect(res.headers.get("cache-control")).toBe("no-store");
-    const body = decodeCborAsObject(new Uint8Array(await res.arrayBuffer())) as {
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as {
       requestId?: string;
       status?: string;
       redeemCode?: string;
@@ -310,7 +312,9 @@ describe("onboard approve redeem flow", () => {
     );
     expect(redeemRes.status).toBe(200);
     expect(redeemRes.headers.get("cache-control")).toBe("no-store");
-    const body = decodeCborAsObject(new Uint8Array(await redeemRes.arrayBuffer())) as {
+    const body = decodeCborAsObject(
+      new Uint8Array(await redeemRes.arrayBuffer()),
+    ) as {
       token?: string;
     };
     expect(body.token?.length).toBeGreaterThan(0);
@@ -479,7 +483,9 @@ describe("onboard approve redeem flow", () => {
       e,
       testCtx,
     );
-    const body = decodeCborAsObject(new Uint8Array(await getRes.arrayBuffer())) as {
+    const body = decodeCborAsObject(
+      new Uint8Array(await getRes.arrayBuffer()),
+    ) as {
       status?: string;
       onboardTokenRef?: string;
     };
@@ -611,7 +617,9 @@ describe("onboard token binding at genesis", () => {
           Authorization: `Bearer ${minted.token}`,
           "Content-Type": "application/cbor",
         },
-        body: encodeCborDeterministic(validGenesisV2Es256CborMap()) as Uint8Array,
+        body: encodeCborDeterministic(
+          validGenesisV2Es256CborMap(),
+        ) as Uint8Array,
       }),
       e,
       testCtx,

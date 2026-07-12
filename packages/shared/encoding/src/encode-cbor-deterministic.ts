@@ -159,7 +159,11 @@ function encodeMap(
   depth: number,
 ): Uint8Array {
   const encoded = Array.from(entries).map(([k, v]) => {
-    if (typeof k !== "number" && typeof k !== "bigint" && typeof k !== "string") {
+    if (
+      typeof k !== "number" &&
+      typeof k !== "bigint" &&
+      typeof k !== "string"
+    ) {
       throw new Error(
         `encodeCborDeterministic: unsupported map key type ${typeof k}`,
       );
