@@ -45,6 +45,14 @@ export {
 
 export { parseV2StorageObjectPath } from "./massifs/v2storagepaths.js";
 
+// Massif blob node access for MMR proof building (plan-2607-15 §4)
+export { openMassifNodeStore } from "./massifs/nodestore.js";
+export type { MassifNodeStore } from "./massifs/nodestore.js";
+
+// Content-hash leaf lookup over the massif index region (FOR-373)
+export { openMassifLeafIndex, MissingIndexError } from "./massifs/leafindex.js";
+export type { MassifLeafIndex } from "./massifs/leafindex.js";
+
 // Export mmr module
 export { mmrIndex, massifFirstLeaf, leafMinusSpurSum } from "./mmr/index.js";
 export {
@@ -66,3 +74,16 @@ export {
 export { createSyncHasher } from "./mmr/algorithms-sync.js";
 export type { Proof, Peak } from "./mmr/types.js";
 export type { Hasher } from "./mmr/types.js";
+
+// MMR proof building (pure; store-agnostic) — plan-2607-15 §4 (go: mmr/proof.go, peaks.go)
+export {
+  inclusionProof,
+  peakMMRIndexes,
+  peaksBitmap,
+  peakIndexForLeafProof,
+  indexHeight,
+  firstMMRSize,
+  massifIndexFromMMRIndex,
+  peakStackMap,
+} from "./mmr/proof.js";
+export type { NodeGetter } from "./mmr/proof.js";
