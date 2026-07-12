@@ -29,6 +29,7 @@ import { firstMMRSize, peaksBitmap } from "../mmr/proof.js";
 import { mmrIndex as mmrIndexFromLeafIndex } from "../mmr/index.js";
 
 const HASH_BYTES = Urkle.LeafValueBytes; // 32
+const KEY_BYTES = Urkle.LeafKeyBytes; // 8 (idtimestamp, big-endian)
 const VALUE_OFFSET = Urkle.LeafValueOffset; // 8 (after the 8-byte key)
 const RECORD_BYTES = Urkle.LeafRecordBytes; // 128
 
@@ -44,6 +45,16 @@ export class MissingIndexError extends Error {
   }
 }
 
+/**
+ * A located leaf: its MMR index plus the 8-byte idtimestamp (big-endian) the
+ * urkle leaf record is keyed by. Together these are the two halves of the
+ * permanent entry id (`idtimestamp_be8 || mmrIndex_be8`).
+ */
+export interface LocatedLeaf {
+  mmrIndex: bigint;
+  idtimestampBe8: Uint8Array;
+}
+
 /** Content-hash leaf lookup over one massif blob (FOR-373). */
 export interface MassifLeafIndex {
   /**
@@ -52,6 +63,12 @@ export interface MassifLeafIndex {
    * bytes.
    */
   findByContentHash(h: Uint8Array): bigint | null;
+  /**
+   * Like {@link findByContentHash} but also recovers the leaf's idtimestamp
+   * (the 8-byte urkle leaf key), so a caller can reconstruct the full entry id
+   * offline. Returns `null` when the hash is not present. `h` must be 32 bytes.
+   */
+  findLeafByContentHash(h: Uint8Array): LocatedLeaf | null;
   /** Number of populated leaves in this blob. */
   leafCount: number;
 }
@@ -123,7 +140,8 @@ export function openMassifLeafIndex(massifBytes: Uint8Array): MassifLeafIndex {
     populated = ordinal + 1;
   }
 
-  const findByContentHash = (h: Uint8Array): bigint | null => {
+  /** Ordinal of the populated leaf whose value column equals `h`, or -1. */
+  const ordinalForContentHash = (h: Uint8Array): number => {
     if (h.length !== HASH_BYTES) {
       throw new Error(
         `content hash must be ${HASH_BYTES} bytes, got ${h.length}`,
@@ -133,12 +151,28 @@ export function openMassifLeafIndex(massifBytes: Uint8Array): MassifLeafIndex {
       const recordOff = leafTableStart + ordinal * RECORD_BYTES;
       const valueOff = recordOff + VALUE_OFFSET;
       if (valueOff + HASH_BYTES > massifBytes.byteLength) break;
-      if (equals32(massifBytes, valueOff, h)) {
-        return mmrIndexFromLeafIndex(firstLeafIndex + BigInt(ordinal));
-      }
+      if (equals32(massifBytes, valueOff, h)) return ordinal;
     }
-    return null;
+    return -1;
   };
 
-  return { findByContentHash, leafCount: populated };
+  const findByContentHash = (h: Uint8Array): bigint | null => {
+    const ordinal = ordinalForContentHash(h);
+    if (ordinal < 0) return null;
+    return mmrIndexFromLeafIndex(firstLeafIndex + BigInt(ordinal));
+  };
+
+  const findLeafByContentHash = (h: Uint8Array): LocatedLeaf | null => {
+    const ordinal = ordinalForContentHash(h);
+    if (ordinal < 0) return null;
+    // The leaf record is `[key(8) || value(32) || …]`; the key IS the
+    // big-endian idtimestamp the sealer assigned (go-merklelog urkle leafrecord).
+    const keyOff = leafTableStart + ordinal * RECORD_BYTES;
+    return {
+      mmrIndex: mmrIndexFromLeafIndex(firstLeafIndex + BigInt(ordinal)),
+      idtimestampBe8: massifBytes.slice(keyOff, keyOff + KEY_BYTES),
+    };
+  };
+
+  return { findByContentHash, findLeafByContentHash, leafCount: populated };
 }

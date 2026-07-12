@@ -45,6 +45,34 @@ describe("openMassifLeafIndex.findByContentHash (FOR-373)", () => {
     expect(idx.findByContentHash(v1)).toBe(8n);
   });
 
+  it("findLeafByContentHash recovers the mmr index and idtimestamp key", () => {
+    // buildV2Massif writes the leaf key as BigInt(ordinal + 1), big-endian.
+    const v0 = value(0x11);
+    const v1 = value(0x22);
+    const v2 = value(0x33);
+    const { bytes } = buildV2Massif({
+      massifHeight: 3,
+      massifIndex: 0,
+      logHashes: [value(0xa0), value(0xa1), value(0xa2), value(0xa3)],
+      leafValues: [v0, v1, v2],
+    });
+    const idx = openMassifLeafIndex(bytes);
+    const be8 = (n: number): Uint8Array => {
+      const out = new Uint8Array(8);
+      new DataView(out.buffer).setBigUint64(0, BigInt(n), false);
+      return out;
+    };
+    expect(idx.findLeafByContentHash(v0)).toEqual({
+      mmrIndex: 0n,
+      idtimestampBe8: be8(1),
+    });
+    expect(idx.findLeafByContentHash(v2)).toEqual({
+      mmrIndex: 3n,
+      idtimestampBe8: be8(3),
+    });
+    expect(idx.findLeafByContentHash(value(0x99))).toBeNull();
+  });
+
   it("returns null for a hash that is absent (searched, not found)", () => {
     const { bytes } = buildV2Massif({
       massifHeight: 3,

@@ -51,7 +51,7 @@ export type { MassifNodeStore } from "./massifs/nodestore.js";
 
 // Content-hash leaf lookup over the massif index region (FOR-373)
 export { openMassifLeafIndex, MissingIndexError } from "./massifs/leafindex.js";
-export type { MassifLeafIndex } from "./massifs/leafindex.js";
+export type { MassifLeafIndex, LocatedLeaf } from "./massifs/leafindex.js";
 
 // Export mmr module
 export { mmrIndex, massifFirstLeaf, leafMinusSpurSum } from "./mmr/index.js";
