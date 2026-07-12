@@ -15,7 +15,8 @@
  * - Attach the inclusion proof to the appropriate peak receipt at header label 396.
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import { decode as decodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@canopy/encoding";
 
 import { CBOR_CONTENT_TYPES } from "../cbor-api/cbor-content-types.js";
 import { cborResponse } from "../cbor-api/cbor-response.js";
@@ -855,7 +856,12 @@ export async function buildReceiptForEntry(
       null,
       receiptSign1[3],
     ];
-    return encodeCbor(assembled) as Uint8Array;
+    // Strict, tag-free, RFC 8949 §4.2 canonical CBOR: cbor-x's default encode
+    // tags the unprotected Map (tag 259) and — under node/bun — every bstr
+    // (tag 64), which strict SCITT/COSE receipt decoders reject. The
+    // unprotected header is not signature-covered, so canonical re-encoding is
+    // safe (status-2607-03-remove-cbor-x-for-scitt-cose-canonicity).
+    return encodeCborDeterministic(assembled);
   } catch {
     return null;
   }
