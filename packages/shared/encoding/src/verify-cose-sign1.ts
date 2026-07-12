@@ -4,7 +4,10 @@
  * canopy-api/arbor paths (Keccak + ecrecover / ERC-1271), not this module.
  */
 
-import { decode as decodeCbor } from "cbor-x";
+import {
+  decodeCborDeterministic,
+  decodeCborUnwrapCose,
+} from "./decode-cbor-deterministic.js";
 import { encodeSigStructure } from "./encode-sig-structure.js";
 
 /** COSE algorithm identifiers (RFC 9053). */
@@ -85,7 +88,7 @@ export function extractAlgFromProtected(
 ): number | null {
   if (protectedBstr.length === 0) return null;
   try {
-    const map = decodeCbor(protectedBstr) as unknown;
+    const map = decodeCborDeterministic(protectedBstr) as unknown;
     if (map instanceof Map) {
       const alg = map.get(1);
       if (typeof alg === "number") return alg;
@@ -314,7 +317,7 @@ export function decodeCoseSign1(
 ): DecodedCoseSign1 | null {
   let arr: unknown[];
   try {
-    arr = decodeCbor(coseSign1Bytes) as unknown[];
+    arr = decodeCborUnwrapCose(coseSign1Bytes) as unknown[];
   } catch {
     return null;
   }

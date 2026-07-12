@@ -4,7 +4,7 @@
  * Used by Custodian-style Sign1 (digest payload, map unprotected) and merge helpers.
  */
 
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "./encode-cbor-deterministic.js";
 
 /**
  * Serialize a COSE Sign1 four-tuple via cbor-x.
@@ -22,5 +22,5 @@ export function encodeCoseSign1Raw(
   signature: Uint8Array,
 ): Uint8Array {
   const tuple = [protectedBstr, unprotected, payloadBstr, signature];
-  return new Uint8Array(encodeCbor(tuple));
+  return encodeCborDeterministic(tuple);
 }

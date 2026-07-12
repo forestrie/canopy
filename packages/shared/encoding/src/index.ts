@@ -10,6 +10,12 @@
  */
 
 export { encodeCborBstr } from "./encode-cbor-bstr.js";
+export { encodeCborDeterministic } from "./encode-cbor-deterministic.js";
+export {
+  CborTag,
+  decodeCborDeterministic,
+  decodeCborUnwrapCose,
+} from "./decode-cbor-deterministic.js";
 export { encodeSigStructure } from "./encode-sig-structure.js";
 export {
   encodeGrantRequest,

@@ -1,10 +1,10 @@
+import { encodeCborDeterministic } from "./encode-cbor-deterministic.js";
 /**
  * Concise Problem Details (RFC 9290) — types and shared encoder.
  * Canopy SCRAPI error responses use `application/problem+cbor`; call sites may
  * wrap this encoder or reuse {@link ProblemDetail} for consistent fields.
  */
 
-import { encode } from "cbor-x";
 
 /** Generic problem detail shape (string keys for application/problem+cbor). */
 export interface ProblemDetail {
@@ -43,6 +43,6 @@ export function encodeProblemDetailsCbor(problem: ProblemDetail): Uint8Array {
       continue;
     body[k] = v;
   }
-  const encoded = encode(body);
+  const encoded = encodeCborDeterministic(body);
   return encoded instanceof Uint8Array ? encoded : new Uint8Array(encoded);
 }

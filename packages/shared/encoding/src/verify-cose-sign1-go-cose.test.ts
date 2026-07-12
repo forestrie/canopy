@@ -1,8 +1,8 @@
 /** Golden-vector tests: {@link verifyCoseSign1} against go-cose Sign1 fixtures. */
 import { readFileSync } from "node:fs";
+import { encodeCborDeterministic } from "./encode-cbor-deterministic.js";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { encode } from "cbor-x";
 import { describe, expect, it } from "vitest";
 import { hexToBytes } from "./hex-test.js";
 import { verifyCoseSign1 } from "./verify-cose-sign1.js";
@@ -54,7 +54,7 @@ describe("verifyCoseSign1 + go-cose Sig_structure bytes", () => {
     expect(sig64.byteLength).toBe(64);
 
     const sign1Bytes = new Uint8Array(
-      encode([protectedInner, new Map<number, Uint8Array>(), payload, sig64]),
+      encodeCborDeterministic([protectedInner, new Map<number, Uint8Array>(), payload, sig64]),
     );
 
     await expect(verifyCoseSign1(sign1Bytes, pair.publicKey)).resolves.toBe(
@@ -70,7 +70,7 @@ describe("verifyCoseSign1 + go-cose Sig_structure bytes", () => {
     )) as CryptoKeyPair;
 
     const protectedInner = new Uint8Array(
-      encode(new Map<number, number>([[1, -7]])),
+      encodeCborDeterministic(new Map<number, number>([[1, -7]])),
     );
     const { encodeSigStructure } = await import("./encode-sig-structure.js");
     const sigStructure = encodeSigStructure(
@@ -91,7 +91,7 @@ describe("verifyCoseSign1 + go-cose Sig_structure bytes", () => {
     expect(sig64.byteLength).toBe(64);
 
     const sign1Bytes = new Uint8Array(
-      encode([protectedInner, new Map<number, unknown>(), null, sig64]),
+      encodeCborDeterministic([protectedInner, new Map<number, unknown>(), null, sig64]),
     );
 
     await expect(verifyCoseSign1(sign1Bytes, pair.publicKey)).resolves.toBe(
