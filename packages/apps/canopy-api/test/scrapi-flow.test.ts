@@ -430,7 +430,10 @@ describe("SCRAPI flow", () => {
     expect(inclusionProofs).toHaveLength(1);
 
     const p0 = inclusionProofs[0];
-    expect(headerGet(p0, 1)).toBe(0n);
+    // mmrIndex 0 now encodes as the RFC 8949 §4.2 shortest form (0x00), which
+    // decodes to number 0 — cbor-x previously emitted a non-canonical 8-byte
+    // bignum (1b00..00) that round-tripped to 0n. parse-receipt coerces both.
+    expect(Number(headerGet(p0, 1))).toBe(0);
 
     const path = headerGet(p0, 2);
     expect(Array.isArray(path)).toBe(true);

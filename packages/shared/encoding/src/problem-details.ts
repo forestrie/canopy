@@ -4,7 +4,7 @@
  * wrap this encoder or reuse {@link ProblemDetail} for consistent fields.
  */
 
-import { encode } from "cbor-x";
+import { encodeCborDeterministic } from "./encode-cbor-deterministic.js";
 
 /** Generic problem detail shape (string keys for application/problem+cbor). */
 export interface ProblemDetail {
@@ -43,6 +43,5 @@ export function encodeProblemDetailsCbor(problem: ProblemDetail): Uint8Array {
       continue;
     body[k] = v;
   }
-  const encoded = encode(body);
-  return encoded instanceof Uint8Array ? encoded : new Uint8Array(encoded);
+  return encodeCborDeterministic(body);
 }

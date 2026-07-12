@@ -19,7 +19,7 @@
  * authority resolver.
  */
 
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import type {
   CreationGrantValidator,
   UnivocityGrantClient,
@@ -67,10 +67,10 @@ export async function postCreationGrantToUnivocity(
   rootLogId: Uint8Array,
   statementBytes: Uint8Array,
 ): Promise<UnivocityGrantResult> {
-  const body = encodeCbor({
+  const body = encodeCborDeterministic({
     rootLogId,
     statement: statementBytes,
-  }) as Uint8Array;
+  });
 
   let res: Response;
   try {

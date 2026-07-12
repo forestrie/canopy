@@ -1,13 +1,11 @@
-import { decode, Encoder } from "cbor-x";
-import { encodeSigStructure } from "@forestrie/encoding";
-
-const cborEncoder = new Encoder({ mapsAsObjects: false });
+import { decode } from "cbor-x";
+import {
+  encodeCborDeterministic,
+  encodeSigStructure,
+} from "@forestrie/encoding";
 
 function cborBytes(value: unknown): Uint8Array {
-  const encoded = cborEncoder.encode(value);
-  return encoded instanceof Uint8Array
-    ? encoded
-    : new Uint8Array(encoded as ArrayLike<number>);
+  return encodeCborDeterministic(value);
 }
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {

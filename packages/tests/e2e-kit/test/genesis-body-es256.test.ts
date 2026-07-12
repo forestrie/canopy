@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decode as decodeCbor } from "cbor-x";
+import { Decoder } from "cbor-x";
 import { genesisBodyEs256 } from "../src/genesis-body-es256.js";
 import {
   FOREST_GENESIS_LABEL_BOOTSTRAP_KEY,
@@ -17,7 +17,14 @@ describe("genesisBodyEs256", () => {
     const univocityAddr = new Uint8Array(20).fill(0xab);
     const chainId = "84532";
     const body = genesisBodyEs256(bootstrapKey, univocityAddr, chainId);
-    const map = decodeCbor(body) as Map<number, unknown>;
+    // genesisBodyEs256 now emits strict RFC 8949 §4.2 bytes (tag-free map),
+    // so cbor-x's default decode returns a plain object; decode with
+    // mapsAsObjects:false to recover the integer-keyed Map for these
+    // negative-integer genesis labels.
+    const map = new Decoder({ mapsAsObjects: false }).decode(body) as Map<
+      number,
+      unknown
+    >;
     expect(map.get(FOREST_GENESIS_LABEL_GENESIS_VERSION)).toBe(
       FOREST_GENESIS_SCHEMA_V2,
     );

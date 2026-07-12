@@ -12,7 +12,10 @@ afterEach(() => {
 
 describe("patchGrantIdtimestamp", () => {
   it("PATCHes univocity with 8-byte big-endian idtimestamp and returns ok on 204", async () => {
-    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    const fetchMock = vi.fn(
+      async (_url: string | URL, _init?: RequestInit) =>
+        new Response(null, { status: 204 }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await patchGrantIdtimestamp({

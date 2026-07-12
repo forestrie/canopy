@@ -7,7 +7,8 @@
  * response encoding only.
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import { decode as decodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import type { Grant } from "./grant.js";
 import { grantDataToBytes } from "./grant-data.js";
 import { fromPaddedWire32, toPaddedWire32 } from "./uuid-bytes.js";
@@ -140,7 +141,7 @@ export function encodeGrantPayload(grant: Grant): Uint8Array {
     [CBOR_KEY_MIN_GROWTH, grant.minGrowth ?? 0],
     [CBOR_KEY_GRANT_DATA, grantData],
   ]);
-  return new Uint8Array(encodeCbor(map));
+  return encodeCborDeterministic(map);
 }
 
 /** Decode grant payload (CBOR map keys 1–6 only). */

@@ -3,7 +3,7 @@
  * Layout mirrors scrapi-flow.test.ts / resolve-receipt.ts (massif height 3).
  */
 
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import { DELEGATION_CERT_LABEL } from "../../src/grant/delegation-verify.js";
 
 export const SEAL_PEAK_RECEIPTS_LABEL = -65931;
@@ -159,10 +159,7 @@ export async function putMmrsFixture(
 }
 
 function cborBytes(value: unknown): Uint8Array {
-  const encoded = encodeCbor(value);
-  return encoded instanceof Uint8Array
-    ? encoded
-    : new Uint8Array(encoded as ArrayLike<number>);
+  return encodeCborDeterministic(value);
 }
 
 /** go-merklelog/mmr/peaks.go — matches resolve-receipt peak receipt selection. */

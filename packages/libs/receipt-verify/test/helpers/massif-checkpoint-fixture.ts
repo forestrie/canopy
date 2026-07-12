@@ -5,7 +5,7 @@
  */
 
 import { encodeSigStructure } from "@forestrie/encoding";
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 
 export const SEAL_PEAK_RECEIPTS_LABEL = -65931;
 
@@ -21,7 +21,7 @@ const URKLE_LEAF_RECORD_BYTES = 128;
 const URKLE_NODE_RECORD_BYTES = 64;
 
 function cborBytes(value: unknown): Uint8Array {
-  const encoded = encodeCbor(value);
+  const encoded = encodeCborDeterministic(value);
   return encoded instanceof Uint8Array
     ? encoded
     : new Uint8Array(encoded as ArrayLike<number>);

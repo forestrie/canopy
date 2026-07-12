@@ -1,4 +1,4 @@
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 
 import { CBOR_MIME } from "./cbor-const.js";
 import { convertHeaders } from "./cbor-request.js";
@@ -8,7 +8,7 @@ export function cborResponse(
   status = 200,
   contentTypeOrHeaders?: string | HeadersInit,
 ): Response {
-  const encoded = encodeCbor(data) as Uint8Array;
+  const encoded = encodeCborDeterministic(data);
 
   // Determine headers
   let headers: Record<string, string>;

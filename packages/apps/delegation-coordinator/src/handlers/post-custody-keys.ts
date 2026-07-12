@@ -6,7 +6,8 @@
  * POST /api/keys with CUSTODIAN_APP_TOKEN.
  */
 
-import { decode, encode as encodeCbor } from "cbor-x";
+import { decode } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import type { Env } from "../env.js";
 import { requireOperatorTokenOrResponse } from "../auth/authorize.js";
 import type { CustodyKeysRequest } from "../types/custody-keys-request.js";
@@ -55,7 +56,7 @@ async function postCustodyKeys(
     labels: body.labels ?? {},
   };
 
-  const encoded = encodeCbor(cborBody);
+  const encoded = encodeCborDeterministic(cborBody);
   const u8 =
     encoded instanceof Uint8Array
       ? encoded

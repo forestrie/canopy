@@ -6,7 +6,7 @@
  * {@link postCustodianApiKeysListAll}).
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import {
   custodianBodyPreview,
   custodianDecodeCbor,
@@ -118,11 +118,7 @@ export async function postCustodianApiKeysList(opts: {
   const base = custodianApiV1BaseUrl(opts.baseUrl);
   const body: Record<string, unknown> = { labels: opts.labels };
   if (opts.predicate) body.predicate = opts.predicate;
-  const encoded = encodeCbor(body);
-  const u8 =
-    encoded instanceof Uint8Array
-      ? encoded
-      : new Uint8Array(encoded as ArrayLike<number>);
+  const u8 = encodeCborDeterministic(body);
   const bodyBuf = u8.buffer.slice(
     u8.byteOffset,
     u8.byteOffset + u8.byteLength,
