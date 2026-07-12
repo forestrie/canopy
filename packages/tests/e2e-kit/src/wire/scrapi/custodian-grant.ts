@@ -6,7 +6,7 @@
  */
 
 import { decode as decodeCbor } from "cbor-x";
-import { encodeCborDeterministic } from "../../encoding/encode-cbor-deterministic.js";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import {
   algToCurve,
   COSE_ALG_ES256,
