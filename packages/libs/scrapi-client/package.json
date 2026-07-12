@@ -1,6 +1,6 @@
 {
   "name": "@forestrie/scrapi-client",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "license": "MIT",
   "type": "module",
   "description": "Fetch-injectable SCRAPI registration client for Forestrie transparency logs",
