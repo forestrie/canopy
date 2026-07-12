@@ -3,8 +3,10 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { decode as decodeCbor } from "cbor-x";
-import { encodeCborDeterministic } from "@forestrie/encoding";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import { encodeGrantPayload } from "@forestrie/grant-builder";
 import type { Grant } from "@forestrie/grant-builder";
 import {
@@ -88,7 +90,11 @@ export async function postCustodianEnsureEs256Key(opts: {
     protectionLevel: "SOFTWARE",
     labels,
   };
-  const u8 = encodeCborDeterministic(body);
+  const encoded = encodeCborDeterministic(body);
+  const u8 =
+    encoded instanceof Uint8Array
+      ? encoded
+      : new Uint8Array(encoded as ArrayLike<number>);
   const bodyBuf = u8.buffer.slice(
     u8.byteOffset,
     u8.byteOffset + u8.byteLength,
@@ -107,7 +113,9 @@ export async function postCustodianEnsureEs256Key(opts: {
       `Custodian ensure key: ${res.status} ${(await res.text()).slice(0, 200)}`,
     );
   }
-  const raw = decodeCbor(new Uint8Array(await res.arrayBuffer())) as unknown;
+  const raw = decodeCborDeterministic(
+    new Uint8Array(await res.arrayBuffer()),
+  ) as unknown;
   const fields =
     raw instanceof Map
       ? Object.fromEntries([...raw.entries()].map(([k, v]) => [String(k), v]))

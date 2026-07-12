@@ -6,7 +6,7 @@
  * per [univocity KS256 / ES256 models](https://github.com/forestrie/univocity/blob/main/docs/arc/).
  */
 
-import { decode } from "cbor-x";
+import { decodeCborStruct } from "../../cbor.js";
 import type { Env } from "../../env.js";
 import { getStoreStubForLogId } from "../../handlers/handler.js";
 import { COSE_ALG_KS256 } from "../../types/trust-root-response.js";
@@ -36,9 +36,9 @@ export async function loadRegisteredPublicRoot(
   if (resp.status === 404) return null;
   if (!resp.ok) return null;
 
-  const decoded = decode(
+  const decoded = decodeCborStruct<TrustRootResponseCbor>(
     new Uint8Array(await resp.arrayBuffer()),
-  ) as TrustRootResponseCbor;
+  );
   if (decoded.alg === "ES256" && decoded.x && decoded.y) {
     return { alg: "ES256", x: decoded.x, y: decoded.y };
   }

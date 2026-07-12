@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { decode } from "cbor-x";
+import { decodeCborDeterministic as decode } from "@forestrie/encoding";
 import { expectAPI as expect, test } from "@e2e-fixtures/auth";
 import { bytesEqual } from "@e2e-canopy-api-src/cbor-api/cbor-map-utils.js";
 import {

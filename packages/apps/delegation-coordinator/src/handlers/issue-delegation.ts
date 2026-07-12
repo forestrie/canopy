@@ -7,7 +7,7 @@
  */
 
 import type { Env } from "../env.js";
-import { decode } from "cbor-x";
+import { decodeCborStruct } from "../cbor.js";
 import { checkBearerToken } from "../auth/check-bearer-token.js";
 import { issuerTokenForLog } from "../auth/issuer-token-for-log.js";
 import { logIdWireBytesToHex32 } from "../log-id.js";
@@ -43,7 +43,9 @@ export async function handleIssueDelegation(
     }
 
     const buffer = await request.arrayBuffer();
-    const body = decode(new Uint8Array(buffer)) as DelegationIssueRequest;
+    const body = decodeCborStruct<DelegationIssueRequest>(
+      new Uint8Array(buffer),
+    );
 
     if (!body.logId || !(body.logId instanceof Uint8Array)) {
       return problemResponse(

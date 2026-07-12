@@ -6,7 +6,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic as encodeCbor } from "@forestrie/encoding";
 import { test, expect } from "@playwright/test";
 import {
   assertCoordinatorApiE2eEnv,

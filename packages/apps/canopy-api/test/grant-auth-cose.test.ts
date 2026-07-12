@@ -16,7 +16,10 @@ import {
   signCoseSign1Statement,
   verifyCoseSign1,
 } from "@forestrie/encoding";
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import { describe, expect, it } from "vitest";
 import { encodeCoseSign1WithKid } from "./cose-sign1-k6-encoder";
 
@@ -79,12 +82,19 @@ describe("COSE Sign1 with kid (k6-compatible encode / API decode)", () => {
     expect(getSignerFromCoseSign1(emptyProtected)).toBeNull();
   });
 
-  it("roundtrips when COSE is built with cbor-x (API encoder compatibility)", () => {
+  it("roundtrips when COSE is built with the canonical encoder (API encoder compatibility)", () => {
     const payload = new Uint8Array(64);
-    const protectedMapBytes = encodeCbor({ 4: signer32 });
+    // COSE label 4 (kid) must be an integer map key. A JS object key `4` encodes
+    // as the text string "4" and the canonical decoder returns a Map keyed by "4"
+    // (cbor-x's mapsAsObjects hid this via object numeric-key coercion); build the
+    // protected header from an integer-keyed Map so getSignerFromCoseSign1's
+    // `.get(4)` resolves.
+    const protectedMapBytes = encodeCborDeterministic(
+      new Map<number, unknown>([[4, signer32]]),
+    );
     const unprotected = {};
     const signature = new Uint8Array(64);
-    const coseSign1 = encodeCbor([
+    const coseSign1 = encodeCborDeterministic([
       protectedMapBytes,
       unprotected,
       payload,
@@ -97,11 +107,11 @@ describe("COSE Sign1 with kid (k6-compatible encode / API decode)", () => {
   });
 });
 
-describe("COSE Sign1 encoding: k6 vs cbor-x byte layout", () => {
+describe("COSE Sign1 encoding: k6 vs canonical-encoder byte layout", () => {
   const signer32 = new Uint8Array(32);
   for (let i = 0; i < 32; i++) signer32[i] = i + 1;
 
-  it("inspect k6-encoder protected header bytes vs cbor-x", () => {
+  it("inspect k6-encoder protected header bytes vs canonical encoder", () => {
     const payload = new Uint8Array(0);
     const k6Cose = encodeCoseSign1WithKid(payload, signer32);
     expect(k6Cose.length).toBeGreaterThan(0);
@@ -112,7 +122,7 @@ describe("COSE Sign1 encoding: k6 vs cbor-x byte layout", () => {
       k6ProtectedStart,
       k6ProtectedStart + k6ProtectedLen,
     );
-    const decodedK6Protected = decodeCbor(k6Protected);
+    const decodedK6Protected = decodeCborDeterministic(k6Protected);
     expect(decodedK6Protected).toBeDefined();
     const kidFromK6 =
       decodedK6Protected instanceof Map
@@ -130,7 +140,7 @@ describe("COSE Sign1 encoding: k6 vs cbor-x byte layout", () => {
   it("getSignerFromCoseSign1: first element type when decoding k6 COSE", () => {
     const payload = new Uint8Array(0);
     const k6Cose = encodeCoseSign1WithKid(payload, signer32);
-    const arr = decodeCbor(k6Cose) as unknown[];
+    const arr = decodeCborDeterministic(k6Cose) as unknown[];
     expect(Array.isArray(arr) && arr.length >= 4).toBe(true);
     const first = arr[0];
     expect(first).toBeDefined();

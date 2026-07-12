@@ -118,7 +118,11 @@ export async function postCustodianApiKeysList(opts: {
   const base = custodianApiV1BaseUrl(opts.baseUrl);
   const body: Record<string, unknown> = { labels: opts.labels };
   if (opts.predicate) body.predicate = opts.predicate;
-  const u8 = encodeCborDeterministic(body);
+  const encoded = encodeCborDeterministic(body);
+  const u8 =
+    encoded instanceof Uint8Array
+      ? encoded
+      : new Uint8Array(encoded as ArrayLike<number>);
   const bodyBuf = u8.buffer.slice(
     u8.byteOffset,
     u8.byteOffset + u8.byteLength,

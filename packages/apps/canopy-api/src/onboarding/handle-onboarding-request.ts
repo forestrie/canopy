@@ -2,7 +2,7 @@
  * `/api/onboarding/**` — self-service onboard request + ops admin JSON.
  */
 
-import { decode as decodeCbor } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import {
   adminJsonResponse,
   asAdminJsonResponse,
@@ -198,7 +198,7 @@ async function handleCreateRequest(
     const sizeErr = checkOnboardCreateBodySize(request, bodyBytes.length);
     if (sizeErr) return attachCors(sizeErr, corsHeaders);
 
-    const raw = decodeCbor(bodyBytes);
+    const raw = decodeCborDeterministic(bodyBytes);
     const m = decodeBodyAsIntKeyMap(raw);
     if (m) {
       label = readString(m, CBOR_LABEL);

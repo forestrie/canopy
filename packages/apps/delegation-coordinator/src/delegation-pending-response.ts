@@ -7,7 +7,7 @@
  * polling backoff.
  */
 
-import { encodeCborDeterministic } from "@forestrie/encoding";
+import { encodeCbor } from "./cbor.js";
 
 /** Retry-After seconds on 202 pending responses. */
 export const DELEGATION_PENDING_RETRY_AFTER_SECONDS = 5;
@@ -22,15 +22,12 @@ export const DELEGATION_PENDING_DETAIL =
  * @param status - 202 Accepted or 503 Service Unavailable.
  */
 export function delegationPendingCborProblem(status: 202 | 503): Uint8Array {
-  const problem = encodeCborDeterministic({
+  return encodeCbor({
     type: "about:blank",
     title: status === 202 ? "Accepted" : "Service Unavailable",
     status,
     detail: DELEGATION_PENDING_DETAIL,
   });
-  return problem instanceof Uint8Array
-    ? problem
-    : new Uint8Array(problem as ArrayLike<number>);
 }
 
 /**

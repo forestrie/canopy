@@ -5,8 +5,10 @@
  * See: arbor/docs/adr-0005-cf-do-ingress-pull-encoding.md
  */
 
-import { decode } from "cbor-x";
-import { encodeCborDeterministic } from "@forestrie/encoding";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import type {
   PullResponse,
   LogGroup,
@@ -39,7 +41,7 @@ export function encodePullResponse(response: PullResponse): ArrayBuffer {
     BigInt(response.leaseExpiry),
     logGroups,
   ]);
-  // Convert to ArrayBuffer (cbor-x returns Uint8Array)
+  // Copy into a standalone ArrayBuffer (decoder returns a Uint8Array view)
   return new Uint8Array(encoded).buffer;
 }
 
@@ -48,7 +50,7 @@ export function encodePullResponse(response: PullResponse): ArrayBuffer {
  * Used primarily for testing round-trip encoding.
  */
 export function decodePullResponse(data: ArrayBuffer): PullResponse {
-  const decoded = decode(new Uint8Array(data)) as [
+  const decoded = decodeCborDeterministic(new Uint8Array(data)) as [
     number | bigint,
     number | bigint,
     [
@@ -99,5 +101,11 @@ export function encodeAckResponse(acked: number): ArrayBuffer {
  * Decode a CBOR-encoded ack response.
  */
 export function decodeAckResponse(data: ArrayBuffer): { acked: number } {
-  return decode(new Uint8Array(data)) as { acked: number };
+  // Maps always decode to a JS Map; read the field by key.
+  const decoded = decodeCborDeterministic(new Uint8Array(data));
+  const acked =
+    decoded instanceof Map
+      ? decoded.get("acked")
+      : (decoded as { acked: unknown }).acked;
+  return { acked: Number(acked) };
 }

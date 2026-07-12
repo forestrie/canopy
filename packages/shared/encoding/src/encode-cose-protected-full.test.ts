@@ -3,8 +3,8 @@
  * interpretable labels signed, canonical ordering, and byte-level backwards
  * compatibility with the historical kid-only shape.
  */
-import { decode as decodeCbor } from "cbor-x";
 import { describe, expect, it } from "vitest";
+import { decodeCborDeterministic } from "./decode-cbor-deterministic.js";
 import {
   COSE_ALG,
   COSE_CTY,
@@ -46,7 +46,7 @@ describe("encodeCoseProtectedMapBytes with alg/cty", () => {
     expect(got[2]).toBe(0x26); // -7
     expect(got[3]).toBe(0x03);
     expect(got[4]).toBe(0x70); // tstr(16)
-    const decoded = decodeCbor(got) as
+    const decoded = decodeCborDeterministic(got) as
       | Map<number, unknown>
       | Record<number, unknown>;
     const get = (k: number) =>
@@ -61,7 +61,7 @@ describe("encodeCoseProtectedMapBytes with alg/cty", () => {
 
   it("supports uint cty (CoAP content-format)", () => {
     const got = encodeCoseProtectedMapBytes(testKid(), { alg: -7, cty: 60 });
-    const decoded = decodeCbor(got) as Map<number, unknown>;
+    const decoded = decodeCborDeterministic(got) as Map<number, unknown>;
     const cty =
       decoded instanceof Map
         ? decoded.get(COSE_CTY)
@@ -96,7 +96,7 @@ describe("signCoseSign1Statement with protected alg/cty", () => {
 
     const decoded = decodeCoseSign1(cose);
     expect(decoded).not.toBeNull();
-    const protectedMap = decodeCbor(decoded!.protectedBstr) as
+    const protectedMap = decodeCborDeterministic(decoded!.protectedBstr) as
       | Map<number, unknown>
       | Record<number, unknown>;
     const get = (k: number) =>

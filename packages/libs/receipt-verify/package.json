@@ -45,8 +45,7 @@
   "dependencies": {
     "@forestrie/encoding": "workspace:*",
     "@forestrie/merklelog": "workspace:*",
-    "@noble/hashes": "^1.7.1",
-    "cbor-x": "^1.5.9"
+    "@noble/hashes": "^1.7.1"
   },
   "devDependencies": {
     "esbuild": "^0.24.0",

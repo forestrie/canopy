@@ -3,7 +3,10 @@
  * Enable with CUSTODIAN_URL + CUSTODIAN_APP_TOKEN (or CUSTODIAN_INTEGRATION_*). Skips when unset (CI).
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import { env as cloudflareTestEnv } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { encodeGrantPayload } from "../src/grant/codec.js";
@@ -49,7 +52,7 @@ async function postCustodianCreateEs256Key(opts: {
     selfLogId: opts.selfLogId,
     alg: "ES256",
   };
-  const encoded = encodeCbor(body);
+  const encoded = encodeCborDeterministic(body);
   const u8 =
     encoded instanceof Uint8Array
       ? encoded
@@ -72,7 +75,9 @@ async function postCustodianCreateEs256Key(opts: {
       `Custodian create key: ${res.status} ${(await res.text()).slice(0, 200)}`,
     );
   }
-  const raw = decodeCbor(new Uint8Array(await res.arrayBuffer())) as unknown;
+  const raw = decodeCborDeterministic(
+    new Uint8Array(await res.arrayBuffer()),
+  ) as unknown;
   const fields =
     raw instanceof Map
       ? Object.fromEntries([...raw.entries()].map(([k, v]) => [String(k), v]))

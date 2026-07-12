@@ -7,7 +7,7 @@
  */
 
 import { sha256 } from "@noble/hashes/sha256";
-import { decode as decodeCbor } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import type { GrantResult } from "./grant-result.js";
 import type { ParsedReceipt } from "./parsed-receipt.js";
 import { decodeGrantPayload } from "./codec.js";
@@ -53,7 +53,7 @@ function toHeaderMap(
  * -65537; receipt from 396 (full receipt COSE Sign1 bytes).
  */
 export function decodeTransparentStatement(bytes: Uint8Array): GrantResult {
-  const raw = decodeCbor(bytes) as unknown;
+  const raw = decodeCborDeterministic(bytes) as unknown;
   const arr = Array.isArray(raw) ? raw : null;
   if (!arr || arr.length !== 4) {
     throw new Error("Transparent statement must be COSE Sign1 (array of 4)");

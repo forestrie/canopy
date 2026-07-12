@@ -3,11 +3,8 @@
  * for tests: Sign1 payload = SHA-256(grant v0 CBOR); unprotected -65538 = grant payload.
  */
 
-import {
-  encodeCborDeterministic,
-  encodeCoseSign1Raw,
-  encodeSigStructure,
-} from "@forestrie/encoding";
+import { encodeCoseSign1Raw, encodeSigStructure } from "@forestrie/encoding";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import { sha256 } from "@noble/hashes/sha256";
 import { encodeGrantPayload } from "../../src/grant/codec.js";
 import type { Grant } from "../../src/grant/types.js";

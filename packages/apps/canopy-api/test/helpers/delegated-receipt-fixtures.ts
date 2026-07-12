@@ -2,18 +2,19 @@
  * Build delegated peak receipts for offline receipt / grantAuthorize tests.
  */
 
-import {
-  encodeCborDeterministic,
-  encodeSigStructure,
-} from "@forestrie/encoding";
+import { encodeSigStructure } from "@forestrie/encoding";
 import { calculateRoot, type Proof } from "@forestrie/merklelog";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import { DELEGATION_CERT_LABEL } from "../../src/grant/delegation-verify.js";
 import { Sha256Hasher } from "./sha256-hasher.js";
 
 const VDS_COSE_RECEIPT_PROOFS_TAG = 396;
 
 function cborBytes(value: unknown): Uint8Array {
-  return encodeCborDeterministic(value);
+  const encoded = encodeCborDeterministic(value);
+  return encoded instanceof Uint8Array
+    ? encoded
+    : new Uint8Array(encoded as ArrayLike<number>);
 }
 
 export async function buildDelegationCert(

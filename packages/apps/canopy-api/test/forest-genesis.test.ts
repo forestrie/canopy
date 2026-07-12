@@ -2,14 +2,10 @@
  * Plan 0018 / 0028 / 0032: POST /api/forest/{log-id}/genesis — v2-only writes, v0/v1 read.
  */
 
-import { decode as decodeCbor, encode as encodeCbor, Decoder } from "cbor-x";
-
-// The genesis body is now strict RFC 8949 §4.2 CBOR (a plain map, not a cbor-x
-// tag-259 Map). Decode with mapsAsObjects:false to read integer-keyed maps back
-// as JS Maps for these assertions (production uses decodeBodyAsIntKeyMap).
-const cborMapDecoder = new Decoder({ mapsAsObjects: false });
-const decodeCborMap = (b: Uint8Array) =>
-  cborMapDecoder.decode(b) as Map<number, unknown>;
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import {
@@ -74,7 +70,7 @@ function genesisRequest(
     {
       method: "POST",
       headers,
-      body: encodeCbor(bodyMap) as Uint8Array,
+      body: encodeCborDeterministic(bodyMap),
     },
   );
 }
@@ -85,7 +81,7 @@ describe("parseGenesisCborBytes", () => {
     const wire = logIdToWireBytes(logId);
     const x = new Uint8Array(32).fill(0x11);
     const y = new Uint8Array(32).fill(0x22);
-    const bytes = encodeCbor(
+    const bytes = encodeCborDeterministic(
       new Map<number, unknown>([
         [COSE_KEY_KTY, COSE_KTY_EC2],
         [COSE_EC2_CRV, COSE_CRV_P256],
@@ -111,7 +107,7 @@ describe("parseGenesisCborBytes", () => {
     const x = new Uint8Array(32).fill(0x11);
     const y = new Uint8Array(32).fill(0x22);
     const addr = new Uint8Array(20).fill(0xcc);
-    const bytes = encodeCbor(
+    const bytes = encodeCborDeterministic(
       new Map<number, unknown>([
         [COSE_KEY_KTY, COSE_KTY_EC2],
         [COSE_EC2_CRV, COSE_CRV_P256],
@@ -136,7 +132,7 @@ describe("parseGenesisCborBytes", () => {
     const wire = logIdToWireBytes(logId);
     const addr = new Uint8Array(20).fill(0xab);
     const safe = new Uint8Array(20).fill(0xcd);
-    const bytes = encodeCbor(
+    const bytes = encodeCborDeterministic(
       new Map<number, unknown>([
         [FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V2],
         [FOREST_GENESIS_LABEL_GENESIS_ALG, COSE_ALG_KS256],
@@ -175,7 +171,9 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
     const key = `forests/forest/${storageSeg}/genesis.cbor`;
     const obj = await e.R2_GRANTS.get(key);
     expect(obj).not.toBeNull();
-    const map = decodeCborMap(new Uint8Array(await obj!.arrayBuffer()));
+    const map = decodeCborDeterministic(
+      new Uint8Array(await obj!.arrayBuffer()),
+    ) as Map<number, unknown>;
     expect(map.get(FOREST_GENESIS_LABEL_GENESIS_VERSION)).toBe(2);
     expect(map.get(FOREST_GENESIS_LABEL_GENESIS_ALG)).toBe(COSE_ALG_ES256);
     expect(map.get(FOREST_GENESIS_LABEL_BOOTSTRAP_KEY)).toEqual(bootstrapKey);
@@ -374,7 +372,9 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
     const hit = await worker.fetch(getReq, poolEnv, {} as ExecutionContext);
     expect(hit.status).toBe(200);
     expect(hit.headers.get("Content-Type")).toBe("application/cbor");
-    const roundTrip = decodeCborMap(new Uint8Array(await hit.arrayBuffer()));
+    const roundTrip = decodeCborDeterministic(
+      new Uint8Array(await hit.arrayBuffer()),
+    ) as Map<number, unknown>;
     expect(roundTrip.get(FOREST_GENESIS_LABEL_GENESIS_VERSION)).toBe(2);
     expect(roundTrip.get(FOREST_GENESIS_LABEL_GENESIS_ALG)).toBe(
       COSE_ALG_ES256,

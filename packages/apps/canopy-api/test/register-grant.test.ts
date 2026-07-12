@@ -4,7 +4,8 @@
  */
 
 import { encodeGrantRequest } from "@forestrie/encoding";
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
+import { decodeCborAsObject } from "./helpers/cbor-decode-object.js";
 import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 import worker from "../src/index";
@@ -71,7 +72,7 @@ describe("POST /register/{bootstrap}/grants and POST /register/{bootstrap}/entri
 
     expect(response.status).toBe(503);
     const responseBytes = new Uint8Array(await response.arrayBuffer());
-    const decoded = decodeCbor(responseBytes) as { detail?: string };
+    const decoded = decodeCborAsObject(responseBytes) as { detail?: string };
     expect(decoded.detail).toContain("Grant sequencing not configured");
   });
 
@@ -131,7 +132,7 @@ describe("POST /register/{bootstrap}/grants and POST /register/{bootstrap}/entri
     const request = new Request(`http://localhost/register/${boot}/entries`, {
       method: "POST",
       headers: { "Content-Type": "application/cbor" },
-      body: encodeCbor({ signedStatement: new Uint8Array(100) }),
+      body: encodeCborDeterministic({ signedStatement: new Uint8Array(100) }),
     });
     const response = await worker.fetch(
       request,

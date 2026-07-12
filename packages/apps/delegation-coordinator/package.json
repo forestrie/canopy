@@ -26,7 +26,6 @@
     "@forestrie/encoding": "workspace:*",
     "@cloudflare/vitest-pool-workers": "^0.9.13",
     "@cloudflare/workers-types": "^4.20241218.0",
-    "cbor-x": "^1.5.9",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4",
     "wrangler": "^4.94.0"

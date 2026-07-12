@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "./encode-cbor-deterministic.js";
 import {
   bytesToUuid,
   decodeGrantPayload,
@@ -58,7 +58,9 @@ describe("grant payload codec (keys 1-6)", () => {
 
   it("rejects obsolete wire keys 7 (signer) and 8 (kind)", () => {
     const bytes = new Uint8Array(
-      encodeCbor(new Map<number, unknown>([[7, new Uint8Array(20)]])),
+      encodeCborDeterministic(
+        new Map<number, unknown>([[7, new Uint8Array(20)]]),
+      ),
     );
     expect(() => decodeGrantPayload(bytes)).toThrow(/obsolete CBOR keys/);
   });

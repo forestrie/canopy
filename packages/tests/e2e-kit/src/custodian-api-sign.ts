@@ -14,7 +14,11 @@ export async function postCustodianApiSignPayload(opts: {
 }): Promise<Uint8Array> {
   const base = custodianApiV1BaseUrl(opts.baseUrl);
   const keySeg = encodeURIComponent(opts.keyIdSegment);
-  const u8 = encodeCborDeterministic({ payload: opts.payloadBytes });
+  const cborBody = encodeCborDeterministic({ payload: opts.payloadBytes });
+  const u8 =
+    cborBody instanceof Uint8Array
+      ? cborBody
+      : new Uint8Array(cborBody as ArrayLike<number>);
   const bodyBuf = u8.buffer.slice(
     u8.byteOffset,
     u8.byteOffset + u8.byteLength,

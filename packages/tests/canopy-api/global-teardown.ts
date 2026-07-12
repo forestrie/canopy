@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic as encodeCbor } from "@forestrie/encoding";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const runIdFile = resolve(__dirname, ".e2e-run-id");
@@ -95,7 +95,9 @@ export default async function globalTeardown(): Promise<void> {
       console.warn(`[e2e teardown] list keys HTTP ${res.status}`);
       return;
     }
-    const { decode: decodeCbor } = await import("cbor-x");
+    const { decodeCborDeterministic: decodeCbor } = await import(
+      "@forestrie/encoding"
+    );
     listed = keysFrom(decodeCbor(new Uint8Array(await res.arrayBuffer())));
   } catch (err) {
     console.warn("[e2e teardown] list keys failed:", err);

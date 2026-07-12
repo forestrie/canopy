@@ -4,7 +4,7 @@
  * Used for inclusion verification when chain config is absent or as fallback (prefer chain when both).
  */
 
-import { decode as decodeCbor } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import type { Hex } from "viem";
 import type { CheckpointFromStorage } from "./checkpoint-from-storage-result.js";
 import type {
@@ -58,7 +58,7 @@ function unwrapCoseSign1Tag(value: unknown): unknown {
  * object decodes and carries the proof; the sealed size is tree-size-2.
  */
 function decodeCheckpointPayload(bytes: Uint8Array): unknown {
-  const decoded = decodeCbor(bytes) as unknown;
+  const decoded = decodeCborDeterministic(bytes) as unknown;
   const unwrapped = unwrapCoseSign1Tag(decoded);
   if (!Array.isArray(unwrapped) || unwrapped.length < 4) {
     return null;
@@ -78,7 +78,7 @@ function decodeCheckpointPayload(bytes: Uint8Array): unknown {
   if (!(proofBstr instanceof Uint8Array)) {
     return null;
   }
-  const proof = decodeCbor(proofBstr) as unknown;
+  const proof = decodeCborDeterministic(proofBstr) as unknown;
   if (!Array.isArray(proof) || proof.length < 2) {
     return null;
   }

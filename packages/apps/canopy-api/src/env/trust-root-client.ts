@@ -10,7 +10,7 @@ import {
   fetchCustodianPublicKey,
   importSpkiPemVerifyKeyWithAlg,
 } from "../scrapi/custodian-grant.js";
-import { decode } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import {
   decodeTrustRootCbor,
   type RootVerifyKey,
@@ -74,7 +74,7 @@ function createBearerCborTrustRootClient(config: {
             );
           }
 
-          const decoded = decode(body);
+          const decoded = decodeCborDeterministic(body);
           try {
             return await decodeTrustRootCbor(decoded);
           } catch (e) {

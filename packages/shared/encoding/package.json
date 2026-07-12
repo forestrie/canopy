@@ -1,6 +1,6 @@
 {
   "name": "@forestrie/encoding",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
   "type": "module",
   "description": "Shared CBOR/COSE wire helpers and the Forestrie grant wire types/codecs (ADR-0048)",
@@ -41,12 +41,12 @@
     "prepack": "pnpm run build"
   },
   "dependencies": {
-    "@noble/curves": "^1.8.1",
-    "cbor-x": "^1.5.9"
+    "@noble/curves": "^1.8.1"
   },
   "devDependencies": {
     "cbor": "^10.0.0",
     "typescript": "^5.9.2",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "cbor": "^10.0.0"
   }
 }

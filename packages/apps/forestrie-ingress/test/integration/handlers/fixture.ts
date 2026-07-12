@@ -3,7 +3,7 @@
  */
 
 import { env } from "cloudflare:test";
-import { encodeCborDeterministic } from "@forestrie/encoding";
+import { encodeCborDeterministic as encode } from "@forestrie/encoding";
 import { shardNameForIndex } from "@canopy/forestrie-sharding";
 import type { Env } from "../../../src/env";
 
@@ -71,7 +71,7 @@ export function createCborRequest(
   body: unknown,
   shardIndex: number = DEFAULT_SHARD,
 ): Request {
-  const encoded = encodeCborDeterministic(body);
+  const encoded = encode(body);
   // Add shard parameter if not present
   const url = path.includes("?")
     ? `http://localhost${path}&shard=${shardIndex}`

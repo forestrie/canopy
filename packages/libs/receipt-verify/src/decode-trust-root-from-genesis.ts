@@ -1,4 +1,4 @@
-import { decode as decodeCbor } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import {
   COSE_ALG_ES256,
   COSE_CRV_P256,
@@ -45,7 +45,7 @@ export async function decodeTrustRootFromGenesis(
 ): Promise<RootVerifyKey> {
   let raw: unknown;
   try {
-    raw = decodeCbor(genesisCbor);
+    raw = decodeCborDeterministic(genesisCbor);
   } catch {
     throw new Error("genesis CBOR decode failed");
   }

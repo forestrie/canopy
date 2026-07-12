@@ -1,6 +1,6 @@
 /** RFC 9457 problem details as returned by canopy-api SCRAPI routes (CBOR). */
 
-import { decode as decodeCbor } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 
 export type ProblemDetails = {
   type?: string;
@@ -19,7 +19,14 @@ export function decodeProblemDetailsBytes(
     return undefined;
   }
   try {
-    return decodeCbor(body) as ProblemDetails;
+    const decoded = decodeCborDeterministic(body);
+    // The deterministic decoder returns CBOR maps as JS `Map`; problem details
+    // are a string-keyed map, so flatten it to the plain-object shape callers
+    // read (`problem.detail`, `problem.title`, …).
+    if (!(decoded instanceof Map)) {
+      return undefined;
+    }
+    return Object.fromEntries(decoded) as ProblemDetails;
   } catch {
     return undefined;
   }

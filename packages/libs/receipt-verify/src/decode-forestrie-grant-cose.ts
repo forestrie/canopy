@@ -1,5 +1,5 @@
 import { sha256 } from "@noble/hashes/sha256";
-import { decode as decodeCbor } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import type { Grant } from "@forestrie/encoding";
 import {
   HEADER_FORESTRIE_GRANT_V0,
@@ -42,7 +42,7 @@ export function decodeForestrieGrantCose(bytes: Uint8Array): {
   grant: Grant;
   idtimestampBe8: Uint8Array;
 } {
-  const raw = decodeCbor(bytes) as unknown;
+  const raw = decodeCborDeterministic(bytes);
   const arr = Array.isArray(raw) ? raw : null;
   if (!arr || arr.length !== 4) {
     throw new Error("Forestrie-Grant must be COSE Sign1 (array of 4)");

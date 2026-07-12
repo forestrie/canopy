@@ -8,7 +8,10 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { decode, encode } from "cbor-x";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import { describe, expect, it } from "vitest";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { secp256k1 } from "@noble/curves/secp256k1";
@@ -48,10 +51,33 @@ function rootAddress(privateKeyHex: string): Uint8Array {
 }
 
 function cborBody(value: unknown): Uint8Array {
-  const encoded = encode(value);
-  return encoded instanceof Uint8Array
-    ? encoded
-    : new Uint8Array(encoded as ArrayLike<number>);
+  return encodeCborDeterministic(value);
+}
+
+/**
+ * Decode a CBOR issue response. The deterministic decoder returns maps as JS
+ * `Map`, so lift the string-keyed response (and its nested onchainProof map)
+ * into the plain shape the assertions read.
+ */
+function decodeIssueResponse(bytes: Uint8Array): {
+  certificate?: Uint8Array;
+  onchainProof?: OnchainProofWire;
+} {
+  const m = decodeCborDeterministic(bytes) as Map<string, unknown>;
+  const proofMap = m.get("onchainProof") as Map<string, unknown> | undefined;
+  const onchainProof = proofMap
+    ? {
+        protectedHeader: proofMap.get("protectedHeader") as Uint8Array,
+        delegationKey: proofMap.get("delegationKey") as Uint8Array,
+        mmrStart: proofMap.get("mmrStart") as number | bigint,
+        mmrEnd: proofMap.get("mmrEnd") as number | bigint,
+        signature: proofMap.get("signature") as Uint8Array,
+      }
+    : undefined;
+  return {
+    certificate: m.get("certificate") as Uint8Array | undefined,
+    onchainProof,
+  };
 }
 
 /** Extract deterministic x/y used by {@link testDelegatedCoseKey}. */
@@ -220,10 +246,9 @@ describe("BYOK on-chain delegation proof", () => {
 
     const issueRes = await issueDelegation(sub);
     expect(issueRes.status).toBe(200);
-    const resp = decode(new Uint8Array(await issueRes.arrayBuffer())) as {
-      certificate?: Uint8Array;
-      onchainProof?: OnchainProofWire;
-    };
+    const resp = decodeIssueResponse(
+      new Uint8Array(await issueRes.arrayBuffer()),
+    );
     expect(resp.certificate).toBeInstanceOf(Uint8Array);
     expect(resp.onchainProof).toBeDefined();
     const wire = resp.onchainProof!;
@@ -313,10 +338,9 @@ describe("BYOK on-chain delegation proof", () => {
 
     const issueRes = await issueDelegation(sub);
     expect(issueRes.status).toBe(200);
-    const resp = decode(new Uint8Array(await issueRes.arrayBuffer())) as {
-      certificate?: Uint8Array;
-      onchainProof?: OnchainProofWire;
-    };
+    const resp = decodeIssueResponse(
+      new Uint8Array(await issueRes.arrayBuffer()),
+    );
     expect(resp.certificate).toBeInstanceOf(Uint8Array);
     expect(resp.onchainProof).toBeDefined();
     const wire = resp.onchainProof!;
@@ -392,10 +416,9 @@ describe("BYOK on-chain delegation proof", () => {
 
     const issueRes = await issueDelegation(sub);
     expect(issueRes.status).toBe(200);
-    const resp = decode(new Uint8Array(await issueRes.arrayBuffer())) as {
-      certificate?: Uint8Array;
-      onchainProof?: unknown;
-    };
+    const resp = decodeIssueResponse(
+      new Uint8Array(await issueRes.arrayBuffer()),
+    );
     expect(resp.certificate).toBeInstanceOf(Uint8Array);
     expect(resp.onchainProof).toBeUndefined();
   });
@@ -439,10 +462,9 @@ describe("BYOK on-chain delegation proof", () => {
 
     const issueRes = await issueDelegation(sub);
     expect(issueRes.status).toBe(200);
-    const resp = decode(new Uint8Array(await issueRes.arrayBuffer())) as {
-      certificate?: Uint8Array;
-      onchainProof?: unknown;
-    };
+    const resp = decodeIssueResponse(
+      new Uint8Array(await issueRes.arrayBuffer()),
+    );
     expect(resp.certificate).toBeInstanceOf(Uint8Array);
     expect(resp.onchainProof).toBeUndefined();
   });

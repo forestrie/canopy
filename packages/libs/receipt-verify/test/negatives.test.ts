@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic as encodeCbor } from "@forestrie/encoding";
 import { verifyGrantReceiptOffline } from "../src/verify-grant-receipt-offline.js";
 import {
   buildGrantReceiptFixture,

@@ -3,7 +3,7 @@
  * Used to attach evidence on failure; safe to keep for e2e debugging.
  */
 
-import { decode as decodeCbor } from "cbor-x";
+import { decodeCborDeterministic as decodeCbor } from "@forestrie/encoding";
 import { extractDelegationCertBytes } from "@e2e-canopy-api-src/grant/delegation-verify.js";
 import {
   HEADER_FORESTRIE_GRANT_V0,

@@ -1,5 +1,7 @@
-import { Encoder } from "cbor-x";
-import { encodeSigStructure } from "@forestrie/encoding";
+import {
+  encodeCborDeterministic,
+  encodeSigStructure,
+} from "@forestrie/encoding";
 import { describe, expect, it } from "vitest";
 import {
   ByokMaterialValidationError,
@@ -11,14 +13,8 @@ import {
   testDelegatedCoseKey,
 } from "./byok-material-fixture.js";
 
-const stringKeyEncoder = new Encoder({ mapsAsObjects: true });
-const intKeyEncoder = new Encoder({ mapsAsObjects: false });
-
 function cborBytes(value: unknown): Uint8Array {
-  const encoded = intKeyEncoder.encode(value);
-  return encoded instanceof Uint8Array
-    ? encoded
-    : new Uint8Array(encoded as ArrayLike<number>);
+  return encodeCborDeterministic(value);
 }
 
 describe("validateByokDelegationMaterial", () => {
@@ -44,7 +40,7 @@ describe("validateByokDelegationMaterial", () => {
         [4, kid],
       ]),
     );
-    const payloadBytes = stringKeyEncoder.encode({
+    const payloadBytes = encodeCborDeterministic({
       1: logHex32,
       3: 0,
       4: 7,
@@ -121,7 +117,7 @@ describe("validateByokDelegationMaterial", () => {
         [4, kid],
       ]),
     );
-    const delegatedKeyBytes = intKeyEncoder.encode(
+    const delegatedKeyBytes = encodeCborDeterministic(
       new Map<number, unknown>([
         [1, 2],
         [-1, 1],
@@ -133,7 +129,7 @@ describe("validateByokDelegationMaterial", () => {
       delegatedKeyBytes instanceof Uint8Array
         ? delegatedKeyBytes
         : new Uint8Array(delegatedKeyBytes as ArrayLike<number>);
-    const payloadBytes = intKeyEncoder.encode(
+    const payloadBytes = encodeCborDeterministic(
       new Map<number, unknown>([
         [1, logHex32],
         [3, 0],
@@ -191,7 +187,7 @@ describe("validateByokDelegationMaterial", () => {
   it("accepts valid runner-shaped material", async () => {
     const logHex32 = "1123456789abcdef0123456789abcdef";
     const rootKeyPair = await generateTestRootKeyPair();
-    const delegatedPublicKey = stringKeyEncoder.encode(
+    const delegatedPublicKey = encodeCborDeterministic(
       new Map<number, unknown>([
         [1, 2],
         [-1, 1],

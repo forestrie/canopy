@@ -1,4 +1,4 @@
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic as encodeCbor } from "@forestrie/encoding";
 import { expectAPI as expect, test } from "@e2e-fixtures/auth";
 import { sequencingBackoff } from "@e2e-utils/arithmetic-backoff-poll";
 import {

@@ -2,7 +2,8 @@
  * Registration kill-switch ops API (FOR-91).
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
+import { decodeCborAsObject } from "./helpers/cbor-decode-object.js";
 import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
@@ -52,7 +53,7 @@ async function registerPaymentAuthoritativeForest(): Promise<string> {
         Authorization: `Bearer ${minted.token}`,
         "Content-Type": "application/cbor",
       },
-      body: encodeCbor(validGenesisV2Es256CborMap()) as Uint8Array,
+      body: encodeCborDeterministic(validGenesisV2Es256CborMap()) as Uint8Array,
     }),
     poolEnv,
     {} as ExecutionContext,
@@ -132,14 +133,16 @@ describe("registration enabled kill-switch API", () => {
         {
           method: "PUT",
           headers: opsHeaders(),
-          body: encodeCbor(new Map([[1, false]])) as Uint8Array,
+          body: encodeCborDeterministic(new Map([[1, false]])) as Uint8Array,
         },
       ),
       envWithPayments(),
       {} as ExecutionContext,
     );
     expect(res.status).toBe(200);
-    const body = decodeCbor(new Uint8Array(await res.arrayBuffer())) as {
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as {
       R?: string;
       enabled?: boolean;
     };
@@ -175,7 +178,9 @@ describe("registration enabled kill-switch API", () => {
       {} as ExecutionContext,
     );
     expect(res.status).toBe(200);
-    const body = decodeCbor(new Uint8Array(await res.arrayBuffer())) as {
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as {
       R?: string;
       enabled?: boolean;
     };

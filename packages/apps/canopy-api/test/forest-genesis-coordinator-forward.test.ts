@@ -2,7 +2,8 @@
  * Genesis one-shot coordinator forward (plan-0037 / FOR-100).
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
+import { decodeCborAsObject } from "./helpers/cbor-decode-object.js";
 import { env } from "cloudflare:test";
 import { describe, expect, it, vi } from "vitest";
 import { COSE_ALG_ES256, COSE_ALG_KS256 } from "../src/cose/cose-key.js";
@@ -63,7 +64,7 @@ function genesisRequest(
     {
       method: "POST",
       headers,
-      body: encodeCbor(bodyMap) as Uint8Array,
+      body: encodeCborDeterministic(bodyMap),
     },
   );
 }
@@ -178,7 +179,9 @@ describe("POST genesis coordinator forward", () => {
       {} as ExecutionContext,
     );
     expect(res.status).toBe(201);
-    const body = decodeCbor(new Uint8Array(await res.arrayBuffer())) as {
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as {
       coordinator?: unknown;
     };
     expect(body.coordinator).toBeUndefined();
@@ -256,7 +259,9 @@ describe("POST genesis coordinator forward", () => {
       {} as ExecutionContext,
     );
     expect(res.status).toBe(201);
-    const body = decodeCbor(new Uint8Array(await res.arrayBuffer())) as {
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as {
       coordinator?: { publicRoot: string; webhook: string };
     };
     expect(body.coordinator).toEqual({ publicRoot: "ok", webhook: "ok" });

@@ -1,6 +1,6 @@
 /**
  * CBOR encoder for integer-key maps (Go fxamacker / delegationcert contract).
- * Avoid bare cbor-x `encode()` which can emit string-key maps.
+ * Deterministic RFC 8949 §4.2 encoding via @forestrie/encoding.
  */
 
 import { encodeCborDeterministic } from "@forestrie/encoding";

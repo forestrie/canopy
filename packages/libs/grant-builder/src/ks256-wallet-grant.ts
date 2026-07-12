@@ -5,8 +5,8 @@
  */
 
 import { sha256 } from "@noble/hashes/sha256";
-import { decode } from "cbor-x";
 import {
+  decodeCborDeterministic,
   encodeCoseProtectedMapBytes,
   encodeCoseSign1Statement,
   encodeSigStructure,
@@ -173,7 +173,7 @@ export function verifyKs256GrantStatement(
   if (expectedAddress20.length !== 20) {
     throw new Error("KS256 bootstrap address must be 20 bytes");
   }
-  const sign1 = decode(sign1Bytes) as unknown[];
+  const sign1 = decodeCborDeterministic(sign1Bytes) as unknown[];
   if (!Array.isArray(sign1) || sign1.length !== 4) return false;
   const protectedBytes =
     sign1[0] instanceof Uint8Array ? sign1[0] : new Uint8Array(0);

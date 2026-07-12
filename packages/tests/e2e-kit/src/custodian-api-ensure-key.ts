@@ -48,7 +48,11 @@ export async function postCustodianApiEnsureEs256Key(opts: {
     protectionLevel: opts.body.protectionLevel ?? "SOFTWARE",
     labels,
   };
-  const u8 = encodeCborDeterministic(cborBody);
+  const encoded = encodeCborDeterministic(cborBody);
+  const u8 =
+    encoded instanceof Uint8Array
+      ? encoded
+      : new Uint8Array(encoded as ArrayLike<number>);
   const bodyBuf = u8.buffer.slice(
     u8.byteOffset,
     u8.byteOffset + u8.byteLength,

@@ -1,9 +1,10 @@
+import { encodeCborDeterministic } from "@forestrie/encoding";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 /**
  * Shared grant-completion logic for resolve-receipt-to-grant and generate-grant-pool.
  * Pure helpers; no I/O. Used by perf scripts and unit tests.
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 
 export const HEADER_IDTIMESTAMP = -65537;
 export const HEADER_RECEIPT = 396;
@@ -45,7 +46,7 @@ export function buildCompletedGrant(
   const entryIdHex = extractEntryIdFromReceiptUrl(receiptUrl);
   const idtimestamp = entryIdToIdtimestamp(entryIdHex);
   const grantBytes = decodeBase64ToBytes(originalGrantBase64);
-  const cose = decodeCbor(grantBytes) as unknown[];
+  const cose = decodeCborDeterministic(grantBytes) as unknown[];
   if (!Array.isArray(cose) || cose.length !== 4) {
     throw new Error("Original grant must be COSE Sign1 (array of 4)");
   }
@@ -60,7 +61,7 @@ export function buildCompletedGrant(
     [HEADER_RECEIPT, receiptBytes],
   ]);
   const completed = [protectedHeader, unprotected, payload, signature];
-  const completedBytes = new Uint8Array(encodeCbor(completed));
+  const completedBytes = new Uint8Array(encodeCborDeterministic(completed));
   return btoa(String.fromCharCode(...completedBytes));
 }
 
@@ -69,7 +70,7 @@ export function buildCompletedGrant(
  * matching `statementSignerBindingBytes` (first 32 bytes if grantData is 64-byte ES256 x||y).
  */
 export function signerHexFromGrantPayload(payload: Uint8Array): string {
-  const map = decodeCbor(payload) as
+  const map = decodeCborDeterministic(payload) as
     | Map<number, Uint8Array>
     | Record<number, Uint8Array>;
   const gd = map.get?.(6) ?? (map as Record<number, Uint8Array>)[6];

@@ -1,4 +1,4 @@
-import { decode as decodeCbor } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 
 import { CBOR_MIME } from "./cbor-const.js";
 
@@ -7,7 +7,7 @@ import { CBOR_MIME } from "./cbor-const.js";
  */
 export async function parseCborBody<T = unknown>(request: Request): Promise<T> {
   const arrayBuffer = await request.arrayBuffer();
-  return decodeCbor(new Uint8Array(arrayBuffer)) as T;
+  return decodeCborDeterministic(new Uint8Array(arrayBuffer)) as T;
 }
 
 /**

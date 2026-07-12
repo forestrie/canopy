@@ -3,7 +3,7 @@
  */
 
 import type { APIRequestContext } from "@playwright/test";
-import { decode } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import {
   E2E_POLL_MAX_WAIT_MS,
   sequencingBackoff,
@@ -239,8 +239,8 @@ export async function pollRegistrationThroughModeCWebhook(opts: {
 export function decodeCoordinatorKs256PublicRootKey(
   cborBytes: Uint8Array,
 ): Uint8Array {
-  const raw = decode(cborBytes) as Record<string, unknown>;
-  const key = raw.key;
+  const raw = decodeCborDeterministic(cborBytes);
+  const key = raw instanceof Map ? raw.get("key") : undefined;
   if (!(key instanceof Uint8Array) || key.length !== 20) {
     throw new Error("KS256 public-root response missing 20-byte key");
   }

@@ -159,7 +159,10 @@ export async function putMmrsFixture(
 }
 
 function cborBytes(value: unknown): Uint8Array {
-  return encodeCborDeterministic(value);
+  const encoded = encodeCborDeterministic(value);
+  return encoded instanceof Uint8Array
+    ? encoded
+    : new Uint8Array(encoded as ArrayLike<number>);
 }
 
 /** go-merklelog/mmr/peaks.go — matches resolve-receipt peak receipt selection. */

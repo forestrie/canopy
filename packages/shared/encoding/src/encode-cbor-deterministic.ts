@@ -1,22 +1,26 @@
 /**
- * Minimal deterministic CBOR writer (RFC 8949 §4.2 core deterministic encoding).
+ * General-purpose deterministic CBOR writer (RFC 8949 §4.2 core deterministic).
  *
- * Definite lengths only, shortest-form integer/length arguments, no tags, and
- * map keys sorted by the bytewise lexicographic order of their encoded key
- * bytes (§4.2.1). This replaces `cbor-x`'s `encode` on the COSE wire path:
- * cbor-x tags every `Uint8Array` with tag 64 and every `Map` with tag 259,
- * which strict COSE/SCITT decoders reject (see
- * status-2607-03-remove-cbor-x-for-scitt-cose-canonicity). cbor-x's configured
- * `Encoder` can suppress those tags but does **not** reorder map keys, so it is
- * still not RFC 8949 §4.2 canonical — hence this bespoke writer.
+ * The single canonical encoder for `@forestrie/encoding`: definite lengths,
+ * shortest-form heads, bytewise-sorted map keys, **no tags**. Replaces `cbor-x`
+ * everywhere on the wire — cbor-x tags every `Uint8Array` (tag 64) and `Map`
+ * (tag 259), emits non-shortest lengths and 8-byte bignums, and its output
+ * differs by runtime (Workers vs node). Strict COSE/SCITT decoders and Go
+ * fxamacker reject all of that. Output is byte-identical to Go
+ * `SortCoreDeterministic`. See
+ * status-2607-03-remove-cbor-x-for-scitt-cose-canonicity.
  *
- * Supported value types (sufficient for COSE headers / SCITT receipts, grant /
- * genesis wire bodies, and delegation-cert constraint blobs): unsigned +
- * negative integers (`number` | `bigint`), `boolean`, `null`, byte strings
- * (`Uint8Array` | `ArrayBuffer`), text strings (`string`), arrays, integer/
- * text-keyed maps (`Map`), and plain objects (encoded as canonical text-keyed
- * maps with `undefined` properties skipped, matching Go `map[string]any`).
- * Non-integer numbers and any other type throw rather than emitting
+ * The specialised {@link ./grant-payload-canonical.ts} fast-path emits the same
+ * bytes for grant v0 payloads; this writer is the general form used for
+ * arbitrary COSE headers / receipts / responses.
+ *
+ * Supported value types: unsigned + negative integers (`number` | `bigint`),
+ * `boolean`, `null`, byte strings (`Uint8Array` | `ArrayBuffer`), text strings
+ * (`string`), arrays, integer/text-keyed maps (`Map`), and plain objects
+ * (encoded as canonical text-keyed maps with `undefined` properties skipped,
+ * matching Go `map[string]any` — a deliberate divergence from cbor-x, which
+ * emits CBOR `undefined` (0xf7)). Non-integer numbers, `undefined` at the top
+ * level, duplicate map keys, and any other type throw rather than emitting
  * silently-wrong bytes.
  */
 
@@ -27,6 +31,9 @@ const MAJOR_BSTR = 2;
 const MAJOR_TSTR = 3;
 const MAJOR_ARRAY = 4;
 const MAJOR_MAP = 5;
+
+/** Guards against cyclic / pathologically nested input (stack-overflow DoS). */
+const MAX_DEPTH = 64;
 
 /** Concatenate byte arrays into one buffer. */
 function concat(chunks: Uint8Array[]): Uint8Array {
@@ -92,10 +99,17 @@ function encodeInteger(v: number | bigint): Uint8Array {
  * @param value - Integer, boolean, null, byte string, text string, array, Map,
  *   or plain object (see module doc for the full supported set)
  * @returns Deterministic CBOR bytes (definite lengths, sorted map keys, no tags)
- * @throws On non-integer numbers, `undefined`, functions, symbols, or non-string
- *   map keys
+ * @throws On non-integer numbers, `undefined`, functions, symbols, non-string
+ *   map keys, duplicate map keys, or nesting deeper than {@link MAX_DEPTH}
  */
 export function encodeCborDeterministic(value: unknown): Uint8Array {
+  return encodeValue(value, 0);
+}
+
+function encodeValue(value: unknown, depth: number): Uint8Array {
+  if (depth > MAX_DEPTH) {
+    throw new Error(`encodeCborDeterministic: nesting exceeds ${MAX_DEPTH}`);
+  }
   if (typeof value === "number" || typeof value === "bigint") {
     return encodeInteger(value);
   }
@@ -117,19 +131,18 @@ export function encodeCborDeterministic(value: unknown): Uint8Array {
     return concat([encodeHead(MAJOR_TSTR, bytes.length), bytes]);
   }
   if (Array.isArray(value)) {
-    const items = value.map((v) => encodeCborDeterministic(v));
+    const items = value.map((v) => encodeValue(v, depth + 1));
     return concat([encodeHead(MAJOR_ARRAY, value.length), ...items]);
   }
   if (value instanceof Map) {
-    return encodeMap(value as Map<unknown, unknown>);
+    return encodeMap(value.entries(), depth);
   }
   if (typeof value === "object") {
-    // Plain object → canonical text-keyed map (Go `map[string]any` / cbor-x).
-    // Skip undefined-valued properties (JSON/CBOR-map semantics: absent, not nil).
+    // Plain object → canonical text-keyed map; skip undefined-valued props.
     const entries = Object.entries(value as Record<string, unknown>).filter(
       ([, v]) => v !== undefined,
     );
-    return encodeMap(new Map(entries));
+    return encodeMap(entries[Symbol.iterator](), depth);
   }
   throw new Error(
     `encodeCborDeterministic: unsupported value type ${typeof value}`,
@@ -137,11 +150,15 @@ export function encodeCborDeterministic(value: unknown): Uint8Array {
 }
 
 /**
- * Encode a Map with keys sorted by the bytewise lexicographic order of their
- * encoded key bytes (RFC 8949 §4.2.1 core deterministic map ordering).
+ * Encode map entries with keys sorted by the bytewise lexicographic order of
+ * their encoded key bytes (RFC 8949 §4.2.1). Rejects duplicate encoded keys
+ * (§4.2: a map must not have duplicate keys) — e.g. a `Map` mixing `1` and `1n`.
  */
-function encodeMap(map: Map<unknown, unknown>): Uint8Array {
-  const entries = Array.from(map.entries()).map(([k, v]) => {
+function encodeMap(
+  entries: Iterable<[unknown, unknown]>,
+  depth: number,
+): Uint8Array {
+  const encoded = Array.from(entries).map(([k, v]) => {
     if (
       typeof k !== "number" &&
       typeof k !== "bigint" &&
@@ -152,15 +169,18 @@ function encodeMap(map: Map<unknown, unknown>): Uint8Array {
       );
     }
     return {
-      keyBytes: encodeCborDeterministic(k),
-      valueBytes: encodeCborDeterministic(v),
+      keyBytes: encodeValue(k, depth + 1),
+      valueBytes: encodeValue(v, depth + 1),
     };
   });
-  entries.sort((a, b) => compareBytes(a.keyBytes, b.keyBytes));
-  const chunks: Uint8Array[] = [encodeHead(MAJOR_MAP, entries.length)];
-  for (const e of entries) {
-    chunks.push(e.keyBytes, e.valueBytes);
+  encoded.sort((a, b) => compareBytes(a.keyBytes, b.keyBytes));
+  for (let i = 1; i < encoded.length; i++) {
+    if (compareBytes(encoded[i - 1]!.keyBytes, encoded[i]!.keyBytes) === 0) {
+      throw new Error("encodeCborDeterministic: duplicate map key");
+    }
   }
+  const chunks: Uint8Array[] = [encodeHead(MAJOR_MAP, encoded.length)];
+  for (const e of encoded) chunks.push(e.keyBytes, e.valueBytes);
   return concat(chunks);
 }
 

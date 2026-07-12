@@ -1,4 +1,4 @@
-import { decode as decodeCbor } from "cbor-x";
+import { decodeCborAsObject } from "./helpers/cbor-decode-object.js";
 import { env } from "cloudflare:test";
 import { describe, expect, it, vi } from "vitest";
 
@@ -106,7 +106,7 @@ describe("x402 verify-and-settle mode", () => {
     expect(response.status).toBe(500);
 
     const bodyBytes = new Uint8Array(await response.arrayBuffer());
-    const decoded = decodeCbor(bodyBytes) as any;
+    const decoded = decodeCborAsObject(bodyBytes) as any;
     expect(decoded).toMatchObject({
       status: 500,
       title: "Internal Server Error",

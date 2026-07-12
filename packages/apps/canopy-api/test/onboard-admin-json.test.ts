@@ -2,7 +2,8 @@
  * Ops admin JSON routes for canopy-admin browser UI (FOR-180).
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
+import { decodeCborAsObject } from "./helpers/cbor-decode-object.js";
 import { env } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
@@ -50,7 +51,7 @@ function createBody(fields: Record<number, unknown>): Uint8Array {
   for (const [k, v] of Object.entries(fields)) {
     m.set(Number(k), v);
   }
-  return encodeCbor(m) as Uint8Array;
+  return encodeCborDeterministic(m);
 }
 
 function validBootstrapConfigResultHex(): string {
@@ -122,7 +123,7 @@ describe("onboarding admin JSON routes", () => {
       testCtx,
     );
     expect(createRes.status).toBe(201);
-    const created = decodeCbor(
+    const created = decodeCborAsObject(
       new Uint8Array(await createRes.arrayBuffer()),
     ) as { requestId?: string };
     return created.requestId!;
@@ -317,7 +318,9 @@ describe("onboarding admin JSON routes", () => {
     );
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("application/cbor");
-    const body = decodeCbor(new Uint8Array(await res.arrayBuffer())) as {
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as {
       status?: string;
     };
     expect(body.status).toBe("approved");

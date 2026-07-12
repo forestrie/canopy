@@ -17,7 +17,11 @@ export async function postCustodianSignRawPayloadBytes(opts: {
 }): Promise<Uint8Array> {
   const base = trimBase(opts.baseUrl);
   const keySeg = encodeURIComponent(opts.keyIdSegment);
-  const u8 = encodeCborDeterministic({ payload: opts.payloadBytes });
+  const encoded = encodeCborDeterministic({ payload: opts.payloadBytes });
+  const u8 =
+    encoded instanceof Uint8Array
+      ? encoded
+      : new Uint8Array(encoded as ArrayLike<number>);
   const bodyBuf = u8.buffer.slice(
     u8.byteOffset,
     u8.byteOffset + u8.byteLength,

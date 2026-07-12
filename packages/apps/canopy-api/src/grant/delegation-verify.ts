@@ -6,7 +6,7 @@
  * on delegation certs uses verifyKs256DelegationCert (keccak + ecrecover/ERC-1271).
  */
 
-import { decode as decodeCbor } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import {
   COSE_ALG_ES256,
   coseUnprotectedToMap,
@@ -118,7 +118,7 @@ export function extractDelegatedKeyFromPayload(
 
   let payloadMap: unknown;
   try {
-    payloadMap = decodeCbor(payloadBytes);
+    payloadMap = decodeCborDeterministic(payloadBytes);
   } catch {
     return null;
   }

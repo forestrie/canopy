@@ -5,7 +5,7 @@
  * {@link verifyDelegationCertificateKs256} first.
  */
 
-import { decode } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import type { CertificateInfo } from "./certificate-info.js";
 import { bytesFromUnknown } from "./bytes-utils.js";
 import {
@@ -34,7 +34,9 @@ export function parseDelegationCertificate(
   certificate: Uint8Array,
 ): CertificateInfo {
   const { payloadBytes } = decodeCoseSign1Parts(certificate);
-  const payloadMap = normalizeIntKeyedMap(decode(payloadBytes));
+  const payloadMap = normalizeIntKeyedMap(
+    decodeCborDeterministic(payloadBytes),
+  );
   const logIdHex32 = payloadMap.get(PAYLOAD_LOG_ID);
   if (typeof logIdHex32 !== "string") {
     throw new Error("payload missing log id");

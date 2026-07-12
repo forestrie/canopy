@@ -6,7 +6,7 @@
  * X-Grant-Location path (Plan 0008).
  */
 
-import { decode as decodeCbor } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import { custodianStatementKidFromXyGrantData } from "../grant/custodian-statement-kid.js";
 import { grantDataToBytes } from "../grant/grant-data.js";
 import type { Grant } from "../grant/types.js";
@@ -25,7 +25,7 @@ export function getSignerFromCoseSign1(
 ): Uint8Array | null {
   let arr: unknown[];
   try {
-    arr = decodeCbor(coseSign1Bytes) as unknown[];
+    arr = decodeCborDeterministic(coseSign1Bytes) as unknown[];
   } catch {
     return null;
   }
@@ -34,7 +34,7 @@ export function getSignerFromCoseSign1(
   if (!(protectedBstr instanceof Uint8Array)) return null;
   let protectedMap: Record<number, unknown> | Map<number, unknown>;
   try {
-    protectedMap = decodeCbor(protectedBstr) as
+    protectedMap = decodeCborDeterministic(protectedBstr) as
       | Record<number, unknown>
       | Map<number, unknown>;
   } catch {

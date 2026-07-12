@@ -7,8 +7,10 @@
  * response encoding only.
  */
 
-import { decode as decodeCbor } from "cbor-x";
-import { encodeCborDeterministic } from "@forestrie/encoding";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import type { Grant } from "./grant.js";
 import { grantDataToBytes } from "./grant-data.js";
 import { fromPaddedWire32, toPaddedWire32 } from "./uuid-bytes.js";
@@ -96,7 +98,7 @@ export function decodeGrantResponse(bytes: Uint8Array): {
   idtimestamp: Uint8Array;
 } {
   if (!bytes?.length) throw new Error("Grant payload is empty");
-  const raw = decodeCbor(bytes) as unknown;
+  const raw = decodeCborDeterministic(bytes) as unknown;
   if (typeof raw !== "object" || raw === null || Array.isArray(raw))
     throw new Error("Grant payload must be a CBOR map");
   const m = raw as Map<number, unknown> | Record<number, unknown>;
@@ -147,7 +149,7 @@ export function encodeGrantPayload(grant: Grant): Uint8Array {
 /** Decode grant payload (CBOR map keys 1–6 only). */
 export function decodeGrantPayload(bytes: Uint8Array): Grant {
   if (!bytes?.length) throw new Error("Grant payload is empty");
-  const raw = decodeCbor(bytes) as unknown;
+  const raw = decodeCborDeterministic(bytes) as unknown;
   if (typeof raw !== "object" || raw === null || Array.isArray(raw))
     throw new Error("Grant payload must be a CBOR map");
   const m = raw as Map<number, unknown> | Record<number, unknown>;

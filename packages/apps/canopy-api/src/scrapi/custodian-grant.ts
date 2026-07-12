@@ -5,8 +5,10 @@
  * full grant bytes are carried in unprotected header HEADER_FORESTRIE_GRANT_V0.
  */
 
-import { decode as decodeCbor } from "cbor-x";
-import { encodeCborDeterministic } from "@forestrie/encoding";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import {
   algToCurve,
   COSE_ALG_ES256,
@@ -95,7 +97,7 @@ export async function fetchCustodianCuratorLogKey(
     );
   }
   const buf = new Uint8Array(await res.arrayBuffer());
-  const raw = decodeCbor(buf) as unknown;
+  const raw = decodeCborDeterministic(buf) as unknown;
   const keyId = readCborStringField(raw, "keyId");
   if (!keyId) {
     throw new Error("Custodian curator/log-key response missing keyId");
@@ -120,7 +122,7 @@ export async function fetchCustodianPublicKey(
     );
   }
   const buf = new Uint8Array(await res.arrayBuffer());
-  const raw = decodeCbor(buf) as unknown;
+  const raw = decodeCborDeterministic(buf) as unknown;
   const keyIdOut = readCborStringField(raw, "keyId");
   const publicKey = readCborStringField(raw, "publicKey");
   const alg = readCborStringField(raw, "alg");
@@ -174,7 +176,7 @@ export function mergeGrantHeadersIntoCustodianSign1(
   coseSign1Bytes: Uint8Array,
   grantPayloadBytes: Uint8Array,
 ): Uint8Array {
-  const raw = decodeCbor(coseSign1Bytes) as unknown;
+  const raw = decodeCborDeterministic(coseSign1Bytes) as unknown;
   const arr = Array.isArray(raw) ? raw : null;
   if (!arr || arr.length !== 4) {
     throw new Error("Invalid COSE Sign1 from Custodian");

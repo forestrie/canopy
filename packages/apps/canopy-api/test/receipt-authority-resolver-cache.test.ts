@@ -4,7 +4,10 @@
  * delegation resolution (RCA: auth-data-log-chain parent grant 403).
  */
 
-import { encode as encodeCbor } from "cbor-x";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import {
   encodeSigStructure,
   verifyCoseSign1WithParsedKey,
@@ -92,8 +95,7 @@ describe("receipt authority resolver cache", () => {
 });
 
 async function peakFromReceipt(receiptBytes: Uint8Array): Promise<Uint8Array> {
-  const { decode: decodeCbor } = await import("cbor-x");
-  const arr = decodeCbor(receiptBytes) as unknown[];
+  const arr = decodeCborDeterministic(receiptBytes) as unknown[];
   if (!Array.isArray(arr) || arr.length !== 4) {
     throw new Error("invalid receipt");
   }
@@ -108,7 +110,9 @@ async function buildSignedPeakReceipt(
   delegateRaw: Uint8Array,
 ): Promise<Uint8Array> {
   const peak = new Uint8Array(32).fill(0x11);
-  const protectedInner = new Uint8Array(encodeCbor(new Map([[1, -7]])));
+  const protectedInner = new Uint8Array(
+    encodeCborDeterministic(new Map([[1, -7]])),
+  );
   const sigStructure = encodeSigStructure(
     protectedInner,
     new Uint8Array(0),
@@ -140,7 +144,7 @@ async function buildSignedPeakReceipt(
     [396, proofs],
     [DELEGATION_CERT_LABEL, delegationCert],
   ]);
-  return new Uint8Array(encodeCbor([protectedInner, unprot, peak, sig]));
+  return encodeCborDeterministic([protectedInner, unprot, peak, sig]);
 }
 
 async function buildDelegationCert(
@@ -191,7 +195,7 @@ async function buildDelegationCert(
 }
 
 function cborBytes(value: unknown): Uint8Array {
-  const encoded = encodeCbor(value);
+  const encoded = encodeCborDeterministic(value);
   return encoded instanceof Uint8Array
     ? encoded
     : new Uint8Array(encoded as ArrayLike<number>);

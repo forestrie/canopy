@@ -2,8 +2,10 @@
  * POST /api/forest/{log-id}/genesis from Playwright (Plan 0018 / 0028 / 0032).
  */
 
-import { decode as decodeCbor } from "cbor-x";
-import { encodeCborDeterministic } from "@forestrie/encoding";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import type { APIRequestContext } from "@playwright/test";
 import {
   FOREST_GENESIS_LABEL_CHAIN_ID,
@@ -47,10 +49,18 @@ async function postGenesisWithRetry(
     lastStatus = res.status();
     if (lastStatus === 201) {
       if (!webhookUrl) return undefined;
-      const raw = decodeCbor(new Uint8Array(await res.body())) as {
-        coordinator?: GenesisCoordinatorForwardStatus;
+      const raw = decodeCborDeterministic(new Uint8Array(await res.body()));
+      const coord = raw instanceof Map ? raw.get("coordinator") : undefined;
+      if (!(coord instanceof Map)) return undefined;
+      return {
+        publicRoot: coord.get(
+          "publicRoot",
+        ) as GenesisCoordinatorForwardStatus["publicRoot"],
+        webhook: coord.get(
+          "webhook",
+        ) as GenesisCoordinatorForwardStatus["webhook"],
+        detail: coord.get("detail") as string | undefined,
       };
-      return raw.coordinator;
     }
     lastBody = (await res.text()).slice(0, 500);
     const transient =
@@ -89,7 +99,7 @@ export async function ensureForestGenesisKs256E2e(
     [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, opts.univocityAddr],
     [FOREST_GENESIS_LABEL_CHAIN_ID, opts.chainId],
   ]);
-  const body = encodeCborDeterministic(map);
+  const body = encodeCborDeterministic(map) as Uint8Array;
   await postGenesisWithRetry(
     request,
     opts.logId,
@@ -121,7 +131,7 @@ export async function ensureForestGenesisKs256WithWebhookE2e(
     [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, opts.univocityAddr],
     [FOREST_GENESIS_LABEL_CHAIN_ID, opts.chainId],
   ]);
-  const body = encodeCborDeterministic(map);
+  const body = encodeCborDeterministic(map) as Uint8Array;
   const coordinator = await postGenesisWithRetry(
     request,
     opts.logId,
@@ -164,7 +174,7 @@ export async function ensureForestGenesisEs256E2e(
     [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, opts.univocityAddr],
     [FOREST_GENESIS_LABEL_CHAIN_ID, opts.chainId],
   ]);
-  const body = encodeCborDeterministic(map);
+  const body = encodeCborDeterministic(map) as Uint8Array;
   await postGenesisWithRetry(
     request,
     opts.logId,

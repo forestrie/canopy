@@ -6,8 +6,7 @@
  * POST /api/keys with CUSTODIAN_APP_TOKEN.
  */
 
-import { decode } from "cbor-x";
-import { encodeCborDeterministic } from "@forestrie/encoding";
+import { decodeCborStruct, encodeCbor } from "../cbor.js";
 import type { Env } from "../env.js";
 import { requireOperatorTokenOrResponse } from "../auth/authorize.js";
 import type { CustodyKeysRequest } from "../types/custody-keys-request.js";
@@ -56,12 +55,6 @@ async function postCustodyKeys(
     labels: body.labels ?? {},
   };
 
-  const encoded = encodeCborDeterministic(cborBody);
-  const u8 =
-    encoded instanceof Uint8Array
-      ? encoded
-      : new Uint8Array(encoded as ArrayLike<number>);
-
   const res = await fetch(`${custodianApiBase(env.CUSTODIAN_URL)}/api/keys`, {
     method: "POST",
     headers: {
@@ -69,7 +62,7 @@ async function postCustodyKeys(
       "Content-Type": "application/cbor",
       Accept: "application/cbor",
     },
-    body: u8,
+    body: encodeCbor(cborBody),
   });
 
   const buf = new Uint8Array(await res.arrayBuffer());
@@ -82,7 +75,7 @@ async function postCustodyKeys(
     );
   }
 
-  const raw = decode(buf) as Record<string, unknown>;
+  const raw = decodeCborStruct<Record<string, unknown>>(buf);
   const keyId = readStringField(raw, "keyId");
   const publicKey = readStringField(raw, "publicKey");
   const alg = readStringField(raw, "alg") || "ES256";

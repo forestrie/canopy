@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { decode as decodeCbor } from "cbor-x";
 import { univocityProvisionSkipReason } from "../src/univocity-genesis-e2e.js";
 
 describe("univocityProvisionSkipReason", () => {

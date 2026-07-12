@@ -4,7 +4,7 @@
  * wire profile (inline field 5, int-key maps).
  */
 
-import { decode } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import { describe, expect, it } from "vitest";
 import {
   buildDelegationCertificateEs256,
@@ -83,8 +83,10 @@ describe("ES256 delegation certificate", () => {
     expect(info.issuedAt).toBe(issuedAt);
     expect(info.expiresAt).toBe(expiresAt);
 
-    const cert = decode(certificate) as unknown[];
-    const payloadMap = normalizeIntKeyedMap(decode(cert[2] as Uint8Array));
+    const cert = decodeCborDeterministic(certificate) as unknown[];
+    const payloadMap = normalizeIntKeyedMap(
+      decodeCborDeterministic(cert[2] as Uint8Array),
+    );
     const keyMap = normalizeIntKeyedMap(payloadMap.get(PAYLOAD_DELEGATED_KEY));
     expect(keyMap.get(COSE_KTY)).toBe(COSE_KTY_EC2);
     expect(keyMap.get(COSE_CRV)).toBe(COSE_CRV_P256);

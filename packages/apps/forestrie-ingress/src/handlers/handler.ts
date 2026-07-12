@@ -5,7 +5,7 @@
  * Observability endpoints (stats) use JSON.
  */
 
-import { decode } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import type { Env } from "../env.js";
 import {
   PROBLEM_TYPES,
@@ -92,5 +92,8 @@ export async function parseCborBody<T>(
   }
 
   const buffer = await request.arrayBuffer();
-  return decode(new Uint8Array(buffer)) as T;
+  // CBOR maps decode to a JS Map; request bodies are flat string-keyed DTOs,
+  // so surface them as a plain object for the handlers' field access.
+  const decoded = decodeCborDeterministic(new Uint8Array(buffer));
+  return (decoded instanceof Map ? Object.fromEntries(decoded) : decoded) as T;
 }

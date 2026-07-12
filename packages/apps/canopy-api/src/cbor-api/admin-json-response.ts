@@ -2,7 +2,7 @@
  * JSON problem responses for browser ops admin routes (RFC 7807-style).
  */
 
-import { decode as decodeCbor } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 
 export interface AdminJsonProblemBody {
   type: string;
@@ -56,17 +56,23 @@ export async function problemResponseToAdminJson(
     return adminJsonProblem(res.status, res.statusText || "Error");
   }
   try {
-    const body = decodeCbor(bytes) as {
-      status?: number;
-      title?: string;
-      detail?: string;
-      type?: string;
-    };
+    // decodeCborDeterministic returns a Map for CBOR maps; read fields via .get().
+    const decoded = decodeCborDeterministic(bytes);
+    const body =
+      decoded instanceof Map
+        ? decoded
+        : new Map<unknown, unknown>(
+            Object.entries(decoded as Record<string, unknown>),
+          );
+    const status = body.get("status");
+    const title = body.get("title");
+    const detail = body.get("detail");
+    const type = body.get("type");
     return adminJsonProblem(
-      typeof body.status === "number" ? body.status : res.status,
-      typeof body.title === "string" ? body.title : res.statusText || "Error",
-      typeof body.detail === "string" ? body.detail : undefined,
-      typeof body.type === "string" ? body.type : "about:blank",
+      typeof status === "number" ? status : res.status,
+      typeof title === "string" ? title : res.statusText || "Error",
+      typeof detail === "string" ? detail : undefined,
+      typeof type === "string" ? type : "about:blank",
     );
   } catch {
     return adminJsonProblem(res.status, res.statusText || "Error");

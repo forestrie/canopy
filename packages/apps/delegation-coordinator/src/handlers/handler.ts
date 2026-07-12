@@ -8,8 +8,7 @@
  * [ARC-0017](https://github.com/forestrie/devdocs/blob/main/arc/arc-0017-hierarchical-authority-logs-and-fee-distribution.md).
  */
 
-import { decode } from "cbor-x";
-import { encodeCborDeterministic } from "@forestrie/encoding";
+import { decodeCborStruct, encodeCbor } from "../cbor.js";
 import type { Env } from "../env.js";
 import { hex32ToCanonicalUuid, normalizeLogIdToHex32 } from "../log-id.js";
 import {
@@ -145,7 +144,7 @@ export async function parseCborBody<T>(
     );
   }
   const buffer = await request.arrayBuffer();
-  return decode(new Uint8Array(buffer)) as T;
+  return decodeCborStruct<T>(new Uint8Array(buffer));
 }
 
 /**
@@ -155,12 +154,7 @@ export async function parseCborBody<T>(
  * @returns Response with `application/cbor`.
  */
 export function encodeCborResponse(value: unknown): Response {
-  const encoded = encodeCborDeterministic(value);
-  const bytes =
-    encoded instanceof Uint8Array
-      ? encoded
-      : new Uint8Array(encoded as ArrayLike<number>);
-  return new Response(bytes, {
+  return new Response(encodeCbor(value), {
     status: 200,
     headers: { "Content-Type": CBOR_CONTENT_TYPE },
   });
@@ -179,16 +173,12 @@ export function encodeCborError(
   title: string,
   detail?: string,
 ): Response {
-  const body = encodeCborDeterministic({
+  const bytes = encodeCbor({
     type: "about:blank",
     title,
     status,
     detail,
   });
-  const bytes =
-    body instanceof Uint8Array
-      ? body
-      : new Uint8Array(body as ArrayLike<number>);
   return new Response(bytes, {
     status,
     headers: { "Content-Type": "application/problem+cbor" },

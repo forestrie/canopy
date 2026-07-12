@@ -1,5 +1,5 @@
-import { decode } from "cbor-x";
 import {
+  decodeCborDeterministic,
   encodeCborDeterministic,
   encodeSigStructure,
 } from "@forestrie/encoding";
@@ -95,7 +95,7 @@ export async function buildTestByokMaterial(opts: {
 }
 
 function decodeDelegatedKey(bytes: Uint8Array): Map<number, unknown> {
-  const raw = decode(bytes) as unknown;
+  const raw = decodeCborDeterministic(bytes);
   if (raw instanceof Map) {
     return new Map([...raw.entries()].map(([k, v]) => [Number(k), v] as const));
   }

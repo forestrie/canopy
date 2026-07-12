@@ -2,7 +2,10 @@
  * Golden-vector: BYOK delegation cert payload field 5 uses integer COSE_Key keys.
  */
 
-import { decode, Encoder } from "cbor-x";
+import {
+  decodeCborDeterministic as decode,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import { describe, expect, it } from "vitest";
 import {
   buildByokDelegationMaterial,
@@ -12,8 +15,6 @@ import {
 } from "./coordinator-delegation-helpers.js";
 import { assertGoCompatibleDelegatedKeyInCertificate } from "./delegation-cbor-contract.js";
 import { normalizeForestrieHexId32 } from "./forestrie-hex-id.js";
-
-const cborEncoder = new Encoder({ mapsAsObjects: false });
 
 describe("BYOK delegation CBOR contract", () => {
   it("embeds integer-key delegated COSE_Key in certificate payload", async () => {
@@ -54,7 +55,7 @@ describe("BYOK delegation CBOR contract", () => {
     expect(keyMap.get(-2)).toBeInstanceOf(Uint8Array);
     expect(keyMap.get(-3)).toBeInstanceOf(Uint8Array);
 
-    const reencoded = cborEncoder.encode(keyMap);
+    const reencoded = encodeCborDeterministic(keyMap);
     const roundTrip = decode(reencoded) as Record<number, unknown>;
     const kty =
       roundTrip instanceof Map

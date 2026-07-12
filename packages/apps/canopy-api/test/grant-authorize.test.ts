@@ -9,7 +9,7 @@
  */
 
 import { encodeSigStructure, type ParsedVerifyKey } from "@forestrie/encoding";
-import { encode } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { grantAuthorize } from "../src/scrapi/auth-grant.js";
@@ -54,7 +54,7 @@ async function buildReceiptForGrant(
   const leafHash = await univocityLeafHash(IDTIMESTAMP, inner);
   const peak = leafHash; // empty-path single-leaf MMR: root == leaf
 
-  const protectedInner = new Uint8Array(encode(new Map([[1, -7]])));
+  const protectedInner = encodeCborDeterministic(new Map([[1, -7]]));
   const sigStructure = encodeSigStructure(
     protectedInner,
     new Uint8Array(0),
@@ -70,7 +70,12 @@ async function buildReceiptForGrant(
   )) as ArrayBuffer;
   const sig = new Uint8Array(sigBuf);
   const coseSign1Bytes = new Uint8Array(
-    encode([protectedInner, new Map<number, unknown>(), peak, sig]),
+    encodeCborDeterministic([
+      protectedInner,
+      new Map<number, unknown>(),
+      peak,
+      sig,
+    ]),
   );
   return { coseSign1Bytes, explicitPeak: peak };
 }

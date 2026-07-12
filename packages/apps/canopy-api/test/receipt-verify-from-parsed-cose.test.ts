@@ -3,7 +3,7 @@
  */
 
 import { encodeSigStructure } from "@forestrie/encoding";
-import { encode } from "cbor-x";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import type { Grant } from "../src/grant/grant.js";
@@ -28,7 +28,7 @@ beforeAll(async () => {
 });
 
 async function detachedEs256Sign1(priv: CryptoKey): Promise<Uint8Array> {
-  const protectedInner = new Uint8Array(encode(new Map([[1, -7]])));
+  const protectedInner = encodeCborDeterministic(new Map([[1, -7]]));
   const sigStructure = encodeSigStructure(
     protectedInner,
     new Uint8Array(0),
@@ -44,7 +44,12 @@ async function detachedEs256Sign1(priv: CryptoKey): Promise<Uint8Array> {
   )) as ArrayBuffer;
   const sig64 = new Uint8Array(sigBuf);
   return new Uint8Array(
-    encode([protectedInner, new Map<number, unknown>(), null, sig64]),
+    encodeCborDeterministic([
+      protectedInner,
+      new Map<number, unknown>(),
+      null,
+      sig64,
+    ]),
   );
 }
 

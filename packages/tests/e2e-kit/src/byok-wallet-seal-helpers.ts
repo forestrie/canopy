@@ -1,6 +1,6 @@
 import type { APIRequestContext } from "@playwright/test";
-import { decode } from "cbor-x";
 import {
+  decodeCborDeterministic,
   encodeCborDeterministic,
   encodeSigStructure,
 } from "@forestrie/encoding";
@@ -369,7 +369,7 @@ function formatByokPollTimeout(message: string, stats?: ByokPollStats): Error {
 export function extractDelegationCertFromReceipt(
   receiptBytes: Uint8Array,
 ): Uint8Array {
-  const raw = decode(receiptBytes) as unknown[];
+  const raw = decodeCborDeterministic(receiptBytes) as unknown[];
   if (!Array.isArray(raw) || raw.length !== 4) {
     throw new Error("receipt must be COSE_Sign1 array");
   }

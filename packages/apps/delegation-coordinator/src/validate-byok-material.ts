@@ -9,7 +9,7 @@
  * @deprecated Superseded by validate-byok-certificate.ts; kept for import paths.
  */
 
-import { Decoder } from "cbor-x";
+import { decodeCborDeterministic } from "@forestrie/encoding";
 import {
   COSE_ALG_KS256,
   decodeCoseSign1Parts,
@@ -24,9 +24,6 @@ import { createKs256RpcVerifyHooks } from "./ks256-rpc-verify-hooks.js";
 
 /** COSE payload map key for embedded delegated COSE_Key. */
 const PAYLOAD_DELEGATED_KEY = 5;
-
-/** CBOR decoder preserving integer map keys for COSE payloads. */
-const intKeyDecoder = new Decoder({ mapsAsObjects: false });
 
 /** ES256 public root coordinates for certificate verify. */
 export interface PublicRootEs256 {
@@ -165,7 +162,9 @@ export async function validateByokDelegationMaterial(opts: {
   let y: Uint8Array;
   let submitted: { x: Uint8Array; y: Uint8Array };
   try {
-    const payloadMap = normalizeIntKeyedMap(intKeyDecoder.decode(payloadBytes));
+    const payloadMap = normalizeIntKeyedMap(
+      decodeCborDeterministic(payloadBytes),
+    );
     ({ x, y } = parseDelegatedCoseKeyFromPayload(
       payloadMap.get(PAYLOAD_DELEGATED_KEY),
     ));
