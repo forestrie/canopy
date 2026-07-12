@@ -160,15 +160,15 @@ importers:
 
   packages/apps/forestrie-ingress:
     dependencies:
-      '@canopy/encoding':
-        specifier: workspace:*
-        version: link:../../shared/encoding
       '@canopy/forestrie-ingress-types':
         specifier: workspace:*
         version: link:../../shared/forestrie-ingress
       '@canopy/forestrie-sharding':
         specifier: workspace:*
         version: link:../../shared/forestrie-sharding
+      '@forestrie/encoding':
+        specifier: workspace:*
+        version: link:../../shared/encoding
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.9.13
