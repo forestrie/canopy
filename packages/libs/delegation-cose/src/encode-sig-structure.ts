@@ -1,6 +1,6 @@
 /**
  * COSE Sig_structure encoding (RFC 8152 / RFC 9052). Inlined here so the
- * package publishes standalone without `@canopy/encoding`; output must match
+ * package publishes standalone without `@forestrie/encoding`; output must match
  * arbor delegationcert and canopy grant signing paths byte-for-byte.
  */
 

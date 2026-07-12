@@ -3,7 +3,7 @@
  * Avoid bare cbor-x `encode()` which can emit string-key maps.
  */
 
-import { encodeCborDeterministic } from "./encoding/encode-cbor-deterministic.js";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 
 export function cborIntKeyBytes(value: unknown): Uint8Array {
   return encodeCborDeterministic(value);

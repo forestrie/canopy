@@ -3,7 +3,7 @@
  * grant store so publishers bind the correct leaf commitment.
  */
 
-import { encodeCborDeterministic } from "@canopy/encoding";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import type { UnivocityGrantClient } from "./univocity-grant-client-config.js";
 
 function joinUrl(base: string, path: string): string {

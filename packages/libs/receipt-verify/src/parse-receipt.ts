@@ -1,16 +1,16 @@
 import { decode as decodeCbor } from "cbor-x";
-import type { Proof } from "@canopy/merklelog";
+import type { Proof } from "@forestrie/merklelog";
 
 const VDS_COSE_RECEIPT_PROOFS_TAG = 396;
 
-type CoseSign1 = [
+export type CoseSign1 = [
   protectedHeader: Uint8Array,
   unprotectedHeader: Map<number, unknown> | Record<string, unknown>,
   payload: Uint8Array | null,
   signature: Uint8Array,
 ];
 
-function unwrapCoseSign1Tag(value: unknown): unknown {
+export function unwrapCoseSign1Tag(value: unknown): unknown {
   if (value && typeof value === "object" && !(value instanceof Map)) {
     const tagged = value as { tag?: number; value?: unknown };
     if (
@@ -23,7 +23,7 @@ function unwrapCoseSign1Tag(value: unknown): unknown {
   return value;
 }
 
-function requireCoseSign1(value: unknown): CoseSign1 {
+export function requireCoseSign1(value: unknown): CoseSign1 {
   if (!Array.isArray(value) || value.length !== 4) {
     throw new Error("Receipt is not a COSE Sign1 array");
   }
@@ -42,7 +42,7 @@ function requireCoseSign1(value: unknown): CoseSign1 {
   ] as CoseSign1;
 }
 
-function toHeaderMap(
+export function toHeaderMap(
   value: Map<number, unknown> | Record<string, unknown>,
 ): Map<number, unknown> {
   if (value instanceof Map) return value as Map<number, unknown>;

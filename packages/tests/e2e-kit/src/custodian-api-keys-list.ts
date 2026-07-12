@@ -6,7 +6,7 @@
  * {@link postCustodianApiKeysListAll}).
  */
 
-import { encodeCborDeterministic } from "./encoding/encode-cbor-deterministic.js";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import {
   custodianBodyPreview,
   custodianDecodeCbor,

@@ -4,9 +4,9 @@
 
 import type { APIRequestContext } from "@playwright/test";
 import { createPrivateKey } from "node:crypto";
-import { signCoseSign1Statement } from "./encoding/sign-cose-sign1-statement.js";
+import { signCoseSign1Statement } from "@forestrie/encoding";
 import { test } from "@playwright/test";
-import type { Grant } from "./wire/grant/grant.js";
+import type { Grant } from "@forestrie/grant-builder";
 import {
   ensureForestGenesisEs256E2e,
   ensureForestGenesisKs256E2e,
@@ -19,7 +19,7 @@ import {
   signGrantPayloadWithEs256Pem,
   encodeGrantPayloadV0Canonical,
   es256GrantData64FromPrivateKeyPem,
-} from "./es256-pem-grant.js";
+} from "@forestrie/grant-builder";
 import {
   bootstrapKs256PrivateKeyHex,
   mintKs256RootGrantWithWalletKey,

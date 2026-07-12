@@ -1,0 +1,22 @@
+# actionlint configuration (FOR-365 C12).
+#
+# The publish-dry-run workflow lints every workflow on each PR. The ignores
+# below grandfather PRE-EXISTING findings in legacy workflows so the gate can
+# land green; they are debt, not policy. Do not add new paths here — fix the
+# finding instead. Remove an entry when its workflow is cleaned up (the
+# rewrite).
+paths:
+  .github/workflows/perf-canopy.yml:
+    ignore:
+      - "shellcheck reported issue in this script"
+  .github/workflows/promote-workers-lane-b.yml:
+    ignore:
+      - "shellcheck reported issue in this script"
+  .github/workflows/cloudflare-bootstrap.yml:
+    ignore:
+      - "shellcheck reported issue in this script"
+  .github/workflows/deploy-workers.yml:
+    # The empty-string choice option is intentional: "" means deploy all
+    # workers (see the `app` input description).
+    ignore:
+      - "string should not be empty"

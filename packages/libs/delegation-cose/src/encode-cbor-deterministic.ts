@@ -145,7 +145,11 @@ export function encodeCborDeterministic(value: unknown): Uint8Array {
  */
 function encodeMap(map: Map<unknown, unknown>): Uint8Array {
   const entries = Array.from(map.entries()).map(([k, v]) => {
-    if (typeof k !== "number" && typeof k !== "bigint" && typeof k !== "string") {
+    if (
+      typeof k !== "number" &&
+      typeof k !== "bigint" &&
+      typeof k !== "string"
+    ) {
       throw new Error(
         `encodeCborDeterministic: unsupported map key type ${typeof k}`,
       );

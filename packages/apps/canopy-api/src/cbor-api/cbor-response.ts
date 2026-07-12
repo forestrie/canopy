@@ -1,4 +1,4 @@
-import { encodeCborDeterministic } from "@canopy/encoding";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 
 import { CBOR_MIME } from "./cbor-const.js";
 import { convertHeaders } from "./cbor-request.js";

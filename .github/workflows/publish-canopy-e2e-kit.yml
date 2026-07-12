@@ -1,108 +1,93 @@
 name: Publish canopy-e2e-kit
 
+# Publishes @forestrie/canopy-e2e-kit to public npmjs.org via trusted
+# publishing (OIDC): no registry token — npmjs is configured to trust this
+# repo+workflow (plan-2607-12 Phase 1, FOR-336). Provenance is attested
+# automatically. The FIRST publish of the package must be manual; this
+# workflow handles every subsequent release.
+#
+#
+# Registry rationale (FOR-361): the kit depends on @forestrie/grant-builder and
+# @forestrie/scrapi-client, which exist only on npmjs — a GitHub Packages kit
+# release would be uninstallable for consumers whose @forestrie scope maps to
+# GH Packages, so the kit publishes to npmjs alongside its dependencies.
+# Release discipline (FOR-365):
+# - Tags (`canopy-e2e-kit-v<version>`) are the normal release trigger;
+#   workflow_dispatch is recovery-only. Both run in the `npm-publish` GitHub
+#   environment, whose deployment branch/tag policy allows only `main` and
+#   `*-v*` tags. Paired with the npm trusted-publisher registration requiring
+#   that environment, this closes ref laundering: a dispatch from an arbitrary
+#   ref can no longer publish with valid provenance.
+# - Actions are SHA-pinned, the npm client is pinned exactly, installs are
+#   frozen-lockfile, and tag<->package.json version agreement is asserted
+#   before anything is built (scripts/assert-publish-version.sh).
+#
+# Pattern notes (copied from publish-delegation-cose.yml):
+# - `id-token: write` is required for the OIDC exchange.
+# - Trusted publishing needs npm >= 11.5.1; node 22 ships npm 10, so we
+#   upgrade npm explicitly.
+# - Build and pack with pnpm (rewrites workspace: deps), publish the tarball
+#   with npm (does the OIDC publish).
+
 on:
   workflow_dispatch:
   push:
     tags:
-      - 'canopy-e2e-kit-v*'
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - "canopy-e2e-kit-v*"
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
+  id-token: write
 
 jobs:
   publish:
     name: Publish @forestrie/canopy-e2e-kit
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    environment: npm-publish
 
-      - uses: pnpm/action-setup@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
         with:
           version: 9.6.0
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22.14.0
-          registry-url: https://npm.pkg.github.com
-          scope: '@forestrie'
-          cache: pnpm
+          registry-url: https://registry.npmjs.org
+          scope: "@forestrie"
+          cache: "pnpm"
 
-      - name: Install
+      - name: Upgrade npm for trusted publishing
+        # Pinned to an exact version (not a floating `npm@11`) so the release
+        # path is reproducible and cannot pick up a brand-new client at
+        # release time (FOR-365 C1). Trusted publishing needs npm >= 11.5.1;
+        # npm@12 requires a newer node than the pinned 22.14.0 toolchain.
+        run: |
+          npm install -g npm@11.18.0
+          npm --version
+
+      - name: Assert publish version discipline
+        # Tag builds: the tag must name exactly the package.json version.
+        # Dispatch (recovery) builds: the version must not already be on the
+        # registry (FOR-365 C3). Fails before build/publish.
+        run: ./scripts/assert-publish-version.sh packages/tests/e2e-kit canopy-e2e-kit
+
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Sync package version from git tag
-        env:
-          GIT_TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          TAG="${GIT_TAG}"
-          if [[ "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-            VERSION="${BASH_REMATCH[1]}"
-          elif [[ "$TAG" =~ ^canopy-e2e-kit-v(.+)$ ]]; then
-            VERSION="${BASH_REMATCH[1]}"
-          else
-            echo "::error::Unsupported publish tag: ${TAG}" >&2
-            exit 1
-          fi
-          export VERSION
-          node -e "
-            const fs = require('fs');
-            const p = 'packages/tests/e2e-kit/package.json';
-            const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
-            pkg.version = process.env.VERSION;
-            fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
-          "
-          echo "Publishing @forestrie/canopy-e2e-kit@${VERSION}"
-
-      - name: Test kit
+      - name: Test encoding
         run: pnpm --filter @forestrie/canopy-e2e-kit test
 
-      - name: Build kit
+      - name: Build encoding
         run: pnpm --filter @forestrie/canopy-e2e-kit build
 
-      - name: Verify packed dependency graph
+      - name: Publish to npmjs (trusted publishing)
+        working-directory: packages/tests/e2e-kit
         run: |
-          set -euo pipefail
-          mkdir -p /tmp/e2e-kit-pack
-          pnpm --filter @forestrie/canopy-e2e-kit exec pnpm pack --pack-destination /tmp/e2e-kit-pack
-          TARBALL=$(ls -1 /tmp/e2e-kit-pack/forestrie-canopy-e2e-kit-*.tgz | head -1)
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('packages/tests/e2e-kit/package.json','utf8'));
-            const dep = pkg.dependencies['@forestrie/delegation-cose'];
-            if (!dep || dep === 'workspace:*') {
-              throw new Error('delegation-cose must be workspace:^ or semver for publish, got ' + dep);
-            }
-          "
-          echo "pack ok: ${TARBALL}"
-
-      - name: Publish to GitHub Packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm --filter @forestrie/canopy-e2e-kit publish --no-git-checks
-
-      - name: Attach components.jsonc to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GIT_TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          VERSION=$(node -p "require('./packages/tests/e2e-kit/package.json').version")
-          jq -n \
-            --arg ecosystem "pnpm" \
-            --arg pkg "@forestrie/canopy-e2e-kit" \
-            --arg ver "$VERSION" \
-            '{ ecosystem: $ecosystem, components: { ($pkg): $ver } }' \
-            > components.jsonc
-          if gh release view "$GIT_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "$GIT_TAG" components.jsonc --repo "${{ github.repository }}" --clobber
-          else
-            gh release create "$GIT_TAG" \
-              --repo "${{ github.repository }}" \
-              --title "$GIT_TAG" \
-              --notes "Compound kit release for @forestrie/canopy-e2e-kit@${VERSION}." \
-              components.jsonc
-          fi
+          pnpm pack
+          npm publish ./forestrie-canopy-e2e-kit-*.tgz

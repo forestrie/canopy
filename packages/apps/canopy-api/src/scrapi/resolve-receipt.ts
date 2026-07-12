@@ -16,7 +16,7 @@
  */
 
 import { decode as decodeCbor } from "cbor-x";
-import { encodeCborDeterministic } from "@canopy/encoding";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 
 import { CBOR_CONTENT_TYPES } from "../cbor-api/cbor-content-types.js";
 import { cborResponse } from "../cbor-api/cbor-response.js";

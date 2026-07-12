@@ -3,7 +3,7 @@
  * Bearer token must match the key class (e.g. `CUSTODIAN_APP_TOKEN` for custody keys).
  */
 
-import { encodeCborDeterministic } from "./encoding/encode-cbor-deterministic.js";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 
 function trimBase(url: string): string {
   return url.trim().replace(/\/$/, "");

@@ -8,7 +8,7 @@
  */
 
 import { decode as decodeCbor } from "cbor-x";
-import { encodeCborDeterministic } from "@canopy/encoding";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import type { Grant } from "./grant.js";
 import { grantDataToBytes } from "./grant-data.js";
 import { fromPaddedWire32, toPaddedWire32 } from "./uuid-bytes.js";

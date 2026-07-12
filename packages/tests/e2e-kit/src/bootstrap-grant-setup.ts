@@ -1,12 +1,15 @@
 import type { APIRequestContext } from "@playwright/test";
-import { encodeCborDeterministic } from "./encoding/encode-cbor-deterministic.js";
+import { encodeCborDeterministic } from "@forestrie/encoding";
+import {
+  ScrapiRegistrationError,
+  interpretRegisterRedirect,
+  registerGrant,
+} from "@forestrie/scrapi-client";
 import { assertBootstrapMintE2eEnv } from "./e2e-env-guards.js";
 import { getBootstrapVariant } from "./e2e-bootstrap-variant.js";
 import { mintBootstrapGrant } from "./bootstrap-grant-flow.js";
-import {
-  decodeProblemDetails,
-  type ProblemDetails,
-} from "./problem-details.js";
+import { playwrightFetch } from "./playwright-fetch.js";
+import type { ProblemDetails } from "./problem-details.js";
 
 /** Thrown when register-grant returns a non-303 status (carries CBOR problem + raw response). */
 export class RegisterGrantHttpError extends Error {
@@ -27,12 +30,6 @@ export interface BootstrapMintAndRegisterResult {
   statusUrlAbsolute: string;
 }
 
-function toAbsoluteUrl(baseURL: string, location: string): string {
-  if (location.startsWith("http")) return location;
-  const base = baseURL.replace(/\/$/, "");
-  return `${base}${location.startsWith("/") ? location : `/${location}`}`;
-}
-
 /**
  * Mint bootstrap grant and POST register-grant. Only enforces HTTP semantics
  * (303 register with Location)—no transparent-statement shape checks.
@@ -50,31 +47,29 @@ export async function bootstrapMintAndRegisterEnqueued(
     variant,
   );
 
-  const registerRes = await unauthorizedRequest.post(
-    `/register/${rootLogId}/grants`,
-    {
-      headers: {
-        Authorization: `Forestrie-Grant ${grantBase64}`,
-      },
-      maxRedirects: 0,
-    },
-  );
-  if (registerRes.status() !== 303) {
-    throw new Error(
-      `register-grant: expected 303, got ${registerRes.status()} (body preview: ${(await registerRes.text()).slice(0, 200)})`,
-    );
+  try {
+    const { statusUrl } = await registerGrant({
+      baseUrl: opts.baseURL,
+      bootstrapLogId: rootLogId,
+      grantBase64,
+      fetchImpl: playwrightFetch(unauthorizedRequest),
+    });
+    return { grantBase64, statusUrlAbsolute: statusUrl };
+  } catch (err) {
+    if (err instanceof ScrapiRegistrationError) {
+      throw new Error(
+        `register-grant: expected 303, got ${err.httpStatus} (body preview: ${err.detail})`,
+      );
+    }
+    throw err;
   }
-  const loc = registerRes.headers()["location"];
-  if (!loc) {
-    throw new Error("register-grant: 303 without Location");
-  }
-  const statusUrlAbsolute = toAbsoluteUrl(opts.baseURL, loc);
-  return { grantBase64, statusUrlAbsolute };
 }
 
 /**
  * POST /register/{bootstrap}/grants with Forestrie-Grant; expects 303 + registration
- * status Location.
+ * status Location. Kept Playwright-native so RegisterGrantHttpError can carry the
+ * raw APIResponse for diagnostics; the 303/Location/problem interpretation is the
+ * shared @forestrie/scrapi-client contract (`interpretRegisterRedirect`).
  */
 export async function postRegisterGrantExpect303(
   unauthorizedRequest: APIRequestContext,
@@ -94,30 +89,41 @@ export async function postRegisterGrantExpect303(
     data?: Buffer;
   } = { headers, maxRedirects: 0 };
   if (opts.parentGrantBase64) {
+    // CBOR body shape per the scrapi-client contract: { parentGrant: <bytes> }
+    // (grants.md §11).
     const parentBytes = new Uint8Array(
       Buffer.from(opts.parentGrantBase64, "base64"),
     );
     headers["Content-Type"] = "application/cbor";
-    post.data = Buffer.from(encodeCborDeterministic({ parentGrant: parentBytes }));
+    post.data = Buffer.from(
+      encodeCborDeterministic({ parentGrant: parentBytes }),
+    );
   }
   const registerRes = await unauthorizedRequest.post(
     `/register/${opts.bootstrapLogId}/grants`,
     post,
   );
-  if (registerRes.status() !== 303) {
-    const problem = await decodeProblemDetails(registerRes);
-    const detail =
-      problem?.detail ??
-      ((await registerRes.text()).slice(0, 200) || "(empty body)");
-    throw new RegisterGrantHttpError(
-      `register-grant: expected 303, got ${registerRes.status()} (${detail})`,
-      registerRes,
-      problem,
+  try {
+    const { statusUrl } = interpretRegisterRedirect(
+      {
+        status: registerRes.status(),
+        location: registerRes.headers()["location"],
+        body: new Uint8Array(await registerRes.body()),
+      },
+      opts.baseURL,
     );
+    return { statusUrlAbsolute: statusUrl };
+  } catch (err) {
+    if (err instanceof ScrapiRegistrationError) {
+      if (err.httpStatus === 303) {
+        throw new Error("register-grant: 303 without Location");
+      }
+      throw new RegisterGrantHttpError(
+        `register-grant: expected 303, got ${err.httpStatus} (${err.detail})`,
+        registerRes,
+        err.problem,
+      );
+    }
+    throw err;
   }
-  const loc = registerRes.headers()["location"];
-  if (!loc) {
-    throw new Error("register-grant: 303 without Location");
-  }
-  return { statusUrlAbsolute: toAbsoluteUrl(opts.baseURL, loc) };
 }

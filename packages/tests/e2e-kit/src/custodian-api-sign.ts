@@ -2,7 +2,7 @@
  * POST /v1/api/keys/{keyId}/sign — COSE Sign1; verify with `@canopy/api` helpers.
  */
 
-import { encodeCborDeterministic } from "./encoding/encode-cbor-deterministic.js";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import { verifyCustodianEs256GrantSign1 } from "./wire/scrapi/custodian-grant.js";
 import { custodianApiV1BaseUrl } from "./custodian-api-env.js";
 

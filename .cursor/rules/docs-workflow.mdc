@@ -5,48 +5,21 @@ alwaysApply: false
 
 # Document workflow
 
-## Ownership
+Canonical source:
+[forestrie-agents/workflow/rules/plan-docs.md](https://github.com/forestrie/forestrie-agents/blob/main/workflow/rules/plan-docs.md)
+(local: `../../forestrie-agents/workflow/rules/plan-docs.md`) — layout,
+numbering, header, subplan forking, archival, and the branch/worktree
+independence rule for `docs/adr/`, `docs/arc/`, and `docs/plans/`.
 
-| Content | Home | This repo keeps |
-|---------|------|-----------------|
-| Cross-repo ADR/ARC | [devdocs](../../devdocs/) | stub redirect only |
-| Platform ops | devdocs/ops | — |
-| Domain glossary | [devdocs/glossary.md](../../devdocs/glossary.md) | [docs/agents/domain.md](docs/agents/domain.md) |
-| Canopy API / worker behavior | `docs/` | full doc |
-| Canopy implementation plans | `docs/plans/` | full doc |
+ADR document structure and status lifecycle:
+[forestrie-agents/workflow/rules/adr-format.md](https://github.com/forestrie/forestrie-agents/blob/main/workflow/rules/adr-format.md)
+(local: `../../forestrie-agents/workflow/rules/adr-format.md`) — supersedes
+the vendored `grill-with-docs` ADR-FORMAT.md.
 
-## Layout
+Read those files — do not duplicate their content here.
 
-- `docs/arc/` — repo-local implementation arcs
-- `docs/adr/` — repo-local ADRs
-- `docs/plans/plan-NNNN-*.md` — implementation plans
-- `docs/agents/` — on-demand agent indexes
+## Canopy-specific ownership (not yet generalized)
 
-## Numbering
-
-Sequential zero-padded NNNN per prefix under `docs/**` (including
-`docs/plans/archived/`). Increment from highest existing number.
-
-## Structure
-
-YAML-style header: **Status** (DRAFT | ACCEPTED | SUPERSEDED), **Date**,
-**Related** links.
-
-## Agent pull policy
-
-Read [docs/plans/README.md](docs/plans/README.md) first. Do not bulk-read
-`docs/plans/archived/` unless a task cites a specific plan id.
-
-## Cross-referencing
-
-Use markdown links. Example from `docs/plans/`:
-[ADR-0001](../adr/adr-0001-encoding-one-per-artifact.md).
-
-Platform docs: relative `../../devdocs/adr/…` or GitHub URLs when cloned alone.
-
-## Cursor plans → `docs/plans/`
-
-After a Cursor-built plan (`.cursor/plans/*.plan.md`), persist to
-`docs/plans/` — merge into parent numbered plan when work extends it,
-otherwise create next `plan-NNNN-short-slug.md`. Drop Cursor-only scaffolding;
-default **DRAFT**.
+- Canopy API / worker behavior docs → full doc lives in this repo's `docs/`.
+- Domain glossary → [docs/agents/domain.md](../../docs/agents/domain.md)
+  extends [devdocs/glossary.md](https://github.com/forestrie/devdocs/blob/main/glossary.md).

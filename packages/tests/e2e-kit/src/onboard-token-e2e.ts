@@ -3,7 +3,7 @@
  */
 
 import { decode as decodeCbor } from "cbor-x";
-import { encodeCborDeterministic } from "./encoding/encode-cbor-deterministic.js";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import type { APIRequestContext } from "@playwright/test";
 
 const BOOTSTRAP_MINT_E2E_HELP =

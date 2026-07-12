@@ -5,68 +5,7 @@ alwaysApply: true
 
 # Branch naming
 
-## Format
+Canonical source: [forestrie-agents/workflow/rules/branch-naming.md](https://github.com/forestrie/forestrie-agents/blob/main/workflow/rules/branch-naming.md)
+(local: `../../forestrie-agents/workflow/rules/branch-naming.md`).
 
-Use:
-
-```text
-<user>/for-<issue-no>-<short-desc>
-```
-
-- **`<user>`** — short branch owner prefix (see [User aliases](#user-aliases)).
-- **`for-<issue-no>`** — Linear issue number only (e.g. `167` → `for-167`), team
-  key **`FOR`** implied.
-- **`<short-desc>`** — kebab-case slug (lowercase, hyphens); keep it short and
-  specific.
-
-Examples: `robin/for-167-onboard-design`, `robin/for-170-token-binding`.
-
-## Issue selection
-
-- One branch maps to **one Linear issue**.
-- When work is part of a **series** with a logical parent, use the **parent**
-  issue number in the branch name; let **`<short-desc>`** disambiguate the slice
-  (e.g. parent `FOR-167`, branches `robin/for-167-request-api` and
-  `robin/for-167-token-binding`).
-- Do not invent issue numbers — resolve or create the issue first (see below).
-
-## Default user prefix
-
-When creating a branch, set **`<user>`** from the GitHub username:
-
-1. Prefer `gh api user --jq .login` (or equivalent) when GitHub CLI is
-   available.
-2. Otherwise use the configured git user email/name only if it clearly maps to
-   a [user alias](#user-aliases) entry.
-3. Map the GitHub username through **User aliases**; if there is no alias, use
-   the GitHub username as-is (lowercase).
-
-## User aliases
-
-Map GitHub usernames to the short **`<user>`** prefix used in branch names.
-Add rows here as people join the project.
-
-| GitHub username | Branch prefix |
-|-----------------|---------------|
-| `robinbryce`    | `robin`       |
-| `robin0f7`      | `robin`       |
-
-## Creating branches
-
-Before `git checkout -b`:
-
-1. **Find the issue** — search Linear (team **`FOR`**) for an existing issue
-   that matches the work. Follow [linear-mcp-forestrie.mdc](./linear-mcp-forestrie.mdc)
-   for MCP identity checks.
-2. **If no suitable issue exists**, create one on team **Forestrie (`FOR`)**:
-   - **Title:** concise summary derived from the original prompt or task.
-   - **Description:** minimal context — problem or change in one short
-     paragraph.
-   - **Acceptance criteria:** bullet list of **testable** outcomes (behaviour,
-     API responses, tests that must pass, observable fixes). Avoid vague
-     goals like "improve quality" without verifiable checks.
-3. **Name the branch** with the resolved issue number and slug, then create it
-   from the intended base branch (usually `main`).
-
-Do not create a branch without a linked **`FOR-*`** issue unless the user
-explicitly asks to skip issue tracking.
+Read that file — do not duplicate its content here.

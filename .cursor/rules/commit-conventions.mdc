@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Commit conventions
 
-- commit titles must be no more than 79 characters
-- commit body lines must be no more than 72 characters
-- never include "Co-Authored-By" lines in commit messages
-- use only the repository's configured git user as the commit author
+Canonical source: [forestrie-agents/workflow/rules/commit-conventions.md](https://github.com/forestrie/forestrie-agents/blob/main/workflow/rules/commit-conventions.md)
+(local: `../../forestrie-agents/workflow/rules/commit-conventions.md`).
+
+Read that file — do not duplicate its content here.

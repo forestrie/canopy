@@ -1,7 +1,6 @@
-import { decode as decodeCbor } from "cbor-x";
-import { encodeCborDeterministic } from "@canopy/encoding";
-import type { Grant } from "./grant.js";
-import { grantDataToBytes } from "./grant-data.js";
+import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import type { Grant } from "@forestrie/encoding";
+import { grantDataToBytes } from "@forestrie/encoding";
 import { fromPaddedWire32, toPaddedWire32 } from "./uuid-bytes.js";
 
 const CBOR_KEY_IDTIMESTAMP = 0;
@@ -103,5 +102,5 @@ export function encodeGrantPayload(grant: Grant): Uint8Array {
       grantDataToBytes(grant.grantData ?? new Uint8Array(0)),
     ],
   ]);
-  return encodeCborDeterministic(map);
+  return new Uint8Array(encodeCbor(map));
 }

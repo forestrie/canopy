@@ -3,7 +3,7 @@
  * Caller must already enforce {@link curatorAdminBearerOrUnauthorized}.
  */
 
-import { encodeCborDeterministic } from "@canopy/encoding";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import type { Address } from "viem";
 
 import { COSE_ALG_ES256, COSE_ALG_KS256 } from "../cose/cose-key.js";

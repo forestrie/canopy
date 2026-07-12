@@ -4,7 +4,7 @@
 
 import { createPrivateKey, createPublicKey } from "node:crypto";
 import { decode } from "cbor-x";
-import { encodeCborDeterministic } from "./encoding/encode-cbor-deterministic.js";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import {
   buildDelegationCertificateEs256,
   buildDelegationCertificateKs256,

@@ -19,7 +19,7 @@
  * authority resolver.
  */
 
-import { encodeCborDeterministic } from "@canopy/encoding";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import type {
   CreationGrantValidator,
   UnivocityGrantClient,

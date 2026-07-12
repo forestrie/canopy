@@ -7,7 +7,7 @@ import {
   encodeCborDeterministic,
   encodeCoseSign1Raw,
   encodeSigStructure,
-} from "@canopy/encoding";
+} from "@forestrie/encoding";
 import { sha256 } from "@noble/hashes/sha256";
 import { encodeGrantPayload } from "../../src/grant/codec.js";
 import type { Grant } from "../../src/grant/types.js";

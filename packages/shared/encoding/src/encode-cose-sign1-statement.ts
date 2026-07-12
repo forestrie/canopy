@@ -1,25 +1,31 @@
 /**
  * Statement COSE encoder (artifact).
  * Produces COSE Sign1 for register-statement: 4-element array; protected = bstr
- * with map `{ 4: kid }`; payload and signature as CBOR bstrs (RFC 8152).
+ * with map `{ 1: alg?, 3: cty?, 4: kid }`; payload and signature as CBOR bstrs
+ * (RFC 8152).
  */
 
 import { encodeCborBstr } from "./encode-cbor-bstr.js";
-import { encodeCoseProtectedWithKid } from "./encode-cose-protected.js";
+import {
+  type CoseProtectedHeaderOptions,
+  encodeCoseProtectedWithKid,
+} from "./encode-cose-protected.js";
 
 /**
- * Encode statement COSE Sign1 with kid in protected header.
+ * Encode statement COSE Sign1 with kid (and optional alg/cty) in protected header.
  * @param payload - Statement payload bytes
  * @param kid - Key id (signer binding; must match grant's signer)
  * @param signature - Signature bytes (will be encoded as CBOR bstr)
+ * @param options - Optional protected `alg` / `cty` labels (SCITT: keep both protected)
  * @returns COSE Sign1 as CBOR-encoded 4-element array
  */
 export function encodeCoseSign1Statement(
   payload: Uint8Array,
   kid: Uint8Array,
   signature: Uint8Array,
+  options?: CoseProtectedHeaderOptions,
 ): Uint8Array {
-  const protectedBstr = encodeCoseProtectedWithKid(kid);
+  const protectedBstr = encodeCoseProtectedWithKid(kid, options);
   const unprotectedMap = new Uint8Array([0xa0]); // map(0)
   const payloadBstr = encodeCborBstr(payload);
   const signatureBstr = encodeCborBstr(signature);

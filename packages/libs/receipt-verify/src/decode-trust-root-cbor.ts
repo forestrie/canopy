@@ -1,5 +1,5 @@
-import { COSE_ALG_ES256, COSE_ALG_KS256 } from "@canopy/encoding";
-import type { ParsedVerifyKey } from "@canopy/encoding";
+import { COSE_ALG_ES256, COSE_ALG_KS256 } from "@forestrie/encoding";
+import type { ParsedVerifyKey } from "@forestrie/encoding";
 import {
   isParsedKs256RootKey,
   type ParsedKs256RootKey,

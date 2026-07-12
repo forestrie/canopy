@@ -2,7 +2,7 @@
  * POST /v1/api/keys — ensure custody ES256 key (application/cbor). Traefik → `/api/keys` on pod.
  */
 
-import { encodeCborDeterministic } from "./encoding/encode-cbor-deterministic.js";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import {
   custodianBodyPreview,
   custodianDecodeCbor,

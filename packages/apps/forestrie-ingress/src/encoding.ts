@@ -6,7 +6,7 @@
  */
 
 import { decode } from "cbor-x";
-import { encodeCborDeterministic } from "@canopy/encoding";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import type {
   PullResponse,
   LogGroup,

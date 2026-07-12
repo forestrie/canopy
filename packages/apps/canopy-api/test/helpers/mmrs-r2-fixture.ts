@@ -3,7 +3,7 @@
  * Layout mirrors scrapi-flow.test.ts / resolve-receipt.ts (massif height 3).
  */
 
-import { encodeCborDeterministic } from "@canopy/encoding";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import { DELEGATION_CERT_LABEL } from "../../src/grant/delegation-verify.js";
 
 export const SEAL_PEAK_RECEIPTS_LABEL = -65931;

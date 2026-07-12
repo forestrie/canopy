@@ -7,7 +7,7 @@
  * polling backoff.
  */
 
-import { encodeCborDeterministic } from "@canopy/encoding";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 
 /** Retry-After seconds on 202 pending responses. */
 export const DELEGATION_PENDING_RETRY_AFTER_SECONDS = 5;

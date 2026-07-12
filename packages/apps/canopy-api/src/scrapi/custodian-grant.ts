@@ -6,7 +6,7 @@
  */
 
 import { decode as decodeCbor } from "cbor-x";
-import { encodeCborDeterministic } from "@canopy/encoding";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import {
   algToCurve,
   COSE_ALG_ES256,
@@ -18,7 +18,7 @@ import {
   type VerifyCoseSign1Options,
   verifyCoseSign1,
   verifyCoseSign1WithParsedKey,
-} from "@canopy/encoding";
+} from "@forestrie/encoding";
 import {
   HEADER_FORESTRIE_GRANT_V0,
   HEADER_IDTIMESTAMP,

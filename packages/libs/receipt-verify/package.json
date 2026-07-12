@@ -1,9 +1,14 @@
 {
   "name": "@forestrie/receipt-verify",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.5.0",
+  "license": "MIT",
   "type": "module",
   "description": "Offline SCITT grant receipt verification (ADR-0045)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/forestrie/canopy.git",
+    "directory": "packages/libs/receipt-verify"
+  },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -12,18 +17,39 @@
       "default": "./src/index.ts"
     }
   },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest --run",
-    "test:watch": "vitest"
+    "check:browser-safe": "node tools/check-browser-safe.mjs",
+    "test": "pnpm run check:browser-safe && vitest --run",
+    "test:watch": "vitest",
+    "prepack": "pnpm run build"
   },
   "dependencies": {
-    "@canopy/encoding": "workspace:*",
-    "@canopy/merklelog": "workspace:*",
+    "@forestrie/encoding": "workspace:*",
+    "@forestrie/merklelog": "workspace:*",
     "@noble/hashes": "^1.7.1",
     "cbor-x": "^1.5.9"
   },
   "devDependencies": {
+    "esbuild": "^0.24.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   }

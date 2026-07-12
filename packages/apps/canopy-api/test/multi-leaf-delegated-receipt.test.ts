@@ -23,7 +23,7 @@ import {
   verifyReceiptInclusionFromParsed,
 } from "../src/grant/receipt-verify.js";
 import { uuidToBytes } from "../src/grant/uuid-bytes.js";
-import type { Proof } from "@canopy/merklelog";
+import type { Proof } from "@forestrie/merklelog";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   buildDelegatedDetachedPeakReceipt,

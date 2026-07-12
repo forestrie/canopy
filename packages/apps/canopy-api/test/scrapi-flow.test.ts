@@ -1,4 +1,4 @@
-import { signCoseSign1Statement } from "@canopy/encoding";
+import { signCoseSign1Statement } from "@forestrie/encoding";
 import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
 import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -212,6 +212,86 @@ describe("SCRAPI flow", () => {
       expect(String(problem.detail ?? "")).toContain("SEQUENCING_QUEUE");
     }
     // 503 when wrangler.test omits SEQUENCING_QUEUE; 303 when queue is bound (e.g. wrangler dev)
+  });
+
+  it("accepts a statement with {1: alg, 3: cty, 4: kid} all in the protected header (FOR-341 F1)", async () => {
+    // Compatibility proof for the encoding 0.2.0 protected-header extension:
+    // register verifies the ES256 signature over the *received* protected
+    // bstr and reads only kid (label 4) from it, so the extra protected
+    // labels alg (1) and cty (3) must pass structure validation, signer
+    // binding, and signature verification unchanged. A failure in any of
+    // those returns 400/403; reaching enqueue yields 303 (queue bound) or
+    // the post-verification 503 (SEQUENCING_QUEUE unbound in wrangler.test).
+    const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
+    const statementKid = flowGrantData64.subarray(0, 32);
+    const kid16 = custodianStatementKidFromXyGrantData(flowGrantData64);
+    const idtimestampBytes = new Uint8Array(8).fill(43);
+
+    const flags = new Uint8Array(8);
+    flags[3] = 0x03; // GF_CREATE | GF_EXTEND
+    flags[7] = 0x02; // GF_DATA_LOG
+    const grant: Grant = {
+      logId: uuidToBytes(logId),
+      ownerLogId: uuidToBytes("660e8400-e29b-41d4-a716-446655440001"),
+      grant: flags,
+      maxHeight: 0,
+      minGrowth: 0,
+      grantData: flowGrantData64,
+    };
+    const authHeader = await forestrieGrantAuthorizationHeader(
+      grant,
+      flowGrantPriv,
+      kid16,
+      idtimestampBytes,
+    );
+
+    const payload = new TextEncoder().encode('{"hello":"protected-cty"}');
+    const coseSign1 = await signCoseSign1Statement(
+      payload,
+      statementKid,
+      flowGrantPriv,
+      { alg: -7, cty: "application/json" },
+    );
+
+    // Prove the statement under test really carries {1,3,4} protected.
+    const tuple = decodeCbor(coseSign1) as unknown[];
+    const protectedMap = decodeCbor(tuple[0] as Uint8Array) as unknown;
+    expect(headerGet(protectedMap, 1)).toBe(-7);
+    expect(headerGet(protectedMap, 3)).toBe("application/json");
+    expect(headerGet(protectedMap, 4)).toBeInstanceOf(Uint8Array);
+
+    const request = new Request(
+      `http://localhost/register/${flowBootstrapLogId}/entries`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": 'application/cose; cose-type="cose-sign1"',
+          Authorization: authHeader,
+        },
+        body: coseSign1,
+      },
+    );
+
+    const response = await worker.fetch(
+      request,
+      testEnv,
+      {} as ExecutionContext,
+    );
+
+    // Any structure/kid/signature intolerance of the extra protected labels
+    // would surface as 4xx before either of these.
+    expect([303, 503]).toContain(response.status);
+    if (response.status === 303) {
+      expect(response.headers.get("Location")).toContain(
+        `/logs/${flowBootstrapLogId}/${logId}/entries/`,
+      );
+    } else {
+      const problem = decodeCbor(
+        new Uint8Array(await response.arrayBuffer()),
+      ) as { detail?: string };
+      // Post-verification 503: enqueue unavailable, not a statement rejection.
+      expect(String(problem.detail ?? "")).toContain("SEQUENCING_QUEUE");
+    }
   });
 
   it("resolve-receipt returns a COSE_Sign1 receipt with an attached proof", async () => {

@@ -7,7 +7,7 @@
  */
 
 import { decode } from "cbor-x";
-import { encodeCborDeterministic } from "@canopy/encoding";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import type { Env } from "../env.js";
 import { requireOperatorTokenOrResponse } from "../auth/authorize.js";
 import type { CustodyKeysRequest } from "../types/custody-keys-request.js";

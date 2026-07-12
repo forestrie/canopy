@@ -67,7 +67,14 @@ describe("encodeCborDeterministic value coverage", () => {
     const value = [
       1,
       123456789012345n,
-      [[new Uint8Array([1, 2]).buffer, 0n, 1n, [[new Uint8Array([9]).buffer, null]]]],
+      [
+        [
+          new Uint8Array([1, 2]).buffer,
+          0n,
+          1n,
+          [[new Uint8Array([9]).buffer, null]],
+        ],
+      ],
     ];
     const bytes = encodeCborDeterministic(value);
     expect(hex(bytes)).not.toContain("d840");

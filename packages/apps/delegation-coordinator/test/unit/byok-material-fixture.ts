@@ -1,5 +1,8 @@
 import { decode } from "cbor-x";
-import { encodeCborDeterministic, encodeSigStructure } from "@canopy/encoding";
+import {
+  encodeCborDeterministic,
+  encodeSigStructure,
+} from "@forestrie/encoding";
 
 function cborBytes(value: unknown): Uint8Array {
   return encodeCborDeterministic(value);

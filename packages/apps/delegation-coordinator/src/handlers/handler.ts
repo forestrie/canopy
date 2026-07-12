@@ -9,7 +9,7 @@
  */
 
 import { decode } from "cbor-x";
-import { encodeCborDeterministic } from "@canopy/encoding";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import type { Env } from "../env.js";
 import { hex32ToCanonicalUuid, normalizeLogIdToHex32 } from "../log-id.js";
 import {

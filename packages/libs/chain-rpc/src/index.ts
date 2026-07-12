@@ -1,5 +1,5 @@
 /**
- * Public exports for `@canopy/chain-rpc`: supported-chains config parsing,
+ * Public exports for `@forestrie/chain-rpc`: supported-chains config parsing,
  * deploy-time env substitution, and JSON-RPC failover helpers shared by
  * canopy-api onboarding and KS256 verification.
  */

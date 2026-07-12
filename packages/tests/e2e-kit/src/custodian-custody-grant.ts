@@ -4,9 +4,9 @@
 
 import { randomUUID } from "node:crypto";
 import { decode as decodeCbor } from "cbor-x";
-import { encodeCborDeterministic } from "./encoding/encode-cbor-deterministic.js";
-import { encodeGrantPayload } from "./wire/grant/codec.js";
-import type { Grant } from "./wire/grant/grant.js";
+import { encodeCborDeterministic } from "@forestrie/encoding";
+import { encodeGrantPayload } from "@forestrie/grant-builder";
+import type { Grant } from "@forestrie/grant-builder";
 import {
   mergeGrantHeadersIntoCustodianSign1,
   postCustodianSignGrantPayload,
