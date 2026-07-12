@@ -5,7 +5,8 @@
  * full grant bytes are carried in unprotected header HEADER_FORESTRIE_GRANT_V0.
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import { decode as decodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@canopy/encoding";
 import {
   algToCurve,
   COSE_ALG_ES256,
@@ -141,7 +142,7 @@ export async function postCustodianSignGrantPayload(
 ): Promise<Uint8Array> {
   const base = trimBase(custodianBaseUrl);
   const keySeg = encodeURIComponent(keyId);
-  const cborBody = encodeCbor({ payload: grantPayloadBytes });
+  const cborBody = encodeCborDeterministic({ payload: grantPayloadBytes });
   const u8 =
     cborBody instanceof Uint8Array
       ? cborBody
@@ -182,7 +183,7 @@ export function mergeGrantHeadersIntoCustodianSign1(
   unprotected.set(HEADER_FORESTRIE_GRANT_V0, grantPayloadBytes);
   unprotected.set(HEADER_IDTIMESTAMP, new Uint8Array(8));
   const next = [arr[0], unprotected, arr[2], arr[3]];
-  return new Uint8Array(encodeCbor(next));
+  return encodeCborDeterministic(next);
 }
 
 function pemBodyToDer(pem: string): Uint8Array {

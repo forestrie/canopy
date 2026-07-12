@@ -16,10 +16,11 @@
  * `cbor.SortCoreDeterministic`.
  *
  * Supported value types: unsigned + negative integers (`number` | `bigint`),
- * `boolean`, `null`, byte strings (`Uint8Array`), text strings (`string`),
- * arrays, integer/text-keyed maps (`Map`), and plain objects (encoded as
- * canonical text-keyed maps, matching Go `map[string]any`). Non-integer numbers
- * and any other type throw rather than emitting silently-wrong bytes.
+ * `boolean`, `null`, byte strings (`Uint8Array` | `ArrayBuffer`), text strings
+ * (`string`), arrays, integer/text-keyed maps (`Map`), and plain objects
+ * (encoded as canonical text-keyed maps with `undefined` properties skipped,
+ * matching Go `map[string]any`). Non-integer numbers and any other type throw
+ * rather than emitting silently-wrong bytes.
  */
 
 /** CBOR major types (RFC 8949 §3). */
@@ -110,6 +111,10 @@ export function encodeCborDeterministic(value: unknown): Uint8Array {
   if (value instanceof Uint8Array) {
     return concat([encodeHead(MAJOR_BSTR, value.length), value]);
   }
+  if (value instanceof ArrayBuffer) {
+    const bytes = new Uint8Array(value);
+    return concat([encodeHead(MAJOR_BSTR, bytes.length), bytes]);
+  }
   if (typeof value === "string") {
     const bytes = new TextEncoder().encode(value);
     return concat([encodeHead(MAJOR_TSTR, bytes.length), bytes]);
@@ -123,7 +128,11 @@ export function encodeCborDeterministic(value: unknown): Uint8Array {
   }
   if (typeof value === "object") {
     // Plain object → canonical text-keyed map (Go `map[string]any` / cbor-x).
-    return encodeMap(new Map(Object.entries(value as Record<string, unknown>)));
+    // Skip undefined-valued properties (JSON/CBOR-map semantics: absent, not nil).
+    const entries = Object.entries(value as Record<string, unknown>).filter(
+      ([, v]) => v !== undefined,
+    );
+    return encodeMap(new Map(entries));
   }
   throw new Error(
     `encodeCborDeterministic: unsupported value type ${typeof value}`,

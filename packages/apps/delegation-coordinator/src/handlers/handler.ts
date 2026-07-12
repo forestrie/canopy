@@ -8,7 +8,8 @@
  * [ARC-0017](https://github.com/forestrie/devdocs/blob/main/arc/arc-0017-hierarchical-authority-logs-and-fee-distribution.md).
  */
 
-import { decode, encode } from "cbor-x";
+import { decode } from "cbor-x";
+import { encodeCborDeterministic } from "@canopy/encoding";
 import type { Env } from "../env.js";
 import { hex32ToCanonicalUuid, normalizeLogIdToHex32 } from "../log-id.js";
 import {
@@ -154,7 +155,7 @@ export async function parseCborBody<T>(
  * @returns Response with `application/cbor`.
  */
 export function encodeCborResponse(value: unknown): Response {
-  const encoded = encode(value);
+  const encoded = encodeCborDeterministic(value);
   const bytes =
     encoded instanceof Uint8Array
       ? encoded
@@ -178,7 +179,7 @@ export function encodeCborError(
   title: string,
   detail?: string,
 ): Response {
-  const body = encode({
+  const body = encodeCborDeterministic({
     type: "about:blank",
     title,
     status,

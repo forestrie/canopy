@@ -7,7 +7,7 @@
  * polling backoff.
  */
 
-import { encode } from "cbor-x";
+import { encodeCborDeterministic } from "@canopy/encoding";
 
 /** Retry-After seconds on 202 pending responses. */
 export const DELEGATION_PENDING_RETRY_AFTER_SECONDS = 5;
@@ -22,7 +22,7 @@ export const DELEGATION_PENDING_DETAIL =
  * @param status - 202 Accepted or 503 Service Unavailable.
  */
 export function delegationPendingCborProblem(status: 202 | 503): Uint8Array {
-  const problem = encode({
+  const problem = encodeCborDeterministic({
     type: "about:blank",
     title: status === 202 ? "Accepted" : "Service Unavailable",
     status,

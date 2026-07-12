@@ -5,7 +5,8 @@
  * See: arbor/docs/adr-0005-cf-do-ingress-pull-encoding.md
  */
 
-import { encode, decode } from "cbor-x";
+import { decode } from "cbor-x";
+import { encodeCborDeterministic } from "@canopy/encoding";
 import type {
   PullResponse,
   LogGroup,
@@ -33,7 +34,7 @@ export function encodePullResponse(response: PullResponse): ArrayBuffer {
   ]);
 
   // Use BigInt for numeric fields to ensure CBOR encodes them as uint64
-  const encoded = encode([
+  const encoded = encodeCborDeterministic([
     response.version,
     BigInt(response.leaseExpiry),
     logGroups,
@@ -90,7 +91,7 @@ export function decodePullResponse(data: ArrayBuffer): PullResponse {
  * Encode an ack response to CBOR.
  */
 export function encodeAckResponse(acked: number): ArrayBuffer {
-  const encoded = encode({ acked });
+  const encoded = encodeCborDeterministic({ acked });
   return new Uint8Array(encoded).buffer;
 }
 

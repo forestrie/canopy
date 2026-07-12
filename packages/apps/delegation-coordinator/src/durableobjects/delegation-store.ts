@@ -10,7 +10,8 @@
  */
 
 import { DurableObject } from "cloudflare:workers";
-import { decode, encode } from "cbor-x";
+import { decode } from "cbor-x";
+import { encodeCborDeterministic } from "@canopy/encoding";
 import type { Env } from "../env.js";
 import { certificateKeyFor, sha256Hex } from "../certificate-key.js";
 import { hex32ToWireLogIdBytes, logIdWireBytesToHex32 } from "../log-id.js";
@@ -649,7 +650,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     ];
 
     if (rows.length === 0) {
-      const problem = encode({
+      const problem = encodeCborDeterministic({
         type: "about:blank",
         title: "Not Found",
         status: 404,
@@ -677,7 +678,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     } catch (error) {
       const detail =
         error instanceof Error ? error.message : "invalid stored public root";
-      const problem = encode({
+      const problem = encodeCborDeterministic({
         type: "about:blank",
         title: "Internal error",
         status: 500,
@@ -693,7 +694,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
       });
     }
 
-    const encoded = encode(resp);
+    const encoded = encodeCborDeterministic(resp);
     const out =
       encoded instanceof Uint8Array
         ? encoded
@@ -979,7 +980,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
       }
     }
 
-    const encoded = encode(resp);
+    const encoded = encodeCborDeterministic(resp);
     const out =
       encoded instanceof Uint8Array
         ? encoded

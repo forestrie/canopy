@@ -3,7 +3,7 @@
  * Caller must already enforce {@link curatorAdminBearerOrUnauthorized}.
  */
 
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "@canopy/encoding";
 import type { Address } from "viem";
 
 import { COSE_ALG_ES256, COSE_ALG_KS256 } from "../cose/cose-key.js";
@@ -311,7 +311,7 @@ export async function postForestGenesis(
   }
 
   const storageSeg = logIdToStorageSegment(logId);
-  const body = encodeCbor(out) as Uint8Array;
+  const body = encodeCborDeterministic(out);
   const chainBinding: ForestGenesisChainBinding = {
     address: binding.addr,
     chainId: binding.chainId,
