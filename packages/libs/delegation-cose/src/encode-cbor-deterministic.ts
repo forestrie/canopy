@@ -1,22 +1,25 @@
 /**
  * Minimal deterministic CBOR writer (RFC 8949 §4.2 core deterministic encoding).
  *
+ * Vendored copy of `@canopy/encoding`'s `encode-cbor-deterministic.ts` — this
+ * published package stays self-contained rather than depending on the private
+ * `@canopy/encoding` workspace lib (same pattern as `encode-sig-structure.ts`).
+ * Keep the two copies in sync.
+ *
  * Definite lengths only, shortest-form integer/length arguments, no tags, and
  * map keys sorted by the bytewise lexicographic order of their encoded key
- * bytes (§4.2.1). This replaces `cbor-x`'s `encode` on the COSE wire path:
- * cbor-x tags every `Uint8Array` with tag 64 and every `Map` with tag 259,
- * which strict COSE/SCITT decoders reject (see
- * status-2607-03-remove-cbor-x-for-scitt-cose-canonicity). cbor-x's configured
- * `Encoder` can suppress those tags but does **not** reorder map keys, so it is
- * still not RFC 8949 §4.2 canonical — hence this bespoke writer.
+ * bytes (§4.2.1). This replaces `cbor-x`'s `encode`, which tags every
+ * `Uint8Array` with tag 64 and every `Map` with tag 259 — extensions that
+ * strict COSE/SCITT decoders (and the Go `delegationcert` sealer) reject (see
+ * status-2607-03-remove-cbor-x-for-scitt-cose-canonicity). Output is
+ * byte-for-byte identical to Go `delegationcert` with
+ * `cbor.SortCoreDeterministic`.
  *
- * Supported value types (sufficient for COSE headers / SCITT receipts and
- * delegation-cert constraint blobs): unsigned + negative integers
- * (`number` | `bigint`), `boolean`, `null`, byte strings (`Uint8Array`), text
- * strings (`string`), arrays, integer/text-keyed maps (`Map`), and plain
- * objects (encoded as canonical text-keyed maps, matching Go `map[string]any`
- * and cbor-x's object encoding). Non-integer numbers and any other type throw
- * rather than emitting silently-wrong bytes.
+ * Supported value types: unsigned + negative integers (`number` | `bigint`),
+ * `boolean`, `null`, byte strings (`Uint8Array`), text strings (`string`),
+ * arrays, integer/text-keyed maps (`Map`), and plain objects (encoded as
+ * canonical text-keyed maps, matching Go `map[string]any`). Non-integer numbers
+ * and any other type throw rather than emitting silently-wrong bytes.
  */
 
 /** CBOR major types (RFC 8949 §3). */
