@@ -20,6 +20,7 @@
     "cbor-x": "^1.5.9"
   },
   "devDependencies": {
+    "cbor": "^10.0.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   }
