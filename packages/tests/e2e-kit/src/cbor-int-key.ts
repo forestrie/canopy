@@ -3,13 +3,8 @@
  * Avoid bare cbor-x `encode()` which can emit string-key maps.
  */
 
-import { Encoder } from "cbor-x";
-
-const cborEncoder = new Encoder({ mapsAsObjects: false });
+import { encodeCborDeterministic } from "./encoding/encode-cbor-deterministic.js";
 
 export function cborIntKeyBytes(value: unknown): Uint8Array {
-  const encoded = cborEncoder.encode(value);
-  return encoded instanceof Uint8Array
-    ? encoded
-    : new Uint8Array(encoded as ArrayLike<number>);
+  return encodeCborDeterministic(value);
 }

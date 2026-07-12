@@ -3,7 +3,8 @@
  */
 
 import { createPrivateKey, createPublicKey } from "node:crypto";
-import { decode, encode } from "cbor-x";
+import { decode } from "cbor-x";
+import { encodeCborDeterministic } from "./encoding/encode-cbor-deterministic.js";
 import {
   buildDelegationCertificateEs256,
   buildDelegationCertificateKs256,
@@ -103,11 +104,7 @@ export async function postCustodianDelegationIssue(opts: {
     delegatedPublicKey: opts.delegatedPublicKey,
     requestedTtlSeconds: opts.requestedTtlSeconds ?? 3600,
   };
-  const encoded = encode(body);
-  const u8 =
-    encoded instanceof Uint8Array
-      ? encoded
-      : new Uint8Array(encoded as ArrayLike<number>);
+  const u8 = encodeCborDeterministic(body);
   const res = await fetch(`${base}/api/delegations`, {
     method: "POST",
     headers: {

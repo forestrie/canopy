@@ -1,5 +1,5 @@
 import type { APIRequestContext } from "@playwright/test";
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "./encoding/encode-cbor-deterministic.js";
 import { assertBootstrapMintE2eEnv } from "./e2e-env-guards.js";
 import { getBootstrapVariant } from "./e2e-bootstrap-variant.js";
 import { mintBootstrapGrant } from "./bootstrap-grant-flow.js";
@@ -98,7 +98,7 @@ export async function postRegisterGrantExpect303(
       Buffer.from(opts.parentGrantBase64, "base64"),
     );
     headers["Content-Type"] = "application/cbor";
-    post.data = Buffer.from(encodeCbor({ parentGrant: parentBytes }));
+    post.data = Buffer.from(encodeCborDeterministic({ parentGrant: parentBytes }));
   }
   const registerRes = await unauthorizedRequest.post(
     `/register/${opts.bootstrapLogId}/grants`,

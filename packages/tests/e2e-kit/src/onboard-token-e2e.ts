@@ -2,7 +2,8 @@
  * Mint CANOPY_PAYMENTS_ONBOARD_TOKEN via ops API for genesis POST e2e.
  */
 
-import { encode as encodeCbor, decode as decodeCbor } from "cbor-x";
+import { decode as decodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "./encoding/encode-cbor-deterministic.js";
 import type { APIRequestContext } from "@playwright/test";
 
 const BOOTSTRAP_MINT_E2E_HELP =
@@ -29,7 +30,7 @@ export async function mintOnboardTokenE2e(
       Authorization: `Bearer ${ops}`,
       "Content-Type": "application/cbor",
     },
-    data: Buffer.from(encodeCbor(new Map([[1, label]])) as Uint8Array),
+    data: Buffer.from(encodeCborDeterministic(new Map([[1, label]]))),
   });
   if (res.status() !== 201) {
     throw new Error(

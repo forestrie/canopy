@@ -4,10 +4,12 @@
  * Used by Custodian-style Sign1 (digest payload, map unprotected) and merge helpers.
  */
 
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "./encode-cbor-deterministic.js";
 
 /**
- * Serialize a COSE Sign1 four-tuple via cbor-x.
+ * Serialize a COSE Sign1 four-tuple as strict, tag-free, RFC 8949 §4.2
+ * deterministic CBOR — mirrors the production `@canopy/encoding` encoder so
+ * e2e fixtures produce the same conformant bytes the wire path emits.
  *
  * @param protectedBstr - COSE Sign1 `[0]` protected header bstr
  * @param unprotected - COSE Sign1 `[1]` unprotected header map
@@ -21,6 +23,10 @@ export function encodeCoseSign1Raw(
   payloadBstr: Uint8Array,
   signature: Uint8Array,
 ): Uint8Array {
-  const tuple = [protectedBstr, unprotected, payloadBstr, signature];
-  return new Uint8Array(encodeCbor(tuple));
+  return encodeCborDeterministic([
+    protectedBstr,
+    unprotected,
+    payloadBstr,
+    signature,
+  ]);
 }

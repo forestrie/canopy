@@ -1,6 +1,5 @@
-import { encodeSigStructure } from "@canopy/encoding";
+import { encodeCborDeterministic, encodeSigStructure } from "@canopy/encoding";
 import { calculateRoot, type Proof } from "@canopy/merklelog";
-import { encode as encodeCbor } from "cbor-x";
 import type { Grant } from "../../src/grant.js";
 import { grantCommitmentHashFromGrant } from "../../src/grant-commitment.js";
 import { COSE_ALG_ES256 } from "../../src/cose-key.js";
@@ -20,10 +19,7 @@ import { inclusionProofForIndex } from "./mmr-inclusion-proof.js";
 const VDS_COSE_RECEIPT_PROOFS_TAG = 396;
 
 function cborBytes(value: unknown): Uint8Array {
-  const encoded = encodeCbor(value);
-  return encoded instanceof Uint8Array
-    ? encoded
-    : new Uint8Array(encoded as ArrayLike<number>);
+  return encodeCborDeterministic(value);
 }
 
 export async function generateP256KeyPair(): Promise<CryptoKeyPair> {

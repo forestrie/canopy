@@ -3,7 +3,8 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import { decode as decodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "./encoding/encode-cbor-deterministic.js";
 import { encodeGrantPayload } from "./wire/grant/codec.js";
 import type { Grant } from "./wire/grant/grant.js";
 import {
@@ -87,11 +88,7 @@ export async function postCustodianEnsureEs256Key(opts: {
     protectionLevel: "SOFTWARE",
     labels,
   };
-  const encoded = encodeCbor(body);
-  const u8 =
-    encoded instanceof Uint8Array
-      ? encoded
-      : new Uint8Array(encoded as ArrayLike<number>);
+  const u8 = encodeCborDeterministic(body);
   const bodyBuf = u8.buffer.slice(
     u8.byteOffset,
     u8.byteOffset + u8.byteLength,

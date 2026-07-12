@@ -1,5 +1,6 @@
 import type { APIRequestContext } from "@playwright/test";
-import { decode, Encoder } from "cbor-x";
+import { decode } from "cbor-x";
+import { encodeCborDeterministic } from "./encoding/encode-cbor-deterministic.js";
 import { encodeSigStructure } from "./encoding/encode-sig-structure.js";
 import { encodeGrantPayload } from "./wire/grant/codec.js";
 import type { Grant } from "./wire/grant/grant.js";
@@ -28,7 +29,6 @@ import { bytesToForestrieGrantBase64 } from "./bootstrap-grant-flow.js";
 
 const RECEIPT_LOCATION_RE =
   /\/logs\/[^/]+\/[^/]+\/\d+\/entries\/[0-9a-f]{32}\/receipt(?:\?|$)/i;
-const cborEncoder = new Encoder({ mapsAsObjects: false });
 
 export interface ByokPollStats {
   pendingEntriesSeen: number;
@@ -36,10 +36,7 @@ export interface ByokPollStats {
 }
 
 function cborBytes(value: unknown): Uint8Array {
-  const encoded = cborEncoder.encode(value);
-  return encoded instanceof Uint8Array
-    ? encoded
-    : new Uint8Array(encoded as ArrayLike<number>);
+  return encodeCborDeterministic(value);
 }
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {

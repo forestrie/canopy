@@ -2,7 +2,7 @@
  * POST /v1/api/keys — ensure custody ES256 key (application/cbor). Traefik → `/api/keys` on pod.
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "./encoding/encode-cbor-deterministic.js";
 import {
   custodianBodyPreview,
   custodianDecodeCbor,
@@ -48,11 +48,7 @@ export async function postCustodianApiEnsureEs256Key(opts: {
     protectionLevel: opts.body.protectionLevel ?? "SOFTWARE",
     labels,
   };
-  const encoded = encodeCbor(cborBody);
-  const u8 =
-    encoded instanceof Uint8Array
-      ? encoded
-      : new Uint8Array(encoded as ArrayLike<number>);
+  const u8 = encodeCborDeterministic(cborBody);
   const bodyBuf = u8.buffer.slice(
     u8.byteOffset,
     u8.byteOffset + u8.byteLength,

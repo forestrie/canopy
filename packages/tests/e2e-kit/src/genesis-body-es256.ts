@@ -1,4 +1,4 @@
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "./encoding/encode-cbor-deterministic.js";
 import {
   FOREST_GENESIS_LABEL_BOOTSTRAP_KEY,
   FOREST_GENESIS_LABEL_CHAIN_ID,
@@ -14,7 +14,7 @@ export function genesisBodyEs256(
   univocityAddr: Uint8Array,
   chainId: string,
 ): Uint8Array {
-  return encodeCbor(
+  return encodeCborDeterministic(
     new Map<number, unknown>([
       [FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V2],
       [FOREST_GENESIS_LABEL_GENESIS_ALG, COSE_ALG_ES256],
@@ -22,5 +22,5 @@ export function genesisBodyEs256(
       [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, univocityAddr],
       [FOREST_GENESIS_LABEL_CHAIN_ID, chainId],
     ]),
-  ) as Uint8Array;
+  );
 }

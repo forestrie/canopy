@@ -2,7 +2,7 @@
  * POST /v1/api/keys/{keyId}/sign — COSE Sign1; verify with `@canopy/api` helpers.
  */
 
-import { encode as encodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "./encoding/encode-cbor-deterministic.js";
 import { verifyCustodianEs256GrantSign1 } from "./wire/scrapi/custodian-grant.js";
 import { custodianApiV1BaseUrl } from "./custodian-api-env.js";
 
@@ -14,11 +14,7 @@ export async function postCustodianApiSignPayload(opts: {
 }): Promise<Uint8Array> {
   const base = custodianApiV1BaseUrl(opts.baseUrl);
   const keySeg = encodeURIComponent(opts.keyIdSegment);
-  const cborBody = encodeCbor({ payload: opts.payloadBytes });
-  const u8 =
-    cborBody instanceof Uint8Array
-      ? cborBody
-      : new Uint8Array(cborBody as ArrayLike<number>);
+  const u8 = encodeCborDeterministic({ payload: opts.payloadBytes });
   const bodyBuf = u8.buffer.slice(
     u8.byteOffset,
     u8.byteOffset + u8.byteLength,

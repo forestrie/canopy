@@ -2,7 +2,8 @@
  * POST /api/forest/{log-id}/genesis from Playwright (Plan 0018 / 0028 / 0032).
  */
 
-import { decode as decodeCbor, encode as encodeCbor } from "cbor-x";
+import { decode as decodeCbor } from "cbor-x";
+import { encodeCborDeterministic } from "./encoding/encode-cbor-deterministic.js";
 import type { APIRequestContext } from "@playwright/test";
 import {
   FOREST_GENESIS_LABEL_CHAIN_ID,
@@ -88,7 +89,7 @@ export async function ensureForestGenesisKs256E2e(
     [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, opts.univocityAddr],
     [FOREST_GENESIS_LABEL_CHAIN_ID, opts.chainId],
   ]);
-  const body = encodeCbor(map) as Uint8Array;
+  const body = encodeCborDeterministic(map);
   await postGenesisWithRetry(
     request,
     opts.logId,
@@ -120,7 +121,7 @@ export async function ensureForestGenesisKs256WithWebhookE2e(
     [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, opts.univocityAddr],
     [FOREST_GENESIS_LABEL_CHAIN_ID, opts.chainId],
   ]);
-  const body = encodeCbor(map) as Uint8Array;
+  const body = encodeCborDeterministic(map);
   const coordinator = await postGenesisWithRetry(
     request,
     opts.logId,
@@ -163,7 +164,7 @@ export async function ensureForestGenesisEs256E2e(
     [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, opts.univocityAddr],
     [FOREST_GENESIS_LABEL_CHAIN_ID, opts.chainId],
   ]);
-  const body = encodeCbor(map) as Uint8Array;
+  const body = encodeCborDeterministic(map);
   await postGenesisWithRetry(
     request,
     opts.logId,
