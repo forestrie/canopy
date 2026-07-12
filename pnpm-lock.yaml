@@ -292,6 +292,9 @@ importers:
 
   packages/merklelog:
     devDependencies:
+      esbuild:
+        specifier: ^0.24.0
+        version: 0.24.2
       typescript:
         specifier: ^5.9.2
         version: 5.9.3

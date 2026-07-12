@@ -21,8 +21,11 @@ import {
 } from "@forestrie/encoding";
 import {
   calculateRoot,
-  Massif,
-  peakStackEnd,
+  inclusionProof,
+  massifIndexFromMMRIndex,
+  openMassifNodeStore,
+  peakIndexForLeafProof,
+  type MassifNodeStore,
   type Proof,
 } from "@forestrie/merklelog";
 import {
@@ -38,71 +41,13 @@ const SEAL_PEAK_RECEIPTS_LABEL = -65931;
 const DELEGATION_CERT_LABEL = 1000;
 const VDP_CONSISTENCY_PROOF_KEY = -2;
 
-const VALUE_BYTES = 32n;
-const MAX_MMR_HEIGHT = 64n;
-
-export type MassifNodeStore = {
-  /** 32-byte node at MMR index `i` (log data or ancestor peak stack). */
-  get(i: bigint): Uint8Array;
-  massifHeight: number;
-  massifIndex: bigint;
-  firstIndex: bigint;
-  /** Last MMR index with log data in this massif blob. */
-  lastIndex: bigint;
-};
-
 /**
- * Open a v2 massif blob for MMR node reads. Nodes below `firstIndex` resolve
- * through the ancestor peak stack; nodes above `lastIndex` are not present in
- * this blob and throw.
+ * Re-exported for compatibility. The MMR proof math and massif node store now
+ * live in `@forestrie/merklelog` (plan-2607-15 §4, phase 2); receipt-verify
+ * keeps only the COSE-shaped layer below.
  */
-export function openMassifNodeStore(massifBytes: Uint8Array): MassifNodeStore {
-  const massif = new Massif(massifBytes);
-  const start = massif.getStart();
-  const massifHeight = start.massifHeight;
-  if (
-    !Number.isInteger(massifHeight) ||
-    massifHeight < 1 ||
-    massifHeight > 64
-  ) {
-    throw new Error(`massif header has invalid height ${massifHeight}`);
-  }
-  const massifIndex = BigInt(start.massifIndex);
-  const firstIndex = start.firstIndex;
-
-  const logStart = peakStackEnd(massifHeight);
-  const peakStackStart = logStart - MAX_MMR_HEIGHT * VALUE_BYTES;
-  const blobLen = BigInt(massifBytes.byteLength);
-  if (blobLen < logStart) {
-    throw new Error("massif blob too short for v2 layout");
-  }
-  const logNodeCount = (blobLen - logStart) / VALUE_BYTES;
-  const lastIndex = firstIndex + logNodeCount - 1n;
-
-  const stackMap = peakStackMapForMassif(massifHeight, firstIndex);
-
-  const get = (i: bigint): Uint8Array => {
-    if (i >= firstIndex) {
-      if (i > lastIndex) {
-        throw new Error(
-          `mmr index ${i.toString(10)} is beyond this massif's log data ` +
-            `(last ${lastIndex.toString(10)}); local content does not cover ` +
-            `the requested tree size`,
-        );
-      }
-      const off = logStart + (i - firstIndex) * VALUE_BYTES;
-      return slice32(massifBytes, off, "log-data");
-    }
-    const peakIdx = stackMap.get(i);
-    if (peakIdx === undefined) {
-      throw new Error(`missing ancestor peak for mmr index ${i.toString(10)}`);
-    }
-    const off = peakStackStart + BigInt(peakIdx) * VALUE_BYTES;
-    return slice32(massifBytes, off, "peak-stack");
-  };
-
-  return { get, massifHeight, massifIndex, firstIndex, lastIndex };
-}
+export { openMassifNodeStore };
+export type { MassifNodeStore };
 
 export type ParsedCheckpoint = {
   coseSign1: CoseSign1;
@@ -281,16 +226,6 @@ function cborBytes(value: unknown): Uint8Array {
   return encodeCborDeterministic(value);
 }
 
-function slice32(buf: Uint8Array, offset: bigint, label: string): Uint8Array {
-  if (offset < 0n || offset + 32n > BigInt(buf.byteLength)) {
-    throw new Error(
-      `out of range read for ${label}: off=${offset.toString(10)}`,
-    );
-  }
-  const start = Number(offset);
-  return buf.slice(start, start + 32);
-}
-
 /**
  * Sealed mmr size from a format-v3 checkpoint: tree-size-2 of the consistency
  * proof (`bstr .cbor [tree-size-1, tree-size-2, paths, right-peaks]`) under
@@ -312,166 +247,4 @@ function sealedSizeFromCheckpoint(
     return BigInt(treeSize2);
   }
   return null;
-}
-
-// --- MMR index math (ported from go-merklelog/mmr, mirrors resolve-receipt) ---
-
-function bitLength(num: bigint): number {
-  if (num === 0n) return 0;
-  return num.toString(2).length;
-}
-
-function allOnes(num: bigint): boolean {
-  return num > 0n && (num & (num + 1n)) === 0n;
-}
-
-function jumpLeftPerfect(pos: bigint): bigint {
-  const bl = bitLength(pos);
-  if (bl === 0) return pos;
-  const msb = 1n << BigInt(bl - 1);
-  return pos - (msb - 1n);
-}
-
-function posHeight(pos: bigint): number {
-  let current = pos;
-  while (!allOnes(current)) {
-    current = jumpLeftPerfect(current);
-  }
-  return bitLength(current) - 1;
-}
-
-function indexHeight(i: bigint): number {
-  return posHeight(i + 1n);
-}
-
-function inclusionProof(
-  getNode: (i: bigint) => Uint8Array,
-  mmrLastIndex: bigint,
-  i: bigint,
-): Uint8Array[] {
-  if (i > mmrLastIndex) {
-    throw new Error("index out of range");
-  }
-  let g = BigInt(indexHeight(i));
-  const proof: Uint8Array[] = [];
-  while (true) {
-    const siblingOffset = 2n << g;
-    let iSibling: bigint;
-    if (BigInt(indexHeight(i + 1n)) > g) {
-      iSibling = i - siblingOffset + 1n;
-      i += 1n;
-    } else {
-      iSibling = i + siblingOffset - 1n;
-      i += siblingOffset;
-    }
-    if (iSibling > mmrLastIndex) {
-      return proof;
-    }
-    proof.push(getNode(iSibling));
-    g += 1n;
-  }
-}
-
-function peaksBitmap(mmrSize: bigint): bigint {
-  if (mmrSize === 0n) return 0n;
-  let pos = mmrSize;
-  let peakSize = (1n << BigInt(bitLength(mmrSize))) - 1n;
-  let peakMap = 0n;
-  while (peakSize > 0n) {
-    peakMap <<= 1n;
-    if (pos >= peakSize) {
-      pos -= peakSize;
-      peakMap |= 1n;
-    }
-    peakSize >>= 1n;
-  }
-  return peakMap;
-}
-
-function popcount64(x: bigint): number {
-  let count = 0;
-  let v = x;
-  while (v > 0n) {
-    if ((v & 1n) === 1n) count += 1;
-    v >>= 1n;
-  }
-  return count;
-}
-
-function peakIndexForLeafProof(mmrSize: bigint, proofLen: number): number {
-  const leafCount = peaksBitmap(mmrSize);
-  const peaksMask = (1n << BigInt(proofLen + 1)) - 1n;
-  return popcount64(leafCount) - popcount64(leafCount & peaksMask);
-}
-
-function topPeak(i: bigint): bigint {
-  const bl = bitLength(i + 2n);
-  return (1n << BigInt(bl - 1)) - 2n;
-}
-
-/** MMR indices of the peaks of the tree ending at `mmrIndex` (inclusive). */
-export function peakMMRIndexes(mmrIndex: bigint): bigint[] {
-  let mmrSize = mmrIndex + 1n;
-  if (posHeight(mmrSize + 1n) > posHeight(mmrSize)) {
-    return [];
-  }
-  let peak = 0n;
-  const out: bigint[] = [];
-  while (mmrSize !== 0n) {
-    const peakSize = topPeak(mmrSize - 1n) + 1n;
-    peak = peak + peakSize;
-    out.push(peak - 1n);
-    mmrSize -= peakSize;
-  }
-  return out;
-}
-
-function peakStackMapForMassif(
-  massifHeight: number,
-  firstIndex: bigint,
-): Map<bigint, number> {
-  const map = new Map<bigint, number>();
-  const iPeaks = peakMMRIndexes(firstIndex);
-  for (let i = 0; i < iPeaks.length; i++) {
-    const ip = iPeaks[i]!;
-    if (indexHeight(ip) < massifHeight - 1) {
-      continue;
-    }
-    map.set(ip, i);
-  }
-  return map;
-}
-
-function mmrIndexFromLeafIndex(leafIndex: bigint): bigint {
-  let sum = 0n;
-  let current = leafIndex;
-  while (current > 0n) {
-    const h = BigInt(bitLength(current));
-    sum += (1n << h) - 1n;
-    const half = 1n << (h - 1n);
-    current -= half;
-  }
-  return sum;
-}
-
-function firstMMRSize(mmrIndex: bigint): bigint {
-  let i = mmrIndex;
-  let h0 = indexHeight(i);
-  let h1 = indexHeight(i + 1n);
-  while (h0 < h1) {
-    i += 1n;
-    h0 = h1;
-    h1 = indexHeight(i + 1n);
-  }
-  return i + 1n;
-}
-
-function massifIndexFromMMRIndex(
-  massifHeight: number,
-  mmrIndex: bigint,
-): bigint {
-  const size = firstMMRSize(mmrIndex);
-  const leafIndex = peaksBitmap(size) - 1n;
-  const massifMaxLeaves = 1n << BigInt(massifHeight - 1);
-  return leafIndex / massifMaxLeaves;
 }

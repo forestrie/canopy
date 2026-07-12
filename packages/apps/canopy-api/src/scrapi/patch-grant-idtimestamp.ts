@@ -34,7 +34,7 @@ export async function patchGrantIdtimestamp(opts: {
 }): Promise<{ ok: true } | { ok: false; status: number; detail: string }> {
   const body = encodeCborDeterministic({
     idtimestamp: u64Be8(opts.idtimestamp),
-  }) as Uint8Array;
+  });
 
   const path = `/api/forest/${opts.rootLogId}/grants/${opts.subjectLogId}/idtimestamp`;
   let res: Response;

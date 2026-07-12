@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeCborDeterministic as encodeCbor } from "@forestrie/encoding";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import {
   buildReceiptOffline,
   computeAccumulatorPeak,
@@ -242,8 +242,8 @@ describe("buildReceiptOffline", () => {
 
   it("throws when the checkpoint has no peak receipts", async () => {
     const fx = await buildFixture();
-    const consistencyProof = encodeCbor([0n, 3n, [], []]);
-    const noReceipts = encodeCbor([
+    const consistencyProof = encodeCborDeterministic([0n, 3n, [], []]);
+    const noReceipts = encodeCborDeterministic([
       new Uint8Array(),
       new Map<number, unknown>([
         [396, new Map<number, unknown>([[-2, consistencyProof]])],
