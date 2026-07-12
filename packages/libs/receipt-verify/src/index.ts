@@ -17,8 +17,12 @@ export {
   computeAccumulatorPeak,
   openMassifNodeStore,
   parseCheckpoint,
-  peakMMRIndexes,
 } from "./build-receipt-offline.js";
+/**
+ * MMR proof math now lives in @forestrie/merklelog (plan-2607-15 §4 hoist);
+ * re-exported here to preserve the receipt-verify public surface.
+ */
+export { peakMMRIndexes } from "@forestrie/merklelog";
 export { decodeTrustRootFromGenesis } from "./decode-trust-root-from-genesis.js";
 export { verifyGrantReceiptOffline } from "./verify-grant-receipt-offline.js";
 export { decodeForestrieGrantCose } from "./decode-forestrie-grant-cose.js";
