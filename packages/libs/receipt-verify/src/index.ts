@@ -35,3 +35,11 @@ export {
 } from "./attach-transparent-statement-receipt.js";
 export { decodeEntryIdHex, entryIdHexToIdtimestampBe8 } from "./entry-id.js";
 export type { DecodedEntryId } from "./entry-id.js";
+
+/** Grant commitment hash (ContentHash) — the value the sequencer commits. */
+export { grantCommitmentHashFromGrant } from "./grant-commitment.js";
+/** Offline grant-leaf lookup from a local massif blob (FOR-344). */
+export { findGrantLeafInMassif } from "./find-grant-leaf.js";
+export type { LocatedLeaf } from "./find-grant-leaf.js";
+/** Re-exported so callers of findGrantLeafInMassif can catch it (FOR-344). */
+export { MissingIndexError } from "@forestrie/merklelog";
