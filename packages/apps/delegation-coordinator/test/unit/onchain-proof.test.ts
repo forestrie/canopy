@@ -144,7 +144,9 @@ async function buildKs256Submission(opts: {
   const logHex32 = normalizeLogIdToHex32(opts.logUuid);
   const delegatedPublicKey = testDelegatedCoseKey(opts.seed);
   const issuedAt = 1_700_000_000;
-  const expiresAt = issuedAt + 3600;
+  // Far-future so issue-time coverage retrieval (expires_at > now, FOR-390)
+  // returns the cert.
+  const expiresAt = 4_102_444_800; // 2100-01-01
   const certificate = await buildDelegationCertificateKs256(
     {
       logIdHex32: logHex32,

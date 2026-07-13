@@ -29,6 +29,9 @@ export async function buildTestByokMaterial(opts: {
   mmrStart: number;
   mmrEnd: number;
   delegatedPublicKey: Uint8Array;
+  /** Override the signed issuedAt/expiresAt (defaults to a fixed 2023 pair). */
+  issuedAt?: number;
+  expiresAt?: number;
 }): Promise<{
   certificate: Uint8Array;
   issuedAt: number;
@@ -49,8 +52,11 @@ export async function buildTestByokMaterial(opts: {
     16,
   );
   const delegated = decodeDelegatedKey(opts.delegatedPublicKey);
-  const issuedAt = 1_700_000_000;
-  const expiresAt = issuedAt + 3600;
+  const issuedAt = opts.issuedAt ?? 1_700_000_000;
+  // Default to a far-future expiry so issue-time coverage retrieval
+  // (expires_at > now, FOR-390) returns the cert; tests needing a specific
+  // window pass issuedAt/expiresAt explicitly.
+  const expiresAt = opts.expiresAt ?? 4_102_444_800; // 2100-01-01
   const protectedBytes = cborBytes(
     new Map<number, unknown>([
       [1, -7],

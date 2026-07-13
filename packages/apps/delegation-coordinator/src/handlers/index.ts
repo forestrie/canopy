@@ -7,6 +7,7 @@ export { handleGetPendingDelegation } from "./get-pending-delegation.js";
 export { handleGetSigningRoute } from "./get-signing-route.js";
 export { handlePostSigningRoute } from "./post-signing-route.js";
 export { handlePostCertificate } from "./post-certificate.js";
+export { handlePostDelegateKeys } from "./post-delegate-keys.js";
 export { handleGetPending } from "./get-pending.js";
 export {
   handlePostCustodyKeys,

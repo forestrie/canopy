@@ -20,6 +20,7 @@ import {
   handlePostCustodyKeys,
   handleAdminPostCustodyKeys,
   handlePostCertificate,
+  handlePostDelegateKeys,
   handlePostPublicRoot,
   handlePostSigningRoute,
   handleAdminResetStorage,
@@ -102,6 +103,10 @@ export default {
 
     if (pathname === "/api/delegations/certificate" && method === "POST") {
       return handlePostCertificate(request, env);
+    }
+
+    if (pathname === "/api/sealer/delegate-keys" && method === "POST") {
+      return handlePostDelegateKeys(request, env);
     }
 
     if (pathname === "/api/delegations/pending" && method === "GET") {
