@@ -27,6 +27,7 @@ import type { DelegationIssueResponse } from "../types/delegation-issue-response
 import type { DelegationCertificateRecord } from "../types/delegation-certificate-record.js";
 import type { PendingEntry } from "../types/pending-entry.js";
 import type { PendingHintRequest } from "../types/pending-hint-request.js";
+import type { RegisterDelegateKeysRequest } from "../types/register-delegate-keys-request.js";
 import type { SigningRoute } from "../types/signing-route.js";
 import type { SubmitDelegationCertificateRequest } from "../types/submit-delegation-certificate-request.js";
 import type { PutWebhookRequest } from "../types/put-webhook-request.js";
@@ -136,6 +137,10 @@ export class DelegationStoreDO extends DurableObject<Env> {
         return this.handlePendingHint(request);
       }
 
+      if (pathname === "/sealer/delegate-keys" && method === "PUT") {
+        return this.handlePutDelegateKeys(request);
+      }
+
       const webhookMatch = /^\/webhook\/([0-9a-f]{32})$/.exec(pathname);
       if (webhookMatch) {
         const logIdHex32 = webhookMatch[1]!;
@@ -216,6 +221,22 @@ export class DelegationStoreDO extends DurableObject<Env> {
     this.ensureDelegationCertificatesMigrated();
     this.ensureOnchainSignatureColumn();
     this.ensureOnchainRootAlgColumn();
+    this.ensureCertificateCoverageColumns();
+
+    // Standing sealer delegate keys (FOR-390 phase C). Per-sealer, replicated
+    // to every shard so a shard's coverage retrieval can LEFT JOIN it against
+    // the log's certificates locally. Registration (POST
+    // /api/sealer/delegate-keys) fans out to all shards.
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS delegate_keys (
+        pubkey_hash TEXT PRIMARY KEY,
+        sealer_id TEXT NOT NULL,
+        alg TEXT NOT NULL,
+        public_key BLOB NOT NULL,
+        epoch INTEGER NOT NULL,
+        not_after INTEGER NOT NULL
+      )
+    `);
 
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS materials (
@@ -345,6 +366,41 @@ export class DelegationStoreDO extends DurableObject<Env> {
         `ALTER TABLE delegation_certificates ADD COLUMN onchain_root_alg TEXT`,
       );
     }
+  }
+
+  /**
+   * Add coverage columns to delegation_certificates (FOR-390 phase C). The
+   * opaque certificate_key folds (mmrStart, mmrEnd, delegatedKey) together for
+   * exact-match; coverage retrieval needs them as first-class columns. The
+   * SIGNED range persisted here — never the issue request's range — is what
+   * the issue response's onchainProof is rebuilt from (review V1). Kept
+   * alongside certificate_key for rollback compatibility.
+   */
+  private ensureCertificateCoverageColumns(): void {
+    try {
+      [
+        ...this.ctx.storage.sql.exec(
+          `SELECT mmr_start FROM delegation_certificates LIMIT 0`,
+        ),
+      ];
+    } catch {
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE delegation_certificates ADD COLUMN delegated_pubkey_hash TEXT`,
+      );
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE delegation_certificates ADD COLUMN delegated_public_key BLOB`,
+      );
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE delegation_certificates ADD COLUMN mmr_start INTEGER`,
+      );
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE delegation_certificates ADD COLUMN mmr_end INTEGER`,
+      );
+    }
+    this.ctx.storage.sql.exec(`
+      CREATE INDEX IF NOT EXISTS idx_delegation_certificates_coverage
+      ON delegation_certificates (log_id_hex32, expires_at, mmr_start, mmr_end)
+    `);
   }
 
   /** Add user_enabled / operator_enabled columns on legacy databases. */
@@ -821,18 +877,24 @@ export class DelegationStoreDO extends DurableObject<Env> {
       body.mmrEnd,
       delegatedPublicKey,
     );
+    const pubkeyHash = await sha256Hex(delegatedPublicKey);
 
     this.ctx.storage.sql.exec(
       `INSERT INTO delegation_certificates
          (log_id_hex32, certificate_key, certificate, issued_at, expires_at,
-          onchain_signature, onchain_root_alg)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+          onchain_signature, onchain_root_alg,
+          delegated_pubkey_hash, delegated_public_key, mmr_start, mmr_end)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(log_id_hex32, certificate_key) DO UPDATE SET
          certificate = excluded.certificate,
          issued_at = excluded.issued_at,
          expires_at = excluded.expires_at,
          onchain_signature = excluded.onchain_signature,
-         onchain_root_alg = excluded.onchain_root_alg`,
+         onchain_root_alg = excluded.onchain_root_alg,
+         delegated_pubkey_hash = excluded.delegated_pubkey_hash,
+         delegated_public_key = excluded.delegated_public_key,
+         mmr_start = excluded.mmr_start,
+         mmr_end = excluded.mmr_end`,
       logIdHex32,
       key,
       certificate,
@@ -840,9 +902,12 @@ export class DelegationStoreDO extends DurableObject<Env> {
       body.expiresAt,
       onchainSignature,
       onchainRootAlg,
+      pubkeyHash,
+      delegatedPublicKey,
+      body.mmrStart,
+      body.mmrEnd,
     );
 
-    const pubkeyHash = await sha256Hex(delegatedPublicKey);
     this.ctx.storage.sql.exec(
       `DELETE FROM pending
        WHERE log_id_hex32 = ? AND mmr_start = ? AND mmr_end = ? AND delegated_pubkey_hash = ?`,
@@ -867,26 +932,40 @@ export class DelegationStoreDO extends DurableObject<Env> {
       return delegationPendingResponse(202);
     }
 
-    const key = await certificateKeyFor(
-      req.mmrStart,
-      req.mmrEnd,
-      req.delegatedPublicKey,
-    );
-
+    // Coverage retrieval (FOR-390 phase C): the newest unexpired certificate
+    // that COVERS the true seal window [mmrStart, mmrEnd], bound to either the
+    // request's own delegated key or any registered standing delegate key
+    // (rotation overlap — a still-valid wide cert bound to the epoch N-1 key
+    // is usable while the request advertises epoch N). Replaces the exact
+    // certificate_key match, so one wide advance cert serves every subsequent
+    // narrow seal without a signer round-trip.
+    const reqKeyHash = await sha256Hex(req.delegatedPublicKey);
+    const nowSeconds = Math.floor(Date.now() / 1000);
     const rows = [
       ...this.ctx.storage.sql.exec(
-        `SELECT certificate, issued_at, expires_at, onchain_signature,
-                onchain_root_alg
-       FROM delegation_certificates
-       WHERE log_id_hex32 = ? AND certificate_key = ?`,
+        `SELECT c.certificate, c.issued_at, c.expires_at, c.onchain_signature,
+                c.onchain_root_alg, c.delegated_public_key,
+                c.mmr_start, c.mmr_end
+           FROM delegation_certificates c
+           LEFT JOIN delegate_keys k ON k.pubkey_hash = c.delegated_pubkey_hash
+          WHERE c.log_id_hex32 = ?
+            AND c.expires_at > ?
+            AND c.mmr_start <= ?
+            AND c.mmr_end >= ?
+            AND (c.delegated_pubkey_hash = ? OR k.pubkey_hash IS NOT NULL)
+          ORDER BY c.expires_at DESC, c.mmr_end DESC
+          LIMIT 1`,
         logIdHex32,
-        key,
+        nowSeconds,
+        req.mmrStart,
+        req.mmrEnd,
+        reqKeyHash,
       ),
     ];
 
     if (rows.length === 0) {
-      const pubkeyHash = await sha256Hex(req.delegatedPublicKey);
-      const now = Math.floor(Date.now() / 1000);
+      const pubkeyHash = reqKeyHash;
+      const now = nowSeconds;
       const id = crypto.randomUUID();
       this.ctx.storage.sql.exec(
         `INSERT INTO pending
@@ -930,6 +1009,9 @@ export class DelegationStoreDO extends DurableObject<Env> {
       expires_at: number;
       onchain_signature: ArrayBuffer | null;
       onchain_root_alg: string | null;
+      delegated_public_key: ArrayBuffer | null;
+      mmr_start: number | null;
+      mmr_end: number | null;
     };
 
     const certificateBytes = new Uint8Array(row.certificate);
@@ -952,14 +1034,26 @@ export class DelegationStoreDO extends DurableObject<Env> {
           "onchainProofFromStored: omitting proof after public-root alg rotation",
           { logIdHex32, storedAlg, currentAlg },
         );
-      } else {
+      } else if (
+        row.delegated_public_key &&
+        row.mmr_start !== null &&
+        row.mmr_end !== null
+      ) {
+        // Review V1 (publishing breaks without this): the stored on-chain
+        // signature was made over the CERTIFICATE's range and key. Under
+        // coverage retrieval the request's narrow window differs from the
+        // signed range, so the proof MUST be rebuilt from the row's own
+        // columns — pairing the stored signature with the request range makes
+        // the on-chain P256.verify fail at publishCheckpoint. The on-chain
+        // range check is coverage (mmrIndex ∈ [start, end]), so the wider
+        // certificate range verifies the narrow seal correctly.
         // Prefer the alg persisted at validation time; legacy rows (null)
         // fall back to the live root — same behaviour as pre-R1.
         const onchainProof = this.onchainProofFromStored(
           logIdHex32,
-          req.mmrStart,
-          req.mmrEnd,
-          req.delegatedPublicKey,
+          row.mmr_start,
+          row.mmr_end,
+          new Uint8Array(row.delegated_public_key),
           new Uint8Array(row.onchain_signature),
           storedAlg ?? currentAlg,
         );
@@ -1223,6 +1317,118 @@ export class DelegationStoreDO extends DurableObject<Env> {
     this.prunePending(logIdHex32, now);
 
     return Response.json({ ok: true, id });
+  }
+
+  /**
+   * PUT /sealer/delegate-keys — idempotent upsert of a sealer's standing
+   * delegate keys (FOR-390 phase C). Each shard holds a replica so coverage
+   * retrieval can LEFT JOIN it locally against that log's certificates; the
+   * worker fans registration out to every shard. Also retires (deletes) this
+   * sealer's keys whose not_after has passed. pubkey_hash is
+   * sha256(publicKey CBOR) so it equals the certificate's
+   * delegated_pubkey_hash.
+   */
+  private async handlePutDelegateKeys(request: Request): Promise<Response> {
+    const body = (await request.json()) as RegisterDelegateKeysRequest;
+    if (!body.sealerId || !Array.isArray(body.keys)) {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Invalid request",
+          status: 400,
+          detail: "sealerId and keys[] are required",
+        },
+        { status: 400 },
+      );
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    let registered = 0;
+    for (const key of body.keys) {
+      if (key.alg !== "ES256") {
+        return Response.json(
+          {
+            type: "about:blank",
+            title: "Invalid request",
+            status: 400,
+            detail: `unsupported delegate key alg ${key.alg}`,
+          },
+          { status: 400 },
+        );
+      }
+      let publicKey: Uint8Array;
+      try {
+        publicKey = base64ToBytes(key.publicKey);
+      } catch {
+        return Response.json(
+          {
+            type: "about:blank",
+            title: "Invalid request",
+            status: 400,
+            detail: "publicKey must be valid base64",
+          },
+          { status: 400 },
+        );
+      }
+      if (publicKey.length === 0) {
+        return Response.json(
+          {
+            type: "about:blank",
+            title: "Invalid request",
+            status: 400,
+            detail: "publicKey must be non-empty",
+          },
+          { status: 400 },
+        );
+      }
+      if (!Number.isFinite(key.epoch) || key.epoch < 1) {
+        return Response.json(
+          {
+            type: "about:blank",
+            title: "Invalid request",
+            status: 400,
+            detail: "epoch must be >= 1",
+          },
+          { status: 400 },
+        );
+      }
+      const pubkeyHash = await sha256Hex(publicKey);
+      this.ctx.storage.sql.exec(
+        `INSERT INTO delegate_keys
+           (pubkey_hash, sealer_id, alg, public_key, epoch, not_after)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(pubkey_hash) DO UPDATE SET
+           sealer_id = excluded.sealer_id,
+           alg = excluded.alg,
+           public_key = excluded.public_key,
+           epoch = excluded.epoch,
+           not_after = excluded.not_after`,
+        pubkeyHash,
+        body.sealerId,
+        key.alg,
+        publicKey,
+        key.epoch,
+        key.notAfter,
+      );
+      registered += 1;
+    }
+
+    const retiredRows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT COUNT(*) AS n FROM delegate_keys
+          WHERE sealer_id = ? AND not_after <= ?`,
+        body.sealerId,
+        now,
+      ),
+    ];
+    const retired = Number((retiredRows[0] as { n: number }).n);
+    this.ctx.storage.sql.exec(
+      `DELETE FROM delegate_keys WHERE sealer_id = ? AND not_after <= ?`,
+      body.sealerId,
+      now,
+    );
+
+    return Response.json({ registered, retired });
   }
 
   /** Default true when no config row exists (same as webhook CRUD defaults). */
