@@ -66,6 +66,9 @@ const PENDING_TTL_SECONDS = 60 * 60;
 /** Max pending hints retained per target log id. */
 const PENDING_CAP_PER_LOG = 32;
 
+/** Suggested TTL a signer applies when delegating to the standing key (C3). */
+const STANDING_DELEGATION_TTL_SECONDS = 60 * 60;
+
 function parseStoredOnchainRootAlg(
   value: string | null | undefined,
 ): "KS256" | "ES256" | null {
@@ -131,6 +134,10 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
       if (pathname === "/pending-delegation" && method === "GET") {
         return this.handleGetPendingDelegation(url);
+      }
+
+      if (pathname === "/delegation" && method === "GET") {
+        return this.handleGetDelegation(url);
       }
 
       if (pathname === "/pending-hint" && method === "POST") {
@@ -754,6 +761,81 @@ export class DelegationStoreDO extends DurableObject<Env> {
     const logIdHex32 = body.logId;
     const delegatedPublicKey = base64ToBytes(body.delegatedPublicKey);
     const certificate = base64ToBytes(body.certificate);
+    const pubkeyHash = await sha256Hex(delegatedPublicKey);
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    // The opaque key this submission upserts (range + key). Used to exclude the
+    // row an idempotent re-submit/refresh updates from the staleness check.
+    const submitKey = await certificateKeyFor(
+      body.mmrStart,
+      body.mmrEnd,
+      delegatedPublicKey,
+    );
+
+    // C5 (FOR-390 phase C-2): uniform validation + staleness.
+    // An "advance" certificate is one bound to a registered standing delegate
+    // key; it MUST carry the compact on-chain signature, else coverage
+    // retrieval would later serve a certificate the publisher cannot publish
+    // (review V3). Demand/BYOK submissions keep today's optionality.
+    const isAdvance =
+      [
+        ...this.ctx.storage.sql.exec(
+          `SELECT 1 FROM delegate_keys WHERE pubkey_hash = ? AND not_after > ?`,
+          pubkeyHash,
+          nowSeconds,
+        ),
+      ].length > 0;
+    if (isAdvance && !body.onchainSignature) {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Invalid request",
+          status: 400,
+          detail:
+            "advance delegation certificate (bound to a registered delegate key) requires onchainSignature",
+        },
+        { status: 400 },
+      );
+    }
+    // Reject stale submissions: already-expiring, or superseded by an existing
+    // certificate for the same (logId, key) that is at least as wide and lives
+    // at least as long. Overlapping ranges are otherwise accepted (ADR-0050).
+    if (body.expiresAt <= nowSeconds + 60) {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Conflict",
+          status: 409,
+          detail: `delegation certificate is stale: expiresAt=${body.expiresAt} is at or past now+60`,
+        },
+        { status: 409 },
+      );
+    }
+    const superseding = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT mmr_end, expires_at FROM delegation_certificates
+          WHERE log_id_hex32 = ? AND delegated_pubkey_hash = ?
+            AND certificate_key != ?
+            AND mmr_end >= ? AND expires_at >= ?
+          LIMIT 1`,
+        logIdHex32,
+        pubkeyHash,
+        submitKey,
+        body.mmrEnd,
+        body.expiresAt,
+      ),
+    ];
+    if (superseding.length > 0) {
+      const s = superseding[0] as { mmr_end: number; expires_at: number };
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Conflict",
+          status: 409,
+          detail: `delegation certificate is stale: superseded by mmrEnd=${s.mmr_end} expiresAt=${s.expires_at}`,
+        },
+        { status: 409 },
+      );
+    }
 
     const rootRows = [
       ...this.ctx.storage.sql.exec(
@@ -872,12 +954,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
       onchainRootAlg = root.alg;
     }
 
-    const key = await certificateKeyFor(
-      body.mmrStart,
-      body.mmrEnd,
-      delegatedPublicKey,
-    );
-    const pubkeyHash = await sha256Hex(delegatedPublicKey);
+    const key = submitKey;
 
     this.ctx.storage.sql.exec(
       `INSERT INTO delegation_certificates
@@ -908,13 +985,16 @@ export class DelegationStoreDO extends DurableObject<Env> {
       body.mmrEnd,
     );
 
+    // C5: satisfy every pending demand for this key whose window the accepted
+    // certificate now covers (not just the exact window).
     this.ctx.storage.sql.exec(
       `DELETE FROM pending
-       WHERE log_id_hex32 = ? AND mmr_start = ? AND mmr_end = ? AND delegated_pubkey_hash = ?`,
+       WHERE log_id_hex32 = ? AND delegated_pubkey_hash = ?
+         AND mmr_start >= ? AND mmr_end <= ?`,
       logIdHex32,
+      pubkeyHash,
       body.mmrStart,
       body.mmrEnd,
-      pubkeyHash,
     );
 
     return Response.json({ ok: true, certificateKey: key });
@@ -1366,7 +1446,119 @@ export class DelegationStoreDO extends DurableObject<Env> {
       };
     });
 
-    return Response.json({ entries, limit: PENDING_CAP_PER_LOG });
+    // C3 (FOR-390 phase C-2): uniform entries — append the window-less standing
+    // delegate-key entry so a signer can pre-delegate the moment the logId is
+    // known (no demand needed). Present only when the log can actually be
+    // delegated: a public root is registered and the sealer has a live standing
+    // key. Old readers ignore the window-less entry.
+    const standing = this.standingDelegationEntry(logIdHex32, now);
+    const allEntries: Array<
+      PendingEntry | { delegatedPublicKey: string; suggestedTtlSeconds: number }
+    > = standing ? [...entries, standing] : entries;
+
+    return Response.json({ entries: allEntries, limit: PENDING_CAP_PER_LOG });
+  }
+
+  /**
+   * The window-less standing delegate-key entry for a log (C3), or null when
+   * the log has no registered public root or no live standing delegate key.
+   * Offers the newest (highest-epoch, unexpired) registered key.
+   */
+  private standingDelegationEntry(
+    logIdHex32: string,
+    nowSeconds: number,
+  ): { delegatedPublicKey: string; suggestedTtlSeconds: number } | null {
+    const hasRoot =
+      [
+        ...this.ctx.storage.sql.exec(
+          `SELECT 1 FROM public_roots WHERE log_id_hex32 = ?`,
+          logIdHex32,
+        ),
+      ].length > 0;
+    if (!hasRoot) return null;
+
+    // Offer the sealer's current key — highest epoch, newest expiry as a
+    // deterministic tie-break. (Per-log sealer assignment is future work; the
+    // single-sealer-per-lane model makes "newest key" unambiguous today.)
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT public_key FROM delegate_keys
+          WHERE not_after > ?
+          ORDER BY epoch DESC, not_after DESC
+          LIMIT 1`,
+        nowSeconds,
+      ),
+    ];
+    if (rows.length === 0) return null;
+
+    const publicKey = new Uint8Array(
+      (rows[0] as { public_key: ArrayBuffer }).public_key,
+    );
+    return {
+      delegatedPublicKey: bytesToBase64(publicKey),
+      suggestedTtlSeconds: STANDING_DELEGATION_TTL_SECONDS,
+    };
+  }
+
+  /**
+   * GET /delegation?logId= — public read of the current certificate (C2):
+   * newest unexpired, ties by widest (highest mmr_end). 404 when none.
+   * Certificates are public material (embedded at label 1000 in every
+   * published checkpoint); signers use expiresAt/mmrEnd to anticipate renewal.
+   */
+  private handleGetDelegation(url: URL): Response {
+    const logIdHex32 = url.searchParams.get("logId");
+    if (!logIdHex32) {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Invalid request",
+          status: 400,
+          detail: "logId query parameter is required",
+        },
+        { status: 400 },
+      );
+    }
+
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT certificate, issued_at, expires_at, delegated_public_key,
+                mmr_start, mmr_end
+           FROM delegation_certificates
+          WHERE log_id_hex32 = ? AND expires_at > ?
+            AND mmr_start IS NOT NULL AND mmr_end IS NOT NULL
+          ORDER BY expires_at DESC, mmr_end DESC
+          LIMIT 1`,
+        logIdHex32,
+        nowSeconds,
+      ),
+    ];
+    if (rows.length === 0) {
+      return Response.json(
+        { type: "about:blank", title: "Not Found", status: 404 },
+        { status: 404 },
+      );
+    }
+    const row = rows[0] as {
+      certificate: ArrayBuffer;
+      issued_at: number;
+      expires_at: number;
+      delegated_public_key: ArrayBuffer | null;
+      mmr_start: number;
+      mmr_end: number;
+    };
+    return Response.json({
+      logId: logIdHex32,
+      certificate: bytesToBase64(new Uint8Array(row.certificate)),
+      mmrStart: row.mmr_start,
+      mmrEnd: row.mmr_end,
+      delegatedPublicKey: row.delegated_public_key
+        ? bytesToBase64(new Uint8Array(row.delegated_public_key))
+        : null,
+      issuedAt: row.issued_at,
+      expiresAt: row.expires_at,
+    });
   }
 
   /** POST /pending-hint — upsert pending row from worker hint. */
