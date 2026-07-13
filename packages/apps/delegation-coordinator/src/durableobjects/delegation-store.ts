@@ -947,7 +947,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
                 c.onchain_root_alg, c.delegated_public_key,
                 c.mmr_start, c.mmr_end
            FROM delegation_certificates c
-           LEFT JOIN delegate_keys k ON k.pubkey_hash = c.delegated_pubkey_hash
+           LEFT JOIN delegate_keys k
+             ON k.pubkey_hash = c.delegated_pubkey_hash AND k.not_after > ?
           WHERE c.log_id_hex32 = ?
             AND c.expires_at > ?
             AND c.mmr_start <= ?
@@ -955,6 +956,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
             AND (c.delegated_pubkey_hash = ? OR k.pubkey_hash IS NOT NULL)
           ORDER BY c.expires_at DESC, c.mmr_end DESC
           LIMIT 1`,
+        nowSeconds,
         logIdHex32,
         nowSeconds,
         req.mmrStart,
@@ -964,6 +966,18 @@ export class DelegationStoreDO extends DurableObject<Env> {
     ];
 
     if (rows.length === 0) {
+      // Legacy fallback (review F3): pre-migration certs have NULL coverage
+      // columns and are invisible to coverage retrieval. Preserve exact-match
+      // for them until they refresh within TTL. An exact certificate_key hit
+      // means request range == certificate range, so building the proof from
+      // the request range is correct (the V1 hazard only applies to coverage).
+      const legacy = await this.issueFromLegacyExactMatch(
+        logIdHex32,
+        req,
+        nowSeconds,
+      );
+      if (legacy) return legacy;
+
       const pubkeyHash = reqKeyHash;
       const now = nowSeconds;
       const id = crypto.randomUUID();
@@ -1147,6 +1161,74 @@ export class DelegationStoreDO extends DurableObject<Env> {
       });
       return null;
     }
+  }
+
+  /**
+   * Legacy exact-match issue path (review F3). Serves an unexpired certificate
+   * for a pre-migration row (NULL coverage columns) via the opaque
+   * certificate_key, reproducing pre-FOR-390 behaviour so those logs do not
+   * regress to pending until their certs refresh. Scoped to `mmr_start IS NULL`
+   * so migrated rows are only ever served through coverage retrieval. Returns
+   * null on miss (caller falls through to the pending path).
+   */
+  private async issueFromLegacyExactMatch(
+    logIdHex32: string,
+    req: DelegationIssueRequest,
+    nowSeconds: number,
+  ): Promise<Response | null> {
+    const key = await certificateKeyFor(
+      req.mmrStart,
+      req.mmrEnd,
+      req.delegatedPublicKey,
+    );
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT certificate, issued_at, expires_at, onchain_signature,
+                onchain_root_alg
+           FROM delegation_certificates
+          WHERE log_id_hex32 = ? AND certificate_key = ?
+            AND mmr_start IS NULL AND expires_at > ?`,
+        logIdHex32,
+        key,
+        nowSeconds,
+      ),
+    ];
+    if (rows.length === 0) return null;
+
+    const row = rows[0] as {
+      certificate: ArrayBuffer;
+      issued_at: number;
+      expires_at: number;
+      onchain_signature: ArrayBuffer | null;
+      onchain_root_alg: string | null;
+    };
+    const resp: DelegationIssueResponse = {
+      version: 1,
+      issuedAt: row.issued_at,
+      expiresAt: row.expires_at,
+      certificate: new Uint8Array(row.certificate),
+    };
+    if (row.onchain_signature) {
+      const storedAlg = parseStoredOnchainRootAlg(row.onchain_root_alg);
+      const currentAlg = this.rootAlgForLog(logIdHex32);
+      if (!(storedAlg !== null && currentAlg !== null && storedAlg !== currentAlg)) {
+        // Exact match ⇒ request range == certificate range, so the request
+        // scope is the signed scope — the V1 hazard does not apply here.
+        const onchainProof = this.onchainProofFromStored(
+          logIdHex32,
+          req.mmrStart,
+          req.mmrEnd,
+          req.delegatedPublicKey,
+          new Uint8Array(row.onchain_signature),
+          storedAlg ?? currentAlg,
+        );
+        if (onchainProof) resp.onchainProof = onchainProof;
+      }
+    }
+    return new Response(encodeCbor(resp), {
+      status: 200,
+      headers: { "Content-Type": "application/cbor" },
+    });
   }
 
   /** GET /pending?authLogId= — operator pending list by auth log. */
@@ -1388,6 +1470,19 @@ export class DelegationStoreDO extends DurableObject<Env> {
             title: "Invalid request",
             status: 400,
             detail: "epoch must be >= 1",
+          },
+          { status: 400 },
+        );
+      }
+      // Reject an already-expired notAfter rather than silently storing then
+      // retiring it in the same request (review F6).
+      if (!Number.isFinite(key.notAfter) || key.notAfter <= now) {
+        return Response.json(
+          {
+            type: "about:blank",
+            title: "Invalid request",
+            status: 400,
+            detail: "notAfter must be in the future",
           },
           { status: 400 },
         );

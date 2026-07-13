@@ -275,6 +275,28 @@ describe("standing delegate-key registration (POST /api/sealer/delegate-keys)", 
     expect(res.status).toBe(401);
   });
 
+  it("rejects an already-expired notAfter with 400 (F6)", async () => {
+    const res = await fetchWithDoRetry(
+      "http://localhost/api/sealer/delegate-keys",
+      {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sealerId: "sealer-a",
+          keys: [
+            {
+              alg: "ES256",
+              publicKey: bytesToBase64(testDelegatedCoseKey(67)),
+              epoch: 2,
+              notAfter: 1_700_000_000, // 2023 — in the past
+            },
+          ],
+        }),
+      },
+    );
+    expect(res.status).toBe(400);
+  });
+
   it("registers keys and reports counts", async () => {
     const res = await fetchWithDoRetry(
       "http://localhost/api/sealer/delegate-keys",
