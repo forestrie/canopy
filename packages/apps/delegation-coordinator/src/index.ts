@@ -13,6 +13,7 @@
 import type { Env } from "./env.js";
 import {
   handleGetPendingDelegation,
+  handleGetDelegation,
   handleGetPending,
   handleGetPublicRoot,
   handleGetSigningRoute,
@@ -119,6 +120,11 @@ export default {
     );
     if (pendingDelegationLogId && method === "GET") {
       return handleGetPendingDelegation(pendingDelegationLogId, request, env);
+    }
+
+    const delegationLogId = matchLogRoute(pathname, "delegation");
+    if (delegationLogId && method === "GET") {
+      return handleGetDelegation(delegationLogId, request, env);
     }
 
     const signingRouteLogId = matchLogRoute(pathname, "signing-route");
