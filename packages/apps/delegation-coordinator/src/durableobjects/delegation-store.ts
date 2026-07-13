@@ -1211,7 +1211,9 @@ export class DelegationStoreDO extends DurableObject<Env> {
     if (row.onchain_signature) {
       const storedAlg = parseStoredOnchainRootAlg(row.onchain_root_alg);
       const currentAlg = this.rootAlgForLog(logIdHex32);
-      if (!(storedAlg !== null && currentAlg !== null && storedAlg !== currentAlg)) {
+      if (
+        !(storedAlg !== null && currentAlg !== null && storedAlg !== currentAlg)
+      ) {
         // Exact match ⇒ request range == certificate range, so the request
         // scope is the signed scope — the V1 hazard does not apply here.
         const onchainProof = this.onchainProofFromStored(
