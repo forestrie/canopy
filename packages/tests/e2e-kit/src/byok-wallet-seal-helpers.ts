@@ -168,16 +168,27 @@ export async function signPendingDelegations(opts: {
   }
   const body = (await pending.json()) as {
     entries: Array<{
-      mmrStart: number;
-      mmrEnd: number;
+      mmrStart?: number;
+      mmrEnd?: number;
       delegatedPublicKey: string;
     }>;
   };
-  if (opts.stats && body.entries.length > 0) {
-    opts.stats.pendingEntriesSeen += body.entries.length;
+  // The coordinator appends a window-less standing delegate-key entry (C3,
+  // delegation-in-advance) to pending-delegation once a live standing key
+  // exists. This BYOK helper signs only windowed on-demand material, and
+  // sealer-liveness detection keys on windowed entries actually appearing —
+  // so filter the standing entry out. It has no mmrStart/mmrEnd (signing it
+  // would CBOR-encode undefined bounds), and being always-present it would
+  // otherwise defeat the "no pending entries" liveness timeout.
+  const windowed = body.entries.filter(
+    (e): e is { mmrStart: number; mmrEnd: number; delegatedPublicKey: string } =>
+      typeof e.mmrStart === "number" && typeof e.mmrEnd === "number",
+  );
+  if (opts.stats && windowed.length > 0) {
+    opts.stats.pendingEntriesSeen += windowed.length;
   }
   let signed = 0;
-  for (const entry of body.entries) {
+  for (const entry of windowed) {
     const key = `${entry.mmrStart}:${entry.mmrEnd}:${entry.delegatedPublicKey}`;
     if (opts.signedMaterialKeys.has(key)) continue;
     const delegatedPublicKey = base64ToBytes(entry.delegatedPublicKey);
@@ -227,7 +238,7 @@ export async function signPendingDelegations(opts: {
     signed++;
     if (opts.stats) opts.stats.materialSigned++;
   }
-  return { signed, pendingCount: body.entries.length };
+  return { signed, pendingCount: windowed.length };
 }
 
 export async function pollRegistrationThroughByokReceipt(opts: {
