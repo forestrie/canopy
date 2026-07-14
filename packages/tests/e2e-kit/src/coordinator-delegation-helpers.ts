@@ -78,6 +78,10 @@ export function bytesToBase64(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("base64");
 }
 
+function base64ToBytes(b64: string): Uint8Array {
+  return new Uint8Array(Buffer.from(b64, "base64"));
+}
+
 export interface CustodianDelegationIssueResult {
   certificate: Uint8Array;
   issuedAt: number;
@@ -499,5 +503,117 @@ export async function fetchLogPendingDelegation(opts: {
       mmrEnd: number;
       delegatedPublicKey: string;
     }>;
+  };
+}
+
+/** Coordinator HTTP surface used by signAdvanceDelegation (Playwright-shaped). */
+type AdvanceDelegationRequest = {
+  get: (
+    url: string,
+    options?: { headers?: Record<string, string> },
+  ) => Promise<{
+    ok: () => boolean;
+    status: () => number;
+    json: () => Promise<unknown>;
+  }>;
+  post: (
+    url: string,
+    options?: { headers?: Record<string, string>; data?: unknown },
+  ) => Promise<{
+    ok: () => boolean;
+    status: () => number;
+    text: () => Promise<string>;
+  }>;
+};
+
+export interface StandingDelegationEntry {
+  delegatedPublicKey: string;
+  suggestedTtlSeconds?: number;
+  mmrStart?: number;
+}
+
+/**
+ * signAdvanceDelegation — pre-delegate to the sealer's standing key (FOR-390
+ * phase E). Reads the window-less standing entry (C3), signs BOTH artifacts
+ * (COSE certificate + compact on-chain signature) binding it over
+ * [0, horizonMmrEnd], and submits. Callable the moment a logId is known — no
+ * pending demand needed, so first-seal latency drops to a coverage hit.
+ *
+ * The on-chain signature is REQUIRED (review V3): without it the sealer's lease
+ * carries no OnchainProof and the publisher cannot publish the log's
+ * checkpoints. The coordinator also rejects an advance submit without it (C5).
+ */
+export async function signAdvanceDelegation(opts: {
+  request: AdvanceDelegationRequest;
+  coordinatorUrl: string;
+  logId: string;
+  logIdHex32: string;
+  rootKeyPair: CryptoKeyPair;
+  horizonMmrEnd: number;
+  ttlSeconds?: number;
+}): Promise<{
+  mmrStart: number;
+  mmrEnd: number;
+  delegatedPublicKey: string;
+  expiresAt: number;
+}> {
+  const res = await opts.request.get(
+    `${opts.coordinatorUrl}/api/logs/${opts.logId}/pending-delegation`,
+  );
+  if (!res.ok()) {
+    throw new Error(`GET pending-delegation: ${res.status()}`);
+  }
+  const body = (await res.json()) as { entries: StandingDelegationEntry[] };
+  // The standing entry is window-less (no mmrStart) and carries a suggested TTL.
+  const standing = body.entries.find(
+    (e) => e.suggestedTtlSeconds !== undefined && e.mmrStart === undefined,
+  );
+  if (!standing) {
+    throw new Error(
+      "no standing delegate-key entry for log — register a public root and a sealer delegate key first (C1/C3)",
+    );
+  }
+
+  const delegatedPublicKey = base64ToBytes(standing.delegatedPublicKey);
+  const mmrStart = 0;
+  const mmrEnd = opts.horizonMmrEnd;
+  const material = await buildByokDelegationMaterial({
+    rootKeyPair: opts.rootKeyPair,
+    logIdHex32: opts.logIdHex32,
+    mmrStart,
+    mmrEnd,
+    delegatedPublicKey,
+    ttlSeconds: opts.ttlSeconds ?? standing.suggestedTtlSeconds,
+  });
+  if (!material.onchainSignature) {
+    throw new Error("advance delegation requires the onchain signature");
+  }
+
+  const submit = await opts.request.post(
+    `${opts.coordinatorUrl}/api/delegations/certificate`,
+    {
+      headers: { "Content-Type": "application/json" },
+      data: {
+        logId: opts.logId,
+        mmrStart,
+        mmrEnd,
+        delegatedPublicKey: standing.delegatedPublicKey,
+        certificate: bytesToBase64(material.certificate),
+        issuedAt: material.issuedAt,
+        expiresAt: material.expiresAt,
+        onchainSignature: bytesToBase64(material.onchainSignature),
+      },
+    },
+  );
+  if (!submit.ok()) {
+    throw new Error(
+      `POST advance delegation: ${submit.status()} ${(await submit.text()).slice(0, 300)}`,
+    );
+  }
+  return {
+    mmrStart,
+    mmrEnd,
+    delegatedPublicKey: standing.delegatedPublicKey,
+    expiresAt: material.expiresAt,
   };
 }
