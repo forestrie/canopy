@@ -8,6 +8,7 @@ import type { Grant } from "@forestrie/encoding";
 import { grantCommitmentHashFromGrant } from "./grant-commitment.js";
 import { decodeTrustRootFromGenesis } from "./decode-trust-root-from-genesis.js";
 import { es256ReceiptVerifyKeys } from "./decode-trust-root-cbor.js";
+import { resolveDelegatedVerifyKey } from "./resolve-delegated-verify-key.js";
 import { univocityLeafHash } from "./leaf-commitment.js";
 import { parseReceipt } from "./parse-receipt.js";
 import type { ReceiptVerifyResult } from "./receipt-verify-result.js";
@@ -114,10 +115,27 @@ export async function verifyGrantReceiptOffline(
     return { ok: false, stage: "parse", reason: "genesis_invalid" };
   }
 
-  const verifyKeys = es256ReceiptVerifyKeys([trustRoot]);
+  const verifyKeys = es256ReceiptVerifyKeys([trustRoot]) as CryptoKey[];
   if (!verifyKeys.length) {
     return { ok: false, stage: "signature", reason: "no_es256_trust_key" };
   }
+
+  // FOR-297: when the receipt was signed by a DELEGATED key, verify the
+  // label-1000 delegation certificate under the root and try the delegated key
+  // first. A cert present but not chaining to the root is a hard failure — do
+  // not silently fall back to the root key (which cannot verify a
+  // delegated-signed receipt anyway).
+  const delegation = await resolveDelegatedVerifyKey(
+    input.receiptCbor,
+    verifyKeys,
+  );
+  if (delegation.kind === "broken") {
+    return { ok: false, stage: "signature", reason: "delegation_invalid" };
+  }
+  const allVerifyKeys =
+    delegation.kind === "resolved"
+      ? [delegation.delegatedKey, ...verifyKeys]
+      : verifyKeys;
 
   let inner: Uint8Array;
   try {
@@ -140,6 +158,6 @@ export async function verifyGrantReceiptOffline(
     explicitPeak: parsed.explicitPeak,
     proof: parsed.proof,
     leafHash,
-    verifyKeys: verifyKeys as CryptoKey[],
+    verifyKeys: allVerifyKeys,
   });
 }
