@@ -227,6 +227,7 @@ describe("C3 — standing entry in pending-delegation", () => {
         delegatedPublicKey: string;
         suggestedTtlSeconds?: number;
         mmrStart?: number;
+        voucher?: string;
       }>;
     };
     const standing = body.entries.find(
@@ -237,6 +238,10 @@ describe("C3 — standing entry in pending-delegation", () => {
     expect(standing!.delegatedPublicKey).toBe(
       bytesToBase64(testDelegatedCoseKey(51)),
     );
+    // H3 (FOR-390 phase H): the standing entry advertises the custodian voucher
+    // so the kit can verify provenance against the pinned registrar key.
+    expect(typeof standing!.voucher).toBe("string");
+    expect(standing!.voucher!.length).toBeGreaterThan(0);
   });
 });
 

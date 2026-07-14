@@ -1071,6 +1071,27 @@ export class DelegationStoreDO extends DurableObject<Env> {
       );
       if (legacy) return legacy;
 
+      // H2 membership (FOR-390 phase H): when enforcement is on, only a
+      // registered standing delegate key may create a pending demand + signer
+      // webhook. A compromised COORDINATOR_APP_TOKEN can then at most request
+      // the real sealer's registered key (which it does not control) — never
+      // inject an attacker key. Gated so epoch-0 ephemeral sealers are
+      // unaffected until enablement.
+      if (this.env.ENFORCE_DELEGATE_KEY_MEMBERSHIP === "true") {
+        const registered =
+          [
+            ...this.ctx.storage.sql.exec(
+              `SELECT 1 FROM delegate_keys WHERE pubkey_hash = ? AND not_after > ?`,
+              reqKeyHash,
+              nowSeconds,
+            ),
+          ].length > 0;
+        if (!registered) {
+          // No pending, no webhook: nothing unregistered reaches a signer.
+          return delegationPendingResponse(202);
+        }
+      }
+
       const pubkeyHash = reqKeyHash;
       const now = nowSeconds;
       const id = crypto.randomUUID();
@@ -1466,7 +1487,12 @@ export class DelegationStoreDO extends DurableObject<Env> {
     // key. Old readers ignore the window-less entry.
     const standing = this.standingDelegationEntry(logIdHex32, now);
     const allEntries: Array<
-      PendingEntry | { delegatedPublicKey: string; suggestedTtlSeconds: number }
+      | PendingEntry
+      | {
+          delegatedPublicKey: string;
+          suggestedTtlSeconds: number;
+          voucher?: string;
+        }
     > = standing ? [...entries, standing] : entries;
 
     return Response.json({ entries: allEntries, limit: PENDING_CAP_PER_LOG });
@@ -1480,7 +1506,11 @@ export class DelegationStoreDO extends DurableObject<Env> {
   private standingDelegationEntry(
     logIdHex32: string,
     nowSeconds: number,
-  ): { delegatedPublicKey: string; suggestedTtlSeconds: number } | null {
+  ): {
+    delegatedPublicKey: string;
+    suggestedTtlSeconds: number;
+    voucher?: string;
+  } | null {
     const hasRoot =
       [
         ...this.ctx.storage.sql.exec(
@@ -1495,7 +1525,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     // single-sealer-per-lane model makes "newest key" unambiguous today.)
     const rows = [
       ...this.ctx.storage.sql.exec(
-        `SELECT public_key FROM delegate_keys
+        `SELECT public_key, voucher FROM delegate_keys
           WHERE not_after > ?
           ORDER BY epoch DESC, not_after DESC
           LIMIT 1`,
@@ -1504,12 +1534,18 @@ export class DelegationStoreDO extends DurableObject<Env> {
     ];
     if (rows.length === 0) return null;
 
-    const publicKey = new Uint8Array(
-      (rows[0] as { public_key: ArrayBuffer }).public_key,
-    );
+    const row = rows[0] as { public_key: ArrayBuffer; voucher: ArrayBuffer | null };
+    const publicKey = new Uint8Array(row.public_key);
+    // H3 (FOR-390 phase H): advertise the custodian voucher so the signer/kit
+    // can verify the key's provenance against the pinned registrar key before
+    // binding. Post-H1 registrations always carry one; a legacy voucher-less
+    // row simply omits it (the kit then refuses to bind, which is correct).
     return {
       delegatedPublicKey: bytesToBase64(publicKey),
       suggestedTtlSeconds: STANDING_DELEGATION_TTL_SECONDS,
+      ...(row.voucher
+        ? { voucher: bytesToBase64(new Uint8Array(row.voucher)) }
+        : {}),
     };
   }
 

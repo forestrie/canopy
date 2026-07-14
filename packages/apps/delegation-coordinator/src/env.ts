@@ -43,6 +43,15 @@ export interface Env {
    */
   PINNED_REGISTRAR_KEY?: string;
   /**
+   * When "true", the issue path only records a pending demand + fires a signer
+   * webhook for a *registered* standing delegate key (FOR-390 phase H2
+   * membership). Closes the arbitrary-key injection: a compromised
+   * COORDINATOR_APP_TOKEN can no longer make a root holder delegate to an
+   * attacker key. Gated (default off) so epoch-0 on-demand ephemeral sealers
+   * are unaffected until enablement; turned on with DELEGATE_KEY_EPOCH>=1.
+   */
+  ENFORCE_DELEGATE_KEY_MEMBERSHIP?: string;
+  /**
    * Dev only: set via Doppler ref
    * `${forest-platform.dev.COORDINATOR_RESET_TOKEN}` (synced by deploy-workers
    * on dev lane).
