@@ -1491,6 +1491,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
       | {
           delegatedPublicKey: string;
           suggestedTtlSeconds: number;
+          sealerId?: string;
+          epoch?: number;
           voucher?: string;
         }
     > = standing ? [...entries, standing] : entries;
@@ -1509,6 +1511,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
   ): {
     delegatedPublicKey: string;
     suggestedTtlSeconds: number;
+    sealerId?: string;
+    epoch?: number;
     voucher?: string;
   } | null {
     const hasRoot =
@@ -1525,7 +1529,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     // single-sealer-per-lane model makes "newest key" unambiguous today.)
     const rows = [
       ...this.ctx.storage.sql.exec(
-        `SELECT public_key, voucher FROM delegate_keys
+        `SELECT public_key, sealer_id, epoch, voucher FROM delegate_keys
           WHERE not_after > ?
           ORDER BY epoch DESC, not_after DESC
           LIMIT 1`,
@@ -1534,15 +1538,23 @@ export class DelegationStoreDO extends DurableObject<Env> {
     ];
     if (rows.length === 0) return null;
 
-    const row = rows[0] as { public_key: ArrayBuffer; voucher: ArrayBuffer | null };
+    const row = rows[0] as {
+      public_key: ArrayBuffer;
+      sealer_id: string;
+      epoch: number;
+      voucher: ArrayBuffer | null;
+    };
     const publicKey = new Uint8Array(row.public_key);
-    // H3 (FOR-390 phase H): advertise the custodian voucher so the signer/kit
-    // can verify the key's provenance against the pinned registrar key before
-    // binding. Post-H1 registrations always carry one; a legacy voucher-less
-    // row simply omits it (the kit then refuses to bind, which is correct).
+    // H3 (FOR-390 phase H): advertise the custodian voucher (and the sealerId +
+    // epoch it attests) so the signer/kit can verify the key's provenance
+    // against the pinned registrar key before binding. Post-H1 registrations
+    // always carry a voucher; a legacy voucher-less row simply omits it (the
+    // kit then refuses to bind, which is correct).
     return {
       delegatedPublicKey: bytesToBase64(publicKey),
       suggestedTtlSeconds: STANDING_DELEGATION_TTL_SECONDS,
+      sealerId: row.sealer_id,
+      epoch: row.epoch,
       ...(row.voucher
         ? { voucher: bytesToBase64(new Uint8Array(row.voucher)) }
         : {}),
