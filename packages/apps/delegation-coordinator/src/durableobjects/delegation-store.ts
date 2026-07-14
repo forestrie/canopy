@@ -544,7 +544,55 @@ export class DelegationStoreDO extends DurableObject<Env> {
       Date.now(),
     );
 
+    // H4 genesis PUSH (FOR-390 phase H): the moment a signing route is known,
+    // if a standing delegate key is already registered, fire delegation.required
+    // for it so a hands-off (Mode C) signer auto-pre-delegates and the first
+    // seal is a coverage hit. enqueueWebhookDelivery no-ops for routes without a
+    // webhook (wallet mode pulls C3 instead). Idempotent by request_key.
+    this.ctx.waitUntil(
+      this.enqueueStandingDelegationWebhook(
+        logIdHex32,
+        Math.floor(Date.now() / 1000),
+      ),
+    );
+
     return Response.json({ ok: true });
+  }
+
+  /**
+   * Fire a delegation.required webhook for the log's current standing delegate
+   * key over the window-less [0,0] range (H4 genesis PUSH). No-op when no
+   * standing key is registered yet — the registration-completion trigger (a
+   * bounded scan of signing routes still awaiting a standing delegation) covers
+   * the cold-start ordering where the route precedes the sealer's registration.
+   */
+  private async enqueueStandingDelegationWebhook(
+    logIdHex32: string,
+    nowSeconds: number,
+  ): Promise<void> {
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT public_key FROM delegate_keys
+          WHERE not_after > ?
+          ORDER BY epoch DESC, not_after DESC
+          LIMIT 1`,
+        nowSeconds,
+      ),
+    ];
+    if (rows.length === 0) return;
+    const publicKey = new Uint8Array(
+      (rows[0] as { public_key: ArrayBuffer }).public_key,
+    );
+    const delegatedPubkeyHash = await sha256Hex(publicKey);
+    await this.enqueueWebhookDelivery({
+      logIdHex32,
+      authLogIdHex32: logIdHex32,
+      mmrStart: 0,
+      mmrEnd: 0,
+      delegatedPublicKey: publicKey,
+      delegatedPubkeyHash,
+      requestedAt: nowSeconds,
+    });
   }
 
   /** PUT /public-root/{logIdHex32} — store BYOK public root. */
