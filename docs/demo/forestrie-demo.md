@@ -18,9 +18,21 @@ and runs tokenless — all `@forestrie/*` substrate packages (`grant-builder`,
 `receipt-verify`, `scrapi-client`, `merklelog`, `encoding`) are already
 published to public npm.
 
-**Every subcommand is now implemented and tested**, including `complete-grant`
+Most subcommands are implemented and tested, including `complete-grant`
 (FOR-344, landed 2026-07-12) and `create-receipt`'s chain-anchored (report-only)
-mode.
+mode. Two authority verbs — **`create-log`** and **`delegate`** — are **tbd**
+(FOR-390,
+[plan-2607-21](https://github.com/forestrie/devdocs/blob/main/plans/plan-2607-21-cli-authority-commands-demo.md);
+taxonomy in
+[ADR-0052](https://github.com/forestrie/devdocs/blob/main/adr/adr-0052-cli-authority-taxonomy.md)).
+This outline is their acceptance script — the beats below are exactly what they
+must run against lane-A.
+
+**Personas** (each exercises one authority — see ADR-0052): **Robert** holds
+`K(root)` (deploys, creates David's auth log, delegates the root); **David**
+holds `K(David-auth)` + `K(David-data)` (creates his data log, authorizes
+writers, delegates his two logs); **Alice / Bob** are statement writers only
+(never create, never delegate).
 
 Example outputs marked **real capture** were taken from a direct run against
 `main`. Outputs marked **illustrative** are for the network/chain paths
@@ -102,8 +114,12 @@ export CHAIN_ID=84532                                              # Base Sepoli
 # Filled in by the deploy step:
 export UNIVOCITY_ADDRESS=                                          # 0x… ImutableUnivocity contract
 export BOOTSTRAP_LOG_ID=                                           # root/bootstrap log UUID
-# Signing keys (ES256 P-256 PKCS#8 PEM):
+# Delegation coordinator (for the `delegate` beats) + the lane-A pinned registrar key:
+export DELEGATION_COORDINATOR_URL="https://coordinator-a.forest-2.forestrie.dev"
+export PINNED_REGISTRAR_KEY="z1YarLKXrsRe5egrwrFfbeYadd9lOqplKxbRuMGymHUOSY7YAfdOhhPWb3H72TrPMiMLw0CBMpDPXUGMEvbkOQ=="
+# Signing keys (ES256 P-256 PKCS#8 PEM). BOOTSTRAP_PEM = Robert's K(root):
 export BOOTSTRAP_PEM=./bootstrap.es256.pem
+export DAVID_PEM=./david.es256.pem                                # David: K(David-auth) + K(David-data)
 export ALICE_PEM=./alice.es256.pem
 export BOB_PEM=./bob.es256.pem
 ```
@@ -163,25 +179,26 @@ Example output:
 
 ### R3 — Mint + register the root grant (bootstrap leaf is self-referential)
 
-The first leaf in the root log is allowed to be self-referential
-(`logId == ownerLogId`) because the signer is the bootstrap public key bound to
-the contract at deploy time. This yields `ROOT_GRANT_B64`, the opaque bearer
-credential the on-stage opening treats as "explained later".
+**Robert** stands up the root. The first leaf in the root log is allowed to be
+self-referential (`logId == ownerLogId`) because the signer is the bootstrap
+public key bound to the contract at deploy time — creating a log and becoming
+its `K(L)` is the `create-log` authority. This yields `ROOT_GRANT_B64`, the
+opaque bearer credential the on-stage opening treats as "explained later".
 
-**Status:** `register-grant` — **exists / tested** (FOR-343,
-`register-grant.test.ts`)
+**Status:** `create-log` — **tbd** (FOR-390, plan-2607-21; absorbs the
+self-referential create path from `register-grant`)
 
 ```bash
-forestrie register-grant \
+forestrie create-log \
   --base-url "$FORESTRIE_BASE_URL" \
-  --owner-log "$BOOTSTRAP_LOG_ID" --data-log "$BOOTSTRAP_LOG_ID" \
+  --owner-log "$BOOTSTRAP_LOG_ID" --new-log "$BOOTSTRAP_LOG_ID" \
   --sign-with "$BOOTSTRAP_PEM" \
   --self-referential \
   --out-b64 root-grant.b64
 export ROOT_GRANT_B64=$(cat root-grant.b64)
 ```
 
-Example output (illustrative; format matches the `register-grant` reporter):
+Example output (illustrative; format matches the `create-log` reporter):
 
 ```
 ownerLog: 0f9a1c7e-…-… (grant leaf)
@@ -265,13 +282,15 @@ wrote receipt (612 bytes) to receipt.cbor
 
 ## Step 2 — Authorize several signers on a data log  ·  ~5 min
 
-**Status:** `register-grant` — **exists / tested** (FOR-343) · reuses
-`sign-statement` / `register` / `verify` (all **exists / tested**)
+**Status:** `create-log` — **tbd** (FOR-390, plan-2607-21) · `register-grant`
+(writer-only) — **exists / tested** (FOR-343) · reuses `sign-statement` /
+`register` / `verify` (all **exists / tested**)
 
 **Slide:**
 - **SCITT built using SCITT** — the TS implements its *own* authorization out of COSE-signed statements and receipts
-- Authorization is a **hierarchy of forestrie logs**; `register-grant` is just `register-signed-statement` that authorizes a child log
-- One grant per signer, all naming the **same data log**, all recorded in the **auth log** — not a side channel
+- Authorization is a **hierarchy of forestrie logs**: Robert's root → David's auth log → David's data log; each grant is just `register-signed-statement` on the parent
+- **Create vs. write are different authorities:** `create-log` makes David the owner (`K(L)`) of a log; `register-grant` only lets Alice and Bob *append* statements — no create, no re-root
+- One writer grant per signer, all naming the **same data log**, all recorded in the **auth log** — not a side channel
 - Delegation is itself a transparent, receipted statement you verify like any other
 
 **Speaker notes:** SCITT requires the Transparency Service to authorize what it
@@ -282,24 +301,41 @@ SCITT."** Skip the grant-payload internals (signer binding, uniqueness gating,
 the creation-grant 409) — they are forestrie specifics this audience isn't here
 for and risk derailing the slide.
 
-**2a. Create the child auth log** (bootstrap-shaped grant, signed by the root
-key, parent grant in the body):
+**2a. Robert creates David's auth log** (`create-log`, signed by the root key;
+`grantData` = David, so **David becomes the owner** — `K(David-auth)`):
 
 ```bash
 export AUTH_LOG_ID=$(uuidgen | tr 'A-Z' 'a-z')
 export DATA_LOG_ID=$(uuidgen | tr 'A-Z' 'a-z')
 
-forestrie register-grant \
+forestrie create-log \
   --base-url "$FORESTRIE_BASE_URL" \
-  --owner-log "$BOOTSTRAP_LOG_ID" --data-log "$AUTH_LOG_ID" \
+  --owner-log "$BOOTSTRAP_LOG_ID" --new-log "$AUTH_LOG_ID" \
   --auth-log \
+  --signer-pem "$DAVID_PEM" \
   --sign-with "$BOOTSTRAP_PEM" \
   --parent-grant-b64 "$ROOT_GRANT_B64" \
   --out-b64 auth-grant.b64
 ```
 
-**2b. Grant Alice and Bob on the same data log** (one grant per signer, both
-naming `$DATA_LOG_ID`, both recorded in `$AUTH_LOG_ID`):
+**2b. David creates his data log** under his auth log (`create-log`, signed by
+David — the auth log's owner; `grantData` = David, so `K(David-data)` is David):
+
+```bash
+forestrie create-log \
+  --base-url "$FORESTRIE_BASE_URL" \
+  --owner-log "$AUTH_LOG_ID" --new-log "$DATA_LOG_ID" \
+  --data-log \
+  --signer-pem "$DAVID_PEM" \
+  --sign-with "$DAVID_PEM" \
+  --parent-grant-b64 "$(cat auth-grant.b64)" \
+  --out-b64 david-data-grant.b64
+```
+
+**2c. David authorizes Alice and Bob as writers** on his data log (one
+**extend-only** writer grant per signer — no `GF_CREATE` — both naming
+`$DATA_LOG_ID`, both recorded in `$AUTH_LOG_ID`, all signed by **David**, the
+data log's owner):
 
 ```bash
 for who in ALICE BOB; do
@@ -308,31 +344,68 @@ for who in ALICE BOB; do
     --base-url "$FORESTRIE_BASE_URL" \
     --owner-log "$AUTH_LOG_ID" --data-log "$DATA_LOG_ID" \
     --signer-pem "${!pem_var}" \
-    --parent-grant-b64 "$(cat auth-grant.b64)" \
-    --sign-with "$BOOTSTRAP_PEM" \
+    --parent-grant-b64 "$(cat david-data-grant.b64)" \
+    --sign-with "$DAVID_PEM" \
     --out-b64 "grant-${who,,}.b64"
 done
 ```
 
-Example output (illustrative; one `register-grant` summary block per signer):
+Example output (illustrative; a `create-log`/`register-grant` summary per call):
 
 ```
-# 2a — child auth log:
+# 2a — David's auth log (create-log, owner = David):
 ownerLog: 0f9a1c7e-… (grant leaf)
-dataLog: 8c2e4b…-… (authorized)
-signer: 04a91f…
+newLog: 8c2e4b…-… (created)
+owner: 04d4v1d…          # grantData = David ES256 x||y
 entryId: …
 wrote completed grant base64 to auth-grant.b64
 
-# 2b — Alice, then Bob (one block each):
+# 2b — David's data log (create-log, owner = David):
+ownerLog: 8c2e4b…-… (grant leaf)
+newLog: d41d8c…-… (created)
+owner: 04d4v1d…          # grantData = David
+wrote completed grant base64 to david-data-grant.b64
+
+# 2c — Alice, then Bob (register-grant, writer, extend-only):
 ownerLog: 8c2e4b…-… (grant leaf)
 dataLog: d41d8c…-… (authorized)
-signer: 9b3a…            # Alice ES256 x||y
+signer: 9b3a…            # Alice ES256 x||y   (flags: GF_EXTEND|GF_DATA_LOG, no GF_CREATE)
 entryId: …
 wrote completed grant base64 to grant-alice.b64
 ```
 
-**2c. Each signer registers a statement to the data log:** reuse
+**2d. Pre-delegate sealing to the operator's vouched key** (`delegate`). Each
+log's owner verifies the custodian's standing sealer key against the pinned
+registrar key, then signs a wide-horizon delegation authorizing that sealer to
+publish checkpoints on their behalf — three logs, three delegations, the minimal
+and hierarchical set. Public coordinator endpoints only; no operator token.
+
+```bash
+# Robert delegates the root log:
+forestrie delegate \
+  --coordinator-url "$DELEGATION_COORDINATOR_URL" \
+  --log-id "$BOOTSTRAP_LOG_ID" --sign-with "$BOOTSTRAP_PEM" \
+  --pinned-registrar-key "$PINNED_REGISTRAR_KEY"
+
+# David delegates his auth log and his data log:
+for log in "$AUTH_LOG_ID" "$DATA_LOG_ID"; do
+  forestrie delegate \
+    --coordinator-url "$DELEGATION_COORDINATOR_URL" \
+    --log-id "$log" --sign-with "$DAVID_PEM" \
+    --pinned-registrar-key "$PINNED_REGISTRAR_KEY"
+done
+```
+
+Example output (illustrative; format matches the `delegate` reporter):
+
+```
+delegate: standing  — sealerId sealer-a epoch 1 (from pending-delegation)
+delegate: voucher   ok      — verifies against pinned registrar key
+delegate: horizon   — mmr 0..9007199254740991 (wide; permanent within range)
+delegate: submit    ok      — POST /api/delegations/certificate → 202
+```
+
+**2e. Each signer registers a statement to the data log:** reuse
 `sign-statement` + `register` from Step 1 with `--log-id "$DATA_LOG_ID"` and
 `--grant-b64 "$(cat grant-alice.b64)"` / `grant-bob.b64`.
 
@@ -539,9 +612,11 @@ and the bootstrapper not to censor your publish rights) — a contract-bound
 assumption, not an operator one. Verification collapses to recomputing a peak
 and checking it's in the on-chain accumulator (the checkpoint signer was already
 verified by the contract on publish, so you drop the signature entirely). Answer
-Q3 on the way past: control of your signing key is the delegation bound — a
-hosted sealer signs on your behalf for a short, usage-limited window; self-hosted
-needs no delegation at all.
+Q3 on the way past: control of your signing key is the delegation bound — the
+`delegate` beats in Step 2d are where each owner (Robert for the root, David for
+his two logs) verified the custodian's vouched sealer key and pre-authorized it
+to publish; the operator still only sequences. A self-hosted owner who signs
+their own checkpoints needs no delegation at all.
 
 **5a. Verify the receipt's peak against the on-chain accumulator** (no
 operator, only the contract — `verify` reads `logState(bytes32)` over JSON-RPC
