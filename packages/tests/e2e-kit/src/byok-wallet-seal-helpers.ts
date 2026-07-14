@@ -181,7 +181,9 @@ export async function signPendingDelegations(opts: {
   // would CBOR-encode undefined bounds), and being always-present it would
   // otherwise defeat the "no pending entries" liveness timeout.
   const windowed = body.entries.filter(
-    (e): e is { mmrStart: number; mmrEnd: number; delegatedPublicKey: string } =>
+    (
+      e,
+    ): e is { mmrStart: number; mmrEnd: number; delegatedPublicKey: string } =>
       typeof e.mmrStart === "number" && typeof e.mmrEnd === "number",
   );
   if (opts.stats && windowed.length > 0) {
