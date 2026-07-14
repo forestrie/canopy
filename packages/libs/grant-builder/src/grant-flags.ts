@@ -57,6 +57,21 @@ export function dataLogCreateExtendFlags(): Uint8Array {
   return grant;
 }
 
+/**
+ * GF_EXTEND (byte 3, no GF_CREATE), GF_DATA_LOG (byte 7) — a statement-writer
+ * grant that may append to an existing data log but must NOT create or re-root
+ * it. Distinct from {@link dataLogCreateExtendFlags} (which also sets
+ * GF_CREATE): the create authority belongs to the log owner, the extend-only
+ * authority to a writer (ADR-0052). `isDataLogStatementGrantFlags` accepts this
+ * shape (it gates on GF_EXTEND, not GF_CREATE).
+ */
+export function dataLogExtendFlags(): Uint8Array {
+  const grant = new Uint8Array(8);
+  grant[3] = 0x02; // GF_EXTEND only
+  grant[7] = 0x02; // GF_DATA_LOG
+  return grant;
+}
+
 /** Register-signed-statement: data-log grant with extend (or create+extend) capability. */
 export function isDataLogStatementGrantFlags(grant: Uint8Array): boolean {
   return hasExtendCapability(grant) && hasDataLogClass(grant);
