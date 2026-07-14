@@ -241,9 +241,11 @@ export class DelegationStoreDO extends DurableObject<Env> {
         alg TEXT NOT NULL,
         public_key BLOB NOT NULL,
         epoch INTEGER NOT NULL,
-        not_after INTEGER NOT NULL
+        not_after INTEGER NOT NULL,
+        voucher BLOB
       )
     `);
+    this.ensureDelegateKeyVoucherColumn();
 
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS materials (
@@ -408,6 +410,17 @@ export class DelegationStoreDO extends DurableObject<Env> {
       CREATE INDEX IF NOT EXISTS idx_delegation_certificates_coverage
       ON delegation_certificates (log_id_hex32, expires_at, mmr_start, mmr_end)
     `);
+  }
+
+  /** Add the custodian voucher column on legacy delegate_keys tables (FOR-390 phase H). */
+  private ensureDelegateKeyVoucherColumn(): void {
+    try {
+      [...this.ctx.storage.sql.exec(`SELECT voucher FROM delegate_keys LIMIT 0`)];
+    } catch {
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE delegate_keys ADD COLUMN voucher BLOB`,
+      );
+    }
   }
 
   /** Add user_enabled / operator_enabled columns on legacy databases. */
@@ -1681,23 +1694,53 @@ export class DelegationStoreDO extends DurableObject<Env> {
           { status: 400 },
         );
       }
+      // The voucher was verified against the pinned registrar key at the worker
+      // ingress (handlePostDelegateKeys); it is required and persisted so C3 can
+      // advertise it for the kit to re-verify before binding (FOR-390 phase H).
+      let voucher: Uint8Array;
+      try {
+        voucher = base64ToBytes(key.voucher);
+      } catch {
+        return Response.json(
+          {
+            type: "about:blank",
+            title: "Invalid request",
+            status: 400,
+            detail: "voucher must be valid base64",
+          },
+          { status: 400 },
+        );
+      }
+      if (voucher.length === 0) {
+        return Response.json(
+          {
+            type: "about:blank",
+            title: "Invalid request",
+            status: 400,
+            detail: "voucher is required",
+          },
+          { status: 400 },
+        );
+      }
       const pubkeyHash = await sha256Hex(publicKey);
       this.ctx.storage.sql.exec(
         `INSERT INTO delegate_keys
-           (pubkey_hash, sealer_id, alg, public_key, epoch, not_after)
-         VALUES (?, ?, ?, ?, ?, ?)
+           (pubkey_hash, sealer_id, alg, public_key, epoch, not_after, voucher)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(pubkey_hash) DO UPDATE SET
            sealer_id = excluded.sealer_id,
            alg = excluded.alg,
            public_key = excluded.public_key,
            epoch = excluded.epoch,
-           not_after = excluded.not_after`,
+           not_after = excluded.not_after,
+           voucher = excluded.voucher`,
         pubkeyHash,
         body.sealerId,
         key.alg,
         publicKey,
         key.epoch,
         key.notAfter,
+        voucher,
       );
       registered += 1;
     }

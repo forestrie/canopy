@@ -25,6 +25,14 @@ export interface RegisterDelegateKey {
   epoch: number;
   /** Unix seconds after which the key is retired and dropped. */
   notAfter: number;
+  /**
+   * Base64 untagged COSE_Sign1 custodian voucher over (sealerId, epoch,
+   * publicKey), signed by the registrar voucher key. Required (FOR-390 phase
+   * G/H): the coordinator verifies it against `PINNED_REGISTRAR_KEY` before
+   * accepting, so only the custodian — not any COORDINATOR_APP_TOKEN holder —
+   * can introduce a delegate key the coordinator will advertise.
+   */
+  voucher: string;
 }
 
 /** Sealer standing delegate-key registration. */

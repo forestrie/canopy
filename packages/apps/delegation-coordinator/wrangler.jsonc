@@ -16,6 +16,9 @@
     "COORDINATOR_SHARD_COUNT": "4",
     "CUSTODIAN_URL": "https://custodian.example/v1",
     "COORDINATOR_APP_TOKEN": "test-coordinator-token",
+    // base64 x||y of the fixed test registrar voucher key (see
+    // test/unit/registrar-voucher-fixture.ts). FOR-390 phase H.
+    "PINNED_REGISTRAR_KEY": "xonMkF1EZlPkP5CRw9Y84HRs4y2jChTOdF38kuLatqxCPpZx3fg9MsHlTtyrmNV2m6V6KiW6uKbvb+QlX5CNZQ==",
     "COORDINATOR_PUBLIC_URL": "http://localhost",
     "COORDINATOR_DOMAIN": "localhost",
     "ENABLE_WALLET_CHALLENGE": "true",

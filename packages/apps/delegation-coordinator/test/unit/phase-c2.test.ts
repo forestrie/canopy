@@ -14,6 +14,7 @@ import {
   generateTestRootKeyPair,
   testDelegatedCoseKey,
 } from "./byok-material-fixture.js";
+import { delegateKeyEntryWithVoucher } from "./registrar-voucher-fixture.js";
 import { fetchWithDoRetry } from "./fetch-with-do-retry.js";
 
 const TEST_TOKEN = "test-coordinator-token";
@@ -66,12 +67,12 @@ async function registerDelegateKey(
       body: JSON.stringify({
         sealerId: "sealer-a",
         keys: [
-          {
-            alg: "ES256",
-            publicKey: bytesToBase64(testDelegatedCoseKey(seed)),
+          await delegateKeyEntryWithVoucher({
+            sealerId: "sealer-a",
+            publicKey: testDelegatedCoseKey(seed),
             epoch,
             notAfter,
-          },
+          }),
         ],
       }),
     },

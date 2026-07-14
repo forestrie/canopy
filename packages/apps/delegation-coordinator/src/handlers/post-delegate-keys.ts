@@ -4,13 +4,23 @@
  * Delegate keys are per-sealer, but the store is sharded per-log and coverage
  * retrieval LEFT JOINs delegate_keys against a log's certificates within a
  * single shard. So registration must reach EVERY shard — this handler fans the
- * idempotent upsert out to all of them. App-token authenticated (the sealer is
- * a trusted first party, like POST /api/delegations). FOR-390 phase C.
+ * idempotent upsert out to all of them.
+ *
+ * The registrar is the custodian (FOR-390 phase H): each key carries a
+ * custodian-signed voucher, verified here against PINNED_REGISTRAR_KEY before
+ * fan-out. The app-token gates access; the voucher is the real gate on
+ * legitimacy — a compromised COORDINATOR_APP_TOKEN cannot introduce a key the
+ * custodian did not vouch for, so it can never be advertised or delegated to.
  */
 
 import type { Env } from "../env.js";
 import { checkBearerToken } from "../auth/check-bearer-token.js";
+import { base64ToBytes } from "../encoding.js";
 import type { RegisterDelegateKeysRequest } from "../types/register-delegate-keys-request.js";
+import {
+  parseRegistrarKeyXY,
+  verifyDelegateKeyVoucher,
+} from "@forestrie/encoding";
 import {
   getShardCount,
   getStoreStub,
@@ -51,6 +61,63 @@ export async function handlePostDelegateKeys(
         "Invalid request",
         "sealerId and a non-empty keys[] are required",
       );
+    }
+
+    // Fail closed: without a pinned registrar key no voucher can be verified,
+    // so no delegate key may be registered.
+    if (!env.PINNED_REGISTRAR_KEY?.trim()) {
+      return problemResponse(
+        503,
+        "about:blank",
+        "Service Unavailable",
+        "PINNED_REGISTRAR_KEY is not configured",
+      );
+    }
+    let pinnedKey: ReturnType<typeof parseRegistrarKeyXY>;
+    try {
+      pinnedKey = parseRegistrarKeyXY(base64ToBytes(env.PINNED_REGISTRAR_KEY.trim()));
+    } catch {
+      pinnedKey = null;
+    }
+    if (!pinnedKey) {
+      return problemResponse(
+        500,
+        "about:blank",
+        "Misconfigured",
+        "PINNED_REGISTRAR_KEY must be base64 x||y (64 bytes)",
+      );
+    }
+
+    // Verify every key's custodian voucher before touching any shard: a single
+    // bad voucher rejects the whole registration (the custodian sends a
+    // consistent batch), and nothing unverified is ever written.
+    for (const key of body.keys) {
+      let publicKey: Uint8Array;
+      let voucher: Uint8Array;
+      try {
+        publicKey = base64ToBytes(key.publicKey);
+        voucher = base64ToBytes(key.voucher);
+      } catch {
+        return problemResponse(
+          400,
+          "about:blank",
+          "Invalid request",
+          "publicKey and voucher must be valid base64",
+        );
+      }
+      const verdict = await verifyDelegateKeyVoucher(voucher, pinnedKey, {
+        sealerId: body.sealerId,
+        epoch: key.epoch,
+        publicKey,
+      });
+      if (!verdict.ok) {
+        return problemResponse(
+          400,
+          "about:blank",
+          "Invalid voucher",
+          `delegate-key voucher failed verification (${verdict.reason})`,
+        );
+      }
     }
 
     const payload = JSON.stringify(body);
