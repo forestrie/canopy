@@ -64,8 +64,12 @@
         "WEBHOOK_RETRY_SCALE_MS": "1000",
         // FOR-390: base64 x||y of the custodian's registrar voucher public key
         // (lane-a / forest-dev-5 custody ring). Public material — a var, not a
-        // secret. Membership stays off until DELEGATE_KEY_EPOCH>=1 at enablement.
+        // secret. Required whenever ENFORCE_DELEGATE_KEY_MEMBERSHIP is on
+        // (post-delegate-keys verifies vouchers against it, else 5xx).
         "PINNED_REGISTRAR_KEY": "z1YarLKXrsRe5egrwrFfbeYadd9lOqplKxbRuMGymHUOSY7YAfdOhhPWb3H72TrPMiMLw0CBMpDPXUGMEvbkOQ==",
+        // Membership enforcement is ON for lane-a (FOR-390 enablement). The flag
+        // is read directly (delegation-store: === "true"); the DELEGATE_KEY_EPOCH
+        // coupling is convention only, not a code guard.
         "ENFORCE_DELEGATE_KEY_MEMBERSHIP": "true",
         // COORDINATOR_APP_TOKEN, CUSTODIAN_APP_TOKEN: wrangler secrets (deploy + local via doppler --var).
         // COORDINATOR_RESET_TOKEN: dev-only DO wipe (content-reset); wrangler secret put.
