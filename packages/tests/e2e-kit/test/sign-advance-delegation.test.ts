@@ -31,7 +31,9 @@ async function makeRegistrarVoucher(
     true,
     ["sign", "verify"],
   );
-  const raw = new Uint8Array(await crypto.subtle.exportKey("raw", kp.publicKey));
+  const raw = new Uint8Array(
+    await crypto.subtle.exportKey("raw", kp.publicKey),
+  );
   const payload = encodeCborDeterministic(
     new Map<number, unknown>([
       [1, sealerId],
@@ -197,7 +199,11 @@ describe("signAdvanceDelegation", () => {
 
   it("Phase I: refuses to bind when the voucher does not verify", async () => {
     const standingKey = await generateEphemeralDelegatedPublicKeyCbor();
-    const { voucherB64 } = await makeRegistrarVoucher("sealer-a", 1, standingKey);
+    const { voucherB64 } = await makeRegistrarVoucher(
+      "sealer-a",
+      1,
+      standingKey,
+    );
     // A DIFFERENT pinned key than the one that signed the voucher.
     const wrong = await makeRegistrarVoucher("x", 1, standingKey);
     const { request, posts } = fakeRequest({
@@ -224,7 +230,11 @@ describe("signAdvanceDelegation", () => {
 
   it("Phase I: refuses to bind when the standing entry has no voucher", async () => {
     const standingKey = await generateEphemeralDelegatedPublicKeyCbor();
-    const { pinnedB64 } = await makeRegistrarVoucher("sealer-a", 1, standingKey);
+    const { pinnedB64 } = await makeRegistrarVoucher(
+      "sealer-a",
+      1,
+      standingKey,
+    );
     const { request } = fakeRequest({
       standingKeyB64: bytesToBase64(standingKey),
     }); // no voucher advertised

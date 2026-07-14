@@ -415,7 +415,11 @@ export class DelegationStoreDO extends DurableObject<Env> {
   /** Add the custodian voucher column on legacy delegate_keys tables (FOR-390 phase H). */
   private ensureDelegateKeyVoucherColumn(): void {
     try {
-      [...this.ctx.storage.sql.exec(`SELECT voucher FROM delegate_keys LIMIT 0`)];
+      [
+        ...this.ctx.storage.sql.exec(
+          `SELECT voucher FROM delegate_keys LIMIT 0`,
+        ),
+      ];
     } catch {
       this.ctx.storage.sql.exec(
         `ALTER TABLE delegate_keys ADD COLUMN voucher BLOB`,

@@ -7,7 +7,10 @@
  * over the canonical claims map {1: sealerId, 2: epoch, 3: delegateKeyBytes}.
  */
 
-import { encodeCborDeterministic, signCoseSign1Statement } from "@forestrie/encoding";
+import {
+  encodeCborDeterministic,
+  signCoseSign1Statement,
+} from "@forestrie/encoding";
 import { bytesToBase64 } from "../../src/encoding.js";
 
 // Fixed P-256 key; its x||y is PINNED_REGISTRAR_KEY in wrangler.jsonc.

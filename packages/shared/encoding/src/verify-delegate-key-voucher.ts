@@ -95,7 +95,10 @@ export async function verifyDelegateKeyVoucher(
   if (typeof epoch !== "number" || epoch !== expect.epoch) {
     return { ok: false, reason: "epoch" };
   }
-  if (!(keyBytes instanceof Uint8Array) || !bytesEqual(keyBytes, expect.publicKey)) {
+  if (
+    !(keyBytes instanceof Uint8Array) ||
+    !bytesEqual(keyBytes, expect.publicKey)
+  ) {
     return { ok: false, reason: "publicKey" };
   }
   return { ok: true };

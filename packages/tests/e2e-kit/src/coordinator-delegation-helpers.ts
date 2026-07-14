@@ -595,7 +595,11 @@ export async function signAdvanceDelegation(opts: {
   // sealed artifact, so the self-authenticating-artifact property cannot cover
   // it — against a compromised coordinator advertising a rogue key.
   if (opts.pinnedRegistrarKey) {
-    if (!standing.voucher || standing.sealerId === undefined || standing.epoch === undefined) {
+    if (
+      !standing.voucher ||
+      standing.sealerId === undefined ||
+      standing.epoch === undefined
+    ) {
       throw new Error(
         "standing entry is missing its registrar voucher — refusing to bind",
       );

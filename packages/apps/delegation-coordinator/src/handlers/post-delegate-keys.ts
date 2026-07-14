@@ -75,7 +75,9 @@ export async function handlePostDelegateKeys(
     }
     let pinnedKey: ReturnType<typeof parseRegistrarKeyXY>;
     try {
-      pinnedKey = parseRegistrarKeyXY(base64ToBytes(env.PINNED_REGISTRAR_KEY.trim()));
+      pinnedKey = parseRegistrarKeyXY(
+        base64ToBytes(env.PINNED_REGISTRAR_KEY.trim()),
+      );
     } catch {
       pinnedKey = null;
     }

@@ -23,7 +23,9 @@ async function genRegistrarKey(): Promise<{
     true,
     ["sign", "verify"],
   )) as CryptoKeyPair;
-  const raw = new Uint8Array(await crypto.subtle.exportKey("raw", kp.publicKey));
+  const raw = new Uint8Array(
+    await crypto.subtle.exportKey("raw", kp.publicKey),
+  );
   return {
     priv: kp.privateKey,
     pub: { x: raw.slice(1, 33), y: raw.slice(33, 65), curve: "P-256" },
@@ -50,7 +52,9 @@ async function makeVoucher(
 
 // Stand-in for the delegate key's canonical COSE_Key bytes; the verifier
 // compares these bytes verbatim, it does not parse them as a key.
-const delegKey = new Uint8Array([0xa5, 0x01, 0x02, 0x20, 0x01, 0x21, 0x58, 0x20]);
+const delegKey = new Uint8Array([
+  0xa5, 0x01, 0x02, 0x20, 0x01, 0x21, 0x58, 0x20,
+]);
 
 describe("verifyDelegateKeyVoucher", () => {
   it("accepts a well-formed voucher", async () => {
