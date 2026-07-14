@@ -61,13 +61,23 @@ export async function signPendingModeCKs256Delegations(
   }
   const body = (await pending.json()) as {
     entries: Array<{
-      mmrStart: number;
-      mmrEnd: number;
+      mmrStart?: number;
+      mmrEnd?: number;
       delegatedPublicKey: string;
     }>;
   };
+  // Skip the window-less standing delegate-key entry (C3) the coordinator
+  // appends once a live standing key exists — this helper signs only windowed
+  // on-demand material; the standing entry has no mmrStart/mmrEnd (signing it
+  // would CBOR-encode undefined bounds).
+  const windowed = body.entries.filter(
+    (
+      e,
+    ): e is { mmrStart: number; mmrEnd: number; delegatedPublicKey: string } =>
+      typeof e.mmrStart === "number" && typeof e.mmrEnd === "number",
+  );
   let signed = 0;
-  for (const entry of body.entries) {
+  for (const entry of windowed) {
     const dedupeKey = `${entry.mmrStart}:${entry.mmrEnd}:${entry.delegatedPublicKey}`;
     if (opts.signedMaterialKeys.has(dedupeKey)) continue;
     const delegatedPublicKey = base64ToBytes(entry.delegatedPublicKey);
@@ -85,7 +95,7 @@ export async function signPendingModeCKs256Delegations(
     if (opts.receiverStats) opts.receiverStats.materialsSubmitted++;
     signed++;
   }
-  return { signed, pendingCount: body.entries.length };
+  return { signed, pendingCount: windowed.length };
 }
 
 /**
