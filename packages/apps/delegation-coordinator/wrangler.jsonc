@@ -66,7 +66,7 @@
         // (lane-a / forest-dev-5 custody ring). Public material — a var, not a
         // secret. Membership stays off until DELEGATE_KEY_EPOCH>=1 at enablement.
         "PINNED_REGISTRAR_KEY": "z1YarLKXrsRe5egrwrFfbeYadd9lOqplKxbRuMGymHUOSY7YAfdOhhPWb3H72TrPMiMLw0CBMpDPXUGMEvbkOQ==",
-        "ENFORCE_DELEGATE_KEY_MEMBERSHIP": "false",
+        "ENFORCE_DELEGATE_KEY_MEMBERSHIP": "true",
         // COORDINATOR_APP_TOKEN, CUSTODIAN_APP_TOKEN: wrangler secrets (deploy + local via doppler --var).
         // COORDINATOR_RESET_TOKEN: dev-only DO wipe (content-reset); wrangler secret put.
         // WEBHOOK_SIGNING_KEY: Secrets Store binding (see secrets_store_secrets).
