@@ -241,9 +241,11 @@ export class DelegationStoreDO extends DurableObject<Env> {
         alg TEXT NOT NULL,
         public_key BLOB NOT NULL,
         epoch INTEGER NOT NULL,
-        not_after INTEGER NOT NULL
+        not_after INTEGER NOT NULL,
+        voucher BLOB
       )
     `);
+    this.ensureDelegateKeyVoucherColumn();
 
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS materials (
@@ -410,6 +412,21 @@ export class DelegationStoreDO extends DurableObject<Env> {
     `);
   }
 
+  /** Add the custodian voucher column on legacy delegate_keys tables (FOR-390 phase H). */
+  private ensureDelegateKeyVoucherColumn(): void {
+    try {
+      [
+        ...this.ctx.storage.sql.exec(
+          `SELECT voucher FROM delegate_keys LIMIT 0`,
+        ),
+      ];
+    } catch {
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE delegate_keys ADD COLUMN voucher BLOB`,
+      );
+    }
+  }
+
   /** Add user_enabled / operator_enabled columns on legacy databases. */
   private ensureEnabledAuthorityColumns(): void {
     try {
@@ -531,7 +548,55 @@ export class DelegationStoreDO extends DurableObject<Env> {
       Date.now(),
     );
 
+    // H4 genesis PUSH (FOR-390 phase H): the moment a signing route is known,
+    // if a standing delegate key is already registered, fire delegation.required
+    // for it so a hands-off (Mode C) signer auto-pre-delegates and the first
+    // seal is a coverage hit. enqueueWebhookDelivery no-ops for routes without a
+    // webhook (wallet mode pulls C3 instead). Idempotent by request_key.
+    this.ctx.waitUntil(
+      this.enqueueStandingDelegationWebhook(
+        logIdHex32,
+        Math.floor(Date.now() / 1000),
+      ),
+    );
+
     return Response.json({ ok: true });
+  }
+
+  /**
+   * Fire a delegation.required webhook for the log's current standing delegate
+   * key over the window-less [0,0] range (H4 genesis PUSH). No-op when no
+   * standing key is registered yet — the registration-completion trigger (a
+   * bounded scan of signing routes still awaiting a standing delegation) covers
+   * the cold-start ordering where the route precedes the sealer's registration.
+   */
+  private async enqueueStandingDelegationWebhook(
+    logIdHex32: string,
+    nowSeconds: number,
+  ): Promise<void> {
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT public_key FROM delegate_keys
+          WHERE not_after > ?
+          ORDER BY epoch DESC, not_after DESC
+          LIMIT 1`,
+        nowSeconds,
+      ),
+    ];
+    if (rows.length === 0) return;
+    const publicKey = new Uint8Array(
+      (rows[0] as { public_key: ArrayBuffer }).public_key,
+    );
+    const delegatedPubkeyHash = await sha256Hex(publicKey);
+    await this.enqueueWebhookDelivery({
+      logIdHex32,
+      authLogIdHex32: logIdHex32,
+      mmrStart: 0,
+      mmrEnd: 0,
+      delegatedPublicKey: publicKey,
+      delegatedPubkeyHash,
+      requestedAt: nowSeconds,
+    });
   }
 
   /** PUT /public-root/{logIdHex32} — store BYOK public root. */
@@ -1058,6 +1123,27 @@ export class DelegationStoreDO extends DurableObject<Env> {
       );
       if (legacy) return legacy;
 
+      // H2 membership (FOR-390 phase H): when enforcement is on, only a
+      // registered standing delegate key may create a pending demand + signer
+      // webhook. A compromised COORDINATOR_APP_TOKEN can then at most request
+      // the real sealer's registered key (which it does not control) — never
+      // inject an attacker key. Gated so epoch-0 ephemeral sealers are
+      // unaffected until enablement.
+      if (this.env.ENFORCE_DELEGATE_KEY_MEMBERSHIP === "true") {
+        const registered =
+          [
+            ...this.ctx.storage.sql.exec(
+              `SELECT 1 FROM delegate_keys WHERE pubkey_hash = ? AND not_after > ?`,
+              reqKeyHash,
+              nowSeconds,
+            ),
+          ].length > 0;
+        if (!registered) {
+          // No pending, no webhook: nothing unregistered reaches a signer.
+          return delegationPendingResponse(202);
+        }
+      }
+
       const pubkeyHash = reqKeyHash;
       const now = nowSeconds;
       const id = crypto.randomUUID();
@@ -1453,7 +1539,14 @@ export class DelegationStoreDO extends DurableObject<Env> {
     // key. Old readers ignore the window-less entry.
     const standing = this.standingDelegationEntry(logIdHex32, now);
     const allEntries: Array<
-      PendingEntry | { delegatedPublicKey: string; suggestedTtlSeconds: number }
+      | PendingEntry
+      | {
+          delegatedPublicKey: string;
+          suggestedTtlSeconds: number;
+          sealerId?: string;
+          epoch?: number;
+          voucher?: string;
+        }
     > = standing ? [...entries, standing] : entries;
 
     return Response.json({ entries: allEntries, limit: PENDING_CAP_PER_LOG });
@@ -1467,7 +1560,13 @@ export class DelegationStoreDO extends DurableObject<Env> {
   private standingDelegationEntry(
     logIdHex32: string,
     nowSeconds: number,
-  ): { delegatedPublicKey: string; suggestedTtlSeconds: number } | null {
+  ): {
+    delegatedPublicKey: string;
+    suggestedTtlSeconds: number;
+    sealerId?: string;
+    epoch?: number;
+    voucher?: string;
+  } | null {
     const hasRoot =
       [
         ...this.ctx.storage.sql.exec(
@@ -1482,7 +1581,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     // single-sealer-per-lane model makes "newest key" unambiguous today.)
     const rows = [
       ...this.ctx.storage.sql.exec(
-        `SELECT public_key FROM delegate_keys
+        `SELECT public_key, sealer_id, epoch, voucher FROM delegate_keys
           WHERE not_after > ?
           ORDER BY epoch DESC, not_after DESC
           LIMIT 1`,
@@ -1491,12 +1590,26 @@ export class DelegationStoreDO extends DurableObject<Env> {
     ];
     if (rows.length === 0) return null;
 
-    const publicKey = new Uint8Array(
-      (rows[0] as { public_key: ArrayBuffer }).public_key,
-    );
+    const row = rows[0] as {
+      public_key: ArrayBuffer;
+      sealer_id: string;
+      epoch: number;
+      voucher: ArrayBuffer | null;
+    };
+    const publicKey = new Uint8Array(row.public_key);
+    // H3 (FOR-390 phase H): advertise the custodian voucher (and the sealerId +
+    // epoch it attests) so the signer/kit can verify the key's provenance
+    // against the pinned registrar key before binding. Post-H1 registrations
+    // always carry a voucher; a legacy voucher-less row simply omits it (the
+    // kit then refuses to bind, which is correct).
     return {
       delegatedPublicKey: bytesToBase64(publicKey),
       suggestedTtlSeconds: STANDING_DELEGATION_TTL_SECONDS,
+      sealerId: row.sealer_id,
+      epoch: row.epoch,
+      ...(row.voucher
+        ? { voucher: bytesToBase64(new Uint8Array(row.voucher)) }
+        : {}),
     };
   }
 
@@ -1681,23 +1794,53 @@ export class DelegationStoreDO extends DurableObject<Env> {
           { status: 400 },
         );
       }
+      // The voucher was verified against the pinned registrar key at the worker
+      // ingress (handlePostDelegateKeys); it is required and persisted so C3 can
+      // advertise it for the kit to re-verify before binding (FOR-390 phase H).
+      let voucher: Uint8Array;
+      try {
+        voucher = base64ToBytes(key.voucher);
+      } catch {
+        return Response.json(
+          {
+            type: "about:blank",
+            title: "Invalid request",
+            status: 400,
+            detail: "voucher must be valid base64",
+          },
+          { status: 400 },
+        );
+      }
+      if (voucher.length === 0) {
+        return Response.json(
+          {
+            type: "about:blank",
+            title: "Invalid request",
+            status: 400,
+            detail: "voucher is required",
+          },
+          { status: 400 },
+        );
+      }
       const pubkeyHash = await sha256Hex(publicKey);
       this.ctx.storage.sql.exec(
         `INSERT INTO delegate_keys
-           (pubkey_hash, sealer_id, alg, public_key, epoch, not_after)
-         VALUES (?, ?, ?, ?, ?, ?)
+           (pubkey_hash, sealer_id, alg, public_key, epoch, not_after, voucher)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(pubkey_hash) DO UPDATE SET
            sealer_id = excluded.sealer_id,
            alg = excluded.alg,
            public_key = excluded.public_key,
            epoch = excluded.epoch,
-           not_after = excluded.not_after`,
+           not_after = excluded.not_after,
+           voucher = excluded.voucher`,
         pubkeyHash,
         body.sealerId,
         key.alg,
         publicKey,
         key.epoch,
         key.notAfter,
+        voucher,
       );
       registered += 1;
     }

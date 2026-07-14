@@ -34,6 +34,24 @@ export interface Env {
    */
   CUSTODIAN_APP_TOKEN?: string;
   /**
+   * Base64 `x||y` (64 bytes) of the custodian's registrar voucher public key
+   * (FOR-390 phase H). Delegate-key registration verifies each key's voucher
+   * against this before advertising it, so a compromised COORDINATOR_APP_TOKEN
+   * cannot introduce an attacker-controlled delegate key. Empty disables
+   * delegate-key registration (fails closed). Set via
+   * `wrangler secret put PINNED_REGISTRAR_KEY`.
+   */
+  PINNED_REGISTRAR_KEY?: string;
+  /**
+   * When "true", the issue path only records a pending demand + fires a signer
+   * webhook for a *registered* standing delegate key (FOR-390 phase H2
+   * membership). Closes the arbitrary-key injection: a compromised
+   * COORDINATOR_APP_TOKEN can no longer make a root holder delegate to an
+   * attacker key. Gated (default off) so epoch-0 on-demand ephemeral sealers
+   * are unaffected until enablement; turned on with DELEGATE_KEY_EPOCH>=1.
+   */
+  ENFORCE_DELEGATE_KEY_MEMBERSHIP?: string;
+  /**
    * Dev only: set via Doppler ref
    * `${forest-platform.dev.COORDINATOR_RESET_TOKEN}` (synced by deploy-workers
    * on dev lane).

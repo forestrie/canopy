@@ -6,6 +6,8 @@ import { createPrivateKey, createPublicKey } from "node:crypto";
 import {
   decodeCborDeterministic,
   encodeCborDeterministic,
+  parseRegistrarKeyXY,
+  verifyDelegateKeyVoucher,
 } from "@forestrie/encoding";
 import {
   buildDelegationCertificateEs256,
@@ -530,6 +532,10 @@ export interface StandingDelegationEntry {
   delegatedPublicKey: string;
   suggestedTtlSeconds?: number;
   mmrStart?: number;
+  /** Custodian voucher + attested identity for the standing key (FOR-390 phase H). */
+  voucher?: string;
+  sealerId?: string;
+  epoch?: number;
 }
 
 /**
@@ -551,6 +557,14 @@ export async function signAdvanceDelegation(opts: {
   rootKeyPair: CryptoKeyPair;
   horizonMmrEnd: number;
   ttlSeconds?: number;
+  /**
+   * Base64 x||y of the pinned registrar voucher key (FOR-390 phase I). When
+   * set, the advertised standing key's custodian voucher is verified against
+   * it BEFORE binding — so a compromised coordinator cannot induce a delegation
+   * to a key the sealer does not control. Omit only in tests that predate the
+   * voucher path.
+   */
+  pinnedRegistrarKey?: string;
 }): Promise<{
   mmrStart: number;
   mmrEnd: number;
@@ -575,6 +589,40 @@ export async function signAdvanceDelegation(opts: {
   }
 
   const delegatedPublicKey = base64ToBytes(standing.delegatedPublicKey);
+
+  // Phase I (FOR-390): verify the custodian voucher against the pinned registrar
+  // key before binding. This protects the signing decision — which precedes any
+  // sealed artifact, so the self-authenticating-artifact property cannot cover
+  // it — against a compromised coordinator advertising a rogue key.
+  if (opts.pinnedRegistrarKey) {
+    if (
+      !standing.voucher ||
+      standing.sealerId === undefined ||
+      standing.epoch === undefined
+    ) {
+      throw new Error(
+        "standing entry is missing its registrar voucher — refusing to bind",
+      );
+    }
+    const pinned = parseRegistrarKeyXY(base64ToBytes(opts.pinnedRegistrarKey));
+    if (!pinned) {
+      throw new Error("pinnedRegistrarKey must be base64 x||y (64 bytes)");
+    }
+    const verdict = await verifyDelegateKeyVoucher(
+      base64ToBytes(standing.voucher),
+      pinned,
+      {
+        sealerId: standing.sealerId,
+        epoch: standing.epoch,
+        publicKey: delegatedPublicKey,
+      },
+    );
+    if (!verdict.ok) {
+      throw new Error(
+        `registrar voucher failed verification (${verdict.reason}) — refusing to bind`,
+      );
+    }
+  }
   const mmrStart = 0;
   const mmrEnd = opts.horizonMmrEnd;
   const material = await buildByokDelegationMaterial({

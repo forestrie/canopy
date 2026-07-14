@@ -14,6 +14,7 @@ import {
   generateTestRootKeyPair,
   testDelegatedCoseKey,
 } from "./byok-material-fixture.js";
+import { delegateKeyEntryWithVoucher } from "./registrar-voucher-fixture.js";
 import { fetchWithDoRetry } from "./fetch-with-do-retry.js";
 
 const TEST_TOKEN = "test-coordinator-token";
@@ -66,12 +67,12 @@ async function registerDelegateKey(
       body: JSON.stringify({
         sealerId: "sealer-a",
         keys: [
-          {
-            alg: "ES256",
-            publicKey: bytesToBase64(testDelegatedCoseKey(seed)),
+          await delegateKeyEntryWithVoucher({
+            sealerId: "sealer-a",
+            publicKey: testDelegatedCoseKey(seed),
             epoch,
             notAfter,
-          },
+          }),
         ],
       }),
     },
@@ -226,6 +227,7 @@ describe("C3 — standing entry in pending-delegation", () => {
         delegatedPublicKey: string;
         suggestedTtlSeconds?: number;
         mmrStart?: number;
+        voucher?: string;
       }>;
     };
     const standing = body.entries.find(
@@ -236,6 +238,10 @@ describe("C3 — standing entry in pending-delegation", () => {
     expect(standing!.delegatedPublicKey).toBe(
       bytesToBase64(testDelegatedCoseKey(51)),
     );
+    // H3 (FOR-390 phase H): the standing entry advertises the custodian voucher
+    // so the kit can verify provenance against the pinned registrar key.
+    expect(typeof standing!.voucher).toBe("string");
+    expect(standing!.voucher!.length).toBeGreaterThan(0);
   });
 });
 

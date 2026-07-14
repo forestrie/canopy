@@ -16,6 +16,9 @@
     "COORDINATOR_SHARD_COUNT": "4",
     "CUSTODIAN_URL": "https://custodian.example/v1",
     "COORDINATOR_APP_TOKEN": "test-coordinator-token",
+    // base64 x||y of the fixed test registrar voucher key (see
+    // test/unit/registrar-voucher-fixture.ts). FOR-390 phase H.
+    "PINNED_REGISTRAR_KEY": "xonMkF1EZlPkP5CRw9Y84HRs4y2jChTOdF38kuLatqxCPpZx3fg9MsHlTtyrmNV2m6V6KiW6uKbvb+QlX5CNZQ==",
     "COORDINATOR_PUBLIC_URL": "http://localhost",
     "COORDINATOR_DOMAIN": "localhost",
     "ENABLE_WALLET_CHALLENGE": "true",
@@ -59,6 +62,11 @@
         "ENABLE_WALLET_CHALLENGE": "true",
         "WEBHOOK_RETRY_LADDER": "[1,2,4,8]",
         "WEBHOOK_RETRY_SCALE_MS": "1000",
+        // FOR-390: base64 x||y of the custodian's registrar voucher public key
+        // (lane-a / forest-dev-5 custody ring). Public material — a var, not a
+        // secret. Membership stays off until DELEGATE_KEY_EPOCH>=1 at enablement.
+        "PINNED_REGISTRAR_KEY": "z1YarLKXrsRe5egrwrFfbeYadd9lOqplKxbRuMGymHUOSY7YAfdOhhPWb3H72TrPMiMLw0CBMpDPXUGMEvbkOQ==",
+        "ENFORCE_DELEGATE_KEY_MEMBERSHIP": "false",
         // COORDINATOR_APP_TOKEN, CUSTODIAN_APP_TOKEN: wrangler secrets (deploy + local via doppler --var).
         // COORDINATOR_RESET_TOKEN: dev-only DO wipe (content-reset); wrangler secret put.
         // WEBHOOK_SIGNING_KEY: Secrets Store binding (see secrets_store_secrets).

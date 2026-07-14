@@ -26,6 +26,7 @@ import {
   generateTestRootKeyPair,
   testDelegatedCoseKey,
 } from "./byok-material-fixture.js";
+import { delegateKeyEntryWithVoucher } from "./registrar-voucher-fixture.js";
 import { fetchWithDoRetry } from "./fetch-with-do-retry.js";
 
 const TEST_TOKEN = "test-coordinator-token";
@@ -284,12 +285,12 @@ describe("standing delegate-key registration (POST /api/sealer/delegate-keys)", 
         body: JSON.stringify({
           sealerId: "sealer-a",
           keys: [
-            {
-              alg: "ES256",
-              publicKey: bytesToBase64(testDelegatedCoseKey(67)),
+            await delegateKeyEntryWithVoucher({
+              sealerId: "sealer-a",
+              publicKey: testDelegatedCoseKey(67),
               epoch: 2,
               notAfter: 1_700_000_000, // 2023 — in the past
-            },
+            }),
           ],
         }),
       },
@@ -306,12 +307,12 @@ describe("standing delegate-key registration (POST /api/sealer/delegate-keys)", 
         body: JSON.stringify({
           sealerId: "sealer-a",
           keys: [
-            {
-              alg: "ES256",
-              publicKey: bytesToBase64(testDelegatedCoseKey(61)),
+            await delegateKeyEntryWithVoucher({
+              sealerId: "sealer-a",
+              publicKey: testDelegatedCoseKey(61),
               epoch: 2,
               notAfter: futureNotAfter(),
-            },
+            }),
           ],
         }),
       },
@@ -357,12 +358,12 @@ describe("standing delegate-key registration (POST /api/sealer/delegate-keys)", 
         body: JSON.stringify({
           sealerId: "sealer-a",
           keys: [
-            {
-              alg: "ES256",
-              publicKey: bytesToBase64(testDelegatedCoseKey(71)),
+            await delegateKeyEntryWithVoucher({
+              sealerId: "sealer-a",
+              publicKey: testDelegatedCoseKey(71),
               epoch: 2,
               notAfter: futureNotAfter(),
-            },
+            }),
           ],
         }),
       },
