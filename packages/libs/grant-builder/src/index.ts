@@ -23,6 +23,7 @@ export type { GrantData, GrantDataEs256Xy } from "@forestrie/encoding";
 export {
   authLogBootstrapShapedFlags,
   dataLogCreateExtendFlags,
+  dataLogExtendFlags,
   derivedEndorsementGrantFlags,
   hasAuthLogClass,
   hasCreateAndExtend,
