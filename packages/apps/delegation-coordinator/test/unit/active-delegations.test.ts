@@ -101,6 +101,7 @@ async function seedCert(opts: {
 interface ActiveLog {
   logIdHex32: string;
   expiresAt: number;
+  mmrStart: number | null;
   mmrEnd: number | null;
 }
 
@@ -173,7 +174,7 @@ describe("GET /api/delegations/active", () => {
     }
   });
 
-  it("includes a soon-to-expire cert and returns its coverage fields", async () => {
+  it("includes a soon-to-expire cert and returns its coverage range", async () => {
     const soon = nowSeconds() + 120; // passes the now+60 store gate, expires soon
     const logHex32 = await seedCert({ seed: 300, expiresAt: soon, mmrEnd: 42 });
 
@@ -181,6 +182,7 @@ describe("GET /api/delegations/active", () => {
     const row = walk.find((l) => l.logIdHex32 === logHex32);
     expect(row).toBeDefined();
     expect(row!.expiresAt).toBe(soon);
+    expect(row!.mmrStart).toBe(0); // seedCert uses mmrStart 0
     expect(row!.mmrEnd).toBe(42);
   });
 

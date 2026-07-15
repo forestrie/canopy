@@ -1501,9 +1501,12 @@ export class DelegationStoreDO extends DurableObject<Env> {
    * mmr_start, mmr_end)` and stable across concurrent writes.
    *
    * A log may hold several certs (distinct coverage windows); collapse to one
-   * row per log with the furthest expiry and the highest covered `mmr_end`.
-   * `nextKey` is the last `log_id_hex32` returned, or null when this shard is
-   * exhausted (fewer than `limit` rows). The worker owns cross-shard fan-out.
+   * row per log with the furthest expiry and the union coverage range
+   * (`MIN(mmr_start)`..`MAX(mmr_end)`). The sealer uses `mmrEnd` — the furthest
+   * authorized MMR index — to hint how far the log should be sealed, avoiding a
+   * massif read when the latest checkpoint already covers it. `nextKey` is the
+   * last `log_id_hex32` returned, or null when this shard is exhausted (fewer
+   * than `limit` rows). The worker owns cross-shard fan-out.
    */
   private handleGetActive(url: URL): Response {
     const threshold = Math.floor(
@@ -1517,6 +1520,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
       ...this.ctx.storage.sql.exec(
         `SELECT log_id_hex32,
                 MAX(expires_at) AS expires_at,
+                MIN(mmr_start)  AS mmr_start,
                 MAX(mmr_end)    AS mmr_end
          FROM delegation_certificates
          WHERE expires_at > ?
@@ -1534,11 +1538,13 @@ export class DelegationStoreDO extends DurableObject<Env> {
       const r = row as {
         log_id_hex32: string;
         expires_at: number;
+        mmr_start: number | null;
         mmr_end: number | null;
       };
       return {
         logIdHex32: r.log_id_hex32,
         expiresAt: r.expires_at,
+        mmrStart: r.mmr_start,
         mmrEnd: r.mmr_end,
       };
     });

@@ -32,7 +32,12 @@ interface ActiveLog {
   logIdHex32: string;
   /** Furthest cert expiry for this log (epoch seconds). */
   expiresAt: number;
-  /** Highest covered mmr end across this log's certs, or null if unknown. */
+  /** Lowest authorized mmr start across this log's certs, or null if unknown. */
+  mmrStart: number | null;
+  /**
+   * Highest authorized mmr end across this log's certs, or null if unknown.
+   * The sealer resync uses this to hint how far the log should be sealed.
+   */
   mmrEnd: number | null;
 }
 
