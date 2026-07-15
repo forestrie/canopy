@@ -18,7 +18,13 @@ export interface ForwardCoordinatorRegistrationInput {
   logIdWire: Uint8Array;
   genesisAlg: number;
   bootstrapKey: Uint8Array;
-  webhookUrl: string;
+  /**
+   * Sealer-nudge webhook to register for this log. Optional: child onboarding
+   * (ADR-0053 auto-forward / prepare) registers only the public root — the gate
+   * `handlePutCertificate` needs — and has no per-log webhook to inherit, so it
+   * is omitted and the webhook step is reported `skipped`.
+   */
+  webhookUrl?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -155,13 +161,20 @@ export async function forwardCoordinatorRegistration(
     return status;
   }
 
+  // No webhook to register (e.g. child onboarding): public root is done, webhook
+  // stays `skipped`.
+  const webhookUrl = input.webhookUrl?.trim();
+  if (!webhookUrl) {
+    return status;
+  }
+
   try {
     const hookResp = await putWebhook(
       fetchImpl,
       baseUrl,
       token,
       apiLogId,
-      input.webhookUrl,
+      webhookUrl,
     );
     if (!hookResp.ok) {
       status.webhook = "error";

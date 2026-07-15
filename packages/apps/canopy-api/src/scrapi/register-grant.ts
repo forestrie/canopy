@@ -37,7 +37,15 @@ import {
   isDerivedEndorsementGrant,
 } from "../grant/grant-flags.js";
 import type { Grant, GrantResult } from "../grant/types.js";
+import { grantDataToBytes } from "../grant/grant-data.js";
 import { bytesToUuid } from "../grant/uuid-bytes.js";
+import { bytesEqual } from "../cbor-api/cbor-map-utils.js";
+import { COSE_ALG_ES256 } from "../cose/cose-key.js";
+import {
+  forwardCoordinatorRegistration,
+  isCoordinatorForwardConfigured,
+  type CoordinatorForwardEnv,
+} from "../forest/forward-coordinator-registration.js";
 import { getGrantFromRequest, grantAuthorize } from "./auth-grant.js";
 import { QueueFullError } from "@canopy/forestrie-ingress-types";
 import { seeOtherResponse } from "../cbor-api/cbor-response.js";
@@ -84,6 +92,15 @@ export interface RegisterGrantEnv {
    * and enforces global `logId -> R` uniqueness. There is no local fallback.
    */
   creationGrantValidator?: CreationGrantValidator;
+  /**
+   * Delegation-coordinator forward config (ADR-0053 Part A). When present and
+   * configured, a successfully sequenced **child** create-log grant auto-forwards
+   * the child's public root (`grantData` = child owner key) to the coordinator so
+   * `handlePutCertificate` accepts an advance delegation cert for it. Best-effort:
+   * a forward failure never fails grant registration (the prepare path and the
+   * sealer sweep are the safety nets).
+   */
+  coordinatorForward?: CoordinatorForwardEnv;
   /** Worker NODE_ENV; reserved for non-prod diagnostics. */
   nodeEnv?: string;
 }
@@ -200,13 +217,18 @@ export async function registerGrant(
     switch (decision.kind) {
       case "accepted":
         try {
-          return await enqueueAndStoreGrant(
+          const accepted = await enqueueAndStoreGrant(
             request,
             grant,
             env,
             targetLogUuid,
             bootstrapUrlUuid,
           );
+          // ADR-0053 Part A: auto-forward the child's public root to the
+          // coordinator. This branch is a verified create-log grant (create+extend,
+          // uninitialized T). Best-effort — never fails the registration.
+          await forwardChildPublicRootOnCreate(grant, env);
+          return accepted;
         } catch (e) {
           console.warn("Creation grant (univocity ok, enqueue failed)", e);
           return ServerErrors.serviceUnavailable(
@@ -354,6 +376,57 @@ async function registerDerivedEndorsementGrant(
         ? e.message
         : "Grant sequencing failed after endorsement verify",
     );
+  }
+}
+
+/**
+ * ADR-0053 Part A: best-effort forward a sequenced child create-log grant's public
+ * root to the delegation coordinator. Authority is intrinsic — the parent already
+ * signed the create grant (verified by univocity before this runs). Only child
+ * grants forward (`logId !== ownerLogId`); the self-referential root goes through
+ * genesis. Any failure is logged and swallowed: the prepare endpoint and the sealer
+ * sweep are the safety nets, so onboarding is never coupled to this call.
+ */
+async function forwardChildPublicRootOnCreate(
+  grant: Grant,
+  env: RegisterGrantEnv,
+): Promise<void> {
+  const coordinator = env.coordinatorForward;
+  if (!coordinator || !isCoordinatorForwardConfigured(coordinator)) return;
+  // Child grants only: skip the self-referential root grant (genesis path).
+  if (bytesEqual(grant.logId, grant.ownerLogId)) return;
+
+  let childOwnerKey: Uint8Array;
+  try {
+    childOwnerKey = grantDataToBytes(grant.grantData);
+  } catch {
+    return;
+  }
+  if (childOwnerKey.length !== 64) {
+    console.warn(
+      "Child public-root forward skipped: grantData is not a 64-byte ES256 x||y key",
+      { grantDataLen: childOwnerKey.length },
+    );
+    return;
+  }
+
+  try {
+    const status = await forwardCoordinatorRegistration({
+      coordinatorBaseUrl: coordinator.DELEGATION_COORDINATOR_URL!.trim(),
+      coordinatorAppToken: coordinator.COORDINATOR_APP_TOKEN!.trim(),
+      logIdWire: grant.logId,
+      genesisAlg: COSE_ALG_ES256,
+      bootstrapKey: childOwnerKey,
+      // No per-log webhook to inherit; public root is the coordinator gate.
+    });
+    if (status.publicRoot !== "ok") {
+      console.warn("Child public-root forward failed", {
+        publicRoot: status.publicRoot,
+        detail: status.detail,
+      });
+    }
+  } catch (e) {
+    console.warn("Child public-root forward threw", e);
   }
 }
 
