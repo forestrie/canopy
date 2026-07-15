@@ -226,6 +226,10 @@ export default {
             bootstrapEnv: bootstrapEnvForGrant,
             resolveReceiptAuthority,
             creationGrantValidator,
+            coordinatorForward: {
+              DELEGATION_COORDINATOR_URL: env.DELEGATION_COORDINATOR_URL,
+              COORDINATOR_APP_TOKEN: env.COORDINATOR_APP_TOKEN,
+            },
             nodeEnv: env.NODE_ENV,
           });
           const headers = new Headers(response.headers);

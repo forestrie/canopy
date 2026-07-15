@@ -20,6 +20,7 @@ import {
   type CoordinatorForwardEnv,
 } from "./forward-coordinator-registration.js";
 import { getForestGenesis } from "./get-forest-genesis.js";
+import { handlePrepareChildLog } from "./prepare-child-log.js";
 import {
   postForestGenesis,
   type PostGenesisEnv,
@@ -173,6 +174,21 @@ export async function handleForestRequest(
 
   const rest = pathname.slice("/api/forest/".length);
   const parts = rest.split("/").filter(Boolean);
+
+  // ADR-0053 Part B: pre-register a child log's public root under parent authority
+  // (parent-signed create grant in Authorization: Forestrie-Grant), no sequencing.
+  if (parts.length === 2 && parts[1] === "prepare") {
+    if (request.method !== "POST") {
+      return attachCors(
+        problemResponse(405, "Method Not Allowed", "about:blank", {
+          detail: `Method ${request.method} not allowed for ${pathname}`,
+        }),
+        corsHeaders,
+      );
+    }
+    const res = await handlePrepareChildLog(request, parts[0]!, env);
+    return attachCors(res, corsHeaders);
+  }
 
   if (parts.length === 2 && parts[1] === "genesis") {
     const logIdSeg = parts[0]!;
