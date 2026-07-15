@@ -15,6 +15,7 @@ import {
   handleGetPendingDelegation,
   handleGetDelegation,
   handleGetPending,
+  handleGetActive,
   handleGetPublicRoot,
   handleGetSigningRoute,
   handleIssueDelegation,
@@ -112,6 +113,10 @@ export default {
 
     if (pathname === "/api/delegations/pending" && method === "GET") {
       return handleGetPending(request, env);
+    }
+
+    if (pathname === "/api/delegations/active" && method === "GET") {
+      return handleGetActive(request, env);
     }
 
     const pendingDelegationLogId = matchLogRoute(

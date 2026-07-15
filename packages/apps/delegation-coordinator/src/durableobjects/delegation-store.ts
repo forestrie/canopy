@@ -146,6 +146,10 @@ export class DelegationStoreDO extends DurableObject<Env> {
         return this.handleGetPending(url);
       }
 
+      if (pathname === "/active" && method === "GET") {
+        return this.handleGetActive(url);
+      }
+
       if (pathname === "/pending-delegation" && method === "GET") {
         return this.handleGetPendingDelegation(url);
       }
@@ -1484,6 +1488,65 @@ export class DelegationStoreDO extends DurableObject<Env> {
     });
 
     return Response.json({ entries, offset, limit });
+  }
+
+  /**
+   * GET /active?threshold=&after=&limit= — one keyset page of logs in this
+   * shard holding a delegation cert whose `expires_at > threshold` (i.e. active
+   * or recently expired, per the sealer's grace window). Backs the sealer's
+   * level-triggered resync (plan-2607-04): the resync compares each returned
+   * log's massif head against its checkpoint in R2 and re-drives any unsealed
+   * head. Keyset-paged by `log_id_hex32` so the scan is index-only over
+   * {@link idx_delegation_certificates_coverage} `(log_id_hex32, expires_at,
+   * mmr_start, mmr_end)` and stable across concurrent writes.
+   *
+   * A log may hold several certs (distinct coverage windows); collapse to one
+   * row per log with the furthest expiry and the highest covered `mmr_end`.
+   * `nextKey` is the last `log_id_hex32` returned, or null when this shard is
+   * exhausted (fewer than `limit` rows). The worker owns cross-shard fan-out.
+   */
+  private handleGetActive(url: URL): Response {
+    const threshold = Math.floor(
+      Number(url.searchParams.get("threshold") ?? "0"),
+    );
+    const after = url.searchParams.get("after") ?? "";
+    const limitRaw = parseInt(url.searchParams.get("limit") ?? "100", 10);
+    const limit = Math.min(Math.max(1, limitRaw), 500);
+
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT log_id_hex32,
+                MAX(expires_at) AS expires_at,
+                MAX(mmr_end)    AS mmr_end
+         FROM delegation_certificates
+         WHERE expires_at > ?
+           AND log_id_hex32 > ?
+         GROUP BY log_id_hex32
+         ORDER BY log_id_hex32
+         LIMIT ?`,
+        threshold,
+        after,
+        limit,
+      ),
+    ];
+
+    const logs = rows.map((row) => {
+      const r = row as {
+        log_id_hex32: string;
+        expires_at: number;
+        mmr_end: number | null;
+      };
+      return {
+        logIdHex32: r.log_id_hex32,
+        expiresAt: r.expires_at,
+        mmrEnd: r.mmr_end,
+      };
+    });
+
+    const nextKey =
+      logs.length < limit ? null : logs[logs.length - 1]!.logIdHex32;
+
+    return Response.json({ logs, nextKey });
   }
 
   /** GET /pending-delegation?logId= — sealer-style pending for one log. */

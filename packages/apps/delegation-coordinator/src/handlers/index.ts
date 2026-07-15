@@ -10,6 +10,7 @@ export { handlePostSigningRoute } from "./post-signing-route.js";
 export { handlePostCertificate } from "./post-certificate.js";
 export { handlePostDelegateKeys } from "./post-delegate-keys.js";
 export { handleGetPending } from "./get-pending.js";
+export { handleGetActive } from "./get-active.js";
 export {
   handlePostCustodyKeys,
   handleAdminPostCustodyKeys,
