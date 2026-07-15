@@ -595,21 +595,27 @@ screen so they see there's no magic — Sign1 plus an MMR inclusion proof.
 **4a. Self-create the receipt — no operator call:**
 
 ```bash
-# TODO: confirm public massif/checkpoint path. The old
-#   /api/forest/{id}/massifs/0.log  and  /api/forest/{id}/checkpoint.sth
-# paths 404 for every log — canopy-api does not serve raw massif `.log` /
-# checkpoint `.sth` blobs over HTTP (they live only as R2 objects, keyed
-# v2/merklelog/massifs/{massifHeight}/{logId}/{massifIndex}.log). Confirm the
-# CDN/bucket URL that fronts that R2 bucket before rehearsal, or read the two
-# blobs from a local mirror of the R2 store.
-curl -sS "$MASSIF_BLOB_URL"     -o massif.log       # TODO: confirm public massif path
-curl -sS "$CHECKPOINT_BLOB_URL" -o checkpoint.sth   # TODO: confirm public checkpoint path
+# The log store R2 bucket is PUBLIC read-only (Cloudflare R2 managed r2.dev
+# domain, enabled in forest-1 log-storage terraform) — so massif tiles and
+# checkpoints are fetched straight from the bucket, no operator API. NOT
+# /api/forest/... (canopy-api serves no raw blob route). Objects are keyed
+# v2/merklelog/{massifs,checkpoints}/{massifHeight}/{logId}/{massifIndex}.{log,sth}
+# with a zero-padded 16-hex massifIndex; massifHeight is the forest's config (14).
+export LOG_STORE_URL="https://pub-d7bc2e23615b4cd1a80a0944c3cd3507.r2.dev"   # forest-dev-5-logs r2.dev
+export MASSIF_H=14 MASSIF_IDX=0000000000000000
+curl -sS "$LOG_STORE_URL/v2/merklelog/massifs/$MASSIF_H/$DATA_LOG_ID/$MASSIF_IDX.log"     -o massif.log
+curl -sS "$LOG_STORE_URL/v2/merklelog/checkpoints/$MASSIF_H/$DATA_LOG_ID/$MASSIF_IDX.sth" -o checkpoint.sth
 
 forestrie create-receipt \
   --massif massif.log --checkpoint checkpoint.sth \
   --mmr-index 0 \
   --out receipt.selfserve.cbor
 ```
+
+Note: the `r2.dev` host is the bucket's managed public domain (per lane); the
+forest-1 `log_storage_bucket_public_url` output currently emits the *S3* endpoint
+(auth-only), so read the actual `r2.dev` domain from the bucket's managed-domain
+config, or front it with a stable custom domain before the talk.
 
 > The one public receipt path canopy-api **does** serve (the operator-issued
 > receipt this self-serve receipt reproduces byte-for-byte) is
@@ -769,7 +775,42 @@ verify: anchor    ok      — receipt peak matches on-chain accumulator peak 1/2
 PASS: receipt verified offline and anchored on-chain (anchored size 4)
 ```
 
-**5b. The whole audience verifies, offline, forever** — run **the single
+**5b. Watch the accumulator advance on-chain** — the split-view protection made
+concrete. Each `CheckpointPublished` event is *one consensus-gated advance* of a
+log's accumulator: univocity emits it only after verifying the consistency proof,
+and Ethereum consensus makes that one global view. Pull them straight from the
+Base Sepolia indexer (`eth_getLogs`) — no operator, no forestrie service, just the
+chain. `topics[0]` is
+`keccak256("CheckpointPublished(bytes32,bytes32,bytes,address,bytes8,uint8,uint64,bytes32[],uint64,bytes32[])")`;
+`logId`/`grantLogId`/`rootKey` are the indexed topics, and `size` (the MMR size
+after the checkpoint) is the 4th word of `data`.
+
+```bash
+# DEPLOY_BLOCK captured at R1: hex block of the deploy tx (bounds the scan).
+export CHECKPOINT_TOPIC="0x156942b408823cb05a16027962ea485fa7171d99779ee04094280b2569482426"
+curl -sS -X POST "$RPC_URL" -H 'Content-Type: application/json' --data '{
+  "jsonrpc":"2.0","id":1,"method":"eth_getLogs","params":[{
+    "address":"'"$UNIVOCITY_ADDRESS"'","fromBlock":"'"$DEPLOY_BLOCK"'","toBlock":"latest",
+    "topics":["'"$CHECKPOINT_TOPIC"'"]}]}' \
+| node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const L=JSON.parse(d).result||[];console.log(L.length,"checkpoint(s) anchored on-chain:");L.forEach(l=>{const w=i=>l.data.slice(2+i*64,2+(i+1)*64);console.log("  block",parseInt(l.blockNumber,16),"logId",l.topics[1].slice(0,18)+"…","kind",parseInt(w(2),16)===1?"AUTH":"DATA","mmrSize",BigInt("0x"+w(3)).toString(),"tx",l.transactionHash.slice(0,12)+"…")})}'
+```
+
+Example output (**real capture** — a fresh forest's first few checkpoints):
+
+```
+4 checkpoint(s) anchored on-chain:
+  block 44153759 logId 0x0000000000000000… kind AUTH mmrSize 1 tx 0xc82337546f…
+  block 44153784 logId 0x0000000000000000… kind AUTH mmrSize 3 tx 0x4d49539793…
+  block 44154235 logId 0x0000000000000000… kind AUTH mmrSize 3 tx 0xea645fd94b…
+  block 44154928 logId 0x0000000000000000… kind AUTH mmrSize 4 tx 0xa8b5eb3cae…
+```
+
+The `mmrSize` marching up (1 → 3 → 4) is the accumulator advancing under
+consensus — the exact thing that makes a checkpoint impossible to show two ways.
+(`cast call "$UNIVOCITY_ADDRESS" "logState(bytes32)" <logId>` reads the *current*
+anchored accumulator for one log; this reads the *history* of advances.)
+
+**5c. The whole audience verifies, offline, forever** — run **the single
 closer** one last time. Land the closing line:
 
 > "The operator was only ever a pipe — split-view protection and the trust that
