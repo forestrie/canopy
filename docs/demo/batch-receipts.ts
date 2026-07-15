@@ -3,18 +3,15 @@
 //
 // Amortization: submission is ~instant per statement; the receipt "latency" is
 // a SINGLE checkpoint wait shared by the whole batch, after which every receipt
-// is derived offline from one massif + one checkpoint.
-//
-// Ranger nuance (observed on lane-A): a trailing partial massif is committed
-// only when the NEXT write arrives, so the batch's last entries would otherwise
-// sit unsealed indefinitely. We submit a few extra "flush" statements after the
-// batch to push all N real entries into a committed + sealed massif; the flush
-// statements themselves become the new (ignored) tail.
+// is derived offline from one massif + one checkpoint. The ranger commits the
+// batch's (partial) massif to R2 as it drains the ingress queue, and the last
+// massif write triggers the sealer to checkpoint the whole head — so one seal
+// cycle covers the entire batch. (Requires the log's sealing delegation to be
+// live; an expired advance cert stalls checkpoints, which looks like tail lag.)
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 
 const N = Number(process.env.N ?? "20");
-const FLUSH = Number(process.env.FLUSH ?? "3");
 const BASE = process.env.FORESTRIE_BASE_URL!;
 const ROOT = process.env.ROOT_LOG_ID!;
 const PEM = process.env.BOOTSTRAP_PEM!;
@@ -61,9 +58,6 @@ const entryIds = await Promise.all(
 );
 const tSubmit = Date.now();
 console.log(`submitted+sequenced ${N} statements in ${((tSubmit - t0) / 1000).toFixed(1)}s`);
-
-// 1b. flush: push the N real entries into a committed+sealed massif
-await Promise.all(Array.from({ length: FLUSH }, (_, i) => submitOne(`flush ${i}`, N + i)));
 
 // 2. Wait for ONE checkpoint that COVERS the whole batch. The authoritative
 //    coverage signal IS the offline derivation itself: re-fetch massif +
