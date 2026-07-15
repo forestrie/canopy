@@ -20,13 +20,25 @@ published to public npm.
 
 Most subcommands are implemented and tested, including `complete-grant`
 (FOR-344, landed 2026-07-12) and `create-receipt`'s chain-anchored (report-only)
-mode. Two authority verbs — **`create-log`** and **`delegate`** — are **tbd**
-(FOR-390,
-[plan-2607-21](https://github.com/forestrie/devdocs/blob/main/plans/plan-2607-21-cli-authority-commands-demo.md);
-taxonomy in
-[ADR-0052](https://github.com/forestrie/devdocs/blob/main/adr/adr-0052-cli-authority-taxonomy.md)).
-This outline is their acceptance script — the beats below are exactly what they
-must run against lane-A.
+mode. The two authority verbs — **`create-log`** (with `--self-referential`,
+`--auth-log`, `--data-log`, and `--prepare`) and **`delegate`** — are now
+**exists / validated live** (FOR-390): the full ordering below ran green
+end-to-end against lane-A, with the first checkpoint landing at every hierarchy
+level in a few seconds. See
+[plan-2607-21](https://github.com/forestrie/devdocs/blob/main/plans/plan-2607-21-cli-authority-commands-demo.md)
+(verbs), the child-onboarding decision
+[ADR-0053](https://github.com/forestrie/devdocs/blob/main/adr/adr-0053-child-log-onboarding-parent-authorized.md)
++ [plan-2607-23](https://github.com/forestrie/devdocs/blob/main/plans/plan-2607-23-child-log-advance-delegation-onboarding.md),
+and the authority taxonomy
+[ADR-0052](https://github.com/forestrie/devdocs/blob/main/adr/adr-0052-cli-authority-taxonomy.md).
+
+**One non-CLI step**: onboarding a forest's **root genesis** is an
+**operator/self-host** action, not a `forestrie` verb — `POST /api/forest/{root}/genesis`
+with an operator/self-host onboard bearer (or a completed endorsement grant).
+The operator onboards you; you onboard yourself when self-hosting. Every
+*child* log, by contrast, onboards under **parent-log authority with no operator
+token** (ADR-0053) — authority flows down the log hierarchy, not through the
+operator.
 
 **Personas** (each exercises one authority — see ADR-0052): **Robert** holds
 `K(root)` (deploys, creates David's auth log, delegates the root); **David**
@@ -100,23 +112,37 @@ commits the grant.
 
 ## Preflight (rehearsal — run BEFORE the talk)
 
-Stand up a live ES256 univocity instance and provision one root grant, so the
-on-stage "start in the middle" opening has something to register against. This
-also captures the artefacts every later step consumes: `deployment.json`,
-`genesis.cbor`, `bootstrap.es256.pem`, `root-grant.b64`.
+Stand up a live ES256 univocity instance, **onboard its root genesis** (which
+also forwards the root's public root + webhook to the delegation coordinator),
+**pre-delegate the root before the first write**, then provision one root grant
+— so the on-stage "start in the middle" opening has something to register
+against and its first checkpoint lands in seconds. This also captures the
+artefacts every later step consumes: `deployment.json`, `genesis.cbor`,
+`bootstrap.es256.pem`, `root-grant.b64`.
+
+**Validated ordering (this ran green live against lane-A):** deploy → onboard
+the root genesis *with the coordinator forward* → `delegate` the root →
+`create-log --self-referential` the root grant. Delegating **before** the first
+write is the whole point: the advance certificate is already in place, so the
+sealer's first checkpoint finds a covering cert immediately.
 
 ### Canonical environment (export once; every step reads these)
 
 ```bash
-export FORESTRIE_BASE_URL="https://api-b-forest-2.forestrie.dev"   # SCRAPI worker origin, no trailing slash
+# lane-A is the live deployment — there is no lane-B host (api-b-forest-2 /
+# api-a-forest-2 are down/stale; lane-B is not deployed). Use the plain host:
+export FORESTRIE_BASE_URL="https://api-forest-2.forestrie.dev"   # SCRAPI worker origin, no trailing slash
 export RPC_URL="https://sepolia.base.org"
 export CHAIN_ID=84532                                              # Base Sepolia
-# Filled in by the deploy step:
+# Filled in by the deploy step (BOOTSTRAP_LOG_ID *is* the forest root log id):
 export UNIVOCITY_ADDRESS=                                          # 0x… ImutableUnivocity contract
-export BOOTSTRAP_LOG_ID=                                           # root/bootstrap log UUID
+export BOOTSTRAP_LOG_ID=                                           # root/bootstrap log UUID (== forest root)
 # Delegation coordinator (for the `delegate` beats) + the lane-A pinned registrar key:
 export DELEGATION_COORDINATOR_URL="https://coordinator-a.forest-2.forestrie.dev"
 export PINNED_REGISTRAR_KEY="z1YarLKXrsRe5egrwrFfbeYadd9lOqplKxbRuMGymHUOSY7YAfdOhhPWb3H72TrPMiMLw0CBMpDPXUGMEvbkOQ=="
+# Operator/self-host onboard token for the *root* genesis onboard (Preflight R2).
+# Minted via the ops API; child logs need NO token (parent-authorized, ADR-0053):
+export CANOPY_PAYMENTS_ONBOARD_TOKEN=                             # operator/self-host onboard bearer
 # Signing keys (ES256 P-256 PKCS#8 PEM). BOOTSTRAP_PEM = Robert's K(root):
 export BOOTSTRAP_PEM=./bootstrap.es256.pem
 export DAVID_PEM=./david.es256.pem                                # David: K(David-auth) + K(David-data)
@@ -158,7 +184,37 @@ wrote deployment record to deployment.json
 Note: on a real deploy, add `--deployer-key` (env `DEPLOYER_KEY`) — a
 gas-paying secp256k1 key, distinct from the ES256 bootstrap trust root.
 
-### R2 — Fetch the public genesis (cache it; verification is offline forever after)
+### R2 — Onboard the root genesis (operator/self-host; forwards to the coordinator)
+
+Onboarding a forest's root genesis is an **operator/self-host** step, **not** a
+`forestrie` verb: the operator onboards you, or you onboard yourself when
+self-hosting. It stores the canonical genesis (so the GET in R3 works) **and**,
+because we pass `?webhookUrl=`, forwards the root's public root + webhook to the
+delegation coordinator — the prerequisite for delegating the root in R4.
+Authorize it with the operator/self-host onboard bearer
+(`CANOPY_PAYMENTS_ONBOARD_TOKEN`, minted via the ops API) **or** a completed
+endorsement grant.
+
+**Status:** operator/self-host onboard (`POST /api/forest/{root}/genesis`) —
+**operator step, validated live** (FOR-390). Not a CLI verb.
+
+```bash
+# CBOR genesis body labels: version(-68009)=2, alg(-68014)=-7 (ES256),
+#   bootstrapKey(-68015)=64-byte x‖y, univocityAddr(-68011)=20 bytes,
+#   chainId(-68013)="84532". (Same bytes the deploy step bound on-chain.)
+# WEBHOOK_URL is the operator's signing-route URL the coordinator calls back —
+# the same signing route the genesis forward uses (an operator/self-host detail):
+curl -sS -X POST \
+  -H "Authorization: Bearer $CANOPY_PAYMENTS_ONBOARD_TOKEN" \
+  -H "Content-Type: application/cbor" \
+  --data-binary @genesis-body.cbor \
+  "$FORESTRIE_BASE_URL/api/forest/$BOOTSTRAP_LOG_ID/genesis?webhookUrl=$WEBHOOK_URL"
+```
+
+The `webhookUrl` is mandatory for the coordinator forward: without it, R4's
+`delegate` finds no registered public root and 404s at certificate submission.
+
+### R3 — Fetch the public genesis (cache it; verification is offline forever after)
 
 **Status:** plain HTTP (SCRAPI discovery) — **exists / tested**
 
@@ -171,22 +227,44 @@ Example output:
 
 ```
 {
-  "issuer": "https://api-b-forest-2.forestrie.dev",
-  "registration_endpoint": "https://api-b-forest-2.forestrie.dev/register",
+  "issuer": "https://api-forest-2.forestrie.dev",
+  "registration_endpoint": "https://api-forest-2.forestrie.dev/register",
   "supported_signature_algorithms": ["ES256"]
 }
 ```
 
-### R3 — Mint + register the root grant (bootstrap leaf is self-referential)
+### R4 — Delegate the root log (BEFORE the first write)
+
+**Robert** pre-delegates sealing on the root log to the operator's vouched
+standing sealer key: `delegate` fetches the pending delegation, verifies the
+custodian's sealer voucher against the **pinned registrar key**, signs a
+wide-horizon delegation with `K(root)`, and submits it. Doing this *before* R5's
+first write is what makes the first checkpoint land in seconds. Advance-cert TTL
+is now 6h (`STANDING_DELEGATION_TTL_SECONDS`, canopy#133), so one `delegate` is
+durable for the whole rehearsal + talk.
+
+**Status:** `delegate` — **exists / validated live** (FOR-390, plan-2607-21)
+
+```bash
+forestrie delegate \
+  --coordinator-url "$DELEGATION_COORDINATOR_URL" \
+  --log-id "$BOOTSTRAP_LOG_ID" --sign-with "$BOOTSTRAP_PEM" \
+  --pinned-registrar-key "$PINNED_REGISTRAR_KEY"
+```
+
+### R5 — Mint + register the root grant (bootstrap leaf is self-referential)
 
 **Robert** stands up the root. The first leaf in the root log is allowed to be
 self-referential (`logId == ownerLogId`) because the signer is the bootstrap
 public key bound to the contract at deploy time — creating a log and becoming
-its `K(L)` is the `create-log` authority. This yields `ROOT_GRANT_B64`, the
-opaque bearer credential the on-stage opening treats as "explained later".
+its `K(L)` is the `create-log` authority. With the root already delegated (R4),
+the sealer covers this leaf immediately, so the receipt returns in ~4–8s. This
+yields `ROOT_GRANT_B64`, the opaque bearer credential the on-stage opening
+treats as "explained later".
 
-**Status:** `create-log` — **tbd** (FOR-390, plan-2607-21; absorbs the
-self-referential create path from `register-grant`)
+**Status:** `create-log --self-referential` — **exists / validated live**
+(FOR-390, plan-2607-21; absorbs the self-referential create path from
+`register-grant`)
 
 ```bash
 forestrie create-log \
@@ -205,7 +283,7 @@ ownerLog: 0f9a1c7e-…-… (grant leaf)
 dataLog: 0f9a1c7e-…-… (authorized)
 signer: 04a91f…            # grantData = bootstrap ES256 x||y
 entryId: 0202020202020202…0001
-statusUrl: https://api-b-forest-2.forestrie.dev/register/0f9a1c7e-…/grants/…
+statusUrl: https://api-forest-2.forestrie.dev/register/0f9a1c7e-…/grants/…
 receiptUrl: …/receipt
 wrote completed grant base64 to root-grant.b64
 ```
@@ -271,7 +349,7 @@ Example output (illustrative; format matches the `register` reporter):
 
 ```
 entryId: 0202020202020202…0001
-statusUrl: https://api-b-forest-2.forestrie.dev/register/0f9a1c7e-…/entries/…
+statusUrl: https://api-forest-2.forestrie.dev/register/0f9a1c7e-…/entries/…
 receiptUrl: …/receipt
 wrote receipt (612 bytes) to receipt.cbor
 ```
@@ -282,16 +360,18 @@ wrote receipt (612 bytes) to receipt.cbor
 
 ## Step 2 — Authorize several signers on a data log  ·  ~5 min
 
-**Status:** `create-log` — **tbd** (FOR-390, plan-2607-21) · `register-grant`
-(writer-only) — **exists / tested** (FOR-343) · reuses `sign-statement` /
-`register` / `verify` (all **exists / tested**)
+**Status:** `create-log` (`--prepare` / `--auth-log` / `--data-log`) and
+`delegate` — **exists / validated live** (FOR-390, plan-2607-21 + ADR-0053 /
+plan-2607-23) · `register-grant` (writer-only) — **exists / tested** (FOR-343) ·
+reuses `sign-statement` / `register` / `verify` (all **exists / tested**)
 
 **Slide:**
 - **SCITT built using SCITT** — the TS implements its *own* authorization out of COSE-signed statements and receipts
 - Authorization is a **hierarchy of forestrie logs**: Robert's root → David's auth log → David's data log; each grant is just `register-signed-statement` on the parent
 - **Create vs. write are different authorities:** `create-log` makes David the owner (`K(L)`) of a log; `register-grant` only lets Alice and Bob *append* statements — no create, no re-root
+- **David pre-signs his own logs with his own key** — per child log: `prepare` (register its public root under the parent's authority, no operator token) → `delegate` → `create`. **Authority flows down the log hierarchy, not through the operator** (ADR-0053)
 - One writer grant per signer, all naming the **same data log**, all recorded in the **auth log** — not a side channel
-- Delegation is itself a transparent, receipted statement you verify like any other
+- Delegation is itself a transparent, receipted statement you verify like any other; pre-delegated, every level's first checkpoint lands in seconds
 
 **Speaker notes:** SCITT requires the Transparency Service to authorize what it
 registers; forestrie meets that requirement *with SCITT itself* — a grant is a
@@ -299,15 +379,49 @@ signed statement, recorded and receipted in an auth log, and verified exactly
 like the data entries. That is the whole point to land: **"SCITT built using
 SCITT."** Skip the grant-payload internals (signer binding, uniqueness gating,
 the creation-grant 409) — they are forestrie specifics this audience isn't here
-for and risk derailing the slide.
+for and risk derailing the slide. The second beat to land: David extends the
+hierarchy **using only his own key** — `prepare` registers each child's public
+root under the *parent*-signed create grant (verified recursively down to the
+root genesis), so David can `delegate` and pre-sign a log **before it is
+sequenced**, no operator token anywhere. Per child the reliable ordering is
+**prepare → delegate → create**; the first checkpoint at each level then lands
+in ~4–8s.
 
-**2a. Robert creates David's auth log** (`create-log`, signed by the root key;
-`grantData` = David, so **David becomes the owner** — `K(David-auth)`):
+The root was already delegated in Preflight (R4). David now onboards each of his
+own logs the same way — but **without any operator token**: `prepare` registers
+the child's public root at the coordinator under the *parent*-signed create
+grant, so `delegate` and the first write work the instant the log exists. David
+picks both logIds up front, so he can `prepare` + `delegate` a log **before**
+`create` sequences it.
 
 ```bash
 export AUTH_LOG_ID=$(uuidgen | tr 'A-Z' 'a-z')
 export DATA_LOG_ID=$(uuidgen | tr 'A-Z' 'a-z')
+```
 
+**2a. David's auth log — prepare → delegate → create** (create grant signed by
+**Robert**, `grantData` = David, so **David becomes the owner** `K(David-auth)`;
+owner-log = the root, so `--bootstrap-log` defaults correctly to it):
+
+```bash
+# prepare: Robert signs the create grant; registers the child public root at
+# the coordinator under root authority (no sequencing, no operator token):
+forestrie create-log --prepare \
+  --base-url "$FORESTRIE_BASE_URL" \
+  --owner-log "$BOOTSTRAP_LOG_ID" --new-log "$AUTH_LOG_ID" \
+  --auth-log \
+  --signer-pem "$DAVID_PEM" \
+  --sign-with "$BOOTSTRAP_PEM" \
+  --parent-grant-b64 "$ROOT_GRANT_B64" \
+  --out-b64 auth-grant.b64
+
+# delegate: David (the new owner) pre-delegates sealing on his auth log:
+forestrie delegate \
+  --coordinator-url "$DELEGATION_COORDINATOR_URL" \
+  --log-id "$AUTH_LOG_ID" --sign-with "$DAVID_PEM" \
+  --pinned-registrar-key "$PINNED_REGISTRAR_KEY"
+
+# create: sequence the create leaf (same args, minus --prepare) — fast receipt:
 forestrie create-log \
   --base-url "$FORESTRIE_BASE_URL" \
   --owner-log "$BOOTSTRAP_LOG_ID" --new-log "$AUTH_LOG_ID" \
@@ -318,13 +432,36 @@ forestrie create-log \
   --out-b64 auth-grant.b64
 ```
 
-**2b. David creates his data log** under his auth log (`create-log`, signed by
-David — the auth log's owner; `grantData` = David, so `K(David-data)` is David):
+**2b. David's data log — prepare → delegate → create** (create grant signed by
+**David** — the auth log's owner; `grantData` = David, so `K(David-data)` is
+David). The owner-log is now David's auth log, **not** the root, so
+`--bootstrap-log "$BOOTSTRAP_LOG_ID"` is **required** — `--bootstrap-log`
+defaults to `--owner-log`, which is only correct when the owner *is* the forest
+root:
 
 ```bash
+# prepare (David signs; owner = auth log ⇒ must name the forest root explicitly):
+forestrie create-log --prepare \
+  --base-url "$FORESTRIE_BASE_URL" \
+  --owner-log "$AUTH_LOG_ID" --new-log "$DATA_LOG_ID" \
+  --bootstrap-log "$BOOTSTRAP_LOG_ID" \
+  --data-log \
+  --signer-pem "$DAVID_PEM" \
+  --sign-with "$DAVID_PEM" \
+  --parent-grant-b64 "$(cat auth-grant.b64)" \
+  --out-b64 david-data-grant.b64
+
+# delegate David's data log:
+forestrie delegate \
+  --coordinator-url "$DELEGATION_COORDINATOR_URL" \
+  --log-id "$DATA_LOG_ID" --sign-with "$DAVID_PEM" \
+  --pinned-registrar-key "$PINNED_REGISTRAR_KEY"
+
+# create (sequence):
 forestrie create-log \
   --base-url "$FORESTRIE_BASE_URL" \
   --owner-log "$AUTH_LOG_ID" --new-log "$DATA_LOG_ID" \
+  --bootstrap-log "$BOOTSTRAP_LOG_ID" \
   --data-log \
   --signer-pem "$DAVID_PEM" \
   --sign-with "$DAVID_PEM" \
@@ -335,7 +472,8 @@ forestrie create-log \
 **2c. David authorizes Alice and Bob as writers** on his data log (one
 **extend-only** writer grant per signer — no `GF_CREATE` — both naming
 `$DATA_LOG_ID`, both recorded in `$AUTH_LOG_ID`, all signed by **David**, the
-data log's owner):
+data log's owner). The owner-log is the auth log, so again pass
+`--bootstrap-log "$BOOTSTRAP_LOG_ID"` (the forest root):
 
 ```bash
 for who in ALICE BOB; do
@@ -343,6 +481,7 @@ for who in ALICE BOB; do
   forestrie register-grant \
     --base-url "$FORESTRIE_BASE_URL" \
     --owner-log "$AUTH_LOG_ID" --data-log "$DATA_LOG_ID" \
+    --bootstrap-log "$BOOTSTRAP_LOG_ID" \
     --signer-pem "${!pem_var}" \
     --parent-grant-b64 "$(cat david-data-grant.b64)" \
     --sign-with "$DAVID_PEM" \
@@ -350,18 +489,25 @@ for who in ALICE BOB; do
 done
 ```
 
-Example output (illustrative; a `create-log`/`register-grant` summary per call):
+Example output (illustrative; a `create-log`/`delegate`/`register-grant` summary
+per call):
 
 ```
-# 2a — David's auth log (create-log, owner = David):
+# 2a prepare — David's auth log public root registered (no sequencing):
+prepared child log 8c2e4b…-… (owner 0f9a1c7e-…) — publicRoot ok, webhook ok
+
+# 2a delegate — David pre-delegates the auth log:
+delegate: standing  — sealerId sealer-a epoch 1 (from pending-delegation)
+delegate: voucher   ok      — verifies against pinned registrar key
+delegate: submit    ok      — POST /api/delegations/certificate → 202
+
+# 2a create — auth log sequenced (owner = David), first checkpoint ~4–8s:
 ownerLog: 0f9a1c7e-… (grant leaf)
 newLog: 8c2e4b…-… (created)
 owner: 04d4v1d…          # grantData = David ES256 x||y
-entryId: …
 wrote completed grant base64 to auth-grant.b64
 
-# 2b — David's data log (create-log, owner = David):
-ownerLog: 8c2e4b…-… (grant leaf)
+# 2b — David's data log (prepare → delegate → create, owner = David):
 newLog: d41d8c…-… (created)
 owner: 04d4v1d…          # grantData = David
 wrote completed grant base64 to david-data-grant.b64
@@ -370,42 +516,10 @@ wrote completed grant base64 to david-data-grant.b64
 ownerLog: 8c2e4b…-… (grant leaf)
 dataLog: d41d8c…-… (authorized)
 signer: 9b3a…            # Alice ES256 x||y   (flags: GF_EXTEND|GF_DATA_LOG, no GF_CREATE)
-entryId: …
 wrote completed grant base64 to grant-alice.b64
 ```
 
-**2d. Pre-delegate sealing to the operator's vouched key** (`delegate`). Each
-log's owner verifies the custodian's standing sealer key against the pinned
-registrar key, then signs a wide-horizon delegation authorizing that sealer to
-publish checkpoints on their behalf — three logs, three delegations, the minimal
-and hierarchical set. Public coordinator endpoints only; no operator token.
-
-```bash
-# Robert delegates the root log:
-forestrie delegate \
-  --coordinator-url "$DELEGATION_COORDINATOR_URL" \
-  --log-id "$BOOTSTRAP_LOG_ID" --sign-with "$BOOTSTRAP_PEM" \
-  --pinned-registrar-key "$PINNED_REGISTRAR_KEY"
-
-# David delegates his auth log and his data log:
-for log in "$AUTH_LOG_ID" "$DATA_LOG_ID"; do
-  forestrie delegate \
-    --coordinator-url "$DELEGATION_COORDINATOR_URL" \
-    --log-id "$log" --sign-with "$DAVID_PEM" \
-    --pinned-registrar-key "$PINNED_REGISTRAR_KEY"
-done
-```
-
-Example output (illustrative; format matches the `delegate` reporter):
-
-```
-delegate: standing  — sealerId sealer-a epoch 1 (from pending-delegation)
-delegate: voucher   ok      — verifies against pinned registrar key
-delegate: horizon   — mmr 0..9007199254740991 (wide; permanent within range)
-delegate: submit    ok      — POST /api/delegations/certificate → 202
-```
-
-**2e. Each signer registers a statement to the data log:** reuse
+**2d. Each signer registers a statement to the data log:** reuse
 `sign-statement` + `register` from Step 1 with `--log-id "$DATA_LOG_ID"` and
 `--grant-b64 "$(cat grant-alice.b64)"` / `grant-bob.b64`.
 
@@ -481,14 +595,28 @@ screen so they see there's no magic — Sign1 plus an MMR inclusion proof.
 **4a. Self-create the receipt — no operator call:**
 
 ```bash
-curl -sS "$FORESTRIE_BASE_URL/api/forest/$DATA_LOG_ID/massifs/0.log" -o massif.log
-curl -sS "$FORESTRIE_BASE_URL/api/forest/$DATA_LOG_ID/checkpoint.sth" -o checkpoint.sth
+# TODO: confirm public massif/checkpoint path. The old
+#   /api/forest/{id}/massifs/0.log  and  /api/forest/{id}/checkpoint.sth
+# paths 404 for every log — canopy-api does not serve raw massif `.log` /
+# checkpoint `.sth` blobs over HTTP (they live only as R2 objects, keyed
+# v2/merklelog/massifs/{massifHeight}/{logId}/{massifIndex}.log). Confirm the
+# CDN/bucket URL that fronts that R2 bucket before rehearsal, or read the two
+# blobs from a local mirror of the R2 store.
+curl -sS "$MASSIF_BLOB_URL"     -o massif.log       # TODO: confirm public massif path
+curl -sS "$CHECKPOINT_BLOB_URL" -o checkpoint.sth   # TODO: confirm public checkpoint path
 
 forestrie create-receipt \
   --massif massif.log --checkpoint checkpoint.sth \
   --mmr-index 0 \
   --out receipt.selfserve.cbor
 ```
+
+> The one public receipt path canopy-api **does** serve (the operator-issued
+> receipt this self-serve receipt reproduces byte-for-byte) is
+> `GET /logs/{bootstrapLogId}/{logId}/{massifHeight}/entries/{entryIdHex}/receipt`
+> — confirmed in `canopy-api` (`index.ts` route group 2 → `resolveReceipt`). That
+> endpoint is a *convenience*; 4a's whole point is deriving the same receipt
+> without it, from the massif tile alone.
 
 Example output (**real capture** — run against emitted fixture massif +
 checkpoint, leaf at `--mmr-index 0`):
@@ -613,10 +741,11 @@ assumption, not an operator one. Verification collapses to recomputing a peak
 and checking it's in the on-chain accumulator (the checkpoint signer was already
 verified by the contract on publish, so you drop the signature entirely). Answer
 Q3 on the way past: control of your signing key is the delegation bound — the
-`delegate` beats in Step 2d are where each owner (Robert for the root, David for
-his two logs) verified the custodian's vouched sealer key and pre-authorized it
-to publish; the operator still only sequences. A self-hosted owner who signs
-their own checkpoints needs no delegation at all.
+`delegate` beats (Robert delegates the root in Preflight R4; David delegates his
+auth and data logs in Step 2, each before its first write) are where each owner
+verified the custodian's vouched sealer key against the pinned registrar key and
+pre-authorized it to publish; the operator still only sequences. A self-hosted
+owner who signs their own checkpoints needs no delegation at all.
 
 **5a. Verify the receipt's peak against the on-chain accumulator** (no
 operator, only the contract — `verify` reads `logState(bytes32)` over JSON-RPC
