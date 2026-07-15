@@ -5,6 +5,7 @@ export type {
 /** Canonical grant wire type — owned by @forestrie/encoding (FOR-353, ADR-0048). */
 export type { Grant } from "@forestrie/encoding";
 export type { VerifyGrantReceiptOfflineInput } from "./verify-grant-receipt-offline.js";
+export type { VerifyReceiptOfflineInput } from "./verify-grant-receipt-offline.js";
 export { parseReceipt } from "./parse-receipt.js";
 export type {
   BuildReceiptOfflineInput,
@@ -25,6 +26,7 @@ export {
 export { peakMMRIndexes } from "@forestrie/merklelog";
 export { decodeTrustRootFromGenesis } from "./decode-trust-root-from-genesis.js";
 export { verifyGrantReceiptOffline } from "./verify-grant-receipt-offline.js";
+export { verifyReceiptOffline } from "./verify-grant-receipt-offline.js";
 export { decodeForestrieGrantCose } from "./decode-forestrie-grant-cose.js";
 export { decodeGrantPayload, decodeGrantResponse } from "./grant-codec.js";
 

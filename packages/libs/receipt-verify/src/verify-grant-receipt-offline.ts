@@ -101,6 +101,71 @@ async function verifySignatureAndInclusion(opts: {
 export async function verifyGrantReceiptOffline(
   input: VerifyGrantReceiptOfflineInput,
 ): Promise<ReceiptVerifyResult> {
+  // A GRANT leaf commits the grant commitment hash (register-grant / create-log).
+  let inner: Uint8Array;
+  try {
+    inner = await grantCommitmentHashFromGrant(input.grant);
+  } catch {
+    return { ok: false, stage: "binding", reason: "grant_invalid" };
+  }
+  return verifyReceiptOfflineWithLeafInner({
+    genesisCbor: input.genesisCbor,
+    receiptCbor: input.receiptCbor,
+    idtimestampBe8: input.idtimestampBe8,
+    inner,
+  });
+}
+
+export type VerifyReceiptOfflineInput = {
+  genesisCbor: Uint8Array;
+  receiptCbor: Uint8Array;
+  /**
+   * The EXACT registered payload bytes whose SHA-256 is the leaf ContentHash.
+   * Kind-agnostic: for a SCITT signed statement this is the statement COSE
+   * bytes; for a forestrie grant leaf it is the grant commitment preimage
+   * (see {@link verifyGrantReceiptOffline}, which derives it).
+   */
+  payload: Uint8Array;
+  idtimestampBe8: Uint8Array;
+};
+
+/**
+ * Offline verify of a receipt against the EXACT registered payload. The log
+ * leaf commits `SHA-256(idtimestamp ‖ SHA-256(payload))`; this is the standard,
+ * COSE-Receipts-conformant path (a SCITT statement receipt is exactly this with
+ * `payload` = the signed statement). Genesis trust root, FOR-297 delegation
+ * resolution, inclusion, and signature are all standard.
+ */
+export async function verifyReceiptOffline(
+  input: VerifyReceiptOfflineInput,
+): Promise<ReceiptVerifyResult> {
+  const inner = new Uint8Array(
+    await crypto.subtle.digest(
+      "SHA-256",
+      input.payload as unknown as BufferSource,
+    ),
+  );
+  return verifyReceiptOfflineWithLeafInner({
+    genesisCbor: input.genesisCbor,
+    receiptCbor: input.receiptCbor,
+    idtimestampBe8: input.idtimestampBe8,
+    inner,
+  });
+}
+
+/**
+ * Shared offline-verify core: reconstruct the leaf as
+ * `univocityLeafHash(idtimestamp, inner)`, resolve the (possibly delegated,
+ * FOR-297) verify key from the genesis trust root, and check signature +
+ * inclusion. `inner` is the leaf ContentHash = `SHA-256(payload)` — the grant
+ * commitment for a grant leaf, or `SHA-256(statement)` for a statement leaf.
+ */
+async function verifyReceiptOfflineWithLeafInner(input: {
+  genesisCbor: Uint8Array;
+  receiptCbor: Uint8Array;
+  idtimestampBe8: Uint8Array;
+  inner: Uint8Array;
+}): Promise<ReceiptVerifyResult> {
   let parsed: ReturnType<typeof parseReceipt>;
   try {
     parsed = parseReceipt(input.receiptCbor);
@@ -137,13 +202,6 @@ export async function verifyGrantReceiptOffline(
       ? [delegation.delegatedKey, ...verifyKeys]
       : verifyKeys;
 
-  let inner: Uint8Array;
-  try {
-    inner = await grantCommitmentHashFromGrant(input.grant);
-  } catch {
-    return { ok: false, stage: "binding", reason: "grant_invalid" };
-  }
-
   let idtimestamp: bigint;
   try {
     idtimestamp = readIdtimestampBe8(input.idtimestampBe8);
@@ -151,7 +209,7 @@ export async function verifyGrantReceiptOffline(
     return { ok: false, stage: "binding", reason: "idtimestamp_invalid" };
   }
 
-  const leafHash = await univocityLeafHash(idtimestamp, inner);
+  const leafHash = await univocityLeafHash(idtimestamp, input.inner);
 
   return verifySignatureAndInclusion({
     receiptCbor: input.receiptCbor,
