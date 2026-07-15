@@ -66,8 +66,22 @@ const PENDING_TTL_SECONDS = 60 * 60;
 /** Max pending hints retained per target log id. */
 const PENDING_CAP_PER_LOG = 32;
 
-/** Suggested TTL a signer applies when delegating to the standing key (C3). */
-const STANDING_DELEGATION_TTL_SECONDS = 60 * 60;
+/**
+ * Suggested TTL a signer applies when pre-signing an advance delegation to the
+ * standing key (C3) — the advance certificate's lifetime.
+ *
+ * This MUST comfortably exceed the sealer's requested lease TTL (arbor
+ * `defaultDelegationTTL` = 60 min), because the sealer's lease verify rejects a
+ * certificate that does not still have ~that long remaining *at seal time*
+ * (`cert.expiresAt >= now + RequestedTTLSeconds - 2min`). An advance cert is
+ * pre-signed BEFORE the write it will seal — often minutes to hours ahead — so
+ * a TTL equal to the sealer's 60-min window leaves only a ~2-minute delegate→seal
+ * budget and any longer lead time fails "delegation lease expires too soon for
+ * requested ttl". 6 h gives ample pre-sign lead while staying well under the
+ * standing-key rotation window (DELEGATE_KEY_TTL, 720 h). See devdocs
+ * plan-2607-24 / ADR-0050.
+ */
+const STANDING_DELEGATION_TTL_SECONDS = 6 * 60 * 60;
 
 function parseStoredOnchainRootAlg(
   value: string | null | undefined,
