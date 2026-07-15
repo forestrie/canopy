@@ -377,6 +377,55 @@ wrote receipt (612 bytes) to receipt.cbor
 
 ---
 
+## Step 1b — It amortizes: many statements, one checkpoint, receipts offline  ·  ~2 min
+
+The single-statement beat can read as *"one statement every few seconds."* It
+isn't. Those few seconds are the **checkpoint**, and **one checkpoint covers a
+whole batch**. The ranger commits statements into massifs; the sealer signs
+**one** checkpoint over the accumulator; and because each receipt is an inclusion
+path to a signed **peak** (the MMR-profile closer above), **every** receipt in
+the batch is derived **offline** from that one massif + one checkpoint — zero
+per-receipt operator calls.
+
+Submit N statements, wait **once** for the covering checkpoint, then derive all N
+receipts locally. `LOG_STORE_URL` is the public read-only R2 origin (Step 4);
+`FLUSH` writes a few trailing statements so the batch's last entries land in a
+committed, sealed massif (the ranger commits a partial massif on the next write).
+
+**Status:** `register` (submit) + `create-receipt` (offline) — **exists /
+validated live** on lane-A (FOR-390). Rehearsal driver:
+[`batch-receipts.ts`](./batch-receipts.ts).
+
+```bash
+N=100 FLUSH=3 \
+  FORESTRIE_BASE_URL="$FORESTRIE_BASE_URL" ROOT_LOG_ID="$BOOTSTRAP_LOG_ID" \
+  BOOTSTRAP_PEM="$BOOTSTRAP_PEM" GRANT_FILE=root-grant.b64 \
+  LOG_STORE_URL="$LOG_STORE_URL" \
+  bun docs/demo/batch-receipts.ts
+```
+
+Example output (**real capture** — lane-A, N=100):
+
+```
+submitted+sequenced 100 statements in 5.8s
+ONE checkpoint now covers all 100 after 2.6s
+derived 100/100 receipts OFFLINE (zero operator calls) in 4.0s
+```
+
+The middle number is **one seal cycle** — a few seconds to a few tens of seconds
+depending on when the sealer next checkpoints — and it is paid **once** for the
+whole batch. The first and last numbers are what matter: N statements in, N
+receipts out, **offline**.
+
+**Say it:** 100 statements *and* 100 verifiable receipts on the order of ~10s —
+the checkpoint latency is paid **once** for the whole batch, not per statement,
+and the receipts are computed **offline** by anyone holding the log data.
+Throughput is a batching property; per-statement receipt latency amortizes to
+~zero. Then run **the single closer** on any one of the derived receipts
+(`forestrie verify … → ok`).
+
+---
+
 ## Step 2 — Authorize several signers on a data log  ·  ~5 min
 
 **Status:** `create-log` (`--prepare` / `--auth-log` / `--data-log`) and
