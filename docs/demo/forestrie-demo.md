@@ -4,6 +4,23 @@ Presentation outline for the IETF SCITT WG MMR-profile adoption call. Each
 section is one slide: the on-screen bullets, the speaker notes, the
 `forestrie` command it runs, and example output.
 
+**Audience: the IETF SCITT WG. This demo lands exactly three things — everything
+else is subordinate:**
+
+1. **Split-view protection** (non-equivocation) — no two relying parties can be
+   shown a different log.
+2. **Offline, self-served receipts** — anyone holding the data can obtain and
+   verify a receipt with no operator in the loop.
+3. **The
+   [MMR profile](https://github.com/robinbryce/draft-bryce-cose-receipts-mmr-profile/blob/main/draft-bryce-cose-receipts-mmr-profile.md)
+   is what enables BOTH** — because a receipt signs accumulator **peaks
+   (members)**, not a single tree head. A signed peak covers many leaves and
+   stays valid as the log grows, so (a) any client with the data can *re-derive*
+   a valid receipt offline, and (b) verifying a peak against the public record
+   *substitutes for* checking the signer — which is exactly what makes it
+   non-equivocable. This is the paper's thesis; keep it the through-line. Every
+   step below is one instance of it.
+
 **Status legend** — the state of the referenced `forestrie` subcommand:
 
 - **exists** — implemented and runnable
@@ -73,11 +90,13 @@ to draw on — *one per step, never all at once*:
 - **a receipt can be obtained without revealing the node of interest** — the checkpoint is over the whole accumulator, so inclusion is proved locally without telling the operator which entry you care about;
 - **a receipt can be obtained later, or self-served** — pre-signed peaks stay valid; a buried peak is still reachable via "old-accumulator" consistency (an inclusion path to a current peak).
 
-It is this same peak-signing property that lets **on-chain accumulator
-verification stand in for receipt-signature verification** (Step 5). Contrast: a
-tree head signs a *single* state of the log, so it speaks only to that snapshot;
-an accumulator's signed peaks cover many leaves and keep proving inclusion as
-the log grows — the same signature stays useful forever.
+It is this same peak-signing property that lets **verifying a peak against the
+public record stand in for receipt-signature verification** (Step 5): once the
+peak is on the public record, checking it *there* substitutes for checking the
+signer — which is what makes it non-equivocable. Contrast: a tree head signs a
+*single* state of the log, so it speaks only to that snapshot; an accumulator's
+signed peaks cover many leaves and keep proving inclusion as the log grows — the
+same signature stays useful forever.
 
 **Status:** `verify` — **exists / tested** (FOR-347, `verify.test.ts`)
 
@@ -366,33 +385,29 @@ plan-2607-23) · `register-grant` (writer-only) — **exists / tested** (FOR-343
 reuses `sign-statement` / `register` / `verify` (all **exists / tested**)
 
 **Slide:**
-- **SCITT built using SCITT** — the TS implements its *own* authorization out of COSE-signed statements and receipts
-- Authorization is a **hierarchy of forestrie logs**: Robert's root → David's auth log → David's data log; each grant is just `register-signed-statement` on the parent
-- **Create vs. write are different authorities:** `create-log` makes David the owner (`K(L)`) of a log; `register-grant` only lets Alice and Bob *append* statements — no create, no re-root
-- **David pre-signs his own logs with his own key** — per child log: `prepare` (register its public root under the parent's authority, no operator token) → `delegate` → `create`. **Authority flows down the log hierarchy, not through the operator** (ADR-0053)
-- One writer grant per signer, all naming the **same data log**, all recorded in the **auth log** — not a side channel
-- Delegation is itself a transparent, receipted statement you verify like any other; pre-delegated, every level's first checkpoint lands in seconds
+- **SCITT built using SCITT** — SCITT requires the Transparency Service to authenticate and authorize what it registers. We implemented that authorization for *this* TS out of SCITT itself.
+- Each authorization is a **COSE-signed statement** — registered, receipted, and verified with the **very same offline verifier** as any data entry.
+- So the TS's access control is **transparent log content you audit exactly like the data** — not a private side channel.
+- Close: Alice and Bob each register to the data log, then run the single closer on every new receipt — **authorization and data verify identically**.
 
-**Speaker notes:** SCITT requires the Transparency Service to authorize what it
-registers; forestrie meets that requirement *with SCITT itself* — a grant is a
-signed statement, recorded and receipted in an auth log, and verified exactly
-like the data entries. That is the whole point to land: **"SCITT built using
-SCITT."** Skip the grant-payload internals (signer binding, uniqueness gating,
-the creation-grant 409) — they are forestrie specifics this audience isn't here
-for and risk derailing the slide. The second beat to land: David extends the
-hierarchy **using only his own key** — `prepare` registers each child's public
-root under the *parent*-signed create grant (verified recursively down to the
-root genesis), so David can `delegate` and pre-sign a log **before it is
-sequenced**, no operator token anywhere. Per child the reliable ordering is
-**prepare → delegate → create**; the first checkpoint at each level then lands
-in ~4–8s.
+**Speaker notes:** One idea to land here: **"SCITT built using SCITT."** SCITT
+requires the Transparency Service to authorize what it registers; we met that
+requirement *with SCITT itself* — every authorization is a COSE-signed
+statement, registered and receipted in a log, and verified with the exact same
+offline verifier (the single closer) as any data entry. The access-control
+plane is not bespoke and not hidden — it is transparent, auditable log content.
+That is the whole slide. The commands below actually build the authorization
+graph and are needed to run it live, but on stage you narrate the one idea and
+let the closer prove it: the grant that authorized Alice verifies with the same
+command as Alice's statement.
 
-The root was already delegated in Preflight (R4). David now onboards each of his
-own logs the same way — but **without any operator token**: `prepare` registers
-the child's public root at the coordinator under the *parent*-signed create
-grant, so `delegate` and the first write work the instant the log exists. David
-picks both logIds up front, so he can `prepare` + `delegate` a log **before**
-`create` sequences it.
+**Mechanics — keep in your pocket, mention only if asked.** The rest of this
+step is the authorization *mechanism*; it's distracting for this audience, so
+don't lead with it. If a chain of hierarchy questions comes up:
+- Authorization is a **hierarchy of logs**: Robert's root → David's auth log → David's data log; each grant is a signed statement registered on the parent.
+- **Create vs. write are different authorities:** `create-log` makes David the owner (`K(L)`) of a log; `register-grant` only lets Alice and Bob *append* — no create, no re-root.
+- **Owners pre-sign their own logs with their own key.** Per child log the reliable ordering is **prepare → delegate → create**: `prepare` registers the child's public root at the coordinator under the *parent*-signed create grant (verified recursively down to the root genesis), so the owner can `delegate` and pre-sign a log **before it is sequenced**, with **no operator token** — authority flows down the log hierarchy, not through the operator (ADR-0053). The root was already delegated in Preflight (R4); David does the same for each of his logs, picking both logIds up front. Pre-delegated, each level's first checkpoint lands in ~4–8s.
+- Skip the grant-payload internals (signer binding, uniqueness gating, the creation-grant 409) entirely — forestrie specifics, not why this audience is here.
 
 ```bash
 export AUTH_LOG_ID=$(uuidgen | tr 'A-Z' 'a-z')
@@ -527,7 +542,7 @@ wrote completed grant base64 to grant-alice.b64
 
 ---
 
-## Step 3 — Where did that grant come from? Univocity bootstrap  ·  ~4 min
+## Step 3 — Non-equivocation: the peak reaches a public bulletin board  ·  ~4 min
 
 **Status:** on-stage proof uses `cast call` (foundry) — **exists / tested**.
 The deploy it explains is `forestrie deploy` — **exists / tested** (FOR-340),
@@ -536,23 +551,35 @@ not run live.
 
 **Slide:**
 - This step delivers **Non-equivocation** — a required VDS property in [RFC 9943 §5.1.3](https://www.rfc-editor.org/rfc/rfc9943.html#name-verifiable-data-structure) (with Append-only and Replayability)
-- The opaque bearer from Step 1 = a **self-referential bootstrap grant**, valid because its signer is the bootstrap key **bound to the univocity contract at deploy**
-- Split-view protection is **externalised from the operator to the contract** — a contract invariant, not operator behaviour: univocity advances the accumulator only on a valid **consistency proof**, and Ethereum consensus makes that one global view
-- A receipt is split-view protected once its peak **has reached (or ever reached) the chain**
-- Prove the binding live: on-chain `bootstrapConfig` == the key that signed the grant
+- **The signed peak is posted to a public bulletin board with a single global view** — split-view protection comes from the peak reaching a public record *externalised away from the operator*, not from any one technology
+- Because the profile signs **peaks**, verifying a peak against that public record **substitutes for checking the signer** — and *that substitution* is what makes it non-equivocable
+- A receipt is split-view protected once its peak **has reached (or ever reached)** the public record
+- *(If asked: the bulletin board here is a blockchain — see the pocket aside.)*
 
-**Speaker notes:** This is where forestrie answers **non-equivocation**. The
-mechanism, stated plainly: the contract only advances a log's accumulator when
-handed a valid **consistency proof**, and Ethereum consensus guarantees a single
-global view — so a receipt whose peak has reached the chain cannot be shown
-differently to two relying parties. Pay off "explained later": play the recorded
-Playwright clip of the browser deploy via `deploy-web` — burner wallet, "Privy
-is the example web3 wallet." Do NOT deploy live; the instance was provisioned in
-Preflight. Then one `cast call`: the contract's bootstrap config is exactly the
-ES256 key that signed `root-grant.b64`. Keep the log-hierarchy details and the
-"bootstrap can stop granting publish rights" mechanics **in your pocket** —
-mention only if asked; for this audience they distract from the one clean point:
-non-equivocation via consensus.
+**Speaker notes:** This is where forestrie answers **non-equivocation**, and it
+rides the MMR profile. The append-only public record carries the accumulator's
+signed *peaks*; because a peak covers many leaves, checking the peak *there*
+stands in for checking the signer — so a receipt whose peak has reached the
+public record cannot be shown differently to two relying parties. Frame it in
+terms of the transparency-log **"public bulletin board"** primitive: the
+substance is that the peak lands on a public record with one global view,
+externalised **away from the operator** — not any particular chain. Pay off
+"explained later": play the recorded Playwright clip of the browser deploy via
+`deploy-web` — burner wallet, "Privy is the example web3 wallet." Do NOT deploy
+live; the instance was provisioned in Preflight. Keep the log-hierarchy details
+and the operator-fungibility mechanics **in your pocket**; for this audience the
+one clean point is non-equivocation via a public record with a single view.
+
+**Bulletin board, if a chain-savvy attendee asks (optional aside — not an
+on-stage beat).** Concretely the public bulletin board here is a blockchain: a
+blockchain serves pretty well as the public bulletin board (cf. the Reyzin line
+of work / the transparency-log "public bulletin board" primitive). The
+univocity contract advances a log's accumulator only on a valid **consistency
+proof**, and consensus makes that one global view; the opaque bearer from Step 1
+is a self-referential bootstrap grant, valid because its signer is the bootstrap
+key bound to that contract at deploy. You can prove that binding live with one
+`cast call` — the contract's bootstrap config is exactly the ES256 key that
+signed `root-grant.b64`:
 
 ```bash
 cast call "$UNIVOCITY_ADDRESS" "bootstrapConfig()(int64,bytes)" --rpc-url "$RPC_URL"
@@ -565,8 +592,9 @@ Example output:
 0x04a91f…   # x||y of the bootstrap key that signed root-grant.b64  (alg -7 == ES256) ```
 **Close:** re-run **the single closer** on the Step 1 receipt — same command,
 now the audience understands the grant it verifies. Plant the thread for the
-finale: split-view protection lives in the contract, **not the operator** —
-which is exactly why the operator turns out to be a swappable pipe (Step 5).
+finale: split-view protection lives on the **public record**, **not the
+operator** — which is exactly why the operator turns out to be a swappable pipe
+(Step 5).
 
 ---
 
@@ -585,7 +613,7 @@ which is exactly why the operator turns out to be a swappable pipe (Step 5).
 **Speaker notes:** This is where "pipe not a store" becomes concrete, and it
 rests entirely on the profile's peak-signing. This step builds on Step 3 but
 makes a *different* point: Step 3 established that the accumulator is
-*authoritative* (consensus-gated); here we show each signed *peak* is a
+*authoritative* (gated by the public record); here we show each signed *peak* is a
 self-contained attestation, so a client with the massif `.log` tile rebuilds
 the leaf→peak path and attaches it to the pre-signed peak receipt — producing
 the exact bytes the operator would have. Inclusion paths are unsigned and
@@ -704,14 +732,16 @@ canonical peak receipts (a real operator massif does).
 **Close:** run **the single closer** on `receipt.selfserve.cbor` — a receipt
 the operator never issued verifies identically. *That* is the pipe.
 
-**The bridge to Step 5 (say it here):** there are two verification modes.
-Offline against the cached checkpoint (this step's closer) checks the COSE
-signature against the trusted ES256 sealer key *and* recomputes the peak from
-the path — you can cache that checkpoint forever, no revocation, because the
-sealer key was gatekept by the contract at publish. Chain-anchored (Step 5)
-drops the signature check entirely and just recomputes the peak against the
-on-chain accumulator — **this is the externalised split-view check itself**:
-trust reduces to univocity and Ethereum, never the operator.
+**The bridge to Step 5 (say it here):** there are two verification modes, both
+riding the signed peak. Offline against the cached checkpoint (this step's
+closer) checks the COSE signature against the trusted ES256 sealer key *and*
+recomputes the peak from the path — you can cache that checkpoint forever, no
+revocation, because the sealer key was gatekept when the peak reached the public
+record. Public-record verification (Step 5) drops the signature check entirely
+and just recomputes the peak against the accumulator on the public record —
+**this is the externalised split-view check itself**: checking the peak against
+the public record *substitutes for* checking the signer, so trust reduces to the
+public record, never the operator.
 
 ---
 
@@ -728,34 +758,38 @@ same. Confirmed live: `create-receipt --univocity` with no reachable RPC exits
 a stub.
 
 **Slide:**
-- **The crux of "pipe, not store":** SCITT + COSE Receipts + the MMR profile separate **sequencing** (the operator) from **auditing/monitoring** and **split-view protection** (externalised to univocity, on-chain)
-- The **operator is just a pipe** — it doesn't provide non-equivocation, so it's fungible: **many logs, and many univocity instances, can share one operator**, and switching operators is trivial
-- Stop trusting the operator? You need **nothing** from it — last massif blob + on-chain checkpoint = keep issuing and verifying forever
-- Chain-anchored verify: recompute the peak, match the on-chain accumulator — **no signature needed**
-- Residual trust is small and explicit — **your own log key** + **univocity** (bootstrapper not censoring your publish rights) + Ethereum; **never the operator**
+- **The crux of "pipe, not store":** SCITT + COSE Receipts + the MMR profile separate **sequencing** (the operator) from **auditing/monitoring** and **split-view protection** (externalised to the public record)
+- Why it works is the profile: it signs **peaks**, so verifying a peak against the public record substitutes for checking the signer — the operator never carries non-equivocation and is therefore **fungible**: many logs (and many public-record instances) can share one operator, switching is trivial
+- Stop trusting the operator? You need **nothing** from it — last massif blob + the checkpoint on the public record = keep issuing and verifying forever
+- Public-record verify: recompute the peak, match the accumulator on the public record — **no signature needed**
+- Residual trust is small and explicit — **your own log key** + the **public record** (bootstrapper not censoring your publish rights); **never the operator**
 
 **Speaker notes:** The finale, and the crux of the whole "pipe" argument. The
-key move is that **split-view protection is externalised from the operator to
-univocity** — so the operator never carries non-equivocation. That's what makes
-it a genuine pipe: it only sequences, and it's fungible — **many logs and many
-univocity instances can point at the same operator**, so switching operators is
-trivial and you need nothing from any one of them to keep verifying. Then be
+key move rides the MMR profile: because the checkpoint signs **peaks**, checking
+a peak against the public record substitutes for checking the signer — so
+**split-view protection is externalised from the operator to the public
+record**, and the operator never carries non-equivocation. That's what makes it
+a genuine pipe: it only sequences, and it's fungible — **many logs and many
+public-record instances can point at the same operator**, so switching operators
+is trivial and you need nothing from any one of them to keep verifying. Then be
 honest about what trust *does* remain, so the claim doesn't ring hollow: you own
-the log key, you trust **univocity** (Ethereum consensus for non-equivocation,
-and the bootstrapper not to censor your publish rights) — a contract-bound
-assumption, not an operator one. Verification collapses to recomputing a peak
-and checking it's in the on-chain accumulator (the checkpoint signer was already
-verified by the contract on publish, so you drop the signature entirely). Answer
-Q3 on the way past: control of your signing key is the delegation bound — the
+the log key, you trust the **public record** (a single global view for
+non-equivocation, and the bootstrapper not to censor your publish rights) — an
+externalised assumption, not an operator one. Verification collapses to
+recomputing a peak and checking it's in the accumulator on the public record
+(the checkpoint signer was already gatekept when the peak was published, so you
+drop the signature entirely). Answer Q3 on the way past: control of your signing
+key is the delegation bound — the
 `delegate` beats (Robert delegates the root in Preflight R4; David delegates his
 auth and data logs in Step 2, each before its first write) are where each owner
 verified the custodian's vouched sealer key against the pinned registrar key and
 pre-authorized it to publish; the operator still only sequences. A self-hosted
 owner who signs their own checkpoints needs no delegation at all.
 
-**5a. Verify the receipt's peak against the on-chain accumulator** (no
-operator, only the contract — `verify` reads `logState(bytes32)` over JSON-RPC
-and asserts the receipt's peak is one of the anchored accumulator peaks):
+**5a. Verify the receipt's peak against the accumulator on the public record**
+(no operator, only the public record — `verify` reads `logState(bytes32)` over
+JSON-RPC and asserts the receipt's peak is one of the anchored accumulator
+peaks):
 
 ```bash
 forestrie verify \
@@ -775,12 +809,13 @@ verify: anchor    ok      — receipt peak matches on-chain accumulator peak 1/2
 PASS: receipt verified offline and anchored on-chain (anchored size 4)
 ```
 
-**5b. Watch the accumulator advance on-chain** — the split-view protection made
-concrete. Each `CheckpointPublished` event is *one consensus-gated advance* of a
-log's accumulator: univocity emits it only after verifying the consistency proof,
-and Ethereum consensus makes that one global view. Pull them straight from the
-Base Sepolia indexer (`eth_getLogs`) — no operator, no forestrie service, just the
-chain. `topics[0]` is
+**5b. (OPTIONAL — in your pocket, if a chain-savvy attendee asks.) Watch the
+accumulator advance on the public record** — split-view protection made
+concrete. This is "here's the bulletin board, if you want to see it", not an
+on-stage blockchain showcase. Each `CheckpointPublished` event is *one gated
+advance* of a log's accumulator, admitted only after the consistency proof
+verifies, under a single global view. Pull them straight from the Base Sepolia
+indexer (`eth_getLogs`) — no operator, no forestrie service. `topics[0]` is
 `keccak256("CheckpointPublished(bytes32,bytes32,bytes,address,bytes8,uint8,uint64,bytes32[],uint64,bytes32[])")`;
 `logId`/`grantLogId`/`rootKey` are the indexed topics, and `size` (the MMR size
 after the checkpoint) is the 4th word of `data`.
@@ -805,17 +840,19 @@ Example output (**real capture** — a fresh forest's first few checkpoints):
   block 44154928 logId 0x0000000000000000… kind AUTH mmrSize 4 tx 0xa8b5eb3cae…
 ```
 
-The `mmrSize` marching up (1 → 3 → 4) is the accumulator advancing under
-consensus — the exact thing that makes a checkpoint impossible to show two ways.
-(`cast call "$UNIVOCITY_ADDRESS" "logState(bytes32)" <logId>` reads the *current*
-anchored accumulator for one log; this reads the *history* of advances.)
+The `mmrSize` marching up (1 → 3 → 4) is the accumulator advancing under a
+single global view — the exact thing that makes a checkpoint impossible to show
+two ways. (Also in your pocket: `cast call "$UNIVOCITY_ADDRESS"
+"logState(bytes32)" <logId>` reads the *current* anchored accumulator for one
+log; this reads the *history* of advances.)
 
 **5c. The whole audience verifies, offline, forever** — run **the single
 closer** one last time. Land the closing line:
 
 > "The operator was only ever a pipe — split-view protection and the trust that
-> matters live on-chain. Cache the checkpoint forever, self-serve your receipts,
-> swap operators at will, and walk away. **It's a pipe, not a store.**"
+> matters live on the public record, not the operator. Cache the checkpoint
+> forever, self-serve your receipts, swap operators at will, and walk away.
+> **It's a pipe, not a store.**"
 
 ---
 
