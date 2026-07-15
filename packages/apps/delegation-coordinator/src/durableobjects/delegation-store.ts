@@ -1500,6 +1500,10 @@ export class DelegationStoreDO extends DurableObject<Env> {
    * {@link idx_delegation_certificates_coverage} `(log_id_hex32, expires_at,
    * mmr_start, mmr_end)` and stable across concurrent writes.
    *
+   * Administratively disabled logs (user or operator kill-switch in
+   * log_delegation_config) are excluded, matching handleGetPending — the sealer
+   * resync must not re-drive seals for a disabled log.
+   *
    * A log may hold several certs (distinct coverage windows); collapse to one
    * row per log with the furthest expiry and the union coverage range
    * (`MIN(mmr_start)`..`MAX(mmr_end)`). The sealer uses `mmrEnd` — the furthest
@@ -1525,6 +1529,12 @@ export class DelegationStoreDO extends DurableObject<Env> {
          FROM delegation_certificates
          WHERE expires_at > ?
            AND log_id_hex32 > ?
+           AND COALESCE(
+             (SELECT (user_enabled != 0 AND operator_enabled != 0)
+              FROM log_delegation_config c
+              WHERE c.log_id_hex32 = delegation_certificates.log_id_hex32),
+             1
+           ) = 1
          GROUP BY log_id_hex32
          ORDER BY log_id_hex32
          LIMIT ?`,

@@ -61,8 +61,9 @@ async function seedCert(opts: {
   seed: number;
   expiresAt: number;
   mmrEnd?: number;
+  logUuid?: string;
 }): Promise<string> {
-  const logUuid = randomUUID();
+  const logUuid = opts.logUuid ?? randomUUID();
   const logHex32 = normalizeLogIdToHex32(logUuid);
   const rootKeyPair = await generateTestRootKeyPair();
   const delegatedPublicKey = testDelegatedCoseKey(opts.seed);
@@ -184,6 +185,34 @@ describe("GET /api/delegations/active", () => {
     expect(row!.expiresAt).toBe(soon);
     expect(row!.mmrStart).toBe(0); // seedCert uses mmrStart 0
     expect(row!.mmrEnd).toBe(42);
+  });
+
+  it("excludes a log disabled via the operator kill-switch", async () => {
+    const logUuid = randomUUID();
+    const logHex32 = await seedCert({
+      seed: 320,
+      expiresAt: 4_102_444_800,
+      logUuid,
+    });
+
+    // Present while enabled.
+    let walk = await walkActive({ graceSeconds: 3600, limit: 100 });
+    expect(countOf(walk, logHex32)).toBe(1);
+
+    // Operator kill-switch: disable the log.
+    const disable = await fetchWithDoRetry(
+      `http://localhost/admin/api/logs/${logUuid}/enabled`,
+      {
+        method: "PUT",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ enabled: false }),
+      },
+    );
+    expect(disable.status).toBe(200);
+
+    // Absent once disabled — the resync must not re-drive seals for it.
+    walk = await walkActive({ graceSeconds: 3600, limit: 100 });
+    expect(countOf(walk, logHex32)).toBe(0);
   });
 
   it("clamps and echoes graceSeconds", async () => {
