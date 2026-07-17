@@ -27,6 +27,23 @@ export { peakMMRIndexes } from "@forestrie/merklelog";
 export { decodeTrustRootFromGenesis } from "./decode-trust-root-from-genesis.js";
 export { verifyGrantReceiptOffline } from "./verify-grant-receipt-offline.js";
 export { verifyReceiptOffline } from "./verify-grant-receipt-offline.js";
+/**
+ * Caller-supplied trust anchors (FOR-297 "known log key"): verify offline
+ * under keys the caller trusts out of band instead of the genesis trust root.
+ * See the trust-ladder notes on verifyReceiptOfflineWithKeys.
+ */
+export {
+  verifyGrantReceiptOfflineWithKeys,
+  verifyReceiptOfflineWithKeys,
+} from "./verify-grant-receipt-offline.js";
+export type {
+  VerifyGrantReceiptOfflineWithKeysInput,
+  VerifyReceiptOfflineWithKeysInput,
+} from "./verify-grant-receipt-offline.js";
+export { resolveDelegatedVerifyKey } from "./resolve-delegated-verify-key.js";
+export type { DelegatedResolution } from "./resolve-delegated-verify-key.js";
+/** Import a raw 64-byte x||y P-256 public key as an ES256 verify key. */
+export { importEs256PublicKeyFromGrantDataXy64 } from "./decode-trust-root-cbor.js";
 export { decodeForestrieGrantCose } from "./decode-forestrie-grant-cose.js";
 export { decodeGrantPayload, decodeGrantResponse } from "./grant-codec.js";
 

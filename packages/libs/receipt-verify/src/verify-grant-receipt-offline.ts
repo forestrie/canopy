@@ -116,6 +116,36 @@ export async function verifyGrantReceiptOffline(
   });
 }
 
+export type VerifyGrantReceiptOfflineWithKeysInput = Omit<
+  VerifyGrantReceiptOfflineInput,
+  "genesisCbor"
+> & {
+  /** Caller-known ES256 trust keys — see {@link VerifyReceiptOfflineWithKeysInput}. */
+  trustKeys: CryptoKey[];
+};
+
+/**
+ * {@link verifyGrantReceiptOffline} under caller-supplied trust keys instead of
+ * the genesis trust root — see {@link verifyReceiptOfflineWithKeys} for the
+ * trust model this buys (and what it does not).
+ */
+export async function verifyGrantReceiptOfflineWithKeys(
+  input: VerifyGrantReceiptOfflineWithKeysInput,
+): Promise<ReceiptVerifyResult> {
+  let inner: Uint8Array;
+  try {
+    inner = await grantCommitmentHashFromGrant(input.grant);
+  } catch {
+    return { ok: false, stage: "binding", reason: "grant_invalid" };
+  }
+  return verifyReceiptOfflineWithLeafInnerKeys({
+    receiptCbor: input.receiptCbor,
+    idtimestampBe8: input.idtimestampBe8,
+    inner,
+    trustKeys: input.trustKeys,
+  });
+}
+
 export type VerifyReceiptOfflineInput = {
   genesisCbor: Uint8Array;
   receiptCbor: Uint8Array;
@@ -153,6 +183,53 @@ export async function verifyReceiptOffline(
   });
 }
 
+export type VerifyReceiptOfflineWithKeysInput = Omit<
+  VerifyReceiptOfflineInput,
+  "genesisCbor"
+> & {
+  /**
+   * Caller-known ES256 trust keys, tried in order. For a child-log receipt
+   * this is the log OWNER's key (the delegation-cert issuer), NOT the sealer
+   * key — the label-1000 cert is verified under these keys and the delegated
+   * sealer key is extracted from it, so the anchor survives sealer rotation.
+   */
+  trustKeys: CryptoKey[];
+};
+
+/**
+ * {@link verifyReceiptOffline} under caller-supplied trust keys instead of the
+ * genesis trust root (FOR-297 "known log key"). Standard SCITT relying-party
+ * posture: the caller obtained the log owner's key out of band and trusts it.
+ *
+ * Trust ladder — what this rung gives up relative to its neighbours:
+ * - Known log key (this entry): fully offline, but the "key K owns log L"
+ *   binding is ASSERTED by the caller's key provenance, not proven; no grant
+ *   lifecycle/expiry visibility; no split-view protection.
+ * - Grant-chain walk (approach A, open): derives the binding from
+ *   `genesis.cbor` + public tiles and adds lifecycle visibility.
+ * - Chain-anchored (live or cached accumulator): adds split-view protection —
+ *   the contract-enforced on-chain accumulator is the strongest anchor.
+ *
+ * Do NOT fetch the trust key from the log operator's API or tile store — that
+ * silently reintroduces the operator trust this entry exists to remove.
+ */
+export async function verifyReceiptOfflineWithKeys(
+  input: VerifyReceiptOfflineWithKeysInput,
+): Promise<ReceiptVerifyResult> {
+  const inner = new Uint8Array(
+    await crypto.subtle.digest(
+      "SHA-256",
+      input.payload as unknown as BufferSource,
+    ),
+  );
+  return verifyReceiptOfflineWithLeafInnerKeys({
+    receiptCbor: input.receiptCbor,
+    idtimestampBe8: input.idtimestampBe8,
+    inner,
+    trustKeys: input.trustKeys,
+  });
+}
+
 /**
  * Shared offline-verify core: reconstruct the leaf as
  * `univocityLeafHash(idtimestamp, inner)`, resolve the (possibly delegated,
@@ -166,13 +243,6 @@ async function verifyReceiptOfflineWithLeafInner(input: {
   idtimestampBe8: Uint8Array;
   inner: Uint8Array;
 }): Promise<ReceiptVerifyResult> {
-  let parsed: ReturnType<typeof parseReceipt>;
-  try {
-    parsed = parseReceipt(input.receiptCbor);
-  } catch {
-    return { ok: false, stage: "parse", reason: "receipt_malformed" };
-  }
-
   let trustRoot;
   try {
     trustRoot = await decodeTrustRootFromGenesis(input.genesisCbor);
@@ -185,22 +255,52 @@ async function verifyReceiptOfflineWithLeafInner(input: {
     return { ok: false, stage: "signature", reason: "no_es256_trust_key" };
   }
 
+  return verifyReceiptOfflineWithLeafInnerKeys({
+    receiptCbor: input.receiptCbor,
+    idtimestampBe8: input.idtimestampBe8,
+    inner: input.inner,
+    trustKeys: verifyKeys,
+  });
+}
+
+/**
+ * Trust-key-parameterised offline-verify core. Identical to the genesis path
+ * once the trust keys are in hand: resolve the (possibly delegated, FOR-297)
+ * verify key against `trustKeys`, then check signature + inclusion.
+ */
+async function verifyReceiptOfflineWithLeafInnerKeys(input: {
+  receiptCbor: Uint8Array;
+  idtimestampBe8: Uint8Array;
+  inner: Uint8Array;
+  trustKeys: CryptoKey[];
+}): Promise<ReceiptVerifyResult> {
+  let parsed: ReturnType<typeof parseReceipt>;
+  try {
+    parsed = parseReceipt(input.receiptCbor);
+  } catch {
+    return { ok: false, stage: "parse", reason: "receipt_malformed" };
+  }
+
+  if (!input.trustKeys.length) {
+    return { ok: false, stage: "signature", reason: "no_es256_trust_key" };
+  }
+
   // FOR-297: when the receipt was signed by a DELEGATED key, verify the
-  // label-1000 delegation certificate under the root and try the delegated key
-  // first. A cert present but not chaining to the root is a hard failure — do
-  // not silently fall back to the root key (which cannot verify a
-  // delegated-signed receipt anyway).
+  // label-1000 delegation certificate under the trust keys and try the
+  // delegated key first. A cert present but not chaining to a trust key is a
+  // hard failure — do not silently fall back to the trust key (which cannot
+  // verify a delegated-signed receipt anyway).
   const delegation = await resolveDelegatedVerifyKey(
     input.receiptCbor,
-    verifyKeys,
+    input.trustKeys,
   );
   if (delegation.kind === "broken") {
     return { ok: false, stage: "signature", reason: "delegation_invalid" };
   }
   const allVerifyKeys =
     delegation.kind === "resolved"
-      ? [delegation.delegatedKey, ...verifyKeys]
-      : verifyKeys;
+      ? [delegation.delegatedKey, ...input.trustKeys]
+      : input.trustKeys;
 
   let idtimestamp: bigint;
   try {

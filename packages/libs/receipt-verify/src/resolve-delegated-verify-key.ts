@@ -10,6 +10,16 @@
  * sealer delegate keys are always secp256r1. KS256-rooted delegation is a
  * server-only concern.
  *
+ * Trust anchors (FOR-297 trust ladder): `rootKeys` need not be genesis-derived
+ * — a caller-known log OWNER key works identically (see
+ * `verifyReceiptOfflineWithKeys`), because the certificate issuer for a child
+ * log IS its owner. What differs is why you trust the keys: genesis-derived
+ * keys prove the key↔log binding from the bootstrap; a caller-known key merely
+ * asserts it (provenance of the key is the only defence, and there is no grant
+ * lifecycle visibility or split-view protection). The grant-chain walk
+ * (approach A, open) will derive per-log owner keys from genesis + public
+ * tiles, closing that gap without key distribution.
+ *
  * Note (parity with the server port source): this establishes that the root
  * authorized the delegated key, but does NOT yet enforce the certificate's MMR
  * window or expiry-at-issuance against the leaf — that hardening is shared with
