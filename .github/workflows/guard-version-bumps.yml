@@ -1,0 +1,30 @@
+name: Guard version bumps
+
+# FOR-401: a changed publishable package must bump its version. Prevents the
+# FOR-390 regression class where a shared lib was edited without a version bump,
+# so npm served a stale build under the same version.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  version-bump:
+    name: Changed publishable packages must bump version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          registry-url: https://registry.npmjs.org
+
+      - name: Assert changed publishable packages are version-bumped
+        run: bash scripts/assert-changed-packages-bumped.sh "${{ github.event.pull_request.base.sha }}"
