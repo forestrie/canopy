@@ -1,6 +1,6 @@
 {
   "name": "@forestrie/encoding",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "license": "MIT",
   "type": "module",
   "description": "Shared CBOR/COSE wire helpers and the Forestrie grant wire types/codecs (ADR-0048)",
