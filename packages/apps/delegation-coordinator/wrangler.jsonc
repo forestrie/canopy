@@ -104,6 +104,14 @@
         "CUSTODIAN_URL": "https://custodian.forestrie.dev/v1",
         "COORDINATOR_PUBLIC_URL": "https://delegation-coordinator.forestrie.dev",
         "COORDINATOR_DOMAIN": "delegation-coordinator.forestrie.dev",
+        // FOR-390 membership enforcement extended to Lane B (prod env) so the
+        // security posture matches Lane A: only a custodian-vouched standing
+        // delegate key may create pending demand + a signer webhook. Lane B is
+        // on the same forest-2 cluster / custody ring as Lane A, so the
+        // registrar voucher key is identical (public material, a var not a
+        // secret). Required whenever ENFORCE_DELEGATE_KEY_MEMBERSHIP is on.
+        "PINNED_REGISTRAR_KEY": "z1YarLKXrsRe5egrwrFfbeYadd9lOqplKxbRuMGymHUOSY7YAfdOhhPWb3H72TrPMiMLw0CBMpDPXUGMEvbkOQ==",
+        "ENFORCE_DELEGATE_KEY_MEMBERSHIP": "true",
         "ENABLE_WALLET_CHALLENGE": "true",
         "WEBHOOK_RETRY_LADDER": "[1,2,4,8]",
         "WEBHOOK_RETRY_SCALE_MS": "1000",
