@@ -127,6 +127,9 @@ export async function buildDelegatedGrantReceiptFixture(opts?: {
   receiptCbor: Uint8Array;
   grant: Grant;
   idtimestampBe8: Uint8Array;
+  /** The log owner (cert issuer) public key, raw 64-byte x||y — the value a
+   * caller would supply as a known log key (FOR-297 WithKeys entry). */
+  ownerPublicKeyXy: Uint8Array;
 }> {
   const rootKeyPair = await generateP256KeyPair();
   const delegatedKeyPair = await generateP256KeyPair();
@@ -180,5 +183,6 @@ export async function buildDelegatedGrantReceiptFixture(opts?: {
     receiptCbor,
     grant,
     idtimestampBe8,
+    ownerPublicKeyXy: bootstrapKey,
   };
 }
