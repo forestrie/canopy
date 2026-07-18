@@ -1,6 +1,6 @@
 {
   "name": "@forestrie/canopy-e2e-kit",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "license": "MIT",
   "type": "module",
   "description": "Reusable Playwright e2e helpers for canopy system tests (ARC-0024 Layer 1)",
