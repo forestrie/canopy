@@ -14,15 +14,21 @@ import { verifyGrantReceiptOffline } from "../src/index.js";
 import { grantWithData } from "./helpers/grant-receipt-fixture.js";
 
 const dir = join(import.meta.dirname, "fixtures", "golden");
-const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")) as {
+const manifest = JSON.parse(
+  readFileSync(join(dir, "manifest.json"), "utf8"),
+) as {
   logId: string;
   grantDataHex: string;
   idtimestampBe8Hex: string;
   genesisSha256: string;
   receiptSha256: string;
 };
-const genesisCbor = new Uint8Array(readFileSync(join(dir, "grant-genesis.cbor")));
-const receiptCbor = new Uint8Array(readFileSync(join(dir, "grant-receipt.cbor")));
+const genesisCbor = new Uint8Array(
+  readFileSync(join(dir, "grant-genesis.cbor")),
+);
+const receiptCbor = new Uint8Array(
+  readFileSync(join(dir, "grant-receipt.cbor")),
+);
 const fromHex = (hex: string) => new Uint8Array(Buffer.from(hex, "hex"));
 const grant = grantWithData(manifest.logId, fromHex(manifest.grantDataHex));
 const idtimestampBe8 = fromHex(manifest.idtimestampBe8Hex);
