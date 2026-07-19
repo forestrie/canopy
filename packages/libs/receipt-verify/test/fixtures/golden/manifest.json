@@ -1,0 +1,8 @@
+{
+  "comment": "FOR-289 golden vectors — FROZEN bytes; see scripts/export-golden-vectors.ts",
+  "logId": "660e8400-e29b-41d4-a716-446655440001",
+  "grantDataHex": "c784fed5582240a1313ffa39405a57a3c1ae7445eadfbdda6fef27986cde0987180f7ac05c32bac8bb3074fca498b5671b99fa6a59c313c066fbb651e374679e",
+  "idtimestampBe8Hex": "0202020202020202",
+  "genesisSha256": "008382cc541cba950795d47f3dad435179ba04c7d360daee81fe037b841afc5c",
+  "receiptSha256": "dd9df1853e268fbc52aa9f36902fd96d389cb4ae9ea63833639a0191de4889e9"
+}
