@@ -1,6 +1,6 @@
 {
   "name": "@forestrie/grant-builder",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "license": "MIT",
   "type": "module",
   "description": "Deterministic Forestrie grant construction (wire encoding, ES256/KS256 assembly)",
