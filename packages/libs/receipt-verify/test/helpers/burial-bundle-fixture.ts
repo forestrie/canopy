@@ -108,8 +108,7 @@ export async function buildBurialBundleFixture(): Promise<BurialBundleFixture> {
     await addLeaf(nodes, await sha256(be8(mmrIndex(leaf))));
   }
   const getHash = (i: bigint) => nodes[Number(i)]!;
-  const peaksAt = (lastIndex: bigint) =>
-    peakMMRIndexes(lastIndex).map(getHash);
+  const peaksAt = (lastIndex: bigint) => peakMMRIndexes(lastIndex).map(getHash);
 
   const hasher = new SubtleHasher();
   const protectedBstr = encodeCborDeterministic(new Map([[1, -7]]));
@@ -146,7 +145,10 @@ export async function buildBurialBundleFixture(): Promise<BurialBundleFixture> {
     return encodeCborDeterministic([
       protectedBstr,
       new Map<number, unknown>([
-        [VDS_COSE_RECEIPT_PROOFS_TAG, new Map<number, unknown>([[-2, proofBstr]])],
+        [
+          VDS_COSE_RECEIPT_PROOFS_TAG,
+          new Map<number, unknown>([[-2, proofBstr]]),
+        ],
       ]),
       null,
       sig,
@@ -172,7 +174,15 @@ export async function buildBurialBundleFixture(): Promise<BurialBundleFixture> {
       [
         VDS_COSE_RECEIPT_PROOFS_TAG,
         new Map<number, unknown>([
-          [-1, [new Map<number, unknown>([[1, leafMmrIndex], [2, [nodes[0]!]]])]],
+          [
+            -1,
+            [
+              new Map<number, unknown>([
+                [1, leafMmrIndex],
+                [2, [nodes[0]!]],
+              ]),
+            ],
+          ],
         ]),
       ],
     ]),

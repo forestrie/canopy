@@ -79,9 +79,9 @@ describe("burial-bundle golden vectors (FOR-368 — frozen bytes)", () => {
     expect(chain.ok).toBe(true);
     if (!chain.ok) return;
     expect(chain.links.length).toBe(manifest.checkpointFiles.length);
-    expect(chain.accumulator.map((p) => Buffer.from(p).toString("hex"))).toEqual(
-      manifest.finalAccumulatorHex,
-    );
+    expect(
+      chain.accumulator.map((p) => Buffer.from(p).toString("hex")),
+    ).toEqual(manifest.finalAccumulatorHex);
   });
 
   it("the old receipt's peak recomputes, its signature verifies, and it is BURIED yet proven", async () => {
@@ -105,9 +105,9 @@ describe("burial-bundle golden vectors (FOR-368 — frozen bytes)", () => {
     expect(chain.ok).toBe(true);
     if (!chain.ok) return;
     // Buried: absent from the final accumulator...
-    expect(
-      chain.accumulator.some((p) => bytesEqual(p, buriedPeak)),
-    ).toBe(false);
+    expect(chain.accumulator.some((p) => bytesEqual(p, buriedPeak))).toBe(
+      false,
+    );
     // ...yet proven: present in an authenticated EARLIER link, whose later
     // links' signed proofs commit it forward (the FOR-368 acceptance
     // criterion: honest receipts never fail as tamper under growth).
