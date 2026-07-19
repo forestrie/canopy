@@ -70,6 +70,9 @@ export {
   calculateRoot,
   verifyInclusion,
   verifyConsistency,
+  consistentRoots,
+  indexConsistencyProof,
+  type ConsistencyProof,
 } from "./mmr/algorithms.js";
 export { createSyncHasher } from "./mmr/algorithms-sync.js";
 export type { Proof, Peak } from "./mmr/types.js";
