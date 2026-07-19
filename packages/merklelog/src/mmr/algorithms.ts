@@ -12,6 +12,7 @@
  */
 
 import type { Proof, Hasher } from "./types.js";
+import { inclusionProof, peakMMRIndexes, type NodeGetter } from "./proof.js";
 import { Uint64 } from "../uint64/index.js";
 import { heightIndex } from "./math.js";
 import { arraysEqual } from "../utils/arrays.js";
@@ -164,31 +165,124 @@ export async function verifyInclusion(
 }
 
 /**
- * Verifies a consistency proof between two MMR states.
- *
- * WARNING — NOT IMPLEMENTED. This is a stub: it compares each root against
- * itself and therefore ALWAYS returns true. It performs no real consistency
- * check and MUST NOT be relied upon for security. No worker path currently
- * calls it. See the reference `verify_consistency` (algorithms.py) for the
- * intended algorithm (verify proof2 extends proof1 via position-committed
- * interior hashing).
- *
- * @param hasher - Cryptographic hasher instance
- * @param proof1 - Proof for the first state
- * @param proof2 - Proof for the second state
- * @param root1 - Root hash of the first state
- * @param root2 - Root hash of the second state
- * @returns Always true (stub) — do not use for verification
+ * Consistency proof between two MMR states (draft-bryce `consistency-proof`,
+ * go-merklelog `ConsistencyProof`): one inclusion path per MMR(A) peak,
+ * proven in MMR(B). Verified against trusted accumulators for both sizes.
  */
-export function verifyConsistency(
+export interface ConsistencyProof {
+  mmrSizeA: bigint;
+  mmrSizeB: bigint;
+  /** One sibling path per MMR(A) peak (ascending), in peak order. */
+  paths: Uint8Array[][];
+}
+
+/**
+ * Recover the MMR(B) accumulator prefix committed by the MMR(A) peaks
+ * (draft-bryce `consistent_roots`; go-merklelog `ConsistentRoots`).
+ *
+ * Each MMR(A) peak is an interior node of MMR(B) at an immovable position;
+ * its inclusion path climbs to the covering MMR(B) peak. Consecutive
+ * duplicate roots collapse (many old peaks share one new peak). Requires
+ * one path per MMR(A) peak (draft: `len(peaks(ifrom)) == len(accumulatorfrom)`).
+ *
+ * @param ifrom - last node index of the complete MMR(A) (`mmrSizeA - 1`)
+ * @param accumulatorFrom - MMR(A) peak values, descending height order
+ * @param paths - inclusion path per peak, proven in MMR(B)
+ */
+export async function consistentRoots(
   hasher: Hasher,
-  proof1: Proof,
-  proof2: Proof,
-  root1: Uint8Array,
-  root2: Uint8Array,
-): boolean {
-  // TODO(plan-0027): Implement full consistency check (verify proof2 extends
-  // proof1) with position-committed interior hashing. Until then this returns
-  // true unconditionally and must not be used for any trust decision.
-  return arraysEqual(root1, root1) && arraysEqual(root2, root2);
+  ifrom: bigint,
+  accumulatorFrom: Uint8Array[],
+  paths: Uint8Array[][],
+): Promise<Uint8Array[]> {
+  const fromPeaks = peakMMRIndexes(ifrom);
+  if (fromPeaks.length !== paths.length) {
+    throw new Error(
+      `a proof for each accumulator peak is required: ${fromPeaks.length} peaks, ${paths.length} paths`,
+    );
+  }
+  if (accumulatorFrom.length !== fromPeaks.length) {
+    throw new Error(
+      `accumulator length mismatch: ${accumulatorFrom.length} values for ${fromPeaks.length} peaks`,
+    );
+  }
+  const roots: Uint8Array[] = [];
+  for (let i = 0; i < accumulatorFrom.length; i++) {
+    const root = await calculateRoot(
+      hasher,
+      accumulatorFrom[i],
+      { path: paths[i], mmrIndex: fromPeaks[i] },
+      fromPeaks[i],
+    );
+    if (roots.length > 0 && arraysEqual(roots[roots.length - 1], root)) {
+      continue;
+    }
+    roots.push(root);
+  }
+  return roots;
+}
+
+/**
+ * Verify MMR(A) is a committed prefix of MMR(B)
+ * (draft-bryce "Verifying the Receipt of consistency";
+ * go-merklelog `VerifyConsistency`).
+ *
+ * Replaces the plan-0027 always-true stub (FOR-368 Phase 1,
+ * plan-2607-29): the previous signature took two inclusion proofs and
+ * returned true unconditionally; no caller existed.
+ *
+ * @param proof - consistency proof `mmrSizeA -> mmrSizeB`
+ * @param peaksFrom - TRUSTED MMR(A) accumulator (e.g. a signed checkpoint
+ *   payload), descending height order
+ * @param peaksTo - MMR(B) accumulator to prove against (e.g. an anchored
+ *   on-chain state), descending height order
+ * @returns ok, with the MMR(B) accumulator on success
+ */
+export async function verifyConsistency(
+  hasher: Hasher,
+  proof: ConsistencyProof,
+  peaksFrom: Uint8Array[],
+  peaksTo: Uint8Array[],
+): Promise<{ ok: boolean; accumulator: Uint8Array[] }> {
+  const proven = await consistentRoots(
+    hasher,
+    proof.mmrSizeA - 1n,
+    peaksFrom,
+    proof.paths,
+  );
+  // Both lists are in descending height order, so every proven root must
+  // appear in order within peaksTo (a linear scan; go-merklelog semantics:
+  // a proven root matches the current peak or exactly the next one down).
+  let ito = 0;
+  for (const root of proven) {
+    if (ito < peaksTo.length && arraysEqual(peaksTo[ito], root)) {
+      continue;
+    }
+    ito += 1;
+    if (ito >= peaksTo.length || !arraysEqual(peaksTo[ito], root)) {
+      return { ok: false, accumulator: [] };
+    }
+  }
+  // The full MMR(B) accumulator is the proven prefix plus any right-peaks;
+  // returning peaksTo is safe because consistentRoots enforced one proof
+  // per MMR(A) peak (see go-merklelog VerifyConsistency).
+  return { ok: true, accumulator: peaksTo };
+}
+
+/**
+ * Generate a consistency proof `mmrIndexA -> mmrIndexB` from node data
+ * (go-merklelog `IndexConsistencyProof`): an inclusion path in MMR(B) for
+ * each MMR(A) peak. Node access is by MMR index (massif tiles or any
+ * replicated store).
+ */
+export function indexConsistencyProof(
+  get: NodeGetter,
+  mmrIndexA: bigint,
+  mmrIndexB: bigint,
+): ConsistencyProof {
+  const paths: Uint8Array[][] = [];
+  for (const peak of peakMMRIndexes(mmrIndexA)) {
+    paths.push(inclusionProof(get, mmrIndexB, peak));
+  }
+  return { mmrSizeA: mmrIndexA + 1n, mmrSizeB: mmrIndexB + 1n, paths };
 }
