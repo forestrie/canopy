@@ -59,22 +59,95 @@ describe("encodeCoseProtectedMapBytes with cwtClaims", () => {
     expect(mapGet(decoded, COSE_KID)).toBeInstanceOf(Uint8Array);
   });
 
-  it("iat (6) and extra claims (e.g. cnf = 8) keep canonical key order", () => {
+  it("iat (6) and extra claims (e.g. cti = 7, bstr) keep canonical key order", () => {
     const got = encodeCoseProtectedMapBytes(testKid(), {
       cwtClaims: {
         iss: "i",
         sub: "s",
         iat: 1752868800,
-        extra: new Map([[8, new Uint8Array([0xaa, 0xbb])]]),
+        extra: new Map([[7, new Uint8Array([0xaa, 0xbb])]]),
       },
     });
     const claims = mapGet(decodeCborDeterministic(got), COSE_CWT_CLAIMS) as Map<
       number,
       unknown
     >;
-    expect([...claims.keys()]).toEqual([CWT_ISS, CWT_SUB, CWT_IAT, 8]);
+    expect([...claims.keys()]).toEqual([CWT_ISS, CWT_SUB, CWT_IAT, 7]);
     expect(mapGet(claims, CWT_IAT)).toBe(1752868800);
-    expect(Array.from(mapGet(claims, 8) as Uint8Array)).toEqual([0xaa, 0xbb]);
+    expect(Array.from(mapGet(claims, 7) as Uint8Array)).toEqual([0xaa, 0xbb]);
+  });
+
+  it("orders keys across the 1-byte / multi-byte / negative boundary (RFC 8949 §4.2.1)", () => {
+    // Encoded keys: 25 = 0x18 0x19, 256 = 0x19 0x01 0x00, -1 = 0x20,
+    // -257 = 0x39 0x01 0x00. Bytewise-lexicographic order on the encoded
+    // key puts every uint before every negint: [25, 256, -1, -257].
+    const got = encodeCoseProtectedMapBytes(testKid(), {
+      cwtClaims: {
+        extra: new Map<number, number>([
+          [-257, 4],
+          [256, 2],
+          [-1, 3],
+          [25, 1],
+        ]),
+      },
+    });
+    const claimsOffset = 36 + 1; // a2 04 5820 <kid> 0f, claims map follows
+    expect(got[claimsOffset - 1]).toBe(0x0f);
+    expect(Array.from(got.subarray(claimsOffset))).toEqual([
+      0xa4, 0x18, 0x19, 0x01, 0x19, 0x01, 0x00, 0x02, 0x20, 0x03, 0x39, 0x01,
+      0x00, 0x04,
+    ]);
+  });
+
+  it("rejects integer claim keys and values outside the 4-byte CBOR range", () => {
+    // No 8-byte emitter branch exists; out-of-range values would truncate
+    // mod 2^32 (a ms-iat signing as a 1986 date; an oversized key aliasing
+    // an existing claim). All must throw instead.
+    const kid = testKid();
+    const outOfRange = /out of 4-byte CBOR range/;
+    expect(() =>
+      encodeCoseProtectedMapBytes(kid, { cwtClaims: { iat: 2 ** 32 + 5 } }),
+    ).toThrow(outOfRange);
+    expect(() =>
+      encodeCoseProtectedMapBytes(kid, {
+        cwtClaims: { iat: 1752868800123 }, // Date.now() ms, not seconds
+      }),
+    ).toThrow(outOfRange);
+    expect(() =>
+      encodeCoseProtectedMapBytes(kid, {
+        // Would bypass the duplicate check then emit key 1 twice.
+        cwtClaims: { iss: "real", extra: new Map([[2 ** 32 + 1, "fake"]]) },
+      }),
+    ).toThrow(outOfRange);
+    expect(() =>
+      encodeCoseProtectedMapBytes(kid, {
+        cwtClaims: { extra: new Map([[-(2 ** 33), 1]]) },
+      }),
+    ).toThrow(outOfRange);
+  });
+
+  it("accepts the exact 4-byte boundary values with shortest-form encoding", () => {
+    const got = encodeCoseProtectedMapBytes(testKid(), {
+      cwtClaims: {
+        extra: new Map<number, number>([
+          [1, 0xffffffff],
+          [2, -(2 ** 32)],
+        ]),
+      },
+    });
+    const claimsOffset = 36 + 1;
+    expect(Array.from(got.subarray(claimsOffset))).toEqual([
+      0xa2, 0x01, 0x1a, 0xff, 0xff, 0xff, 0xff, 0x02, 0x3a, 0xff, 0xff, 0xff,
+      0xff,
+    ]);
+  });
+
+  it("rejects text claim values longer than 65535 UTF-8 bytes", () => {
+    expect(() =>
+      encodeCoseProtectedMapBytes(testKid(), {
+        cwtClaims: { iss: "x".repeat(65537) },
+      }),
+    ).toThrow(/exceeds 65535 UTF-8 bytes/);
   });
 
   it("rejects an extra claim that duplicates a named claim key", () => {
@@ -137,10 +210,15 @@ describe("signCoseSign1Statement with cwtClaims", () => {
     expect(mapGet(claims, CWT_ISS)).toBe("issuer-1");
     expect(await verifyCoseSign1(cose, pair.publicKey)).toBe(true);
 
-    // Flip a byte inside the iss text within the protected bstr.
-    const issByte = cose.indexOf(0x0f); // label 15 inside protected
+    // Flip a byte inside the claims map specifically (not just any
+    // protected byte): the protected bstr for this fixed shape is
+    // 84 58 <len> then the {1,3,4,15} map — 56 bytes of {1,3,4} entries
+    // before the label-15 key. indexOf(0x0f) would be wrong here: the
+    // test kid (bytes 1..32) itself contains 0x0f.
+    const claimsLabelIdx = 3 + 56;
+    expect(cose[claimsLabelIdx]).toBe(0x0f);
     const tampered = new Uint8Array(cose);
-    tampered[issByte + 4] ^= 0x01;
+    tampered[claimsLabelIdx + 4] ^= 0x01; // inside the iss text
     expect(await verifyCoseSign1(tampered, pair.publicKey)).toBe(false);
   });
 });

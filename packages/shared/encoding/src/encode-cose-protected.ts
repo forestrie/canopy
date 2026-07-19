@@ -37,8 +37,11 @@ export const CWT_IAT = 6;
 /**
  * CWT claims for protected label {@link COSE_CWT_CLAIMS} (SCITT signed
  * statements: iss + sub at minimum). `extra` carries additional
- * integer-keyed claims (e.g. cnf = 8) so future claims share the same map;
- * at least one claim must be present.
+ * integer-keyed claims (e.g. cti = 7, a bstr) so future claims share the
+ * same map; at least one claim must be present. Values are limited to
+ * int / tstr / bstr — map-valued claims such as cnf (RFC 8747 requires a
+ * map) are not yet expressible and need a pre-encoded-CBOR variant when
+ * FOR-323 lands.
  */
 export interface CwtClaims {
   /** Issuer (claim {@link CWT_ISS}): CWT StringOrURI. */
@@ -79,6 +82,14 @@ function appendCborInt(out: number[], v: number): void {
   if (!Number.isSafeInteger(v)) {
     throw new Error(`COSE header value must be an integer, got ${v}`);
   }
+  // The emitters below have no 8-byte branch; values past the 4-byte range
+  // would silently truncate mod 2^32 (e.g. a milliseconds iat signing as a
+  // 1986 date, or an oversized claim key aliasing an existing one). Reject.
+  if (v > 0xffffffff || v < -0x100000000) {
+    throw new Error(
+      `COSE header integer out of 4-byte CBOR range [-2^32, 2^32-1]: ${v}`,
+    );
+  }
   if (v >= 0) {
     appendCborUint(out, v);
     return;
@@ -97,13 +108,28 @@ function appendCborInt(out: number[], v: number): void {
     );
 }
 
+/**
+ * Append a CBOR text string, rejecting lengths {@link appendCborText}
+ * cannot represent (it has no 4-byte length branch; longer strings would
+ * emit a truncated length — malformed CBOR — rather than fail).
+ */
+function appendBoundedCborText(out: number[], s: string): void {
+  const byteLength = new TextEncoder().encode(s).length;
+  if (byteLength > 0xffff) {
+    throw new Error(
+      `COSE header text exceeds 65535 UTF-8 bytes (${byteLength})`,
+    );
+  }
+  appendCborText(out, s);
+}
+
 /** Encode one CBOR value permitted as a CWT claim value. */
 function appendCwtClaimValue(
   out: number[],
   v: number | string | Uint8Array,
 ): void {
   if (typeof v === "number") appendCborInt(out, v);
-  else if (typeof v === "string") appendCborText(out, v);
+  else if (typeof v === "string") appendBoundedCborText(out, v);
   else appendCborBstr(out, v);
 }
 
@@ -179,7 +205,7 @@ export function encodeCoseProtectedMapBytes(
   if (hasCty) {
     appendCborUint(out, COSE_CTY);
     const cty = options.cty as string | number;
-    if (typeof cty === "string") appendCborText(out, cty);
+    if (typeof cty === "string") appendBoundedCborText(out, cty);
     else appendCborUint(out, cty);
   }
   appendCborUint(out, COSE_KID);
