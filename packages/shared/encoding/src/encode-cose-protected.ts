@@ -24,6 +24,32 @@ export const COSE_ALG = 1;
 export const COSE_CTY = 3;
 /** COSE header label for key id (kid). RFC 8152. */
 export const COSE_KID = 4;
+/** COSE header label for CWT claims (RFC 9597). */
+export const COSE_CWT_CLAIMS = 15;
+
+/** CWT claim key: issuer (RFC 8392 §3.1.1). */
+export const CWT_ISS = 1;
+/** CWT claim key: subject (RFC 8392 §3.1.2). */
+export const CWT_SUB = 2;
+/** CWT claim key: issued-at, seconds since epoch (RFC 8392 §3.1.6). */
+export const CWT_IAT = 6;
+
+/**
+ * CWT claims for protected label {@link COSE_CWT_CLAIMS} (SCITT signed
+ * statements: iss + sub at minimum). `extra` carries additional
+ * integer-keyed claims (e.g. cnf = 8) so future claims share the same map;
+ * at least one claim must be present.
+ */
+export interface CwtClaims {
+  /** Issuer (claim {@link CWT_ISS}): CWT StringOrURI. */
+  iss?: string;
+  /** Subject (claim {@link CWT_SUB}): CWT StringOrURI, issuer-scoped. */
+  sub?: string;
+  /** Issued-at (claim {@link CWT_IAT}): integer seconds since epoch. */
+  iat?: number;
+  /** Additional claims by integer key; must not repeat iss/sub/iat keys. */
+  extra?: ReadonlyMap<number, number | string | Uint8Array>;
+}
 
 /**
  * Optional protected-header labels beyond kid.
@@ -40,6 +66,12 @@ export interface CoseProtectedHeaderOptions {
    * (e.g. `"application/json"`) or CoAP Content-Format unsigned integer.
    */
   cty?: string | number;
+  /**
+   * CWT claims for header label {@link COSE_CWT_CLAIMS} (FOR-371). Emitted
+   * only when present, so claims-free output stays byte-identical to the
+   * historical shapes.
+   */
+  cwtClaims?: CwtClaims;
 }
 
 /** Append a CBOR integer (major type 0 for >= 0, major type 1 for < 0). */
@@ -65,6 +97,58 @@ function appendCborInt(out: number[], v: number): void {
     );
 }
 
+/** Encode one CBOR value permitted as a CWT claim value. */
+function appendCwtClaimValue(
+  out: number[],
+  v: number | string | Uint8Array,
+): void {
+  if (typeof v === "number") appendCborInt(out, v);
+  else if (typeof v === "string") appendCborText(out, v);
+  else appendCborBstr(out, v);
+}
+
+/**
+ * Append the CWT claims map for label {@link COSE_CWT_CLAIMS}, keys in
+ * canonical order (RFC 8949 §4.2.1: bytewise lexicographic on the encoded
+ * key — ascending unsigned ints first, then negatives).
+ */
+function appendCwtClaimsMap(out: number[], claims: CwtClaims): void {
+  const entries = new Map<number, number | string | Uint8Array>();
+  if (claims.iss !== undefined) entries.set(CWT_ISS, claims.iss);
+  if (claims.sub !== undefined) entries.set(CWT_SUB, claims.sub);
+  if (claims.iat !== undefined) entries.set(CWT_IAT, claims.iat);
+  for (const [k, v] of claims.extra ?? []) {
+    if (entries.has(k)) {
+      throw new Error(`duplicate CWT claim key ${k} in extra`);
+    }
+    entries.set(k, v);
+  }
+  if (entries.size === 0) {
+    throw new Error("cwtClaims requires at least one claim");
+  }
+  if (entries.size >= 24) {
+    throw new Error("CWT claims map must have fewer than 24 entries");
+  }
+  const encodedKeys = [...entries.keys()].map((k) => {
+    const bytes: number[] = [];
+    appendCborInt(bytes, k);
+    return { k, bytes };
+  });
+  encodedKeys.sort((a, b) => {
+    const n = Math.min(a.bytes.length, b.bytes.length);
+    for (let i = 0; i < n; i++) {
+      const d = a.bytes[i]! - b.bytes[i]!;
+      if (d !== 0) return d;
+    }
+    return a.bytes.length - b.bytes.length;
+  });
+  out.push(0xa0 | entries.size);
+  for (const { k, bytes } of encodedKeys) {
+    out.push(...bytes);
+    appendCwtClaimValue(out, entries.get(k)!);
+  }
+}
+
 /**
  * Serialize the COSE protected header map bytes only (not wrapped in an outer bstr).
  * This is the COSE Sign1 `[0]` bstr **payload** and the input expected by
@@ -84,8 +168,9 @@ export function encodeCoseProtectedMapBytes(
 ): Uint8Array {
   const hasAlg = options?.alg !== undefined;
   const hasCty = options?.cty !== undefined;
-  const size = 1 + (hasAlg ? 1 : 0) + (hasCty ? 1 : 0);
-  // Canonical map: integer keys ascending (1 < 3 < 4), size < 24 so 0xa0|size.
+  const hasClaims = options?.cwtClaims !== undefined;
+  const size = 1 + (hasAlg ? 1 : 0) + (hasCty ? 1 : 0) + (hasClaims ? 1 : 0);
+  // Canonical map: integer keys ascending (1 < 3 < 4 < 15), size < 24 so 0xa0|size.
   const out: number[] = [0xa0 | size];
   if (hasAlg) {
     appendCborUint(out, COSE_ALG);
@@ -99,6 +184,10 @@ export function encodeCoseProtectedMapBytes(
   }
   appendCborUint(out, COSE_KID);
   appendCborBstr(out, kid);
+  if (hasClaims) {
+    appendCborUint(out, COSE_CWT_CLAIMS);
+    appendCwtClaimsMap(out, options.cwtClaims as CwtClaims);
+  }
   return new Uint8Array(out);
 }
 

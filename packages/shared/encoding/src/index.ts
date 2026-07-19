@@ -29,8 +29,13 @@ export {
 export {
   COSE_ALG,
   COSE_CTY,
+  COSE_CWT_CLAIMS,
   COSE_KID,
   type CoseProtectedHeaderOptions,
+  CWT_IAT,
+  CWT_ISS,
+  CWT_SUB,
+  type CwtClaims,
   encodeCoseProtectedMapBytes,
   encodeCoseProtectedWithKid,
 } from "./encode-cose-protected.js";
@@ -56,6 +61,7 @@ export {
   verifyDelegateKeyVoucher,
   type VerifyDelegateKeyVoucherResult,
 } from "./verify-delegate-key-voucher.js";
+export { coseKeyThumbprintUriP256 } from "./cose-key-thumbprint.js";
 export { coseUnprotectedToMap } from "./cose-unprotected-map.js";
 export { encodeCoseSign1Raw } from "./encode-cose-sign1-raw.js";
 export { mergeUnprotectedIntoCoseSign1 } from "./merge-cose-sign1-unprotected.js";
