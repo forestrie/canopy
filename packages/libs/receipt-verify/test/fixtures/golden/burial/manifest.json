@@ -1,0 +1,23 @@
+{
+  "comment": "FOR-368 burial-bundle golden vectors — FROZEN bytes; see scripts/export-burial-bundle.ts",
+  "publicKeyXyHex": "24d58857465ed3c37e0b14a2bf9253564ec1ded6d1f224d441958fd59319a9854d89197e6948275a75889214892ab5dddcf07b8a8f18bb848d8bd02e7d28cd5d",
+  "leafMmrIndex": "1",
+  "leafHashHex": "cd2662154e6d76b2b2b92e70c0cac3ccf534f9b74eb5b89819ec509083d00a50",
+  "buriedPeakHex": "ad104051c516812ea5874ca3ff06d0258303623d04307c41ec80a7a18b332ef8",
+  "finalAccumulatorHex": [
+    "78b2b4162eb2c58b229288bbcb5b7d97c7a1154eed3161905fb0f180eba6f112"
+  ],
+  "checkpointFiles": [
+    "sth-0000.cbor",
+    "sth-0001.cbor",
+    "sth-0002.cbor",
+    "sth-0003.cbor"
+  ],
+  "checkpointSha256": [
+    "5ca4b7a6c73481a66d61f4191411c9df81e6b3128f4b51b670afbe46f1b85319",
+    "29f865f6371faec2d43198d13606f62dbab6cb97e75634b33211ab02acb46949",
+    "856f153e0728901744ca2ce9fe7a2d69e93d7644410145570d2add86a6602852",
+    "6f4f9382eb55e59d5875fff65ad2c7222eae7bac1b26922c95582c7eda7eaaae"
+  ],
+  "receiptSha256": "93c4b3de12b5464acb2d0b09cbba2ad8bf40c16aa41f4a2e4df900d0f0e65e41"
+}
