@@ -1,6 +1,6 @@
 {
   "name": "@forestrie/delegation-cose",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "license": "MIT",
   "type": "module",
   "description": "Forestrie delegation certificate assembly and verification (ES256, KS256)",
