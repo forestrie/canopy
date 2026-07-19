@@ -24,6 +24,35 @@ export const COSE_ALG = 1;
 export const COSE_CTY = 3;
 /** COSE header label for key id (kid). RFC 8152. */
 export const COSE_KID = 4;
+/** COSE header label for CWT claims (RFC 9597). */
+export const COSE_CWT_CLAIMS = 15;
+
+/** CWT claim key: issuer (RFC 8392 §3.1.1). */
+export const CWT_ISS = 1;
+/** CWT claim key: subject (RFC 8392 §3.1.2). */
+export const CWT_SUB = 2;
+/** CWT claim key: issued-at, seconds since epoch (RFC 8392 §3.1.6). */
+export const CWT_IAT = 6;
+
+/**
+ * CWT claims for protected label {@link COSE_CWT_CLAIMS} (SCITT signed
+ * statements: iss + sub at minimum). `extra` carries additional
+ * integer-keyed claims (e.g. cti = 7, a bstr) so future claims share the
+ * same map; at least one claim must be present. Values are limited to
+ * int / tstr / bstr — map-valued claims such as cnf (RFC 8747 requires a
+ * map) are not yet expressible and need a pre-encoded-CBOR variant when
+ * FOR-323 lands.
+ */
+export interface CwtClaims {
+  /** Issuer (claim {@link CWT_ISS}): CWT StringOrURI. */
+  iss?: string;
+  /** Subject (claim {@link CWT_SUB}): CWT StringOrURI, issuer-scoped. */
+  sub?: string;
+  /** Issued-at (claim {@link CWT_IAT}): integer seconds since epoch. */
+  iat?: number;
+  /** Additional claims by integer key; must not repeat iss/sub/iat keys. */
+  extra?: ReadonlyMap<number, number | string | Uint8Array>;
+}
 
 /**
  * Optional protected-header labels beyond kid.
@@ -40,12 +69,26 @@ export interface CoseProtectedHeaderOptions {
    * (e.g. `"application/json"`) or CoAP Content-Format unsigned integer.
    */
   cty?: string | number;
+  /**
+   * CWT claims for header label {@link COSE_CWT_CLAIMS} (FOR-371). Emitted
+   * only when present, so claims-free output stays byte-identical to the
+   * historical shapes.
+   */
+  cwtClaims?: CwtClaims;
 }
 
 /** Append a CBOR integer (major type 0 for >= 0, major type 1 for < 0). */
 function appendCborInt(out: number[], v: number): void {
   if (!Number.isSafeInteger(v)) {
     throw new Error(`COSE header value must be an integer, got ${v}`);
+  }
+  // The emitters below have no 8-byte branch; values past the 4-byte range
+  // would silently truncate mod 2^32 (e.g. a milliseconds iat signing as a
+  // 1986 date, or an oversized claim key aliasing an existing one). Reject.
+  if (v > 0xffffffff || v < -0x100000000) {
+    throw new Error(
+      `COSE header integer out of 4-byte CBOR range [-2^32, 2^32-1]: ${v}`,
+    );
   }
   if (v >= 0) {
     appendCborUint(out, v);
@@ -63,6 +106,73 @@ function appendCborInt(out: number[], v: number): void {
       (n >> 8) & 0xff,
       n & 0xff,
     );
+}
+
+/**
+ * Append a CBOR text string, rejecting lengths {@link appendCborText}
+ * cannot represent (it has no 4-byte length branch; longer strings would
+ * emit a truncated length — malformed CBOR — rather than fail).
+ */
+function appendBoundedCborText(out: number[], s: string): void {
+  const byteLength = new TextEncoder().encode(s).length;
+  if (byteLength > 0xffff) {
+    throw new Error(
+      `COSE header text exceeds 65535 UTF-8 bytes (${byteLength})`,
+    );
+  }
+  appendCborText(out, s);
+}
+
+/** Encode one CBOR value permitted as a CWT claim value. */
+function appendCwtClaimValue(
+  out: number[],
+  v: number | string | Uint8Array,
+): void {
+  if (typeof v === "number") appendCborInt(out, v);
+  else if (typeof v === "string") appendBoundedCborText(out, v);
+  else appendCborBstr(out, v);
+}
+
+/**
+ * Append the CWT claims map for label {@link COSE_CWT_CLAIMS}, keys in
+ * canonical order (RFC 8949 §4.2.1: bytewise lexicographic on the encoded
+ * key — ascending unsigned ints first, then negatives).
+ */
+function appendCwtClaimsMap(out: number[], claims: CwtClaims): void {
+  const entries = new Map<number, number | string | Uint8Array>();
+  if (claims.iss !== undefined) entries.set(CWT_ISS, claims.iss);
+  if (claims.sub !== undefined) entries.set(CWT_SUB, claims.sub);
+  if (claims.iat !== undefined) entries.set(CWT_IAT, claims.iat);
+  for (const [k, v] of claims.extra ?? []) {
+    if (entries.has(k)) {
+      throw new Error(`duplicate CWT claim key ${k} in extra`);
+    }
+    entries.set(k, v);
+  }
+  if (entries.size === 0) {
+    throw new Error("cwtClaims requires at least one claim");
+  }
+  if (entries.size >= 24) {
+    throw new Error("CWT claims map must have fewer than 24 entries");
+  }
+  const encodedKeys = [...entries.keys()].map((k) => {
+    const bytes: number[] = [];
+    appendCborInt(bytes, k);
+    return { k, bytes };
+  });
+  encodedKeys.sort((a, b) => {
+    const n = Math.min(a.bytes.length, b.bytes.length);
+    for (let i = 0; i < n; i++) {
+      const d = a.bytes[i]! - b.bytes[i]!;
+      if (d !== 0) return d;
+    }
+    return a.bytes.length - b.bytes.length;
+  });
+  out.push(0xa0 | entries.size);
+  for (const { k, bytes } of encodedKeys) {
+    out.push(...bytes);
+    appendCwtClaimValue(out, entries.get(k)!);
+  }
 }
 
 /**
@@ -84,8 +194,9 @@ export function encodeCoseProtectedMapBytes(
 ): Uint8Array {
   const hasAlg = options?.alg !== undefined;
   const hasCty = options?.cty !== undefined;
-  const size = 1 + (hasAlg ? 1 : 0) + (hasCty ? 1 : 0);
-  // Canonical map: integer keys ascending (1 < 3 < 4), size < 24 so 0xa0|size.
+  const hasClaims = options?.cwtClaims !== undefined;
+  const size = 1 + (hasAlg ? 1 : 0) + (hasCty ? 1 : 0) + (hasClaims ? 1 : 0);
+  // Canonical map: integer keys ascending (1 < 3 < 4 < 15), size < 24 so 0xa0|size.
   const out: number[] = [0xa0 | size];
   if (hasAlg) {
     appendCborUint(out, COSE_ALG);
@@ -94,11 +205,15 @@ export function encodeCoseProtectedMapBytes(
   if (hasCty) {
     appendCborUint(out, COSE_CTY);
     const cty = options.cty as string | number;
-    if (typeof cty === "string") appendCborText(out, cty);
+    if (typeof cty === "string") appendBoundedCborText(out, cty);
     else appendCborUint(out, cty);
   }
   appendCborUint(out, COSE_KID);
   appendCborBstr(out, kid);
+  if (hasClaims) {
+    appendCborUint(out, COSE_CWT_CLAIMS);
+    appendCwtClaimsMap(out, options.cwtClaims as CwtClaims);
+  }
   return new Uint8Array(out);
 }
 

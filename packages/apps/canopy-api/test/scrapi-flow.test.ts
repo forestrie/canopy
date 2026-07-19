@@ -300,6 +300,94 @@ describe("SCRAPI flow", () => {
     }
   });
 
+  it("accepts a statement with CWT claims (label 15: iss/sub) in the protected header (FOR-371)", async () => {
+    // SCITT signed statements add protected label 15 (CWT claims, RFC 9597).
+    // Registration verifies the signature over the received protected bstr
+    // and reads only kid (label 4), so the claims map must pass structure
+    // validation, signer binding, and signature verification unchanged —
+    // the same compatibility contract the FOR-341 F1 test proves for
+    // labels 1 and 3.
+    const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
+    const statementKid = flowGrantData64.subarray(0, 32);
+    const kid16 = custodianStatementKidFromXyGrantData(flowGrantData64);
+    const idtimestampBytes = new Uint8Array(8).fill(43);
+
+    const flags = new Uint8Array(8);
+    flags[3] = 0x03; // GF_CREATE | GF_EXTEND
+    flags[7] = 0x02; // GF_DATA_LOG
+    const grant: Grant = {
+      logId: uuidToBytes(logId),
+      ownerLogId: uuidToBytes("660e8400-e29b-41d4-a716-446655440001"),
+      grant: flags,
+      maxHeight: 0,
+      minGrowth: 0,
+      grantData: flowGrantData64,
+    };
+    const authHeader = await forestrieGrantAuthorizationHeader(
+      grant,
+      flowGrantPriv,
+      kid16,
+      idtimestampBytes,
+    );
+
+    const payload = new TextEncoder().encode('{"hello":"cwt-claims"}');
+    // Mirror the CLI defaults: iss = hex kid, sub = payload hash form.
+    const iss = Array.from(statementKid, (b) =>
+      b.toString(16).padStart(2, "0"),
+    ).join("");
+    const coseSign1 = await signCoseSign1Statement(
+      payload,
+      statementKid,
+      flowGrantPriv,
+      {
+        alg: -7,
+        cty: "application/json",
+        cwtClaims: { iss, sub: "sha-256:test-subject" },
+      },
+    );
+
+    // Prove the statement under test really carries the claims protected.
+    const tuple = decodeCborDeterministic(coseSign1) as unknown[];
+    const protectedMap = decodeCborDeterministic(
+      tuple[0] as Uint8Array,
+    ) as unknown;
+    const claims = headerGet(protectedMap, 15);
+    expect(headerGet(claims, 1)).toBe(iss);
+    expect(headerGet(claims, 2)).toBe("sha-256:test-subject");
+
+    const request = new Request(
+      `http://localhost/register/${flowBootstrapLogId}/entries`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": 'application/cose; cose-type="cose-sign1"',
+          Authorization: authHeader,
+        },
+        body: coseSign1,
+      },
+    );
+
+    const response = await worker.fetch(
+      request,
+      testEnv,
+      {} as ExecutionContext,
+    );
+
+    // Any intolerance of the claims map surfaces as 4xx before either of
+    // these (303 = enqueued; 503 = SEQUENCING_QUEUE unbound in wrangler.test).
+    expect([303, 503]).toContain(response.status);
+    if (response.status === 303) {
+      expect(response.headers.get("Location")).toContain(
+        `/logs/${flowBootstrapLogId}/${logId}/entries/`,
+      );
+    } else {
+      const problem = decodeCborAsObject(
+        new Uint8Array(await response.arrayBuffer()),
+      ) as { detail?: string };
+      expect(String(problem.detail ?? "")).toContain("SEQUENCING_QUEUE");
+    }
+  });
+
   it("resolve-receipt returns a COSE_Sign1 receipt with an attached proof", async () => {
     const logId = "de305d54-75b4-431b-adb2-eb6b9e546014";
     const massifHeight = 3;
