@@ -62,3 +62,12 @@ export { findGrantLeafInMassif } from "./find-grant-leaf.js";
 export type { LocatedLeaf } from "./find-grant-leaf.js";
 /** Re-exported so callers of findGrantLeafInMassif can catch it (FOR-344). */
 export { MissingIndexError } from "@forestrie/merklelog";
+export {
+  accumulatorPayload,
+  checkpointConsistencyProof,
+  computeCheckpointAccumulator,
+  verifyCheckpointChain,
+  type CheckpointChainLink,
+  type CheckpointChainResult,
+  type CheckpointConsistencyProof,
+} from "./checkpoint-chain.js";
