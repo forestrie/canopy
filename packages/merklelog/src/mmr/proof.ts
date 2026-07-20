@@ -101,6 +101,115 @@ export function inclusionProof(
 }
 
 /**
+ * The sibling *indices* of an inclusion proof for the node at MMR index `i` in
+ * the tree ending at `mmrLastIndex` — the index-only counterpart of
+ * {@link inclusionProof} (go-merklelog `mmr/proof.go` InclusionProofPath). The
+ * values at these indices, in order, are the proof. Store-free: pure position
+ * arithmetic, so a caller can assemble a proof's node values from any source
+ * (a receipt path, consistency-proof paths, tiles).
+ */
+export function inclusionProofPath(mmrLastIndex: bigint, i: bigint): bigint[] {
+  let g = BigInt(indexHeight(i));
+  const proof: bigint[] = [];
+  for (;;) {
+    const siblingOffset = 2n << g;
+    let iSibling: bigint;
+    if (BigInt(indexHeight(i + 1n)) > g) {
+      iSibling = i - siblingOffset + 1n;
+      i += 1n;
+    } else {
+      iSibling = i + siblingOffset - 1n;
+      i += siblingOffset;
+    }
+    if (iSibling > mmrLastIndex) {
+      return proof;
+    }
+    proof.push(iSibling);
+    g += 1n;
+  }
+}
+
+/**
+ * An inclusion proof that has been extended from MMR size A to size B: the size-B
+ * proof is an *extension* of the size-A proof, sharing its first `heightA`
+ * elements. (go-merklelog `mmr/proofrefresh.go` ConsistencyProofLocal.)
+ */
+export type ConsistencyProofLocal = {
+  /** The node (leaf) MMR index being proven. */
+  logIndex: bigint;
+  /** Full inclusion path at size B; `path[0..heightA]` is the size-A proof. */
+  path: Uint8Array[];
+  sizeA: bigint;
+  /** Peak (root) index covering `logIndex` at size A. */
+  peakIndexA: bigint;
+  /** Length of the shared prefix — the size-A proof; the rest extends it. */
+  heightA: number;
+  sizeB: bigint;
+  /** Peak (root) index covering `logIndex` at size B. */
+  peakIndexB: bigint;
+};
+
+/**
+ * Extend the inclusion proof for node `i` from MMR size A to size B, reading
+ * sibling values from `get`. The result's `path` proves `i` at size B and shares
+ * its first `heightA` elements with the size-A proof — so a stale receipt's
+ * path (leaf → its old peak) is exactly `path[0..heightA]`, and the remainder is
+ * the tile-free extension. Direct port of go-merklelog `InclusionProofLocalExtend`.
+ *
+ * @throws if `mmrSizeB <= mmrSizeA`.
+ */
+export function inclusionProofLocalExtend(
+  get: NodeGetter,
+  mmrSizeA: bigint,
+  mmrSizeB: bigint,
+  i: bigint,
+): ConsistencyProofLocal {
+  if (mmrSizeB <= mmrSizeA) {
+    throw new Error(
+      `mmrSizeB (${mmrSizeB}) must be greater than mmrSizeA (${mmrSizeA})`,
+    );
+  }
+  const logIndex = i;
+  const path: Uint8Array[] = [];
+  let height = 0n;
+  let prevComplete = false;
+  let peakIndexA = 0n;
+  let heightA = 0;
+  while (i < mmrSizeB) {
+    const siblingOffset = (2n << height) - 1n; // go-merklelog SiblingOffset
+    let iSibling: bigint;
+    let delta: bigint;
+    if (BigInt(indexHeight(i + 1n)) > BigInt(indexHeight(i))) {
+      iSibling = i - siblingOffset;
+      delta = 1n;
+    } else {
+      iSibling = i + siblingOffset;
+      delta = 2n << height;
+    }
+    // The first sibling that lies outside MMR(A) marks the end of the size-A
+    // proof: `i` is the size-A covering peak and the prefix so far is its proof.
+    if (iSibling >= mmrSizeA && !prevComplete) {
+      peakIndexA = i;
+      heightA = path.length;
+      prevComplete = true;
+    }
+    if (iSibling >= mmrSizeB) break;
+    path.push(get(iSibling));
+    i += delta;
+    height += 1n;
+  }
+  return {
+    logIndex,
+    path,
+    sizeA: mmrSizeA,
+    peakIndexA,
+    heightA,
+    sizeB: mmrSizeB,
+    peakIndexB: i,
+  };
+}
+
+/**
  * Peaks bitmap for an MMR size: the numeric value equals the leaf count of the
  * largest valid MMR with size <= `mmrSize`; each set bit marks a perfect
  * subtree (peak). (go-merklelog `mmr/peaks.go` PeaksBitmap)
