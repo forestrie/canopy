@@ -38,14 +38,25 @@ export type CheckpointConsistencyProof = {
 };
 
 function asBigint(v: unknown, what: string): bigint {
-  if (typeof v === "bigint") return v;
-  if (typeof v === "number" && Number.isSafeInteger(v)) return BigInt(v);
+  // Unsigned only: a negative size flows into `peakMMRIndexes`, whose
+  // `posHeight` spins forever on a non-positive argument — a malformed `.sth`
+  // must be rejected in bounded time, before any such call (FOR-414).
+  if (typeof v === "bigint") {
+    if (v < 0n) throw new Error(`${what}: must be an unsigned integer, got ${v}`);
+    return v;
+  }
+  if (typeof v === "number" && Number.isSafeInteger(v) && v >= 0) {
+    return BigInt(v);
+  }
   throw new Error(`${what}: expected an unsigned integer`);
 }
 
 function asBytesArray(v: unknown, what: string): Uint8Array[] {
-  if (!Array.isArray(v) || v.some((e) => !(e instanceof Uint8Array))) {
-    throw new Error(`${what}: expected an array of byte strings`);
+  if (
+    !Array.isArray(v) ||
+    v.some((e) => !(e instanceof Uint8Array) || e.length !== 32)
+  ) {
+    throw new Error(`${what}: expected an array of 32-byte strings`);
   }
   return v as Uint8Array[];
 }
@@ -80,9 +91,21 @@ export function checkpointConsistencyProof(
   ) {
     throw new Error("consistency paths must be arrays of byte strings");
   }
+  const treeSize1 = asBigint(proof[0], "tree-size-1");
+  const treeSize2 = asBigint(proof[1], "tree-size-2");
+  // A consistency proof strictly grows the tree; enforce `0 <= ts1 < ts2`
+  // (ts1 == 0 is a legitimate base-0 first link). This is the primary guard
+  // that keeps `treeSize2 - 1` / `treeSize1 - 1` non-negative before they
+  // reach `peakMMRIndexes` (FOR-414); the unsigned check in `asBigint` and
+  // the `posHeight` guard in @forestrie/merklelog are defence-in-depth.
+  if (treeSize2 <= treeSize1) {
+    throw new Error(
+      `consistency proof must grow the tree: tree-size-1 ${treeSize1} < tree-size-2 ${treeSize2}`,
+    );
+  }
   return {
-    treeSize1: asBigint(proof[0], "tree-size-1"),
-    treeSize2: asBigint(proof[1], "tree-size-2"),
+    treeSize1,
+    treeSize2,
     paths: pathsRaw as Uint8Array[][],
     rightPeaks: asBytesArray(proof[3], "right-peaks"),
   };

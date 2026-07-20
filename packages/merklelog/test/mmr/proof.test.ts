@@ -154,6 +154,15 @@ describe("mmr/proof (hoisted builder) — MMR(39) KAT parity", () => {
     expect(peakMMRIndexes(3n)).toEqual([2n, 3n]);
   });
 
+  it("peakMMRIndexes rejects a non-positive size in bounded time (FOR-414)", () => {
+    // mmrIndex -1 → mmrSize 0 → posHeight(0) once spun forever, hanging any
+    // caller fed a malformed size (a corrupt/hostile checkpoint). It must
+    // throw, not loop.
+    expect(() => peakMMRIndexes(-1n)).toThrow(/position must be >= 1/);
+    expect(() => peakMMRIndexes(-6n)).toThrow(/position must be >= 1/);
+    expect(() => indexHeight(-1n)).toThrow(/position must be >= 1/);
+  });
+
   it("peaksBitmap equals the leaf count of the largest valid MMR <= size", () => {
     // Complete sizes and their leaf counts (KAT39CompleteMMRSizes).
     const sizeToLeaves: Array<[bigint, bigint]> = [

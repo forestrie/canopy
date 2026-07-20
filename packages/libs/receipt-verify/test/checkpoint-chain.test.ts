@@ -237,3 +237,68 @@ describe("verifyCheckpointChain (FOR-368 Phase 3)", () => {
     expect(proof.paths.length).toBe(peakMMRIndexes(2n).length);
   });
 });
+
+describe("checkpointConsistencyProof — malformed size rejection (FOR-414)", () => {
+  /** Wrap an arbitrary `[ts1, ts2, paths, rightPeaks]` in a checkpoint COSE
+   * shape with a throwaway signature — decode runs before any signature
+   * check, so the bytes need not be genuinely signed. */
+  function checkpointWithProof(proofArray: unknown): Uint8Array {
+    const proofBstr = encodeCborDeterministic(proofArray);
+    const protectedBstr = encodeCborDeterministic(new Map([[1, -7]]));
+    const unprotected = new Map<number, unknown>([
+      [396, new Map<number, unknown>([[-2, proofBstr]])],
+    ]);
+    return encodeCborDeterministic([
+      protectedBstr,
+      unprotected,
+      null,
+      new Uint8Array(64),
+    ]);
+  }
+
+  const peak = (b: number) => new Uint8Array(32).fill(b);
+
+  it("rejects tree-size-2 = 0 in bounded time (the reported hang trigger)", () => {
+    // Pre-fix: treeSize2 - 1 = -1 → peakMMRIndexes(-1n) spun forever.
+    expect(() =>
+      checkpointConsistencyProof(checkpointWithProof([0, 0, [], []])),
+    ).toThrow(/grow the tree/);
+  });
+
+  it("rejects a negative size", () => {
+    expect(() =>
+      checkpointConsistencyProof(checkpointWithProof([-1, 5, [], []])),
+    ).toThrow(/unsigned integer/);
+    expect(() =>
+      checkpointConsistencyProof(checkpointWithProof([3, -7, [], []])),
+    ).toThrow(/unsigned integer/);
+  });
+
+  it("rejects a non-growing proof (tree-size-2 <= tree-size-1)", () => {
+    expect(() =>
+      checkpointConsistencyProof(checkpointWithProof([7, 3, [], []])),
+    ).toThrow(/grow the tree/);
+    expect(() =>
+      checkpointConsistencyProof(checkpointWithProof([5, 5, [], []])),
+    ).toThrow(/grow the tree/);
+  });
+
+  it("rejects a right-peak that is not 32 bytes", () => {
+    expect(() =>
+      checkpointConsistencyProof(
+        checkpointWithProof([0, 3, [], [new Uint8Array(31).fill(1)]]),
+      ),
+    ).toThrow(/32-byte/);
+  });
+
+  it("verifyCheckpointChain reports proof_malformed (not a hang) for a bad size", async () => {
+    const result = await verifyCheckpointChain({
+      checkpoints: [checkpointWithProof([0, 0, [], [peak(1)]])],
+      verifySignature: verifySig,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("proof_malformed");
+    expect(result.at).toBe(0);
+  });
+});
