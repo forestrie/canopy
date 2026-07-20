@@ -14,11 +14,18 @@ export type {
   ParsedCheckpoint,
 } from "./build-receipt-offline.js";
 export {
+  assembleReceiptFromProof,
   buildReceiptOffline,
   computeAccumulatorPeak,
   openMassifNodeStore,
   parseCheckpoint,
 } from "./build-receipt-offline.js";
+/** Freshen a stale receipt to the latest sealed state, tile-free (FOR-418). */
+export { freshenReceipt } from "./freshen-receipt.js";
+export type {
+  FreshenReceiptInput,
+  FreshenReceiptResult,
+} from "./freshen-receipt.js";
 /**
  * MMR proof math now lives in @forestrie/merklelog (plan-2607-15 §4 hoist);
  * re-exported here to preserve the receipt-verify public surface.
