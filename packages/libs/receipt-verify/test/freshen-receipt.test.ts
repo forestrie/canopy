@@ -316,6 +316,69 @@ describe("freshenReceipt (FOR-418)", () => {
     expect(verified).toEqual({ ok: true, stage: "binding" });
   });
 
+  it("freshens across a genesis-rooted BASE-0 chain (0 -> 3 -> 7, no seed) and it verifies", async () => {
+    // A retained `.sth` chain from the log's base starts with a treeSize1 === 0
+    // link (paths: [], the whole accumulator is its right-peaks). This is the
+    // genesis-verifiable headline case, and it must not touch peakMMRIndexes(-1).
+    const fx = await buildFixture();
+    const get: NodeGetter = (i) => fx.nodes[Number(i)]!;
+    const hasher = await createSyncHasher();
+
+    const oldCheckpoint = buildV2CheckpointBytes({
+      mmrSize: 3n,
+      peakReceipts: [
+        await signDetachedPeakReceipt(fx.rootKeyPair, fx.nodes[2]!),
+      ],
+    });
+    const oldReceipt = buildReceiptOffline({
+      massifBytes: fx.massif7,
+      checkpointBytes: oldCheckpoint,
+      mmrIndex: 1n,
+    });
+    const latestCheckpoint = buildV2CheckpointBytes({
+      mmrSize: 7n,
+      peakReceipts: [
+        await signDetachedPeakReceipt(fx.rootKeyPair, fx.nodes[6]!),
+      ],
+    });
+
+    // base-0 link: no from-peaks, the size-3 accumulator IS its right-peaks.
+    const link0 = {
+      treeSize1: 0n,
+      treeSize2: 3n,
+      paths: [] as Uint8Array[][],
+      rightPeaks: peakMMRIndexes(2n).map(get), // [n2]
+    };
+    // link 3 -> 7
+    const cp = indexConsistencyProof(get, 2n, 6n);
+    const a3 = peakMMRIndexes(2n).map(get);
+    const a7 = peakMMRIndexes(6n).map(get);
+    const proven = await consistentRoots(hasher, 2n, a3, cp.paths);
+    const link1 = {
+      treeSize1: 3n,
+      treeSize2: 7n,
+      paths: cp.paths,
+      rightPeaks: a7.slice(proven.length),
+    };
+
+    const result = await freshenReceipt({
+      oldReceiptBytes: oldReceipt,
+      leafValue: fx.leaf1.leafHash,
+      consistencyProofs: [link0, link1],
+      // no accumulatorFrom — folds from base 0
+      latestCheckpointBytes: latestCheckpoint,
+    });
+
+    expect(result.sealedSize).toBe(7n);
+    const verified = await verifyGrantReceiptOffline({
+      genesisCbor: fx.genesisCbor,
+      receiptCbor: result.receipt,
+      grant: fx.leaf1.grant,
+      idtimestampBe8: fx.leaf1.idtimestampBe8,
+    });
+    expect(verified).toEqual({ ok: true, stage: "binding" });
+  });
+
   it("rejects a chain whose endpoint does not match the checkpoint's sealed size", async () => {
     const fx = await buildFixture();
     const get: NodeGetter = (i) => fx.nodes[Number(i)]!;

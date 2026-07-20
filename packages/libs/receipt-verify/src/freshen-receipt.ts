@@ -200,6 +200,12 @@ export async function freshenReceipt(
     store.set(fullIndices[k]!, oldPath[k]!);
   }
   for (const link of links) {
+    // A base-0 link (treeSize1 === 0) has no from-peaks to climb — a 0→N
+    // consistency proof carries `paths: []` (the whole accumulator is its
+    // right-peaks). Skip it: it contributes no store nodes, and calling
+    // `peakMMRIndexes(-1n)` would throw (`posHeight(0)`, FOR-414). A genesis-
+    // rooted `.sth` chain always starts with such a link.
+    if (link.treeSize1 === 0n) continue;
     const fromPeaks = peakMMRIndexes(link.treeSize1 - 1n);
     fromPeaks.forEach((peakIndex, j) => {
       const climb = link.paths[j];
