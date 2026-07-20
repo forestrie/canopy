@@ -1,6 +1,6 @@
 {
   "name": "@forestrie/merklelog",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "license": "MIT",
   "type": "module",
   "description": "MMR (merkle mountain range) proofs and massif storage format for Forestrie transparency logs",

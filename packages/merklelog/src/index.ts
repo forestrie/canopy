@@ -81,6 +81,8 @@ export type { Hasher } from "./mmr/types.js";
 // MMR proof building (pure; store-agnostic) — plan-2607-15 §4 (go: mmr/proof.go, peaks.go)
 export {
   inclusionProof,
+  inclusionProofPath,
+  inclusionProofLocalExtend,
   peakMMRIndexes,
   peaksBitmap,
   peakIndexForLeafProof,
@@ -89,4 +91,4 @@ export {
   massifIndexFromMMRIndex,
   peakStackMap,
 } from "./mmr/proof.js";
-export type { NodeGetter } from "./mmr/proof.js";
+export type { NodeGetter, ConsistencyProofLocal } from "./mmr/proof.js";
