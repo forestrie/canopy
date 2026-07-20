@@ -42,7 +42,8 @@ function asBigint(v: unknown, what: string): bigint {
   // `posHeight` spins forever on a non-positive argument — a malformed `.sth`
   // must be rejected in bounded time, before any such call (FOR-414).
   if (typeof v === "bigint") {
-    if (v < 0n) throw new Error(`${what}: must be an unsigned integer, got ${v}`);
+    if (v < 0n)
+      throw new Error(`${what}: must be an unsigned integer, got ${v}`);
     return v;
   }
   if (typeof v === "number" && Number.isSafeInteger(v) && v >= 0) {
