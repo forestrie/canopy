@@ -40,6 +40,13 @@ function jumpLeftPerfect(pos: bigint): bigint {
  * (go-merklelog `mmr/indexheight.go` PosHeight)
  */
 function posHeight(pos: bigint): number {
+  // Positions are 1-based; `pos <= 0` is out of domain and would spin forever
+  // (`jumpLeftPerfect(0) === 0`, `allOnes(0) === false`). Reject in bounded
+  // time so a malformed size fed to any caller (peakMMRIndexes, indexHeight,
+  // inclusionProof, …) fails loudly instead of hanging the verifier (FOR-414).
+  if (pos <= 0n) {
+    throw new Error(`posHeight: position must be >= 1, got ${pos}`);
+  }
   let current = pos;
   while (!allOnes(current)) {
     current = jumpLeftPerfect(current);
