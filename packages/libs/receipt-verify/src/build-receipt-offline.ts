@@ -137,7 +137,32 @@ export function buildReceiptOffline(
   }
 
   const proof = inclusionProof(store.get, mmrLastIndex, mmrIndex);
-  const peakIdx = peakIndexForLeafProof(mmrSize, proof.length);
+  return assembleReceiptFromProof(checkpoint, mmrIndex, proof);
+}
+
+/**
+ * Assemble a receipt from a checkpoint's pre-signed peak receipt and a
+ * caller-supplied inclusion `proof` for `mmrIndex`: pick the peak receipt the
+ * proof roots to, attach the proof at header 396 and copy the label-1000
+ * delegation cert. The checkpoint signature covers only the accumulator (peak),
+ * so the unprotected 396 header is free to carry the path — this is why a path
+ * from ANY source (massif tiles here; a tile-free consistency-proof extension in
+ * `freshenReceipt`) yields a `verify --genesis`-equivalent native receipt.
+ */
+export function assembleReceiptFromProof(
+  checkpoint: ParsedCheckpoint,
+  mmrIndex: bigint,
+  proof: Uint8Array[],
+): Uint8Array {
+  if (checkpoint.mmrSize === null || checkpoint.mmrSize <= 0n) {
+    throw new Error("checkpoint carries no sealed size");
+  }
+  if (!checkpoint.peakReceipts) {
+    throw new Error(
+      "checkpoint carries no pre-signed peak receipts (label -65931)",
+    );
+  }
+  const peakIdx = peakIndexForLeafProof(checkpoint.mmrSize, proof.length);
   const receiptBytes = checkpoint.peakReceipts[peakIdx];
   if (!(receiptBytes instanceof Uint8Array)) {
     throw new Error(
