@@ -24,7 +24,8 @@ async function recomputeFixturePeak(fx: {
   inner: Uint8Array;
 }): Promise<Uint8Array> {
   const { proof } = parseReceipt(fx.receiptCbor);
-  const leafIdx = proof.leafIndex !== undefined ? proof.leafIndex : proof.mmrIndex!;
+  const leafIdx =
+    proof.leafIndex !== undefined ? proof.leafIndex : proof.mmrIndex!;
   const leafHash = await univocityLeafHash(fx.idtimestampBe8, fx.inner);
   return calculateRoot(new SubtleHasher(), leafHash, proof, leafIdx);
 }
@@ -86,7 +87,11 @@ describe("verifyReceiptOfflineAgainstKnownAccumulator", () => {
       accumulator: [],
       size: 10n,
     });
-    expect(result).toEqual({ ok: false, stage: "parse", reason: "receipt_malformed" });
+    expect(result).toEqual({
+      ok: false,
+      stage: "parse",
+      reason: "receipt_malformed",
+    });
   });
 });
 

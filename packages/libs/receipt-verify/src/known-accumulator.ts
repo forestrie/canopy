@@ -50,7 +50,9 @@ import type { ReceiptVerifyResult } from "./receipt-verify-result.js";
 function toContractLogId(logId: string): string {
   const hex = logId.replace(/-/g, "").replace(/^0x/, "").toLowerCase();
   if (!/^[0-9a-f]{32}$/.test(hex) && !/^[0-9a-f]{64}$/.test(hex)) {
-    throw new Error(`log id must be a UUID or 16/32-byte hex id, got '${logId}'`);
+    throw new Error(
+      `log id must be a UUID or 16/32-byte hex id, got '${logId}'`,
+    );
   }
   return "0x" + hex.padStart(64, "0");
 }
@@ -247,7 +249,12 @@ export async function verifyReceiptOfflineAgainstKnownAccumulator(input: {
   } else {
     const hasher = new SubtleHasher();
     const leafHash = await univocityLeafHash(input.idtimestampBe8, input.inner);
-    recomputedPeak = await calculateRoot(hasher, leafHash, parsed.proof, leafIdx);
+    recomputedPeak = await calculateRoot(
+      hasher,
+      leafHash,
+      parsed.proof,
+      leafIdx,
+    );
   }
 
   // 2. Exact peak match — receipt state is a snapshot-covered accumulator.
