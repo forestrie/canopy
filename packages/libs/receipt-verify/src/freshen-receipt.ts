@@ -3,23 +3,33 @@
  *
  * A receipt goes stale when log growth buries the peak it commits to. Freshening
  * re-anchors it to the CURRENT sealed state without tiles: extend the leaf's
- * inclusion path from its old peak up to the latest accumulator using the
+ * inclusion path from its old peak up to the current accumulator using the
  * checkpoint chain's consistency proofs (the tile-free source of the climb
  * nodes), then attach that fresh path at header 396 to the LATEST checkpoint's
- * pre-signed peak receipt. The result is a native receipt that verifies with
- * plain `verify --genesis` against the current state — the latest checkpoint
- * carries the genesis-verifiable delegation cert (see plan-2607-32's Phase 3
- * finding: the calldata provider supplies the climb material tile-free, but the
- * signature/cert comes from the latest `.sth`).
+ * pre-signed peak receipt. The result is a native receipt about the current
+ * state (the calldata provider supplies the climb material tile-free, but the
+ * signature/cert always comes from a latest `.sth`; plan-2607-32 Phase 3).
  *
- * Trust note: the freshened receipt is defined SOLELY by the latest checkpoint —
- * its label-1000 delegation cert and its pre-signed peak receipt. Owner-rooting
- * is established by the verify step's trust anchor: `verify --genesis` rejects a
- * cert whose delegator is not the genesis owner (a hard failure, not a warning).
- * A rotation of the delegated-TO sealer key is routine and within the owner's
- * authority, so freshen does NOT flag it — there is no signer-change gate (this
- * supersedes the earlier `--allow-new-signer` sketch; see the plan-2607-32 F2
- * note). The old receipt's cert is irrelevant to the emitted artifact.
+ * Trust note — three orthogonal concerns (see forestrie-cli's TRUST-MODEL.md):
+ *  - FRESHNESS is what freshen produces: the extended path recomputes the
+ *    current accumulator peak (self-checked below); a caller may additionally
+ *    bind that accumulator to a trusted chain read. This is the receipt's
+ *    substance.
+ *  - SEALING attestation: the emitted receipt necessarily carries the LATEST
+ *    checkpoint's signature — its label-1000 owner→sealer delegation cert and
+ *    pre-signed peak receipt. A freshened receipt is a NEW attestation of the
+ *    current state, so the only signature it can carry is one over a checkpoint
+ *    at the current size; attaching any other would be forgery. A rotation of
+ *    the delegated-TO sealer key is routine and within the owner's authority, so
+ *    freshen does NOT flag it — there is no signer-change gate (this supersedes
+ *    the earlier `--allow-new-signer` sketch; plan-2607-32 F2). The old receipt's
+ *    cert is irrelevant to the emitted artifact.
+ *  - AUTHORITY (does the log chain to genesis) is NOT carried by this signature
+ *    and NOT freshen's concern: it is the grant hierarchy, proven by grants + their
+ *    inclusion proofs (and enforced on-chain at publish). Downstream `verify`
+ *    picks the posture — `--genesis`/`--known-log-key` check the sealer chains to
+ *    the owner; the accumulator rungs check freshness directly and treat the
+ *    signature as vestigial.
  *
  * Two independent fail-closed guards keep a bad assembly from ever minting:
  *  - Cross-checks against the checkpoint being borrowed from: the supplied
