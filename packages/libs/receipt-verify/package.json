@@ -1,6 +1,6 @@
 {
   "name": "@forestrie/receipt-verify",
-  "version": "0.8.2",
+  "version": "0.9.0",
   "license": "MIT",
   "type": "module",
   "description": "Offline SCITT grant receipt verification (ADR-0045)",
@@ -43,6 +43,7 @@
     "prepack": "pnpm run build"
   },
   "dependencies": {
+    "@forestrie/chain-rpc": "workspace:*",
     "@forestrie/encoding": "workspace:*",
     "@forestrie/merklelog": "workspace:*",
     "@noble/hashes": "^1.7.1"

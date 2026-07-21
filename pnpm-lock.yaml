@@ -257,6 +257,9 @@ importers:
 
   packages/libs/receipt-verify:
     dependencies:
+      '@forestrie/chain-rpc':
+        specifier: workspace:*
+        version: link:../chain-rpc
       '@forestrie/encoding':
         specifier: workspace:*
         version: link:../../shared/encoding

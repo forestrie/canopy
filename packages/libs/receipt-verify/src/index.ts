@@ -78,3 +78,24 @@ export {
   type CheckpointChainResult,
   type CheckpointConsistencyProof,
 } from "./checkpoint-chain.js";
+/**
+ * Univocity leaf commitment hash. Was CLI-private (forestrie-cli's own
+ * mirror, "hoist to the library when the FOR-297 multi-hop resolver lands");
+ * exported here as of plan-2607-34 slice 02 Part B so consumers stop
+ * duplicating it.
+ */
+export { univocityLeafHash } from "./leaf-commitment.js";
+/**
+ * Known-accumulator snapshot (FOR-297 D5): verify a receipt against a
+ * caller-supplied on-chain accumulator read, fully offline. Hoisted from
+ * forestrie-cli (plan-2607-34 slice 02 Part B) — see known-accumulator.ts
+ * for the trust model and what this package does NOT do (fetch the
+ * snapshot over RPC, or proof-path-extend a stale one via massif nodes).
+ */
+export {
+  assertSnapshotBinding,
+  decodeKnownAccumulator,
+  encodeKnownAccumulator,
+  verifyReceiptOfflineAgainstKnownAccumulator,
+  type KnownAccumulator,
+} from "./known-accumulator.js";
