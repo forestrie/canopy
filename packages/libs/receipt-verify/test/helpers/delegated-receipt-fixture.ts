@@ -140,8 +140,8 @@ export async function buildDelegatedGrantReceiptFixture(opts?: {
   nonCovering?: boolean;
   /** Cert expiresAt precedes the leaf's issuance time (FOR-420). */
   expiredAtIssuance?: boolean;
-  /** Cert issuedAt follows the leaf's issuance time (FOR-420). */
-  notYetValid?: boolean;
+  /** Cert issuedAt follows the leaf's issuance time — valid (FOR-420). */
+  leafBeforeIssued?: boolean;
 }): Promise<{
   genesisCbor: Uint8Array;
   receiptCbor: Uint8Array;
@@ -190,7 +190,7 @@ export async function buildDelegatedGrantReceiptFixture(opts?: {
   // horizon; a covering cert is wide (mmrStart=0, the lane norm).
   const mmrStart = 0;
   const mmrEnd = opts?.nonCovering ? 0 : 65535;
-  const issuedAt = opts?.notYetValid ? leafTime + 10 : leafTime - 3600;
+  const issuedAt = opts?.leafBeforeIssued ? leafTime + 10 : leafTime - 3600;
   const expiresAt = opts?.expiredAtIssuance ? leafTime - 10 : leafTime + 3600;
   const delegationCert = opts?.omitCert
     ? null

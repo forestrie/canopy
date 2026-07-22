@@ -77,16 +77,20 @@ describe("verifyGrantReceiptOffline — delegated (FOR-297)", () => {
     expect(result.reason).toBe("delegation_expired");
   });
 
-  it("rejects a cert not yet valid at the leaf's issuance time", async () => {
-    const fx = await buildDelegatedGrantReceiptFixture({ notYetValid: true });
+  // NB: the `issuedAt` lower bound is intentionally NOT enforced — on live
+  // lanes the cert is signed a few seconds AFTER the leaf is sequenced, so a
+  // cert with `issuedAt > leafTime` is valid (verified on lane A). A receipt
+  // whose leaf predates the cert's issuedAt therefore still verifies.
+  it("accepts a receipt whose leaf time precedes the cert issuedAt", async () => {
+    const fx = await buildDelegatedGrantReceiptFixture({
+      leafBeforeIssued: true,
+    });
     const result = await verifyGrantReceiptOffline({
       genesisCbor: fx.genesisCbor,
       receiptCbor: fx.receiptCbor,
       grant: fx.grant,
       idtimestampBe8: fx.idtimestampBe8,
     });
-    expect(result.ok).toBe(false);
-    expect(result.stage).toBe("signature");
-    expect(result.reason).toBe("delegation_not_yet_valid");
+    expect(result).toEqual({ ok: true, stage: "binding" });
   });
 });

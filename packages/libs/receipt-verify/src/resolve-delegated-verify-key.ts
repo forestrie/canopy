@@ -22,15 +22,14 @@
  *
  * Constraint enforcement (FOR-420): the certificate authorizes the delegated
  * key only over an MMR coverage window `[mmrStart, mmrEnd]` (payload labels 3/4)
- * and a validity window `[issuedAt, expiresAt]` (labels 8/9, Unix seconds).
- * {@link checkDelegationConstraints} enforces the soundly-offline-decidable
- * slice against the verified leaf: the `mmrEnd` over-horizon bound (the leaf's
- * index lower-bounds the checkpoint `treeSize-1` the on-chain
- * `delegationVerifier.sol` binds) and the validity window against the leaf's
- * snowflake idtimestamp (expiry-at-ISSUANCE, never wall-clock — receipts must
- * verify forever). The `mmrStart` lower bound and the exact `size-1` bound need
- * the checkpoint accumulator and are deferred (see that function). This replaces
- * the earlier "does not yet enforce the window" gap.
+ * and until `expiresAt` (label 9, Unix seconds). {@link checkDelegationConstraints}
+ * enforces the soundly-offline-decidable slice against the verified leaf: the
+ * `mmrEnd` over-horizon bound (the leaf's index lower-bounds the checkpoint
+ * `treeSize-1` the on-chain `delegationVerifier.sol` binds) and expiry-at-issuance
+ * against the leaf's snowflake idtimestamp (never wall-clock — receipts must
+ * verify forever). The `mmrStart` lower bound, the exact `size-1` bound, and the
+ * `issuedAt` lower bound are NOT enforced (see that function). This replaces the
+ * earlier "does not yet enforce the window" gap.
  */
 
 import {
@@ -219,11 +218,18 @@ function parseDelegationConstraints(
  * `size-1` upper bound need the checkpoint accumulator (absent in the single-peak
  * offline path) — deferred; in practice lane certs are wide (`mmrStart=0`).
  *
- * Validity: the leaf's issuance time (from its snowflake idtimestamp) must fall
- * within `[issuedAt, expiresAt]` — compared against the checkpoint/leaf time,
- * NOT wall-clock, so a valid receipt verifies forever. `not-yet-valid` is sound
- * (`leafTime ≤ checkpointTime`); `expired` uses the leaf time as the pinned
- * checkpoint-time proxy (ADR-0050 / FOR-297 semantics).
+ * Expiry-at-issuance: the leaf's time (from its snowflake idtimestamp) must not
+ * be AFTER the cert's `expiresAt` — a key signing past its authorized lifetime.
+ * Compared against the checkpoint/leaf time, NOT wall-clock, so a valid receipt
+ * verifies forever (the pinned FOR-297 / ADR-0050 requirement).
+ *
+ * The `issuedAt` lower bound is deliberately NOT enforced. `issuedAt` is when the
+ * cert was SIGNED; the leaf's idtimestamp is when it was SEQUENCED. On live lanes
+ * the delegation cert is signed a few seconds AFTER the leaf is sequenced (the
+ * checkpoint that includes the leaf is sealed reactively), so `issuedAt > leafTime`
+ * is normal and correct — the cert is never *used* to sign before it exists.
+ * Enforcing `issuedAt ≤ leafTime` false-rejects legitimate receipts (verified on
+ * lane A: a fresh bootstrap receipt has `issuedAt − leafTime ≈ 3s`).
  */
 export function checkDelegationConstraints(
   constraints: DelegationConstraints,
@@ -234,9 +240,6 @@ export function checkDelegationConstraints(
     return { ok: false, reason: "delegation_out_of_range" };
   }
   const t = idtimestampToUnixSeconds(leafIdtimestamp);
-  if (t < constraints.issuedAt) {
-    return { ok: false, reason: "delegation_not_yet_valid" };
-  }
   if (t > constraints.expiresAt) {
     return { ok: false, reason: "delegation_expired" };
   }
