@@ -185,10 +185,11 @@ export async function buildDelegatedGrantReceiptFixture(opts?: {
   // Derive the cert's validity window from the leaf's own idtimestamp so the
   // positive case is self-consistent (expiry-at-issuance, not wall-clock).
   const leafTime = idtimestampBe8ToUnixSeconds(idtimestampBe8);
-  // Leaf is at mmrIndex 1; a covering cert must include it, a non-covering one
-  // must exclude it.
-  const mmrStart = opts?.nonCovering ? 100 : 0;
-  const mmrEnd = opts?.nonCovering ? 200 : 65535;
+  // Leaf is at mmrIndex 1. A non-covering cert sets mmrEnd below the leaf so the
+  // leaf (a lower bound on the checkpoint's treeSize-1) is beyond the authorized
+  // horizon; a covering cert is wide (mmrStart=0, the lane norm).
+  const mmrStart = 0;
+  const mmrEnd = opts?.nonCovering ? 0 : 65535;
   const issuedAt = opts?.notYetValid ? leafTime + 10 : leafTime - 3600;
   const expiresAt = opts?.expiredAtIssuance ? leafTime - 10 : leafTime + 3600;
   const delegationCert = opts?.omitCert

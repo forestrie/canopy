@@ -21,16 +21,16 @@
  * tiles, closing that gap without key distribution.
  *
  * Constraint enforcement (FOR-420): the certificate authorizes the delegated
- * key only over an MMR coverage window `[mmrStart, mmrEnd]` (payload labels
- * 3/4, inclusive — mirrors `delegationVerifier.sol` `mmrIndex < mmrStart ||
- * mmrIndex > mmrEnd`) and a validity window `[issuedAt, expiresAt]` (labels
- * 8/9, Unix seconds). {@link checkDelegationConstraints} enforces both against
- * the verified leaf, comparing the validity window against the leaf's snowflake
- * idtimestamp (expiry-at-ISSUANCE, never wall-clock — receipts must verify
- * forever). This replaces the earlier "does not yet enforce the window" gap;
- * the on-chain check additionally binds `treeSize-1`, which the offline path
- * approximates via the verified leaf index (sound because leafIndex ≤
- * treeSize-1 and production certs are wide).
+ * key only over an MMR coverage window `[mmrStart, mmrEnd]` (payload labels 3/4)
+ * and a validity window `[issuedAt, expiresAt]` (labels 8/9, Unix seconds).
+ * {@link checkDelegationConstraints} enforces the soundly-offline-decidable
+ * slice against the verified leaf: the `mmrEnd` over-horizon bound (the leaf's
+ * index lower-bounds the checkpoint `treeSize-1` the on-chain
+ * `delegationVerifier.sol` binds) and the validity window against the leaf's
+ * snowflake idtimestamp (expiry-at-ISSUANCE, never wall-clock — receipts must
+ * verify forever). The `mmrStart` lower bound and the exact `size-1` bound need
+ * the checkpoint accumulator and are deferred (see that function). This replaces
+ * the earlier "does not yet enforce the window" gap.
  */
 
 import {
@@ -206,21 +206,31 @@ function parseDelegationConstraints(
 
 /**
  * Enforce a resolved cert's constraints against the verified leaf (FOR-420).
- * Coverage: `mmrStart ≤ leafMmrIndex ≤ mmrEnd` (inclusive, per
- * `delegationVerifier.sol`). Validity: the leaf's issuance time (from its
- * snowflake idtimestamp) must fall within `[issuedAt, expiresAt]` — compared
- * against the checkpoint/leaf time, NOT wall-clock, so a valid receipt verifies
- * forever.
+ *
+ * Coverage: the delegation authorizes checkpoint positions `treeSize-1 ∈
+ * [mmrStart, mmrEnd]` (inclusive, `delegationVerifier.sol`). Offline we hold the
+ * verified leaf's `mmrIndex`, and `leafMmrIndex ≤ treeSize-1` (the leaf is
+ * included in the checkpoint). So `leafMmrIndex > mmrEnd` SOUNDLY implies
+ * `treeSize-1 > mmrEnd` — a key signing beyond its authorized horizon — and is
+ * rejected. The `mmrStart` lower bound is deliberately NOT enforced here: an
+ * early leaf can legitimately appear in a checkpoint whose `size-1 ≥ mmrStart`,
+ * so `leafMmrIndex < mmrStart` does not imply a violation and enforcing it would
+ * false-reject valid receipts under a narrow cert. The lower bound and the exact
+ * `size-1` upper bound need the checkpoint accumulator (absent in the single-peak
+ * offline path) — deferred; in practice lane certs are wide (`mmrStart=0`).
+ *
+ * Validity: the leaf's issuance time (from its snowflake idtimestamp) must fall
+ * within `[issuedAt, expiresAt]` — compared against the checkpoint/leaf time,
+ * NOT wall-clock, so a valid receipt verifies forever. `not-yet-valid` is sound
+ * (`leafTime ≤ checkpointTime`); `expired` uses the leaf time as the pinned
+ * checkpoint-time proxy (ADR-0050 / FOR-297 semantics).
  */
 export function checkDelegationConstraints(
   constraints: DelegationConstraints,
   leafMmrIndex: bigint,
   leafIdtimestamp: bigint,
 ): { ok: true } | { ok: false; reason: string } {
-  if (
-    leafMmrIndex < constraints.mmrStart ||
-    leafMmrIndex > constraints.mmrEnd
-  ) {
+  if (leafMmrIndex > constraints.mmrEnd) {
     return { ok: false, reason: "delegation_out_of_range" };
   }
   const t = idtimestampToUnixSeconds(leafIdtimestamp);
