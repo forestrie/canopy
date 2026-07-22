@@ -13,10 +13,15 @@ import { randomUUID } from "node:crypto";
 import {
   decodeCborDeterministic,
   encodeCborDeterministic,
+  encodeSigStructure,
 } from "@forestrie/encoding";
 import { describe, expect, it } from "vitest";
 import { signOnchainDelegationEs256 } from "@forestrie/delegation-cose";
-import { resolveDelegatedVerifyKey } from "@forestrie/receipt-verify";
+import {
+  resolveDelegatedVerifyKey,
+  univocityLeafHash,
+  verifyReceiptOfflineWithKeys,
+} from "@forestrie/receipt-verify";
 import { bytesToBase64 } from "../../src/encoding.js";
 import {
   hex32ToWireLogIdBytes,
@@ -405,11 +410,12 @@ describe("FOR-421 hermetic positive advance-delegation", () => {
   const localFutureNotAfter = (): number =>
     Math.floor(new Date("2100-01-01T00:00:00Z").getTime() / 1000);
 
-  /** A real (importable) EC2 P-256 delegated key: COSE_Key bytes + raw x/y. */
+  /** A real (importable) EC2 P-256 delegated key: COSE_Key bytes, raw x/y, keypair. */
   async function realDelegatedKey(): Promise<{
     coseKey: Uint8Array;
     x: Uint8Array;
     y: Uint8Array;
+    pair: CryptoKeyPair;
   }> {
     const pair = (await crypto.subtle.generateKey(
       { name: "ECDSA", namedCurve: "P-256" },
@@ -429,7 +435,7 @@ describe("FOR-421 hermetic positive advance-delegation", () => {
         [-3, y],
       ]),
     );
-    return { coseKey, x, y };
+    return { coseKey, x, y, pair };
   }
 
   async function importRootVerifyKey(
@@ -449,7 +455,7 @@ describe("FOR-421 hermetic positive advance-delegation", () => {
     );
   }
 
-  it("a CI-vouched standing key's coverage-served advance cert chains under the offline verifier", async () => {
+  it("a CI-vouched standing key's advance cert is served, chains, and anchors an offline-verifiable receipt (FOR-421/423)", async () => {
     const logUuid = randomUUID();
     const logHex32 = normalizeLogIdToHex32(logUuid);
     const rootKeyPair = await generateTestRootKeyPair();
@@ -457,6 +463,7 @@ describe("FOR-421 hermetic positive advance-delegation", () => {
       coseKey: delegatedCoseKey,
       x: delX,
       y: delY,
+      pair: delegatedPair,
     } = await realDelegatedKey();
 
     // Root-signed advance cert binding the real delegated key over a wide window.
@@ -557,5 +564,104 @@ describe("FOR-421 hermetic positive advance-delegation", () => {
       await importRootVerifyKey(otherRaw.slice(1, 33), otherRaw.slice(33, 65)),
     ]);
     expect(wrongResolution.kind).toBe("broken");
+
+    // FOR-423 (Tier 2): a full delegated RECEIPT built over the coordinator-SERVED
+    // advance cert offline-verifies end-to-end. Sign a minimal single-leaf
+    // checkpoint (peak = leaf) with the delegated PRIVATE key, attach the served
+    // cert at label 1000 + a size-1 inclusion proof at header 396, and confirm
+    // verifyReceiptOfflineWithKeys chains cert->delegated-key, checks the
+    // signature + inclusion, and enforces the FOR-420 coverage/expiry window.
+    const idtimestampBe8 = new Uint8Array(8).fill(0x02); // within the cert window
+    const statement = new TextEncoder().encode(`for-423 tier2 ${logUuid}`);
+    const inner = new Uint8Array(
+      await crypto.subtle.digest("SHA-256", statement),
+    );
+    const leaf = await univocityLeafHash(idtimestampBe8, inner); // = peak (size 1)
+
+    const protectedHdr = encodeCborDeterministic(
+      new Map<number, unknown>([[1, -7]]),
+    );
+    const sig = new Uint8Array(
+      await crypto.subtle.sign(
+        { name: "ECDSA", hash: "SHA-256" },
+        delegatedPair.privateKey,
+        encodeSigStructure(protectedHdr, new Uint8Array(0), leaf),
+      ),
+    );
+    const receiptCbor = encodeCborDeterministic([
+      protectedHdr,
+      new Map<number, unknown>([
+        [
+          396,
+          new Map<number, unknown>([
+            [
+              -1,
+              [
+                new Map<number, unknown>([
+                  [1, 0],
+                  [2, []],
+                ]),
+              ],
+            ],
+          ]),
+        ],
+        [1000, served.certificate!],
+      ]),
+      null,
+      sig,
+    ]);
+
+    const receiptResult = await verifyReceiptOfflineWithKeys({
+      trustKeys: [rootVerifyKey],
+      receiptCbor,
+      payload: statement,
+      idtimestampBe8,
+    });
+    expect(receiptResult).toEqual({ ok: true, stage: "binding" });
+
+    // A receipt whose delegation cert is served but signed by a DIFFERENT key
+    // (tampered delegated signature) must fail at the signature stage.
+    const otherDelegated = (await crypto.subtle.generateKey(
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign", "verify"],
+    )) as CryptoKeyPair;
+    const badSig = new Uint8Array(
+      await crypto.subtle.sign(
+        { name: "ECDSA", hash: "SHA-256" },
+        otherDelegated.privateKey,
+        encodeSigStructure(protectedHdr, new Uint8Array(0), leaf),
+      ),
+    );
+    const tamperedReceipt = encodeCborDeterministic([
+      protectedHdr,
+      new Map<number, unknown>([
+        [
+          396,
+          new Map<number, unknown>([
+            [
+              -1,
+              [
+                new Map<number, unknown>([
+                  [1, 0],
+                  [2, []],
+                ]),
+              ],
+            ],
+          ]),
+        ],
+        [1000, served.certificate!],
+      ]),
+      null,
+      badSig,
+    ]);
+    const tamperedResult = await verifyReceiptOfflineWithKeys({
+      trustKeys: [rootVerifyKey],
+      receiptCbor: tamperedReceipt,
+      payload: statement,
+      idtimestampBe8,
+    });
+    expect(tamperedResult.ok).toBe(false);
+    expect(tamperedResult.stage).toBe("signature");
   });
 });
