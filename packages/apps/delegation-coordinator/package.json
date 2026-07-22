@@ -23,9 +23,10 @@
     "viem": "^2.21.0"
   },
   "devDependencies": {
-    "@forestrie/encoding": "workspace:*",
     "@cloudflare/vitest-pool-workers": "^0.9.13",
     "@cloudflare/workers-types": "^4.20241218.0",
+    "@forestrie/encoding": "workspace:*",
+    "@forestrie/receipt-verify": "workspace:*",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4",
     "wrangler": "^4.94.0"

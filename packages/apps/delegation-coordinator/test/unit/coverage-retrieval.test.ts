@@ -16,6 +16,7 @@ import {
 } from "@forestrie/encoding";
 import { describe, expect, it } from "vitest";
 import { signOnchainDelegationEs256 } from "@forestrie/delegation-cose";
+import { resolveDelegatedVerifyKey } from "@forestrie/receipt-verify";
 import { bytesToBase64 } from "../../src/encoding.js";
 import {
   hex32ToWireLogIdBytes,
@@ -381,5 +382,180 @@ describe("standing delegate-key registration (POST /api/sealer/delegate-keys)", 
       new Uint8Array(await hitRes.arrayBuffer()),
     );
     expect(resp.certificate).toBeInstanceOf(Uint8Array);
+  });
+});
+
+/**
+ * FOR-421 (plan-2607-35 Task E, Tier 1): hermetic positive advance-delegation.
+ *
+ * Ties the coordinator's registrar-voucher → membership register → coverage
+ * retrieval chain to the FOR-297/FOR-420 offline verifier: a standing key
+ * vouched by the CI registrar (its private half ships in registrar-voucher-fixture,
+ * pinned as PINNED_REGISTRAR_KEY) is registered, coverage retrieval serves the
+ * root-signed advance cert bound to it, and that SERVED cert is offline-consumable
+ * — `resolveDelegatedVerifyKey` chains it to the registered root and extracts the
+ * delegated key. Fully hermetic: a CI-controlled ES256 root K(L), a real delegated
+ * keypair, and the test registrar key — no deployed lane, no KMS.
+ */
+describe("FOR-421 hermetic positive advance-delegation", () => {
+  const TEST_TOKEN_LOCAL = "test-coordinator-token";
+  const localAuth = (): HeadersInit => ({
+    Authorization: `Bearer ${TEST_TOKEN_LOCAL}`,
+  });
+  const localFutureNotAfter = (): number =>
+    Math.floor(new Date("2100-01-01T00:00:00Z").getTime() / 1000);
+
+  /** A real (importable) EC2 P-256 delegated key: COSE_Key bytes + raw x/y. */
+  async function realDelegatedKey(): Promise<{
+    coseKey: Uint8Array;
+    x: Uint8Array;
+    y: Uint8Array;
+  }> {
+    const pair = (await crypto.subtle.generateKey(
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign", "verify"],
+    )) as CryptoKeyPair;
+    const raw = new Uint8Array(
+      (await crypto.subtle.exportKey("raw", pair.publicKey)) as ArrayBuffer,
+    );
+    const x = raw.slice(1, 33);
+    const y = raw.slice(33, 65);
+    const coseKey = encodeCborDeterministic(
+      new Map<number, unknown>([
+        [1, 2],
+        [-1, 1],
+        [-2, x],
+        [-3, y],
+      ]),
+    );
+    return { coseKey, x, y };
+  }
+
+  async function importRootVerifyKey(
+    x: Uint8Array,
+    y: Uint8Array,
+  ): Promise<CryptoKey> {
+    const raw = new Uint8Array(65);
+    raw[0] = 0x04;
+    raw.set(x, 1);
+    raw.set(y, 33);
+    return crypto.subtle.importKey(
+      "raw",
+      raw,
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["verify"],
+    );
+  }
+
+  it("a CI-vouched standing key's coverage-served advance cert chains under the offline verifier", async () => {
+    const logUuid = randomUUID();
+    const logHex32 = normalizeLogIdToHex32(logUuid);
+    const rootKeyPair = await generateTestRootKeyPair();
+    const {
+      coseKey: delegatedCoseKey,
+      x: delX,
+      y: delY,
+    } = await realDelegatedKey();
+
+    // Root-signed advance cert binding the real delegated key over a wide window.
+    const material = await buildTestByokMaterial({
+      rootKeyPair,
+      logIdHex32: logHex32,
+      mmrStart: 0,
+      mmrEnd: 16383,
+      delegatedPublicKey: delegatedCoseKey,
+      issuedAt: 1_700_000_000,
+      expiresAt: 4_102_444_800,
+    });
+    await registerEs256Root(logUuid, material.x, material.y);
+
+    // Register the standing key WITH a CI registrar voucher (verified at ingest
+    // against PINNED_REGISTRAR_KEY) — the membership/voucher positive path.
+    const regRes = await fetchWithDoRetry(
+      "http://localhost/api/sealer/delegate-keys",
+      {
+        method: "POST",
+        headers: { ...localAuth(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sealerId: "sealer-a",
+          keys: [
+            await delegateKeyEntryWithVoucher({
+              sealerId: "sealer-a",
+              publicKey: delegatedCoseKey,
+              epoch: 2,
+              notAfter: localFutureNotAfter(),
+            }),
+          ],
+        }),
+      },
+    );
+    expect(regRes.status).toBe(200);
+
+    // A cert bound to a registered standing key requires the compact on-chain
+    // delegation proof (plan-2607-10), signed by the root over the same window.
+    const onchain = await signOnchainDelegationEs256(
+      {
+        logIdHex: logHex32,
+        mmrStart: 0,
+        mmrEnd: 16383,
+        delegatedKeyX: delX,
+        delegatedKeyY: delY,
+      },
+      rootKeyPair,
+    );
+    const putRes = await submitCert({
+      logHex32,
+      mmrStart: 0,
+      mmrEnd: 16383,
+      delegatedPublicKey: delegatedCoseKey,
+      certificate: material.certificate,
+      issuedAt: material.issuedAt,
+      expiresAt: material.expiresAt,
+      onchainSignature: onchain.signature,
+    });
+    expect(putRes.status).toBe(200);
+
+    // Coverage retrieval serves the wide advance cert for a narrow seal window.
+    const issueRes = await issue({
+      logHex32,
+      mmrStart: 5,
+      mmrEnd: 7,
+      delegatedPublicKey: delegatedCoseKey,
+    });
+    expect(issueRes.status).toBe(200);
+    const served = decodeIssueResponse(
+      new Uint8Array(await issueRes.arrayBuffer()),
+    );
+    expect(served.certificate).toBeInstanceOf(Uint8Array);
+
+    // The SERVED advance cert must be offline-consumable: wrap it in a minimal
+    // COSE_Sign1 (cert at unprotected label 1000) and confirm the offline
+    // resolver chains it to the registered root and extracts the delegated key.
+    const wrappedReceipt = encodeCborDeterministic([
+      new Uint8Array(0),
+      new Map<number, unknown>([[1000, served.certificate!]]),
+      null,
+      new Uint8Array(64),
+    ]);
+    const rootVerifyKey = await importRootVerifyKey(material.x, material.y);
+    const resolution = await resolveDelegatedVerifyKey(wrappedReceipt, [
+      rootVerifyKey,
+    ]);
+    expect(resolution.kind).toBe("resolved");
+
+    // A wrong root must NOT chain — the cert's authority is the registered root.
+    const otherRoot = await generateTestRootKeyPair();
+    const otherRaw = new Uint8Array(
+      (await crypto.subtle.exportKey(
+        "raw",
+        otherRoot.publicKey,
+      )) as ArrayBuffer,
+    );
+    const wrongResolution = await resolveDelegatedVerifyKey(wrappedReceipt, [
+      await importRootVerifyKey(otherRaw.slice(1, 33), otherRaw.slice(33, 65)),
+    ]);
+    expect(wrongResolution.kind).toBe("broken");
   });
 });
