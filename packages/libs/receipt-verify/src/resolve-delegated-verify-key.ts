@@ -20,10 +20,17 @@
  * (approach A, open) will derive per-log owner keys from genesis + public
  * tiles, closing that gap without key distribution.
  *
- * Note (parity with the server port source): this establishes that the root
- * authorized the delegated key, but does NOT yet enforce the certificate's MMR
- * window or expiry-at-issuance against the leaf — that hardening is shared with
- * the server path and tracked separately (FOR-323).
+ * Constraint enforcement (FOR-420): the certificate authorizes the delegated
+ * key only over an MMR coverage window `[mmrStart, mmrEnd]` (payload labels 3/4)
+ * and a validity window `[issuedAt, expiresAt]` (labels 8/9, Unix seconds).
+ * {@link checkDelegationConstraints} enforces the soundly-offline-decidable
+ * slice against the verified leaf: the `mmrEnd` over-horizon bound (the leaf's
+ * index lower-bounds the checkpoint `treeSize-1` the on-chain
+ * `delegationVerifier.sol` binds) and the validity window against the leaf's
+ * snowflake idtimestamp (expiry-at-ISSUANCE, never wall-clock — receipts must
+ * verify forever). The `mmrStart` lower bound and the exact `size-1` bound need
+ * the checkpoint accumulator and are deferred (see that function). This replaces
+ * the earlier "does not yet enforce the window" gap.
  */
 
 import {
@@ -44,18 +51,57 @@ const COSE_KEY_Y = -3;
 const COSE_KTY_EC2 = 2;
 const COSE_CRV_P256 = 1;
 
-/** Delegation-cert payload label for the delegated COSE_Key. */
+/** Delegation-cert payload labels (must match @forestrie/delegation-cose). */
+const PAYLOAD_MMR_START = 3;
+const PAYLOAD_MMR_END = 4;
 const PAYLOAD_DELEGATED_KEY = 5;
+const PAYLOAD_ISSUED_AT = 8;
+const PAYLOAD_EXPIRES_AT = 9;
+
+/**
+ * Snowflake idtimestamp → Unix seconds (DataTrails scheme; arbor
+ * `snowflakeid`). `TimeShift = 24`, per-epoch span `2^40 - 1` ms, current
+ * `CommitmentEpoch = 1` (next epoch ~2038). `unixMs = epoch*(2^40-1) +
+ * (id >> 24)`.
+ */
+const COMMITMENT_EPOCH = 1n;
+const SNOWFLAKE_TIME_SHIFT = 24n;
+const SNOWFLAKE_EPOCH_SPAN_MS = (1n << 40n) - 1n;
+
+export function idtimestampToUnixSeconds(idtimestamp: bigint): number {
+  const ms =
+    COMMITMENT_EPOCH * SNOWFLAKE_EPOCH_SPAN_MS +
+    (idtimestamp >> SNOWFLAKE_TIME_SHIFT);
+  return Number(ms / 1000n);
+}
+
+/**
+ * Coverage + validity window a root-signed delegation cert imposes on its
+ * delegated key. `mmrStart`/`mmrEnd` are inclusive MMR-index bounds;
+ * `issuedAt`/`expiresAt` are Unix seconds.
+ */
+export type DelegationConstraints = {
+  mmrStart: bigint;
+  mmrEnd: bigint;
+  issuedAt: number;
+  expiresAt: number;
+};
 
 /**
  * root-only: no delegation cert present — verify against the root keys as-is.
  * resolved: cert verified under a root key; use `delegatedKey` first.
+ *   `constraints` carries the cert's coverage/validity window when the payload
+ *   declares it (null for legacy certs that predate labels 3/4/8/9).
  * broken: a cert is present but did not verify under the root, or its delegated
  *   key could not be parsed — the delegation chain is invalid.
  */
 export type DelegatedResolution =
   | { kind: "root-only" }
-  | { kind: "resolved"; delegatedKey: CryptoKey }
+  | {
+      kind: "resolved";
+      delegatedKey: CryptoKey;
+      constraints: DelegationConstraints | null;
+    }
   | { kind: "broken" };
 
 function extractDelegationCertBytes(unprotected: unknown): Uint8Array | null {
@@ -111,18 +157,90 @@ async function importDelegatedKey(keyMap: unknown): Promise<CryptoKey | null> {
   }
 }
 
-function extractDelegatedKeyFromPayload(
-  payloadBytes: Uint8Array,
-): unknown | null {
+function decodeCertPayloadMap(payloadBytes: Uint8Array): unknown | null {
   if (!payloadBytes || payloadBytes.length === 0) return null;
-  let payloadMap: unknown;
   try {
-    payloadMap = decodeCborDeterministic(payloadBytes);
+    return decodeCborDeterministic(payloadBytes);
   } catch {
     return null;
   }
+}
+
+function extractDelegatedKeyFromPayloadMap(
+  payloadMap: unknown,
+): unknown | null {
   const get = labelGetter(payloadMap);
   return get ? get(PAYLOAD_DELEGATED_KEY) : null;
+}
+
+function toBigIntOrNull(v: unknown): bigint | null {
+  if (typeof v === "bigint") return v;
+  if (typeof v === "number" && Number.isInteger(v)) return BigInt(v);
+  return null;
+}
+
+function toNumberOrNull(v: unknown): number | null {
+  if (typeof v === "bigint") return Number(v);
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  return null;
+}
+
+/**
+ * Parse the cert's coverage/validity window from its payload map. Returns null
+ * when any of labels 3/4/8/9 is absent (legacy certs predating FOR-390 advance
+ * delegation) — enforcement is then skipped, preserving pre-constraint trust.
+ */
+function parseDelegationConstraints(
+  payloadMap: unknown,
+): DelegationConstraints | null {
+  const get = labelGetter(payloadMap);
+  if (!get) return null;
+  const mmrStart = toBigIntOrNull(get(PAYLOAD_MMR_START));
+  const mmrEnd = toBigIntOrNull(get(PAYLOAD_MMR_END));
+  const issuedAt = toNumberOrNull(get(PAYLOAD_ISSUED_AT));
+  const expiresAt = toNumberOrNull(get(PAYLOAD_EXPIRES_AT));
+  if (mmrStart === null || mmrEnd === null) return null;
+  if (issuedAt === null || expiresAt === null) return null;
+  return { mmrStart, mmrEnd, issuedAt, expiresAt };
+}
+
+/**
+ * Enforce a resolved cert's constraints against the verified leaf (FOR-420).
+ *
+ * Coverage: the delegation authorizes checkpoint positions `treeSize-1 ∈
+ * [mmrStart, mmrEnd]` (inclusive, `delegationVerifier.sol`). Offline we hold the
+ * verified leaf's `mmrIndex`, and `leafMmrIndex ≤ treeSize-1` (the leaf is
+ * included in the checkpoint). So `leafMmrIndex > mmrEnd` SOUNDLY implies
+ * `treeSize-1 > mmrEnd` — a key signing beyond its authorized horizon — and is
+ * rejected. The `mmrStart` lower bound is deliberately NOT enforced here: an
+ * early leaf can legitimately appear in a checkpoint whose `size-1 ≥ mmrStart`,
+ * so `leafMmrIndex < mmrStart` does not imply a violation and enforcing it would
+ * false-reject valid receipts under a narrow cert. The lower bound and the exact
+ * `size-1` upper bound need the checkpoint accumulator (absent in the single-peak
+ * offline path) — deferred; in practice lane certs are wide (`mmrStart=0`).
+ *
+ * Validity: the leaf's issuance time (from its snowflake idtimestamp) must fall
+ * within `[issuedAt, expiresAt]` — compared against the checkpoint/leaf time,
+ * NOT wall-clock, so a valid receipt verifies forever. `not-yet-valid` is sound
+ * (`leafTime ≤ checkpointTime`); `expired` uses the leaf time as the pinned
+ * checkpoint-time proxy (ADR-0050 / FOR-297 semantics).
+ */
+export function checkDelegationConstraints(
+  constraints: DelegationConstraints,
+  leafMmrIndex: bigint,
+  leafIdtimestamp: bigint,
+): { ok: true } | { ok: false; reason: string } {
+  if (leafMmrIndex > constraints.mmrEnd) {
+    return { ok: false, reason: "delegation_out_of_range" };
+  }
+  const t = idtimestampToUnixSeconds(leafIdtimestamp);
+  if (t < constraints.issuedAt) {
+    return { ok: false, reason: "delegation_not_yet_valid" };
+  }
+  if (t > constraints.expiresAt) {
+    return { ok: false, reason: "delegation_expired" };
+  }
+  return { ok: true };
 }
 
 /**
@@ -157,9 +275,13 @@ export async function resolveDelegatedVerifyKey(
   const certDecoded = decodeCoseSign1(certBytes);
   if (!certDecoded) return { kind: "broken" };
 
-  const keyRaw = extractDelegatedKeyFromPayload(certDecoded.payloadBstr);
+  const payloadMap = decodeCertPayloadMap(certDecoded.payloadBstr);
+  const keyRaw = payloadMap
+    ? extractDelegatedKeyFromPayloadMap(payloadMap)
+    : null;
   const delegatedKey = keyRaw ? await importDelegatedKey(keyRaw) : null;
   if (!delegatedKey) return { kind: "broken" };
 
-  return { kind: "resolved", delegatedKey };
+  const constraints = parseDelegationConstraints(payloadMap);
+  return { kind: "resolved", delegatedKey, constraints };
 }
