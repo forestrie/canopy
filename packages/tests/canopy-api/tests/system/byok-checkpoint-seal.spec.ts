@@ -22,7 +22,15 @@ import {
   postSigningRouteWithSession,
   WALLET_CHALLENGE_ES256_SCOPES,
 } from "@e2e-utils/wallet-challenge-session-e2e";
-import { decodeEntryIdHex } from "@e2e-utils/entry-id-e2e";
+import {
+  decodeEntryIdHex,
+  entryIdHexToIdtimestampBe8,
+} from "@e2e-utils/entry-id-e2e";
+import {
+  decodeForestrieGrantCose,
+  verifyGrantReceiptOfflineWithKeys,
+  verifyReceiptOfflineWithKeys,
+} from "@forestrie/receipt-verify";
 import { normalizeForestrieHexId32 } from "@e2e-utils/forestrie-hex-id";
 import {
   extractDelegationCertFromReceipt,
@@ -144,6 +152,25 @@ test.describe("BYOK checkpoint seal e2e", () => {
     ).toBe(true);
     expect(decodeEntryIdHex(grantComplete.entryIdHex).mmrIndex).toBe(0n);
 
+    // FOR-299: full offline verify (layers A–C) of the sealed BYOK grant
+    // receipt, not just the delegation cert. A wallet-managed BYOK log has no
+    // forest genesis in scope; the delegation cert is issued by the runner-held
+    // root, so trust that as the known log-owner key (FOR-297 WithKeys entry).
+    // The delegated sealer key is chained from the label-1000 cert internally.
+    const { grant: grantForVerify } = decodeForestrieGrantCose(
+      forestrieGrantBase64ToBytes(mintGrantB64),
+    );
+    const grantOffline = await verifyGrantReceiptOfflineWithKeys({
+      trustKeys: [rootKeyPair.publicKey],
+      receiptCbor: grantComplete.receiptRes.body,
+      grant: grantForVerify,
+      idtimestampBe8: entryIdHexToIdtimestampBe8(grantComplete.entryIdHex),
+    });
+    expect(
+      grantOffline.ok,
+      `grant offline verify failed: stage=${grantOffline.stage} reason=${grantOffline.reason ?? "unknown"}`,
+    ).toBe(true);
+
     const completedGrantB64 = buildCompletedGrantBase64(
       mintGrantB64,
       grantComplete.receiptRes.body,
@@ -195,6 +222,20 @@ test.describe("BYOK checkpoint seal e2e", () => {
         rootPublicKey: rootKeyPair.publicKey,
       }),
     ).toBe(true);
+
+    // FOR-299: full offline verify of the sealed statement (entry) receipt. The
+    // leaf commits SHA-256(statementSign1); verify against the same known
+    // log-owner key, chaining the delegated sealer key from the cert.
+    const entryOffline = await verifyReceiptOfflineWithKeys({
+      trustKeys: [rootKeyPair.publicKey],
+      receiptCbor: entryComplete.receiptRes.body,
+      payload: statementSign1,
+      idtimestampBe8: entryIdHexToIdtimestampBe8(entryComplete.entryIdHex),
+    });
+    expect(
+      entryOffline.ok,
+      `entry offline verify failed: stage=${entryOffline.stage} reason=${entryOffline.reason ?? "unknown"}`,
+    ).toBe(true);
   });
 });
 
@@ -202,4 +243,13 @@ function absoluteUrl(baseURL: string, location: string): string {
   if (location.startsWith("http")) return location;
   const base = baseURL.replace(/\/$/, "");
   return `${base}${location.startsWith("/") ? location : `/${location}`}`;
+}
+
+/** URL-safe base64 Forestrie-Grant → bytes (mirrors grants-bootstrap helper). */
+function forestrieGrantBase64ToBytes(b64: string): Uint8Array {
+  const normalized = b64.replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(normalized);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
 }
