@@ -46,4 +46,47 @@ describe("verifyGrantReceiptOffline — delegated (FOR-297)", () => {
     expect(result.stage).toBe("signature");
     expect(result.reason).toBe("signature_invalid");
   });
+
+  // FOR-420: the cert's coverage/validity window is enforced against the
+  // verified leaf, at stage `signature`, before inclusion is reported ok.
+  it("rejects a cert whose coverage range excludes the verified leaf", async () => {
+    const fx = await buildDelegatedGrantReceiptFixture({ nonCovering: true });
+    const result = await verifyGrantReceiptOffline({
+      genesisCbor: fx.genesisCbor,
+      receiptCbor: fx.receiptCbor,
+      grant: fx.grant,
+      idtimestampBe8: fx.idtimestampBe8,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.stage).toBe("signature");
+    expect(result.reason).toBe("delegation_out_of_range");
+  });
+
+  it("rejects a cert expired at the leaf's issuance time", async () => {
+    const fx = await buildDelegatedGrantReceiptFixture({
+      expiredAtIssuance: true,
+    });
+    const result = await verifyGrantReceiptOffline({
+      genesisCbor: fx.genesisCbor,
+      receiptCbor: fx.receiptCbor,
+      grant: fx.grant,
+      idtimestampBe8: fx.idtimestampBe8,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.stage).toBe("signature");
+    expect(result.reason).toBe("delegation_expired");
+  });
+
+  it("rejects a cert not yet valid at the leaf's issuance time", async () => {
+    const fx = await buildDelegatedGrantReceiptFixture({ notYetValid: true });
+    const result = await verifyGrantReceiptOffline({
+      genesisCbor: fx.genesisCbor,
+      receiptCbor: fx.receiptCbor,
+      grant: fx.grant,
+      idtimestampBe8: fx.idtimestampBe8,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.stage).toBe("signature");
+    expect(result.reason).toBe("delegation_not_yet_valid");
+  });
 });

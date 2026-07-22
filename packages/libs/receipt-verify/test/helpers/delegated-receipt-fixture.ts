@@ -71,6 +71,8 @@ async function buildDelegationCert(opts: {
   delegatedPub: CryptoKey;
   mmrStart: number;
   mmrEnd: number;
+  issuedAt: number;
+  expiresAt: number;
 }): Promise<Uint8Array> {
   const protectedBytes = cborBytes(new Map<number, unknown>([[1, -7]]));
   const payload = cborBytes(
@@ -78,13 +80,25 @@ async function buildDelegationCert(opts: {
       [3, opts.mmrStart],
       [4, opts.mmrEnd],
       [5, await coseKeyMapFor(opts.delegatedPub)],
-      [8, 1_700_000_000],
-      [9, 1_700_000_000 + 3600],
+      [8, opts.issuedAt],
+      [9, opts.expiresAt],
       [10, new Uint8Array(16)],
     ]),
   );
   const sig = await es256Sign(opts.root.privateKey, protectedBytes, payload);
   return cborBytes([protectedBytes, new Map<number, unknown>(), payload, sig]);
+}
+
+/**
+ * Independent snowflake idtimestamp → Unix seconds (mirrors the arbor
+ * `snowflakeid` scheme the SUT ports; kept separate so tests do not derive the
+ * expected value from the implementation under test).
+ */
+function idtimestampBe8ToUnixSeconds(be8: Uint8Array): number {
+  const view = new DataView(be8.buffer, be8.byteOffset, 8);
+  const id = view.getBigUint64(0, false);
+  const ms = 1n * ((1n << 40n) - 1n) + (id >> 24n);
+  return Number(ms / 1000n);
 }
 
 /** Detached-peak receipt signed by `signer`, with delegation cert at label 1000. */
@@ -122,6 +136,12 @@ export async function buildDelegatedGrantReceiptFixture(opts?: {
   wrongRoot?: boolean;
   /** Embed no delegation cert while still signing with the delegated key. */
   omitCert?: boolean;
+  /** Cert coverage range excludes the verified leaf's mmrIndex (FOR-420). */
+  nonCovering?: boolean;
+  /** Cert expiresAt precedes the leaf's issuance time (FOR-420). */
+  expiredAtIssuance?: boolean;
+  /** Cert issuedAt follows the leaf's issuance time (FOR-420). */
+  notYetValid?: boolean;
 }): Promise<{
   genesisCbor: Uint8Array;
   receiptCbor: Uint8Array;
@@ -162,13 +182,24 @@ export async function buildDelegatedGrantReceiptFixture(opts?: {
   const peak = await calculateRoot(hasher, leaf1Hash, proof, 1n);
 
   const certRoot = opts?.wrongRoot ? await generateP256KeyPair() : rootKeyPair;
+  // Derive the cert's validity window from the leaf's own idtimestamp so the
+  // positive case is self-consistent (expiry-at-issuance, not wall-clock).
+  const leafTime = idtimestampBe8ToUnixSeconds(idtimestampBe8);
+  // Leaf is at mmrIndex 1; a covering cert must include it, a non-covering one
+  // must exclude it.
+  const mmrStart = opts?.nonCovering ? 100 : 0;
+  const mmrEnd = opts?.nonCovering ? 200 : 65535;
+  const issuedAt = opts?.notYetValid ? leafTime + 10 : leafTime - 3600;
+  const expiresAt = opts?.expiredAtIssuance ? leafTime - 10 : leafTime + 3600;
   const delegationCert = opts?.omitCert
     ? null
     : await buildDelegationCert({
         root: certRoot,
         delegatedPub: delegatedKeyPair.publicKey,
-        mmrStart: 0,
-        mmrEnd: 65535,
+        mmrStart,
+        mmrEnd,
+        issuedAt,
+        expiresAt,
       });
 
   const receiptCbor = await buildDelegatedPeakReceipt({

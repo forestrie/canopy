@@ -8,7 +8,10 @@ import type { Grant } from "@forestrie/encoding";
 import { grantCommitmentHashFromGrant } from "./grant-commitment.js";
 import { decodeTrustRootFromGenesis } from "./decode-trust-root-from-genesis.js";
 import { es256ReceiptVerifyKeys } from "./decode-trust-root-cbor.js";
-import { resolveDelegatedVerifyKey } from "./resolve-delegated-verify-key.js";
+import {
+  checkDelegationConstraints,
+  resolveDelegatedVerifyKey,
+} from "./resolve-delegated-verify-key.js";
 import { univocityLeafHash } from "./leaf-commitment.js";
 import { parseReceipt } from "./parse-receipt.js";
 import type { ReceiptVerifyResult } from "./receipt-verify-result.js";
@@ -307,6 +310,22 @@ async function verifyReceiptOfflineWithLeafInnerKeys(input: {
     idtimestamp = readIdtimestampBe8(input.idtimestampBe8);
   } catch {
     return { ok: false, stage: "binding", reason: "idtimestamp_invalid" };
+  }
+
+  // FOR-420: a resolved delegation cert authorizes its key only within an MMR
+  // coverage window and validity window. Enforce both before reporting the
+  // signature/inclusion as ok — a delegated key signing outside its authorized
+  // range, or after its expiry-at-issuance, fails at stage `signature`.
+  if (delegation.kind === "resolved" && delegation.constraints) {
+    const leafMmrIndex = parsed.proof.mmrIndex ?? parsed.proof.leafIndex ?? 0n;
+    const check = checkDelegationConstraints(
+      delegation.constraints,
+      leafMmrIndex,
+      idtimestamp,
+    );
+    if (!check.ok) {
+      return { ok: false, stage: "signature", reason: check.reason };
+    }
   }
 
   const leafHash = await univocityLeafHash(idtimestamp, input.inner);
