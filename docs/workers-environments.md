@@ -142,33 +142,73 @@ Closing that asymmetry is tracked separately.
 `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` authenticate to the Coinbase CDP
 facilitator for `/verify` and `/settle`.
 
+> **Not needed on the dev lane today.** Dev (and the top-level config) point at
+> the **credential-free testnet facilitator** `https://x402.org/facilitator`, so
+> the settlement rail can be exercised end-to-end without CDP keys. Credentials
+> are still pushed and still reported by `/health`, so the credential path stays
+> covered — it is just not load-bearing until the FOR-83 mainnet cutover moves
+> the facilitator back to `https://api.cdp.coinbase.com/platform/v2/x402`.
+
 | Origin | Transport | Consumer | Secret |
 | ------ | --------- | -------- | ------ |
 | GitHub **Environment** `dev` | `deploy-workers.yml` → `wrangler secret put --env dev` | `x402-settlement-dev`, `canopy-api-dev` | `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` |
 | GitHub **Environment** `prod` | `deploy-workers.yml` → `wrangler secret put --env prod` | `x402-settlement-prod`, `canopy-api-prod` | same |
 
-**Format:** `CDP_API_KEY_SECRET` must be a **PKCS#8 PEM P-256** key. `importPemKey`
+#### There are two generations of CDP key, and this worker wants the older one
+
+CDP issues Secret API Keys in two shapes. **Ed25519 has been the default since
+February 2025**; ECDSA remains available and is what the Coinbase App SDKs use.
+
+| | Legacy (ECDSA) | Current (Ed25519) |
+| --- | --- | --- |
+| Key ID | `organizations/{org_id}/apiKeys/{key_id}` | UUID |
+| Secret | **SEC1 PEM** (`-----BEGIN EC PRIVATE KEY-----`) | base64 → **64 bytes** (32-byte seed + 32-byte public key) |
+| JWT alg | **ES256** (ECDSA P-256) | **EdDSA** |
+
+`generateCdpJwt` signs **ES256**, and `importPemKey`
 (`packages/apps/x402-settlement/src/index.ts`) does `pemKey.replace(/\\n/g,"\n")`
-then `crypto.subtle.importKey("pkcs8", …, {name:"ECDSA", namedCurve:"P-256"})` —
-literal `\n` escapes are tolerated, **SEC1 keys throw**. The SEC1 fallback in that
-function is a comment and a `throw`; it does not actually wrap SEC1.
+then `crypto.subtle.importKey("pkcs8", …, {name:"ECDSA", namedCurve:"P-256"})`.
+That is the **legacy ECDSA** path. Its SEC1 fallback is a comment and a `throw` —
+it does not actually wrap SEC1, so a SEC1 key fails.
+
+**But the env vars it reads are named for the *current* key.** `CDP_API_KEY_ID` /
+`CDP_API_KEY_SECRET` are the Ed25519 pair's names, and that is what Doppler holds
+under them. **The worker is wired to the wrong key generation** — the names say
+current, the code says legacy. It was never going to work with the value it names,
+irrespective of PEM encoding.
 
 > **What is in Doppler today does not import. Do not copy it across as-is.**
-> CDP credentials already exist in Doppler — projects **`coinbase-x402`** and
-> **`canopy`**, configs `dev` / `stg` / `prd` / `dev_personal`, all holding
-> identical values (so there is no dev/prod separation either). Neither stored
-> form is usable by this worker; both were verified empirically against the
-> worker's exact import path:
+> Credentials exist in projects **`coinbase-x402`** and **`canopy`**, configs
+> `dev` / `stg` / `prd` / `dev_personal` — all holding **identical** values, so
+> there is no dev/prod separation either. Both stored forms were tested against
+> the worker's exact import path:
 >
-> | Stored key | Form | `importKey("pkcs8", …, ECDSA P-256)` |
+> | Stored key | Generation | Result |
 > |---|---|---|
-> | `COINBASE_API_KEY_ECDSA` | **SEC1** PEM, with literal `\n` escapes | ✗ throws `Invalid keyData` |
-> | `CDP_API_KEY_SECRET` | base64, no PEM header, decodes to **64 bytes** (a P-256 PKCS#8 DER is ~138 — this is Ed25519-shaped, a different CDP key type) | ✗ throws `Invalid keyData` |
-> | the SEC1 key converted with `openssl pkcs8 -topk8 -nocrypt` | **PKCS#8** PEM | ✓ imports as P-256 |
->
-> So Phase 2 is a **format conversion**, not a key hunt. Convert once, store the
-> PKCS#8 form, and keep per-lane keys so a testnet credential can never settle
-> real funds after the mainnet cutover.
+> | `CDP_API_KEY_SECRET` (+ `CDP_API_KEY_ID`, a UUID) | current, Ed25519 | ✗ `Invalid keyData` — 64 bytes, not a P-256 PKCS#8 DER (~138) |
+> | `COINBASE_API_KEY_ECDSA` (+ `COINBASE_API_KEY_ID`, `API_KEY_RESOURCE_ID` = `organizations/…`) | legacy, ECDSA | ✗ `Invalid keyData` — SEC1, not PKCS#8 |
+> | the SEC1 key via `openssl pkcs8 -topk8 -nocrypt` | legacy, converted | ✓ imports as P-256 |
+
+**Two ways to resolve it — this is a real decision, not a format nit:**
+
+* **Stay on ECDSA (no code change).** Issue an **ECDSA** Secret API key, convert
+  `openssl pkcs8 -topk8 -nocrypt -in sec1.pem -out pkcs8.pem`, and store the
+  PKCS#8 PEM as `CDP_API_KEY_SECRET` **paired with that ECDSA key's own ID** —
+  not the Ed25519 UUID. Mispairing is part of why it fails today. Keeps you on a
+  path Coinbase now treats as legacy.
+* **Move to Ed25519 (small code change).** Use the current key already in
+  Doppler; change `generateCdpJwt` from ES256 to EdDSA and swap the PKCS#8 import
+  for a raw Ed25519 one, deleting the PEM handling entirely. Aligns with CDP's
+  direction. **Verify `workerd` exposes `Ed25519` in WebCrypto before committing.**
+
+Either way, keep **per-lane keys** so a testnet credential cannot settle real
+funds after the cutover.
+
+**Rotation:** CDP has **no in-place rotation** — you delete and recreate in the
+portal ([portal.cdp.coinbase.com/api-keys/secret](https://portal.cdp.coinbase.com/api-keys/secret)),
+and the secret is shown once. See
+[CDP API keys](https://docs.cdp.coinbase.com/get-started/authentication/cdp-api-keys)
+and [x402 quickstart for sellers](https://docs.cdp.coinbase.com/x402/quickstart-for-sellers).
 
 **Verify after deploy:** `GET /health` on the settlement worker returns
 `hasCdpCredentials`. It must be `true` on both lanes.
