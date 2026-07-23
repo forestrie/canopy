@@ -196,10 +196,30 @@ irrespective of PEM encoding.
   PKCS#8 PEM as `CDP_API_KEY_SECRET` **paired with that ECDSA key's own ID** —
   not the Ed25519 UUID. Mispairing is part of why it fails today. Keeps you on a
   path Coinbase now treats as legacy.
-* **Move to Ed25519 (small code change).** Use the current key already in
-  Doppler; change `generateCdpJwt` from ES256 to EdDSA and swap the PKCS#8 import
-  for a raw Ed25519 one, deleting the PEM handling entirely. Aligns with CDP's
-  direction. **Verify `workerd` exposes `Ed25519` in WebCrypto before committing.**
+* **Move to Ed25519 (small code change) — recommended.** Use the current key
+  *already in Doppler*; change `generateCdpJwt` from ES256 to EdDSA and swap the
+  PKCS#8-ECDSA import for an Ed25519 one, deleting the PEM handling entirely.
+  Aligns with CDP's direction, needs no conversion, and no new key.
+
+  **Verified against workerd** (`compatibility_date` 2024-10-01,
+  `nodejs_compat_v2`) — every step Option B needs is supported:
+
+  | Probe | Result |
+  |---|---|
+  | `generateKey({name:"Ed25519"})` | ✓ (legacy `NODE-ED25519` also present) |
+  | `importKey("pkcs8", …, {name:"Ed25519"})` on a 32-byte seed wrapped per RFC 8410 | ✓ |
+  | `sign({name:"Ed25519"}, …)` | ✓ 64-byte signature |
+  | `importKey("raw", 32-byte public key)` + `verify` | ✓ |
+  | **full CDP layout**: `seed‖publicKey` → sign with seed → verify with embedded public key | ✓ `true` |
+
+  The synthetic CDP-shaped secret base64-encodes to **88 characters** — exactly
+  the length of the stored `CDP_API_KEY_SECRET`, independently confirming it is
+  an Ed25519 `seed‖publicKey` pair.
+
+  Implementation note: the stored 64 bytes are `seed(32) ‖ publicKey(32)`. Import
+  **only the first 32 bytes**, wrapped in the RFC 8410 PKCS#8 prefix
+  `302e020100300506032b657004220420`; WebCrypto has no "raw" import for Ed25519
+  *private* keys.
 
 Either way, keep **per-lane keys** so a testnet credential cannot settle real
 funds after the cutover.
