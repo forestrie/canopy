@@ -162,12 +162,21 @@ delete half. Age-since-creation is a valid proxy for `validBefore` (a claim
 written at T guards an authorization dead by T + 300s), so no key restructure
 is needed.
 
-**Outstanding — operator action, per bucket / per lane.** Verified 2026-07-23
-that `canopy-dev-1-grants` carries only the default multipart-abort rule, so
-the expiry rule is **not yet applied anywhere**. Until it is, the prefix grows
-unbounded (correctness unaffected — a stale claim only ever rejects a replay —
-but storage and list latency degrade silently). Apply on dev, and on prod
-before that lane charges.
+**APPLIED on dev (2026-07-23):** `canopy-dev-1-grants` now carries
+`expire-used-auth`, prefix `payments/used-auth/`, "Expire objects after 1 days",
+alongside the default multipart-abort rule.
+
+**Prod blocked — the bucket does not exist.** `wrangler r2 bucket lifecycle add
+canopy-prod-1-grants` fails with `The specified bucket does not exist [10006]`,
+and `wrangler r2 bucket list` shows only `canopy-dev-1-grants`. So
+canopy-api's **prod** `R2_GRANTS` binding
+(`wrangler.jsonc` prod env) references a bucket that was never provisioned —
+the same class of gap as the hand-created prod queue in FOR-78. Pre-existing,
+not introduced here, and currently harmless because the paid-onboard code has
+never been deployed to prod. It must be resolved before prod is deployed at
+all (not merely before it charges): apply
+`task cloudflare:bucket:lifecycle:used-auth` against the prod bucket as part of
+creating it.
 
 ### Lows — DONE
 
