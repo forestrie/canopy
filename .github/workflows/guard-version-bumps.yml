@@ -41,3 +41,22 @@ jobs:
       # silently never reached any worker while every deploy stayed green.
       - name: Assert secret pushes declare a working-directory and fail loudly
         run: bash scripts/assert-secret-steps-well-formed.sh
+
+  lane-wiring:
+    name: x402 lanes must not cross-wire
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # FOR-443: canopy-api produced settlement jobs into a queue name derived
+      # from CANOPY_ID, while x402-settlement consumed a hand-matched literal.
+      # CANOPY_ID was published lane-agnostically, so Lane B deployed bound to
+      # Lane A's queue and Durable Object and nothing caught it.
+      - name: Assert the x402 producer and consumer agree on every lane
+        run: node scripts/assert-lane-wiring.mjs

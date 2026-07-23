@@ -219,11 +219,28 @@ function setQueueName(envBlock, bindingName, queueName) {
   return envBlock.replace(re, `$1"${queueName}"`);
 }
 
-function x402SettlementScriptFromCanopyId(canopyId) {
-  if (!canopyId) return "";
+/**
+ * Legacy fallback for the x402 settlement names.
+ *
+ * These used to be derived from CANOPY_ID: the queue took the whole id
+ * (`{CANOPY_ID}-x402-settlement`) while the DO script took only the second
+ * dash-segment (`canopy-([^-]+)` -> `x402-settlement-$1`). Two different
+ * derivations from one input, failing independently for any id outside
+ * `canopy-{dev,prod}-N` -- and silently binding Lane B to Lane A whenever
+ * CANOPY_ID drifted (FOR-443).
+ *
+ * The names are now published per lane in the forest-1 consumer contract and
+ * consumed directly, by both this worker and x402-settlement itself. This
+ * fallback only covers a contract that predates plan-2607-39 Phase 1; delete
+ * it once every lane publishes the two keys.
+ */
+function legacyX402NamesFromCanopyId(canopyId) {
+  if (!canopyId) return { queue: "", script: "" };
   const match = canopyId.match(/^canopy-([^-]+)/);
-  if (!match) return "";
-  return `x402-settlement-${match[1]}`;
+  return {
+    queue: `${canopyId}-x402-settlement`,
+    script: match ? `x402-settlement-${match[1]}` : "",
+  };
 }
 
 let config = readFileSync(inputPath, "utf8");
@@ -288,18 +305,24 @@ envBlock = setDurableObjectScript(
   "SEQUENCING_QUEUE",
   process.env.SEQUENCING_QUEUE_SCRIPT_NAME,
 );
-if (process.env.CANOPY_ID) {
-  envBlock = setQueueName(
-    envBlock,
-    "X402_SETTLEMENT_QUEUE",
-    `${process.env.CANOPY_ID}-x402-settlement`,
-  );
-  envBlock = setDurableObjectScript(
-    envBlock,
-    "X402_SETTLEMENT_DO",
-    x402SettlementScriptFromCanopyId(process.env.CANOPY_ID),
+// x402 settlement names come from the contract, so the producer here and the
+// consumer in x402-settlement resolve the same two values and cannot drift.
+const legacyX402 = legacyX402NamesFromCanopyId(process.env.CANOPY_ID);
+const x402QueueName =
+  process.env.X402_SETTLEMENT_QUEUE_NAME?.trim() || legacyX402.queue;
+const x402ScriptName =
+  process.env.X402_SETTLEMENT_SCRIPT_NAME?.trim() || legacyX402.script;
+if (!process.env.X402_SETTLEMENT_QUEUE_NAME?.trim() && x402QueueName) {
+  console.warn(
+    `WARN: X402_SETTLEMENT_QUEUE_NAME not in contract; falling back to ${x402QueueName} derived from CANOPY_ID.`,
   );
 }
+envBlock = setQueueName(envBlock, "X402_SETTLEMENT_QUEUE", x402QueueName);
+envBlock = setDurableObjectScript(
+  envBlock,
+  "X402_SETTLEMENT_DO",
+  x402ScriptName,
+);
 
 const canopyFqdn = hostnameFromFqdnOrUrl(process.env.CANOPY_FQDN);
 if (!canopyFqdn) {

@@ -58,6 +58,7 @@ infra/terraform/.terraform/
 packages/apps/canopy-api/wrangler.runtime.jsonc
 packages/apps/delegation-coordinator/wrangler.runtime.jsonc
 packages/apps/forestrie-ingress/wrangler.runtime.jsonc
+packages/apps/x402-settlement/wrangler.runtime.jsonc
 
 # Misc
 *.pem
