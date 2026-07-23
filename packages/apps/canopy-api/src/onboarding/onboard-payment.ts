@@ -72,6 +72,24 @@ async function paymentClaimKey(payment: VerifiedPayment): Promise<string> {
  * BEFORE any state transition or mint, and the write must be durable before the
  * token is issued so a crash between the two cannot release the claim.
  *
+ * ---
+ * **TODO(RM6) — unbounded storage.** These records are never pruned, so the
+ * `payments/used-auth/` prefix grows without limit on a hot path.
+ *
+ * Pruning at `validBefore` is **provably safe**: past that timestamp the EIP-3009
+ * authorization can never be settled, so the claim can never be needed again.
+ * (Verified live: once an authorization settles, the facilitator rejects it with
+ * `invalid_exact_evm_nonce_already_used` — on-chain nonce state is the ultimate
+ * backstop, and this store only covers the verify→settle window, ~5 min at the
+ * current `maxTimeoutSeconds` of 300.)
+ *
+ * `validBefore` is persisted on the record below **specifically so that sweep is
+ * implementable** — do not drop it. Remediation options: an R2 lifecycle rule on
+ * the prefix, or a scheduled sweep deleting records whose `validBefore` has
+ * passed. See canopy `docs/plans/plan-2607-01-paid-onboard-review-remediation.md`
+ * (RM6).
+ * ---
+ *
  * @returns true if this caller won the claim; false if the payment was already used.
  */
 export async function claimPaymentAuthorization(
@@ -80,12 +98,15 @@ export async function claimPaymentAuthorization(
   requestId: string,
 ): Promise<boolean> {
   const key = await paymentClaimKey(payment);
+  const auth = payment.payload.payload.authorization;
   const body = JSON.stringify({
     requestId,
     payer: payment.payerAddress,
     amount: payment.amount,
     network: payment.network,
-    nonce: payment.payload.payload.authorization.nonce,
+    nonce: auth.nonce,
+    // Safe prune boundary — see TODO(RM6) above. Keep this field.
+    validBefore: auth.validBefore,
     claimedAt: Date.now(),
   });
   const written = await env.R2_GRANTS.put(key, body, {
@@ -254,6 +275,12 @@ export async function enqueueOnboardSettlement(
  * money owed with nothing to collect it. A log line is not an accounting
  * record: write a durable row a reconciliation job (FOR-84) can pick up. Best
  * effort — never throw, because the caller has paid and holds their token.
+ *
+ * **TODO(RM6) — retention.** Unlike the claim records above these must NOT be
+ * pruned on a timer: they are outstanding receivables, so the only correct
+ * lifecycle is "delete once reconciled" (FOR-84 owns that). They should stay
+ * rare — growth here is a signal that settlement is broken, not routine churn.
+ * See canopy `docs/plans/plan-2607-01-paid-onboard-review-remediation.md`.
  */
 async function recordUnsettled(
   env: OnboardPaymentEnv,

@@ -81,6 +81,33 @@ describe("R1/FOR-441: payment authorization is single-use", () => {
     expect(second).toBe(false); // <- without the claim this was `true`, minting a 2nd token
   });
 
+  it("persists validBefore on the claim so RM6 pruning stays implementable", async () => {
+    const e = paymentEnv();
+    const p = payment(`0x${"a7".repeat(16)}`);
+    expect(await claimPaymentAuthorization(e, p, "req-ttl")).toBe(true);
+
+    // The claim key is derived internally; find the single record we just wrote.
+    const listed = await poolEnv.R2_GRANTS.list({
+      prefix: "payments/used-auth/",
+    });
+    const objs = await Promise.all(
+      listed.objects.map(async (o) => ({
+        key: o.key,
+        rec: JSON.parse(await (await poolEnv.R2_GRANTS.get(o.key))!.text()) as {
+          nonce: string;
+          validBefore?: string;
+        },
+      })),
+    );
+    const mine = objs.find(
+      (o) => o.rec.nonce === p.payload.payload.authorization.nonce,
+    );
+    expect(mine).toBeDefined();
+    // Pruning at validBefore is the safe boundary — without this field a sweep
+    // has nothing to prune on.
+    expect(mine!.rec.validBefore).toBe("9999999999");
+  });
+
   it("a different authorization (new nonce) is independently claimable", async () => {
     const e = paymentEnv();
     expect(
