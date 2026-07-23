@@ -146,13 +146,28 @@ record exists that a reconciliation job could read.
 Extend `recordSuccess` so onboard settlements are attributable. Coordinate with
 **FOR-84** (settlement ledger) rather than duplicating it.
 
-### RM6 — Prune claim records at `validBefore` (follow-up)
+### RM6 — Prune claim records — IMPLEMENTED (operator action outstanding)
 
-Claim records currently accumulate without expiry. They are provably useless
-after the authorization's `validBefore` (it can never settle), so pruning at
-that boundary is safe. Carry `validBefore` on the claim record and add an R2
-lifecycle rule or a scheduled sweep. Not urgent — records are tiny — but it is
-unbounded growth on a hot path.
+**Done in code:** `task cloudflare:bucket:lifecycle:used-auth` adds a
+prefix-scoped R2 lifecycle rule (`--expire-days 1`) over `payments/used-auth/`;
+`validBefore` is persisted on each claim so a finer sweep stays possible; and a
+guard test asserts `maxTimeoutSeconds * 10 < 1 day` so the two coupled values
+(in `scrapi/x402.ts` and `taskfiles/cloudflare.yml`) cannot drift apart
+silently.
+
+A server-side lifecycle rule is used rather than a sweep because
+`payments/used-auth/` is a flat content-addressed prefix: finding expired
+records by listing is O(all claims) per pass, and bulk delete only helps the
+delete half. Age-since-creation is a valid proxy for `validBefore` (a claim
+written at T guards an authorization dead by T + 300s), so no key restructure
+is needed.
+
+**Outstanding — operator action, per bucket / per lane.** Verified 2026-07-23
+that `canopy-dev-1-grants` carries only the default multipart-abort rule, so
+the expiry rule is **not yet applied anywhere**. Until it is, the prefix grows
+unbounded (correctness unaffected — a stale claim only ever rejects a replay —
+but storage and list latency degrade silently). Apply on dev, and on prod
+before that lane charges.
 
 ### Lows — DONE
 

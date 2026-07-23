@@ -73,26 +73,32 @@ async function paymentClaimKey(payment: VerifiedPayment): Promise<string> {
  * token is issued so a crash between the two cannot release the claim.
  *
  * ---
- * **TODO(RM6) — unbounded storage.** These records are never pruned, so the
- * `payments/used-auth/` prefix grows without limit on a hot path.
+ * **OPERATIONAL DEPENDENCY — retention of this prefix is not enforced by code.**
  *
- * Pruning at `validBefore` is **provably safe**: past that timestamp the EIP-3009
- * authorization can never be settled, so the claim can never be needed again.
- * (Verified live: once an authorization settles, the facilitator rejects it with
- * `invalid_exact_evm_nonce_already_used` — on-chain nonce state is the ultimate
- * backstop, and this store only covers the verify→settle window, ~5 min at the
- * current `maxTimeoutSeconds` of 300.)
+ * Claims are write-once and never deleted here, so `payments/used-auth/` is
+ * bounded *only* by an R2 lifecycle rule applied out-of-band per bucket:
  *
- * **Mechanism: `task cloudflare:bucket:lifecycle:used-auth`** adds an R2
- * lifecycle rule expiring this prefix 1 day after creation — no sweep, no
- * listing (a flat content-addressed prefix cannot be scanned cheaply). The rule
- * is only safe while `maxTimeoutSeconds` (300s) stays far below the expiry
- * window; a guard test asserts that headroom. **If you raise
- * `maxTimeoutSeconds`, raise the lifecycle window too.**
+ *     task cloudflare:bucket:lifecycle:used-auth      # per lane / per bucket
+ *     wrangler r2 bucket lifecycle list <grants-bucket>   # verify
  *
- * `validBefore` is persisted on the record below so a *finer* sweep remains
- * possible if the lifecycle rule is ever insufficient — do not drop it. See
- * canopy `docs/plans/plan-2607-01-paid-onboard-review-remediation.md` (RM6).
+ * If that rule is absent the prefix grows without limit. Correctness is
+ * unaffected (a stale claim only ever *rejects* a replay) — the cost is storage
+ * and list latency, which degrade silently. Check the rule exists when standing
+ * up a new lane.
+ *
+ * **The expiry window MUST exceed `maxTimeoutSeconds`.** A claim written at T
+ * guards an authorization whose `validBefore` is at most T + maxTimeoutSeconds
+ * (300s), after which it can never settle — so a 1-day expiry is a ~288x margin.
+ * Raising `maxTimeoutSeconds` toward the expiry window would make expiry unsafe;
+ * a guard test asserts the headroom, but the two values live in different files
+ * (`scrapi/x402.ts` and `taskfiles/cloudflare.yml`), so change them together.
+ *
+ * On-chain nonce state is the ultimate backstop regardless: once an
+ * authorization settles the facilitator rejects it with
+ * `invalid_exact_evm_nonce_already_used` (verified live). This store only covers
+ * the verify→settle window. `validBefore` is persisted below so a finer sweep
+ * stays possible if the lifecycle rule is ever insufficient — do not drop it.
+ * See canopy `docs/plans/plan-2607-01-paid-onboard-review-remediation.md` (RM6).
  * ---
  *
  * @returns true if this caller won the claim; false if the payment was already used.
@@ -110,7 +116,7 @@ export async function claimPaymentAuthorization(
     amount: payment.amount,
     network: payment.network,
     nonce: auth.nonce,
-    // Safe prune boundary — see TODO(RM6) above. Keep this field.
+    // Safe prune boundary — see the retention note above. Keep this field.
     validBefore: auth.validBefore,
     claimedAt: Date.now(),
   });
@@ -281,11 +287,11 @@ export async function enqueueOnboardSettlement(
  * record: write a durable row a reconciliation job (FOR-84) can pick up. Best
  * effort — never throw, because the caller has paid and holds their token.
  *
- * **TODO(RM6) — retention.** Unlike the claim records above these must NOT be
- * pruned on a timer: they are outstanding receivables, so the only correct
- * lifecycle is "delete once reconciled" (FOR-84 owns that). They should stay
- * rare — growth here is a signal that settlement is broken, not routine churn.
- * See canopy `docs/plans/plan-2607-01-paid-onboard-review-remediation.md`.
+ * **Retention — deliberately NOT time-expired.** Unlike the claim records above,
+ * these must never be pruned on a timer: they are outstanding receivables, so
+ * the only correct lifecycle is "delete once reconciled", which FOR-84 owns. Do
+ * NOT add a lifecycle rule to this prefix — that would silently delete money
+ * owed. Growth here is a signal that settlement is broken, not routine churn.
  */
 async function recordUnsettled(
   env: OnboardPaymentEnv,
