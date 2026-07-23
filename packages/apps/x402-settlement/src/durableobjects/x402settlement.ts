@@ -51,7 +51,12 @@ export class X402SettlementDO extends DurableObject<Env> {
         payer TEXT NOT NULL,
         amount TEXT NOT NULL,
         settled_at INTEGER NOT NULL,
-        tx_hash TEXT
+        tx_hash TEXT,
+        -- Economic attribution (FOR-434/FOR-84): what the payment bought.
+        kind TEXT,
+        request_id TEXT,
+        onboard_token_ref TEXT,
+        log_id TEXT
       );
 
       CREATE TABLE IF NOT EXISTS auth_state (
@@ -70,7 +75,33 @@ export class X402SettlementDO extends DurableObject<Env> {
         ON auth_state (state);
     `);
 
+    this.migrateAttributionColumns();
     this.initialized = true;
+  }
+
+  /**
+   * Add the FOR-434/FOR-84 attribution columns to a pre-existing shard.
+   *
+   * `CREATE TABLE IF NOT EXISTS` is a no-op for DOs created before those
+   * columns existed, so without this migration the widened INSERT in
+   * {@link recordSuccess} would fail with "no such column" on every settle for
+   * already-live shards. SQLite has no `ADD COLUMN IF NOT EXISTS`, so consult
+   * `PRAGMA table_info` and add only what is missing. Idempotent.
+   */
+  private migrateAttributionColumns(): void {
+    const existing = new Set<string>();
+    for (const row of this.ctx.storage.sql.exec(
+      `PRAGMA table_info(settled_jobs)`,
+    )) {
+      const name = (row as { name?: unknown }).name;
+      if (typeof name === "string") existing.add(name);
+    }
+    for (const col of ["kind", "request_id", "onboard_token_ref", "log_id"]) {
+      if (existing.has(col)) continue;
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE settled_jobs ADD COLUMN ${col} TEXT`,
+      );
+    }
   }
 
   /**
@@ -217,8 +248,9 @@ export class X402SettlementDO extends DurableObject<Env> {
     // Record in idempotency table
     this.ctx.storage.sql.exec(
       `INSERT INTO settled_jobs
-        (idempotency_key, job_id, auth_id, payer, amount, settled_at, tx_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        (idempotency_key, job_id, auth_id, payer, amount, settled_at, tx_hash,
+         kind, request_id, onboard_token_ref, log_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       job.idempotencyKey,
       job.jobId,
       job.authId,
@@ -226,6 +258,10 @@ export class X402SettlementDO extends DurableObject<Env> {
       job.amount,
       now,
       txHash ?? null,
+      job.kind ?? null,
+      job.requestId ?? null,
+      job.onboardTokenRef ?? null,
+      job.logId ?? null,
     );
 
     // Reset failure count on success

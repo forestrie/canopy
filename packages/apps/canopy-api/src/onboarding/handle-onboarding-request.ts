@@ -50,6 +50,7 @@ import type { UnivocityGateEnv } from "./univocity-deployment-gate.js";
 import type { SettlementJob } from "@canopy/x402-settlement-types";
 import {
   verifyOnboardPayment,
+  claimPaymentAuthorization,
   buildOnboardSettlementJob,
   enqueueOnboardSettlement,
   onboardPaymentRequiredHeader,
@@ -416,8 +417,28 @@ async function handleRedeem(
         corsHeaders,
       );
     }
-    // Valid payment approves the request. CAS makes approve exactly-once; a
-    // concurrent ops-approve/redeem falls through to the state gate.
+    // FOR-441: claim the payment authorization for single use BEFORE any state
+    // transition or mint. Verify is stateless — the same unspent authorization
+    // verifies for every concurrent request until settlement lands — so without
+    // this claim one payment mints one token per onboard request.
+    const claimed = await claimPaymentAuthorization(
+      env,
+      outcome.payment,
+      requestId,
+    );
+    if (!claimed) {
+      return attachCors(
+        paymentRequiredResponse(
+          env,
+          resourceUrl,
+          "payment authorization already used; sign a new payment",
+        ),
+        corsHeaders,
+      );
+    }
+
+    // Valid, unused payment approves the request. CAS makes approve
+    // exactly-once; a concurrent ops-approve/redeem falls through to the gate.
     const approve = await transitionPendingToApprovedCas(env, requestId);
     if (!approve.ok) {
       const reread = await readOnboardRequest(env, requestId);

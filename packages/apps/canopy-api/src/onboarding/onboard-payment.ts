@@ -33,6 +33,66 @@ export interface OnboardPaymentEnv {
   CDP_API_KEY_ID?: string;
   CDP_API_KEY_SECRET?: string;
   X402_SETTLEMENT_QUEUE?: Queue<SettlementJob>;
+  R2_GRANTS: R2Bucket;
+}
+
+/**
+ * Single-use claim key for a payment authorization (FOR-441).
+ *
+ * An EIP-3009 authorization is identified by (network, asset, from, nonce).
+ * Verifying it is stateless — until settlement lands on-chain the authorization
+ * is still unspent, so the facilitator answers "valid" for *every* concurrent
+ * request. Without a claim, one payment mints one token per onboard request.
+ */
+async function paymentClaimKey(payment: VerifiedPayment): Promise<string> {
+  const a = payment.payload.payload.authorization;
+  const material = [
+    payment.network,
+    payment.payload.accepted?.asset ?? "",
+    a.from,
+    a.nonce,
+  ]
+    .join("|")
+    .toLowerCase();
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(material),
+  );
+  const hex = Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `payments/used-auth/${hex}`;
+}
+
+/**
+ * Atomically claim a payment authorization for one-time use.
+ *
+ * Uses an R2 create-if-absent conditional put (`etagDoesNotMatch: "*"`), which
+ * returns null when the object already exists. Must be called AFTER verify and
+ * BEFORE any state transition or mint, and the write must be durable before the
+ * token is issued so a crash between the two cannot release the claim.
+ *
+ * @returns true if this caller won the claim; false if the payment was already used.
+ */
+export async function claimPaymentAuthorization(
+  env: OnboardPaymentEnv,
+  payment: VerifiedPayment,
+  requestId: string,
+): Promise<boolean> {
+  const key = await paymentClaimKey(payment);
+  const body = JSON.stringify({
+    requestId,
+    payer: payment.payerAddress,
+    amount: payment.amount,
+    network: payment.network,
+    nonce: payment.payload.payload.authorization.nonce,
+    claimedAt: Date.now(),
+  });
+  const written = await env.R2_GRANTS.put(key, body, {
+    httpMetadata: { contentType: "application/json" },
+    onlyIf: { etagDoesNotMatch: "*" },
+  });
+  return written !== null;
 }
 
 /** Only the CDP-hosted facilitator needs credentials; x402.org (testnet) does not. */
@@ -95,6 +155,30 @@ export async function verifyOnboardPayment(
     resourceUrl,
     reqConfig(env),
   );
+
+  // FOR-442: never let a mode flag weaken the paid path. `verify-only` makes
+  // verifyPayment return isValid WITHOUT calling the facilitator, which would
+  // mint a real token for any syntactically valid payload. The onboard path
+  // always performs an authoritative verify, regardless of X402_MODE.
+  const mode: X402Mode = "verify-and-settle";
+
+  // FOR-441/R3: assert the signed amount locally rather than trusting the
+  // facilitator alone — parsePaymentHeader takes `amount` from the payer's own
+  // authorization and only checks network/payTo.
+  const required = BigInt(requirements.amount);
+  let signed: bigint;
+  try {
+    signed = BigInt(parsed.value.amount);
+  } catch {
+    return { status: "invalid", reason: "payment amount is not an integer" };
+  }
+  if (signed < required) {
+    return {
+      status: "invalid",
+      reason: `payment underpays: signed ${signed} < required ${required}`,
+    };
+  }
+
   const cdpCredentials =
     facilitatorRequiresAuth(env.X402_FACILITATOR_URL) &&
     env.CDP_API_KEY_ID &&
@@ -102,12 +186,10 @@ export async function verifyOnboardPayment(
       ? { keyId: env.CDP_API_KEY_ID, keySecret: env.CDP_API_KEY_SECRET }
       : undefined;
 
-  const result = await verifyPayment(
-    parsed.value,
-    requirements,
-    env.X402_MODE ?? "verify-and-settle",
-    { facilitatorUrl: env.X402_FACILITATOR_URL, cdpCredentials },
-  );
+  const result = await verifyPayment(parsed.value, requirements, mode, {
+    facilitatorUrl: env.X402_FACILITATOR_URL,
+    cdpCredentials,
+  });
 
   if (!result.ok) return { status: "invalid", reason: result.error };
   if (!result.isValid)
@@ -151,18 +233,48 @@ export async function enqueueOnboardSettlement(
   job: SettlementJob,
 ): Promise<void> {
   if (!env.X402_SETTLEMENT_QUEUE) {
-    console.error(
-      `x402 settlement queue unbound; onboard job not enqueued (idempotencyKey=${job.idempotencyKey}) — reconcile manually`,
-    );
+    await recordUnsettled(env, job, "settlement queue unbound");
     return;
   }
   try {
     await env.X402_SETTLEMENT_QUEUE.send(job);
   } catch (err) {
+    await recordUnsettled(
+      env,
+      job,
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
+/**
+ * Persist an unsettled receivable (FOR-441/R4).
+ *
+ * Mint-on-verify means the token is already issued, so a failed enqueue leaves
+ * money owed with nothing to collect it. A log line is not an accounting
+ * record: write a durable row a reconciliation job (FOR-84) can pick up. Best
+ * effort — never throw, because the caller has paid and holds their token.
+ */
+async function recordUnsettled(
+  env: OnboardPaymentEnv,
+  job: SettlementJob,
+  reason: string,
+): Promise<void> {
+  console.error(
+    `x402 settlement not enqueued (idempotencyKey=${job.idempotencyKey}): ${reason} — recorded for reconciliation`,
+  );
+  try {
+    await env.R2_GRANTS.put(
+      `payments/unsettled/${job.idempotencyKey}`,
+      JSON.stringify({ ...job, reason, recordedAt: Date.now() }),
+      { httpMetadata: { contentType: "application/json" } },
+    );
+  } catch (err) {
+    // Last resort: the receivable is only in logs.
     console.error(
-      `x402 settlement enqueue failed (idempotencyKey=${job.idempotencyKey}): ${
+      `failed to persist unsettled receivable ${job.idempotencyKey}: ${
         err instanceof Error ? err.message : String(err)
-      } — reconcile manually`,
+      }`,
     );
   }
 }

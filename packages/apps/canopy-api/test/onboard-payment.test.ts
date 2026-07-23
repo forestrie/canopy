@@ -1,3 +1,4 @@
+import { env } from "cloudflare:test";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SettlementJob } from "@canopy/x402-settlement-types";
 import type { VerifiedPayment } from "../src/scrapi/verified-payment.js";
@@ -5,6 +6,9 @@ import {
   buildOnboardSettlementJob,
   enqueueOnboardSettlement,
 } from "../src/onboarding/onboard-payment.js";
+import type { Env } from "../src/index";
+
+const R2 = (env as unknown as Env).R2_GRANTS;
 
 const NONCE = "0xabc123";
 
@@ -97,7 +101,10 @@ describe("enqueueOnboardSettlement (binding-optional guard, mint-on-verify)", ()
   it("sends the job when the queue is bound", async () => {
     const send = vi.fn().mockResolvedValue(undefined);
     await enqueueOnboardSettlement(
-      { X402_SETTLEMENT_QUEUE: { send } as unknown as Queue<SettlementJob> },
+      {
+        R2_GRANTS: R2,
+        X402_SETTLEMENT_QUEUE: { send } as unknown as Queue<SettlementJob>,
+      },
       job,
     );
     expect(send).toHaveBeenCalledOnce();
@@ -106,7 +113,9 @@ describe("enqueueOnboardSettlement (binding-optional guard, mint-on-verify)", ()
   });
 
   it("does not throw and logs when the queue is unbound", async () => {
-    await expect(enqueueOnboardSettlement({}, job)).resolves.toBeUndefined();
+    await expect(
+      enqueueOnboardSettlement({ R2_GRANTS: R2 }, job),
+    ).resolves.toBeUndefined();
     expect(errSpy).toHaveBeenCalledOnce();
     expect(String(errSpy.mock.calls[0][0])).toContain("unbound");
   });
@@ -115,11 +124,14 @@ describe("enqueueOnboardSettlement (binding-optional guard, mint-on-verify)", ()
     const send = vi.fn().mockRejectedValue(new Error("queue down"));
     await expect(
       enqueueOnboardSettlement(
-        { X402_SETTLEMENT_QUEUE: { send } as unknown as Queue<SettlementJob> },
+        {
+          R2_GRANTS: R2,
+          X402_SETTLEMENT_QUEUE: { send } as unknown as Queue<SettlementJob>,
+        },
         job,
       ),
     ).resolves.toBeUndefined();
     expect(errSpy).toHaveBeenCalledOnce();
-    expect(String(errSpy.mock.calls[0][0])).toContain("enqueue failed");
+    expect(String(errSpy.mock.calls[0][0])).toContain("not enqueued");
   });
 });
