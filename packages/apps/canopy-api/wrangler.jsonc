@@ -111,6 +111,7 @@
         // Dev lane only: auto-approve after Univocity gate (FOR-174). Blocked when NODE_ENV=prod.
         "ONBOARD_AUTO_APPROVE": "true",
         "ONBOARD_AUTO_APPROVE_CHAIN_IDS": "84532",
+        "ONBOARD_AUTO_APPROVE_LABEL_PREFIX": "dev-auto-",
       },
       "ratelimits": [
         {

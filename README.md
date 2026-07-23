@@ -61,12 +61,31 @@ Key variables (in Doppler or exported for CI):
 
 ## x402 Payment Setup (Dev)
 
-> **What x402 gates today: onboard-token issuance.** A `pending` onboard request
-> can be approved by **paying** — `POST /api/onboarding/requests/{id}/redeem`
-> returns **402** with `X-PAYMENT-REQUIRED` when no valid `X-PAYMENT` is present,
-> and on a valid payment mints the token and enqueues a `SettlementJob` for the
-> `x402-settlement` worker to collect (FOR-434, devdocs `plan-2607-38`). Ops
-> `approve` survives as a parallel, unpaid compliance path.
+> **Onboard is dual-auth: an onboard token is obtainable by ops action OR by
+> paying USDC.** Both routes are first-class:
+>
+> | Route                                                        | How                                                         | Payment       |
+> | ------------------------------------------------------------ | ----------------------------------------------------------- | ------------- |
+> | **Operator self-onboard** (own payment-authoritative forest) | break-glass `POST /api/payments/onboard-tokens` (ops-admin) | none          |
+> | **Partner onboard** (comped / negotiated)                    | request → ops **`approve`** → redeem                        | none          |
+> | **Public self-serve**                                        | request → redeem with **`X-PAYMENT`**                       | USDC via x402 |
+>
+> An operator therefore never has to pay itself, and partners can be onboarded
+> by hand, while the public can self-serve without any operator involvement.
+>
+> Mechanically: `POST /api/onboarding/requests/{id}/redeem` on a **`pending`**
+> request returns **402** with `X-PAYMENT-REQUIRED`; on a valid `X-PAYMENT` it
+> mints the token and enqueues a `SettlementJob` for the `x402-settlement`
+> worker to collect. An **`approved`** request redeems with no payment and
+> enqueues nothing (FOR-434, devdocs `plan-2607-38`).
+>
+> _Note:_ redeeming a `pending` request previously returned `409`; it now returns
+> `402` — deliberate, for x402 client compatibility.
+>
+> _Dev:_ auto-approve is narrowed to labels prefixed **`dev-auto-`**
+> (`ONBOARD_AUTO_APPROVE_LABEL_PREFIX`) so it no longer blanket-bypasses the paid
+> route — use that prefix for a free dev request, any other label to exercise
+> payment.
 >
 > **Statement registration is NOT paid.** It is authorized by **grant**
 > (`Authorization: Forestrie-Grant <base64 COSE_Sign1>` on
