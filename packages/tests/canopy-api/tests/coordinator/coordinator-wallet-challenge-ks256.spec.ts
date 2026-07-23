@@ -129,7 +129,12 @@ test.describe("delegation-coordinator KS256 wallet-challenge", () => {
     expect(res.status()).toBe(202);
   });
 
-  test("session GET /api/delegations/pending — entry present", async ({
+  // Under FOR-390 phase-H membership enforcement (on for the deployed Lane A /
+  // dev coordinator), the prior miss for the unregistered ephemeral key created
+  // no windowed pending demand. This still exercises the wallet-challenge
+  // session read path (a valid session GET returns 200); the assertion is that
+  // no windowed demand for the unvouched key surfaces. See FOR-402 / FOR-390.
+  test("session GET /api/delegations/pending — session reads, no demand for unregistered key (FOR-390)", async ({
     request,
   }) => {
     const res = await request.get(
@@ -151,7 +156,7 @@ test.describe("delegation-coordinator KS256 wallet-challenge", () => {
           e.mmrStart === mmrStart &&
           e.mmrEnd === mmrEnd,
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   test("public POST /api/delegations/certificate", async ({ request }) => {
