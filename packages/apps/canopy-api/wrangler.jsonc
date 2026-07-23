@@ -144,6 +144,8 @@
           {
             "name": "X402_SETTLEMENT_DO",
             "class_name": "X402SettlementDO",
+            // PLACEHOLDER: rewritten at deploy from CANOPY_ID by
+            // apply-runtime-contract.mjs (canopy-{seg}-N -> x402-settlement-{seg}).
             "script_name": "x402-settlement-dev",
           },
         ],
@@ -152,6 +154,7 @@
         "producers": [
           {
             "binding": "X402_SETTLEMENT_QUEUE",
+            // PLACEHOLDER: rewritten at deploy to `{CANOPY_ID}-x402-settlement`.
             "queue": "canopy-dev-1-x402-settlement",
           },
         ],
@@ -165,10 +168,14 @@
         "API_VERSION": "v1",
         "NODE_ENV": "prod",
         "QUEUE_SHARD_COUNT": "4",
-        // In prod, use verify-and-settle with direct CDP facilitator
+        // Lane B is "stage", not production: there is no production lane yet and
+        // both lanes settle on Base Sepolia. The previous eip155:8453 (mainnet)
+        // here was aspirational config that never matched any deployment, and it
+        // paired a mainnet challenge with a Sepolia settlement worker
+        // (plan-2607-39 D1). Flip to mainnet only when a real prod lane exists.
         "X402_MODE": "verify-and-settle",
-        "X402_FACILITATOR_URL": "https://api.cdp.coinbase.com/platform/v2/x402",
-        "X402_NETWORK": "eip155:8453",
+        "X402_FACILITATOR_URL": "https://x402.org/facilitator",
+        "X402_NETWORK": "eip155:84532",
         "X402_PAYTO_ADDRESS": "0x75be7950F26fe7F15336a10b33A8D8134faDb787",
         "X402_PRICE_EXACT": "$0.001",
         "X402_ONBOARD_PRICE_ATOMIC": "10000",
@@ -211,6 +218,10 @@
           {
             "name": "X402_SETTLEMENT_DO",
             "class_name": "X402SettlementDO",
+            // PLACEHOLDER: rewritten at deploy from CANOPY_ID. This literal is the
+            // correct Lane B value; it was the *contract input* that was stale —
+            // CANOPY_ID was published lane-agnostically, so Lane B deployed bound to
+            // x402-settlement-dev. Fixed in plan-2607-39 Phase 0.
             "script_name": "x402-settlement-prod",
           },
         ],
@@ -219,6 +230,7 @@
         "producers": [
           {
             "binding": "X402_SETTLEMENT_QUEUE",
+            // PLACEHOLDER: rewritten at deploy to `{CANOPY_ID}-x402-settlement`.
             "queue": "canopy-prod-1-x402-settlement",
           },
         ],

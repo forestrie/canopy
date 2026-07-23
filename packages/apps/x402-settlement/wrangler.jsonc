@@ -78,8 +78,16 @@
         "CANOPY_ID": "canopy-prod-1",
         "NODE_ENV": "prod",
         "DO_SHARD_COUNT": "4",
-        "X402_FACILITATOR_URL": "https://api.cdp.coinbase.com/platform/v2/x402",
-        "X402_NETWORK": "eip155:8453",
+        // Lane B is "stage" — no production lane exists and both lanes settle on
+        // Base Sepolia. Must stay in lockstep with canopy-api's env prod X402_*
+        // vars: canopy-api builds the 402 challenge, this worker settles it, and
+        // a mismatch fails at settle time (plan-2607-39 D1).
+        //
+        // NOTE: unlike the other three workers, this one has NO
+        // apply-runtime-contract.mjs — every name and var below is a checked-in
+        // literal that CI deploys verbatim. Phase 1 of plan-2607-39 fixes that.
+        "X402_FACILITATOR_URL": "https://x402.org/facilitator",
+        "X402_NETWORK": "eip155:84532",
         "SETTLE_TIMEOUT_MS": "5000",
       },
       "queues": {
