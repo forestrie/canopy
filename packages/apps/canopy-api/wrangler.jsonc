@@ -83,7 +83,7 @@
   ],
   "env": {
     "dev": {
-      "name": "canopy-api-dev",
+      "name": "canopy-api-a",
       "vars": {
         "CANOPY_ID": "canopy-dev-1",
         "FOREST_PROJECT_ID": "forest-dev-5",
@@ -161,7 +161,7 @@
       },
     },
     "prod": {
-      "name": "canopy-api-prod",
+      "name": "canopy-api-b",
       "vars": {
         "CANOPY_ID": "canopy-prod-1",
         "FOREST_PROJECT_ID": "forest-prod-1",
