@@ -59,27 +59,32 @@ Key variables (in Doppler or exported for CI):
 - `CLOUDFLARE_ACCOUNT_ID` - Cloudflare account ID
 - `R2_ADMIN`, `R2_WRITER`, `R2_READER` - API tokens for different access levels
 
-## x402 Payment Setup (Dev) — dormant
+## x402 Payment Setup (Dev)
 
-> **The Canopy API does not gate anything on payment today.** Statement
-> registration is authorized by **grant**
-> (`Authorization: Forestrie-Grant <base64 COSE_Sign1>` on
-> `POST /register/{R}/entries`), not by an x402 payment header. Commit
-> [`57d4bbd`](https://github.com/forestrie/canopy/commit/57d4bbd) (2026-03-07)
-> removed the 402 challenge from the entries path; `parsePaymentHeader` and
-> `verifyPayment` have no call sites, and nothing sends to
-> `X402_SETTLEMENT_QUEUE`, so the `x402-settlement` worker is deployed but
-> dormant. See ARC-0015 (SUPERSEDED) and ARC-0016 for why the priced unit moved
-> from the statement to the checkpoint; FOR-80 tracks re-pointing the rail at
-> onboarding and grant issuance.
+> **What x402 gates today: onboard-token issuance.** A `pending` onboard request
+> can be approved by **paying** — `POST /api/onboarding/requests/{id}/redeem`
+> returns **402** with `X-PAYMENT-REQUIRED` when no valid `X-PAYMENT` is present,
+> and on a valid payment mints the token and enqueues a `SettlementJob` for the
+> `x402-settlement` worker to collect (FOR-434, devdocs `plan-2607-38`). Ops
+> `approve` survives as a parallel, unpaid compliance path.
 >
-> The setup below still works for exercising the settlement rail directly
-> (faucet, signature generation, facilitator calls) and is retained for that
-> purpose. **It will not produce a 402 from the public API.**
+> **Statement registration is NOT paid.** It is authorized by **grant**
+> (`Authorization: Forestrie-Grant <base64 COSE_Sign1>` on
+> `POST /register/{R}/entries`). Commit
+> [`57d4bbd`](https://github.com/forestrie/canopy/commit/57d4bbd) (2026-03-07)
+> removed the 402 from that path and it has not returned — ARC-0016 moved the
+> priced unit off the statement. Paid **grant** issuance is FOR-48, not yet built.
+>
+> **Mint-on-verify:** the payment is verified synchronously (the gate) and the
+> token issued; settlement is collected asynchronously by the worker.
+>
+> Dev settles on **Base Sepolia** via the credential-free testnet facilitator
+> `https://x402.org/facilitator`, so no CDP credentials are needed on the dev
+> lane. Price: `X402_ONBOARD_PRICE_ATOMIC` (default `10000` = $0.01).
 
-Historically, the Canopy API used the x402 payment protocol to gate statement
-registration. In the dev environment, payments settle on **Base Sepolia** using
-testnet USDC.
+The setup below creates and funds a dev payer wallet, and generates signed
+payments — used both for the onboard flow above and for exercising the
+settlement rail directly.
 
 ### 1. Create a Dev Payer Wallet
 
@@ -103,6 +108,7 @@ The faucet has daily claim limits; for normal dev and smoke testing, one claim
 per day is typically sufficient.
 
 **Token reference:**
+
 - Base Sepolia USDC: `0x036CbD53842c5426634e7929541eC2318f3dCF7e`
 
 ### 3. Configure the private key
@@ -174,6 +180,7 @@ task scrapi:smoke
 ```
 
 These tasks will:
+
 1. POST to `/entries` without a payment header, receiving a 402.
 2. Extract the `Payment-Required` header from the 402 response.
 3. Sign a real x402 payment using your dev wallet.
