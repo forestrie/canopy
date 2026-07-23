@@ -78,8 +78,13 @@ async function paymentClaimKey(payment: VerifiedPayment): Promise<string> {
  * Claims are write-once and never deleted here, so `payments/used-auth/` is
  * bounded *only* by an R2 lifecycle rule applied out-of-band per bucket:
  *
- *     task cloudflare:bucket:lifecycle:used-auth      # per lane / per bucket
- *     wrangler r2 bucket lifecycle list <grants-bucket>   # verify
+ *     R2_GRANTS_BUCKET_NAME=<bucket> task cloudflare:bucket:lifecycle:used-auth
+ *     wrangler r2 bucket lifecycle list <bucket>          # verify
+ *
+ * The bucket is the contract-resolved one, NOT the name in `wrangler.jsonc`
+ * (which is a placeholder rewritten at deploy): lane A -> `forest-*-grants`,
+ * lane B (stage) -> `forest-*-grants-b`. Applying to the wrong bucket succeeds
+ * and protects nothing.
  *
  * If that rule is absent the prefix grows without limit. Correctness is
  * unaffected (a stale claim only ever *rejects* a replay) — the cost is storage

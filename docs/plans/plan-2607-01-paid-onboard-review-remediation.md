@@ -162,21 +162,33 @@ delete half. Age-since-creation is a valid proxy for `validBefore` (a claim
 written at T guards an authorization dead by T + 300s), so no key restructure
 is needed.
 
-**APPLIED on dev (2026-07-23):** `canopy-dev-1-grants` now carries
-`expire-used-auth`, prefix `payments/used-auth/`, "Expire objects after 1 days",
-alongside the default multipart-abort rule.
+**APPLIED (2026-07-23) — to both lanes.** Corrected after an initial mistake
+worth recording, because it is the failure mode this rule is meant to avoid.
 
-**Prod blocked — the bucket does not exist.** `wrangler r2 bucket lifecycle add
-canopy-prod-1-grants` fails with `The specified bucket does not exist [10006]`,
-and `wrangler r2 bucket list` shows only `canopy-dev-1-grants`. So
-canopy-api's **prod** `R2_GRANTS` binding
-(`wrangler.jsonc` prod env) references a bucket that was never provisioned —
-the same class of gap as the hand-created prod queue in FOR-78. Pre-existing,
-not introduced here, and currently harmless because the paid-onboard code has
-never been deployed to prod. It must be resolved before prod is deployed at
-all (not merely before it charges): apply
-`task cloudflare:bucket:lifecycle:used-auth` against the prod bucket as part of
-creating it.
+canopy-api rewrites the `R2_GRANTS` binding at deploy time from the consumer
+contract (`apply-runtime-contract.mjs` ← `R2_GRANTS_BUCKET_NAME`), so the bucket
+names checked into `wrangler.jsonc` are **placeholders**, not what runs:
+
+| Lane          | wrangler env | Bucket actually used    | Rule    |
+| ------------- | ------------ | ----------------------- | ------- |
+| **A** (dev)   | `dev`        | `forest-dev-5-grants`   | applied |
+| **B** (stage) | `prod`       | `forest-dev-5-grants-b` | applied |
+
+Both now carry `expire-used-auth`, prefix `payments/used-auth/`, "Expire objects
+after 1 days", alongside the default multipart-abort rule.
+
+**Note on naming:** the wrangler env / GitHub Environment / Doppler config called
+`prod` / `prd` is **lane B, which is stage** — not production. There is no
+production lane yet (both lanes settle on Base Sepolia). Treat "prod" in the
+config as a lane label, not an environment claim.
+
+**The mistake:** the rule was first applied to `canopy-dev-1-grants` — the
+`{{.CANOPY_ID}}-grants` name from the taskfile default — which is an unused
+legacy bucket. `wrangler` accepted it happily, so the rule existed, looked
+correct in `lifecycle list`, and protected nothing. It has been removed from
+that bucket and the task now requires `R2_GRANTS_BUCKET_NAME` explicitly rather
+than defaulting. A separate claim that `canopy-prod-1-grants` "does not exist"
+was equally an artifact of testing the placeholder name.
 
 ### Lows — DONE
 
