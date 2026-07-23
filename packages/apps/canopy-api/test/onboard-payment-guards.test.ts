@@ -14,6 +14,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import type { Env } from "../src/index";
 import type { VerifiedPayment } from "../src/scrapi/verified-payment.js";
 import type { SettlementJob } from "@canopy/x402-settlement-types";
+import { getPaymentRequirementsForVerify } from "../src/scrapi/x402.js";
 import {
   claimPaymentAuthorization,
   verifyOnboardPayment,
@@ -123,6 +124,25 @@ describe("R1/FOR-441: payment authorization is single-use", () => {
     const p = payment(`0x${"d4".repeat(16)}`);
     expect(await claimPaymentAuthorization(e, p, "same")).toBe(true);
     expect(await claimPaymentAuthorization(e, p, "same")).toBe(false);
+  });
+});
+
+describe("RM6: claim-expiry safety coupling", () => {
+  it("maxTimeoutSeconds stays far below the 1-day R2 lifecycle window", () => {
+    // The lifecycle rule (task cloudflare:bucket:lifecycle:used-auth) expires
+    // payments/used-auth/ objects 1 day after creation. That is only safe while
+    // a claim's guarded authorization dies well within that day: a claim written
+    // at T guards an authorization whose validBefore <= T + maxTimeoutSeconds.
+    // If maxTimeoutSeconds ever approaches 1 day, expiring claims could permit
+    // a replay of a still-settleable authorization.
+    const LIFECYCLE_WINDOW_SECONDS = 24 * 60 * 60;
+    const maxTimeoutSeconds =
+      getPaymentRequirementsForVerify("https://x/redeem", {})
+        .maxTimeoutSeconds ?? 0;
+
+    expect(maxTimeoutSeconds).toBeGreaterThan(0);
+    // Keep at least an order of magnitude of headroom.
+    expect(maxTimeoutSeconds * 10).toBeLessThan(LIFECYCLE_WINDOW_SECONDS);
   });
 });
 
