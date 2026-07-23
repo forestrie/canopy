@@ -28,3 +28,16 @@ jobs:
 
       - name: Assert changed publishable packages are version-bumped
         run: bash scripts/assert-changed-packages-bumped.sh "${{ github.event.pull_request.base.sha }}"
+
+  secret-steps:
+    name: Wrangler secret steps must be well-formed
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # FOR-79: the CDP secret step ran at the repo root (no wrangler config to
+      # resolve) and hid the resulting error behind `|| true`, so credentials
+      # silently never reached any worker while every deploy stayed green.
+      - name: Assert secret pushes declare a working-directory and fail loudly
+        run: bash scripts/assert-secret-steps-well-formed.sh

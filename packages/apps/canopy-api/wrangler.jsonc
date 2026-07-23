@@ -18,8 +18,11 @@
     "NODE_ENV": "dev",
     "QUEUE_SHARD_COUNT": "4",
     "X402_MODE": "verify-and-settle",
-    // Direct CDP facilitator URL - canopy-api calls CDP directly with JWT auth
-    "X402_FACILITATOR_URL": "https://api.cdp.coinbase.com/platform/v2/x402",
+    // Testnet facilitator: credential-free, so the x402 path can be exercised
+    // without CDP keys (FOR-79). Both lanes run Base Sepolia today. Switch to
+    // the CDP facilitator (https://api.cdp.coinbase.com/platform/v2/x402), which
+    // needs JWT auth, as part of the FOR-83 mainnet cutover.
+    "X402_FACILITATOR_URL": "https://x402.org/facilitator",
     "X402_NETWORK": "eip155:84532",
     "X402_PAYTO_ADDRESS": "0x75be7950F26fe7F15336a10b33A8D8134faDb787",
     "X402_PRICE_EXACT": "$0.001",
@@ -87,8 +90,9 @@
         "NODE_ENV": "dev",
         "QUEUE_SHARD_COUNT": "4",
         "X402_MODE": "verify-and-settle",
-        // Direct CDP facilitator URL for payment verification
-        "X402_FACILITATOR_URL": "https://api.cdp.coinbase.com/platform/v2/x402",
+        // Credential-free testnet facilitator for payment verification, so the
+        // dev lane can be exercised without CDP keys (FOR-79).
+        "X402_FACILITATOR_URL": "https://x402.org/facilitator",
         "X402_NETWORK": "eip155:84532",
         "X402_PAYTO_ADDRESS": "0x75be7950F26fe7F15336a10b33A8D8134faDb787",
         "X402_PRICE_EXACT": "$0.001",

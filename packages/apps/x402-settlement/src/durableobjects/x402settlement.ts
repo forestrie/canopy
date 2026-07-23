@@ -16,6 +16,7 @@ import type {
 } from "@canopy/x402-settlement-types";
 import type { Env } from "../env.js";
 import { settleCharge, type SettleResponse } from "../facilitator/client.js";
+import { facilitatorRequiresAuth } from "../cdp-jwt.js";
 
 /** Maximum consecutive failures before marking auth as suspect */
 const SUSPECT_THRESHOLD = 3;
@@ -121,8 +122,14 @@ export class X402SettlementDO extends DurableObject<Env> {
       };
     }
 
-    // Verify CDP credentials are configured
-    if (!this.env.CDP_API_KEY_ID || !this.env.CDP_API_KEY_SECRET) {
+    // CDP credentials are required only when settling against the CDP
+    // facilitator. The credential-free testnet facilitator (x402.org) needs
+    // none, so the rail can be exercised end-to-end without CDP keys (FOR-79).
+    const needsAuth = facilitatorRequiresAuth(this.env.X402_FACILITATOR_URL);
+    if (
+      needsAuth &&
+      (!this.env.CDP_API_KEY_ID || !this.env.CDP_API_KEY_SECRET)
+    ) {
       console.error("CDP credentials not configured");
       return {
         ok: false,
@@ -146,10 +153,12 @@ export class X402SettlementDO extends DurableObject<Env> {
           idempotencyKey: job.idempotencyKey,
         },
         timeoutMs,
-        {
-          keyId: this.env.CDP_API_KEY_ID,
-          keySecret: this.env.CDP_API_KEY_SECRET,
-        },
+        needsAuth
+          ? {
+              keyId: this.env.CDP_API_KEY_ID!,
+              keySecret: this.env.CDP_API_KEY_SECRET!,
+            }
+          : undefined,
       );
     } catch (err) {
       // Network or timeout error - transient, should retry

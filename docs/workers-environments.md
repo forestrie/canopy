@@ -97,6 +97,148 @@ FQDNs from **forest-1** [ARC-0003](../../forest-1/docs/arc-0003-ingress-and-dns-
 
 **Ops runbook:** [plan-0022](plans/plan-0022-delegation-coordinator-ops-parity.md), [forest-1 bootstrap-canopy-contract](../../forest-1/docs/bootstrap-canopy-contract.md).
 
+## x402-settlement (USDC settlement worker)
+
+| Wrangler config | Worker name | Queue consumed | `X402_NETWORK` (configured) |
+| --------------- | ----------- | -------------- | --------------------------- |
+| Top-level (no `--env`) | **x402-settlement** | none | `eip155:84532` — unused by CI |
+| `--env dev` (Lane A) | **x402-settlement-dev** | `canopy-dev-1-x402-settlement` | `eip155:84532` — Base Sepolia |
+| `--env prod` (Lane B) | **x402-settlement-prod** | `canopy-prod-1-x402-settlement` | `eip155:8453` — **see the drift warning below** |
+
+> **Both lanes run on Base Sepolia today. Lane B ("prod") is effectively a
+> staging lane** — the mainnet cutover is deliberate and has not happened.
+> `demo/preflight.sh` puts it plainly: *"DEPLOY_KEY is a Base Sepolia gas-only
+> payer (same chain both lanes)"*.
+>
+> **Config drift — `X402_NETWORK` on the prod lane is ahead of reality.**
+> `eip155:8453` (Base mainnet) appears in exactly **two** places in the whole
+> platform: the prod env of `x402-settlement/wrangler.jsonc` and
+> `canopy-api/wrangler.jsonc`. Nothing else — no Univocity deployment, no
+> chain-rpc entry, no test fixture — references mainnet. Those two literals
+> therefore contradict the lane they sit in.
+>
+> This is currently harmless because nothing enqueues a `SettlementJob` (the
+> producer was removed in Plan 0001 and never reinstated — see
+> [FOR-80](https://linear.app/forestrie/issue/FOR-80)), so the worker is
+> dormant. It stops being harmless the moment a producer lands: prod would
+> attempt a **mainnet** settlement on a lane whose every other component is on
+> Sepolia — the accident [FOR-83](https://linear.app/forestrie/issue/FOR-83)
+> exists to prevent, arriving by config drift rather than by decision.
+>
+> **Before any producer lands** ([FOR-434](https://linear.app/forestrie/issue/FOR-434)),
+> either set the prod lane to `eip155:84532` to match reality and flip it as
+> part of the FOR-83 mainnet cutover, or land FOR-83's amount cap and
+> kill-switch first. Do not leave both halves to arrive independently.
+
+Unlike the other three workers, x402-settlement has **no**
+`scripts/apply-runtime-contract.mjs`, so its `CANOPY_ID`, queue names and
+`X402_NETWORK` are **frozen literals** in `wrangler.jsonc`. Note canopy-api
+*derives* the settlement worker's script name from its injected `CANOPY_ID`
+(`apply-runtime-contract.mjs` → `x402-settlement-${lane}`), so the two can drift.
+Closing that asymmetry is tracked separately.
+
+### CDP credential mapping (FOR-79)
+
+`CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` authenticate to the Coinbase CDP
+facilitator for `/verify` and `/settle`.
+
+> **Not needed on the dev lane today.** Dev (and the top-level config) point at
+> the **credential-free testnet facilitator** `https://x402.org/facilitator`, so
+> the settlement rail can be exercised end-to-end without CDP keys. Credentials
+> are still pushed and still reported by `/health`, so the credential path stays
+> covered — it is just not load-bearing until the FOR-83 mainnet cutover moves
+> the facilitator back to `https://api.cdp.coinbase.com/platform/v2/x402`.
+
+| Origin | Transport | Consumer | Secret |
+| ------ | --------- | -------- | ------ |
+| GitHub **Environment** `dev` | `deploy-workers.yml` → `wrangler secret put --env dev` | `x402-settlement-dev`, `canopy-api-dev` | `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` |
+| GitHub **Environment** `prod` | `deploy-workers.yml` → `wrangler secret put --env prod` | `x402-settlement-prod`, `canopy-api-prod` | same |
+
+#### There are two generations of CDP key, and this worker wants the older one
+
+CDP issues Secret API Keys in two shapes. **Ed25519 has been the default since
+February 2025**; ECDSA remains available and is what the Coinbase App SDKs use.
+
+| | Legacy (ECDSA) | Current (Ed25519) |
+| --- | --- | --- |
+| Key ID | `organizations/{org_id}/apiKeys/{key_id}` | UUID |
+| Secret | **SEC1 PEM** (`-----BEGIN EC PRIVATE KEY-----`) | base64 → **64 bytes** (32-byte seed + 32-byte public key) |
+| JWT alg | **ES256** (ECDSA P-256) | **EdDSA** |
+
+`generateCdpJwt` signs **ES256**, and `importPemKey`
+(`packages/apps/x402-settlement/src/index.ts`) does `pemKey.replace(/\\n/g,"\n")`
+then `crypto.subtle.importKey("pkcs8", …, {name:"ECDSA", namedCurve:"P-256"})`.
+That is the **legacy ECDSA** path. Its SEC1 fallback is a comment and a `throw` —
+it does not actually wrap SEC1, so a SEC1 key fails.
+
+**But the env vars it reads are named for the *current* key.** `CDP_API_KEY_ID` /
+`CDP_API_KEY_SECRET` are the Ed25519 pair's names, and that is what Doppler holds
+under them. **The worker is wired to the wrong key generation** — the names say
+current, the code says legacy. It was never going to work with the value it names,
+irrespective of PEM encoding.
+
+> **What is in Doppler today does not import. Do not copy it across as-is.**
+> Credentials exist in projects **`coinbase-x402`** and **`canopy`**, configs
+> `dev` / `stg` / `prd` / `dev_personal` — all holding **identical** values, so
+> there is no dev/prod separation either. Both stored forms were tested against
+> the worker's exact import path:
+>
+> | Stored key | Generation | Result |
+> |---|---|---|
+> | `CDP_API_KEY_SECRET` (+ `CDP_API_KEY_ID`, a UUID) | current, Ed25519 | ✗ `Invalid keyData` — 64 bytes, not a P-256 PKCS#8 DER (~138) |
+> | `COINBASE_API_KEY_ECDSA` (+ `COINBASE_API_KEY_ID`, `API_KEY_RESOURCE_ID` = `organizations/…`) | legacy, ECDSA | ✗ `Invalid keyData` — SEC1, not PKCS#8 |
+> | the SEC1 key via `openssl pkcs8 -topk8 -nocrypt` | legacy, converted | ✓ imports as P-256 |
+
+**Resolved by moving the worker to Ed25519 (done, FOR-79).** `generateCdpJwt` now
+signs **EdDSA** and imports the CDP secret as Ed25519 — the SEC1/PKCS#8-ECDSA
+path is gone. CDP no longer issues ECDSA keys for new Secret API Keys, so this is
+the only viable direction anyway. The signing code lives in one place,
+`packages/apps/x402-settlement/src/cdp-jwt.ts` (canopy-api keeps a synced copy in
+`src/scrapi/x402-facilitator.ts`).
+
+The stored 64-byte secret is `seed(32) ‖ publicKey(32)`; only the first 32 bytes
+(the seed) are imported, wrapped in the RFC 8410 PKCS#8 prefix
+`302e020100300506032b657004220420` — WebCrypto has no "raw" import for Ed25519
+*private* keys. **Verified against workerd** (`compatibility_date` 2024-10-01,
+`nodejs_compat_v2`): a generated JWT's EdDSA signature verifies against the key's
+own embedded public half — the exact check CDP performs (`test/cdp-jwt.test.ts`).
+
+**Auth is gated on the facilitator.** Only the CDP host
+(`api.cdp.coinbase.com`) gets a JWT and requires credentials; the testnet
+facilitator (`x402.org`) is called with no auth, so **the dev lane settles with
+no CDP credentials at all** (`facilitatorRequiresAuth()` in `cdp-jwt.ts`).
+
+Keep **per-lane keys** so a testnet credential cannot settle real funds after the
+cutover.
+
+**Rotation:** CDP has **no in-place rotation** — you delete and recreate in the
+portal ([portal.cdp.coinbase.com/api-keys/secret](https://portal.cdp.coinbase.com/api-keys/secret)),
+and the secret is shown once. See
+[CDP API keys](https://docs.cdp.coinbase.com/get-started/authentication/cdp-api-keys)
+and [x402 quickstart for sellers](https://docs.cdp.coinbase.com/x402/quickstart-for-sellers).
+
+**Verify after deploy:** `GET /health` on the settlement worker returns
+`hasCdpCredentials`. It must be `true` on both lanes.
+
+**Failure mode is silent.** Without credentials `/verify` and `/settle` return 500
+`"facilitator not configured"`, and the queue consumer returns `permanent:true`,
+which increments `failure_count` and **blocks the payer's auth after 10 failures** —
+revenue loss presenting as a payer bug.
+
+**Origin is not yet Doppler.** These two are currently hand-set GitHub Environment
+secrets (2026-03-22) and are **not** in forest-1's
+`bootstrap:canopy:sync-github-env` list, unlike every other canopy secret. Moving
+them into `canopy_dev` / `canopy_prod` so Doppler is the single origin is FOR-79
+Phase 2. **No rotation owner or procedure is defined yet** — contrast the
+documented blue/green rotation for the Cloudflare platform token in
+[forest-1 doppler.md](../../forest-1/docs/doppler.md).
+
+> The forward standard for all canopy workers is GitHub→Doppler **OIDC pull**
+> per [ADR-0049](../../devdocs/adr/adr-0049-doppler-github-oidc-worker-deploy.md)
+> (already implemented in `mandate`). The Doppler→Cloudflare **native sync**
+> proposed in [plan-0002](plans/plan-0002-doppler-secrets-migration.md) was never
+> implemented and is **explicitly rejected** by that ADR — do not build it.
+
 ## CI / e2e targeting
 
 | GitHub Environment | Lane | Doppler `canopy` config | Typical `CANOPY_FQDN` | Playwright |

@@ -257,17 +257,6 @@ jobs:
       - name: Unit tests
         run: pnpm --filter ${{ matrix.target.pkg }} run test
 
-      - name: Configure CDP secrets for canopy-api (prod)
-        if: matrix.target.app == 'canopy-api' && env.DEPLOY_ENV == 'prod'
-        run: |
-          if [ -n "${CDP_API_KEY_ID:-}" ] && [ -n "${CDP_API_KEY_SECRET:-}" ]; then
-            echo "Configuring CDP API secrets in Cloudflare (prod env)..."
-            printf '%s' "$CDP_API_KEY_ID" | wrangler secret put CDP_API_KEY_ID --env prod --quiet || true
-            printf '%s' "$CDP_API_KEY_SECRET" | wrangler secret put CDP_API_KEY_SECRET --env prod --quiet || true
-          else
-            echo "CDP_API_KEY_ID or CDP_API_KEY_SECRET not set; skipping CDP secret configuration."
-          fi
-
       - name: Configure Custodian secrets and deploy canopy-api
         if: matrix.target.app == 'canopy-api'
         working-directory: packages/apps/canopy-api
@@ -308,6 +297,23 @@ jobs:
             exit 1
           fi
           put_wrangler_secret UNIVOCITY_API_TOKEN "$UNIV"
+          # CDP credentials for the x402 facilitator (verify/settle). FOR-79: these
+          # were previously pushed by a separate step that ran at the repo root with
+          # no wrangler config and swallowed its own failure with `|| true`, so they
+          # never actually reached any worker. Pushed here for BOTH dev and prod.
+          CDP_ID=$(trim_ws "${CDP_API_KEY_ID:-}")
+          if [ -z "$CDP_ID" ]; then
+            echo "::error::CDP_API_KEY_ID is required for canopy-api (x402 facilitator auth)."
+            exit 1
+          fi
+          put_wrangler_secret CDP_API_KEY_ID "$CDP_ID"
+          # NOTE: PKCS#8 PEM P-256 only. Do not trim_ws — the PEM's newlines are
+          # significant; importPemKey tolerates literal \n escapes but not SEC1 keys.
+          if [ -z "${CDP_API_KEY_SECRET:-}" ]; then
+            echo "::error::CDP_API_KEY_SECRET is required for canopy-api (x402 facilitator auth)."
+            exit 1
+          fi
+          put_wrangler_secret CDP_API_KEY_SECRET "${CDP_API_KEY_SECRET}"
           for key in CANOPY_ID FOREST_PROJECT_ID CUSTODIAN_URL DELEGATION_COORDINATOR_URL R2_MMRS_BUCKET_NAME R2_GRANTS_BUCKET_NAME SEQUENCING_QUEUE_SCRIPT_NAME CANOPY_FQDN UNIVOCITY_SERVICE_URL; do
             if [ -z "$(trim_ws "${!key:-}")" ]; then
               echo "::error::${key} is required in GitHub Environment ${ENV}."
@@ -440,8 +446,41 @@ jobs:
             echo "INGRESS_RESET_TOKEN not set; skipping (content-reset ingress wipe unavailable until synced)."
           fi
 
+      - name: Configure CDP secrets and deploy x402-settlement
+        if: matrix.target.app == 'x402-settlement'
+        working-directory: packages/apps/x402-settlement
+        env:
+          CDP_API_KEY_ID: ${{ secrets.CDP_API_KEY_ID }}
+          CDP_API_KEY_SECRET: ${{ secrets.CDP_API_KEY_SECRET }}
+        run: |
+          set -euo pipefail
+          trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
+          put_wrangler_secret() {
+            local name="$1" value="$2"
+            printf '%s' "$value" | wrangler secret put "$name" --env "$ENV"
+          }
+          ENV="${DEPLOY_ENV}"
+          # The settlement worker authenticates to the CDP facilitator for
+          # /verify and /settle. Without these it fails CLOSED but SILENTLY:
+          # the queue consumer returns permanent:true, which increments
+          # failure_count and blocks the payer's auth after 10 failures.
+          # Treat them as required (FOR-79).
+          CDP_ID=$(trim_ws "${CDP_API_KEY_ID:-}")
+          if [ -z "$CDP_ID" ]; then
+            echo "::error::CDP_API_KEY_ID is required for x402-settlement (facilitator auth)."
+            exit 1
+          fi
+          put_wrangler_secret CDP_API_KEY_ID "$CDP_ID"
+          # PKCS#8 PEM P-256 only; newlines are significant so this is not trimmed.
+          if [ -z "${CDP_API_KEY_SECRET:-}" ]; then
+            echo "::error::CDP_API_KEY_SECRET is required for x402-settlement (facilitator auth)."
+            exit 1
+          fi
+          put_wrangler_secret CDP_API_KEY_SECRET "${CDP_API_KEY_SECRET}"
+          wrangler deploy --env "$ENV"
+
       - name: Deploy ${{ matrix.target.app }} (${{ env.DEPLOY_ENV }})
-        if: matrix.target.app != 'canopy-api' && matrix.target.app != 'delegation-coordinator' && matrix.target.app != 'forestrie-ingress'
+        if: matrix.target.app != 'canopy-api' && matrix.target.app != 'delegation-coordinator' && matrix.target.app != 'forestrie-ingress' && matrix.target.app != 'x402-settlement'
         run: task wrangler:deploy:${{ matrix.target.app }} ENV=${{ env.DEPLOY_ENV }}
 
   health-check:

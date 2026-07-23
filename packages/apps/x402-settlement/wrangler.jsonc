@@ -15,8 +15,12 @@
     "CANOPY_ID": "canopy-dev-1",
     "NODE_ENV": "dev",
     "DO_SHARD_COUNT": "4",
-    // Upstream CDP x402 endpoint used by our internal facilitator worker
-    "X402_FACILITATOR_URL": "https://api.cdp.coinbase.com/platform/v2/x402",
+    // Testnet facilitator: credential-free, so the settlement rail can be
+    // exercised end-to-end without CDP keys (FOR-79). Both lanes run Base
+    // Sepolia today. Switch to the CDP facilitator
+    // (https://api.cdp.coinbase.com/platform/v2/x402) as part of the FOR-83
+    // mainnet cutover, at which point CDP credentials become required.
+    "X402_FACILITATOR_URL": "https://x402.org/facilitator",
     "X402_NETWORK": "eip155:84532",
     "SETTLE_TIMEOUT_MS": "5000",
   },
@@ -41,9 +45,11 @@
         "CANOPY_ID": "canopy-dev-1",
         "NODE_ENV": "dev",
         "DO_SHARD_COUNT": "4",
-        // Dev settlement worker also talks directly to CDP x402 using dev
-        // credentials, so behaviour matches prod but on Base Sepolia.
-        "X402_FACILITATOR_URL": "https://api.cdp.coinbase.com/platform/v2/x402",
+        // Dev uses the credential-free testnet facilitator so the rail can be
+        // proven end-to-end without CDP keys (FOR-79). CDP credentials are
+        // still pushed by deploy-workers.yml and reported by /health, so the
+        // credential path stays exercised — it is just not load-bearing here.
+        "X402_FACILITATOR_URL": "https://x402.org/facilitator",
         "X402_NETWORK": "eip155:84532",
         "SETTLE_TIMEOUT_MS": "5000",
       },
