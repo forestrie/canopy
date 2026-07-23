@@ -194,6 +194,12 @@ if (vars) {
     "FOREST_PROJECT_ID",
     process.env.FOREST_PROJECT_ID,
   );
+  // Ingress always deploys with `--env prod` (the worker NAME is what carries the
+  // slot), so an unrewritten CANOPY_ID meant BOTH slots reported the env-prod
+  // literal: forestrie-ingress-forest-2-a served canopy-prod-1 in /health. It is
+  // metadata only, but a lane identifier that lies is exactly what made FOR-443
+  // hard to see (FOR-449, plan-2607-39 D5).
+  varsBlock = setStringProperty(varsBlock, "CANOPY_ID", process.env.CANOPY_ID);
   envBlock = replaceRange(envBlock, vars, varsBlock);
 }
 

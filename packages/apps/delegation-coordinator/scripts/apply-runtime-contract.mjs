@@ -176,6 +176,11 @@ let envBlock = target.text;
 const vars = blockForProperty(envBlock, "vars", "{", "}");
 if (!vars) fail(`Could not find env.${envName}.vars block in wrangler config.`);
 
+const coordinatorHostnames = parseCoordinatorHostnames(
+  process.env.DELEGATION_COORDINATOR_URL,
+  process.env.DELEGATION_COORDINATOR_URL_ALIASES,
+);
+
 let varsBlock = vars.text;
 varsBlock = setStringProperty(
   varsBlock,
@@ -187,12 +192,21 @@ varsBlock = setStringProperty(
   "COORDINATOR_PUBLIC_URL",
   process.env.DELEGATION_COORDINATOR_URL,
 );
+// COORDINATOR_DOMAIN is the hostname the wallet SIGNS OVER: it is interpolated
+// into the ks256 control-plane message as "<domain> wants you to authorize ...".
+// It was the one var sitting next to COORDINATOR_PUBLIC_URL that the contract
+// did not rewrite, so it drifted: Lane B deployed with
+// delegation-coordinator.forestrie.dev while its public URL was
+// coordinator-b.forest-2.forestrie.dev, i.e. challenges named a host that was
+// not the one being talked to. Derive it from the same contract value so the
+// two cannot disagree (FOR-449, plan-2607-39 D6).
+varsBlock = setStringProperty(
+  varsBlock,
+  "COORDINATOR_DOMAIN",
+  coordinatorHostnames[0],
+);
 envBlock = replaceRange(envBlock, vars, varsBlock);
 
-const coordinatorHostnames = parseCoordinatorHostnames(
-  process.env.DELEGATION_COORDINATOR_URL,
-  process.env.DELEGATION_COORDINATOR_URL_ALIASES,
-);
 if (!coordinatorHostnames.length) {
   fail(
     "DELEGATION_COORDINATOR_URL is required for delegation-coordinator deploy.",
