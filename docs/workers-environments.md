@@ -150,7 +150,25 @@ facilitator for `/verify` and `/settle`.
 **Format:** `CDP_API_KEY_SECRET` must be a **PKCS#8 PEM P-256** key. `importPemKey`
 (`packages/apps/x402-settlement/src/index.ts`) does `pemKey.replace(/\\n/g,"\n")`
 then `crypto.subtle.importKey("pkcs8", …, {name:"ECDSA", namedCurve:"P-256"})` —
-literal `\n` escapes are tolerated, **SEC1 keys throw**.
+literal `\n` escapes are tolerated, **SEC1 keys throw**. The SEC1 fallback in that
+function is a comment and a `throw`; it does not actually wrap SEC1.
+
+> **What is in Doppler today does not import. Do not copy it across as-is.**
+> CDP credentials already exist in Doppler — projects **`coinbase-x402`** and
+> **`canopy`**, configs `dev` / `stg` / `prd` / `dev_personal`, all holding
+> identical values (so there is no dev/prod separation either). Neither stored
+> form is usable by this worker; both were verified empirically against the
+> worker's exact import path:
+>
+> | Stored key | Form | `importKey("pkcs8", …, ECDSA P-256)` |
+> |---|---|---|
+> | `COINBASE_API_KEY_ECDSA` | **SEC1** PEM, with literal `\n` escapes | ✗ throws `Invalid keyData` |
+> | `CDP_API_KEY_SECRET` | base64, no PEM header, decodes to **64 bytes** (a P-256 PKCS#8 DER is ~138 — this is Ed25519-shaped, a different CDP key type) | ✗ throws `Invalid keyData` |
+> | the SEC1 key converted with `openssl pkcs8 -topk8 -nocrypt` | **PKCS#8** PEM | ✓ imports as P-256 |
+>
+> So Phase 2 is a **format conversion**, not a key hunt. Convert once, store the
+> PKCS#8 form, and keep per-lane keys so a testnet credential can never settle
+> real funds after the mainnet cutover.
 
 **Verify after deploy:** `GET /health` on the settlement worker returns
 `hasCdpCredentials`. It must be `true` on both lanes.
