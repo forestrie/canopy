@@ -148,9 +148,14 @@ sealer's first checkpoint finds a covering cert immediately.
 ### Canonical environment (export once; every step reads these)
 
 ```bash
-# lane-A is the live deployment — there is no lane-B host (api-b-forest-2 /
-# api-a-forest-2 are down/stale; lane-B is not deployed). Use the plain host:
-export FORESTRIE_BASE_URL="https://api-forest-2.forestrie.dev"   # SCRAPI worker origin, no trailing slash
+# Lane hostnames use a DOT before the forest project: api-a.forest-2.…, NOT
+# api-a-forest-2.… The hyphen form has never resolved; believing it was "down"
+# is what led to the plain alias being routed at Lane A (FOR-453).
+#   Lane A (dev):   https://api-a.forest-2.forestrie.dev
+#   Lane B (stage): https://api-b.forest-2.forestrie.dev
+#   Lane B alias:   https://api-forest-2.forestrie.dev   (resolves to Lane B)
+# This walkthrough is Lane A:
+export FORESTRIE_BASE_URL="https://api-a.forest-2.forestrie.dev"  # SCRAPI worker origin, no trailing slash
 export RPC_URL="https://sepolia.base.org"
 export CHAIN_ID=84532                                              # Base Sepolia
 # Filled in by the deploy step (BOOTSTRAP_LOG_ID *is* the forest root log id):
@@ -246,8 +251,8 @@ Example output:
 
 ```
 {
-  "issuer": "https://api-forest-2.forestrie.dev",
-  "registration_endpoint": "https://api-forest-2.forestrie.dev/register",
+  "issuer": "https://api-a.forest-2.forestrie.dev",
+  "registration_endpoint": "https://api-a.forest-2.forestrie.dev/register",
   "supported_signature_algorithms": ["ES256"]
 }
 ```
@@ -302,7 +307,7 @@ ownerLog: 0f9a1c7e-…-… (grant leaf)
 dataLog: 0f9a1c7e-…-… (authorized)
 signer: 04a91f…            # grantData = bootstrap ES256 x||y
 entryId: 0202020202020202…0001
-statusUrl: https://api-forest-2.forestrie.dev/register/0f9a1c7e-…/grants/…
+statusUrl: https://api-a.forest-2.forestrie.dev/register/0f9a1c7e-…/grants/…
 receiptUrl: …/receipt
 wrote completed grant base64 to root-grant.b64
 ```
@@ -368,7 +373,7 @@ Example output (illustrative; format matches the `register` reporter):
 
 ```
 entryId: 0202020202020202…0001
-statusUrl: https://api-forest-2.forestrie.dev/register/0f9a1c7e-…/entries/…
+statusUrl: https://api-a.forest-2.forestrie.dev/register/0f9a1c7e-…/entries/…
 receiptUrl: …/receipt
 wrote receipt (612 bytes) to receipt.cbor
 ```
