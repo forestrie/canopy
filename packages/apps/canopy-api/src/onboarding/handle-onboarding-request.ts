@@ -27,6 +27,7 @@ import {
   checkOnboardCreateBodySize,
   checkOnboardCreateRateLimit,
   checkOnboardFieldLengths,
+  checkOnboardRedeemRateLimit,
   checkOnboardRejectReasonLength,
 } from "./onboard-create-guard.js";
 import { scheduleOnboardWebhook } from "./onboard-notify.js";
@@ -47,6 +48,16 @@ import {
 } from "./onboard-request-store.js";
 import { verifyUnivocityDeployment } from "./univocity-deployment-gate.js";
 import type { UnivocityGateEnv } from "./univocity-deployment-gate.js";
+import type { SettlementJob } from "@canopy/x402-settlement-types";
+import {
+  verifyOnboardPayment,
+  claimPaymentAuthorization,
+  buildOnboardSettlementJob,
+  enqueueOnboardSettlement,
+  onboardPaymentRequiredHeader,
+  X402_HEADERS,
+  type OnboardPaymentEnv,
+} from "./onboard-payment.js";
 
 const CBOR_LABEL = 1;
 const CBOR_CHAIN_ID = 2;
@@ -59,9 +70,34 @@ const CBOR_REJECT_REASON = 1;
 
 const NO_STORE_HEADERS = { "cache-control": "no-store" };
 
+/**
+ * 402 with the onboard `X-PAYMENT-REQUIRED` challenge header.
+ *
+ * Uses the repo's `problemResponse` helper so the error shape matches the rest
+ * of this (CBOR) API; the x402 challenge itself travels in the header, not the
+ * body, so the body encoding is free to follow local convention.
+ */
+function paymentRequiredResponse(
+  env: OnboardPaymentEnv,
+  resourceUrl: string,
+  reason?: string,
+): Response {
+  return problemResponse(402, "Payment Required", "about:blank", {
+    detail: reason ?? "Payment required to redeem this onboard request",
+    headers: {
+      ...NO_STORE_HEADERS,
+      [X402_HEADERS.paymentRequired]: onboardPaymentRequiredHeader(
+        env,
+        resourceUrl,
+      ),
+    },
+  });
+}
+
 export interface OnboardingHandlerEnv
   extends OnboardRequestStoreEnv,
     OnboardTokenStoreEnv,
+    OnboardPaymentEnv,
     UnivocityGateEnv {
   NODE_ENV?: string;
   CANOPY_OPS_ADMIN_TOKEN?: string;
@@ -326,6 +362,10 @@ async function handleRedeem(
   const ctErr = requireContentTypeCbor(request);
   if (ctErr) return attachCors(ctErr, corsHeaders);
 
+  // R7: the paid path calls the facilitator per attempt — bound the rate.
+  const rlErr = await checkOnboardRedeemRateLimit(request, env);
+  if (rlErr) return attachCors(rlErr, corsHeaders);
+
   let redeemCode: string | undefined;
   try {
     const raw = await parseCborBody(request);
@@ -353,15 +393,80 @@ async function handleRedeem(
     );
   }
 
-  const gateErr = redeemOrStatusHttpError(record);
-  if (gateErr.kind === "response") {
-    return attachCors(gateErr.response, corsHeaders);
-  }
-
+  // Authenticate the requester (holds the one-time redeem code) before the
+  // approve/pay branch, so a random payer cannot redeem someone else's request.
   const codeOk = await verifyRedeemCode(record, redeemCode);
   if (!codeOk) {
     return attachCors(
       ClientErrors.unauthorized("Invalid redeem code"),
+      corsHeaders,
+    );
+  }
+
+  // Approval gate. An ops-`approved` request redeems as before with no payment.
+  // A `pending` (unapproved) request may be approved by paying — payment is an
+  // alternative approver (FOR-433/FOR-434). Other states error as before.
+  const status = effectiveStatus(record);
+  let settlementJob: SettlementJob | undefined;
+  if (status === "pending") {
+    const resourceUrl = request.url;
+    const outcome = await verifyOnboardPayment(request, env, resourceUrl);
+    if (outcome.status === "challenge" || outcome.status === "invalid") {
+      // No payment presented, or the facilitator rejected it: (re)issue the 402
+      // challenge. A failed verify mints nothing — this returns before any mint.
+      return attachCors(
+        paymentRequiredResponse(env, resourceUrl, outcome.reason),
+        corsHeaders,
+      );
+    }
+    // FOR-441: claim the payment authorization for single use BEFORE any state
+    // transition or mint. Verify is stateless — the same unspent authorization
+    // verifies for every concurrent request until settlement lands — so without
+    // this claim one payment mints one token per onboard request.
+    const claimed = await claimPaymentAuthorization(
+      env,
+      outcome.payment,
+      requestId,
+    );
+    if (!claimed) {
+      return attachCors(
+        paymentRequiredResponse(
+          env,
+          resourceUrl,
+          "payment authorization already used; sign a new payment",
+        ),
+        corsHeaders,
+      );
+    }
+
+    // Valid, unused payment approves the request. CAS makes approve
+    // exactly-once; a concurrent ops-approve/redeem falls through to the gate.
+    const approve = await transitionPendingToApprovedCas(env, requestId);
+    if (!approve.ok) {
+      const reread = await readOnboardRequest(env, requestId);
+      if (reread) {
+        const g = redeemOrStatusHttpError(reread);
+        if (g.kind === "response") return attachCors(g.response, corsHeaders);
+      }
+      return attachCors(
+        ClientErrors.conflict("Request already redeemed"),
+        corsHeaders,
+      );
+    }
+    settlementJob = buildOnboardSettlementJob({
+      payment: outcome.payment,
+      authId: outcome.authId,
+      requestId,
+      now: Date.now(),
+    });
+  } else if (status !== "approved") {
+    // expired / redeemed / rejected — existing state errors.
+    const gateErr = redeemOrStatusHttpError(record);
+    if (gateErr.kind === "response") {
+      return attachCors(gateErr.response, corsHeaders);
+    }
+    return attachCors(
+      ClientErrors.conflict("Request not approved"),
       corsHeaders,
     );
   }
@@ -400,6 +505,14 @@ async function handleRedeem(
     onboardTokenRef: minted.record.hash,
   };
   await writeOnboardRequest(env, withRef);
+
+  // Reinstated producer (FOR-434): for the paid path, enqueue settlement so the
+  // worker collects the funds asynchronously. Mint-on-verify — the token is
+  // already issued, so a failed enqueue is logged for reconciliation, not fatal.
+  if (settlementJob) {
+    settlementJob.onboardTokenRef = minted.record.hash;
+    await enqueueOnboardSettlement(env, settlementJob);
+  }
 
   scheduleOnboardWebhook(ctx, env, "onboard.request.redeemed", {
     requestId: withRef.requestId,

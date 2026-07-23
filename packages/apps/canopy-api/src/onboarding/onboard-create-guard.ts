@@ -13,6 +13,28 @@ export interface OnboardCreateRateLimitEnv {
   };
 }
 
+/**
+ * Rate-limit onboard *redeem* (review R7).
+ *
+ * The paid redeem path makes an outbound facilitator call per attempt, so an
+ * unlimited endpoint is a cheap amplification vector. Reuses the onboard
+ * limiter binding with a `redeem:` key prefix so redeem attempts cannot exhaust
+ * the create budget (or vice versa). No-op when the binding is absent.
+ */
+export async function checkOnboardRedeemRateLimit(
+  request: Request,
+  env: OnboardCreateRateLimitEnv,
+): Promise<Response | null> {
+  const limiter = env.ONBOARD_CREATE_RATE_LIMITER;
+  if (!limiter) return null;
+  const ip = request.headers.get("CF-Connecting-IP")?.trim() || "unknown";
+  const { success } = await limiter.limit({ key: `redeem:${ip}` });
+  if (success) return null;
+  return ClientErrors.tooManyRequests(
+    "Onboard redeem rate limit exceeded; retry later",
+  );
+}
+
 export async function checkOnboardCreateRateLimit(
   request: Request,
   env: OnboardCreateRateLimitEnv,

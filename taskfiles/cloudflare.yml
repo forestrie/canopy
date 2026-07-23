@@ -114,6 +114,30 @@ tasks:
     cmds:
       - cmd: yes n | wrangler r2 bucket create "{{.R2_BUCKET_NAME_GRANTS}}" --location weur 2>/dev/null || echo "Bucket {{.R2_BUCKET_NAME_GRANTS}} may already exist"
 
+  bucket:lifecycle:used-auth:
+    desc: |
+      Expire spent x402 payment-authorization claims (RM6, FOR-441).
+
+      canopy-api writes a claim per payment under payments/used-auth/ to make an
+      authorization single-use. Those records are never rewritten and would grow
+      without bound, so R2 expires them by age instead of us running a sweep
+      (listing a flat content-addressed prefix is O(all claims) per pass).
+
+      SAFETY — the expiry window MUST exceed the payment validity window.
+      A claim written at T guards an EIP-3009 authorization whose validBefore is
+      at most T + maxTimeoutSeconds (300s, see canopy-api scrapi/x402.ts). Past
+      validBefore the authorization can never settle, so the claim can never be
+      needed again -- 1 day is a ~288x margin. On-chain nonce state is the
+      ultimate backstop regardless: a settled authorization is rejected with
+      invalid_exact_evm_nonce_already_used.
+      If maxTimeoutSeconds is ever raised near this window, RAISE THIS TOO.
+    cmds:
+      - cmd: |
+          wrangler r2 bucket lifecycle add "{{.R2_BUCKET_NAME_GRANTS}}" \
+            expire-used-auth payments/used-auth/ --expire-days 1 --force \
+            || echo "lifecycle rule expire-used-auth may already exist"
+          wrangler r2 bucket lifecycle list "{{.R2_BUCKET_NAME_GRANTS}}"
+
   bucket:empty:
     desc: Delete all objects in the R2 bucket (DESTRUCTIVE!)
     cmds:

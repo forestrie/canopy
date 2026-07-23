@@ -81,13 +81,27 @@ export interface PaymentPayload {
 }
 
 /**
+ * What a settled x402 payment purchased. Onboard and grant issuance are the
+ * live SKUs (coarse, deliberate events, mint-on-verify — see devdocs
+ * plan-2607-38). `statement` is the withdrawn per-registration model, retained
+ * so a revived producer has a name.
+ */
+export type SettlementKind = "onboard" | "grant" | "statement";
+
+/**
  * Settlement job emitted by canopy-api and consumed by x402-settlement worker.
  * Idempotency is enforced on {@link SettlementJob.idempotencyKey}.
+ *
+ * The settlement worker settles purely from `payload.accepted`, `payer`,
+ * `amount` and `idempotencyKey`; the remaining fields are the economic record
+ * for the fee ledger (FOR-84) and are not load-bearing for on-chain settlement.
  */
 export interface SettlementJob {
   /** Unique job identifier (UUID). */
   jobId: string;
-  /** Authorization id from x402 header verification in canopy-api. */
+  /** What this payment purchased. */
+  kind: SettlementKind;
+  /** Authorization id derived from the payment (per-payer failure/block state). */
   authId: string;
   /** Payment scheme (currently only `"exact"`). */
   scheme: "exact";
@@ -95,11 +109,18 @@ export interface SettlementJob {
   payer: `0x${string}`;
   /** Amount in atomic units (e.g. `"1000"` for $0.001 USDC). */
   amount: string;
-  /** Target transparency log id for the registered entry. */
-  logId: string;
-  /** SHA-256 content hash of the registered statement. */
-  contentHash: string;
-  /** Dedup key: `authId:contentHash:logId`. */
+  /** Onboard request id — `onboard` kind only. */
+  requestId?: string;
+  /** SHA-256 hash-ref of the onboard token minted for this payment — `onboard` only. */
+  onboardTokenRef?: string;
+  /** Target transparency log id — `statement`/`grant` kinds. */
+  logId?: string;
+  /** SHA-256 content hash of the registered statement — `statement` kind. */
+  contentHash?: string;
+  /**
+   * Dedup key. Onboard: `onboard:{requestId}:{authNonce}`.
+   * Statement (legacy): `{authId}:{contentHash}:{logId}`.
+   */
   idempotencyKey: string;
   /** Job creation time (Unix ms). */
   createdAt: number;

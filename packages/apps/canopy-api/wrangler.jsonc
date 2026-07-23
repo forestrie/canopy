@@ -26,6 +26,7 @@
     "X402_NETWORK": "eip155:84532",
     "X402_PAYTO_ADDRESS": "0x75be7950F26fe7F15336a10b33A8D8134faDb787",
     "X402_PRICE_EXACT": "$0.001",
+    "X402_ONBOARD_PRICE_ATOMIC": "10000",
     "X402_PRICE_UPTO_MAX": "$1.00",
     "GRANT_STORAGE_PUBLIC_BASE": "https://grants-dev.forestrie.dev",
     // Plan 0014: public Custodian (Traefik /v1/api → pod /api). Base must end
@@ -96,6 +97,7 @@
         "X402_NETWORK": "eip155:84532",
         "X402_PAYTO_ADDRESS": "0x75be7950F26fe7F15336a10b33A8D8134faDb787",
         "X402_PRICE_EXACT": "$0.001",
+        "X402_ONBOARD_PRICE_ATOMIC": "10000",
         "X402_PRICE_UPTO_MAX": "$1.00",
         "GRANT_STORAGE_PUBLIC_BASE": "https://grants-dev.forestrie.dev",
         "CUSTODIAN_URL": "https://custodian.a.forest-2.forestrie.dev/v1",
@@ -109,6 +111,7 @@
         // Dev lane only: auto-approve after Univocity gate (FOR-174). Blocked when NODE_ENV=prod.
         "ONBOARD_AUTO_APPROVE": "true",
         "ONBOARD_AUTO_APPROVE_CHAIN_IDS": "84532",
+        "ONBOARD_AUTO_APPROVE_LABEL_PREFIX": "dev-auto-",
       },
       "ratelimits": [
         {
@@ -168,6 +171,7 @@
         "X402_NETWORK": "eip155:8453",
         "X402_PAYTO_ADDRESS": "0x75be7950F26fe7F15336a10b33A8D8134faDb787",
         "X402_PRICE_EXACT": "$0.001",
+        "X402_ONBOARD_PRICE_ATOMIC": "10000",
         "X402_PRICE_UPTO_MAX": "$1.00",
         "GRANT_STORAGE_PUBLIC_BASE": "https://grants.forestrie.dev",
         "CUSTODIAN_URL": "https://custodian.prod-1.forestrie.dev/v1",
