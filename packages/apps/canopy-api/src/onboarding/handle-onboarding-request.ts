@@ -47,6 +47,15 @@ import {
 } from "./onboard-request-store.js";
 import { verifyUnivocityDeployment } from "./univocity-deployment-gate.js";
 import type { UnivocityGateEnv } from "./univocity-deployment-gate.js";
+import type { SettlementJob } from "@canopy/x402-settlement-types";
+import {
+  verifyOnboardPayment,
+  buildOnboardSettlementJob,
+  enqueueOnboardSettlement,
+  onboardPaymentRequiredHeader,
+  X402_HEADERS,
+  type OnboardPaymentEnv,
+} from "./onboard-payment.js";
 
 const CBOR_LABEL = 1;
 const CBOR_CHAIN_ID = 2;
@@ -59,9 +68,37 @@ const CBOR_REJECT_REASON = 1;
 
 const NO_STORE_HEADERS = { "cache-control": "no-store" };
 
+/** 402 with the onboard `X-PAYMENT-REQUIRED` challenge header. */
+function paymentRequiredResponse(
+  env: OnboardPaymentEnv,
+  resourceUrl: string,
+  reason?: string,
+): Response {
+  return new Response(
+    JSON.stringify({
+      type: "about:blank",
+      title: "Payment Required",
+      status: 402,
+      detail: reason ?? "Payment required to redeem this onboard request",
+    }),
+    {
+      status: 402,
+      headers: {
+        "Content-Type": "application/problem+json",
+        "Cache-Control": "no-store",
+        [X402_HEADERS.paymentRequired]: onboardPaymentRequiredHeader(
+          env,
+          resourceUrl,
+        ),
+      },
+    },
+  );
+}
+
 export interface OnboardingHandlerEnv
   extends OnboardRequestStoreEnv,
     OnboardTokenStoreEnv,
+    OnboardPaymentEnv,
     UnivocityGateEnv {
   NODE_ENV?: string;
   CANOPY_OPS_ADMIN_TOKEN?: string;
@@ -353,15 +390,60 @@ async function handleRedeem(
     );
   }
 
-  const gateErr = redeemOrStatusHttpError(record);
-  if (gateErr.kind === "response") {
-    return attachCors(gateErr.response, corsHeaders);
-  }
-
+  // Authenticate the requester (holds the one-time redeem code) before the
+  // approve/pay branch, so a random payer cannot redeem someone else's request.
   const codeOk = await verifyRedeemCode(record, redeemCode);
   if (!codeOk) {
     return attachCors(
       ClientErrors.unauthorized("Invalid redeem code"),
+      corsHeaders,
+    );
+  }
+
+  // Approval gate. An ops-`approved` request redeems as before with no payment.
+  // A `pending` (unapproved) request may be approved by paying — payment is an
+  // alternative approver (FOR-433/FOR-434). Other states error as before.
+  const status = effectiveStatus(record);
+  let settlementJob: SettlementJob | undefined;
+  if (status === "pending") {
+    const resourceUrl = request.url;
+    const outcome = await verifyOnboardPayment(request, env, resourceUrl);
+    if (outcome.status === "challenge" || outcome.status === "invalid") {
+      // No payment presented, or the facilitator rejected it: (re)issue the 402
+      // challenge. A failed verify mints nothing — this returns before any mint.
+      return attachCors(
+        paymentRequiredResponse(env, resourceUrl, outcome.reason),
+        corsHeaders,
+      );
+    }
+    // Valid payment approves the request. CAS makes approve exactly-once; a
+    // concurrent ops-approve/redeem falls through to the state gate.
+    const approve = await transitionPendingToApprovedCas(env, requestId);
+    if (!approve.ok) {
+      const reread = await readOnboardRequest(env, requestId);
+      if (reread) {
+        const g = redeemOrStatusHttpError(reread);
+        if (g.kind === "response") return attachCors(g.response, corsHeaders);
+      }
+      return attachCors(
+        ClientErrors.conflict("Request already redeemed"),
+        corsHeaders,
+      );
+    }
+    settlementJob = buildOnboardSettlementJob({
+      payment: outcome.payment,
+      authId: outcome.authId,
+      requestId,
+      now: Date.now(),
+    });
+  } else if (status !== "approved") {
+    // expired / redeemed / rejected — existing state errors.
+    const gateErr = redeemOrStatusHttpError(record);
+    if (gateErr.kind === "response") {
+      return attachCors(gateErr.response, corsHeaders);
+    }
+    return attachCors(
+      ClientErrors.conflict("Request not approved"),
       corsHeaders,
     );
   }
@@ -400,6 +482,14 @@ async function handleRedeem(
     onboardTokenRef: minted.record.hash,
   };
   await writeOnboardRequest(env, withRef);
+
+  // Reinstated producer (FOR-434): for the paid path, enqueue settlement so the
+  // worker collects the funds asynchronously. Mint-on-verify — the token is
+  // already issued, so a failed enqueue is logged for reconciliation, not fatal.
+  if (settlementJob) {
+    settlementJob.onboardTokenRef = minted.record.hash;
+    await enqueueOnboardSettlement(env, settlementJob);
+  }
 
   scheduleOnboardWebhook(ctx, env, "onboard.request.redeemed", {
     requestId: withRef.requestId,
