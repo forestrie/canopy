@@ -189,40 +189,27 @@ irrespective of PEM encoding.
 > | `COINBASE_API_KEY_ECDSA` (+ `COINBASE_API_KEY_ID`, `API_KEY_RESOURCE_ID` = `organizations/…`) | legacy, ECDSA | ✗ `Invalid keyData` — SEC1, not PKCS#8 |
 > | the SEC1 key via `openssl pkcs8 -topk8 -nocrypt` | legacy, converted | ✓ imports as P-256 |
 
-**Two ways to resolve it — this is a real decision, not a format nit:**
+**Resolved by moving the worker to Ed25519 (done, FOR-79).** `generateCdpJwt` now
+signs **EdDSA** and imports the CDP secret as Ed25519 — the SEC1/PKCS#8-ECDSA
+path is gone. CDP no longer issues ECDSA keys for new Secret API Keys, so this is
+the only viable direction anyway. The signing code lives in one place,
+`packages/apps/x402-settlement/src/cdp-jwt.ts` (canopy-api keeps a synced copy in
+`src/scrapi/x402-facilitator.ts`).
 
-* **Stay on ECDSA (no code change).** Issue an **ECDSA** Secret API key, convert
-  `openssl pkcs8 -topk8 -nocrypt -in sec1.pem -out pkcs8.pem`, and store the
-  PKCS#8 PEM as `CDP_API_KEY_SECRET` **paired with that ECDSA key's own ID** —
-  not the Ed25519 UUID. Mispairing is part of why it fails today. Keeps you on a
-  path Coinbase now treats as legacy.
-* **Move to Ed25519 (small code change) — recommended.** Use the current key
-  *already in Doppler*; change `generateCdpJwt` from ES256 to EdDSA and swap the
-  PKCS#8-ECDSA import for an Ed25519 one, deleting the PEM handling entirely.
-  Aligns with CDP's direction, needs no conversion, and no new key.
+The stored 64-byte secret is `seed(32) ‖ publicKey(32)`; only the first 32 bytes
+(the seed) are imported, wrapped in the RFC 8410 PKCS#8 prefix
+`302e020100300506032b657004220420` — WebCrypto has no "raw" import for Ed25519
+*private* keys. **Verified against workerd** (`compatibility_date` 2024-10-01,
+`nodejs_compat_v2`): a generated JWT's EdDSA signature verifies against the key's
+own embedded public half — the exact check CDP performs (`test/cdp-jwt.test.ts`).
 
-  **Verified against workerd** (`compatibility_date` 2024-10-01,
-  `nodejs_compat_v2`) — every step Option B needs is supported:
+**Auth is gated on the facilitator.** Only the CDP host
+(`api.cdp.coinbase.com`) gets a JWT and requires credentials; the testnet
+facilitator (`x402.org`) is called with no auth, so **the dev lane settles with
+no CDP credentials at all** (`facilitatorRequiresAuth()` in `cdp-jwt.ts`).
 
-  | Probe | Result |
-  |---|---|
-  | `generateKey({name:"Ed25519"})` | ✓ (legacy `NODE-ED25519` also present) |
-  | `importKey("pkcs8", …, {name:"Ed25519"})` on a 32-byte seed wrapped per RFC 8410 | ✓ |
-  | `sign({name:"Ed25519"}, …)` | ✓ 64-byte signature |
-  | `importKey("raw", 32-byte public key)` + `verify` | ✓ |
-  | **full CDP layout**: `seed‖publicKey` → sign with seed → verify with embedded public key | ✓ `true` |
-
-  The synthetic CDP-shaped secret base64-encodes to **88 characters** — exactly
-  the length of the stored `CDP_API_KEY_SECRET`, independently confirming it is
-  an Ed25519 `seed‖publicKey` pair.
-
-  Implementation note: the stored 64 bytes are `seed(32) ‖ publicKey(32)`. Import
-  **only the first 32 bytes**, wrapped in the RFC 8410 PKCS#8 prefix
-  `302e020100300506032b657004220420`; WebCrypto has no "raw" import for Ed25519
-  *private* keys.
-
-Either way, keep **per-lane keys** so a testnet credential cannot settle real
-funds after the cutover.
+Keep **per-lane keys** so a testnet credential cannot settle real funds after the
+cutover.
 
 **Rotation:** CDP has **no in-place rotation** — you delete and recreate in the
 portal ([portal.cdp.coinbase.com/api-keys/secret](https://portal.cdp.coinbase.com/api-keys/secret)),

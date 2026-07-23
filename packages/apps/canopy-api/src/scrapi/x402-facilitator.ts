@@ -218,20 +218,26 @@ export async function settlePayment(
 }
 
 /**
- * Generate a CDP API JWT for authentication.
+ * Generate a CDP API JWT (EdDSA) for authentication.
  *
- * CDP uses ES256 (ECDSA with P-256 and SHA-256).
+ * CDP Secret API Keys are Ed25519 as of Feb 2025: a UUID id and a base64 secret
+ * decoding to 64 bytes = seed(32) || publicKey(32); we sign with the seed half.
+ * (Kept in sync with x402-settlement/src/cdp-jwt.ts. FOR-79.)
  */
 async function generateCdpJwt(
   keyId: string,
   keySecret: string,
   uri: string,
 ): Promise<string> {
+  const nonceBytes = new Uint8Array(16);
+  crypto.getRandomValues(nonceBytes);
   const header = {
-    alg: "ES256",
+    alg: "EdDSA",
     kid: keyId,
     typ: "JWT",
-    nonce: crypto.randomUUID(),
+    nonce: Array.from(nonceBytes, (b) => b.toString(16).padStart(2, "0")).join(
+      "",
+    ),
   };
 
   const now = Math.floor(Date.now() / 1000);
@@ -252,55 +258,43 @@ async function generateCdpJwt(
   const jsonToBase64Url = (obj: unknown): string =>
     base64UrlEncode(new TextEncoder().encode(JSON.stringify(obj)));
 
-  const headerB64 = jsonToBase64Url(header);
-  const payloadB64 = jsonToBase64Url(payload);
-  const message = `${headerB64}.${payloadB64}`;
+  const message = `${jsonToBase64Url(header)}.${jsonToBase64Url(payload)}`;
 
-  const privateKey = await importPemKey(keySecret);
+  const privateKey = await importCdpEd25519Key(keySecret);
   const signature = await crypto.subtle.sign(
-    { name: "ECDSA", hash: "SHA-256" },
+    { name: "Ed25519" },
     privateKey,
     new TextEncoder().encode(message),
   );
 
-  const signatureB64 = base64UrlEncode(new Uint8Array(signature));
-
-  return `${message}.${signatureB64}`;
+  return `${message}.${base64UrlEncode(new Uint8Array(signature))}`;
 }
 
+// RFC 8410 PKCS#8 prefix for an Ed25519 private key (wraps the 32-byte seed).
+const PKCS8_ED25519_PREFIX = new Uint8Array([
+  0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04,
+  0x22, 0x04, 0x20,
+]);
+
 /**
- * Import a PEM-encoded EC private key for use with SubtleCrypto.
+ * Import a CDP Ed25519 signing key from its base64 secret (seed||publicKey).
  */
-async function importPemKey(pemKey: string): Promise<CryptoKey> {
-  let normalized = pemKey.replace(/\\n/g, "\n").trim();
-
-  if (normalized.includes("-----BEGIN")) {
-    const pemMatch = normalized.match(
-      /-----BEGIN[^-]+-----([^-]+)-----END[^-]+-----/,
-    );
-    if (!pemMatch) {
-      throw new Error("Invalid PEM format");
-    }
-    normalized = pemMatch[1].replace(/\s/g, "");
-  }
-
-  const binaryString = atob(normalized);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-
-  try {
-    return await crypto.subtle.importKey(
-      "pkcs8",
-      bytes.buffer,
-      { name: "ECDSA", namedCurve: "P-256" },
-      false,
-      ["sign"],
-    );
-  } catch (pkcs8Error) {
+async function importCdpEd25519Key(keySecret: string): Promise<CryptoKey> {
+  const raw = Uint8Array.from(atob(keySecret.trim()), (c) => c.charCodeAt(0));
+  if (raw.length !== 64) {
     throw new Error(
-      `Failed to import key: ${pkcs8Error instanceof Error ? pkcs8Error.message : String(pkcs8Error)}`,
+      `CDP_API_KEY_SECRET must be a base64 64-byte Ed25519 seed||publicKey ` +
+        `(decoded ${raw.length} bytes). Legacy ECDSA keys are not supported.`,
     );
   }
+  const pkcs8 = new Uint8Array(PKCS8_ED25519_PREFIX.length + 32);
+  pkcs8.set(PKCS8_ED25519_PREFIX, 0);
+  pkcs8.set(raw.subarray(0, 32), PKCS8_ED25519_PREFIX.length);
+  return crypto.subtle.importKey(
+    "pkcs8",
+    pkcs8.buffer as ArrayBuffer,
+    { name: "Ed25519" },
+    false,
+    ["sign"],
+  );
 }

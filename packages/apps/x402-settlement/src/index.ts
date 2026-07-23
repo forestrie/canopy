@@ -11,6 +11,7 @@
 import type { SettlementJob } from "@canopy/x402-settlement-types";
 import { hashLogId } from "@canopy/forestrie-sharding";
 import { X402SettlementDO } from "./durableobjects/x402settlement.js";
+import { generateCdpJwt, facilitatorRequiresAuth } from "./cdp-jwt.js";
 import type { Env } from "./env.js";
 
 export { X402SettlementDO };
@@ -141,7 +142,8 @@ export default {
  * Proxy /verify requests to upstream CDP x402 API.
  */
 async function handleVerify(request: Request, env: Env): Promise<Response> {
-  if (!env.CDP_API_KEY_ID || !env.CDP_API_KEY_SECRET) {
+  const needsAuth = facilitatorRequiresAuth(env.X402_FACILITATOR_URL);
+  if (needsAuth && (!env.CDP_API_KEY_ID || !env.CDP_API_KEY_SECRET)) {
     console.error("CDP credentials not configured");
     return Response.json(
       { isValid: false, invalidReason: "facilitator not configured" },
@@ -156,21 +158,25 @@ async function handleVerify(request: Request, env: Env): Promise<Response> {
     upstreamUrl: `${env.X402_FACILITATOR_URL}/verify`,
     bodyLength: body.length,
     bodyPreview: body.slice(0, 1000),
+    authenticated: needsAuth,
   });
 
   try {
-    const jwt = await generateCdpJwt(
-      env.CDP_API_KEY_ID,
-      env.CDP_API_KEY_SECRET,
-      `POST ${new URL(env.X402_FACILITATOR_URL).host}/platform/v2/x402/verify`,
-    );
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (needsAuth) {
+      const jwt = await generateCdpJwt(
+        env.CDP_API_KEY_ID!,
+        env.CDP_API_KEY_SECRET!,
+        `POST ${new URL(env.X402_FACILITATOR_URL).host}/platform/v2/x402/verify`,
+      );
+      headers["Authorization"] = `Bearer ${jwt}`;
+    }
 
     const res = await fetch(`${env.X402_FACILITATOR_URL}/verify`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${jwt}`,
-      },
+      headers,
       body,
     });
 
@@ -200,7 +206,8 @@ async function handleVerify(request: Request, env: Env): Promise<Response> {
  * Proxy /settle requests to upstream CDP x402 API.
  */
 async function handleSettle(request: Request, env: Env): Promise<Response> {
-  if (!env.CDP_API_KEY_ID || !env.CDP_API_KEY_SECRET) {
+  const needsAuth = facilitatorRequiresAuth(env.X402_FACILITATOR_URL);
+  if (needsAuth && (!env.CDP_API_KEY_ID || !env.CDP_API_KEY_SECRET)) {
     console.error("CDP credentials not configured");
     return Response.json(
       { success: false, error: "facilitator not configured" },
@@ -213,21 +220,25 @@ async function handleSettle(request: Request, env: Env): Promise<Response> {
   console.log("x402-settlement /settle proxy", {
     upstreamUrl: `${env.X402_FACILITATOR_URL}/settle`,
     bodyLength: body.length,
+    authenticated: needsAuth,
   });
 
   try {
-    const jwt = await generateCdpJwt(
-      env.CDP_API_KEY_ID,
-      env.CDP_API_KEY_SECRET,
-      `POST ${new URL(env.X402_FACILITATOR_URL).host}/platform/v2/x402/settle`,
-    );
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (needsAuth) {
+      const jwt = await generateCdpJwt(
+        env.CDP_API_KEY_ID!,
+        env.CDP_API_KEY_SECRET!,
+        `POST ${new URL(env.X402_FACILITATOR_URL).host}/platform/v2/x402/settle`,
+      );
+      headers["Authorization"] = `Bearer ${jwt}`;
+    }
 
     const res = await fetch(`${env.X402_FACILITATOR_URL}/settle`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${jwt}`,
-      },
+      headers,
       body,
     });
 
@@ -280,105 +291,6 @@ async function handleResetAuth(request: Request, env: Env): Promise<Response> {
     return Response.json(
       { error: err instanceof Error ? err.message : String(err) },
       { status: 500 },
-    );
-  }
-}
-
-/**
- * Generate a CDP API JWT for authentication.
- *
- * CDP uses ES256 (ECDSA with P-256 and SHA-256).
- */
-async function generateCdpJwt(
-  keyId: string,
-  keySecret: string,
-  uri: string,
-): Promise<string> {
-  const header = {
-    alg: "ES256",
-    kid: keyId,
-    typ: "JWT",
-    nonce: crypto.randomUUID(),
-  };
-
-  const now = Math.floor(Date.now() / 1000);
-  const payload = {
-    sub: keyId,
-    iss: "cdp",
-    nbf: now,
-    exp: now + 120,
-    uri,
-  };
-
-  const base64UrlEncode = (data: Uint8Array): string =>
-    btoa(String.fromCharCode(...data))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-
-  const jsonToBase64Url = (obj: unknown): string =>
-    base64UrlEncode(new TextEncoder().encode(JSON.stringify(obj)));
-
-  const headerB64 = jsonToBase64Url(header);
-  const payloadB64 = jsonToBase64Url(payload);
-  const message = `${headerB64}.${payloadB64}`;
-
-  // Import the PEM key and sign
-  const privateKey = await importPemKey(keySecret);
-  const signature = await crypto.subtle.sign(
-    { name: "ECDSA", hash: "SHA-256" },
-    privateKey,
-    new TextEncoder().encode(message),
-  );
-
-  // Convert signature from DER to raw r||s format if needed
-  // SubtleCrypto ECDSA returns raw r||s (64 bytes for P-256)
-  const signatureB64 = base64UrlEncode(new Uint8Array(signature));
-
-  return `${message}.${signatureB64}`;
-}
-
-/**
- * Import a PEM-encoded EC private key for use with SubtleCrypto.
- */
-async function importPemKey(pemKey: string): Promise<CryptoKey> {
-  // Normalize line endings and remove escapes
-  let normalized = pemKey.replace(/\\n/g, "\n").trim();
-
-  // Check if it's PEM format
-  if (normalized.includes("-----BEGIN")) {
-    // Extract the base64 content between PEM headers
-    const pemMatch = normalized.match(
-      /-----BEGIN[^-]+-----([^-]+)-----END[^-]+-----/,
-    );
-    if (!pemMatch) {
-      throw new Error("Invalid PEM format");
-    }
-    normalized = pemMatch[1].replace(/\s/g, "");
-  }
-
-  // Decode base64 to get the DER-encoded key
-  const binaryString = atob(normalized);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-
-  // Import as PKCS#8 (standard for EC private keys)
-  try {
-    return await crypto.subtle.importKey(
-      "pkcs8",
-      bytes.buffer,
-      { name: "ECDSA", namedCurve: "P-256" },
-      false,
-      ["sign"],
-    );
-  } catch (pkcs8Error) {
-    // Try SEC1 format (raw EC key) wrapped in PKCS#8
-    // Some tools export in SEC1 format - we need to wrap it
-    console.log("PKCS#8 import failed, trying alternative formats", pkcs8Error);
-    throw new Error(
-      `Failed to import key: ${pkcs8Error instanceof Error ? pkcs8Error.message : String(pkcs8Error)}`,
     );
   }
 }

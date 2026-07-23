@@ -9,6 +9,7 @@ import type {
   PaymentPayload,
   PaymentRequirementsOption,
 } from "@canopy/x402-settlement-types";
+import { generateCdpJwt } from "../cdp-jwt.js";
 
 /**
  * CDP API credentials for JWT authentication.
@@ -159,93 +160,5 @@ export async function settleCharge(
 
     // Other errors (network failures) are transient
     throw err;
-  }
-}
-
-/**
- * Generate a CDP API JWT for authentication.
- *
- * CDP uses ES256 (ECDSA with P-256 and SHA-256).
- */
-async function generateCdpJwt(
-  keyId: string,
-  keySecret: string,
-  uri: string,
-): Promise<string> {
-  const header = {
-    alg: "ES256",
-    kid: keyId,
-    typ: "JWT",
-    nonce: crypto.randomUUID(),
-  };
-
-  const now = Math.floor(Date.now() / 1000);
-  const payload = {
-    sub: keyId,
-    iss: "cdp",
-    nbf: now,
-    exp: now + 120,
-    uri,
-  };
-
-  const base64UrlEncode = (data: Uint8Array): string =>
-    btoa(String.fromCharCode(...data))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-
-  const jsonToBase64Url = (obj: unknown): string =>
-    base64UrlEncode(new TextEncoder().encode(JSON.stringify(obj)));
-
-  const headerB64 = jsonToBase64Url(header);
-  const payloadB64 = jsonToBase64Url(payload);
-  const message = `${headerB64}.${payloadB64}`;
-
-  const privateKey = await importPemKey(keySecret);
-  const signature = await crypto.subtle.sign(
-    { name: "ECDSA", hash: "SHA-256" },
-    privateKey,
-    new TextEncoder().encode(message),
-  );
-
-  const signatureB64 = base64UrlEncode(new Uint8Array(signature));
-
-  return `${message}.${signatureB64}`;
-}
-
-/**
- * Import a PEM-encoded EC private key for use with SubtleCrypto.
- */
-async function importPemKey(pemKey: string): Promise<CryptoKey> {
-  let normalized = pemKey.replace(/\\n/g, "\n").trim();
-
-  if (normalized.includes("-----BEGIN")) {
-    const pemMatch = normalized.match(
-      /-----BEGIN[^-]+-----([^-]+)-----END[^-]+-----/,
-    );
-    if (!pemMatch) {
-      throw new Error("Invalid PEM format");
-    }
-    normalized = pemMatch[1].replace(/\s/g, "");
-  }
-
-  const binaryString = atob(normalized);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-
-  try {
-    return await crypto.subtle.importKey(
-      "pkcs8",
-      bytes.buffer,
-      { name: "ECDSA", namedCurve: "P-256" },
-      false,
-      ["sign"],
-    );
-  } catch (pkcs8Error) {
-    throw new Error(
-      `Failed to import key: ${pkcs8Error instanceof Error ? pkcs8Error.message : String(pkcs8Error)}`,
-    );
   }
 }

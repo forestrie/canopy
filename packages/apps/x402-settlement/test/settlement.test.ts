@@ -25,12 +25,13 @@ describe("x402-settlement worker", () => {
   });
 });
 
-// FOR-79. CDP credentials never reached this worker: the CI step that pushed
-// them ran at the repo root with no wrangler config and hid the error behind
-// `|| true`. The failure mode is silent — /verify and /settle 500, and the
-// queue consumer returns permanent:true, which blocks the payer's auth after
-// 10 failures. `hasCdpCredentials` on /health is the deploy-time probe that
-// makes the condition observable, so it must tell the truth.
+// FOR-79. `hasCdpCredentials` on /health is the deploy-time probe that makes an
+// otherwise-silent credential gap observable (the queue consumer fails
+// permanent:true and blocks the payer's auth after 10 failures), so it must
+// tell the truth. The test env (wrangler.jsonc) points at the credential-free
+// testnet facilitator https://x402.org/facilitator, so missing CDP creds must
+// NOT be treated as a fatal "facilitator not configured" — that rejection only
+// applies to the CDP facilitator. See cdp-jwt.test.ts for the gating predicate.
 describe("CDP credential reporting (FOR-79)", () => {
   it("/health hasCdpCredentials reflects credential absence", async () => {
     const response = await SELF.fetch("http://localhost/health");
@@ -46,34 +47,26 @@ describe("CDP credential reporting (FOR-79)", () => {
     expect(data.hasCdpCredentials).toBe(false);
   });
 
-  it("/verify fails closed with 'facilitator not configured' when creds absent", async () => {
+  // On the testnet facilitator the credential gate must NOT fire when creds are
+  // absent. We assert only that the "facilitator not configured" short-circuit
+  // did not happen — the actual upstream status (reached, or a 502 when the
+  // sandbox has no network) is irrelevant and left unasserted to stay hermetic.
+  it("/verify does not reject for missing creds on the testnet facilitator", async () => {
     const response = await SELF.fetch("http://localhost/verify", {
       method: "POST",
       body: JSON.stringify({}),
     });
-    expect(response.status).toBe(500);
-
-    const data = (await response.json()) as {
-      isValid: boolean;
-      invalidReason: string;
-    };
-    expect(data.isValid).toBe(false);
-    expect(data.invalidReason).toBe("facilitator not configured");
+    const data = (await response.json()) as { invalidReason?: string };
+    expect(data.invalidReason).not.toBe("facilitator not configured");
   });
 
-  it("/settle fails closed with 'facilitator not configured' when creds absent", async () => {
+  it("/settle does not reject for missing creds on the testnet facilitator", async () => {
     const response = await SELF.fetch("http://localhost/settle", {
       method: "POST",
       body: JSON.stringify({}),
     });
-    expect(response.status).toBe(500);
-
-    const data = (await response.json()) as {
-      success: boolean;
-      error: string;
-    };
-    expect(data.success).toBe(false);
-    expect(data.error).toBe("facilitator not configured");
+    const data = (await response.json()) as { error?: string };
+    expect(data.error).not.toBe("facilitator not configured");
   });
 });
 
