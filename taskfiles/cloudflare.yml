@@ -133,10 +133,22 @@ tasks:
       If maxTimeoutSeconds is ever raised near this window, RAISE THIS TOO.
     cmds:
       - cmd: |
-          wrangler r2 bucket lifecycle add "{{.R2_BUCKET_NAME_GRANTS}}" \
+          # NOTE: the grants bucket is NOT {{.CANOPY_ID}}-grants. canopy-api
+          # rewrites the R2_GRANTS binding at deploy time from the consumer
+          # contract (apply-runtime-contract.mjs <- R2_GRANTS_BUCKET_NAME):
+          #
+          #   lane A (wrangler env "dev")   -> forest-<project>-grants
+          #   lane B (wrangler env "prod",  -> forest-<project>-grants-b
+          #           which is STAGE, not production)
+          #
+          # Pass the real name explicitly. Defaulting to the CANOPY_ID form
+          # targets an unused legacy bucket, so the rule applies cleanly and
+          # then silently protects nothing.
+          BUCKET="${R2_GRANTS_BUCKET_NAME:?set R2_GRANTS_BUCKET_NAME (see GitHub Environment var of the same name, e.g. forest-dev-5-grants / forest-dev-5-grants-b)}"
+          wrangler r2 bucket lifecycle add "$BUCKET" \
             expire-used-auth payments/used-auth/ --expire-days 1 --force \
             || echo "lifecycle rule expire-used-auth may already exist"
-          wrangler r2 bucket lifecycle list "{{.R2_BUCKET_NAME_GRANTS}}"
+          wrangler r2 bucket lifecycle list "$BUCKET"
 
   bucket:empty:
     desc: Delete all objects in the R2 bucket (DESTRUCTIVE!)
