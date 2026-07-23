@@ -162,11 +162,12 @@ wallet stays funded without hitting rate limits.
 
 ### 6. Running SCRAPI Tasks
 
-> **Note:** these tasks no longer exercise a payment path. `taskfiles/scrapi.yml`
-> still contains the historical "402 then retry with `X-Payment`" dance, but the
-> API never returns a 402 — registration succeeds on grant authorization alone.
+> **Note:** these tasks do not exercise a payment path — statement registration
+> succeeds on **grant** authorization alone. The historical "402 then retry with
+> `X-Payment`" branches were removed from `taskfiles/scrapi.yml` (they could
+> never trigger). For the paid flow, see the onboard path above.
 
-With the dev wallet configured, you can run SCRAPI tasks against the dev API:
+You can run SCRAPI tasks against the dev API:
 
 ```bash
 # Register a single statement and fetch its receipt
@@ -181,11 +182,9 @@ task scrapi:smoke
 
 These tasks will:
 
-1. POST to `/entries` without a payment header, receiving a 402.
-2. Extract the `Payment-Required` header from the 402 response.
-3. Sign a real x402 payment using your dev wallet.
-4. Retry the POST with the signed `Payment-Signature` header.
-5. Poll for sequencing completion and (for `register-statement`) fetch the
+1. POST the signed statement to `/entries` with its grant
+   (`Authorization: Forestrie-Grant …`).
+2. Poll for sequencing completion and (for `register-statement`) fetch the
    receipt.
 
 ## References
