@@ -99,18 +99,36 @@ FQDNs from **forest-1** [ARC-0003](../../forest-1/docs/arc-0003-ingress-and-dns-
 
 ## x402-settlement (USDC settlement worker)
 
-| Wrangler config | Worker name | Queue consumed | `X402_NETWORK` |
-| --------------- | ----------- | -------------- | -------------- |
+| Wrangler config | Worker name | Queue consumed | `X402_NETWORK` (configured) |
+| --------------- | ----------- | -------------- | --------------------------- |
 | Top-level (no `--env`) | **x402-settlement** | none | `eip155:84532` — unused by CI |
-| `--env dev` (Lane A) | **x402-settlement-dev** | `canopy-dev-1-x402-settlement` | `eip155:84532` — Base **Sepolia**, testnet USDC |
-| `--env prod` (Lane B) | **x402-settlement-prod** | `canopy-prod-1-x402-settlement` | `eip155:8453` — Base **mainnet, REAL USDC** |
+| `--env dev` (Lane A) | **x402-settlement-dev** | `canopy-dev-1-x402-settlement` | `eip155:84532` — Base Sepolia |
+| `--env prod` (Lane B) | **x402-settlement-prod** | `canopy-prod-1-x402-settlement` | `eip155:8453` — **see the drift warning below** |
 
-> **Money implication.** Once prod has working CDP credentials **and** something
-> enqueues a `SettlementJob`, prod settlement moves real funds. Today nothing
-> enqueues (the producer was removed in Plan 0001 and never reinstated — see
-> [FOR-80](https://linear.app/forestrie/issue/FOR-80)), so the worker is dormant.
-> Do not reinstate the producer before the amount cap and kill-switch from
-> [FOR-83](https://linear.app/forestrie/issue/FOR-83) are in place.
+> **Both lanes run on Base Sepolia today. Lane B ("prod") is effectively a
+> staging lane** — the mainnet cutover is deliberate and has not happened.
+> `demo/preflight.sh` puts it plainly: *"DEPLOY_KEY is a Base Sepolia gas-only
+> payer (same chain both lanes)"*.
+>
+> **Config drift — `X402_NETWORK` on the prod lane is ahead of reality.**
+> `eip155:8453` (Base mainnet) appears in exactly **two** places in the whole
+> platform: the prod env of `x402-settlement/wrangler.jsonc` and
+> `canopy-api/wrangler.jsonc`. Nothing else — no Univocity deployment, no
+> chain-rpc entry, no test fixture — references mainnet. Those two literals
+> therefore contradict the lane they sit in.
+>
+> This is currently harmless because nothing enqueues a `SettlementJob` (the
+> producer was removed in Plan 0001 and never reinstated — see
+> [FOR-80](https://linear.app/forestrie/issue/FOR-80)), so the worker is
+> dormant. It stops being harmless the moment a producer lands: prod would
+> attempt a **mainnet** settlement on a lane whose every other component is on
+> Sepolia — the accident [FOR-83](https://linear.app/forestrie/issue/FOR-83)
+> exists to prevent, arriving by config drift rather than by decision.
+>
+> **Before any producer lands** ([FOR-434](https://linear.app/forestrie/issue/FOR-434)),
+> either set the prod lane to `eip155:84532` to match reality and flip it as
+> part of the FOR-83 mainnet cutover, or land FOR-83's amount cap and
+> kill-switch first. Do not leave both halves to arrive independently.
 
 Unlike the other three workers, x402-settlement has **no**
 `scripts/apply-runtime-contract.mjs`, so its `CANOPY_ID`, queue names and
