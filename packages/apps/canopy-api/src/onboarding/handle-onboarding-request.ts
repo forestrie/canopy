@@ -27,6 +27,7 @@ import {
   checkOnboardCreateBodySize,
   checkOnboardCreateRateLimit,
   checkOnboardFieldLengths,
+  checkOnboardRedeemRateLimit,
   checkOnboardRejectReasonLength,
 } from "./onboard-create-guard.js";
 import { scheduleOnboardWebhook } from "./onboard-notify.js";
@@ -69,31 +70,28 @@ const CBOR_REJECT_REASON = 1;
 
 const NO_STORE_HEADERS = { "cache-control": "no-store" };
 
-/** 402 with the onboard `X-PAYMENT-REQUIRED` challenge header. */
+/**
+ * 402 with the onboard `X-PAYMENT-REQUIRED` challenge header.
+ *
+ * Uses the repo's `problemResponse` helper so the error shape matches the rest
+ * of this (CBOR) API; the x402 challenge itself travels in the header, not the
+ * body, so the body encoding is free to follow local convention.
+ */
 function paymentRequiredResponse(
   env: OnboardPaymentEnv,
   resourceUrl: string,
   reason?: string,
 ): Response {
-  return new Response(
-    JSON.stringify({
-      type: "about:blank",
-      title: "Payment Required",
-      status: 402,
-      detail: reason ?? "Payment required to redeem this onboard request",
-    }),
-    {
-      status: 402,
-      headers: {
-        "Content-Type": "application/problem+json",
-        "Cache-Control": "no-store",
-        [X402_HEADERS.paymentRequired]: onboardPaymentRequiredHeader(
-          env,
-          resourceUrl,
-        ),
-      },
+  return problemResponse(402, "Payment Required", "about:blank", {
+    detail: reason ?? "Payment required to redeem this onboard request",
+    headers: {
+      ...NO_STORE_HEADERS,
+      [X402_HEADERS.paymentRequired]: onboardPaymentRequiredHeader(
+        env,
+        resourceUrl,
+      ),
     },
-  );
+  });
 }
 
 export interface OnboardingHandlerEnv
@@ -363,6 +361,10 @@ async function handleRedeem(
 ): Promise<Response> {
   const ctErr = requireContentTypeCbor(request);
   if (ctErr) return attachCors(ctErr, corsHeaders);
+
+  // R7: the paid path calls the facilitator per attempt — bound the rate.
+  const rlErr = await checkOnboardRedeemRateLimit(request, env);
+  if (rlErr) return attachCors(rlErr, corsHeaders);
 
   let redeemCode: string | undefined;
   try {

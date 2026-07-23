@@ -31,7 +31,6 @@ export interface Env {
   X402_FACILITATOR_URL?: string;
   X402_NETWORK?: string;
   X402_PAYTO_ADDRESS?: string;
-  X402_PRICE_ATOMIC?: string;
   /** Onboard-token price in atomic USDC (FOR-434; default $0.01 = "10000"). */
   X402_ONBOARD_PRICE_ATOMIC?: string;
   // Massif height for this transparency log (1-based, typically 14)

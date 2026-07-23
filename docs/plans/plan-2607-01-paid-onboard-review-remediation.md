@@ -66,6 +66,39 @@ payment verification entirely). Both are in the money path.
 
 ---
 
+## Durability of the payment claim (answering "what if the store resets?")
+
+**The chain is the ultimate backstop; the claim store only covers the
+pre-settlement window.** Verified against the live facilitator:
+
+```
+verify BEFORE settle -> isValid: true
+settle               -> success, tx 0xd369b805…
+verify AFTER  settle -> isValid: FALSE  "invalid_exact_evm_nonce_already_used"
+```
+
+The facilitator simulates `transferWithAuthorization`, so once an authorization
+has settled the **on-chain EIP-3009 nonce state** rejects it — no application
+storage required. The R2 claim exists solely to close the window between
+`verify` and settlement, during which the authorization is genuinely still
+spendable and would otherwise verify for every concurrent request.
+
+Consequences if `R2_GRANTS` were wiped:
+
+| Authorization state                      | Replayable after a reset?            |
+| ---------------------------------------- | ------------------------------------ |
+| Already settled                          | **No** — chain rejects it            |
+| Past `validBefore`                       | **No** — can never settle            |
+| Claimed, unsettled, within `validBefore` | **Yes**, until it settles or expires |
+
+So the exposure is bounded to authorizations in flight, and `maxTimeoutSeconds`
+is 300 — a ~5-minute window, not an unbounded one.
+
+**This also gives a safe TTL.** A claim record is useless once `validBefore` has
+passed, because the authorization can never settle after that. Claims can
+therefore be expired/pruned at `validBefore` without weakening the guard, which
+bounds storage growth. Not implemented — see RM6.
+
 ## Remediation
 
 ### RM1 — Single-use payment guard (blocks merge) — R1
@@ -113,9 +146,18 @@ record exists that a reconciliation job could read.
 Extend `recordSuccess` so onboard settlements are attributable. Coordinate with
 **FOR-84** (settlement ledger) rather than duplicating it.
 
-### Deferred (Low)
+### RM6 — Prune claim records at `validBefore` (follow-up)
 
-R6 (`problemResponse` helper), R7 (redeem rate limit), R8 (price-var naming).
+Claim records currently accumulate without expiry. They are provably useless
+after the authorization's `validBefore` (it can never settle), so pruning at
+that boundary is safe. Carry `validBefore` on the claim record and add an R2
+lifecycle rule or a scheduled sweep. Not urgent — records are tiny — but it is
+unbounded growth on a hot path.
+
+### Lows — DONE
+
+R6 (`problemResponse` helper), R7 (redeem rate limit), R8 (dead
+`X402_PRICE_ATOMIC` env field removed) are all implemented on this branch.
 
 ---
 
