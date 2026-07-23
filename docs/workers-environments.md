@@ -97,6 +97,65 @@ FQDNs from **forest-1** [ARC-0003](../../forest-1/docs/arc-0003-ingress-and-dns-
 
 **Ops runbook:** [plan-0022](plans/plan-0022-delegation-coordinator-ops-parity.md), [forest-1 bootstrap-canopy-contract](../../forest-1/docs/bootstrap-canopy-contract.md).
 
+## x402-settlement (USDC settlement worker)
+
+| Wrangler config | Worker name | Queue consumed | `X402_NETWORK` |
+| --------------- | ----------- | -------------- | -------------- |
+| Top-level (no `--env`) | **x402-settlement** | none | `eip155:84532` — unused by CI |
+| `--env dev` (Lane A) | **x402-settlement-dev** | `canopy-dev-1-x402-settlement` | `eip155:84532` — Base **Sepolia**, testnet USDC |
+| `--env prod` (Lane B) | **x402-settlement-prod** | `canopy-prod-1-x402-settlement` | `eip155:8453` — Base **mainnet, REAL USDC** |
+
+> **Money implication.** Once prod has working CDP credentials **and** something
+> enqueues a `SettlementJob`, prod settlement moves real funds. Today nothing
+> enqueues (the producer was removed in Plan 0001 and never reinstated — see
+> [FOR-80](https://linear.app/forestrie/issue/FOR-80)), so the worker is dormant.
+> Do not reinstate the producer before the amount cap and kill-switch from
+> [FOR-83](https://linear.app/forestrie/issue/FOR-83) are in place.
+
+Unlike the other three workers, x402-settlement has **no**
+`scripts/apply-runtime-contract.mjs`, so its `CANOPY_ID`, queue names and
+`X402_NETWORK` are **frozen literals** in `wrangler.jsonc`. Note canopy-api
+*derives* the settlement worker's script name from its injected `CANOPY_ID`
+(`apply-runtime-contract.mjs` → `x402-settlement-${lane}`), so the two can drift.
+Closing that asymmetry is tracked separately.
+
+### CDP credential mapping (FOR-79)
+
+`CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` authenticate to the Coinbase CDP
+facilitator for `/verify` and `/settle`.
+
+| Origin | Transport | Consumer | Secret |
+| ------ | --------- | -------- | ------ |
+| GitHub **Environment** `dev` | `deploy-workers.yml` → `wrangler secret put --env dev` | `x402-settlement-dev`, `canopy-api-dev` | `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` |
+| GitHub **Environment** `prod` | `deploy-workers.yml` → `wrangler secret put --env prod` | `x402-settlement-prod`, `canopy-api-prod` | same |
+
+**Format:** `CDP_API_KEY_SECRET` must be a **PKCS#8 PEM P-256** key. `importPemKey`
+(`packages/apps/x402-settlement/src/index.ts`) does `pemKey.replace(/\\n/g,"\n")`
+then `crypto.subtle.importKey("pkcs8", …, {name:"ECDSA", namedCurve:"P-256"})` —
+literal `\n` escapes are tolerated, **SEC1 keys throw**.
+
+**Verify after deploy:** `GET /health` on the settlement worker returns
+`hasCdpCredentials`. It must be `true` on both lanes.
+
+**Failure mode is silent.** Without credentials `/verify` and `/settle` return 500
+`"facilitator not configured"`, and the queue consumer returns `permanent:true`,
+which increments `failure_count` and **blocks the payer's auth after 10 failures** —
+revenue loss presenting as a payer bug.
+
+**Origin is not yet Doppler.** These two are currently hand-set GitHub Environment
+secrets (2026-03-22) and are **not** in forest-1's
+`bootstrap:canopy:sync-github-env` list, unlike every other canopy secret. Moving
+them into `canopy_dev` / `canopy_prod` so Doppler is the single origin is FOR-79
+Phase 2. **No rotation owner or procedure is defined yet** — contrast the
+documented blue/green rotation for the Cloudflare platform token in
+[forest-1 doppler.md](../../forest-1/docs/doppler.md).
+
+> The forward standard for all canopy workers is GitHub→Doppler **OIDC pull**
+> per [ADR-0049](../../devdocs/adr/adr-0049-doppler-github-oidc-worker-deploy.md)
+> (already implemented in `mandate`). The Doppler→Cloudflare **native sync**
+> proposed in [plan-0002](plans/plan-0002-doppler-secrets-migration.md) was never
+> implemented and is **explicitly rejected** by that ADR — do not build it.
+
 ## CI / e2e targeting
 
 | GitHub Environment | Lane | Doppler `canopy` config | Typical `CANOPY_FQDN` | Playwright |

@@ -25,6 +25,58 @@ describe("x402-settlement worker", () => {
   });
 });
 
+// FOR-79. CDP credentials never reached this worker: the CI step that pushed
+// them ran at the repo root with no wrangler config and hid the error behind
+// `|| true`. The failure mode is silent — /verify and /settle 500, and the
+// queue consumer returns permanent:true, which blocks the payer's auth after
+// 10 failures. `hasCdpCredentials` on /health is the deploy-time probe that
+// makes the condition observable, so it must tell the truth.
+describe("CDP credential reporting (FOR-79)", () => {
+  it("/health hasCdpCredentials reflects credential absence", async () => {
+    const response = await SELF.fetch("http://localhost/health");
+    expect(response.status).toBe(200);
+
+    const data = (await response.json()) as { hasCdpCredentials: boolean };
+    expect(data).toHaveProperty("hasCdpCredentials");
+    expect(typeof data.hasCdpCredentials).toBe("boolean");
+
+    // The test env supplies no CDP secrets, so this must be false. A `true`
+    // here would mean the probe cannot distinguish configured from not —
+    // exactly the blind spot that let the broken secret push go unnoticed.
+    expect(data.hasCdpCredentials).toBe(false);
+  });
+
+  it("/verify fails closed with 'facilitator not configured' when creds absent", async () => {
+    const response = await SELF.fetch("http://localhost/verify", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    expect(response.status).toBe(500);
+
+    const data = (await response.json()) as {
+      isValid: boolean;
+      invalidReason: string;
+    };
+    expect(data.isValid).toBe(false);
+    expect(data.invalidReason).toBe("facilitator not configured");
+  });
+
+  it("/settle fails closed with 'facilitator not configured' when creds absent", async () => {
+    const response = await SELF.fetch("http://localhost/settle", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    expect(response.status).toBe(500);
+
+    const data = (await response.json()) as {
+      success: boolean;
+      error: string;
+    };
+    expect(data.success).toBe(false);
+    expect(data.error).toBe("facilitator not configured");
+  });
+});
+
 describe("X402SettlementDO", () => {
   it("can be instantiated", async () => {
     const doId = typedEnv.X402_SETTLEMENT_DO.idFromName("shard-0");
