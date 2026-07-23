@@ -5,8 +5,8 @@
 | Wrangler config        | Worker name in dashboard | Route (runtime from `CANOPY_FQDN` + aliases) | When it gets deployed                                                                       |
 | ---------------------- | ------------------------ | -------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | Top-level (no `--env`) | **canopy-api**           | No route in wrangler (may use workers.dev) | Only when someone runs `wrangler deploy` without `ENV` from the app directory               |
-| `--env dev` (Lane A)   | **canopy-api-dev**       | `api-a.{DNS_SUB}.{DNS_APEX}`                 | **Deploy Workers** workflow (push to main → dev, or workflow_dispatch with environment=dev) |
-| `--env prod` (Lane B)  | **canopy-api-prod**      | `api-b.{DNS_SUB}.{DNS_APEX}` + alias `api-{DNS_SUB}.{DNS_APEX}` | **Deploy Workers** workflow_dispatch with environment=prod                                  |
+| `--env dev` (Lane A)   | **canopy-api-a**       | `api-a.{DNS_SUB}.{DNS_APEX}`                 | **Deploy Workers** workflow (push to main → dev, or workflow_dispatch with environment=dev) |
+| `--env prod` (Lane B)  | **canopy-api-b**      | `api-b.{DNS_SUB}.{DNS_APEX}` + alias `api-{DNS_SUB}.{DNS_APEX}` | **Deploy Workers** workflow_dispatch with environment=prod                                  |
 
 All three configs include the **R2_GRANTS** binding (and R2_MMRS, DOs, etc.).
 
@@ -14,9 +14,15 @@ All three configs include the **R2_GRANTS** binding (and R2_MMRS, DOs, etc.).
 
 | Idea | Meaning |
 |------|---------|
-| **Lane A** (`dev`) | **canopy-api-dev**, ledger slot `a`, `api-a.{DNS_SUB}.{DNS_APEX}` |
-| **Lane B** (`prod`) | **canopy-api-prod**, ledger slot `b`, `api-b.{DNS_SUB}.{DNS_APEX}` |
-| **Production alias** | `api-{DNS_SUB}.{DNS_APEX}` on **canopy-api-prod** (Lane B only) |
+> **Worker script names carry the SLOT (`-a` / `-b`), not the tier.** This matches
+> `forestrie-ingress-{DNS_SUB}-a|-b` and the hostnames, so `canopy-api-a` <-> `api-a.…`
+> is self-evident. The wrangler *env* is still `dev`/`prod` until FOR-444 retires the
+> `prod` vocabulary in favour of `dev`/`stage`. Renamed in FOR-445: canopy-api hosts no
+> Durable Object classes (it only binds them), so the rename carried no state.
+
+| **Lane A** (`dev`) | **canopy-api-a**, ledger slot `a`, `api-a.{DNS_SUB}.{DNS_APEX}` |
+| **Lane B** (`prod`) | **canopy-api-b**, ledger slot `b`, `api-b.{DNS_SUB}.{DNS_APEX}` |
+| **Production alias** | `api-{DNS_SUB}.{DNS_APEX}` on **canopy-api-b** (Lane B only) |
 | **Edge ingress** | Per-slot **`forestrie-ingress-{DNS_SUB}-{a|b}`** on **`ingress.{slot}.{DNS_SUB}.{DNS_APEX}`** |
 
 Lane and slot are **coupled** on a single forest project: `CANOPY_PROMOTION_LANE`
@@ -36,7 +42,7 @@ Forest bootstrap publishes and verifies the contract per lane; see **forest-1**
 ## Perf test and dev traffic
 
 - The **Performance Tests** workflow uses GitHub Environment **`dev`**, **`stage`**, or **`prod`**. Variables supply **`CANOPY_BASE_URL`**, etc.
-- Dev perf traffic hits **canopy-api-dev** on **`api-a.{DNS_SUB}.{DNS_APEX}`** (Lane A).
+- Dev perf traffic hits **canopy-api-a** on **`api-a.{DNS_SUB}.{DNS_APEX}`** (Lane A).
 - Prod perf uses **`CANOPY_FQDN`** from the prod GitHub Environment (Lane B canonical hostname).
 
 ## Deploying a feature branch to dev
@@ -49,7 +55,7 @@ Forest bootstrap publishes and verifies the contract per lane; see **forest-1**
 4. Set **Deployment environment** to **dev**.
 5. Run the workflow.
 
-That deploys **canopy-api-dev** to **`api-a.{DNS_SUB}.{DNS_APEX}`**.
+That deploys **canopy-api-a** to **`api-a.{DNS_SUB}.{DNS_APEX}`**.
 
 If you deploy from the repo root with `task wrangler:deploy:canopy-api` **without**
 `ENV=dev`, you deploy the **canopy-api** (default) worker, which is **not** the one
@@ -151,8 +157,8 @@ facilitator for `/verify` and `/settle`.
 
 | Origin | Transport | Consumer | Secret |
 | ------ | --------- | -------- | ------ |
-| GitHub **Environment** `dev` | `deploy-workers.yml` → `wrangler secret put --env dev` | `x402-settlement-dev`, `canopy-api-dev` | `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` |
-| GitHub **Environment** `prod` | `deploy-workers.yml` → `wrangler secret put --env prod` | `x402-settlement-prod`, `canopy-api-prod` | same |
+| GitHub **Environment** `dev` | `deploy-workers.yml` → `wrangler secret put --env dev` | `x402-settlement-dev`, `canopy-api-a` | `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` |
+| GitHub **Environment** `prod` | `deploy-workers.yml` → `wrangler secret put --env prod` | `x402-settlement-prod`, `canopy-api-b` | same |
 
 #### There are two generations of CDP key, and this worker wants the older one
 
