@@ -15,6 +15,10 @@
  * canopy vitest projects run under workerd, which has no node:child_process.
  *
  * Usage: node scripts/assert-lane-wiring.mjs
+ *
+ * Fixtures set SUPPORTED_CHAINS_RPC explicitly: canopy-api's contract otherwise
+ * falls back to config/supported-chains.jsonc and resolves its ${env:...} refs,
+ * which are present in a developer shell (direnv) but not in CI.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -38,6 +42,7 @@ const LANES = [
     wranglerEnv: "dev",
     contract: {
       CANOPY_ID: "canopy-dev-1",
+      SUPPORTED_CHAINS_RPC: '{"84532":["https://sepolia.base.org"]}',
       X402_SETTLEMENT_QUEUE_NAME: "canopy-dev-1-x402-settlement",
       X402_SETTLEMENT_SCRIPT_NAME: "x402-settlement-dev",
       R2_MMRS_BUCKET_NAME: "forest-dev-5-logs",
@@ -46,7 +51,8 @@ const LANES = [
       CANOPY_FQDN: "api-a.forest-2.forestrie.dev",
       FOREST_PROJECT_ID: "forest-dev-5",
       CUSTODIAN_URL: "https://custodian.a.forest-2.forestrie.dev/v1",
-      DELEGATION_COORDINATOR_URL: "https://coordinator-a.forest-2.forestrie.dev",
+      DELEGATION_COORDINATOR_URL:
+        "https://coordinator-a.forest-2.forestrie.dev",
       UNIVOCITY_SERVICE_URL: "https://univocity.a.forest-2.forestrie.dev",
     },
   },
@@ -55,6 +61,7 @@ const LANES = [
     wranglerEnv: "prod",
     contract: {
       CANOPY_ID: "canopy-prod-1",
+      SUPPORTED_CHAINS_RPC: '{"84532":["https://sepolia.base.org"]}',
       X402_SETTLEMENT_QUEUE_NAME: "canopy-prod-1-x402-settlement",
       X402_SETTLEMENT_SCRIPT_NAME: "x402-settlement-prod",
       R2_MMRS_BUCKET_NAME: "forest-dev-5-logs-b",
@@ -63,7 +70,8 @@ const LANES = [
       CANOPY_FQDN: "api-b.forest-2.forestrie.dev",
       FOREST_PROJECT_ID: "forest-dev-5",
       CUSTODIAN_URL: "https://custodian.b.forest-2.forestrie.dev/v1",
-      DELEGATION_COORDINATOR_URL: "https://coordinator-b.forest-2.forestrie.dev",
+      DELEGATION_COORDINATOR_URL:
+        "https://coordinator-b.forest-2.forestrie.dev",
       UNIVOCITY_SERVICE_URL: "https://univocity.b.forest-2.forestrie.dev",
     },
   },
@@ -100,7 +108,12 @@ function match(text, re) {
 try {
   const resolved = LANES.map((l) => ({
     ...l,
-    api: applyContract(API_DIR, l.wranglerEnv, l.contract, `api-${l.lane}.jsonc`),
+    api: applyContract(
+      API_DIR,
+      l.wranglerEnv,
+      l.contract,
+      `api-${l.lane}.jsonc`,
+    ),
     settlement: applyContract(
       SETTLEMENT_DIR,
       l.wranglerEnv,
@@ -148,7 +161,10 @@ try {
     // canopy-api builds the 402 challenge, x402-settlement settles it. A chain
     // mismatch fails at settle time, after the payer has consumed their window.
     const apiNetwork = match(api, /"X402_NETWORK"\s*:\s*"([^"]+)"/);
-    const settlementNetwork = match(settlement, /"X402_NETWORK"\s*:\s*"([^"]+)"/);
+    const settlementNetwork = match(
+      settlement,
+      /"X402_NETWORK"\s*:\s*"([^"]+)"/,
+    );
     check(
       apiNetwork !== "" && apiNetwork === settlementNetwork,
       `${tag}: challenge chain "${apiNetwork}" != settlement chain "${settlementNetwork}"`,
@@ -183,4 +199,6 @@ if (failures.length > 0) {
   for (const f of failures) console.error(`  - ${f}`);
   process.exit(1);
 }
-console.log("x402 lane wiring ok (lanes A and B resolve to disjoint, self-consistent settlement pipelines)");
+console.log(
+  "x402 lane wiring ok (lanes A and B resolve to disjoint, self-consistent settlement pipelines)",
+);

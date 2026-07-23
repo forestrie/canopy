@@ -203,6 +203,7 @@ console.log(
 // be part of the contract. Machine-readable, one key per line.
 const resolvedFacilitator =
   /"X402_FACILITATOR_URL"\s*:\s*"([^"]*)"/.exec(envBlock)?.[1] ?? "";
-const resolvedNetwork = /"X402_NETWORK"\s*:\s*"([^"]*)"/.exec(envBlock)?.[1] ?? "";
+const resolvedNetwork =
+  /"X402_NETWORK"\s*:\s*"([^"]*)"/.exec(envBlock)?.[1] ?? "";
 console.log(`resolved:X402_FACILITATOR_URL=${resolvedFacilitator}`);
 console.log(`resolved:X402_NETWORK=${resolvedNetwork}`);
