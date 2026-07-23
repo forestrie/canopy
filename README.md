@@ -59,10 +59,27 @@ Key variables (in Doppler or exported for CI):
 - `CLOUDFLARE_ACCOUNT_ID` - Cloudflare account ID
 - `R2_ADMIN`, `R2_WRITER`, `R2_READER` - API tokens for different access levels
 
-## x402 Payment Setup (Dev)
+## x402 Payment Setup (Dev) — dormant
 
-The Canopy API uses the x402 payment protocol to gate statement registration.
-In the dev environment, payments settle on **Base Sepolia** using testnet USDC.
+> **The Canopy API does not gate anything on payment today.** Statement
+> registration is authorized by **grant**
+> (`Authorization: Forestrie-Grant <base64 COSE_Sign1>` on
+> `POST /register/{R}/entries`), not by an x402 payment header. Commit
+> [`57d4bbd`](https://github.com/forestrie/canopy/commit/57d4bbd) (2026-03-07)
+> removed the 402 challenge from the entries path; `parsePaymentHeader` and
+> `verifyPayment` have no call sites, and nothing sends to
+> `X402_SETTLEMENT_QUEUE`, so the `x402-settlement` worker is deployed but
+> dormant. See ARC-0015 (SUPERSEDED) and ARC-0016 for why the priced unit moved
+> from the statement to the checkpoint; FOR-80 tracks re-pointing the rail at
+> onboarding and grant issuance.
+>
+> The setup below still works for exercising the settlement rail directly
+> (faucet, signature generation, facilitator calls) and is retained for that
+> purpose. **It will not produce a 402 from the public API.**
+
+Historically, the Canopy API used the x402 payment protocol to gate statement
+registration. In the dev environment, payments settle on **Base Sepolia** using
+testnet USDC.
 
 ### 1. Create a Dev Payer Wallet
 
@@ -138,6 +155,10 @@ The `--refill-if-low` command is ideal for CI/CD workflows to ensure the dev
 wallet stays funded without hitting rate limits.
 
 ### 6. Running SCRAPI Tasks
+
+> **Note:** these tasks no longer exercise a payment path. `taskfiles/scrapi.yml`
+> still contains the historical "402 then retry with `X-Payment`" dance, but the
+> API never returns a 402 — registration succeeds on grant authorization alone.
 
 With the dev wallet configured, you can run SCRAPI tasks against the dev API:
 
