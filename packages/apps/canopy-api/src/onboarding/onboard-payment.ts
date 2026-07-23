@@ -83,7 +83,7 @@ async function paymentClaimKey(payment: VerifiedPayment): Promise<string> {
  * backstop, and this store only covers the verify→settle window, ~5 min at the
  * current `maxTimeoutSeconds` of 300.)
  *
- **Mechanism: `task cloudflare:bucket:lifecycle:used-auth`** adds an R2
+ * **Mechanism: `task cloudflare:bucket:lifecycle:used-auth`** adds an R2
  * lifecycle rule expiring this prefix 1 day after creation — no sweep, no
  * listing (a flat content-addressed prefix cannot be scanned cheaply). The rule
  * is only safe while `maxTimeoutSeconds` (300s) stays far below the expiry
