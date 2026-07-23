@@ -91,7 +91,17 @@ test.describe("delegation-coordinator BYOK material", () => {
     });
   });
 
-  test("POST /api/delegations — miss creates pending entry", async ({
+  // FOR-390 phase-H membership enforcement (ENFORCE_DELEGATE_KEY_MEMBERSHIP,
+  // on for the deployed Lane A / dev coordinator these specs run against): only
+  // a custodian-vouched *standing* delegate key may create a windowed pending
+  // demand + signer webhook. This test's delegated key is a locally generated
+  // ephemeral key that is never registered as a standing key, so the miss is
+  // accepted (202) but MUST surface no windowed pending demand — that is the
+  // arbitrary-key-injection protection. A positive "miss creates pending entry"
+  // variant needs a vouched standing key, which CI cannot mint (the Lane A
+  // registrar voucher key is a non-exportable GCP KMS key). Tracked in FOR-402;
+  // mirrors system-testing byok-mode-c-webhook-seal.spec.ts.
+  test("POST /api/delegations — unregistered key accepted (202) but no pending demand (FOR-390)", async ({
     request,
   }) => {
     const res = await request.post(`${coordinatorUrl}/api/delegations`, {
@@ -116,7 +126,7 @@ test.describe("delegation-coordinator BYOK material", () => {
           entry.mmrStart === mmrStart &&
           entry.mmrEnd === mmrEnd,
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   test("POST material — store runner-signed BYOK certificate", async ({
