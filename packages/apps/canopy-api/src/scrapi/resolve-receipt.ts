@@ -21,6 +21,7 @@ import {
 } from "@forestrie/encoding";
 
 import { CBOR_CONTENT_TYPES } from "../cbor-api/cbor-content-types.js";
+import { cacheControlForMassifDerived } from "../cbor-api/cache-policy.js";
 import { cborResponse } from "../cbor-api/cbor-response.js";
 import { decodeEntryId, isEntryIdHex } from "./entry-id";
 import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
@@ -293,7 +294,18 @@ export async function resolveReceipt(
       receiptSign1[3],
     ];
 
-    return cborResponse(assembled, 200, CBOR_CONTENT_TYPES.SCITT_RECEIPT);
+    // A receipt assembled from an OPEN massif is still subject to change: it
+    // is built from the latest checkpoint for that massif, and sealing runs
+    // continuously at the head, so a fresher receipt exists later. Only once
+    // the massif is complete is the receipt terminal (ADR-0057). Caching the
+    // open case would defeat receipt freshening (FOR-418).
+    return cborResponse(assembled, 200, {
+      "content-type": CBOR_CONTENT_TYPES.SCITT_RECEIPT,
+      "cache-control": cacheControlForMassifDerived(
+        massifBytes.length,
+        massifHeight,
+      ),
+    });
   } catch (error) {
     console.error("Error resolving receipt:", error);
 
