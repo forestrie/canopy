@@ -87,6 +87,7 @@ describe("GET /api/logs/{logId}/public-root", () => {
     expect(decoded.y).toEqual(y);
     expect(decoded.logId).toEqual(hex32ToWireLogIdBytes(logHex32));
     expect(decoded.logId.byteLength).toBe(16);
+    expect(getRes.headers.get("Cache-Control")).toBe("no-store");
   });
 
   it("GET before POST returns 404 application/problem+cbor", async () => {
@@ -100,6 +101,9 @@ describe("GET /api/logs/{logId}/public-root", () => {
     );
     expect(getRes.status).toBe(404);
     expect(getRes.headers.get("Content-Type")).toBe("application/problem+cbor");
+    // A trust-root 404 is "not visible to me", not "does not exist", and
+    // callers turn it into a terminal 403. It must never be cached (ADR-0057).
+    expect(getRes.headers.get("Cache-Control")).toBe("no-store");
   });
 
   it("second POST upserts and GET reflects new bytes", async () => {
