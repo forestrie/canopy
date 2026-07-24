@@ -46,7 +46,7 @@ Participants need these values before starting. Organizers provision them once
 
 | Variable | Description |
 | -------- | ----------- |
-| `CANOPY_BASE_URL` | Worker origin, no trailing slash (e.g. `https://api-b-forest-2.forestrie.dev`) |
+| `CANOPY_BASE_URL` | Worker origin, no trailing slash (e.g. `https://api-b.forest-2.forestrie.dev`) |
 | `BOOTSTRAP_LOG_ID` | Root forest UUID (same as bootstrap path segment in SCRAPI URLs) |
 | `COMPLETED_GRANT_B64` | Base64 **Forestrie-Grant** transparent statement: inner grant + receipt + idtimestamp |
 | Statement signing key | ES256 PEM or equivalent — must match `grantData` in the completed grant |
