@@ -21,7 +21,7 @@ import {
 } from "@forestrie/encoding";
 
 import { CBOR_CONTENT_TYPES } from "../cbor-api/cbor-content-types.js";
-import { cacheControlForMassifDerived } from "../cbor-api/cache-policy.js";
+import { NO_STORE_HEADERS } from "../cbor-api/cache-policy.js";
 import { cborResponse } from "../cbor-api/cbor-response.js";
 import { decodeEntryId, isEntryIdHex } from "./entry-id";
 import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
@@ -294,17 +294,16 @@ export async function resolveReceipt(
       receiptSign1[3],
     ];
 
-    // A receipt assembled from an OPEN massif is still subject to change: it
-    // is built from the latest checkpoint for that massif, and sealing runs
-    // continuously at the head, so a fresher receipt exists later. Only once
-    // the massif is complete is the receipt terminal (ADR-0057). Caching the
-    // open case would defeat receipt freshening (FOR-418).
+    // Never cached (ADR-0057). A receipt is derived from the massif AND the
+    // latest checkpoint for it; a complete massif freezes only the former. The
+    // sealer resumes from the head checkpoint index and re-seals that massif,
+    // so even a complete massif's checkpoint can be replaced (ADR-0056:
+    // checkpoints are overwritten on re-seal, and only the final retained one
+    // is durably addressable). Caching would pin a superseded proof and defeat
+    // receipt freshening (FOR-418).
     return cborResponse(assembled, 200, {
       "content-type": CBOR_CONTENT_TYPES.SCITT_RECEIPT,
-      "cache-control": cacheControlForMassifDerived(
-        massifBytes.length,
-        massifHeight,
-      ),
+      ...NO_STORE_HEADERS,
     });
   } catch (error) {
     console.error("Error resolving receipt:", error);

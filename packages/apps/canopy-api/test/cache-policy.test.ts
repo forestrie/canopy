@@ -1,79 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { peakStackEnd } from "@forestrie/merklelog";
 import {
   CACHE_CONTROL_IMMUTABLE,
   CACHE_CONTROL_NO_STORE,
-  cacheControlForMassifDerived,
-  massifDataComplete,
-  massifTreeCount,
+  IMMUTABLE_HEADERS,
+  NO_STORE_HEADERS,
 } from "../src/cbor-api/cache-policy.js";
 import { cborResponse } from "../src/cbor-api/cbor-response.js";
-
-const MASSIF_HEIGHT = 4;
-const VALUE_BYTES = 32n;
-
-/** Payload length encoding exactly `entries` log entries — all the predicate reads. */
-function massifLen(height: number, entries: bigint): number {
-  return Number(peakStackEnd(height) + entries * VALUE_BYTES);
-}
-
-describe("massifDataComplete", () => {
-  const full = massifTreeCount(MASSIF_HEIGHT);
-
-  it("treeCount is (1 << h) - 1", () => {
-    expect(massifTreeCount(4)).toBe(15n);
-    expect(massifTreeCount(14)).toBe(16383n);
-  });
-
-  it("an open massif is not complete", () => {
-    expect(
-      massifDataComplete(massifLen(MASSIF_HEIGHT, 0n), MASSIF_HEIGHT),
-    ).toBe(false);
-    expect(
-      massifDataComplete(massifLen(MASSIF_HEIGHT, full - 1n), MASSIF_HEIGHT),
-    ).toBe(false);
-  });
-
-  it("a full massif is complete", () => {
-    expect(
-      massifDataComplete(massifLen(MASSIF_HEIGHT, full), MASSIF_HEIGHT),
-    ).toBe(true);
-  });
-
-  it("an undersized payload is never reported complete", () => {
-    // massifLogEntries throws below the peak-stack end; content we cannot prove
-    // is final must not be published immutable.
-    expect(massifDataComplete(0, MASSIF_HEIGHT)).toBe(false);
-    expect(
-      massifDataComplete(
-        Number(peakStackEnd(MASSIF_HEIGHT)) - 1,
-        MASSIF_HEIGHT,
-      ),
-    ).toBe(false);
-  });
-});
-
-describe("cacheControlForMassifDerived", () => {
-  const full = massifTreeCount(MASSIF_HEIGHT);
-
-  it("content from an open massif is never cached", () => {
-    expect(
-      cacheControlForMassifDerived(
-        massifLen(MASSIF_HEIGHT, full - 1n),
-        MASSIF_HEIGHT,
-      ),
-    ).toBe(CACHE_CONTROL_NO_STORE);
-  });
-
-  it("content from a complete massif is immutable", () => {
-    expect(
-      cacheControlForMassifDerived(
-        massifLen(MASSIF_HEIGHT, full),
-        MASSIF_HEIGHT,
-      ),
-    ).toBe(CACHE_CONTROL_IMMUTABLE);
-  });
-});
 
 describe("cborResponse cache defaults", () => {
   it("defaults to no-store so immutability is never inherited", () => {
@@ -84,15 +16,39 @@ describe("cborResponse cache defaults", () => {
   });
 
   it("errors are never cached", () => {
-    const res = cborResponse({ title: "nope" }, 403);
-    expect(res.headers.get("cache-control")).toBe(CACHE_CONTROL_NO_STORE);
+    for (const status of [400, 403, 404, 500]) {
+      const res = cborResponse({ title: "nope" }, status);
+      expect(res.headers.get("cache-control")).toBe(CACHE_CONTROL_NO_STORE);
+    }
   });
 
   it("an explicit directive still wins", () => {
     const res = cborResponse({ a: 1 }, 200, {
       "content-type": "application/cbor",
-      "cache-control": CACHE_CONTROL_IMMUTABLE,
+      ...IMMUTABLE_HEADERS,
     });
     expect(res.headers.get("cache-control")).toBe(CACHE_CONTROL_IMMUTABLE);
+  });
+
+  it("spreading NO_STORE_HEADERS is equivalent to the default", () => {
+    const res = cborResponse({ a: 1 }, 200, {
+      "content-type": "application/cbor",
+      ...NO_STORE_HEADERS,
+    });
+    expect(res.headers.get("cache-control")).toBe(CACHE_CONTROL_NO_STORE);
+  });
+});
+
+describe("policy constants", () => {
+  // Only genesis is immutable. Receipts are not: a receipt is derived from the
+  // massif AND the latest checkpoint for it, and the sealer can re-seal a
+  // complete massif (ADR-0056/ADR-0057), so a cached receipt could pin a
+  // superseded proof and defeat FOR-418 freshening.
+  it("immutable is a one-year immutable directive", () => {
+    expect(CACHE_CONTROL_IMMUTABLE).toBe("public, max-age=31536000, immutable");
+  });
+
+  it("no-store, not no-cache — a transient answer must not be stored at all", () => {
+    expect(CACHE_CONTROL_NO_STORE).toBe("no-store");
   });
 });
