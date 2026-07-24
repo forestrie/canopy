@@ -48,15 +48,17 @@ export async function handleGetPublicRoot(
       },
     );
 
-    const headers = new Headers(stored.headers);
-    for (const [name, value] of Object.entries(NO_STORE_HEADERS)) {
-      headers.set(name, value);
-    }
-    return new Response(stored.body, {
-      status: stored.status,
-      statusText: stored.statusText,
-      headers,
-    });
+    // Rebuild the response rather than mutating the stub's: buffer the body
+    // (a small CBOR trust root, or a problem document) and carry only the
+    // content type across. Copying the Durable Object's full header set brings
+    // transport headers such as Content-Length/Content-Encoding with it, which
+    // no longer describe the re-framed body and make the construction throw —
+    // turning a 404 into a 500.
+    const body = await stored.arrayBuffer();
+    const headers = new Headers(NO_STORE_HEADERS);
+    const contentType = stored.headers.get("Content-Type");
+    if (contentType) headers.set("Content-Type", contentType);
+    return new Response(body, { status: stored.status, headers });
   } catch (error) {
     return internalError(error);
   }
