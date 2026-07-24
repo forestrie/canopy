@@ -1,5 +1,6 @@
 import { encodeCborDeterministic } from "@forestrie/encoding";
 
+import { CACHE_CONTROL_NO_STORE } from "./cache-policy.js";
 import { CBOR_MIME } from "./cbor-const.js";
 import { convertHeaders } from "./cbor-request.js";
 
@@ -28,13 +29,14 @@ export function cborResponse(
   // Add Content-Length
   headers["content-length"] = String(encoded.byteLength);
 
-  // Add Cache-Control based on status
+  // Cache-Control defaults to no-store (ADR-0057). Immutability is a claim a
+  // handler makes deliberately by passing an explicit cache-control header —
+  // it must never be inherited. This default previously stamped every 2xx CBOR
+  // response `immutable, max-age=31536000`, which pinned mutable state such as
+  // token lists and revocation status for a year, and pinned receipts assembled
+  // from a still-open massif so they could never be freshened.
   if (!headers["cache-control"]) {
-    if (status >= 400) {
-      headers["cache-control"] = "no-cache";
-    } else {
-      headers["cache-control"] = "public, max-age=31536000, immutable";
-    }
+    headers["cache-control"] = CACHE_CONTROL_NO_STORE;
   }
 
   return new Response(encoded as unknown as BodyInit, {

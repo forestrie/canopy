@@ -785,6 +785,17 @@ export class DelegationStoreDO extends DurableObject<Env> {
     throw new Error(`unsupported stored public root alg ${row.alg}`);
   }
 
+  /**
+   * Trust-root answers are never cached (FOR-302, ADR-0057).
+   *
+   * A 404 here means "this log's root key is not stored", which a caller cannot
+   * distinguish from "not yet propagated" — and callers convert it into a
+   * terminal 403. Caching it would freeze a transient answer into a durable
+   * rejection of valid receipts. The directive is set here, at the point the
+   * response is built, so the edge handler can forward the stub response
+   * untouched.
+   */
+
   /** GET /public-root/{logIdHex32} — CBOR trust-root response. */
   private handleGetPublicRoot(logIdHex32: string): Response {
     const rows = [
@@ -803,7 +814,10 @@ export class DelegationStoreDO extends DurableObject<Env> {
       });
       return new Response(bytes, {
         status: 404,
-        headers: { "Content-Type": "application/problem+cbor" },
+        headers: {
+          "Content-Type": "application/problem+cbor",
+          "Cache-Control": "no-store",
+        },
       });
     }
 
@@ -827,14 +841,20 @@ export class DelegationStoreDO extends DurableObject<Env> {
       });
       return new Response(bytes, {
         status: 500,
-        headers: { "Content-Type": "application/problem+cbor" },
+        headers: {
+          "Content-Type": "application/problem+cbor",
+          "Cache-Control": "no-store",
+        },
       });
     }
 
     const out = encodeCbor(resp);
     return new Response(out, {
       status: 200,
-      headers: { "Content-Type": "application/cbor" },
+      headers: {
+        "Content-Type": "application/cbor",
+        "Cache-Control": "no-store",
+      },
     });
   }
 

@@ -1,3 +1,4 @@
+import { fetchWithDoRetry } from "./fetch-with-do-retry.js";
 import { randomUUID } from "node:crypto";
 import { decodeCborDeterministic } from "@forestrie/encoding";
 import { SELF } from "cloudflare:test";
@@ -26,22 +27,6 @@ function sampleXy(): { x: Uint8Array; y: Uint8Array } {
     y[i] = 255 - i;
   }
   return { x, y };
-}
-
-async function fetchWithDoRetry(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<Response> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      return await SELF.fetch(input, init);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!message.includes("invalidating this Durable Object")) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-  }
-  return SELF.fetch(input, init);
 }
 
 describe("GET /api/logs/{logId}/public-root", () => {
@@ -87,6 +72,7 @@ describe("GET /api/logs/{logId}/public-root", () => {
     expect(decoded.y).toEqual(y);
     expect(decoded.logId).toEqual(hex32ToWireLogIdBytes(logHex32));
     expect(decoded.logId.byteLength).toBe(16);
+    expect(getRes.headers.get("Cache-Control")).toBe("no-store");
   });
 
   it("GET before POST returns 404 application/problem+cbor", async () => {
@@ -100,6 +86,9 @@ describe("GET /api/logs/{logId}/public-root", () => {
     );
     expect(getRes.status).toBe(404);
     expect(getRes.headers.get("Content-Type")).toBe("application/problem+cbor");
+    // A trust-root 404 is "not visible to me", not "does not exist", and
+    // callers turn it into a terminal 403. It must never be cached (ADR-0057).
+    expect(getRes.headers.get("Cache-Control")).toBe("no-store");
   });
 
   it("second POST upserts and GET reflects new bytes", async () => {

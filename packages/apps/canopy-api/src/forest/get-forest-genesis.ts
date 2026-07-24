@@ -2,6 +2,7 @@
  * `GET /api/forest/{log-id}/genesis` — public read of stored genesis CBOR.
  */
 
+import { IMMUTABLE_HEADERS } from "../cbor-api/cache-policy.js";
 import { CBOR_CONTENT_TYPES } from "../cbor-api/cbor-content-types.js";
 import { ClientErrors } from "../cbor-api/problem-details.js";
 import {
@@ -38,9 +39,13 @@ async function proxyGenesisFromUnivocity(
     );
     if (!res.ok) return null;
     const body = new Uint8Array(await res.arrayBuffer());
+    // Genesis is written once and never changes (ADR-0057).
     return new Response(body, {
       status: 200,
-      headers: { "Content-Type": CBOR_CONTENT_TYPES.CBOR },
+      headers: {
+        "Content-Type": CBOR_CONTENT_TYPES.CBOR,
+        ...IMMUTABLE_HEADERS,
+      },
     });
   } catch {
     return null;
@@ -71,10 +76,12 @@ export async function getForestGenesis(
   }
 
   const body = new Uint8Array(await obj.arrayBuffer());
+  // Genesis is written once and never changes (ADR-0057).
   return new Response(body, {
     status: 200,
     headers: {
       "Content-Type": CBOR_CONTENT_TYPES.CBOR,
+      ...IMMUTABLE_HEADERS,
     },
   });
 }
