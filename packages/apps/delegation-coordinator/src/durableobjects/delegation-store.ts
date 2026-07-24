@@ -795,7 +795,6 @@ export class DelegationStoreDO extends DurableObject<Env> {
    * response is built, so the edge handler can forward the stub response
    * untouched.
    */
-  private static readonly PUBLIC_ROOT_NO_STORE = "no-store";
 
   /** GET /public-root/{logIdHex32} — CBOR trust-root response. */
   private handleGetPublicRoot(logIdHex32: string): Response {
@@ -817,7 +816,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
         status: 404,
         headers: {
           "Content-Type": "application/problem+cbor",
-          "Cache-Control": DelegationStoreDO.PUBLIC_ROOT_NO_STORE,
+          "Cache-Control": "no-store",
         },
       });
     }
@@ -844,7 +843,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
         status: 500,
         headers: {
           "Content-Type": "application/problem+cbor",
-          "Cache-Control": DelegationStoreDO.PUBLIC_ROOT_NO_STORE,
+          "Cache-Control": "no-store",
         },
       });
     }
@@ -854,7 +853,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
       status: 200,
       headers: {
         "Content-Type": "application/cbor",
-        "Cache-Control": DelegationStoreDO.PUBLIC_ROOT_NO_STORE,
+        "Cache-Control": "no-store",
       },
     });
   }

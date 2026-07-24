@@ -1,3 +1,4 @@
+import { fetchWithDoRetry } from "./fetch-with-do-retry.js";
 import { randomUUID } from "node:crypto";
 import { decodeCborDeterministic } from "@forestrie/encoding";
 import { SELF } from "cloudflare:test";
@@ -26,22 +27,6 @@ function sampleXy(): { x: Uint8Array; y: Uint8Array } {
     y[i] = 255 - i;
   }
   return { x, y };
-}
-
-async function fetchWithDoRetry(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<Response> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      return await SELF.fetch(input, init);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!message.includes("invalidating this Durable Object")) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-  }
-  return SELF.fetch(input, init);
 }
 
 describe("GET /api/logs/{logId}/public-root", () => {
