@@ -683,7 +683,7 @@ screen so they see there's no magic — Sign1 plus an MMR inclusion proof.
 # /api/forest/... (canopy-api serves no raw blob route). Objects are keyed
 # v2/merklelog/{massifs,checkpoints}/{massifHeight}/{logId}/{massifIndex}.{log,sth}
 # with a zero-padded 16-hex massifIndex; massifHeight is the forest's config (14).
-export LOG_STORE_URL="https://pub-d7bc2e23615b4cd1a80a0944c3cd3507.r2.dev"   # forest-dev-5-logs r2.dev
+export LOG_STORE_URL="https://logs.a.forest-2.forestrie.dev"   # forest-dev-5-logs custom domain
 export MASSIF_H=14 MASSIF_IDX=0000000000000000
 curl -sS "$LOG_STORE_URL/v2/merklelog/massifs/$MASSIF_H/$DATA_LOG_ID/$MASSIF_IDX.log"     -o massif.log
 curl -sS "$LOG_STORE_URL/v2/merklelog/checkpoints/$MASSIF_H/$DATA_LOG_ID/$MASSIF_IDX.sth" -o checkpoint.sth
