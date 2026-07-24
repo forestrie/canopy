@@ -42,7 +42,10 @@ async function proxyGenesisFromUnivocity(
     // Genesis is written once and never changes (ADR-0057).
     return new Response(body, {
       status: 200,
-      headers: { "Content-Type": CBOR_CONTENT_TYPES.CBOR, ...IMMUTABLE_HEADERS },
+      headers: {
+        "Content-Type": CBOR_CONTENT_TYPES.CBOR,
+        ...IMMUTABLE_HEADERS,
+      },
     });
   } catch {
     return null;

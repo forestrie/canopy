@@ -52,7 +52,9 @@ export function massifDataComplete(
   massifHeight: number,
 ): boolean {
   try {
-    return massifLogEntries(dataLen, massifHeight) >= massifTreeCount(massifHeight);
+    return (
+      massifLogEntries(dataLen, massifHeight) >= massifTreeCount(massifHeight)
+    );
   } catch {
     return false;
   }

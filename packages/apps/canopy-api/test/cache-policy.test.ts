@@ -26,9 +26,9 @@ describe("massifDataComplete", () => {
   });
 
   it("an open massif is not complete", () => {
-    expect(massifDataComplete(massifLen(MASSIF_HEIGHT, 0n), MASSIF_HEIGHT)).toBe(
-      false,
-    );
+    expect(
+      massifDataComplete(massifLen(MASSIF_HEIGHT, 0n), MASSIF_HEIGHT),
+    ).toBe(false);
     expect(
       massifDataComplete(massifLen(MASSIF_HEIGHT, full - 1n), MASSIF_HEIGHT),
     ).toBe(false);
@@ -45,7 +45,10 @@ describe("massifDataComplete", () => {
     // is final must not be published immutable.
     expect(massifDataComplete(0, MASSIF_HEIGHT)).toBe(false);
     expect(
-      massifDataComplete(Number(peakStackEnd(MASSIF_HEIGHT)) - 1, MASSIF_HEIGHT),
+      massifDataComplete(
+        Number(peakStackEnd(MASSIF_HEIGHT)) - 1,
+        MASSIF_HEIGHT,
+      ),
     ).toBe(false);
   });
 });
@@ -64,7 +67,10 @@ describe("cacheControlForMassifDerived", () => {
 
   it("content from a complete massif is immutable", () => {
     expect(
-      cacheControlForMassifDerived(massifLen(MASSIF_HEIGHT, full), MASSIF_HEIGHT),
+      cacheControlForMassifDerived(
+        massifLen(MASSIF_HEIGHT, full),
+        MASSIF_HEIGHT,
+      ),
     ).toBe(CACHE_CONTROL_IMMUTABLE);
   });
 });

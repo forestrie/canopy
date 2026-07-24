@@ -24,7 +24,9 @@ import {
  * this response is small and read rarely enough that the correctness risk of a
  * stale positive across a re-registration is not worth the saving.
  */
-const NO_STORE_HEADERS: Record<string, string> = { "cache-control": "no-store" };
+const NO_STORE_HEADERS: Record<string, string> = {
+  "cache-control": "no-store",
+};
 
 /** GET CBOR public root for a log. */
 export async function handleGetPublicRoot(
