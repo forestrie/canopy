@@ -43,7 +43,7 @@ const LANES = [
     contract: {
       CANOPY_ID: "canopy-dev-1",
       SUPPORTED_CHAINS_RPC: '{"84532":["https://sepolia.base.org"]}',
-      X402_SETTLEMENT_QUEUE_NAME: "canopy-dev-1-x402-settlement",
+      X402_SETTLEMENT_QUEUE_NAME: "forest-2-x402-settlement-a",
       X402_SETTLEMENT_SCRIPT_NAME: "x402-settlement-dev",
       R2_MMRS_BUCKET_NAME: "forest-dev-5-logs",
       R2_GRANTS_BUCKET_NAME: "forest-dev-5-grants",
@@ -62,7 +62,7 @@ const LANES = [
     contract: {
       CANOPY_ID: "canopy-prod-1",
       SUPPORTED_CHAINS_RPC: '{"84532":["https://sepolia.base.org"]}',
-      X402_SETTLEMENT_QUEUE_NAME: "canopy-prod-1-x402-settlement",
+      X402_SETTLEMENT_QUEUE_NAME: "forest-2-x402-settlement-b",
       X402_SETTLEMENT_SCRIPT_NAME: "x402-settlement-prod",
       R2_MMRS_BUCKET_NAME: "forest-dev-5-logs-b",
       R2_GRANTS_BUCKET_NAME: "forest-dev-5-grants-b",
