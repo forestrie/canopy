@@ -46,19 +46,19 @@ set of operational and correctness issues around the fan-out.
 
 ## Findings
 
-| ID  | Sev             | Dim           | Location                                                                                         | Finding                                                                                                                                                                                                                                                      | Invariant / rule                                                                                               |
-| --- | --------------- | ------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| H1  | Medium (fixed)  | Security      | `delegation-coordinator/src/handlers/put-webhook.ts:39`                                          | A log can bind itself to **any** univocity instance with no proof it belongs to that instance; leaks that instance's webhook URL and aims signed events at it. No authority escalation — the certificate is bound to its logId and the log's registered root | ARC-0017 dual-token authority: an issuer token is authority over _its_ log                                     |
-| H2  | **Medium-High** | Liveness      | `canopy-api/src/forest/handle-forest-request.ts:145`                                             | Genesis now makes two blocking, untimed coordinator calls on a path documented as best-effort                                                                                                                                                                | Genesis is the primary onboarding path                                                                         |
-| M1  | Medium          | Correctness   | `delegation-coordinator/src/instance-key.ts` vs `canopy-api/src/forest/instance-key.ts`          | Instance-key normalization diverges on the `0x` address prefix; a mismatched key silently matches no logs                                                                                                                                                    | One canonical rendering per key (see M4 — this is _within_ the instance key, not a merge with the payment key) |
-| M2  | Medium          | Liveness      | `delegation-coordinator/src/handlers/instance-webhook.ts:55`                                     | Re-point and delete fan out non-atomically, report the first failure only, and self-repair only if the caller retries                                                                                                                                        | Revocation must not half-apply                                                                                 |
-| M3  | Medium          | Scale         | `delegation-store.ts` `handlePutInstanceWebhook`                                                 | A re-point is one unbounded synchronous `UPDATE` plus two `COUNT(*)` per shard                                                                                                                                                                               | Motivating case is an owner operating _many_ logs                                                              |
-| M4  | Medium          | Correctness   | `canopy-api/src/forest/instance-key.ts` vs `canopy-api/src/payments/resolve-payment-ancestor.ts` | `instanceKey` (authority hierarchy) and `liableAccountKey` (payment graph) are different entities rendered as the same `{chainId}:{univocityAddr}` string, with disagreeing validation                                                                       | ARC: the two graphs must stay separate; glossary: "Avoid: conflating with the per-forest authority hierarchy"  |
-| L1  | Low             | Best practice | `delegation-store.ts:358`                                                                        | New columns live only in the migration path, not the base `CREATE TABLE`                                                                                                                                                                                     | Inconsistent with the neighbouring `ensureEnabledAuthorityColumns`                                             |
-| L2  | Low             | Best practice | `delegation-store.ts` `countInstanceMemberLogs`                                                  | `webhook_source` interpolated into SQL rather than bound                                                                                                                                                                                                     | Every other predicate in the file is bound                                                                     |
-| L3  | Low             | Correctness   | `instance-webhook.ts:124`                                                                        | `Math.min(createdAt ?? Infinity, shardResult.createdAt ?? 0)` collapses to `0` if any shard omits `createdAt`                                                                                                                                                | Latent only                                                                                                    |
-| L5  | Low             | Best practice | `canopy-api/src/scrapi/auth.ts`                                                                  | Dead API-key stub returning `true` unconditionally, with no importers                                                                                                                                                                                        | Fail-open code should not sit unused in the tree                                                               |
-| L4  | Low             | Docs          | `delegation-coordinator/src/instance-key.ts`, `canopy-api/test/instance-key.test.ts`             | Key described as "CAIP-2 style"; it is `{decimal chainId}:{40-hex, unprefixed}`                                                                                                                                                                              | Same inaccuracy already known in ADR-0058 §2                                                                   |
+| ID  | Sev             | Dim           | Location                                                                                                         | Finding                                                                                                                                                                                                                                                      | Invariant / rule                                                                                              |
+| --- | --------------- | ------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| H1  | Medium (fixed)  | Security      | `delegation-coordinator/src/handlers/put-webhook.ts:39`                                                          | A log can bind itself to **any** univocity instance with no proof it belongs to that instance; leaks that instance's webhook URL and aims signed events at it. No authority escalation — the certificate is bound to its logId and the log's registered root | ARC-0017 dual-token authority: an issuer token is authority over _its_ log                                    |
+| H2  | **Medium-High** | Liveness      | `canopy-api/src/forest/handle-forest-request.ts:145`                                                             | Genesis now makes two blocking, untimed coordinator calls on a path documented as best-effort                                                                                                                                                                | Genesis is the primary onboarding path                                                                        |
+| M1  | Medium          | Correctness   | `forest/instance-key.ts` · `payments/resolve-payment-ancestor.ts` · `delegation-coordinator/src/instance-key.ts` | One concept, three renderings, three disagreeing validators (`0x` stripped / kept, CAIP-2 accepted / rejected). Adopt **CAIP-10** as the single canonical form                                                                                               | One spelling per identity — a second spelling silently splits a namespace                                     |
+| M2  | Medium          | Liveness      | `delegation-coordinator/src/handlers/instance-webhook.ts:55`                                                     | Re-point and delete fan out non-atomically, report the first failure only, and self-repair only if the caller retries                                                                                                                                        | Revocation must not half-apply                                                                                |
+| M3  | Medium          | Scale         | `delegation-store.ts` `handlePutInstanceWebhook`                                                                 | A re-point is one unbounded synchronous `UPDATE` plus two `COUNT(*)` per shard                                                                                                                                                                               | Motivating case is an owner operating _many_ logs                                                             |
+| M4  | Medium          | Correctness   | same files                                                                                                       | `univocityInstanceId` (authority hierarchy) and `univocityPaymentInstanceId` (payment graph) are different entities; under CAIP-10 they share a format, so branded types and column naming must carry the distinction                                        | ARC: the two graphs must stay separate; glossary: "Avoid: conflating with the per-forest authority hierarchy" |
+| L1  | Low             | Best practice | `delegation-store.ts:358`                                                                                        | New columns live only in the migration path, not the base `CREATE TABLE`                                                                                                                                                                                     | Inconsistent with the neighbouring `ensureEnabledAuthorityColumns`                                            |
+| L2  | Low             | Best practice | `delegation-store.ts` `countInstanceMemberLogs`                                                                  | `webhook_source` interpolated into SQL rather than bound                                                                                                                                                                                                     | Every other predicate in the file is bound                                                                    |
+| L3  | Low             | Correctness   | `instance-webhook.ts:124`                                                                                        | `Math.min(createdAt ?? Infinity, shardResult.createdAt ?? 0)` collapses to `0` if any shard omits `createdAt`                                                                                                                                                | Latent only                                                                                                   |
+| L5  | Low             | Best practice | `canopy-api/src/scrapi/auth.ts`                                                                                  | Dead API-key stub returning `true` unconditionally, with no importers                                                                                                                                                                                        | Fail-open code should not sit unused in the tree                                                              |
+| L4  | ~~Low~~         | Docs          | _superseded by M1/M4_                                                                                            | "CAIP-2 style" wording — the format now **becomes** CAIP-10 rather than being redescribed                                                                                                                                                                    | Folded into M1/M4                                                                                             |
 
 ## Remediation items
 
@@ -161,90 +161,153 @@ worth stating explicitly.
 - ADR-0005 "What shipped" records that this path now also registers the public
   root, not only the instance binding.
 
-### M1 — one canonical instance-key normalization
+### M1 — one canonical identifier format: CAIP-10
 
-`instanceKeyFromStoredChainBinding` (canopy-api) strips a leading `0x` and
-lowercases. `normalizeInstanceKey` (coordinator) only trims and lowercases, and
-its pattern `/^[0-9a-z][0-9a-z._:-]*$/` happily accepts `84532:0xabc…` as a key
-distinct from `84532:abc…`. An operator registering an instance the natural way,
-with a `0x`-prefixed address, creates a record no log will ever match: the PUT
-returns `200` with `memberLogs: 0` and nothing errors.
+**Decision (2026-07-26):** both identifiers adopt **CAIP-10**, and both are
+renamed off "key" — see M4. This section covers the format; M4 covers keeping
+the two apart once they share it.
 
-The two implementations are kept in step only by a comment — "Mirrors the
-coordinator's accepted instance-key shape" — with no shared module and no test
-asserting the mirror holds. canopy-api has a test named "tolerates a 0x-prefixed
-address"; the coordinator has no counterpart.
+Today one concept has three renderings and three disagreeing validators:
+
+| Producer                                     | Emits                 | `0x`       | CAIP-2 chain id                               |
+| -------------------------------------------- | --------------------- | ---------- | --------------------------------------------- |
+| `liableAccountKey` (payments)                | `84532:4242…`         | **throws** | **throws**                                    |
+| `instanceKeyFromStoredChainBinding` (forest) | `84532:4242…`         | strips     | accepts → _third_ format `eip155:84532:4242…` |
+| `normalizeInstanceKey` (coordinator)         | whatever it was given | **keeps**  | accepts                                       |
+
+There is no design reason for the divergence. `liableAccountKey` was written
+strict, with a docstring explaining why. `instanceKeyFromStoredChainBinding`
+came later and is commented "Mirrors the coordinator's accepted instance-key
+shape" — it mirrored the coordinator's loose validator instead of the strict
+sibling in its own worker. The coordinator is loosest because it treats the
+value as "an opaque label"; but opacity means _do not interpret it_, not _accept
+several spellings of it_, and accepting several is what manufactures a split
+namespace.
+
+**Target form.** CAIP-10 account identifier — `namespace:reference:address`:
+
+```
+eip155:84532:0x4242424242424242424242424242424242424242
+```
+
+CAIP-10 is chosen over the ad-hoc `{decimal}:{hex40}` because it is
+standard, self-describing, and **chain-agnostic by construction** — which is
+what the coordinator's "opaque label" instinct was reaching for. The coordinator
+can validate the shape without knowing what `eip155` means.
+
+**Canonicalization rules — one spelling, no exceptions.**
+
+- Namespace and reference per CAIP-2 (`[-a-z0-9]{3,8}` : `[-_a-zA-Z0-9]{1,32}`).
+- For `eip155`, the reference is a bare decimal chain id and the address is
+  `0x` + 40 hex.
+- **Lowercase the address on normalize.** Mixed-case input is accepted and
+  lowercased so an EIP-55 checksummed address cannot split an account — the same
+  hazard `liableAccountKey` already guards, carried forward rather than dropped.
+- Everything else is **rejected** with a `400` naming the canonical form. No
+  silent repair: stripping `0x` in one place and not another is the bug, and a
+  second repair site just moves the seam.
+
+**Adapter from stored records.** `chainBinding { chainId: "84532",
+univocityAddr: "4242…" }` renders as `eip155:84532:0x4242…` through a single
+documented function. The bare-decimal → `eip155` mapping is an EVM assumption
+and should be explicit and asserted, not implied, so a future non-EVM instance
+fails loudly rather than being mislabelled.
 
 **Acceptance criteria**
 
-- `normalizeInstanceKey` strips a `0x` prefix from the address segment, or
-  rejects it with a message naming the canonical form.
-- A shared module, or a test that exercises both implementations over the same
-  vector table so drift fails CI.
-- `PUT /api/instances/{k}/webhook` returning `memberLogs: 0` is at minimum
-  called out in the ADR as the signal of a mistyped key.
+- One canonical form, one parser per worker, agreeing against a **shared test
+  vector table** so drift fails CI. Duplicated rule, shared vectors — a shared
+  publishable lib drags in the FOR-401 version-bump gate for one regex.
+- Non-canonical input (`84532:4242…`, missing `0x`, CAIP-2 chain id with no
+  address, mixed separators) is rejected with a message naming the canonical
+  form, at **both** canopy-api and the coordinator.
+- Checksummed and lowercase addresses resolve to one identifier.
+- The `canopy-api/test/instance-key.test.ts` case pinning
+  `eip155:84532:4242…` — the accidental third format — is deleted and replaced
+  with rejection and canonicalization cases.
+- `PUT /api/instances/{id}/webhook` returning `memberLogs: 0` is documented as
+  the signal of a mistyped identifier.
 
-### M4 — two different entities are rendered as the same key
+**Do it now, before #174 merges.** Nothing is stored under the current format in
+production: `ReceivablesDO` is deployed but inert (FOR-435 steps 3–5 unbuilt),
+and `instance_webhooks` does not exist yet because #174 is unmerged. This is a
+definition change today and a live-data migration afterwards.
 
-`instanceKey` and `liableAccountKey` are **not** the same key, and must not be
-unified — but today they are indistinguishable strings, which is how a reviewer
-came to propose unifying them.
+### M4 — two identifiers, one format: keep them apart by type
 
-Canopy maintains two graphs, and
-[the ARC](../arc/arc-univocity-instance-registration.md) calls keeping them
+Adopting CAIP-10 for both (M1) buys one parser and one spelling, and gives up
+the structural separation a differing representation would have provided. The
+two are now visually near-identical, so the separation has to be carried by
+naming, types, and column names instead.
+
+They remain **different entities**, and the ARC calls keeping the two graphs
 apart "the crux of the model":
 
-|                               | Reads                                                                       | Graph                                                           | Answers                            |
-| ----------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------- |
-| `instanceKey` (FOR-468)       | the log's **own** chain binding (genesis), or its **parent's** (prepare)    | univocity authority hierarchy, within one forest / one contract | who holds this log's signing keys  |
-| `liableAccountKey` (ADR-0058) | the **payment-authoritative ancestor's** binding, via the `endorsedBy` walk | payment-registration graph, across forests                      | who reimburses canopy for this log |
+|                              | Reads                                                                       | Graph                                                           | Answers                            |
+| ---------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------- |
+| `univocityInstanceId`        | the log's **own** chain binding (genesis), or its **parent's** (prepare)    | univocity authority hierarchy, within one forest / one contract | who holds this log's signing keys  |
+| `univocityPaymentInstanceId` | the **payment-authoritative ancestor's** binding, via the `endorsedBy` walk | payment-registration graph, across forests                      | who reimburses canopy for this log |
 
-For a **regular** forest these resolve to **different univocity instances**: the
-forest is its own instance, but its receivables are billed to its sponsor's.
-They coincide only when the root is itself payment-authoritative, which is
-exactly the case most likely to be exercised in a test.
-`resolve-payment-ancestor.test.ts` pins the distinction — "bills the
-payment-authoritative ancestor's chainBinding, not the leaf's".
+For a **regular** forest these resolve to different univocity instances. They
+coincide only when the root is itself payment-authoritative — which is exactly
+the case a test is most likely to cover, so a swap can pass CI.
 
 FOR-468's choice is **correct**: `delegation.required` must reach whoever holds
-custody of the log's keys, which is the authority hierarchy, not the payer.
+custody of the log's keys, which is the authority hierarchy, not the payer. An
+earlier draft of this review proposed unifying the two; withdrawn.
 
-The defect is presentational, and it is a live trap:
+**Renames.** Neither is a cryptographic key, and this codebase is saturated with
+real ones (root, delegate, custody, COSE, `delegatedPublicKey`, `bootstrapKey`),
+so "key" meaning _map key_ is not the default reading:
 
-- Both render as `{chainId}:{univocityAddr}`, lowercased. Nothing in either name
-  or shape says which graph a given value came from.
-- Their validation disagrees, so they are not even reliably the same format.
-  `liableAccountKey` **throws** on a CAIP-2 chain id or an `0x` prefix
-  (`BARE_CHAIN_ID`, `UNIVOCITY_ADDR`). `instanceKeyFromStoredChainBinding`
-  **accepts** CAIP-2 — there is a test pinning `eip155:84532:4242…` — and strips
-  `0x`. The coordinator's `normalizeInstanceKey` accepts both and normalizes
-  neither.
-- ADR-0058 §2 reads as though any log's own instance is its account: "The root
-  log is one per univocity instance, so the instance address plus chain id _is_
-  the account." True of the payment-authoritative root's instance; misleading
-  for a regular forest.
+- `instanceKey` → **`univocityInstanceId`**
+- `liableAccountKey` → **`univocityPaymentInstanceId`**
 
-No functional conflation exists today — `liableAccountKey` is used only by
-x402-settlement's `ReceivablesDO` and `instanceKeyFrom*` only by the coordinator
-webhook binding, and they never meet. This is about preventing the first time
-they do.
+The glossary term is "payment-authoritative", which the second name shortens;
+prose should say "the payment-authoritative root's instance" explicitly so the
+tie to the glossary survives.
 
 **Acceptance criteria**
 
-- The two keys are distinguishable on sight: distinct naming (e.g.
-  `custodyInstanceKey` vs `liableAccountKey`) and, preferably, a distinct
-  rendering or prefix so a value carries its graph.
-- Neither module's helper is reachable from the other's call path without a type
-  that names the graph.
-- ADR-0058 §2 is amended to say the account is the **payment-authoritative
-  ancestor's** instance, not simply "the log's instance" — alongside the CAIP-2
-  correction already queued for that section.
-- ADR-0005 records that instance webhooks follow the authority hierarchy and are
-  deliberately **not** the payment graph, with a pointer to ADR-0058 so the next
-  reader does not merge them.
+- Branded (nominal) TypeScript types so the two cannot be passed
+  interchangeably, minted only by their own constructors:
 
-**Branch:** follow-up; the ADR-0058 §2 half batches with the devdocs correction
-already pending.
+  ```ts
+  export type UnivocityInstanceId = string & {
+    readonly __brand: "UnivocityInstanceId";
+  };
+  export type UnivocityPaymentInstanceId = string & {
+    readonly __brand: "UnivocityPaymentInstanceId";
+  };
+  ```
+
+- The **format parser is shared**; the **constructors are not**.
+  `univocityPaymentInstanceId` is mintable only from a `resolvePaymentAncestor`
+  result, so it cannot be produced from a log's own binding by accident.
+- The distinction survives where the brand is erased — at SQLite columns, DO
+  ids, JSON wire fields and route segments. Name them accordingly
+  (`log_delegation_config.univocity_instance_id`, and a receivables DO id that
+  names the payment graph), because a `string` at those boundaries carries no
+  type.
+- ADR-0005 records that instance webhooks follow the authority hierarchy and are
+  deliberately **not** the payment graph, pointing at ADR-0058.
+- ADR-0058 §2 is amended: the account is the **payment-authoritative
+  ancestor's** instance, not simply "the log's instance" — and the format is
+  **CAIP-10**, not "CAIP-2" as currently written. This batches with the
+  correction already queued for that section.
+
+**New consequence of choosing CAIP-10 for both — record it.** `one contract ↔
+one rootLogId` is asserted by the ARC but **not enforced**; there is no
+uniqueness constraint on `chainBinding` anywhere. Under a chain-derived
+`univocityInstanceId`, two roots sharing a contract collapse to **one** instance
+and therefore share one instance webhook. That is almost certainly the intent —
+same contract implies same operator — but it is now load-bearing on an
+unenforced invariant. Either enforce uniqueness at registration, or state the
+assumption in the ARC.
+
+**Branch:** M1 and M4 ship together — same files, and strictness without the
+renaming leaves two identical-looking identifiers that merely validate the same.
+The ADR-0058 §2 half batches with the pending devdocs correction.
 
 ### M2 — make the fan-out's partial state visible and repairable
 
@@ -305,7 +368,7 @@ DO CPU and time limits, with no batching, pagination, or cursor.
   unconditionally. It has no importers anywhere in the tree, so it is harmless
   today and a landmine the moment anyone wires it. SCRAPI's real auth is
   `Authorization: Forestrie-Grant`.
-- **L4** Correct "CAIP-2 style" in the coordinator's `instance-key.ts` docstring
+- **L4** _Superseded by M1/M4_ — the format becomes CAIP-10, so the wording is rewritten rather than corrected. Original note: correct "CAIP-2 style" in the coordinator's `instance-key.ts` docstring
   and the canopy-api test name. The key is a bare decimal chain id and a 40-hex
   unprefixed address. ADR-0058 §2 carries the same error and is already queued
   for correction — fix both together so they do not drift.
@@ -348,13 +411,15 @@ end-to-end `delegation.required` delivery to an inherited webhook. Missing:
 
 ## Branch assignment
 
-| Item           | Where                                                                |
-| -------------- | -------------------------------------------------------------------- |
-| H1             | Follow-up branch off `main`; does not block #174                     |
-| H2             | Fold into #174 — it is the branch that introduced the blocking call  |
-| M1, M2, M3, M4 | Follow-up branch off `main`; M4's ADR-0058 half batches with devdocs |
-| L1–L3          | Follow-up branch, batched                                            |
-| L4             | Batch with the pending ADR-0058 §2 CAIP-2 correction in devdocs      |
+| Item    | Where                                                                      |
+| ------- | -------------------------------------------------------------------------- |
+| H1      | Follow-up branch off `main`; does not block #174                           |
+| H2      | Fold into #174 — it is the branch that introduced the blocking call        |
+| M1 + M4 | One branch, together — same files, before #174 merges (nothing stored yet) |
+| M2, M3  | Follow-up branch off `main`                                                |
+| L1–L3   | Follow-up branch, batched                                                  |
+| L4      | Superseded by M1/M4                                                        |
+| L5      | Follow-up branch, batched with L1–L3                                       |
 
 ## Deferred
 
