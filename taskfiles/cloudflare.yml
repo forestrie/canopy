@@ -46,7 +46,10 @@ tasks:
       - task: bucket:create:grants
       - task: queue:create:sealer
       - task: queue:create:forester
-      - task: queue:create:x402-settlement
+      # x402 settlement queues are Terraform-managed (forest-1 infra/x402-queue.tf,
+      # FOR-78/FOR-446). Do NOT re-add a manual create here: the generic queue:create
+      # would provision the retired `{CANOPY_ID}-x402-settlement` name, not the
+      # reconciled `forest-2-x402-settlement-{slot}` the contract publishes.
       - task: r2notification:create:sealer
         vars:
           R2_BUCKET_NAME: "{{ .R2_BUCKET_NAME_MERKLELOGS }}"
