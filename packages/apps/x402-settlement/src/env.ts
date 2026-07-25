@@ -1,4 +1,5 @@
 import type { X402SettlementDO } from "./durableobjects/x402settlement.js";
+import type { ReceivablesDO } from "./durableobjects/receivables.js";
 
 /**
  * Environment bindings for the x402-settlement worker.
@@ -6,6 +7,8 @@ import type { X402SettlementDO } from "./durableobjects/x402settlement.js";
 export interface Env {
   /** Durable Object namespace for settlement processing */
   X402_SETTLEMENT_DO: DurableObjectNamespace<X402SettlementDO>;
+  /** Pipe-fee receivables, one instance per liable account (ADR-0058). */
+  RECEIVABLES_DO: DurableObjectNamespace<ReceivablesDO>;
   /** Canopy instance identifier */
   CANOPY_ID: string;
   /** Environment: dev or prod */

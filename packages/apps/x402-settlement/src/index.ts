@@ -11,10 +11,12 @@
 import type { SettlementJob } from "@canopy/x402-settlement-types";
 import { hashLogId } from "@canopy/forestrie-sharding";
 import { X402SettlementDO } from "./durableobjects/x402settlement.js";
+import { ReceivablesDO } from "./durableobjects/receivables.js";
 import { generateCdpJwt, facilitatorRequiresAuth } from "./cdp-jwt.js";
 import type { Env } from "./env.js";
 
 export { X402SettlementDO };
+export { ReceivablesDO };
 
 /**
  * Resolve the DO shard name for an authId.
