@@ -30,12 +30,21 @@
         "name": "X402_SETTLEMENT_DO",
         "class_name": "X402SettlementDO",
       },
+      // Pipe-fee receivables, one instance per liable account (ADR-0058 §5).
+      {
+        "name": "RECEIVABLES_DO",
+        "class_name": "ReceivablesDO",
+      },
     ],
   },
   "migrations": [
     {
       "tag": "v1",
       "new_sqlite_classes": ["X402SettlementDO"],
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["ReceivablesDO"],
     },
   ],
   "env": {

@@ -14,7 +14,7 @@ declare namespace Cloudflare {
     X402_MODE: "verify-and-settle";
     X402_FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402";
     X402_NETWORK: "eip155:84532" | "eip155:8453";
-    X402_PAYTO_ADDRESS: "0x75be7950F26fe7F15336a10b33A8D8134faDb787";
+    X402_PAYTO_ADDRESS: string;
     X402_PRICE_EXACT: "$0.001";
     X402_PRICE_UPTO_MAX: "$1.00";
     GRANT_STORAGE_PUBLIC_BASE:

@@ -24,7 +24,6 @@
     // needs JWT auth, as part of the FOR-83 mainnet cutover.
     "X402_FACILITATOR_URL": "https://x402.org/facilitator",
     "X402_NETWORK": "eip155:84532",
-    "X402_PAYTO_ADDRESS": "0x75be7950F26fe7F15336a10b33A8D8134faDb787",
     "X402_PRICE_EXACT": "$0.001",
     "X402_ONBOARD_PRICE_ATOMIC": "10000",
     "X402_PRICE_UPTO_MAX": "$1.00",

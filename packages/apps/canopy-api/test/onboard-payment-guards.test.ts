@@ -14,7 +14,10 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import type { Env } from "../src/index";
 import type { VerifiedPayment } from "../src/scrapi/verified-payment.js";
 import type { SettlementJob } from "@canopy/x402-settlement-types";
-import { getPaymentRequirementsForVerify } from "../src/scrapi/x402.js";
+import {
+  buildPaymentRequiredHeader,
+  getPaymentRequirementsForVerify,
+} from "../src/scrapi/x402.js";
 import {
   claimPaymentAuthorization,
   verifyOnboardPayment,
@@ -127,6 +130,33 @@ describe("R1/FOR-441: payment authorization is single-use", () => {
   });
 });
 
+describe("FOR-465: the settlement payee has no compiled-in default", () => {
+  it("refuses to build a 402 challenge when no payee is configured", () => {
+    expect(() => buildPaymentRequiredHeader("https://x/redeem", {})).toThrow(
+      /X402_PAYTO_ADDRESS is required/,
+    );
+  });
+
+  it("refuses to build verify requirements when no payee is configured", () => {
+    expect(() =>
+      getPaymentRequirementsForVerify("https://x/redeem", {}),
+    ).toThrow(/X402_PAYTO_ADDRESS is required/);
+  });
+
+  it("treats a blank payee as unconfigured rather than valid", () => {
+    expect(() =>
+      getPaymentRequirementsForVerify("https://x/redeem", { payTo: "   " }),
+    ).toThrow(/X402_PAYTO_ADDRESS is required/);
+  });
+
+  it("uses the configured payee when one is supplied", () => {
+    expect(
+      getPaymentRequirementsForVerify("https://x/redeem", { payTo: PAY_TO })
+        .payTo,
+    ).toBe(PAY_TO);
+  });
+});
+
 describe("RM6: claim-expiry safety coupling", () => {
   it("maxTimeoutSeconds stays far below the 1-day R2 lifecycle window", () => {
     // The lifecycle rule (task cloudflare:bucket:lifecycle:used-auth) expires
@@ -137,7 +167,7 @@ describe("RM6: claim-expiry safety coupling", () => {
     // a replay of a still-settleable authorization.
     const LIFECYCLE_WINDOW_SECONDS = 24 * 60 * 60;
     const maxTimeoutSeconds =
-      getPaymentRequirementsForVerify("https://x/redeem", {})
+      getPaymentRequirementsForVerify("https://x/redeem", { payTo: PAY_TO })
         .maxTimeoutSeconds ?? 0;
 
     expect(maxTimeoutSeconds).toBeGreaterThan(0);

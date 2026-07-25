@@ -102,6 +102,9 @@ function envWith(
     CANOPY_OPS_ADMIN_TOKEN: OPS,
     SUPPORTED_CHAINS_RPC,
     X402_SETTLEMENT_QUEUE: { send } as unknown as Env["X402_SETTLEMENT_QUEUE"],
+    // Stated explicitly: the settlement payee has no compiled-in default and
+    // is no longer inherited from a top-level wrangler var (FOR-465).
+    X402_PAYTO_ADDRESS: "0x75be7950F26fe7F15336a10b33A8D8134faDb787",
     ...overrides,
   } as Env;
 }
