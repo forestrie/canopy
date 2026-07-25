@@ -77,7 +77,10 @@ describe("ReceivablesDO — instance identity is bound (FOR-472)", () => {
   it("refuses an operation for a different account", async () => {
     const { stub, account } = freshStub();
     await stub.accrueCheckpoints(account, "evt-1", 1);
-    const other = { ...account, accountKey: "1:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd" };
+    const other = {
+      ...account,
+      accountKey: "1:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+    };
     // Routing the wrong account here would otherwise land a second row and
     // read back cleanly — silent cross-account contamination.
     await expect(stub.accrueCheckpoints(other, "evt-2", 1)).rejects.toThrow(
@@ -118,7 +121,9 @@ describe("ReceivablesDO — arrears posture (§7)", () => {
   it("moves through the allowed states", async () => {
     const { stub, account, key } = freshStub();
     await stub.accrueCheckpoints(account, "evt-1", 1);
-    expect((await stub.setArrears(key, "in-arrears"))?.arrears).toBe("in-arrears");
+    expect((await stub.setArrears(key, "in-arrears"))?.arrears).toBe(
+      "in-arrears",
+    );
     expect((await stub.setArrears(key, "current"))?.arrears).toBe("current");
     expect((await stub.getEntitlement(key))?.arrears).toBe("current");
   });
@@ -126,9 +131,9 @@ describe("ReceivablesDO — arrears posture (§7)", () => {
   it("rejects an unknown state instead of storing it", async () => {
     const { stub, account, key } = freshStub();
     await stub.accrueCheckpoints(account, "evt-1", 1);
-    await expect(
-      stub.setArrears(key, "delinquent" as never),
-    ).rejects.toThrow(/unknown arrears state/);
+    await expect(stub.setArrears(key, "delinquent" as never)).rejects.toThrow(
+      /unknown arrears state/,
+    );
   });
 
   it("returns null for an account that does not exist yet", async () => {

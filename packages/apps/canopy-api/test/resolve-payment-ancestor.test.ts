@@ -161,7 +161,11 @@ describe("FOR-435: the liable account is resolved, never self-declared", () => {
 
   it("refuses to key a malformed address", () => {
     expect(() =>
-      liableAccountKey({ root: "r", chainId: "84532", univocityAddr: "0xABCD" }),
+      liableAccountKey({
+        root: "r",
+        chainId: "84532",
+        univocityAddr: "0xABCD",
+      }),
     ).toThrow(/40 hex chars/);
   });
 });

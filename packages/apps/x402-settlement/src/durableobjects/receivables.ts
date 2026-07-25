@@ -167,7 +167,9 @@ export class ReceivablesDO extends DurableObject<Env> {
     );
     const created = this.row();
     if (!created) {
-      throw new Error("ReceivablesDO: account row missing immediately after insert");
+      throw new Error(
+        "ReceivablesDO: account row missing immediately after insert",
+      );
     }
     return created;
   }
@@ -210,12 +212,16 @@ export class ReceivablesDO extends DurableObject<Env> {
       throw new Error("accrueCheckpoints requires a non-empty idempotencyKey");
     }
     if (!Number.isInteger(count) || count < 1) {
-      throw new Error(`accrueCheckpoints requires a positive integer count, got ${count}`);
+      throw new Error(
+        `accrueCheckpoints requires a positive integer count, got ${count}`,
+      );
     }
     const current = this.bind(account);
 
     const seen = this.ctx.storage.sql
-      .exec<{ n: number }>(
+      .exec<{
+        n: number;
+      }>(
         `SELECT COUNT(*) AS n FROM accrual_events WHERE idempotency_key = ?`,
         idempotencyKey.trim(),
       )
@@ -257,7 +263,9 @@ export class ReceivablesDO extends DurableObject<Env> {
   async noteRegistration(account: AccountRef, depth: number): Promise<void> {
     this.ensureSchema();
     if (!Number.isInteger(depth) || depth < 1) {
-      throw new Error(`noteRegistration requires a positive integer depth, got ${depth}`);
+      throw new Error(
+        `noteRegistration requires a positive integer depth, got ${depth}`,
+      );
     }
     this.bind(account);
     this.ctx.storage.sql.exec(
