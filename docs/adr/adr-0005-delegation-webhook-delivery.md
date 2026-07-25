@@ -141,3 +141,89 @@ recovering operator endpoint. The initial `ctx.waitUntil()` POST is **attempt
   target for when invocation lands.
 - If escalated to D later, the event schema (in the registration ARC) is
   unchanged — only the transport differs.
+
+---
+
+## Amendment — 2026-07-25: role, identity, and instance-level inheritance
+
+Status of this amendment: **Accepted**. Settles questions that were open or
+ambiguous when this ADR was first written. Nothing in the delivery decision
+(B+C, DO alarm-backed retry) changes.
+
+### The webhook's role is delegation signing, and only that
+
+The coordinator emits exactly one event type, `delegation.required`
+(`delegation-coordinator/src/webhook/build-delegation-required-event.ts`), fired
+from `DelegationStoreDO`. There is no second role.
+
+**It is not the "sealer nudge".** That name belongs to a different mechanism in
+a different service: ranger publishing seal hints to the sealer, specified in
+[arbor ADR-0007 low-latency-sealer-trigger](https://github.com/forestrie/arbor/blob/main/docs/adr/adr-0007-low-latency-sealer-trigger.md)
+and arbor plan-2607-01. The two are unrelated, and the naming collision has been
+corrected in `canopy-api/src/forest/forward-coordinator-registration.ts`.
+
+### The webhook is not an identity dimension
+
+It was considered as a source of account identity for canopy receivables (the
+registration's webhook domain). **Rejected.** Account identity is
+`chainBinding { chainId, univocityAddr }`, already carried on
+`RegistrationRecord`. The webhook is a delivery endpoint, not a principal, and
+overloading it would have coupled billing identity to an operational callback
+that an owner may legitimately never configure.
+
+### Absence is a supported configuration, not a gap
+
+A log with **no** webhook is never sent `delegation.required` —
+`enqueueWebhookDelivery` returns when `webhook_url` is absent or the log is not
+enabled. That is the deliberate other half of a trade-off available to every log
+owner:
+
+- **Register a webhook** and be asked when a delegation is needed; or
+- **Pre-supply the delegation** ahead of need and never be asked.
+
+Child logs registering without a webhook (ADR-0053 auto-forward / prepare) are
+exercising the second option, not hitting a limitation.
+
+### Instance-level webhooks, inherited by copy
+
+A univocity instance owner may operate many logs and hold custody of most or all
+of their signing keys. Requiring a separate webhook registration per log is
+friction with no benefit, so an **instance-level webhook serves every log of
+that instance**.
+
+Two things already support this and are unchanged:
+
+- The event **already identifies the log** — `DelegationRequiredEvent` carries
+  `logId`, `authLogId`, the MMR range, `delegatedPublicKey` and
+  `certificateSubmitUrl`. **No payload change.**
+- Absence still means pre-supply-only, per above.
+
+**Mechanism: inherit by copy.** Webhook config is a per-log row
+(`readDelegationConfigRow`) inside a *shard-addressed* Durable Object, with logs
+routed to shards by log id (`delegation-coordinator/src/handlers/handler.ts`).
+Sibling logs of one instance therefore land in **different shards**, so an
+instance-level value is not locally reachable from a given log's shard. The
+instance webhook is therefore **written into each log's config row at
+registration time**.
+
+*Rejected alternative — inherit by reference* (look up an instance-level record
+when the log row is empty): single source of truth and trivially re-pointed, but
+it adds a cross-shard hop plus a cache decision to the delegation request path.
+That path is the **primary** one — delegate signing is the only model serving
+operator-hosted sealing at scale, with direct-key signing reserved for the
+far-future self-host path or the current custodian — so a rare fan-out write is
+the better trade than a hop on every request.
+
+**Accepted cost:** re-pointing an instance's webhook requires a fan-out update
+across that instance's logs. An explicit re-point operation is required.
+
+### Receiver obligation
+
+A receiver serving many logs from one endpoint **must verify the event's `logId`
+is a log it owns** before signing, rather than signing whatever arrives. The
+blast radius is bounded — it can only sign with keys it holds — but "I hold this
+key" and "I should sign for this log now" are different assertions, and an
+instance-level webhook widens the set of logs a single endpoint is asked about.
+This is in addition to the existing JWKS signature check and `requestKey` dedup.
+
+*Tracked as FOR-468.*

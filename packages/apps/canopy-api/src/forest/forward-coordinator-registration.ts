@@ -19,10 +19,17 @@ export interface ForwardCoordinatorRegistrationInput {
   genesisAlg: number;
   bootstrapKey: Uint8Array;
   /**
-   * Sealer-nudge webhook to register for this log. Optional: child onboarding
-   * (ADR-0053 auto-forward / prepare) registers only the public root — the gate
-   * `handlePutCertificate` needs — and has no per-log webhook to inherit, so it
-   * is omitted and the webhook step is reported `skipped`.
+   * `delegation.required` webhook to register for this log — the endpoint the
+   * delegation coordinator calls to ask this log's owner to sign a delegation
+   * (ADR-0005 delegation webhook delivery). This is **not** the sealer nudge:
+   * that is a separate mechanism, ranger publishing seal hints, specified in
+   * arbor ADR-0007 low-latency-sealer-trigger.
+   *
+   * Optional by design. A log with no webhook — directly or inherited from its
+   * univocity instance — is never asked, and its owner must supply the
+   * delegation pre-emptively instead. Child onboarding (ADR-0053 auto-forward /
+   * prepare) registers only the public root, the gate `handlePutCertificate`
+   * needs, so the webhook step is reported `skipped`.
    */
   webhookUrl?: string;
   fetchImpl?: typeof fetch;
