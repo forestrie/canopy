@@ -22,7 +22,7 @@ export interface TrustRootClient {
   logSigningKey(ownerLogIdLowerHex32: string): Promise<RootVerifyKey>;
 }
 
-class TrustRootNotFoundError extends Error {
+export class TrustRootNotFoundError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "TrustRootNotFoundError";
