@@ -25,56 +25,78 @@ each shard's Durable Object serializes its own writes, a log registering
 concurrently with an instance fan-out ends up with the current URL regardless of
 which lands first.
 
-What follows are the gaps. One is an authority gap in the design, not a slip in
-the code; the rest are operational and correctness issues around the fan-out.
+The delegation certificate also authenticates itself — it is verified against
+the target log's registered public root and carries that log's id inside the
+signed payload — so misdirected delivery is a disclosure and a nuisance, not an
+authority risk. That single fact bounds the severity of H1 below.
+
+What follows are the gaps: one unverified binding, and a set of operational and
+correctness issues around the fan-out.
 
 ## Findings
 
-| ID  | Sev             | Dim           | Location                                                                                | Finding                                                                                                               | Invariant / rule                                                                   |
-| --- | --------------- | ------------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| H1  | **High**        | Security      | `delegation-coordinator/src/handlers/put-webhook.ts:39`                                 | A log can bind itself to **any** univocity instance with no proof it belongs to that instance                         | ARC-0017 dual-token authority: an issuer token is authority over _its_ log         |
-| H2  | **Medium-High** | Liveness      | `canopy-api/src/forest/handle-forest-request.ts:145`                                    | Genesis now makes two blocking, untimed coordinator calls on a path documented as best-effort                         | Genesis is the primary onboarding path                                             |
-| M1  | Medium          | Correctness   | `delegation-coordinator/src/instance-key.ts` vs `canopy-api/src/forest/instance-key.ts` | Instance-key normalization diverges on the `0x` address prefix; a mismatched key silently matches no logs             | One canonical account identity (ADR-0005 amendment: "no second notion of account") |
-| M2  | Medium          | Liveness      | `delegation-coordinator/src/handlers/instance-webhook.ts:55`                            | Re-point and delete fan out non-atomically, report the first failure only, and self-repair only if the caller retries | Revocation must not half-apply                                                     |
-| M3  | Medium          | Scale         | `delegation-store.ts` `handlePutInstanceWebhook`                                        | A re-point is one unbounded synchronous `UPDATE` plus two `COUNT(*)` per shard                                        | Motivating case is an owner operating _many_ logs                                  |
-| L1  | Low             | Best practice | `delegation-store.ts:358`                                                               | New columns live only in the migration path, not the base `CREATE TABLE`                                              | Inconsistent with the neighbouring `ensureEnabledAuthorityColumns`                 |
-| L2  | Low             | Best practice | `delegation-store.ts` `countInstanceMemberLogs`                                         | `webhook_source` interpolated into SQL rather than bound                                                              | Every other predicate in the file is bound                                         |
-| L3  | Low             | Correctness   | `instance-webhook.ts:124`                                                               | `Math.min(createdAt ?? Infinity, shardResult.createdAt ?? 0)` collapses to `0` if any shard omits `createdAt`         | Latent only                                                                        |
-| L4  | Low             | Docs          | `delegation-coordinator/src/instance-key.ts`, `canopy-api/test/instance-key.test.ts`    | Key described as "CAIP-2 style"; it is `{decimal chainId}:{40-hex, unprefixed}`                                       | Same inaccuracy already known in ADR-0058 §2                                       |
+| ID  | Sev             | Dim           | Location                                                                                | Finding                                                                                                                                                                                                                                                      | Invariant / rule                                                                   |
+| --- | --------------- | ------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| H1  | Medium          | Security      | `delegation-coordinator/src/handlers/put-webhook.ts:39`                                 | A log can bind itself to **any** univocity instance with no proof it belongs to that instance; leaks that instance's webhook URL and aims signed events at it. No authority escalation — the certificate is bound to its logId and the log's registered root | ARC-0017 dual-token authority: an issuer token is authority over _its_ log         |
+| H2  | **Medium-High** | Liveness      | `canopy-api/src/forest/handle-forest-request.ts:145`                                    | Genesis now makes two blocking, untimed coordinator calls on a path documented as best-effort                                                                                                                                                                | Genesis is the primary onboarding path                                             |
+| M1  | Medium          | Correctness   | `delegation-coordinator/src/instance-key.ts` vs `canopy-api/src/forest/instance-key.ts` | Instance-key normalization diverges on the `0x` address prefix; a mismatched key silently matches no logs                                                                                                                                                    | One canonical account identity (ADR-0005 amendment: "no second notion of account") |
+| M2  | Medium          | Liveness      | `delegation-coordinator/src/handlers/instance-webhook.ts:55`                            | Re-point and delete fan out non-atomically, report the first failure only, and self-repair only if the caller retries                                                                                                                                        | Revocation must not half-apply                                                     |
+| M3  | Medium          | Scale         | `delegation-store.ts` `handlePutInstanceWebhook`                                        | A re-point is one unbounded synchronous `UPDATE` plus two `COUNT(*)` per shard                                                                                                                                                                               | Motivating case is an owner operating _many_ logs                                  |
+| L1  | Low             | Best practice | `delegation-store.ts:358`                                                               | New columns live only in the migration path, not the base `CREATE TABLE`                                                                                                                                                                                     | Inconsistent with the neighbouring `ensureEnabledAuthorityColumns`                 |
+| L2  | Low             | Best practice | `delegation-store.ts` `countInstanceMemberLogs`                                         | `webhook_source` interpolated into SQL rather than bound                                                                                                                                                                                                     | Every other predicate in the file is bound                                         |
+| L3  | Low             | Correctness   | `instance-webhook.ts:124`                                                               | `Math.min(createdAt ?? Infinity, shardResult.createdAt ?? 0)` collapses to `0` if any shard omits `createdAt`                                                                                                                                                | Latent only                                                                        |
+| L4  | Low             | Docs          | `delegation-coordinator/src/instance-key.ts`, `canopy-api/test/instance-key.test.ts`    | Key described as "CAIP-2 style"; it is `{decimal chainId}:{40-hex, unprefixed}`                                                                                                                                                                              | Same inaccuracy already known in ADR-0058 §2                                       |
 
 ## Remediation items
 
-### H1 — require authority over an instance before binding a log to it
+### H1 — binding a log to an instance is unverified (disclosure only)
 
 `PUT /api/logs/{logId}/webhook` authenticates with the coordinator app token
 **or** the log's own `issuerToken`, and now accepts an arbitrary `instanceKey`.
 The coordinator "treats it as an opaque label and never resolves it on chain",
-and the key is `{chainId}:{univocityAddr}` — both public. So a caller holding
-one log's issuer token can name any other operator's instance and:
+and the key is `{chainId}:{univocityAddr}` — both public. Nothing anywhere in
+the coordinator relates an `instanceKey` to a registered chain binding. So a
+caller holding one log's issuer token can name any other operator's instance.
 
-1. **Read that instance's webhook URL.** `handlePutWebhookConfig` copies
+**What this actually costs, and what it does not.**
+
+The consequence is confined to disclosure and unsolicited traffic:
+
+1. **The victim instance's webhook URL leaks.** `handlePutWebhookConfig` copies
    `readInstanceWebhookRow(instanceKey)?.webhook_url` into the caller's own log
-   row; `GET /api/logs/{logId}/webhook` uses the same dual auth and returns
-   `webhookUrl`. Cross-tenant disclosure of a private endpoint.
-2. **Direct coordinator-signed traffic at that endpoint.** `delegation.required`
-   events naming the _caller's_ log are then delivered to the victim's receiver
-   with a valid coordinator JWKS signature. A receiver that verifies the
-   signature and dedups on `requestKey` — that is, any receiver built to
-   ADR-0005 as it stood before this amendment — would sign delegation material
-   for a log it does not own, using its own custody keys.
+   row, and `GET /api/logs/{logId}/webhook` — same dual auth — returns it as
+   `webhookUrl`.
+2. **Coordinator-signed events can be aimed at that endpoint.**
+   `delegation.required` events naming the _caller's_ log are delivered to the
+   victim's receiver with a valid JWKS signature, so a receiver that checks only
+   the signature will sign a certificate it had no reason to sign.
 
-The receiver `logId` ownership check added in this same PR is exactly the right
-mitigation, and its placement (before the `requestKey` dedup, so foreign events
-do not consume keys) is correct. But it lives in the **reference** receiver in
-`packages/tests/e2e-kit`, which is advisory for third-party implementers. The
-coordinator enforces nothing.
+**There is no authority escalation, because the delegation certificate
+authenticates itself.** The inbound path does not care who posts it:
+`delegation-store.ts` loads the target log's own `public_roots` row and calls
+`validateByokDelegationCertificate({ logIdHex32, …, publicRoot })`, and
+`validate-byok-certificate.ts:127` rejects unless the logId parsed **from the
+certificate payload** equals the target log. So a certificate produced by a
+victim's root key over the attacker's logId fails against the attacker's
+registered root, and cannot be replayed onto the victim's own log either, since
+logId is bound inside the signed payload. The artifact is inert. This is the
+right design — a valid delegation is valid regardless of who carries it — and it
+is what keeps this finding out of the High band.
 
-**Current exploitability is limited**, and this should be weighed: nothing in
-`canopy-api/src` provisions a per-log `issuerToken` — it is set only through a
-signing-route PUT — so today the sole caller able to reach this is the app-token
-holder, which is already fully privileged. The defect is that the authority gap
-is designed in and goes live the moment dual-token auth is used for real, which
-ARC-0017 explicitly provides for.
+What remains for the receiver's `logId` ownership check is therefore hygiene
+rather than an authority boundary: it stops a receiver being used as a signing
+oracle over attacker-chosen `(logId, mmrStart, mmrEnd, delegatedPublicKey)`
+tuples, and stops foreign events consuming receiver state. Its placement ahead
+of the `requestKey` dedup is correct. ADR-0005 should describe it that way
+rather than as load-bearing.
+
+**Current exploitability is limited further:** nothing in `canopy-api/src`
+provisions a per-log `issuerToken` — it is set only through a signing-route PUT
+— so today the sole caller able to reach this is the app-token holder, which is
+already fully privileged.
+
+The fix is cheap and worth taking anyway, since the field has no legitimate
+issuer-token caller.
 
 **Acceptance criteria**
 
@@ -84,13 +106,12 @@ ARC-0017 explicitly provides for.
   canopy-api-brokered flow (canopy-api derives the key from the registration
   record it already holds) and closes the direct path.
 - A test asserts an issuer-token caller cannot bind to an instance.
-- ADR-0005 records that the receiver ownership check is **load-bearing for
-  third-party receivers**, not merely defence in depth, for as long as the
-  coordinator accepts an unverified binding.
-- Stretch: the coordinator cross-checks `instanceKey` against the chain binding
-  on the log's registration record rather than trusting the caller.
+- ADR-0005 records the receiver ownership check as defence in depth against
+  signing-oracle use, and records explicitly that certificate validity is bound
+  to the logId in its payload and to the log's registered public root, so
+  delivery to the wrong endpoint is not an authority risk.
 
-**Branch:** new branch off `main`, or fold into #174 before merge.
+**Branch:** follow-up branch off `main`; does not need to block #174.
 
 ### H2 — bound the new best-effort coordinator call on genesis
 
@@ -239,13 +260,13 @@ end-to-end `delegation.required` delivery to an inherited webhook. Missing:
 
 ## Branch assignment
 
-| Item       | Where                                                                             |
-| ---------- | --------------------------------------------------------------------------------- |
-| H1         | Fold into #174 before merge, or a follow-up branch off `main` if #174 ships first |
-| H2         | Fold into #174 — it is the branch that introduced the blocking call               |
-| M1, M2, M3 | Follow-up branch off `main`                                                       |
-| L1–L3      | Follow-up branch, batched                                                         |
-| L4         | Batch with the pending ADR-0058 §2 CAIP-2 correction in devdocs                   |
+| Item       | Where                                                               |
+| ---------- | ------------------------------------------------------------------- |
+| H1         | Follow-up branch off `main`; does not block #174                    |
+| H2         | Fold into #174 — it is the branch that introduced the blocking call |
+| M1, M2, M3 | Follow-up branch off `main`                                         |
+| L1–L3      | Follow-up branch, batched                                           |
+| L4         | Batch with the pending ADR-0058 §2 CAIP-2 correction in devdocs     |
 
 ## Deferred
 
