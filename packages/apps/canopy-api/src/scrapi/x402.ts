@@ -37,6 +37,11 @@ const USDC_ADDRESS = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
  * so a dev payment was indistinguishable from a production one. Fail closed
  * instead: a deployment that has not configured a payee cannot issue or verify
  * a 402 (ADR-0058 consequences; FOR-465).
+ *
+ * Note this fails the **request**, not startup — Workers have no startup hook to
+ * validate env in, so a misconfigured deployment serves errors rather than
+ * refusing to boot. That is still fail-closed: no payment is ever taken against
+ * an unconfigured or inherited address.
  */
 function requirePayTo(payTo: string | undefined): string {
   const trimmed = payTo?.trim();

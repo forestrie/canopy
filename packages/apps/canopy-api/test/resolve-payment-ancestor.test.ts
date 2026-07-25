@@ -133,17 +133,35 @@ describe("FOR-435: the liable account is resolved, never self-declared", () => {
   });
 
   it("keys an account case-insensitively so one address is one account", () => {
+    const mixed = liableAccountKey({
+      root: "r",
+      chainId: "84532",
+      univocityAddr: "AB".repeat(20),
+    });
     const lower = liableAccountKey({
       root: "r",
       chainId: "84532",
-      univocityAddr: "0xABCD",
+      univocityAddr: "ab".repeat(20),
     });
-    const upper = liableAccountKey({
-      root: "r",
-      chainId: "84532",
-      univocityAddr: "0xabcd",
-    });
-    expect(lower).toBe(upper);
-    expect(lower).toBe("84532:0xabcd");
+    expect(mixed).toBe(lower);
+    expect(lower).toBe(`84532:${"ab".repeat(20)}`);
+  });
+
+  it("refuses to key an unpinned chainId format (FOR-471)", () => {
+    // CAIP-2 form. Registration records store a BARE decimal chain id, so
+    // accepting this would split one operator into two accounts.
+    expect(() =>
+      liableAccountKey({
+        root: "r",
+        chainId: "eip155:84532",
+        univocityAddr: "ab".repeat(20),
+      }),
+    ).toThrow(/bare decimal id/);
+  });
+
+  it("refuses to key a malformed address", () => {
+    expect(() =>
+      liableAccountKey({ root: "r", chainId: "84532", univocityAddr: "0xABCD" }),
+    ).toThrow(/40 hex chars/);
   });
 });
