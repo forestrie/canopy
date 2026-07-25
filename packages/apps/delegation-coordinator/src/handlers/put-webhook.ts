@@ -9,6 +9,10 @@
  * instance's webhook into the log's own config row (ADR-0005 amendment,
  * FOR-468). The copy is what keeps the delegation request path inside a single
  * shard; see {@link handlePutInstanceWebhook} for the fan-out that pays for it.
+ *
+ * `url` accepts either token; **`instanceKey` requires the app token**. An
+ * instance is not a log, so authority over one log says nothing about the
+ * instance a caller may claim to belong to.
  */
 
 import type { Env } from "../env.js";
@@ -74,6 +78,22 @@ export async function handlePutWebhook(
     }
 
     if (rawInstanceKey) {
+      // Naming an instance copies that instance's webhook URL into this log's
+      // row, so it must not be reachable with authority over this log alone.
+      // The coordinator cannot check the claim — it treats the key as an opaque
+      // label and never resolves it on chain — so a per-log issuer token could
+      // otherwise name any instance, read its endpoint back off this log's
+      // config, and aim `delegation.required` events at its receiver. Restrict
+      // the field to the app token, which is how canopy-api always calls: it
+      // derives the key from the registration record it already holds.
+      if (checkBearerToken(request, env.COORDINATOR_APP_TOKEN)) {
+        return problemResponse(
+          403,
+          "about:blank",
+          "Forbidden",
+          "instanceKey requires the coordinator app token",
+        );
+      }
       try {
         forwarded.instanceKey = normalizeInstanceKey(rawInstanceKey);
       } catch (error) {

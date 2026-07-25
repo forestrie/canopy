@@ -278,7 +278,7 @@ CRUD surface (JSON):
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `PUT` | `/api/logs/{logId}/webhook` | `COORDINATOR_APP_TOKEN` or per-log `issuerToken` | create/replace `{ url? , instanceKey? }` (at least one) |
+| `PUT` | `/api/logs/{logId}/webhook` | `COORDINATOR_APP_TOKEN` or per-log `issuerToken`; **`instanceKey` requires the app token** | create/replace `{ url? , instanceKey? }` (at least one) |
 | `GET` | `/api/logs/{logId}/webhook` | same | read `{ webhookUrl?, instanceKey?, inherited?, enabled, createdAt, updatedAt }` |
 | `DELETE` | `/api/logs/{logId}/webhook` | same | null `webhook_url` + `webhook_source` (polling-only thereafter) |
 | `PUT` | `/api/instances/{instanceKey}/webhook` | `COORDINATOR_APP_TOKEN` only | set or **re-point**; fans out to all shards, rewriting inherited copies |

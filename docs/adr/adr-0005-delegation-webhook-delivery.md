@@ -251,6 +251,27 @@ re-opts in with `PUT /api/logs/{logId}/webhook { instanceKey }`.
 account is introduced. The coordinator treats it as an opaque label and never
 resolves it on chain.
 
+Because it cannot test the claim, **`instanceKey` on
+`PUT /api/logs/{logId}/webhook` requires `COORDINATOR_APP_TOKEN`**, though `url`
+on the same route still accepts a per-log `issuerToken`. Binding copies the
+instance's webhook URL into the log's own row, so accepting the field from a
+caller who speaks only for that one log would let anyone holding a log claim
+another operator's instance, read its endpoint back off their own config, and
+have `delegation.required` events delivered to its receiver. Authority over a
+log is not authority over an instance. canopy-api is unaffected: it brokers
+these calls with the app token and derives the key from the registration record
+it already holds.
+
+This is a confidentiality boundary, not an authority one. A delegation
+certificate authenticates itself — the coordinator verifies it against the
+**target log's** registered public root and rejects it unless the logId inside
+the signed payload matches — so a certificate produced by the wrong root for
+someone else's log is inert, and delivery to the wrong receiver could never have
+yielded a usable delegation. The reference receiver's `logId` ownership check is
+therefore defence in depth: it stops a receiver being used as a signing oracle
+over caller-chosen `(logId, mmrStart, mmrEnd, delegatedPublicKey)` tuples, and
+stops foreign events consuming its dedup state.
+
 **Where the binding gets registered.** canopy-api sends `instanceKey` on the
 genesis coordinator forward, and `POST /api/forest/{child}/prepare` derives it
 from the **parent's** registration record — which is what makes ADR-0053 child
