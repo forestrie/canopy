@@ -46,8 +46,6 @@ export interface Env {
   // X402 settlement DO for auth state lookups (cross-worker binding)
   // Note: Uses untyped namespace since RPC types aren't exported across workers
   X402_SETTLEMENT_DO?: DurableObjectNamespace;
-  /** Pipe-fee receivables, hosted in x402-settlement (ADR-0058 §5). */
-  RECEIVABLES_DO?: DurableObjectNamespace;
   // Number of DO shards for x402 settlement (typically 4)
   X402_DO_SHARD_COUNT?: string;
   /** Base URL of arbor Custodian (no trailing slash). */

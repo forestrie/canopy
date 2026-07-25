@@ -59,14 +59,6 @@
         "class_name": "X402SettlementDO",
         "script_name": "x402-settlement",
       },
-      // Pipe-fee receivables (ADR-0058 §5). Hosted in x402-settlement because
-      // this worker defines no DO classes and has no migrations block; the
-      // 402-path read is therefore a cross-script call — see FOR-469.
-      {
-        "name": "RECEIVABLES_DO",
-        "class_name": "ReceivablesDO",
-        "script_name": "x402-settlement",
-      },
     ],
   },
   // Queue producer for x402 settlement jobs (Phase 2b)
