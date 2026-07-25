@@ -36,6 +36,16 @@ import type { Env } from "../env.js";
 /** Arrears posture for an account. Deliberately coarse — see §7. */
 export type ArrearsState = "current" | "suspect" | "in-arrears";
 
+/**
+ * How long a spent idempotency key is retained.
+ *
+ * The dedup only has to outlive the window in which a delivery can be
+ * *redelivered* — hours, not forever — so the table is bounded rather than
+ * growing for the life of the account. Seven days is far beyond any queue
+ * retry horizon while still keeping the object small.
+ */
+const ACCRUAL_KEY_RETENTION_SECONDS = 7 * 24 * 60 * 60;
+
 const ARREARS_STATES: readonly ArrearsState[] = [
   "current",
   "suspect",
@@ -109,6 +119,9 @@ export class ReceivablesDO extends DurableObject<Env> {
         count INTEGER NOT NULL,
         accrued_at INTEGER NOT NULL
       );
+
+      CREATE INDEX IF NOT EXISTS idx_accrual_events_accrued_at
+        ON accrual_events (accrued_at);
     `);
     this.initialized = true;
   }
@@ -231,6 +244,12 @@ export class ReceivablesDO extends DurableObject<Env> {
       return this.toEntitlement(current);
     }
 
+    // Bound the dedup table. Opportunistic on write: no alarm to schedule and
+    // no unbounded growth, at the cost of a cheap DELETE per accrual.
+    this.ctx.storage.sql.exec(
+      `DELETE FROM accrual_events WHERE accrued_at < ?`,
+      this.now() - ACCRUAL_KEY_RETENTION_SECONDS,
+    );
     this.ctx.storage.sql.exec(
       `INSERT INTO accrual_events (idempotency_key, account_key, count, accrued_at)
        VALUES (?, ?, ?, ?)`,

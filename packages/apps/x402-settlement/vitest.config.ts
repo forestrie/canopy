@@ -7,10 +7,15 @@ export default defineWorkersConfig({
     poolOptions: {
       workers: {
         singleWorker: true,
-        // Isolated storage cannot pop a DO storage frame when a Durable Object
-        // method throws, and ReceivablesDO's validation tests exercise exactly
-        // that (vitest-pool-workers known issue: #isolated-storage). Tests
-        // self-isolate by addressing a unique DO name per case instead.
+        // Isolated storage cannot pop a Durable Object storage frame when a DO
+        // method throws, and ReceivablesDO throws deliberately — the identity
+        // guard MUST be loud rather than return an ignorable value. Verified:
+        // re-enabling this fails the suite outright (vitest-pool-workers known
+        // issue, #isolated-storage).
+        //
+        // Mitigation: every DO test addresses a UNIQUE object name, so cases
+        // cannot observe each other's state. Any new DO test must do the same
+        // — see freshStub() in test/receivables.test.ts.
         isolatedStorage: false,
         wrangler: {
           configPath: "./wrangler.jsonc",
