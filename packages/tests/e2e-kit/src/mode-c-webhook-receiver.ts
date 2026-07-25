@@ -1,6 +1,17 @@
 /**
  * In-repo Mode C webhook receiver for system e2e (plan-0037 / FOR-126).
  * Verifies coordinator webhook signatures, signs KS256 material, POSTs to coordinator.
+ *
+ * Reference receiver semantics — three independent checks, all required:
+ *
+ * 1. **Source auth** — ES256 signature over `{timestamp}.{body}`, verified
+ *    against the coordinator's JWKS (ADR-0006).
+ * 2. **Ownership** — the event's `logId` must be a log this receiver owns
+ *    (ADR-0005 amendment, FOR-468). An instance-level webhook serves every log
+ *    of an instance from one endpoint, so a valid signature is not authority to
+ *    sign for whatever log the event names.
+ * 3. **Idempotency** — dedup on `requestKey`; delivery is at-least-once by
+ *    design (ADR-0005 B+C).
  */
 
 import { createServer, type IncomingMessage, type Server } from "node:http";
@@ -33,6 +44,17 @@ export interface ModeCWebhookReceiverConfig {
   /** Log UUID for material POST body `logId` (coordinator accepts dashed form). */
   logIdUuid: string;
   /**
+   * Every log this receiver is willing to sign for; defaults to
+   * `[logIdUuid]`.
+   *
+   * An instance-level webhook points many logs at one endpoint (ADR-0005
+   * amendment, FOR-468), so the endpoint must decide which of them it owns
+   * rather than signing whatever arrives. The blast radius is bounded — it can
+   * only sign with keys it holds — but "I hold this key" and "I should sign for
+   * this log now" are different assertions.
+   */
+  ownedLogIdUuids?: string[];
+  /**
    * When set, advertised webhook URL uses this base instead of
    * `http://127.0.0.1:{port}` (tunnel / public ingress for deployed coordinator).
    */
@@ -43,6 +65,8 @@ export interface ModeCWebhookReceiverStats {
   webhooksReceived: number;
   materialsSubmitted: number;
   requestKeysSeen: Set<string>;
+  /** Events refused because their `logId` is not a log this receiver owns. */
+  foreignLogIdsRejected: number;
 }
 
 export interface ModeCWebhookReceiver {
@@ -65,6 +89,42 @@ export interface SubmitModeCKs256MaterialInput {
   certificateSubmitUrl?: string;
   /** @deprecated use certificateSubmitUrl */
   materialSubmitUrl?: string;
+}
+
+/**
+ * Index the logs a receiver owns by the normalized id an event carries.
+ *
+ * @param logIdUuids - Log ids this endpoint holds signing authority for.
+ * @returns Map from normalized 32-hex id to the caller's original form.
+ */
+export function buildOwnedLogIndex(logIdUuids: string[]): Map<string, string> {
+  const index = new Map<string, string>();
+  for (const uuid of logIdUuids) {
+    index.set(normalizeForestrieHexId32(uuid), uuid);
+  }
+  return index;
+}
+
+/**
+ * Resolve an event's `logId` to a log this receiver owns.
+ *
+ * A valid coordinator signature says the event is genuine, not that this
+ * endpoint should sign for the log it names — an instance-level webhook points
+ * many logs at one endpoint (ADR-0005 amendment, FOR-468).
+ *
+ * @param ownedLogs - Index from {@link buildOwnedLogIndex}.
+ * @param eventLogId - `logId` off the `delegation.required` event.
+ * @returns The owned log id to sign for, or `undefined` to refuse.
+ */
+export function resolveOwnedLogId(
+  ownedLogs: Map<string, string>,
+  eventLogId: string,
+): string | undefined {
+  try {
+    return ownedLogs.get(normalizeForestrieHexId32(eventLogId));
+  } catch {
+    return undefined;
+  }
 }
 
 function readRequestBody(req: IncomingMessage): Promise<string> {
@@ -183,7 +243,15 @@ export async function startModeCWebhookReceiver(
     webhooksReceived: 0,
     materialsSubmitted: 0,
     requestKeysSeen: new Set<string>(),
+    foreignLogIdsRejected: 0,
   };
+
+  // The set of logs this endpoint will sign for. Checked on every event in
+  // addition to the JWKS signature and the requestKey dedup, never instead of
+  // them.
+  const ownedLogs = buildOwnedLogIndex(
+    config.ownedLogIdUuids ?? [config.logIdUuid],
+  );
 
   const server: Server = createServer((req, res) => {
     void (async () => {
@@ -226,6 +294,19 @@ export async function startModeCWebhookReceiver(
           res.end("unexpected event type");
           return;
         }
+
+        // A signature proves the coordinator sent this; it does not say the
+        // event is about a log we are entitled to sign for. With an
+        // instance-level webhook one endpoint is asked about many logs, so
+        // check ownership before signing anything.
+        const ownedLogIdUuid = resolveOwnedLogId(ownedLogs, event.logId);
+        if (!ownedLogIdUuid) {
+          stats.foreignLogIdsRejected++;
+          res.writeHead(403);
+          res.end("logId is not owned by this receiver");
+          return;
+        }
+
         if (stats.requestKeysSeen.has(event.requestKey)) {
           res.writeHead(200);
           res.end("duplicate");
@@ -237,7 +318,7 @@ export async function startModeCWebhookReceiver(
         await submitModeCKs256DelegationMaterial({
           coordinatorBaseUrl: config.coordinatorBaseUrl,
           coordinatorAppToken: config.coordinatorAppToken,
-          logIdUuid: config.logIdUuid,
+          logIdUuid: ownedLogIdUuid,
           rootSignerAddress: config.rootSignerAddress,
           privateKeyHex: config.privateKeyHex,
           mmrStart: event.mmrStart,

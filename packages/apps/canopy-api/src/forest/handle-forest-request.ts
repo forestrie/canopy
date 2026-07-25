@@ -20,6 +20,7 @@ import {
   type CoordinatorForwardEnv,
 } from "./forward-coordinator-registration.js";
 import { getForestGenesis } from "./get-forest-genesis.js";
+import { instanceKeyFromGenesisChainBinding } from "./instance-key.js";
 import { handlePrepareChildLog } from "./prepare-child-log.js";
 import {
   postForestGenesis,
@@ -84,7 +85,8 @@ function parseGenesisWebhookUrlParam(
 async function coordinatorStatusForGenesis(
   env: ForestHandlerEnv,
   genesisResult: PostGenesisSuccess,
-  webhookUrl: string,
+  webhookUrl: string | undefined,
+  instanceKey: string | undefined,
 ): Promise<CoordinatorRegistrationStatus> {
   return forwardCoordinatorRegistration({
     coordinatorBaseUrl: env.DELEGATION_COORDINATOR_URL!.trim(),
@@ -92,7 +94,8 @@ async function coordinatorStatusForGenesis(
     logIdWire: genesisResult.logIdWire,
     genesisAlg: genesisResult.genesisAlg,
     bootstrapKey: genesisResult.bootstrapKey,
-    webhookUrl,
+    ...(webhookUrl ? { webhookUrl } : {}),
+    ...(instanceKey ? { instanceKey } : {}),
   });
 }
 
@@ -121,12 +124,17 @@ async function finishGenesisPost(
 ): Promise<Response> {
   await writeRegistration(env, genesisResult.logIdWire, record);
 
+  const instanceKey = instanceKeyFromGenesisChainBinding(
+    genesisResult.chainBinding,
+  );
+
   let coordinator: CoordinatorRegistrationStatus | undefined;
   if (webhookUrl) {
     coordinator = await coordinatorStatusForGenesis(
       env,
       genesisResult,
       webhookUrl,
+      instanceKey,
     );
     if (coordinator.publicRoot !== "ok" || coordinator.webhook !== "ok") {
       const detail =
@@ -134,6 +142,18 @@ async function finishGenesisPost(
         `coordinator registration incomplete (publicRoot=${coordinator.publicRoot}, webhook=${coordinator.webhook})`;
       return ServerErrors.serviceUnavailable(detail);
     }
+  } else if (instanceKey && isCoordinatorForwardConfigured(env)) {
+    // No explicit webhook: bind the log to its univocity instance so an
+    // instance-level webhook is inherited by copy (FOR-468). Best-effort — this
+    // path forwarded nothing at all before, so a coordinator failure here
+    // leaves genesis no worse off than it was, and the owner can register the
+    // log against the instance later. It is reported, not fatal.
+    coordinator = await coordinatorStatusForGenesis(
+      env,
+      genesisResult,
+      undefined,
+      instanceKey,
+    );
   }
 
   const rUuid = logIdWireToUuid(genesisResult.logIdWire);

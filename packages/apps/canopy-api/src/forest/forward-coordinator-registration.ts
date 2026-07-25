@@ -32,6 +32,17 @@ export interface ForwardCoordinatorRegistrationInput {
    * needs, so the webhook step is reported `skipped`.
    */
   webhookUrl?: string;
+  /**
+   * Univocity instance this log belongs to (`{chainId}:{univocityAddr}`).
+   *
+   * Registering it binds the log to its instance, and the coordinator **copies**
+   * the instance-level webhook into this log's own config row (ADR-0005
+   * amendment, FOR-468). That is what lets an owner who operates many logs
+   * register one webhook instead of one per log. If the instance has no webhook
+   * the binding is still recorded — the log then has none, and a later instance
+   * re-point reaches it.
+   */
+  instanceKey?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -107,7 +118,7 @@ async function putWebhook(
   baseUrl: string,
   token: string,
   apiLogId: string,
-  webhookUrl: string,
+  body: { url?: string; instanceKey?: string },
 ): Promise<Response> {
   return fetchImpl(`${baseUrl}/api/logs/${apiLogId}/webhook`, {
     method: "PUT",
@@ -116,7 +127,7 @@ async function putWebhook(
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({ url: webhookUrl }),
+    body: JSON.stringify(body),
   });
 }
 
@@ -168,27 +179,30 @@ export async function forwardCoordinatorRegistration(
     return status;
   }
 
-  // No webhook to register (e.g. child onboarding): public root is done, webhook
-  // stays `skipped`.
+  // Nothing to register — neither an explicit webhook nor an instance to
+  // inherit one from. Public root is done; the webhook step stays `skipped`.
   const webhookUrl = input.webhookUrl?.trim();
-  if (!webhookUrl) {
+  const instanceKey = input.instanceKey?.trim();
+  if (!webhookUrl && !instanceKey) {
     return status;
+  }
+  if (instanceKey) {
+    status.instanceKey = instanceKey;
   }
 
   try {
-    const hookResp = await putWebhook(
-      fetchImpl,
-      baseUrl,
-      token,
-      apiLogId,
-      webhookUrl,
-    );
+    const hookResp = await putWebhook(fetchImpl, baseUrl, token, apiLogId, {
+      ...(webhookUrl ? { url: webhookUrl } : {}),
+      ...(instanceKey ? { instanceKey } : {}),
+    });
     if (!hookResp.ok) {
       status.webhook = "error";
       status.detail = `webhook returned ${hookResp.status}`;
       return status;
     }
-    status.webhook = "ok";
+    // An explicit URL is `ok`; a bare instance binding is `inherited` — the log
+    // gets whatever webhook the instance has, which may legitimately be none.
+    status.webhook = webhookUrl ? "ok" : "inherited";
     return status;
   } catch (error) {
     status.webhook = "error";

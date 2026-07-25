@@ -23,6 +23,8 @@ import { mintTestOnboardToken } from "./helpers/onboard-token.js";
 const poolEnv = env as unknown as Env;
 const COORD_URL = "https://coordinator.test";
 const COORD_TOKEN = "coordinator-app-token-test";
+/** `{chainId}:{univocityAddr}` of the genesis test fixture's chain binding. */
+const TEST_INSTANCE_KEY = `84532:${"42".repeat(20)}`;
 
 function bytesToBase64(value: Uint8Array): string {
   let binary = "";
@@ -149,6 +151,58 @@ describe("forwardCoordinatorRegistration", () => {
     });
   });
 
+  it("PUTs a bare instance binding when no webhook URL is given", async () => {
+    const calls: { url: string; method: string; body?: string }[] = [];
+    const fetchImpl = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls.push({
+          url: String(input),
+          method: init?.method ?? "GET",
+          body: typeof init?.body === "string" ? init.body : undefined,
+        });
+        return new Response("{}", { status: 200 });
+      },
+    ) as typeof fetch;
+
+    const status = await forwardCoordinatorRegistration({
+      coordinatorBaseUrl: COORD_URL,
+      coordinatorAppToken: COORD_TOKEN,
+      logIdWire: logIdToWireBytes(crypto.randomUUID()),
+      genesisAlg: COSE_ALG_KS256,
+      bootstrapKey: new Uint8Array(20).fill(0xbb),
+      instanceKey: TEST_INSTANCE_KEY,
+      fetchImpl,
+    });
+
+    // `inherited`, not `ok`: the log takes whatever webhook the instance has,
+    // which may legitimately be none.
+    expect(status).toEqual({
+      publicRoot: "ok",
+      webhook: "inherited",
+      instanceKey: TEST_INSTANCE_KEY,
+    });
+    expect(calls).toHaveLength(2);
+    expect(JSON.parse(calls[1]!.body!)).toEqual({
+      instanceKey: TEST_INSTANCE_KEY,
+    });
+  });
+
+  it("skips the webhook step with neither URL nor instance key", async () => {
+    const fetchImpl = vi.fn(
+      async () => new Response("{}", { status: 200 }),
+    ) as typeof fetch;
+    const status = await forwardCoordinatorRegistration({
+      coordinatorBaseUrl: COORD_URL,
+      coordinatorAppToken: COORD_TOKEN,
+      logIdWire: logIdToWireBytes(crypto.randomUUID()),
+      genesisAlg: COSE_ALG_KS256,
+      bootstrapKey: new Uint8Array(20).fill(0xbb),
+      fetchImpl,
+    });
+    expect(status).toEqual({ publicRoot: "ok", webhook: "skipped" });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it("reports error when public-root fails", async () => {
     const fetchImpl = vi.fn(async () => new Response("{}", { status: 500 }));
     const status = await forwardCoordinatorRegistration({
@@ -167,15 +221,75 @@ describe("forwardCoordinatorRegistration", () => {
 });
 
 describe("POST genesis coordinator forward", () => {
-  it("without webhookUrl does not call coordinator", async () => {
+  // Without an explicit webhook the log is still bound to its univocity
+  // instance, so an instance-level webhook is copied into its coordinator
+  // config row (ADR-0005 amendment / FOR-468). The registration carries no URL:
+  // if the instance has none either, the log has none, and delegation works by
+  // pre-emptive supply.
+  it("without webhookUrl registers the log against its univocity instance", async () => {
     const e = envWithCoordinator();
     const logId = crypto.randomUUID();
     const auth = await genesisAuthHeader(e);
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const calls: { url: string; method: string; body?: string }[] = [];
+
+    const fetchImpl = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url,
+        );
+        if (url.startsWith(COORD_URL)) {
+          calls.push({
+            url,
+            method: init?.method ?? "GET",
+            body: typeof init?.body === "string" ? init.body : undefined,
+          });
+        }
+        return new Response("{}", { status: 200 });
+      },
+    ) as typeof fetch;
+    vi.stubGlobal("fetch", fetchImpl);
 
     const res = await worker.fetch(
       genesisRequest(logId, validGenesisV2Es256CborMap(), { auth }),
       e,
+      {} as ExecutionContext,
+    );
+    expect(res.status).toBe(201);
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as {
+      coordinator?: {
+        publicRoot: string;
+        webhook: string;
+        instanceKey: string;
+      };
+    };
+    expect(body.coordinator).toEqual({
+      publicRoot: "ok",
+      webhook: "inherited",
+      instanceKey: TEST_INSTANCE_KEY,
+    });
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.url).toContain("/webhook");
+    expect(JSON.parse(calls[1]!.body!)).toEqual({
+      instanceKey: TEST_INSTANCE_KEY,
+    });
+
+    vi.unstubAllGlobals();
+  });
+
+  it("without webhookUrl and no coordinator configured, forwards nothing", async () => {
+    const logId = crypto.randomUUID();
+    const auth = await genesisAuthHeader(poolEnv);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    const res = await worker.fetch(
+      genesisRequest(logId, validGenesisV2Es256CborMap(), { auth }),
+      poolEnv,
       {} as ExecutionContext,
     );
     expect(res.status).toBe(201);
@@ -264,15 +378,22 @@ describe("POST genesis coordinator forward", () => {
     ) as {
       coordinator?: { publicRoot: string; webhook: string };
     };
-    expect(body.coordinator).toEqual({ publicRoot: "ok", webhook: "ok" });
+    expect(body.coordinator).toEqual({
+      publicRoot: "ok",
+      webhook: "ok",
+      instanceKey: TEST_INSTANCE_KEY,
+    });
     expect(calls).toHaveLength(2);
     expect(JSON.parse(calls[0]!.body!)).toEqual({
       alg: "ES256",
       x: bytesToBase64(bootstrapKey.slice(0, 32)),
       y: bytesToBase64(bootstrapKey.slice(32, 64)),
     });
+    // An explicit URL wins for this log, and the instance binding rides along
+    // so a later instance re-point knows the log exists without claiming it.
     expect(JSON.parse(calls[1]!.body!)).toEqual({
       url: "https://agent.example/hook",
+      instanceKey: TEST_INSTANCE_KEY,
     });
 
     vi.unstubAllGlobals();

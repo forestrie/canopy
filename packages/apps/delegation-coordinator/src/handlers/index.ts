@@ -21,6 +21,11 @@ export { handleAdminResetStorage } from "./admin-reset-storage.js";
 export { handleGetWebhook } from "./get-webhook.js";
 export { handlePutWebhook } from "./put-webhook.js";
 export { handleDeleteWebhook } from "./delete-webhook.js";
+export {
+  handleGetInstanceWebhook,
+  handlePutInstanceWebhook,
+  handleDeleteInstanceWebhook,
+} from "./instance-webhook.js";
 export { handleGetEnabled } from "./get-enabled.js";
 export { handlePutEnabled } from "./put-enabled.js";
 export { handleAdminGetEnabled } from "./admin-get-enabled.js";

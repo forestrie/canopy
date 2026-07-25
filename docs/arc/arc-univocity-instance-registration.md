@@ -243,13 +243,31 @@ Per-log config lives in a dedicated DO SQLite table (independent of
 
 ```
 CREATE TABLE log_delegation_config (
-  log_id_hex32 TEXT PRIMARY KEY,
-  webhook_url  TEXT,
-  enabled      INTEGER NOT NULL DEFAULT 1,
+  log_id_hex32   TEXT PRIMARY KEY,
+  webhook_url    TEXT,
+  instance_key   TEXT,          -- univocity instance, {chainId}:{univocityAddr}
+  webhook_source TEXT,          -- 'log' | 'instance' | NULL
+  enabled        INTEGER NOT NULL DEFAULT 1,
+  created_at     INTEGER NOT NULL,
+  updated_at     INTEGER NOT NULL
+);
+
+CREATE TABLE instance_webhooks (  -- replicated to every shard
+  instance_key TEXT PRIMARY KEY,
+  webhook_url  TEXT NOT NULL,
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL
 );
 ```
+
+`instance_key` and `webhook_source` carry instance-level inheritance (FOR-468).
+An instance webhook is **copied** into each member log's row at registration:
+the row lives in a shard-addressed DO keyed by log id, so looking an instance
+value up by reference would add a cross-shard hop to the delegation request
+path. `webhook_source` records where a URL came from — only `'instance'` rows
+are rewritten by a re-point, so an explicit per-log URL survives one, as does a
+log whose owner deliberately cleared its webhook. See the
+[ADR-0005 amendment](../adr/adr-0005-delegation-webhook-delivery.md).
 
 Source authentication for outbound delivery uses a **single coordinator ES256
 identity key** (asymmetric) — see
@@ -260,9 +278,12 @@ CRUD surface (JSON):
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `PUT` | `/api/logs/{logId}/webhook` | `COORDINATOR_APP_TOKEN` or per-log `issuerToken` | create/replace `{ url }` |
-| `GET` | `/api/logs/{logId}/webhook` | same | read `{ webhookUrl?, enabled, createdAt, updatedAt }` |
-| `DELETE` | `/api/logs/{logId}/webhook` | same | null `webhook_url` (polling-only thereafter) |
+| `PUT` | `/api/logs/{logId}/webhook` | `COORDINATOR_APP_TOKEN` or per-log `issuerToken` | create/replace `{ url? , instanceKey? }` (at least one) |
+| `GET` | `/api/logs/{logId}/webhook` | same | read `{ webhookUrl?, instanceKey?, inherited?, enabled, createdAt, updatedAt }` |
+| `DELETE` | `/api/logs/{logId}/webhook` | same | null `webhook_url` + `webhook_source` (polling-only thereafter) |
+| `PUT` | `/api/instances/{instanceKey}/webhook` | `COORDINATOR_APP_TOKEN` only | set or **re-point**; fans out to all shards, rewriting inherited copies |
+| `GET` | `/api/instances/{instanceKey}/webhook` | same | read `{ instanceKey, webhookUrl?, memberLogs }` |
+| `DELETE` | `/api/instances/{instanceKey}/webhook` | same | drop it and the copies it placed |
 | `PUT` | `/api/logs/{logId}/enabled` | `COORDINATOR_APP_TOKEN` only | kill switch — canopy-api flips `enabled` |
 | `GET` | `/api/logs/{logId}/enabled` | `COORDINATOR_APP_TOKEN` only | read `{ enabled }` |
 
