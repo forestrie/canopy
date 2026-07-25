@@ -27,7 +27,27 @@ export const X402_HEADERS = {
 // Constants for Base Sepolia
 const NETWORK = "eip155:84532";
 const USDC_ADDRESS = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
-const PAY_TO = "0x75be7950F26fe7F15336a10b33A8D8134faDb787";
+
+/**
+ * Resolve the settlement payee, which is **deployment configuration only**.
+ *
+ * There is deliberately no compiled-in default. Canopy is one pipe operator
+ * with one treasury, so a single payTo per deployment is correct — but baking
+ * an address into source made every environment settle to the same address,
+ * so a dev payment was indistinguishable from a production one. Fail closed
+ * instead: a deployment that has not configured a payee cannot issue or verify
+ * a 402 (ADR-0058 consequences; FOR-465).
+ */
+function requirePayTo(payTo: string | undefined): string {
+  const trimmed = payTo?.trim();
+  if (!trimmed) {
+    throw new Error(
+      "X402_PAYTO_ADDRESS is required and has no default — configure the " +
+        "settlement payee for this deployment",
+    );
+  }
+  return trimmed;
+}
 
 // Price in atomic units (USDC has 6 decimals)
 // $0.001 = 1000 atomic units
@@ -69,7 +89,7 @@ export function buildPaymentRequiredHeader(
         network: config?.network ?? NETWORK,
         amount: config?.priceAtomic ?? PRICE_ATOMIC,
         asset: USDC_ADDRESS,
-        payTo: config?.payTo ?? PAY_TO,
+        payTo: requirePayTo(config?.payTo),
         maxTimeoutSeconds: 300,
         // EIP-712 domain parameters for USDC's transferWithAuthorization
         extra: {
@@ -194,7 +214,7 @@ export function parsePaymentHeader(
   }
 
   // Validate payTo matches expected (from authorization.to)
-  const expectedPayTo = (expectedConfig?.payTo ?? PAY_TO).toLowerCase();
+  const expectedPayTo = requirePayTo(expectedConfig?.payTo).toLowerCase();
   const actualPayTo = (authObj.to as string).toLowerCase();
   if (actualPayTo !== expectedPayTo) {
     return {
@@ -237,7 +257,7 @@ export function getPaymentRequirementsForVerify(
     network: config?.network ?? NETWORK,
     amount: config?.priceAtomic ?? PRICE_ATOMIC,
     asset: USDC_ADDRESS,
-    payTo: config?.payTo ?? PAY_TO,
+    payTo: requirePayTo(config?.payTo),
     maxTimeoutSeconds: 300,
     extra: {
       name: USDC_EIP712_NAME,
