@@ -10,15 +10,15 @@ This doc explains the GitHub Actions that affect deployment and how to get a **f
 
 ## 1. Workflow summary
 
-| Workflow | Trigger | What it does |
-|----------|---------|--------------|
-| **CI** (`ci.yml`) | Push/PR (all branches) | Lint, format, unit tests, perf lib tests. |
-| **Integration tests** | Push/PR (all branches) | Playwright **integration** vs deployed **dev**. |
-| **System tests** | **workflow_dispatch**, **workflow_call**, push to **main** (deduped) | Univocity prepare + full dev Playwright suite. |
-| **Deploy Workers** | **Push to `main`** (path-filtered), **workflow_dispatch**, **workflow_call** | Deploy workers to dev/prod; on **dev**, chains **System tests** after health. |
-| **Release** | Push of tag `v*` | Unit tests → deploy **dev** → system e2e → promote **prod** → prod health. |
-| **Cloudflare Infrastructure** | **workflow_dispatch** only | Creates/destroys Cloudflare infra (R2, queues, etc.) via `task cf:bootstrap`. |
-| **Performance Tests** | **workflow_dispatch** only | Runs k6 against dev/prod. |
+| Workflow                      | Trigger                                                                      | What it does                                                                  |
+| ----------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| **CI** (`ci.yml`)             | Push/PR (all branches)                                                       | Lint, format, unit tests, perf lib tests.                                     |
+| **Integration tests**         | Push/PR (all branches)                                                       | Playwright **integration** vs deployed **dev**.                               |
+| **System tests**              | **workflow_dispatch**, **workflow_call**, push to **main** (deduped)         | Univocity prepare + full dev Playwright suite.                                |
+| **Deploy Workers**            | **Push to `main`** (path-filtered), **workflow_dispatch**, **workflow_call** | Deploy workers to dev/prod; on **dev**, chains **System tests** after health. |
+| **Release**                   | Push of tag `v*`                                                             | Unit tests → deploy **dev** → system e2e → promote **prod** → prod health.    |
+| **Cloudflare Infrastructure** | **workflow_dispatch** only                                                   | Creates/destroys Cloudflare infra (R2, queues, etc.) via `task cf:bootstrap`. |
+| **Performance Tests**         | **workflow_dispatch** only                                                   | Runs k6 against dev/prod.                                                     |
 
 See [plan-0034](plan-0034-ci-consolidation.md). PRs no longer auto-deploy branch code to dev; run **System tests** manually when needed.
 
@@ -80,7 +80,7 @@ ENV=dev task scrapi:smoke:3
 
 If your dev deployment uses a different URL (e.g. a Workers subdomain), either:
 
-- Update `.env.dev` in your branch so `CANOPY_FQDN` / `TEST_SCRAPI_LOG_PATH` match that deployment, and push, then re-run Deploy Workers from that branch so smoke uses the new target; or  
+- Update `.env.dev` in your branch so `CANOPY_FQDN` / `TEST_SCRAPI_LOG_PATH` match that deployment, and push, then re-run Deploy Workers from that branch so smoke uses the new target; or
 - Run smoke manually from your machine with the right env (e.g. `CANOPY_FQDN=... TEST_SCRAPI_LOG_PATH=... SCRAPI_API_KEY=... ENV=dev task scrapi:smoke:3`).
 
 ### 2.4 Running e2e against your deployed branch

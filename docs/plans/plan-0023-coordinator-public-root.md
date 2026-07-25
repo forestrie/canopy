@@ -18,7 +18,7 @@ verifies delegation material for the same log id.
 
 - [x] `POST /api/logs/{logId}/public-root` persists ES256 `(x, y)` per log
 - [x] `GET /api/logs/{logId}/public-root` returns `application/cbor` matching
-  Sealer `TrustRootResponse`; 404 uses `application/problem+cbor`
+      Sealer `TrustRootResponse`; 404 uses `application/problem+cbor`
 - [x] DO unit tests: round-trip, 404, validation, upsert
 - [x] Playwright `coordinator-byok-public-root.spec.ts` (coordinator project)
 - [x] System/package e2e docs updated (public-root gap closed)

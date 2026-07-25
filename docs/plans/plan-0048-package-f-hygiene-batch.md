@@ -29,17 +29,17 @@ Deferred hygiene from post-Mode-C productization:
 
 ## Issue stack
 
-| Phase | Issue | Repo | Branch |
-|-------|-------|------|--------|
-| Epic | [FOR-214](https://linear.app/forestrie/issue/FOR-214) | — | — |
-| 0 | [FOR-215](https://linear.app/forestrie/issue/FOR-215) | mandate + devdocs | `robin/for-215-hygiene-design` |
-| 1a | [FOR-119](https://linear.app/forestrie/issue/FOR-119) | canopy + mandate | `robin/for-119-packages-install` |
-| 1b | [FOR-109](https://linear.app/forestrie/issue/FOR-109) | mandate | `robin/for-109-delegation-cose-pin` |
-| 2 | [FOR-118](https://linear.app/forestrie/issue/FOR-118) | mandate | `robin/for-118-requestkey-dedup` |
-| 3 | [FOR-120](https://linear.app/forestrie/issue/FOR-120) | mandate | `robin/for-120-signer-rate-limit` |
-| 4 | [FOR-137](https://linear.app/forestrie/issue/FOR-137) | devdocs + ops | `robin/for-137-cert-edge-rate-limit` |
-| R1 | [FOR-216](https://linear.app/forestrie/issue/FOR-216) | mandate | `robin/for-216-hygiene-review` |
-| Close | [FOR-217](https://linear.app/forestrie/issue/FOR-217) | all | _(no branch)_ |
+| Phase | Issue                                                 | Repo              | Branch                               |
+| ----- | ----------------------------------------------------- | ----------------- | ------------------------------------ |
+| Epic  | [FOR-214](https://linear.app/forestrie/issue/FOR-214) | —                 | —                                    |
+| 0     | [FOR-215](https://linear.app/forestrie/issue/FOR-215) | mandate + devdocs | `robin/for-215-hygiene-design`       |
+| 1a    | [FOR-119](https://linear.app/forestrie/issue/FOR-119) | canopy + mandate  | `robin/for-119-packages-install`     |
+| 1b    | [FOR-109](https://linear.app/forestrie/issue/FOR-109) | mandate           | `robin/for-109-delegation-cose-pin`  |
+| 2     | [FOR-118](https://linear.app/forestrie/issue/FOR-118) | mandate           | `robin/for-118-requestkey-dedup`     |
+| 3     | [FOR-120](https://linear.app/forestrie/issue/FOR-120) | mandate           | `robin/for-120-signer-rate-limit`    |
+| 4     | [FOR-137](https://linear.app/forestrie/issue/FOR-137) | devdocs + ops     | `robin/for-137-cert-edge-rate-limit` |
+| R1    | [FOR-216](https://linear.app/forestrie/issue/FOR-216) | mandate           | `robin/for-216-hygiene-review`       |
+| Close | [FOR-217](https://linear.app/forestrie/issue/FOR-217) | all               | _(no branch)_                        |
 
 ---
 

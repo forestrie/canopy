@@ -26,15 +26,15 @@ approve via this UI or CBOR ops routes.
 
 ## Domain terms (grill — do not conflate)
 
-| Term | Meaning in this UI | UI must NOT |
-|------|-------------------|-------------|
-| **onboard request** | Pending application in R2 (`onboarding/requests/`) | Show redeem code or bearer |
-| **redeem code** | One-time secret at request create; mandate operator holds it | Display in admin list (never stored plaintext) |
-| **onboard token** | `CANOPY_PAYMENTS_ONBOARD_TOKEN` bearer; minted at **redeem** | Show plaintext (only hash/ref in token list) |
-| **onboard token ref** | `onboardTokenRef` on request after redeem; links request → token record | Confuse with request id |
-| **payment-authoritative forest** | Root `R` registered via onboard bearer at genesis | Treat as onboard request id |
-| **registration kill switch** | Coordinator `enabled` flag for existing PA registration (`FOR-91`) | Confuse with onboard token revoke or Mode C Privy revoke |
-| **ops mint** | Break-glass `POST /api/payments/onboard-tokens` (ARC-021.1) | Merge into self-service request UI in v1 |
+| Term                             | Meaning in this UI                                                      | UI must NOT                                              |
+| -------------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------- |
+| **onboard request**              | Pending application in R2 (`onboarding/requests/`)                      | Show redeem code or bearer                               |
+| **redeem code**                  | One-time secret at request create; mandate operator holds it            | Display in admin list (never stored plaintext)           |
+| **onboard token**                | `CANOPY_PAYMENTS_ONBOARD_TOKEN` bearer; minted at **redeem**            | Show plaintext (only hash/ref in token list)             |
+| **onboard token ref**            | `onboardTokenRef` on request after redeem; links request → token record | Confuse with request id                                  |
+| **payment-authoritative forest** | Root `R` registered via onboard bearer at genesis                       | Treat as onboard request id                              |
+| **registration kill switch**     | Coordinator `enabled` flag for existing PA registration (`FOR-91`)      | Confuse with onboard token revoke or Mode C Privy revoke |
+| **ops mint**                     | Break-glass `POST /api/payments/onboard-tokens` (ARC-021.1)             | Merge into self-service request UI in v1                 |
 
 Wallet-challenge session (FOR-133) and Mode C Privy onboarding (FOR-112) are
 **out of scope** — different control planes.
@@ -76,13 +76,13 @@ flowchart TB
 
 **Wider components:**
 
-| Component | Role |
-|-----------|------|
-| `canopy-api` | Onboard lifecycle, token store, genesis auth, kill-switch proxy |
-| `delegation-coordinator` | Persists per-forest `enabled` (FOR-91) |
-| `mandate/register` | Self-service request/redeem CLI; consumes bearer at genesis |
-| `R2_GRANTS` | `onboarding/requests/`, onboard token records, registrations |
-| `canopy-admin` | Ops-only static UI; no backend of its own |
+| Component                | Role                                                            |
+| ------------------------ | --------------------------------------------------------------- |
+| `canopy-api`             | Onboard lifecycle, token store, genesis auth, kill-switch proxy |
+| `delegation-coordinator` | Persists per-forest `enabled` (FOR-91)                          |
+| `mandate/register`       | Self-service request/redeem CLI; consumes bearer at genesis     |
+| `R2_GRANTS`              | `onboarding/requests/`, onboard token records, registrations    |
+| `canopy-admin`           | Ops-only static UI; no backend of its own                       |
 
 ---
 
@@ -110,10 +110,10 @@ browser.
 
 **Decision:** Add JSON admin mirror:
 
-| Method | Path |
-|--------|------|
-| `GET` | `/api/payments/admin/registrations/{R}/enabled` |
-| `PUT` | `/api/payments/admin/registrations/{R}/enabled` |
+| Method | Path                                            |
+| ------ | ----------------------------------------------- |
+| `GET`  | `/api/payments/admin/registrations/{R}/enabled` |
+| `PUT`  | `/api/payments/admin/registrations/{R}/enabled` |
 
 Body: `{ "enabled": boolean }`. Same auth as payments ops (`CANOPY_OPS_ADMIN_TOKEN`).
 Extend CORS: `PUT` in `Access-Control-Allow-Methods`.
@@ -137,23 +137,23 @@ rejected | redeemed | expired). Default: pending first, then recent.
 
 ## Scenario matrix (acceptance)
 
-| # | Scenario | Actor | Expected |
-|---|----------|-------|----------|
-| S1 | Pending request visible | Ops | Row shows label, chain, contact, expiresAt |
-| S2 | Approve pending | Ops | Status → approved; mandate can redeem |
-| S3 | Reject with reason | Ops | Status → rejected; reason in detail + list |
-| S4 | Reject without reason | Ops | Status → rejected; reason absent |
-| S5 | Approve non-pending | Ops | Error toast; no state change |
-| S6 | Missing ops token | Ops | Config prompt; API calls blocked |
-| S7 | Invalid ops token | Ops | 401 on fetch; clear error |
-| S8 | Token list after redeem | Ops | Entry with requestId, ref hash prefix, active |
-| S9 | Token list after genesis | Ops | `consumedForestR` populated |
-| S10 | Kill switch read | Ops | Shows enabled true/false for registered R |
-| S11 | Kill switch disable | Ops | PUT enabled=false; coordinator updated |
-| S12 | Kill switch re-enable | Ops | PUT enabled=true |
-| S13 | Unknown forest R | Ops | 404 registration not found |
-| S14 | Pagination | Ops | Load more requests when cursor present |
-| S15 | CORS from Pages origin | Ops | Preflight succeeds for GET/POST/PUT |
+| #   | Scenario                 | Actor | Expected                                      |
+| --- | ------------------------ | ----- | --------------------------------------------- |
+| S1  | Pending request visible  | Ops   | Row shows label, chain, contact, expiresAt    |
+| S2  | Approve pending          | Ops   | Status → approved; mandate can redeem         |
+| S3  | Reject with reason       | Ops   | Status → rejected; reason in detail + list    |
+| S4  | Reject without reason    | Ops   | Status → rejected; reason absent              |
+| S5  | Approve non-pending      | Ops   | Error toast; no state change                  |
+| S6  | Missing ops token        | Ops   | Config prompt; API calls blocked              |
+| S7  | Invalid ops token        | Ops   | 401 on fetch; clear error                     |
+| S8  | Token list after redeem  | Ops   | Entry with requestId, ref hash prefix, active |
+| S9  | Token list after genesis | Ops   | `consumedForestR` populated                   |
+| S10 | Kill switch read         | Ops   | Shows enabled true/false for registered R     |
+| S11 | Kill switch disable      | Ops   | PUT enabled=false; coordinator updated        |
+| S12 | Kill switch re-enable    | Ops   | PUT enabled=true                              |
+| S13 | Unknown forest R         | Ops   | 404 registration not found                    |
+| S14 | Pagination               | Ops   | Load more requests when cursor present        |
+| S15 | CORS from Pages origin   | Ops   | Preflight succeeds for GET/POST/PUT           |
 
 Rows S1–S7,S14–S15: automatable via API unit tests + manual UI checklist.  
 Rows S8–S13: manual UI against dev lane after mandate provision smoke.
@@ -167,12 +167,12 @@ Rows S8–S13: manual UI against dev lane after mandate provision smoke.
 **Graphite branch:** `for/admin-ui-1-api-json` → `for/admin-ui-2-requests` →
 `for/admin-ui-3-tokens-killswitch` → `for/admin-ui-4-pages-deploy`
 
-| Phase | Linear | Branch | Deliverable |
-|-------|--------|--------|-------------|
-| A | FOR-180 | `for/admin-ui-1-api-json` | JSON admin responses, reject JSON body, payments admin JSON, CORS PUT, tests |
-| B | FOR-181 | `for/admin-ui-2-requests` | Tab shell, config bar, request list/detail, approve/reject modal |
-| C | FOR-182 | `for/admin-ui-3-tokens-killswitch` | Token inventory tab, kill-switch tab |
-| D | FOR-183 | `for/admin-ui-4-pages-deploy` | Pages deploy, README, manual AC checklist |
+| Phase | Linear  | Branch                             | Deliverable                                                                  |
+| ----- | ------- | ---------------------------------- | ---------------------------------------------------------------------------- |
+| A     | FOR-180 | `for/admin-ui-1-api-json`          | JSON admin responses, reject JSON body, payments admin JSON, CORS PUT, tests |
+| B     | FOR-181 | `for/admin-ui-2-requests`          | Tab shell, config bar, request list/detail, approve/reject modal             |
+| C     | FOR-182 | `for/admin-ui-3-tokens-killswitch` | Token inventory tab, kill-switch tab                                         |
+| D     | FOR-183 | `for/admin-ui-4-pages-deploy`      | Pages deploy, README, manual AC checklist                                    |
 
 **Dependency:** A → B → (C ∥ partial B) → D. C needs A for kill-switch JSON.
 
@@ -312,9 +312,9 @@ pnpm --filter @canopy/api test -- test/onboard-*.test.ts
 
 Parent: [FOR-172](https://linear.app/forestrie/issue/FOR-172)
 
-| Issue | Title |
-|-------|-------|
+| Issue   | Title                                                |
+| ------- | ---------------------------------------------------- |
 | FOR-180 | Admin JSON API parity + CORS for browser ops console |
-| FOR-181 | Request queue UI (list, detail, approve, reject) |
-| FOR-182 | Token inventory + registration kill-switch tabs |
-| FOR-183 | Pages deploy + ops runbook; close FOR-172 |
+| FOR-181 | Request queue UI (list, detail, approve, reject)     |
+| FOR-182 | Token inventory + registration kill-switch tabs      |
+| FOR-183 | Pages deploy + ops runbook; close FOR-172            |

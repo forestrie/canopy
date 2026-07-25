@@ -9,13 +9,13 @@
 
 ## 1. Review scope summary
 
-| Item | Value |
-|------|-------|
-| Repo | canopy |
-| Branch | `robin/for-202-e2e-prerequisites` |
+| Item    | Value                                                            |
+| ------- | ---------------------------------------------------------------- |
+| Repo    | canopy                                                           |
+| Branch  | `robin/for-202-e2e-prerequisites`                                |
 | Commits | `dd3542c`, `b4cbf77` (+ `fcb0ff4` plan-0040 docs on branch base) |
-| Spec | plan-0044 / FOR-201 (FOR-202, FOR-127, FOR-126, FOR-76, FOR-203) |
-| PR | https://github.com/forestrie/canopy/pull/57 |
+| Spec    | plan-0044 / FOR-201 (FOR-202, FOR-127, FOR-126, FOR-76, FOR-203) |
+| PR      | https://github.com/forestrie/canopy/pull/57                      |
 
 Review focused on Package D e2e changes: cloudflared tunnel, default-tier
 promotion, env guards, CI preflight, docs.
@@ -26,11 +26,11 @@ promotion, env guards, CI preflight, docs.
 
 ### R1 — Poll loop bypasses webhook-push-only policy
 
-| Field | Value |
-|-------|-------|
-| ID | R1 |
-| Severity | **Medium** |
-| Branch | *Current PR* (#57) or follow-up on same branch |
+| Field    | Value                                                                                                                               |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| ID       | R1                                                                                                                                  |
+| Severity | **Medium**                                                                                                                          |
+| Branch   | _Current PR_ (#57) or follow-up on same branch                                                                                      |
 | Location | `mode-c-webhook-seal-helpers.ts` — `signPendingModeCKs256Delegations`, `pollRegistrationThroughModeCWebhook`, `pollReceiptUntil200` |
 
 **Finding:** Initial `waitForModeCDelegationMaterial` enforces webhook push
@@ -59,11 +59,11 @@ poll helper gating.
 
 ### R2 — Preflight requires coordinator for all e2e tiers
 
-| Field | Value |
-|-------|-------|
-| ID | R2 |
-| Severity | **Medium** |
-| Branch | *Current PR* (#57) |
+| Field    | Value                                     |
+| -------- | ----------------------------------------- |
+| ID       | R2                                        |
+| Severity | **Medium**                                |
+| Branch   | _Current PR_ (#57)                        |
 | Location | `taskfiles/e2e-shared.yml` `validate-env` |
 
 **Finding:** Coordinator env is now mandatory in preflight before any Playwright
@@ -86,12 +86,12 @@ coordinator cannot pass `task test:e2e:preflight`.
 
 ### R3 — Pin cloudflared CI install
 
-| Field | Value |
-|-------|-------|
-| ID | R3 |
-| Severity | **Medium** |
-| Branch | *Current PR* (#57) or post-merge chore |
-| Location | `.github/workflows/tests-system.yml` |
+| Field    | Value                                  |
+| -------- | -------------------------------------- |
+| ID       | R3                                     |
+| Severity | **Medium**                             |
+| Branch   | _Current PR_ (#57) or post-merge chore |
+| Location | `.github/workflows/tests-system.yml`   |
 
 **Finding:** Installs `cloudflared-linux-amd64.deb` from `/releases/latest/`
 without version pin or checksum verification.
@@ -109,11 +109,11 @@ without version pin or checksum verification.
 
 ### R4 — PR scope includes plan-0040 commit
 
-| Field | Value |
-|-------|-------|
-| ID | R4 |
-| Severity | **Low** |
-| Branch | Rebase PR onto `origin/main` (drop `fcb0ff4` if already on main elsewhere) |
+| Field    | Value                                                                      |
+| -------- | -------------------------------------------------------------------------- |
+| ID       | R4                                                                         |
+| Severity | **Low**                                                                    |
+| Branch   | Rebase PR onto `origin/main` (drop `fcb0ff4` if already on main elsewhere) |
 
 **Finding:** PR diff vs `origin/main` includes `fcb0ff4 docs(plans): FOR-178
 backlog` unrelated to FOR-201.
@@ -127,11 +127,11 @@ backlog` unrelated to FOR-201.
 
 ### R5 — Skip cloudflared install on prod Playwright project
 
-| Field | Value |
-|-------|-------|
-| ID | R5 |
-| Severity | **Low** |
-| Branch | *Current PR* (#57) |
+| Field    | Value                                |
+| -------- | ------------------------------------ |
+| ID       | R5                                   |
+| Severity | **Low**                              |
+| Branch   | _Current PR_ (#57)                   |
 | Location | `.github/workflows/tests-system.yml` |
 
 **Finding:** cloudflared install runs before `PLAYWRIGHT_PROJECT=prod` branch;
@@ -145,10 +145,10 @@ unnecessary for prod-only runs.
 
 ## 3. Branch assignment
 
-| Item | Assignment |
-|------|------------|
+| Item           | Assignment                                              |
+| -------------- | ------------------------------------------------------- |
 | R1, R2, R3, R5 | Fix on PR #57 branch before merge (R1 highest priority) |
-| R4 | Rebase hygiene on same branch |
+| R4             | Rebase hygiene on same branch                           |
 
 No sibling-repo work identified.
 

@@ -4,6 +4,7 @@
 **Date**: 2026-06-13  
 **Superseded in detail by**: [plan-0049](plan-0049-e2e-imutable-provision-consolidation.md)  
 **Related**:
+
 - [plan-0031](plan-0031-ks256-forest-roots.md) (KS256 chain-binding)
 - [univocity-tools ADR-0009](../../univocity-tools/docs/adr/adr-0009-propose-from-build-archive.md)
 - [univocity-tools ADR-0004](../../univocity-tools/docs/adr/adr-0004-deploy-propose-execute-model.md)
@@ -52,11 +53,11 @@ Requires **univocity-tools v0.5.1+** (`--bootstrap-es256-generate`,
 
 ## Secrets
 
-| Canopy Doppler / GitHub **dev** | Purpose |
-|--------------------------------|---------|
-| **`DEPLOY_KEY`** | EOA deploy + execute on Base Sepolia |
-| **`E2E_UNIVOCITY_RPC_URL`** | RPC for propose/execute and Playwright `eth_call` |
-| **`GITAPP_ID`** / **`GITAPP_PRIVATE_KEY`** | CI: fetch univocity + univocity-tools releases |
+| Canopy Doppler / GitHub **dev**            | Purpose                                           |
+| ------------------------------------------ | ------------------------------------------------- |
+| **`DEPLOY_KEY`**                           | EOA deploy + execute on Base Sepolia              |
+| **`E2E_UNIVOCITY_RPC_URL`**                | RPC for propose/execute and Playwright `eth_call` |
+| **`GITAPP_ID`** / **`GITAPP_PRIVATE_KEY`** | CI: fetch univocity + univocity-tools releases    |
 
 ## CI
 

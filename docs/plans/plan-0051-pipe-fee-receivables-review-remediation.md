@@ -24,10 +24,10 @@ Because ADR-0058 §7 deliberately declines precise accounting, **nothing
 downstream will notice** a double-count — that makes the omission worse, not
 more tolerable.
 
-*Acceptance:* accrual takes an idempotency key; replaying the same key twice
+_Acceptance:_ accrual takes an idempotency key; replaying the same key twice
 leaves the count unchanged; covered by test.
 
-*Branch:* current stack, before any accrual caller lands (step 4).
+_Branch:_ current stack, before any accrual caller lands (step 4).
 
 ### R2 (High) — pin the account-key format
 
@@ -41,33 +41,33 @@ The hazard is not the label. If any writer ever emits the CAIP-2 form, one
 operator silently becomes **two accounts** with split receivables and no
 detection path.
 
-*Acceptance:* the format is pinned and validated where the key is derived;
+_Acceptance:_ the format is pinned and validated where the key is derived;
 a non-conforming `chainId` is rejected rather than silently keyed; ADR-0058 §2
 and the code comments corrected to describe the real format.
 
-*Branch:* current stack (code), plus a devdocs PR for the ADR.
+_Branch:_ current stack (code), plus a devdocs PR for the ADR.
 
 ### R3 (Medium) — bind DO instance identity to its account
 
 One DO instance per account, but the schema is keyed by `account_key` and every
 method takes it as a parameter, unchecked. A routing bug writes a second account
-row *inside the wrong instance* and reads back cleanly.
+row _inside the wrong instance_ and reads back cleanly.
 
-*Acceptance:* the instance pins its account on first use and rejects a
+_Acceptance:_ the instance pins its account on first use and rejects a
 mismatched key, or the parameter is removed and identity taken from the DO.
 
-*Branch:* current stack.
+_Branch:_ current stack.
 
 ### R4 (Medium) — tests for ReceivablesDO
 
 The class ships with none, in a package that already has `test/settlement.test.ts`
 and `test/cdp-jwt.test.ts`.
 
-*Acceptance:* coverage for accrual (incl. R1 replay), arrears transitions,
+_Acceptance:_ coverage for accrual (incl. R1 replay), arrears transitions,
 subtree counters, and the **null-means-nothing-owed** contract that is currently
 only a docstring promise.
 
-*Branch:* current stack.
+_Branch:_ current stack.
 
 ### R5 (Medium) — decide the sharding posture
 
@@ -76,11 +76,11 @@ DO. `X402SettlementDO` shards via `DO_SHARD_COUNT` to avoid exactly this. For a
 large operator at high checkpoint rate this is head-of-line blocking on the
 **request** path.
 
-*Acceptance:* an explicit decision — per-account is correct because contention
+_Acceptance:_ an explicit decision — per-account is correct because contention
 is per-account and reads are cheap, **or** a shard scheme. Recorded in ADR-0058
 §5 either way. Interacts with FOR-469.
 
-*Branch:* new issue; decision precedes code.
+_Branch:_ new issue; decision precedes code.
 
 ## Deferred (Low)
 

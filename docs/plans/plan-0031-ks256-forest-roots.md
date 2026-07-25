@@ -3,6 +3,7 @@
 **Status**: DRAFT  
 **Date**: 2026-06-06  
 **Related**:
+
 - [plan-0028](plan-0028-forest-genesis-chain-binding.md) (genesis v1 EC2)
 - [plan-0023](plan-0023-coordinator-public-root.md) (coordinator trust root)
 - [plan-0029](plan-0029-delegate-grant-validation-to-univocity.md)
@@ -19,14 +20,14 @@ ERC-1271, and coordinator BYOK public-root upload for 20-byte Safe addresses.
 
 ### Genesis v2 (`packages/apps/canopy-api/src/forest/`)
 
-| Label | Key | Wire |
-|-------|-----|------|
-| `genesis-version` | -68009 | `2` for alg/key writes |
-| `genesisAlg` | -68014 | int: `-7` (ES256) or `-65799` (KS256) |
-| `bootstrapKey` | -68015 | bstr: 64 (x‖y) or 20 (address) |
-| `bootstrap-logid` | -68010 | bstr 32 (server-stamped) |
-| `univocity-addr` | -68011 | bstr 20 |
-| `chain-id` | -68013 | tstr EIP-155 |
+| Label             | Key    | Wire                                  |
+| ----------------- | ------ | ------------------------------------- |
+| `genesis-version` | -68009 | `2` for alg/key writes                |
+| `genesisAlg`      | -68014 | int: `-7` (ES256) or `-65799` (KS256) |
+| `bootstrapKey`    | -68015 | bstr: 64 (x‖y) or 20 (address)        |
+| `bootstrap-logid` | -68010 | bstr 32 (server-stamped)              |
+| `univocity-addr`  | -68011 | bstr 20                               |
+| `chain-id`        | -68013 | tstr EIP-155                          |
 
 - **POST** accepts v1 (EC2 COSE_Key) or v2 (alg/key).
 - **Read** accepts v0, v1 EC2, and v2 via `genesis-cache.ts`.

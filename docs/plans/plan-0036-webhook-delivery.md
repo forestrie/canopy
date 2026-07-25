@@ -43,11 +43,11 @@ Local dev without Secrets Store: `WEBHOOK_SIGNING_KEY_PEM` via Doppler or
 
 ## Config
 
-| Var | Default | Purpose |
-|-----|---------|---------|
+| Var                      | Default                                     | Purpose                       |
+| ------------------------ | ------------------------------------------- | ----------------------------- |
 | `COORDINATOR_PUBLIC_URL` | from `DELEGATION_COORDINATOR_URL` at deploy | `materialSubmitUrl` in events |
-| `WEBHOOK_RETRY_LADDER` | `[1,2,4,8]` | Retry multipliers |
-| `WEBHOOK_RETRY_SCALE_MS` | `1000` | Base backoff ms |
+| `WEBHOOK_RETRY_LADDER`   | `[1,2,4,8]`                                 | Retry multipliers             |
+| `WEBHOOK_RETRY_SCALE_MS` | `1000`                                      | Base backoff ms               |
 
 ## Out of scope (follow-ups)
 

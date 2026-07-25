@@ -37,7 +37,7 @@ correctness issues around the fan-out.
 
 | ID  | Sev             | Dim           | Location                                                                                | Finding                                                                                                                                                                                                                                                      | Invariant / rule                                                                   |
 | --- | --------------- | ------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| H1  | Medium          | Security      | `delegation-coordinator/src/handlers/put-webhook.ts:39`                                 | A log can bind itself to **any** univocity instance with no proof it belongs to that instance; leaks that instance's webhook URL and aims signed events at it. No authority escalation — the certificate is bound to its logId and the log's registered root | ARC-0017 dual-token authority: an issuer token is authority over _its_ log         |
+| H1  | Medium (fixed)  | Security      | `delegation-coordinator/src/handlers/put-webhook.ts:39`                                 | A log can bind itself to **any** univocity instance with no proof it belongs to that instance; leaks that instance's webhook URL and aims signed events at it. No authority escalation — the certificate is bound to its logId and the log's registered root | ARC-0017 dual-token authority: an issuer token is authority over _its_ log         |
 | H2  | **Medium-High** | Liveness      | `canopy-api/src/forest/handle-forest-request.ts:145`                                    | Genesis now makes two blocking, untimed coordinator calls on a path documented as best-effort                                                                                                                                                                | Genesis is the primary onboarding path                                             |
 | M1  | Medium          | Correctness   | `delegation-coordinator/src/instance-key.ts` vs `canopy-api/src/forest/instance-key.ts` | Instance-key normalization diverges on the `0x` address prefix; a mismatched key silently matches no logs                                                                                                                                                    | One canonical account identity (ADR-0005 amendment: "no second notion of account") |
 | M2  | Medium          | Liveness      | `delegation-coordinator/src/handlers/instance-webhook.ts:55`                            | Re-point and delete fan out non-atomically, report the first failure only, and self-repair only if the caller retries                                                                                                                                        | Revocation must not half-apply                                                     |
@@ -49,7 +49,15 @@ correctness issues around the fan-out.
 
 ## Remediation items
 
-### H1 — binding a log to an instance is unverified (disclosure only)
+### H1 — binding a log to an instance is unverified (disclosure only) — **FIXED**
+
+**Shipped** in `054abc6` on `robin/webhook-instance-inherit` (#174): `instanceKey`
+on `PUT /api/logs/{logId}/webhook` now requires `COORDINATOR_APP_TOKEN` and
+answers `403` to a per-log `issuerToken`; `url` still takes either. Covered by
+`webhook.test.ts` "refuses an instanceKey presented with a per-log issuerToken",
+verified to fail (200 instead of 403) with the guard removed. ADR-0005 and the
+ARC CRUD table record the rule and why the coordinator cannot check the claim
+itself.
 
 `PUT /api/logs/{logId}/webhook` authenticates with the coordinator app token
 **or** the log's own `issuerToken`, and now accepts an arbitrary `instanceKey`.

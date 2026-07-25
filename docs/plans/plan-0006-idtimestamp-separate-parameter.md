@@ -32,16 +32,16 @@ So we have a structural mismatch: the contract’s “grant” is keys 1–8 (pu
 
 ## 3. Call-path inventory
 
-| Context | Needs idtimestamp? | Current shape | Target shape |
-|--------|--------------------|---------------|--------------|
-| Transparent statement payload | No | Payload = 1–8 only | Unchanged (already correct). |
-| Transparent statement header -65537 | Yes | idtimestamp in header | Unchanged. |
-| POST /register/grants body | No | 0–8 (encoding pkg) | Body = grant content only (1–8). Server never reads key 0. |
-| R2 authority/{innerHex}.cbor (sequenced) | No | 0–8 (idtimestamp often zeros) | Store **grant content only** (1–8). Idtimestamp comes from massif when serving. |
-| GET /grants/authority/{innerHex} response | Yes | Full grant CBOR 0–8 | Build completed grant from (content, idtimestamp); encode for response (see below). |
-| Receipt verification (leaf commitment) | Yes | grant.idtimestamp + inner | Accept (grantContent, idtimestamp) or (Grant, idtimestamp); use idtimestamp only in leaf hash. |
-| Bootstrap COSE Sign1 | No | Payload 1–8, header -65537 | Unchanged. |
-| Inner hash (grant-sequencing) | No | inner preimage has no idtimestamp | Unchanged. |
+| Context                                   | Needs idtimestamp? | Current shape                     | Target shape                                                                                   |
+| ----------------------------------------- | ------------------ | --------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Transparent statement payload             | No                 | Payload = 1–8 only                | Unchanged (already correct).                                                                   |
+| Transparent statement header -65537       | Yes                | idtimestamp in header             | Unchanged.                                                                                     |
+| POST /register/grants body                | No                 | 0–8 (encoding pkg)                | Body = grant content only (1–8). Server never reads key 0.                                     |
+| R2 authority/{innerHex}.cbor (sequenced)  | No                 | 0–8 (idtimestamp often zeros)     | Store **grant content only** (1–8). Idtimestamp comes from massif when serving.                |
+| GET /grants/authority/{innerHex} response | Yes                | Full grant CBOR 0–8               | Build completed grant from (content, idtimestamp); encode for response (see below).            |
+| Receipt verification (leaf commitment)    | Yes                | grant.idtimestamp + inner         | Accept (grantContent, idtimestamp) or (Grant, idtimestamp); use idtimestamp only in leaf hash. |
+| Bootstrap COSE Sign1                      | No                 | Payload 1–8, header -65537        | Unchanged.                                                                                     |
+| Inner hash (grant-sequencing)             | No                 | inner preimage has no idtimestamp | Unchanged.                                                                                     |
 
 Only the following **actually need** idtimestamp as a value:
 
@@ -61,32 +61,32 @@ All other paths can work with “grant content” only. (Grant sequencing is req
 
 ## 5. Concrete steps (mini plan)
 
-1. **Codec (canopy-api grant/codec.ts)**  
-   - Document that **grant content** = keys 1–8 only; idtimestamp is never part of the canonical content encoding.  
-   - Add (if useful) a type or alias for “grant content” (e.g. GrantContent = Omit<Grant, 'idtimestamp'>).  
+1. **Codec (canopy-api grant/codec.ts)**
+   - Document that **grant content** = keys 1–8 only; idtimestamp is never part of the canonical content encoding.
+   - Add (if useful) a type or alias for “grant content” (e.g. GrantContent = Omit<Grant, 'idtimestamp'>).
    - Ensure all **new** storage and wire formats use only content (1–8); idtimestamp passed separately where needed.
 
-2. **Sequenced grant storage (register-grant, serve-grant)**  
-   - **Write:** Store `authority/{innerHex}.cbor` as **encodeGrantPayload(grant)** only (no key 0).  
-   - **Read:** Load bytes; decode with `decodeGrantPayload(bytes, 8 zero bytes)` to get in-memory grant; then fill idtimestamp from massif when available and build completed grant for response.  
+2. **Sequenced grant storage (register-grant, serve-grant)**
+   - **Write:** Store `authority/{innerHex}.cbor` as **encodeGrantPayload(grant)** only (no key 0).
+   - **Read:** Load bytes; decode with `decodeGrantPayload(bytes, 8 zero bytes)` to get in-memory grant; then fill idtimestamp from massif when available and build completed grant for response.
    - Response encoding for GET /grants/authority/{innerHex}: build `Grant` (content + idtimestamp from massif) and encode for client; response format can stay as single CBOR blob (e.g. 0–8) for compatibility, but the **stored** blob is no longer 0–8.
 
-3. **Encoding package (encodeGrantRequest)**  
-   - Emit **keys 1–8 only** for POST /register/grants body (grant content only). Remove key 0 from output.  
-   - **GrantRequestInput:** Remove or make clearly optional `idtimestamp`; server never uses it from body.  
+3. **Encoding package (encodeGrantRequest)**
+   - Emit **keys 1–8 only** for POST /register/grants body (grant content only). Remove key 0 from output.
+   - **GrantRequestInput:** Remove or make clearly optional `idtimestamp`; server never uses it from body.
    - Canopy register-grant: parse body as grant content only (decodeGrantPayload(body, zeros) or add decodeGrantRequest that returns content only).
 
-4. **Receipt verification and auth**  
-   - Receipt verification already uses grant.idtimestamp and inner; keep signature but ensure callers pass (grant content, idtimestamp) or Grant where idtimestamp is set from header -65537. No change to leaf formula.  
+4. **Receipt verification and auth**
+   - Receipt verification already uses grant.idtimestamp and inner; keep signature but ensure callers pass (grant content, idtimestamp) or Grant where idtimestamp is set from header -65537. No change to leaf formula.
    - Auth-grant: continue to require “completed” grant (idtimestamp present) when inclusion is required; idtimestamp still comes from transparent statement header only.
 
-5. **Tests and migration**  
-   - Update tests that build full 0–8 grant bytes to use content-only where appropriate; provide idtimestamp only in tests that verify receipt or completed grant.  
+5. **Tests and migration**
+   - Update tests that build full 0–8 grant bytes to use content-only where appropriate; provide idtimestamp only in tests that verify receipt or completed grant.
    - Optional migration: one-time read path that accepts both (1) content-only blob and (2) legacy 0–8 blob for authority/; write path always writes new format.
 
 ## 6. Summary
 
-- **Canonical encoding:** Grant content = CBOR keys 1–8 only. Idtimestamp = 8-byte big-endian Uint8Array or hex string by context.  
-- **Only add idtimestamp** in call paths that need it: completed-grant response, receipt (leaf) verification.  
-- **Storage:** Sequenced grants = content only (authority/{innerHex}.cbor). Grant sequencing is required; no fallback storage path.  
+- **Canonical encoding:** Grant content = CBOR keys 1–8 only. Idtimestamp = 8-byte big-endian Uint8Array or hex string by context.
+- **Only add idtimestamp** in call paths that need it: completed-grant response, receipt (leaf) verification.
+- **Storage:** Sequenced grants = content only (authority/{innerHex}.cbor). Grant sequencing is required; no fallback storage path.
 - **Wire:** POST body and new stored blobs = content only; GET response can still return a single “full grant” CBOR for compatibility while internal representation and storage stay aligned with Univocity (grant vs idtimestamp separate).

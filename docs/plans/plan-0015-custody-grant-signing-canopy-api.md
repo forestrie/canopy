@@ -18,21 +18,21 @@ Ship **server-minted** Forestrie-Grant transparent statements signed with a **Cu
 
 ### Custodian remains grant-agnostic
 
-| Layer | Responsibility | Grant-specific? |
-|-------|----------------|-----------------|
+| Layer                             | Responsibility                                                                                                                                                                                                                                                                                          | Grant-specific?                        |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
 | **`POST /api/keys/{keyId}/sign`** | CBOR body: **`payload`** (opaque bytes) XOR **`payloadHash`** (32 bytes). Server computes SHA-256(payload) when using `payload`, then builds **COSE_Sign1** with **COSE payload = 32-byte digest** (`arbor/services/custodian/src/types_key_sign.go`, `handle_sign_key.go`, `BuildCustodianCOSESign1`). | **No.** Any byte string can be signed. |
-| **COSE protected headers** | `alg`, `cty` = `application/forestrie.custodian-statement+cbor`, `kid` from pubkey — generic “custodian attestation” profile (`cose_custodian_sign1.go`). | **No** grant CBOR in headers. |
-| **Auth** | `:bootstrap` routes require `BOOTSTRAP_APP_TOKEN`; other keys require `APP_TOKEN` (`api.go`). | **No** grant awareness. |
+| **COSE protected headers**        | `alg`, `cty` = `application/forestrie.custodian-statement+cbor`, `kid` from pubkey — generic “custodian attestation” profile (`cose_custodian_sign1.go`).                                                                                                                                               | **No** grant CBOR in headers.          |
+| **Auth**                          | `:bootstrap` routes require `BOOTSTRAP_APP_TOKEN`; other keys require `APP_TOKEN` (`api.go`).                                                                                                                                                                                                           | **No** grant awareness.                |
 
 **Conclusion:** Custodian does **not** need to understand Forestrie grant maps, `grantData`, or transparent-statement layout. **Coupling belongs in canopy-api only:** `encodeGrantPayload` → bytes → Custodian `payload` → `mergeGrantHeadersIntoCustodianSign1` → base64/text response.
 
 ### Coupling already localized in canopy-api
 
-| Module | Coupling |
-|--------|----------|
-| `grant/codec.ts` | Grant v0 CBOR wire. |
-| `grant/transparent-statement.ts` | Decode expects digest payload + unprotected `-65538` (full grant v0). |
-| `scrapi/custodian-grant.ts` | HTTP to Custodian + `mergeGrantHeadersIntoCustodianSign1` + `verifyCustodianEs256GrantSign1`. |
+| Module                           | Coupling                                                                                      |
+| -------------------------------- | --------------------------------------------------------------------------------------------- |
+| `grant/codec.ts`                 | Grant v0 CBOR wire.                                                                           |
+| `grant/transparent-statement.ts` | Decode expects digest payload + unprotected `-65538` (full grant v0).                         |
+| `scrapi/custodian-grant.ts`      | HTTP to Custodian + `mergeGrantHeadersIntoCustodianSign1` + `verifyCustodianEs256GrantSign1`. |
 
 **Phase 2 helper already exists:** `signGrantPayloadWithCustodianCustodyKey` (`custodian-grant.ts`) calls `postCustodianSignGrantPayload` + `mergeGrantHeadersIntoCustodianSign1`. **No behavioral gap** in Custodian for the standard path.
 

@@ -35,11 +35,11 @@ defense-in-depth and cross-stack e2e confidence (Package D).
 
 ### R1 — Coordinator rejects submit-body timestamp drift (Medium)
 
-| Field | Value |
-| ----- | ----- |
-| Severity | Medium |
-| Repo | canopy |
-| Branch | New stack branch above `main` |
+| Field    | Value                         |
+| -------- | ----------------------------- |
+| Severity | Medium                        |
+| Repo     | canopy                        |
+| Branch   | New stack branch above `main` |
 
 **Problem:** `handlePutCertificate` persists `body.issuedAt` / `body.expiresAt` into
 `delegation_certificates` without checking they match
@@ -66,11 +66,11 @@ Mandate UI fixed client-side (FOR-198); coordinator should enforce.
 
 ### R2 — Package D e2e: browser KS256 cert submit path (Medium)
 
-| Field | Value |
-| ----- | ----- |
-| Severity | Medium |
-| Repo | canopy (+ mandate opt-in spec) |
-| Branch | `robin/for-202-e2e-prerequisites` or child of FOR-201 stack |
+| Field    | Value                                                       |
+| -------- | ----------------------------------------------------------- |
+| Severity | Medium                                                      |
+| Repo     | canopy (+ mandate opt-in spec)                              |
+| Branch   | `robin/for-202-e2e-prerequisites` or child of FOR-201 stack |
 
 **Problem:** C1 acceptance listed optional gated live submit to dev coordinator.
 No Playwright/system test proves mandate BFF → coordinator certificate route for
@@ -92,11 +92,11 @@ KS256 roots end-to-end.
 
 ### R3 — Mandate: remove legacy `buildSubmitCertificateBody` 86400 default (Low)
 
-| Field | Value |
-| ----- | ----- |
-| Severity | Low |
-| Repo | mandate |
-| Branch | Post-merge chore PR |
+| Field    | Value               |
+| -------- | ------------------- |
+| Severity | Low                 |
+| Repo     | mandate             |
+| Branch   | Post-merge chore PR |
 
 **Problem:** `buildSubmitCertificateBody` retains independent 24h TTL default;
 production path uses `buildSubmitCertificateBodyFromCert`. Legacy helper risks
@@ -115,11 +115,11 @@ future misuse.
 
 ## Branch assignment
 
-| Item | Assignment |
-| ---- | ---------- |
-| R1 | **New canopy branch** `robin/for-205-coordinator-cert-timestamp-bind` ([FOR-205](https://linear.app/forestrie/issue/FOR-205)) |
-| R2 | **Package D stack** (FOR-201 children); see [plan-0044](plan-0044-package-d-cross-stack-e2e.md) |
-| R3 | **Mandate post-merge** chore; not on current canopy branches |
+| Item | Assignment                                                                                                                    |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------- |
+| R1   | **New canopy branch** `robin/for-205-coordinator-cert-timestamp-bind` ([FOR-205](https://linear.app/forestrie/issue/FOR-205)) |
+| R2   | **Package D stack** (FOR-201 children); see [plan-0044](plan-0044-package-d-cross-stack-e2e.md)                               |
+| R3   | **Mandate post-merge** chore; not on current canopy branches                                                                  |
 
 ---
 

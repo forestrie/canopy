@@ -40,12 +40,12 @@
 
 To run load tests we need at least one **completed** grant per log (transparent statement with idtimestamp and receipt) to use as auth for **POST /register/entries**. Options:
 
-- **Option A – Bootstrap one root log, then use that grant for entries:**  
-  1. Obtain bootstrap grant: POST /api/grants/bootstrap (or GET /grants/bootstrap/:rootLogId if already minted).  
-  2. POST /register/grants with Authorization: Forestrie-Grant &lt;bootstrap_base64&gt;.  
-  3. Poll status URL until 303 to receipt; resolve receipt to get the completed transparent statement (grant + idtimestamp + receipt).  
+- **Option A – Bootstrap one root log, then use that grant for entries:**
+  1. Obtain bootstrap grant: POST /api/grants/bootstrap (or GET /grants/bootstrap/:rootLogId if already minted).
+  2. POST /register/grants with Authorization: Forestrie-Grant &lt;bootstrap_base64&gt;.
+  3. Poll status URL until 303 to receipt; resolve receipt to get the completed transparent statement (grant + idtimestamp + receipt).
   4. Use that completed grant as Forestrie-Grant for all **POST /register/entries** targeting that root log (**`grant.logId`**).  
-  So we only need one log (root) for load testing entries; the “grant pool” is one or more copies of that same completed grant (or one entry per VU if we want variety).
+     So we only need one log (root) for load testing entries; the “grant pool” is one or more copies of that same completed grant (or one entry per VU if we want variety).
 
 - **Option B – Multiple logs (e.g. 4 shards × N logs):**  
   Each log must either be bootstrapped (each has its own root and bootstrap grant) or be a “child” of a root (child grants with receipt from root). Current design and perf env use **UUIDs** as log IDs; bootstrap uses **ROOT_LOG_ID** as 64 hex (32 bytes). So either we define one ROOT_LOG_ID per perf log (e.g. 32-byte representation of each UUID) and bootstrap each, or we bootstrap a single root and use only that log for entries. For simplicity, **Option A with a single root log** is enough to get load testing working; multi-log can follow.
@@ -60,7 +60,7 @@ To run load tests we need at least one **completed** grant per log (transparent 
 
 ### 2.4 Environment and config
 
-- Bootstrap requires: ROOT_LOG_ID (64 hex), DELEGATION_SIGNER_URL, DELEGATION_SIGNER_BEARER_TOKEN, UNIVOCITY_SERVICE_URL (for “log initialized” check). Perf env files have CANOPY_PERF_* log IDs (UUIDs) and CANOPY_BASE_URL but do not define ROOT_LOG_ID or delegation-signer/univocity. So **perf env** (and any CI that runs bootstrap) must be extended with bootstrap-related vars, or we document that “no bootstrap” mode (queue only, no bootstrapEnv) is used for perf and then we must not require receipt-based inclusion for that environment (see register-grant: when only queueEnv is set, every valid grant is enqueued without inclusion check; but getGrantFromRequest still requires Forestrie-Grant, so we still need valid transparent statements).
+- Bootstrap requires: ROOT*LOG_ID (64 hex), DELEGATION_SIGNER_URL, DELEGATION_SIGNER_BEARER_TOKEN, UNIVOCITY_SERVICE_URL (for “log initialized” check). Perf env files have CANOPY_PERF*\* log IDs (UUIDs) and CANOPY_BASE_URL but do not define ROOT_LOG_ID or delegation-signer/univocity. So **perf env** (and any CI that runs bootstrap) must be extended with bootstrap-related vars, or we document that “no bootstrap” mode (queue only, no bootstrapEnv) is used for perf and then we must not require receipt-based inclusion for that environment (see register-grant: when only queueEnv is set, every valid grant is enqueued without inclusion check; but getGrantFromRequest still requires Forestrie-Grant, so we still need valid transparent statements).
 
 ## 3. Recommendations
 
@@ -79,17 +79,17 @@ To run load tests we need at least one **completed** grant per log (transparent 
    - Multi-log (multiple roots or child logs) can be a follow-up once single-log perf and CI are green.
 
 4. **Docs and runbook**
-   - Document in README or runbook: (1) required env vars for bootstrap (ROOT_LOG_ID, DELEGATION_SIGNER_*, UNIVOCITY_SERVICE_URL), (2) sequence “mint bootstrap → register-grant with Forestrie-Grant → poll → resolve receipt”, (3) how to run perf (bootstrap or load completed grant, then k6 with Forestrie-Grant from pool).
+   - Document in README or runbook: (1) required env vars for bootstrap (ROOT*LOG_ID, DELEGATION_SIGNER*\*, UNIVOCITY_SERVICE_URL), (2) sequence “mint bootstrap → register-grant with Forestrie-Grant → poll → resolve receipt”, (3) how to run perf (bootstrap or load completed grant, then k6 with Forestrie-Grant from pool).
 
 ## 4. Summary
 
-| Area | Status | Action |
-|------|--------|--------|
-| Bootstrap API (POST/GET bootstrap, register-grant branch) | Implemented | None |
-| Auth (Forestrie-Grant only) | Implemented | None |
-| generate-grant-pool | **Forestrie-Grant** (bootstrap + register + poll + resolve) | Keep env/bootstrap docs in sync with deployment |
-| k6 POST /entries | **Forestrie-Grant** + **`grantBase64`** from pool | Ensure pool artifact matches target API logs |
-| First grant in perf/CI | **Not automated** | Add bootstrap step (or fold into grant-pool script) before k6 |
-| Perf env | Has log IDs and base URL; no bootstrap vars | Add ROOT_LOG_ID and delegation-signer (and univocity if using bootstrap branch) for bootstrap-capable runs |
+| Area                                                      | Status                                                      | Action                                                                                                     |
+| --------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Bootstrap API (POST/GET bootstrap, register-grant branch) | Implemented                                                 | None                                                                                                       |
+| Auth (Forestrie-Grant only)                               | Implemented                                                 | None                                                                                                       |
+| generate-grant-pool                                       | **Forestrie-Grant** (bootstrap + register + poll + resolve) | Keep env/bootstrap docs in sync with deployment                                                            |
+| k6 POST /entries                                          | **Forestrie-Grant** + **`grantBase64`** from pool           | Ensure pool artifact matches target API logs                                                               |
+| First grant in perf/CI                                    | **Not automated**                                           | Add bootstrap step (or fold into grant-pool script) before k6                                              |
+| Perf env                                                  | Has log IDs and base URL; no bootstrap vars                 | Add ROOT_LOG_ID and delegation-signer (and univocity if using bootstrap branch) for bootstrap-capable runs |
 
 Grant-pool and k6 use **Forestrie-Grant**; remaining work is env automation and multi-log follow-ups as above.
