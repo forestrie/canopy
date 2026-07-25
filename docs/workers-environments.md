@@ -108,8 +108,8 @@ FQDNs from **forest-1** [ARC-0003](../../forest-1/docs/arc-0003-ingress-and-dns-
 | Wrangler config | Worker name | Queue consumed | `X402_NETWORK` (configured) |
 | --------------- | ----------- | -------------- | --------------------------- |
 | Top-level (no `--env`) | **x402-settlement** | none | `eip155:84532` — unused by CI |
-| `--env dev` (Lane A) | **x402-settlement-dev** | `canopy-dev-1-x402-settlement` | `eip155:84532` — Base Sepolia |
-| `--env prod` (Lane B) | **x402-settlement-prod** | `canopy-prod-1-x402-settlement` | `eip155:8453` — **see the drift warning below** |
+| `--env dev` (Lane A) | **x402-settlement-dev** | `forest-2-x402-settlement-a` | `eip155:84532` — Base Sepolia |
+| `--env prod` (Lane B) | **x402-settlement-prod** | `forest-2-x402-settlement-b` | `eip155:8453` — **see the drift warning below** |
 
 > **Both lanes run on Base Sepolia today. Lane B ("prod") is effectively a
 > staging lane** — the mainnet cutover is deliberate and has not happened.

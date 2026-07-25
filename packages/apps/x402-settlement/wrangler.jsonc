@@ -56,7 +56,7 @@
       "queues": {
         "consumers": [
           {
-            "queue": "canopy-dev-1-x402-settlement",
+            "queue": "forest-2-x402-settlement-a",
             "max_batch_size": 10,
             "max_batch_timeout": 30,
             // No DLQ/retries - always ack, failures tracked in auth_state
@@ -93,7 +93,7 @@
       "queues": {
         "consumers": [
           {
-            "queue": "canopy-prod-1-x402-settlement",
+            "queue": "forest-2-x402-settlement-b",
             "max_batch_size": 10,
             "max_batch_timeout": 30,
             // No DLQ/retries - always ack, failures tracked in auth_state

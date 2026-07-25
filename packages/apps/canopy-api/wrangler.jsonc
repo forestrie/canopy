@@ -67,7 +67,7 @@
     "producers": [
       {
         "binding": "X402_SETTLEMENT_QUEUE",
-        "queue": "canopy-dev-1-x402-settlement",
+        "queue": "forest-2-x402-settlement-a",
       },
     ],
   },
@@ -154,8 +154,8 @@
         "producers": [
           {
             "binding": "X402_SETTLEMENT_QUEUE",
-            // PLACEHOLDER: rewritten at deploy to `{CANOPY_ID}-x402-settlement`.
-            "queue": "canopy-dev-1-x402-settlement",
+            // PLACEHOLDER: rewritten at deploy from the contract's X402_SETTLEMENT_QUEUE_NAME (forest-2-x402-settlement-{slot}); the literal is the Terraform-managed queue name (FOR-78/FOR-446).
+            "queue": "forest-2-x402-settlement-a",
           },
         ],
       },
@@ -230,8 +230,8 @@
         "producers": [
           {
             "binding": "X402_SETTLEMENT_QUEUE",
-            // PLACEHOLDER: rewritten at deploy to `{CANOPY_ID}-x402-settlement`.
-            "queue": "canopy-prod-1-x402-settlement",
+            // PLACEHOLDER: rewritten at deploy from the contract's X402_SETTLEMENT_QUEUE_NAME (forest-2-x402-settlement-{slot}); the literal is the Terraform-managed queue name (FOR-78/FOR-446).
+            "queue": "forest-2-x402-settlement-b",
           },
         ],
       },
