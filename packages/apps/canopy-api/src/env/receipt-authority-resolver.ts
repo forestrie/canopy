@@ -51,6 +51,30 @@ function hexToBytes32Pair(hex: string): Uint8Array {
 /** Verify keys for receipt Sign1 (ES256 CryptoKey / parsed EC2 or KS256 root address). */
 export type ReceiptVerifyKey = RootVerifyKey;
 
+/**
+ * Raised when NO trust root could be resolved for a log — every client reported
+ * the log's public root as not-found (FOR-302, ADR-0057 §5).
+ *
+ * This is deliberately distinct from a normal negative result (a trust root was
+ * found, but the receipt did not verify against it), which stays a plain `null`.
+ * "No root anywhere" is not a statement that the receipt is invalid: the caller
+ * simply could not obtain the material to check it, exactly like a transport
+ * failure. A BYOK root registered moments ago is indistinguishable from one that
+ * never existed, so the answer is transient — callers map it to 503 (retryable),
+ * not 403 (terminal). Because it is thrown rather than returned, the resolver
+ * cache does not memoise it, so a retry after propagation re-checks.
+ */
+export class TrustRootUnresolvedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TrustRootUnresolvedError";
+  }
+}
+
+export function isTrustRootUnresolved(error: unknown): boolean {
+  return error instanceof TrustRootUnresolvedError;
+}
+
 export type ReceiptAuthorityResolver = (
   ownerLogIdLowerHex32: string,
   receiptCoseBytes: Uint8Array,
@@ -70,6 +94,7 @@ export async function resolveReceiptVerifyKeysFromTrustRoots(
   opts?: { rpcUrls?: string[] },
 ): Promise<ReceiptVerifyKey[] | null> {
   const merged: ReceiptVerifyKey[] = [];
+  let sawTrustRoot = false;
   for (const client of trustRootClients) {
     let trustRoot: RootVerifyKey;
     try {
@@ -78,6 +103,7 @@ export async function resolveReceiptVerifyKeysFromTrustRoots(
       if (isTrustRootNotFound(error)) continue;
       throw error;
     }
+    sawTrustRoot = true;
     const resolved = await resolveReceiptVerifyKey(
       receiptCoseBytes,
       trustRoot,
@@ -87,7 +113,17 @@ export async function resolveReceiptVerifyKeysFromTrustRoots(
       merged.push(...resolved.verifyKeys);
     }
   }
-  return merged.length > 0 ? merged : null;
+  if (merged.length > 0) return merged;
+  if (!sawTrustRoot) {
+    // Nothing found the log's root — transient, retryable (see
+    // TrustRootUnresolvedError). Distinct from the return below.
+    throw new TrustRootUnresolvedError(
+      `no trust root resolved for log ${ownerLogIdLowerHex32}`,
+    );
+  }
+  // A trust root WAS found; the receipt just did not verify against it. That is
+  // a normal, terminal negative — never retryable.
+  return null;
 }
 
 export function createReceiptAuthorityResolver(config: {

@@ -13,6 +13,7 @@ import { encodeCborDeterministic } from "@forestrie/encoding";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { grantAuthorize } from "../src/scrapi/auth-grant.js";
+import { TrustRootUnresolvedError } from "../src/env/receipt-authority-resolver.js";
 import type { Grant } from "../src/grant/grant.js";
 import type { GrantResult } from "../src/grant/grant-result.js";
 import { grantCommitmentHashFromGrant } from "../src/grant/grant-commitment.js";
@@ -156,5 +157,37 @@ describe("grantAuthorize (receipt-only, no queue dependency)", () => {
     });
     expect(result).not.toBeNull();
     expect((result as Response).status).toBe(503);
+  });
+
+  // FOR-302: "no trust root resolvable" is transient, not a verification
+  // failure — the server could not obtain the key to check the receipt (a
+  // just-registered BYOK root that has not propagated). It must be 503 +
+  // Retry-After so a legitimate caller retries, not a terminal 403.
+  it("returns 503 + Retry-After when the trust root is unresolvable", async () => {
+    const grant = grantWithData(new Uint8Array(64).fill(0xaa));
+    const receipt = await buildReceiptForGrant(grant, signer.privateKey);
+    const result = await grantAuthorize(grantResultFor(grant, receipt), {
+      enforceInclusion: true,
+      resolveReceiptAuthority: async () => {
+        throw new TrustRootUnresolvedError("not propagated yet");
+      },
+    });
+    expect(result).not.toBeNull();
+    expect((result as Response).status).toBe(503);
+    expect((result as Response).headers.get("Retry-After")).toBe("5");
+  });
+
+  // The sibling case stays terminal: a trust root WAS found (resolver returns
+  // an empty/no-key result), the receipt just did not verify. That is 403, and
+  // softening it would tell a forger to retry.
+  it("returns 403 when a trust root resolves but yields no verify keys", async () => {
+    const grant = grantWithData(new Uint8Array(64).fill(0xaa));
+    const receipt = await buildReceiptForGrant(grant, signer.privateKey);
+    const result = await grantAuthorize(grantResultFor(grant, receipt), {
+      enforceInclusion: true,
+      resolveReceiptAuthority: async () => null,
+    });
+    expect(result).not.toBeNull();
+    expect((result as Response).status).toBe(403);
   });
 });

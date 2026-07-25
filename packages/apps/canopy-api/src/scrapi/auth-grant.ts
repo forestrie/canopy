@@ -23,6 +23,7 @@
  */
 
 import type { ReceiptVerifyKey } from "../env/receipt-authority-resolver.js";
+import { isTrustRootUnresolved } from "../env/receipt-authority-resolver.js";
 import { decodeCborDeterministic } from "@forestrie/encoding";
 import type { GrantResult } from "../grant/types.js";
 import { decodeTransparentStatement } from "../grant/transparent-statement.js";
@@ -38,6 +39,15 @@ import { CBOR_CONTENT_TYPES } from "../cbor-api/cbor-content-types.js";
 import { cborResponse } from "../cbor-api/cbor-response.js";
 import { getContentSize } from "../cbor-api/cbor-request.js";
 import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
+
+/**
+ * Retry-After (seconds) for a receipt whose trust root is not yet resolvable.
+ * The delegation/root propagation window is on the order of seconds (the sealer
+ * polls the coordinator at a seconds cadence), so a short backoff clears the
+ * common case without making a genuinely-absent log's caller wait long between
+ * pointless retries.
+ */
+const RECEIPT_AUTHORITY_RETRY_AFTER_SECONDS = 5;
 import type { AuthGrantAuthorizeEnv } from "./auth-grant-authorize-env.js";
 import type {
   GrantAuthorizeFailure,
@@ -315,6 +325,10 @@ export async function grantAuthorizeDetailed(
       env.ks256ChainId?.trim() || undefined,
     );
     if (!keys?.length) {
+      // A trust root WAS resolved for this log; the receipt simply did not
+      // verify against it (wrong signature, unresolved delegation chain). That
+      // is a terminal negative — the "no trust root at all" case throws
+      // TrustRootUnresolvedError and is handled below as retryable.
       return {
         ok: false,
         response: ClientErrors.forbidden(
@@ -327,23 +341,30 @@ export async function grantAuthorizeDetailed(
     }
     receiptVerifyKeys = keys;
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (/\b404\b/.test(msg)) {
+    if (isTrustRootUnresolved(e)) {
+      // No trust root could be resolved for this log. Not a statement that the
+      // receipt is invalid — the server could not obtain the key to check it,
+      // exactly like a transport failure, and a just-registered BYOK root may
+      // not have propagated yet. Retryable, so 503 + Retry-After rather than a
+      // terminal 403 (FOR-302, ADR-0057 §5).
       return {
         ok: false,
-        response: ClientErrors.forbidden(
-          "Cannot resolve receipt verification key for this log (trust root).",
+        response: ServerErrors.serviceUnavailableWithRetry(
+          "Receipt verification key for this log is not resolvable yet (trust root not found); retry after it propagates.",
+          RECEIPT_AUTHORITY_RETRY_AFTER_SECONDS,
         ),
         outcome: "no-verify-keys",
         verifyKeyCount: 0,
         hasDelegationCert,
       };
     }
+    const msg = e instanceof Error ? e.message : String(e);
     console.warn("resolveReceiptAuthority failed", e);
     return {
       ok: false,
-      response: ServerErrors.serviceUnavailable(
+      response: ServerErrors.serviceUnavailableWithRetry(
         msg.length > 200 ? `${msg.slice(0, 200)}…` : msg,
+        RECEIPT_AUTHORITY_RETRY_AFTER_SECONDS,
       ),
       outcome: "no-verify-keys",
       verifyKeyCount: 0,

@@ -7,8 +7,10 @@ import { encodeSigStructure } from "@forestrie/encoding";
 import { describe, expect, it, vi } from "vitest";
 import {
   createReceiptAuthorityResolver,
+  isTrustRootUnresolved,
   resolveReceiptVerifyKeysFromTrustRoots,
 } from "../src/env/receipt-authority-resolver.js";
+import { TrustRootNotFoundError } from "../src/env/trust-root-client.js";
 import { es256ReceiptVerifyKeys } from "../src/env/decode-trust-root-cbor.js";
 import { importEs256PublicKeyFromGrantDataXy64 } from "../src/scrapi/custodian-grant.js";
 import { verifyCoseSign1WithParsedKey } from "@forestrie/encoding";
@@ -188,6 +190,82 @@ describe("createReceiptAuthorityResolver", () => {
     }
     expect(sigWithCoordinatorOnly).toBe(false);
     expect(sigOk).toBe(true);
+  });
+});
+
+describe("resolveReceiptVerifyKeysFromTrustRoots tri-state (FOR-302)", () => {
+  const OWNER = "0123456789abcdef0123456789abcdef";
+
+  it("throws TrustRootUnresolvedError when NO client resolves a trust root", async () => {
+    // Every client reports the log's root as not-found — the transient case a
+    // just-registered BYOK root hits before it propagates. Not a statement that
+    // the receipt is invalid, so it must be distinguishable from a plain null.
+    const notFound = {
+      logSigningKey: async () => {
+        throw new TrustRootNotFoundError("no root");
+      },
+    };
+    let thrown: unknown;
+    try {
+      await resolveReceiptVerifyKeysFromTrustRoots(OWNER, new Uint8Array(0), [
+        notFound,
+        notFound,
+      ]);
+    } catch (e) {
+      thrown = e;
+    }
+    expect(isTrustRootUnresolved(thrown)).toBe(true);
+  });
+
+  it("returns null (not a throw) when a trust root IS found but the receipt does not verify", async () => {
+    // A delegation cert signed by rootA, checked against an unrelated custody
+    // key: the root exists, the chain just does not validate. Terminal, so a
+    // plain null — the verify-failed case, never retryable.
+    const rootA = await generateP256KeyPair();
+    const unrelated = await generateP256KeyPair();
+    const delegated = await generateP256KeyPair();
+    const delegatedRaw = new Uint8Array(
+      (await crypto.subtle.exportKey(
+        "raw",
+        delegated.publicKey,
+      )) as ArrayBuffer,
+    );
+    const unrelatedRaw = new Uint8Array(
+      (await crypto.subtle.exportKey(
+        "raw",
+        unrelated.publicKey,
+      )) as ArrayBuffer,
+    );
+    const cert = await buildDelegationCert(rootA, delegatedRaw);
+    const receipt = buildReceiptWithDelegation(cert);
+    const unrelatedKey = await importEs256PublicKeyFromGrantDataXy64(
+      unrelatedRaw.slice(1),
+    );
+
+    const result = await resolveReceiptVerifyKeysFromTrustRoots(
+      OWNER,
+      receipt,
+      [{ logSigningKey: async () => unrelatedKey }],
+    );
+    expect(result).toBeNull();
+  });
+
+  it("a client error that is NOT not-found still propagates (transport failures are not masked)", async () => {
+    const boom = new Error("connection reset");
+    let thrown: unknown;
+    try {
+      await resolveReceiptVerifyKeysFromTrustRoots(OWNER, new Uint8Array(0), [
+        {
+          logSigningKey: async () => {
+            throw boom;
+          },
+        },
+      ]);
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBe(boom);
+    expect(isTrustRootUnresolved(thrown)).toBe(false);
   });
 });
 
