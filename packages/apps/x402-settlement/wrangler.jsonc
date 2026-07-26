@@ -77,8 +77,6 @@
         "ENFORCEMENT_ARMED": "false",
         "CANOPY_API_ORIGIN": "",
         "STARTER_CREDITS": "0",
-        "CANOPY_API_ORIGIN": "",
-        "STARTER_CREDITS": "0",
       },
       // Accrual indexer sweep (slice 03); resumable, so cadence is a
       // freshness knob, not a correctness one.
@@ -136,6 +134,8 @@
         // SUPPORTED_CHAINS_RPC deliberately absent: injected at deploy from
         // the environment (apply-runtime-contract.mjs), as canopy-api does.
         "ENFORCEMENT_ARMED": "false",
+        "CANOPY_API_ORIGIN": "",
+        "STARTER_CREDITS": "0",
       },
       "triggers": {
         "crons": ["*/5 * * * *"],
