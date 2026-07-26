@@ -141,8 +141,6 @@ describe("univocity instance id boot-time migration", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as WebhookConfigResponse;
     expect(body.univocityInstanceId).toBe(CANONICAL_ID);
-    // Legacy alias carried during the shim cycle (dropped in slice 05).
-    expect(body.instanceKey).toBe(CANONICAL_ID);
     expect(body.webhookUrl).toBe(INSTANCE_URL);
     expect(body.inherited).toBe(true);
 

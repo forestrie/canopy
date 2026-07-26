@@ -42,10 +42,6 @@ export interface ForwardCoordinatorRegistrationInput {
    * register one webhook instead of one per log. If the instance has no webhook
    * the binding is still recorded — the log then has none, and a later instance
    * re-point reaches it.
-   *
-   * On the wire the value is sent as both `univocityInstanceId` and the
-   * deprecated `instanceKey` field so deploy order against the coordinator
-   * does not matter; the legacy field drops in plan-2607-43 slice 05.
    */
   univocityInstanceId?: string;
   /**
@@ -145,7 +141,7 @@ async function putWebhook(
   baseUrl: string,
   token: string,
   apiLogId: string,
-  body: { url?: string; univocityInstanceId?: string; instanceKey?: string },
+  body: { url?: string; univocityInstanceId?: string },
   timeoutMs?: number,
 ): Promise<Response> {
   return fetchImpl(`${baseUrl}/api/logs/${apiLogId}/webhook`, {
@@ -228,11 +224,7 @@ export async function forwardCoordinatorRegistration(
       apiLogId,
       {
         ...(webhookUrl ? { url: webhookUrl } : {}),
-        // Both field names carry the same canonical value until the
-        // coordinator-side deprecation window closes (slice 05).
-        ...(univocityInstanceId
-          ? { univocityInstanceId, instanceKey: univocityInstanceId }
-          : {}),
+        ...(univocityInstanceId ? { univocityInstanceId } : {}),
       },
       input.timeoutMs,
     );

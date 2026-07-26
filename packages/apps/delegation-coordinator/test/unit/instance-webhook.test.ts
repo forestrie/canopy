@@ -37,14 +37,12 @@ function jsonAuthHeaders(token: string = TEST_TOKEN): HeadersInit {
 interface WebhookConfigBody {
   webhookUrl?: string;
   univocityInstanceId?: string;
-  instanceKey?: string;
   inherited?: boolean;
   enabled: boolean;
 }
 
 interface InstanceWebhookBody {
   univocityInstanceId: string;
-  instanceKey?: string;
   webhookUrl?: string;
   memberLogs?: number;
   updatedLogs?: number;
@@ -100,8 +98,8 @@ describe("instance webhook inheritance by copy", () => {
     const putBody = (await putRes.json()) as InstanceWebhookBody;
     expect(putBody.webhookUrl).toBe(instanceUrl);
     expect(putBody.univocityInstanceId).toBe(univocityInstanceId);
-    // Legacy alias carried during the shim cycle (dropped in slice 05).
-    expect(putBody.instanceKey).toBe(univocityInstanceId);
+    // The legacy alias is gone from responses (slice 05).
+    expect("instanceKey" in putBody).toBe(false);
     expect(putBody.shards).toBeGreaterThan(1);
 
     const logUuid = randomUUID();
@@ -110,7 +108,7 @@ describe("instance webhook inheritance by copy", () => {
     const bindBody = (await bindRes.json()) as WebhookConfigBody;
     expect(bindBody.webhookUrl).toBe(instanceUrl);
     expect(bindBody.univocityInstanceId).toBe(univocityInstanceId);
-    expect(bindBody.instanceKey).toBe(univocityInstanceId);
+    expect("instanceKey" in bindBody).toBe(false);
     expect(bindBody.inherited).toBe(true);
 
     const readBack = await getLogWebhook(logUuid);
@@ -381,23 +379,19 @@ describe("instance webhook validation and auth", () => {
     expect(res.status).toBe(400);
   });
 
-  // Superseded by the value-form shim (plan-2607-02 R5): for the deploy
-  // window a legacy value in either body field converts to canonical instead
-  // of rejecting. Strict rejection returns in plan-2607-43 slice 05; see
-  // webhook-legacy-instance-binding.test.ts for the conversion assertions.
-  it("accepts a legacy-format value in either instance-binding body field (R5 shim)", async () => {
+  // Strict rejection restored in plan-2607-43 slice 05 (the R5 deploy-window
+  // conversion is gone); webhook-legacy-instance-binding.test.ts pins it.
+  it("rejects a legacy-format univocityInstanceId value", async () => {
     const legacy = `84532:${"ab".repeat(20)}`;
-    for (const field of ["univocityInstanceId", "instanceKey"]) {
-      const res = await fetchWithDoRetry(
-        `http://localhost/api/logs/${randomUUID()}/webhook`,
-        {
-          method: "PUT",
-          headers: jsonAuthHeaders(),
-          body: JSON.stringify({ [field]: legacy }),
-        },
-      );
-      expect(res.status).toBe(200);
-    }
+    const res = await fetchWithDoRetry(
+      `http://localhost/api/logs/${randomUUID()}/webhook`,
+      {
+        method: "PUT",
+        headers: jsonAuthHeaders(),
+        body: JSON.stringify({ univocityInstanceId: legacy }),
+      },
+    );
+    expect(res.status).toBe(400);
   });
 
   it("rejects a log webhook PUT carrying neither url nor univocityInstanceId", async () => {
@@ -427,7 +421,7 @@ describe("instance webhook validation and auth", () => {
     expect(bindRes.status).toBe(400);
   });
 
-  it("accepts the deprecated instanceKey body field with a canonical value", async () => {
+  it("ignores the retired instanceKey body field (slice 05)", async () => {
     const univocityInstanceId = freshUnivocityInstanceId();
     const url = "https://hooks.example.test/deprecated-alias";
     expect((await putInstanceWebhook(univocityInstanceId, url)).status).toBe(
@@ -443,10 +437,6 @@ describe("instance webhook validation and auth", () => {
         body: JSON.stringify({ instanceKey: univocityInstanceId }),
       },
     );
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as WebhookConfigBody;
-    expect(body.univocityInstanceId).toBe(univocityInstanceId);
-    expect(body.instanceKey).toBe(univocityInstanceId);
-    expect(body.webhookUrl).toBe(url);
+    expect(res.status).toBe(400);
   });
 });

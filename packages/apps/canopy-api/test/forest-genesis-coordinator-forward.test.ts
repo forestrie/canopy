@@ -182,11 +182,9 @@ describe("forwardCoordinatorRegistration", () => {
       univocityInstanceId: TEST_UNIVOCITY_INSTANCE_ID,
     });
     expect(calls).toHaveLength(2);
-    // Both field names carry the canonical value until the coordinator-side
-    // deprecation window closes (plan-2607-43 slice 05).
+    // Canonical field only — the dual-field deploy shim dropped in slice 05.
     expect(JSON.parse(calls[1]!.body!)).toEqual({
       univocityInstanceId: TEST_UNIVOCITY_INSTANCE_ID,
-      instanceKey: TEST_UNIVOCITY_INSTANCE_ID,
     });
   });
 
@@ -341,7 +339,6 @@ describe("POST genesis coordinator forward", () => {
     expect(calls[1]!.url).toContain("/webhook");
     expect(JSON.parse(calls[1]!.body!)).toEqual({
       univocityInstanceId: TEST_UNIVOCITY_INSTANCE_ID,
-      instanceKey: TEST_UNIVOCITY_INSTANCE_ID,
     });
 
     vi.unstubAllGlobals();
@@ -459,7 +456,6 @@ describe("POST genesis coordinator forward", () => {
     expect(JSON.parse(calls[1]!.body!)).toEqual({
       url: "https://agent.example/hook",
       univocityInstanceId: TEST_UNIVOCITY_INSTANCE_ID,
-      instanceKey: TEST_UNIVOCITY_INSTANCE_ID,
     });
 
     vi.unstubAllGlobals();

@@ -2261,8 +2261,6 @@ export class DelegationStoreDO extends DurableObject<Env> {
     }
     if (row.univocity_instance_id) {
       resp.univocityInstanceId = row.univocity_instance_id;
-      // Legacy alias for one deploy cycle; dropped in plan-2607-43 slice 05.
-      resp.instanceKey = row.univocity_instance_id;
     }
     if (row.webhook_url && row.webhook_source === WEBHOOK_SOURCE_INSTANCE) {
       resp.inherited = true;
@@ -2454,7 +2452,6 @@ export class DelegationStoreDO extends DurableObject<Env> {
     }
     const resp: InstanceWebhookResponse = {
       univocityInstanceId,
-      instanceKey: univocityInstanceId,
       memberLogs,
     };
     if (row) {
@@ -2520,7 +2517,6 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
     const resp: InstanceWebhookResponse = {
       univocityInstanceId,
-      instanceKey: univocityInstanceId,
       webhookUrl: body.url,
       createdAt,
       updatedAt: now,
@@ -2554,7 +2550,6 @@ export class DelegationStoreDO extends DurableObject<Env> {
     );
     const resp: InstanceWebhookResponse = {
       univocityInstanceId,
-      instanceKey: univocityInstanceId,
       updatedLogs,
     };
     return Response.json(resp);

@@ -1,6 +1,16 @@
 # ARC — Univocity instance registration, payment authority, and webhook notification
 
-**Status:** DRAFT
+> **SUPERSEDED VOCABULARY (2026-07-27, plan-2607-43 slice 05).** This ARC
+> documents the pre-ADR-0059 model: a "payment-authoritative vs regular"
+> registration taxonomy and an identifier then called `instanceKey`. Under
+> [devdocs ADR-0059](../../../devdocs/adr/adr-0059-instance-root-fee-accounts.md)
+> every univocity instance root is its own fee account, the taxonomy is
+> retired, and the identifier's one name is `univocityInstanceId` (CAIP-10).
+> The webhook-delivery mechanics described here remain accurate; read the
+> retired terms as historical. Current articulation:
+> [devdocs ARC-0026](../../../devdocs/arc/arc-0026-onboard-grant-apis-and-fee-tracing.md).
+
+**Status:** DRAFT (historical vocabulary — see banner)
 **Date:** 2026-06-21
 **Related:**
 [arc-checkpoint-delegation-isolation.md](arc-checkpoint-delegation-isolation.md),

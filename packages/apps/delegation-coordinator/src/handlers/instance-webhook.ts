@@ -138,7 +138,6 @@ export async function handlePutInstanceWebhook(
     const resp: InstanceWebhookResponse = {
       univocityInstanceId,
       // Legacy alias for one deploy cycle; dropped in plan-2607-43 slice 05.
-      instanceKey: univocityInstanceId,
       webhookUrl: validatedUrl,
       memberLogs,
       updatedLogs,
@@ -178,7 +177,6 @@ export async function handleGetInstanceWebhook(
     const resp: InstanceWebhookResponse = {
       univocityInstanceId,
       // Legacy alias for one deploy cycle; dropped in plan-2607-43 slice 05.
-      instanceKey: univocityInstanceId,
     };
     for (const res of responses) {
       if (res.status === 404) continue;
@@ -246,7 +244,6 @@ export async function handleDeleteInstanceWebhook(
     const resp: InstanceWebhookResponse = {
       univocityInstanceId,
       // Legacy alias for one deploy cycle; dropped in plan-2607-43 slice 05.
-      instanceKey: univocityInstanceId,
       updatedLogs,
       shards: shardCount,
     };

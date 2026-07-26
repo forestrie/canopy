@@ -116,7 +116,7 @@ mandate operator is free to move.
   the boundary: data-plane instance registration, payment-authority marking,
   webhook notification, and the kill switch.
 - There are **no special config-time logs** and **no singleton logs**: canopy
-  may register any number of payment-authoritative and regular instances, which
+  may register any number of univocity instances (each its own fee account, ADR-0059), which
   is also what makes end-to-end testing feasible.
 
 ## Links to the dependent designs

@@ -256,9 +256,9 @@ describe("webhook + enabled CRUD", () => {
     );
     expect(forbidden.status).toBe(403);
 
-    // The deprecated alias must keep the same app-token requirement: the shim
-    // renames the field, not the authority it demands (plan-2607-43 slice 01).
-    const forbiddenAlias = await fetchWithDoRetry(
+    // The retired instanceKey alias (dropped in plan-2607-43 slice 05) is
+    // simply an unknown field now: alone it is a missing id, not a binding.
+    const retiredAlias = await fetchWithDoRetry(
       `http://localhost/api/logs/${issuerLogUuid}/webhook`,
       {
         method: "PUT",
@@ -268,7 +268,7 @@ describe("webhook + enabled CRUD", () => {
         body: JSON.stringify({ instanceKey: univocityInstanceId }),
       },
     );
-    expect(forbiddenAlias.status).toBe(403);
+    expect(retiredAlias.status).toBe(400);
 
     // The same issuer token still sets an explicit per-log URL, and the app
     // token still binds the instance — only the combination is refused.

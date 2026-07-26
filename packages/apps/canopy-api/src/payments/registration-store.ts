@@ -61,7 +61,7 @@ export function registrationRecordFromChainBinding(opts: {
   chainBinding: ForestGenesisChainBinding;
   admittedBy?: RegistrationRecord["admittedBy"];
 }): Omit<RegistrationRecord, "createdAt"> {
-  // `class` and `endorsedBy` are never written any more (ADR-0059, slice 02):
+  // The legacy class/endorsement fields are never written any more (ADR-0059, slice 02):
   // every instance root is its own account. Readers stay tolerant of legacy
   // records that carry them.
   return {

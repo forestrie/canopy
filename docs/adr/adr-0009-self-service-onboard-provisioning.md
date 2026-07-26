@@ -16,7 +16,7 @@ Mandate fork operators need a `CANOPY_PAYMENTS_ONBOARD_TOKEN` without manual
 email to the canopy operator. Today only ops can mint via
 `POST /api/payments/onboard-tokens` (`CANOPY_OPS_ADMIN_TOKEN`).
 
-Reimbursement trust remains **off-chain** (glossary: payment-authoritative
+Reimbursement trust remains **off-chain** (glossary: payment-authoritative[^pa]
 registration). Self-service automates credential issuance only.
 
 ## Decision
@@ -127,3 +127,7 @@ Hard-disabled when `NODE_ENV=prod`. Redeem still required.
 
 - `CANOPY_OPS_ADMIN_TOKEN` never exposed to mandate operators.
 - Distinct from wallet-challenge session (FOR-133) and Mode C onboarding (FOR-112).
+
+[^pa]: Historical term — the payment-authoritative/regular taxonomy was
+retired by devdocs ADR-0059 (every instance root is its own fee account,
+plan-2607-43 slice 02/05).
