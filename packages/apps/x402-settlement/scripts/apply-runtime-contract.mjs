@@ -229,6 +229,21 @@ if (vars) {
     "STARTER_CREDITS",
     process.env.STARTER_CREDITS?.trim(),
   );
+  // Duplicate keys are how an injected value silently dies: JSONC is
+  // last-key-wins, so a stray second literal overrides the injection while
+  // the resolved: echo (first match) still reports success. Seen live with
+  // CANOPY_API_ORIGIN deploying empty under ENFORCEMENT_ARMED=true.
+  {
+    const seen = new Set();
+    for (const m of varsBlock.matchAll(/"([A-Z0-9_]+)"\s*:/g)) {
+      if (seen.has(m[1])) {
+        fail(
+          `duplicate var ${m[1]} in resolved env vars — last key wins and can silently clear an injected value`,
+        );
+      }
+      seen.add(m[1]);
+    }
+  }
   envBlock = replaceRange(envBlock, vars, varsBlock);
 }
 
