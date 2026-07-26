@@ -23,6 +23,8 @@ export interface GenesisCoordinatorForwardStatus {
   detail?: string;
 }
 
+import { releaseChainBindingClaimE2e } from "./onboard-token-e2e.js";
+
 async function postGenesisWithRetry(
   request: APIRequestContext,
   logId: string,
@@ -100,6 +102,13 @@ export async function ensureForestGenesisKs256E2e(
     [FOREST_GENESIS_LABEL_CHAIN_ID, opts.chainId],
   ]);
   const body = encodeCborDeterministic(map) as Uint8Array;
+  // One account per univocity instance (ADR-0059): e2e forests are ephemeral
+  // and reuse the pinned dev contract, so release any prior run's claim (the
+  // designed "abandoned R" remedy, plan-2607-02 R4) before genesis.
+  await releaseChainBindingClaimE2e(request, {
+    chainId: opts.chainId,
+    univocityAddr: opts.univocityAddr,
+  });
   await postGenesisWithRetry(
     request,
     opts.logId,
@@ -132,6 +141,13 @@ export async function ensureForestGenesisKs256WithWebhookE2e(
     [FOREST_GENESIS_LABEL_CHAIN_ID, opts.chainId],
   ]);
   const body = encodeCborDeterministic(map) as Uint8Array;
+  // One account per univocity instance (ADR-0059): e2e forests are ephemeral
+  // and reuse the pinned dev contract, so release any prior run's claim (the
+  // designed "abandoned R" remedy, plan-2607-02 R4) before genesis.
+  await releaseChainBindingClaimE2e(request, {
+    chainId: opts.chainId,
+    univocityAddr: opts.univocityAddr,
+  });
   const coordinator = await postGenesisWithRetry(
     request,
     opts.logId,
@@ -175,6 +191,13 @@ export async function ensureForestGenesisEs256E2e(
     [FOREST_GENESIS_LABEL_CHAIN_ID, opts.chainId],
   ]);
   const body = encodeCborDeterministic(map) as Uint8Array;
+  // One account per univocity instance (ADR-0059): e2e forests are ephemeral
+  // and reuse the pinned dev contract, so release any prior run's claim (the
+  // designed "abandoned R" remedy, plan-2607-02 R4) before genesis.
+  await releaseChainBindingClaimE2e(request, {
+    chainId: opts.chainId,
+    univocityAddr: opts.univocityAddr,
+  });
   await postGenesisWithRetry(
     request,
     opts.logId,

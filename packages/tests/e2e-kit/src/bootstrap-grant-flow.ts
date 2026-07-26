@@ -47,6 +47,7 @@ export async function mintBootstrapGrant(
   assertBootstrapMintE2eEnv();
   const onboardToken = await mintOnboardTokenE2e(
     unauthorizedRequest,
+    { chainId: variant.chainId, univocityAddr: variant.contractAddrBytes },
     `bootstrap-${rootLogId.slice(0, 8)}`,
   );
   const { grantBase64 } = await mintRootGrantForVariant(

@@ -60,7 +60,10 @@ describeForEachBootstrapVariant(
       unauthorizedRequest,
     }) => {
       assertBootstrapMintE2eEnv();
-      const onboardToken = await mintOnboardTokenE2e(unauthorizedRequest);
+      const onboardToken = await mintOnboardTokenE2e(unauthorizedRequest, {
+        chainId: variant.chainId,
+        univocityAddr: variant.contractAddrBytes,
+      });
       const rootLogId = randomUUID();
       const boot = await variant.fetchBootstrapKey();
 
@@ -245,7 +248,10 @@ describeForEachBootstrapVariant(
       unauthorizedRequest,
     }, testInfo) => {
       assertBootstrapMintE2eEnv();
-      const onboardToken = await mintOnboardTokenE2e(unauthorizedRequest);
+      const onboardToken = await mintOnboardTokenE2e(unauthorizedRequest, {
+        chainId: variant.chainId,
+        univocityAddr: variant.contractAddrBytes,
+      });
       const rootLogId = e2eReceiptBootstrapRootLogId();
       const baseURL = testInfo.project.use.baseURL ?? "";
       const boot = await variant.fetchBootstrapKey();

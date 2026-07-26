@@ -19,6 +19,9 @@ export {
 export {
   assertOpsAdminE2eEnv,
   mintOnboardTokenE2e,
+  releaseChainBindingClaimE2e,
+  univocityInstanceIdE2e,
+  type E2eChainBinding,
 } from "./onboard-token-e2e.js";
 export { playwrightFetch } from "./playwright-fetch.js";
 
