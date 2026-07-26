@@ -340,11 +340,13 @@ jobs:
           E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP: ${{ needs.t3-resolve-univocity.outputs.es256_address || needs.t2-bootstrap-univocity.outputs.es256_address }}
           E2E_UNIVOCITY_RPC_URL: ${{ vars.E2E_UNIVOCITY_RPC_URL }}
           E2E_UNIVOCITY_CHAIN_ID: ${{ vars.E2E_UNIVOCITY_CHAIN_ID }}
-          # Credits pay-e2e (plan-2607-43 slice 04): the spec skips when the
-          # funded payer key is absent; UNIVOCITY_CONTRACT_ADDRESS pins the
-          # long-lived registered instance; X402_SETTLEMENT_URL (optional)
-          # enables the settled-credits poll.
-          CANOPY_X402_DEV_PRIVATE_KEY: ${{ secrets.CANOPY_X402_DEV_PRIVATE_KEY }}
+          # Credits pay-e2e (plan-2607-43 slice 04): the payer defaults to the
+          # already-funded deployer EOA (DEPLOY_KEY holds the lane's Base
+          # Sepolia USDC); a dedicated CANOPY_X402_DEV_PRIVATE_KEY wins when
+          # set. UNIVOCITY_CONTRACT_ADDRESS pins the long-lived registered
+          # instance; X402_SETTLEMENT_URL (optional) enables the
+          # settled-credits poll.
+          CANOPY_X402_DEV_PRIVATE_KEY: ${{ secrets.CANOPY_X402_DEV_PRIVATE_KEY || secrets.DEPLOY_KEY }}
           UNIVOCITY_CONTRACT_ADDRESS: ${{ vars.UNIVOCITY_CONTRACT_ADDRESS }}
           X402_SETTLEMENT_URL: ${{ vars.X402_SETTLEMENT_URL }}
           E2E_UNIVOCITY_GENESIS_LOG_ID_KS256: ${{ needs.t3-resolve-univocity.outputs.ks256_log_id || needs.t2-bootstrap-univocity.outputs.ks256_log_id }}

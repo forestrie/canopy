@@ -13,9 +13,12 @@ import { expectAPI as expect, test } from "@e2e-fixtures/auth";
 import {
   purchaseCreditsE2e,
   univocityInstanceIdE2e,
+  usdcBalanceE2e,
+  x402PayerAddressE2e,
+  x402PayerKeyE2e,
 } from "@forestrie/canopy-e2e-kit";
 
-const PAYER_KEY = process.env.CANOPY_X402_DEV_PRIVATE_KEY?.trim();
+const PAYER_KEY = x402PayerKeyE2e();
 const PINNED_ADDR = process.env.UNIVOCITY_CONTRACT_ADDRESS?.trim();
 const CHAIN_ID = (process.env.E2E_UNIVOCITY_CHAIN_ID ?? "84532").trim();
 const SETTLEMENT_URL = process.env.X402_SETTLEMENT_URL?.trim();
@@ -29,7 +32,7 @@ const SETTLE_POLL_INTERVAL_MS = 5_000;
 test.describe("credits purchase (x402 pay e2e)", () => {
   test.skip(
     !PAYER_KEY,
-    "CANOPY_X402_DEV_PRIVATE_KEY not set — pay e2e needs the funded dev wallet",
+    "no payer key (CANOPY_X402_DEV_PRIVATE_KEY or DEPLOY_KEY) — pay e2e needs the funded dev wallet",
   );
   test.skip(
     !PINNED_ADDR,
@@ -39,6 +42,17 @@ test.describe("credits purchase (x402 pay e2e)", () => {
   test("402 challenge is payable and credits land after settlement", async ({
     request,
   }) => {
+    // Unfunded payer is an environment condition, not a defect: skip so the
+    // suite stays green until the wallet holds USDC for this purchase
+    // (nominal pricing: 5 credits = $0.05).
+    const payer = x402PayerAddressE2e()!;
+    const balance = await usdcBalanceE2e(payer);
+    const needed = 10_000n * BigInt(CREDITS);
+    test.skip(
+      balance < needed,
+      `payer ${payer} holds ${balance} atomic USDC < ${needed} needed — fund it on Base Sepolia`,
+    );
+
     const binding = { chainId: CHAIN_ID, univocityAddr: PINNED_ADDR! };
     const id = univocityInstanceIdE2e(binding);
 

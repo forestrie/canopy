@@ -26,6 +26,9 @@ export {
 export {
   purchaseCreditsE2e,
   signX402PaymentE2e,
+  usdcBalanceE2e,
+  x402PayerAddressE2e,
+  x402PayerKeyE2e,
   type CreditsPurchaseResultE2e,
 } from "./x402-payer-e2e.js";
 export { playwrightFetch } from "./playwright-fetch.js";
