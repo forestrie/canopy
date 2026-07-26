@@ -42,6 +42,8 @@ import {
 } from "./handler.js";
 
 /** Parse a univocity instance id path segment or return a 400 problem. */
+// Path segments stay strict-canonical: the legacy value-form shim (plan-2607-02
+// R5) applies only to PUT /api/logs/{logId}/webhook, the deploy-window path.
 function parsePathUnivocityInstanceId(segment: string): string | Response {
   try {
     return parseUnivocityInstanceId(segment);

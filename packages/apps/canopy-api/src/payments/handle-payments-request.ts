@@ -36,6 +36,16 @@ import {
   readRegistration,
   type RegistrationStoreEnv,
 } from "./registration-store.js";
+import {
+  isUnivocityInstanceId,
+  tryUnivocityInstanceIdFromChainBinding,
+} from "@canopy/univocity-instance-id";
+import {
+  readUnivocityInstanceReservation,
+  releaseUnivocityInstanceReservation,
+  reserveUnivocityInstance,
+  tokenHolder,
+} from "./instance-registry.js";
 
 export interface PaymentsHandlerEnv
   extends OnboardTokenStoreEnv,
@@ -244,12 +254,16 @@ export async function handlePaymentsRequest(
 
       let label: string | undefined;
       let expiry: number | undefined;
+      let chainId: string | undefined;
+      let univocityAddr: string | undefined;
       try {
         const raw = await parseCborBody(request);
         const m = decodeBodyAsIntKeyMap(raw);
         if (m) {
           label = readOptionalStringField(m, 1);
           expiry = readOptionalExpiry(m);
+          chainId = readOptionalStringField(m, 3);
+          univocityAddr = readOptionalStringField(m, 4);
         }
       } catch {
         return attachCors(
@@ -258,11 +272,52 @@ export async function handlePaymentsRequest(
         );
       }
 
+      // Bindings are mandatory on every token (ADR-0059 decision 8): a
+      // break-glass token is scoped to one instance like any other, and the
+      // reservation it takes here is what a mistaken mint gets released from
+      // (the chain-bindings DELETE below), not an open-ended claim on genesis.
+      if (!chainId || !univocityAddr) {
+        return attachCors(
+          ClientErrors.badRequest(
+            "chainId (3) and univocityAddr (4) are required",
+          ),
+          corsHeaders,
+        );
+      }
+      const chainBinding = { chainId, univocityAddr };
+      const univocityInstanceId =
+        tryUnivocityInstanceIdFromChainBinding(chainBinding);
+      if (!univocityInstanceId) {
+        return attachCors(
+          ClientErrors.badRequest(
+            "chainId must be a bare decimal id and univocityAddr a 40-hex address",
+          ),
+          corsHeaders,
+        );
+      }
+
       const minted = await mintOnboardToken(env, {
         label,
         expiry,
+        chainBinding,
         admittedBy: "ops",
       });
+
+      const reserved = await reserveUnivocityInstance(
+        env,
+        univocityInstanceId,
+        tokenHolder(minted.record.hash),
+      );
+      if (!reserved.ok) {
+        await revokeOnboardToken(env, minted.record.hash);
+        return attachCors(
+          problemResponse(409, "Conflict", "about:blank", {
+            detail: `Univocity instance ${univocityInstanceId} is already reserved or registered`,
+          }),
+          corsHeaders,
+        );
+      }
+
       return attachCors(
         cborResponse(
           {
@@ -272,6 +327,7 @@ export async function handlePaymentsRequest(
             createdAt: minted.record.createdAt,
             expiry: minted.record.expiry,
             status: minted.record.status,
+            univocityInstanceId,
           },
           201,
         ),
@@ -314,6 +370,60 @@ export async function handlePaymentsRequest(
     }
     return attachCors(
       cborResponse({ ref: revoked.hash, status: revoked.status }, 200),
+      corsHeaders,
+    );
+  }
+
+  // Ops inspection and release of an instance reservation (plan-2607-02 R4):
+  // dangling `reserved` records, squats made before the registrant
+  // attestation is enforced, abandoned roots. Release is the recovery route
+  // the reservation model depends on — a paid reservation never expires.
+  const bindingMatch = /^\/api\/payments\/chain-bindings\/([^/]+)$/.exec(
+    pathname,
+  );
+  if (bindingMatch) {
+    const id = decodeURIComponent(bindingMatch[1]!);
+    if (!isUnivocityInstanceId(id)) {
+      return attachCors(
+        ClientErrors.badRequest(
+          "path id must be a canonical univocity instance id",
+        ),
+        corsHeaders,
+      );
+    }
+    if (request.method === "GET") {
+      const record = await readUnivocityInstanceReservation(env, id);
+      if (!record) {
+        return attachCors(
+          ClientErrors.notFound("Not Found", "No reservation for instance"),
+          corsHeaders,
+        );
+      }
+      return attachCors(
+        cborResponse({ univocityInstanceId: id, ...record }, 200),
+        corsHeaders,
+      );
+    }
+    if (request.method === "DELETE") {
+      const released = await releaseUnivocityInstanceReservation(env, id);
+      if (!released) {
+        return attachCors(
+          ClientErrors.notFound("Not Found", "No reservation for instance"),
+          corsHeaders,
+        );
+      }
+      return attachCors(
+        cborResponse(
+          { univocityInstanceId: id, released: true, ...released },
+          200,
+        ),
+        corsHeaders,
+      );
+    }
+    return attachCors(
+      problemResponse(405, "Method Not Allowed", "about:blank", {
+        detail: `Method ${request.method} not allowed`,
+      }),
       corsHeaders,
     );
   }

@@ -32,7 +32,10 @@ function opsHeaders(extra?: Record<string, string>): Record<string, string> {
 
 describe("onboard token store", () => {
   it("mints an active token retrievable by hash only", async () => {
-    const minted = await mintOnboardToken(poolEnv, { label: "e2e-test" });
+    const minted = await mintOnboardToken(poolEnv, {
+      label: "e2e-test",
+      chainBinding: { chainId: "84532", univocityAddr: "99".repeat(20) },
+    });
     expect(minted.token.length).toBeGreaterThan(0);
     expect(minted.record.status).toBe("active");
     const active = await isOnboardTokenActive(poolEnv, minted.token);
@@ -40,7 +43,9 @@ describe("onboard token store", () => {
   });
 
   it("revoked token is not active", async () => {
-    const minted = await mintOnboardToken(poolEnv);
+    const minted = await mintOnboardToken(poolEnv, {
+      chainBinding: { chainId: "84532", univocityAddr: "42".repeat(20) },
+    });
     await revokeOnboardToken(poolEnv, minted.record.hash);
     const active = await isOnboardTokenActive(poolEnv, minted.token);
     expect(active).toEqual({ active: false });
@@ -54,7 +59,11 @@ describe("ops onboard-token API", () => {
         method: "POST",
         headers: opsHeaders(),
         body: encodeCborDeterministic(
-          new Map([[1, "mint-spec"]]),
+          new Map<number, unknown>([
+            [1, "mint-spec"],
+            [3, "84532"],
+            [4, "61".repeat(20)],
+          ]),
         ) as Uint8Array,
       }),
       envWithOps(),
@@ -92,7 +101,9 @@ describe("ops onboard-token API", () => {
   });
 
   it("DELETE revokes by ref", async () => {
-    const minted = await mintOnboardToken(poolEnv);
+    const minted = await mintOnboardToken(poolEnv, {
+      chainBinding: { chainId: "84532", univocityAddr: "42".repeat(20) },
+    });
     const delRes = await worker.fetch(
       new Request(
         `http://localhost/api/payments/onboard-tokens/${minted.record.hash}`,
@@ -123,7 +134,9 @@ describe("ops onboard-token API", () => {
 
 describe("genesis onboard-token auth", () => {
   it("POST genesis with valid onboard token records payment-authoritative registration", async () => {
-    const minted = await mintOnboardToken(poolEnv);
+    const minted = await mintOnboardToken(poolEnv, {
+      chainBinding: { chainId: "84532", univocityAddr: "42".repeat(20) },
+    });
     const logId = crypto.randomUUID();
     const res = await worker.fetch(
       new Request(`http://localhost/api/forest/${logId}/genesis`, {
@@ -153,7 +166,10 @@ describe("genesis onboard-token auth", () => {
   });
 
   it("records admittedBy on the registration from the onboard token", async () => {
-    const minted = await mintOnboardToken(poolEnv, { admittedBy: "ops" });
+    const minted = await mintOnboardToken(poolEnv, {
+      admittedBy: "ops",
+      chainBinding: { chainId: "84532", univocityAddr: "51".repeat(20) },
+    });
     const logId = crypto.randomUUID();
     const res = await worker.fetch(
       new Request(`http://localhost/api/forest/${logId}/genesis`, {
@@ -184,7 +200,9 @@ describe("genesis onboard-token auth", () => {
 
   it("returns 409 when a second forest claims the same univocity instance", async () => {
     const addr = new Uint8Array(20).fill(0x52);
-    const first = await mintOnboardToken(poolEnv);
+    const first = await mintOnboardToken(poolEnv, {
+      chainBinding: { chainId: "84532", univocityAddr: "52".repeat(20) },
+    });
     const firstRoot = crypto.randomUUID();
     const firstRes = await worker.fetch(
       new Request(`http://localhost/api/forest/${firstRoot}/genesis`, {
@@ -202,7 +220,9 @@ describe("genesis onboard-token auth", () => {
     );
     expect(firstRes.status).toBe(201);
 
-    const second = await mintOnboardToken(poolEnv);
+    const second = await mintOnboardToken(poolEnv, {
+      chainBinding: { chainId: "84532", univocityAddr: "52".repeat(20) },
+    });
     const secondRoot = crypto.randomUUID();
     const secondRes = await worker.fetch(
       new Request(`http://localhost/api/forest/${secondRoot}/genesis`, {
@@ -225,7 +245,115 @@ describe("genesis onboard-token auth", () => {
       `forests/index/chain-binding/eip155:84532:0x${"52".repeat(20)}`,
     );
     expect(claim).not.toBeNull();
-    expect((await claim!.text()).trim()).toBe(firstRoot);
+    const record = JSON.parse(await claim!.text()) as {
+      state?: string;
+      r?: string;
+    };
+    expect(record.state).toBe("registered");
+    expect(record.r).toBe(firstRoot);
+  });
+
+  it("break-glass mint requires a chain binding and reserves the instance", async () => {
+    const noBinding = await worker.fetch(
+      new Request("http://localhost/api/payments/onboard-tokens", {
+        method: "POST",
+        headers: opsHeaders(),
+        body: encodeCborDeterministic(
+          new Map<number, unknown>([[1, "no-binding"]]),
+        ) as Uint8Array,
+      }),
+      envWithOps(),
+      {} as ExecutionContext,
+    );
+    expect(noBinding.status).toBe(400);
+
+    const mintBody = () =>
+      encodeCborDeterministic(
+        new Map<number, unknown>([
+          [1, "reserve-spec"],
+          [3, "84532"],
+          [4, "62".repeat(20)],
+        ]),
+      ) as Uint8Array;
+    const first = await worker.fetch(
+      new Request("http://localhost/api/payments/onboard-tokens", {
+        method: "POST",
+        headers: opsHeaders(),
+        body: mintBody(),
+      }),
+      envWithOps(),
+      {} as ExecutionContext,
+    );
+    expect(first.status).toBe(201);
+
+    // Second break-glass mint for the same instance: reservation conflict,
+    // and the just-minted token is revoked rather than left dangling.
+    const second = await worker.fetch(
+      new Request("http://localhost/api/payments/onboard-tokens", {
+        method: "POST",
+        headers: opsHeaders(),
+        body: mintBody(),
+      }),
+      envWithOps(),
+      {} as ExecutionContext,
+    );
+    expect(second.status).toBe(409);
+  });
+
+  it("ops chain-bindings route inspects and releases a reservation", async () => {
+    const id = `eip155:84532:0x${"63".repeat(20)}`;
+    const mint = await worker.fetch(
+      new Request("http://localhost/api/payments/onboard-tokens", {
+        method: "POST",
+        headers: opsHeaders(),
+        body: encodeCborDeterministic(
+          new Map<number, unknown>([
+            [1, "release-spec"],
+            [3, "84532"],
+            [4, "63".repeat(20)],
+          ]),
+        ) as Uint8Array,
+      }),
+      envWithOps(),
+      {} as ExecutionContext,
+    );
+    expect(mint.status).toBe(201);
+
+    const encoded = encodeURIComponent(id);
+    const got = await worker.fetch(
+      new Request(`http://localhost/api/payments/chain-bindings/${encoded}`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${OPS}` },
+      }),
+      envWithOps(),
+      {} as ExecutionContext,
+    );
+    expect(got.status).toBe(200);
+    const record = decodeCborAsObject(
+      new Uint8Array(await got.arrayBuffer()),
+    ) as { state?: string; holder?: string };
+    expect(record.state).toBe("reserved");
+    expect(record.holder).toMatch(/^token:/);
+
+    const released = await worker.fetch(
+      new Request(`http://localhost/api/payments/chain-bindings/${encoded}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${OPS}` },
+      }),
+      envWithOps(),
+      {} as ExecutionContext,
+    );
+    expect(released.status).toBe(200);
+
+    const gone = await worker.fetch(
+      new Request(`http://localhost/api/payments/chain-bindings/${encoded}`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${OPS}` },
+      }),
+      envWithOps(),
+      {} as ExecutionContext,
+    );
+    expect(gone.status).toBe(404);
   });
 
   it("rejects genesis POST without auth", async () => {
@@ -248,7 +376,9 @@ describe("genesis onboard-token auth", () => {
 describe("genesis endorsement-grant auth", () => {
   it("POST genesis with GF_DERIVED grant records regular registration", async () => {
     const paRoot = crypto.randomUUID();
-    const paToken = await mintOnboardToken(poolEnv);
+    const paToken = await mintOnboardToken(poolEnv, {
+      chainBinding: { chainId: "84532", univocityAddr: "42".repeat(20) },
+    });
     const paGenesis = await worker.fetch(
       new Request(`http://localhost/api/forest/${paRoot}/genesis`, {
         method: "POST",
@@ -324,7 +454,9 @@ describe("genesis endorsement-grant auth", () => {
 
   it("rejects genesis POST when grant lacks GF_DERIVED", async () => {
     const paRoot = crypto.randomUUID();
-    const paToken = await mintOnboardToken(poolEnv);
+    const paToken = await mintOnboardToken(poolEnv, {
+      chainBinding: { chainId: "84532", univocityAddr: "42".repeat(20) },
+    });
     await worker.fetch(
       new Request(`http://localhost/api/forest/${paRoot}/genesis`, {
         method: "POST",

@@ -6,10 +6,12 @@ export interface OnboardTokenChainBinding {
 }
 
 /**
- * Which gate admitted the holder: ops approval (including break-glass mint)
- * or x402 payment substituting for approval (ADR-0059 decision 3).
+ * Which gate admitted the holder: an operator's approval (including
+ * break-glass mint), x402 payment substituting for approval, or the dev
+ * auto-approve path — kept distinct so "ops" always means a person acted
+ * (ADR-0059 decision 3; plan-2607-02 F6).
  */
-export type OnboardAdmittedBy = "ops" | "payment";
+export type OnboardAdmittedBy = "ops" | "payment" | "auto";
 
 /** Persisted onboard-token metadata (token value is never stored). */
 export interface OnboardTokenRecord {

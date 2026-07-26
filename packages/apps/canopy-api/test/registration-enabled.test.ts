@@ -44,7 +44,9 @@ function opsHeaders(extra?: Record<string, string>): Record<string, string> {
 }
 
 async function registerPaymentAuthoritativeForest(): Promise<string> {
-  const minted = await mintOnboardToken(poolEnv);
+  const minted = await mintOnboardToken(poolEnv, {
+    chainBinding: { chainId: "84532", univocityAddr: "42".repeat(20) },
+  });
   const logId = crypto.randomUUID();
   const res = await worker.fetch(
     new Request(`http://localhost/api/forest/${logId}/genesis`, {

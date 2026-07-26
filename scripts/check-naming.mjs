@@ -28,6 +28,8 @@ const ALLOWLIST = {
     "asserts the dual-field shim, drops in slice 05",
   "packages/apps/delegation-coordinator/src/durableobjects/delegation-store.ts":
     "legacy column/value migration, drops when the migration retires",
+  "packages/apps/delegation-coordinator/src/legacy-instance-id.ts":
+    "legacy-form conversion, drops when migration and shim retire",
   "packages/apps/delegation-coordinator/src/handlers/put-webhook.ts":
     "deprecated request-field shim, drops in slice 05",
   "packages/apps/delegation-coordinator/src/handlers/instance-webhook.ts":

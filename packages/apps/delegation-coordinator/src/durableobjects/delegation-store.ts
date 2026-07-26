@@ -35,7 +35,11 @@ import type {
   InstanceWebhookResponse,
   PutInstanceWebhookRequest,
 } from "../types/instance-webhook.js";
-import { parseUnivocityInstanceId } from "@canopy/univocity-instance-id";
+import {
+  isUnivocityInstanceId,
+  parseUnivocityInstanceId,
+} from "@canopy/univocity-instance-id";
+import { univocityInstanceIdFromLegacyInstanceKey } from "../legacy-instance-id.js";
 import type { PutEnabledRequest } from "../types/put-enabled-request.js";
 import type { WebhookConfigResponse } from "../types/webhook-config-response.js";
 import type { EnabledResponse } from "../types/enabled-response.js";
@@ -67,23 +71,6 @@ import {
 
 /** `log_delegation_config.webhook_source` for a URL copied from the instance. */
 const WEBHOOK_SOURCE_INSTANCE = "instance";
-
-/** Legacy pre-ADR-0059 instance key form: `{decimalChainId}:{40hex}`. */
-const LEGACY_INSTANCE_KEY_PATTERN = /^([1-9][0-9]*):(0x)?([0-9a-f]{40})$/;
-
-/**
- * Render a stored legacy instance key as a canonical CAIP-10 univocity
- * instance id, or null when the value is not the legacy form. This file is
- * the only allowlisted holder of legacy-format knowledge (plan-2607-43
- * slice 01, D1/D6).
- */
-function univocityInstanceIdFromLegacyInstanceKey(
-  value: string,
-): string | null {
-  const match = LEGACY_INSTANCE_KEY_PATTERN.exec(value);
-  if (!match) return null;
-  return `eip155:${match[1]}:0x${match[3]}`;
-}
 
 /** `log_delegation_config.webhook_source` for a URL set directly on the log. */
 const WEBHOOK_SOURCE_LOG = "log";
@@ -617,38 +604,83 @@ export class DelegationStoreDO extends DurableObject<Env> {
   }
 
   /**
-   * Rewrite stored legacy `{chainId}:{40hex}` values to canonical CAIP-10
-   * (ADR-0059 D6). Runs every boot: canonical values never match the legacy
-   * form, so a completed rewrite is a no-op, and a crash between column rename
-   * and rewrite self-heals. Unconvertible values are kept as-is — with a
-   * warning — so no binding is silently dropped.
+   * Rewrite stored legacy-form values to canonical CAIP-10 (ADR-0059 D6).
+   * Runs every boot, so per-row idempotency is not enough: the method must
+   * CONVERGE over every reachable data state of each table. Rollout version
+   * skew — our own deploy-window shims writing canonical values ahead of
+   * this migration — can leave a legacy-keyed and a canonical-keyed
+   * `instance_webhooks` row for the same instance, so rewriting that primary
+   * key must handle target-exists: the legacy row is deleted and the
+   * canonical one kept. Keep-canonical is provable, not a judgment call:
+   * pre-cutover code never generated canonical values, so a canonical-keyed
+   * row is post-cutover and strictly newer than any legacy twin. Every other
+   * data problem degrades to a warning — this runs on the constructor path,
+   * where a throw is a crash loop on every shard, and no binding is silently
+   * dropped.
    */
   private rewriteLegacyUnivocityInstanceIds(): void {
-    for (const { table, rowKey } of [
-      { table: "log_delegation_config", rowKey: "log_id_hex32" },
-      { table: "instance_webhooks", rowKey: "univocity_instance_id" },
+    for (const { table, rowKey, keyIsUnique } of [
+      // univocity_instance_id is not unique in log_delegation_config; no
+      // collision handling needed there, only the non-fatal wrapper.
+      {
+        table: "log_delegation_config",
+        rowKey: "log_id_hex32",
+        keyIsUnique: false,
+      },
+      {
+        table: "instance_webhooks",
+        rowKey: "univocity_instance_id",
+        keyIsUnique: true,
+      },
     ]) {
       const rows = [
         ...this.ctx.storage.sql.exec(
           `SELECT ${rowKey} AS row_key, univocity_instance_id AS id
            FROM ${table}
-           WHERE univocity_instance_id IS NOT NULL
-             AND univocity_instance_id NOT LIKE 'eip155:%'`,
+           WHERE univocity_instance_id IS NOT NULL`,
         ),
       ] as { row_key: string; id: string }[];
       for (const row of rows) {
-        const canonical = univocityInstanceIdFromLegacyInstanceKey(row.id);
-        if (!canonical) {
-          console.warn(
-            `univocity_instance_id migration: ${table} value "${row.id}" is neither canonical nor legacy; left unchanged`,
+        try {
+          if (isUnivocityInstanceId(row.id)) continue;
+          const canonical = univocityInstanceIdFromLegacyInstanceKey(row.id);
+          if (!canonical) {
+            console.warn(
+              `univocity_instance_id migration: ${table} value "${row.id}" is neither canonical nor legacy; left unchanged`,
+            );
+            continue;
+          }
+          if (keyIsUnique) {
+            const collides =
+              [
+                ...this.ctx.storage.sql.exec(
+                  `SELECT 1 FROM ${table} WHERE ${rowKey} = ?`,
+                  canonical,
+                ),
+              ].length > 0;
+            if (collides) {
+              this.ctx.storage.sql.exec(
+                `DELETE FROM ${table} WHERE ${rowKey} = ?`,
+                row.row_key,
+              );
+              console.warn(
+                `univocity_instance_id migration: ${table} legacy row "${row.id}" collides with existing canonical "${canonical}"; legacy row deleted, canonical kept`,
+              );
+              continue;
+            }
+          }
+          this.ctx.storage.sql.exec(
+            `UPDATE ${table} SET univocity_instance_id = ? WHERE ${rowKey} = ?`,
+            canonical,
+            row.row_key,
           );
-          continue;
+        } catch (error) {
+          console.warn(
+            `univocity_instance_id migration: ${table} row "${row.row_key}" not rewritten: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
         }
-        this.ctx.storage.sql.exec(
-          `UPDATE ${table} SET univocity_instance_id = ? WHERE ${rowKey} = ?`,
-          canonical,
-          row.row_key,
-        );
       }
     }
   }

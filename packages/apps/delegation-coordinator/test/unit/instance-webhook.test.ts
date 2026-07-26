@@ -381,7 +381,11 @@ describe("instance webhook validation and auth", () => {
     expect(res.status).toBe(400);
   });
 
-  it("rejects a legacy-format value in either instance-binding body field", async () => {
+  // Superseded by the value-form shim (plan-2607-02 R5): for the deploy
+  // window a legacy value in either body field converts to canonical instead
+  // of rejecting. Strict rejection returns in plan-2607-43 slice 05; see
+  // webhook-legacy-instance-binding.test.ts for the conversion assertions.
+  it("accepts a legacy-format value in either instance-binding body field (R5 shim)", async () => {
     const legacy = `84532:${"ab".repeat(20)}`;
     for (const field of ["univocityInstanceId", "instanceKey"]) {
       const res = await fetchWithDoRetry(
@@ -392,7 +396,7 @@ describe("instance webhook validation and auth", () => {
           body: JSON.stringify({ [field]: legacy }),
         },
       );
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
     }
   });
 

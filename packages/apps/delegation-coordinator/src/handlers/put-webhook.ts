@@ -10,15 +10,22 @@
  * FOR-468). The copy is what keeps the delegation request path inside a single
  * shard; see {@link handlePutInstanceWebhook} for the fan-out that pays for it.
  * `instanceKey` is accepted as a deprecated alias for one deploy cycle
- * (plan-2607-43 slice 01; dropped in slice 05); values under either name must
- * be canonical CAIP-10 (ADR-0059 D1/D6).
+ * (plan-2607-43 slice 01; dropped in slice 05); values under either name are
+ * canonical CAIP-10 (ADR-0059 D1/D6), with legacy value forms converted for
+ * the same deploy window (plan-2607-02 R5). This handler is the only place
+ * legacy values are accepted: the deploy-window sender is old canopy-api's
+ * genesis forward, which lands here.
  *
  * `url` accepts either token; **`univocityInstanceId` requires the app
  * token**. An instance is not a log, so authority over one log says nothing
  * about the instance a caller may claim to belong to.
  */
 
-import { parseUnivocityInstanceId } from "@canopy/univocity-instance-id";
+import {
+  isUnivocityInstanceId,
+  parseUnivocityInstanceId,
+} from "@canopy/univocity-instance-id";
+import { univocityInstanceIdFromLegacyInstanceKey } from "../legacy-instance-id.js";
 import type { Env } from "../env.js";
 import { checkBearerToken } from "../auth/check-bearer-token.js";
 import { issuerTokenForLog } from "../auth/issuer-token-for-log.js";
@@ -56,6 +63,26 @@ export async function handlePutWebhook(
     const rawUrl = body.url?.trim() ?? "";
     const rawUnivocityInstanceId = body.univocityInstanceId?.trim() ?? "";
     const rawLegacyInstanceKey = body.instanceKey?.trim() ?? "";
+    if (rawLegacyInstanceKey) {
+      // Compatibility shim, dropped in plan-2607-43 slice 05.
+      console.warn(
+        "deprecated field instanceKey on PUT /api/logs/{logId}/webhook; send univocityInstanceId",
+      );
+    }
+    if (
+      rawUnivocityInstanceId &&
+      rawLegacyInstanceKey &&
+      rawUnivocityInstanceId !== rawLegacyInstanceKey
+    ) {
+      // Silently preferring one field would mask a sender bug for as long as
+      // the alias survives; two names may only ever carry one value.
+      return problemResponse(
+        400,
+        "about:blank",
+        "Invalid request",
+        "univocityInstanceId and deprecated instanceKey disagree; send one value",
+      );
+    }
     const rawInstanceId = rawUnivocityInstanceId || rawLegacyInstanceKey;
     if (!rawUrl && !rawInstanceId) {
       return problemResponse(
@@ -83,12 +110,6 @@ export async function handlePutWebhook(
     }
 
     if (rawInstanceId) {
-      if (!rawUnivocityInstanceId) {
-        // Compatibility shim, dropped in plan-2607-43 slice 05.
-        console.warn(
-          "deprecated field instanceKey on PUT /api/logs/{logId}/webhook; send univocityInstanceId",
-        );
-      }
       // Naming an instance copies that instance's webhook URL into this log's
       // row, so it must not be reachable with authority over this log alone.
       // The coordinator cannot check the claim — it treats the id as an opaque
@@ -106,8 +127,21 @@ export async function handlePutWebhook(
           "univocityInstanceId requires the coordinator app token",
         );
       }
+      let instanceId = rawInstanceId;
+      if (!isUnivocityInstanceId(instanceId)) {
+        // Value-form shim for the coordinator-first deploy window: old
+        // canopy-api's genesis forward still sends legacy-form values
+        // (plan-2607-02 R5). Drops in plan-2607-43 slice 05.
+        const converted = univocityInstanceIdFromLegacyInstanceKey(instanceId);
+        if (converted) {
+          console.warn(
+            "legacy instance id form on PUT /api/logs/{logId}/webhook; send canonical CAIP-10",
+          );
+          instanceId = converted;
+        }
+      }
       try {
-        forwarded.univocityInstanceId = parseUnivocityInstanceId(rawInstanceId);
+        forwarded.univocityInstanceId = parseUnivocityInstanceId(instanceId);
       } catch (error) {
         const detail =
           error instanceof Error

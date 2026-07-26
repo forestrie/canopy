@@ -47,7 +47,7 @@ function generateTokenValue(): string {
 
 export async function mintOnboardToken(
   env: OnboardTokenStoreEnv,
-  options: MintOnboardTokenOptions = {},
+  options: MintOnboardTokenOptions,
 ): Promise<MintOnboardTokenResult> {
   const token = generateTokenValue();
   const hash = await hashOnboardToken(token);

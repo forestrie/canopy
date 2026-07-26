@@ -41,6 +41,19 @@ Extended notes beyond [AGENTS.md](../../AGENTS.md) critical gotchas.
 - `packages/tests/canopy-api/tsconfig.json` uses `module: ES2022`,
   `moduleResolution: bundler` for `import.meta` in Playwright config.
 
+## DO migrations: DDL vs DML
+
+- A migration rewriting a **unique/PK column** must handle target-exists:
+  decide which row wins before the UPDATE, never discover the collision as a
+  constraint error.
+- Data-rewriting (DML) migrations run from a DO constructor path must be
+  **non-fatal per row** — a bad value degrades to a warning. Constructor-fatal
+  is only safe for additive DDL; a DML throw is a crash loop on every shard
+  that hides its own cause.
+- Version-skew states produced by **your own compatibility shims** during
+  rollout are part of the migration's input domain (e.g. canonical-keyed rows
+  written ahead of the coordinator deploy).
+
 ## pnpm 10
 
 - Skips dependency build scripts by default; wrangler handles workerd/esbuild internally.

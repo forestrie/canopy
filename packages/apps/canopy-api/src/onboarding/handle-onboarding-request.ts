@@ -23,6 +23,11 @@ import {
   type OnboardTokenStoreEnv,
 } from "../payments/onboard-token-store.js";
 import { shouldAutoApproveRequest } from "./onboard-auto-approve.js";
+import { tryUnivocityInstanceIdFromChainBinding } from "@canopy/univocity-instance-id";
+import {
+  requestHolder,
+  reserveUnivocityInstance,
+} from "../payments/instance-registry.js";
 import {
   checkOnboardCreateBodySize,
   checkOnboardCreateRateLimit,
@@ -157,10 +162,54 @@ function defaultTokenTtlSec(env: OnboardingHandlerEnv): number {
 
 type OnboardAdmission = "vetted" | "paid" | "either";
 
-function onboardAdmission(env: OnboardingHandlerEnv): OnboardAdmission {
+/**
+ * A set-but-unrecognised value is a misconfiguration, not a default: silently
+ * falling back to `either` would open payment on a deployment that intended
+ * `vetted` (plan-2607-02 F7). Fail closed, loudly.
+ */
+function onboardAdmission(
+  env: OnboardingHandlerEnv,
+): OnboardAdmission | Response {
   const raw = env.ONBOARD_ADMISSION?.trim().toLowerCase();
+  if (!raw || raw === "either") return "either";
   if (raw === "vetted" || raw === "paid") return raw;
-  return "either";
+  return problemResponse(500, "Internal Server Error", "about:blank", {
+    detail: "ONBOARD_ADMISSION must be one of vetted, paid, either",
+  });
+}
+
+/**
+ * Reserve the request's univocity instance for this request (ADR-0059
+ * decision 8): the reservation is taken at the admission moment, before any
+ * approval transition or mint, so a conflict can never consume a paid
+ * credential. Idempotent for this request's own retries. The 409 is
+ * deliberately anonymous — a foreign holder's requestId is not the caller's
+ * to learn; the ops chain-bindings route carries the detail.
+ */
+async function reserveForRequest(
+  env: OnboardingHandlerEnv,
+  record: OnboardRequestRecord,
+): Promise<Response | null> {
+  const univocityInstanceId = tryUnivocityInstanceIdFromChainBinding(
+    record.chainBinding,
+  );
+  if (!univocityInstanceId) {
+    return problemResponse(500, "Internal Server Error", "about:blank", {
+      detail:
+        "onboard request chain binding cannot render a univocity instance id",
+    });
+  }
+  const reserved = await reserveUnivocityInstance(
+    env,
+    univocityInstanceId,
+    requestHolder(record.requestId),
+  );
+  if (!reserved.ok) {
+    return ClientErrors.conflict(
+      "Univocity instance is already reserved or registered",
+    );
+  }
+  return null;
 }
 
 function maxPendingPerBinding(env: OnboardingHandlerEnv): number {
@@ -338,7 +387,9 @@ async function handleCreateRequest(
     if (approved instanceof Response) {
       return attachCors(approved, corsHeaders);
     }
-    finalRecord = approved;
+    // Recorded so redeem can mint admittedBy "auto" rather than "ops" (F6).
+    finalRecord = { ...approved, autoApproved: true };
+    await writeOnboardRequest(env, finalRecord);
     scheduleOnboardWebhook(ctx, env, "onboard.request.approved", {
       requestId: finalRecord.requestId,
     });
@@ -425,7 +476,10 @@ async function handleRedeem(
   if (status === "pending") {
     // Admission policy (ADR-0059 decision 3): under `vetted`, payment is never
     // solicited — a pending request waits for ops approval and redeem says so.
-    if (onboardAdmission(env) === "vetted") {
+    const admission = onboardAdmission(env);
+    if (admission instanceof Response)
+      return attachCors(admission, corsHeaders);
+    if (admission === "vetted") {
       return attachCors(
         ClientErrors.conflict(
           "Request awaiting operator approval; this deployment does not accept payment as approval.",
@@ -463,6 +517,14 @@ async function handleRedeem(
       );
     }
 
+    // Payment-auth claim BEFORE the reservation is load-bearing: verify is
+    // stateless, so reserving first would let a replayed, never-settling
+    // authorization buy reservations. On a reserve conflict the claimed auth
+    // moves no money (settlement is only enqueued after mint) — the caller
+    // signs afresh and lost nothing.
+    const reserveErr = await reserveForRequest(env, record);
+    if (reserveErr) return attachCors(reserveErr, corsHeaders);
+
     // Valid, unused payment approves the request. CAS makes approve
     // exactly-once; a concurrent ops-approve/redeem falls through to the gate.
     const approve = await transitionPendingToApprovedCas(env, requestId);
@@ -495,6 +557,11 @@ async function handleRedeem(
     );
   }
 
+  // Ops-approved (and vetted) entries reserve here; the paid branch above
+  // already holds the reservation and this repeat is idempotent per holder.
+  const approvedReserveErr = await reserveForRequest(env, record);
+  if (approvedReserveErr) return attachCors(approvedReserveErr, corsHeaders);
+
   const transition = await transitionApprovedToRedeemedCas(env, requestId);
   if (!transition.ok) {
     if (transition.reason === "not_found") {
@@ -523,8 +590,13 @@ async function handleRedeem(
     chainBinding: transition.record.chainBinding,
     expiry: now + defaultTokenTtlSec(env),
     // A settlement job exists only when payment approved the request on this
-    // call; every other path through here was ops-approved.
-    admittedBy: settlementJob ? "payment" : "ops",
+    // call; otherwise distinguish the dev auto-approve path from a real
+    // operator action so "ops" always means a person acted (F6).
+    admittedBy: settlementJob
+      ? "payment"
+      : transition.record.autoApproved
+        ? "auto"
+        : "ops",
   });
 
   const withRef: OnboardRequestRecord = {

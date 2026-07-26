@@ -253,4 +253,79 @@ describe("admission policy (ADR-0059 decision 3)", () => {
     expect(body.token).toBeTruthy();
     expect(send).not.toHaveBeenCalled();
   });
+
+  it("rejects redeem with 500 on an unknown ONBOARD_ADMISSION value", async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
+    const e = envWith(send, {
+      ONBOARD_AUTO_APPROVE: "false",
+      ONBOARD_ADMISSION: "everyone-welcome",
+    } as Partial<Env>);
+    const { requestId, redeemCode } = await createRequest(e, "bad-admission");
+    const res = await redeem(e, requestId!, redeemCode!);
+    // Misconfiguration fails closed and loudly, never silently as `either`.
+    expect(res.status).toBe(500);
+    expect(send).not.toHaveBeenCalled();
+  });
+});
+
+describe("instance reservation at redeem (ADR-0059 decision 8)", () => {
+  it("409s an ops-approved redeem when the instance is already reserved, without minting", async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
+    const e = envWith(send, { ONBOARD_AUTO_APPROVE: "false" } as Partial<Env>);
+
+    // A foreign holder reserves the same instance first (break-glass path).
+    const { reserveUnivocityInstance, tokenHolder } = await import(
+      "../src/payments/instance-registry.js"
+    );
+    const { tryUnivocityInstanceIdFromChainBinding } = await import(
+      "@canopy/univocity-instance-id"
+    );
+    const id = tryUnivocityInstanceIdFromChainBinding({
+      chainId: CHAIN,
+      univocityAddr: DEPLOYED_ADDR,
+    })!;
+    const held = await reserveUnivocityInstance(
+      e,
+      id,
+      tokenHolder("f".repeat(64)),
+    );
+    expect(held.ok).toBe(true);
+
+    const { requestId, redeemCode } = await createRequest(e, "contested");
+    const approveRes = await worker.fetch(
+      new Request(
+        `http://localhost/api/onboarding/requests/${requestId}/approve`,
+        { method: "POST", headers: { Authorization: `Bearer ${OPS}` } },
+      ),
+      e,
+      testCtx,
+    );
+    expect(approveRes.status).toBe(200);
+
+    const res = await redeem(e, requestId!, redeemCode!);
+    // Anonymous 409: a foreign holder's identity is not the caller's to
+    // learn. Nothing minted, nothing settled.
+    expect(res.status).toBe(409);
+    expect(send).not.toHaveBeenCalled();
+    const tokens = await import("../src/payments/onboard-token-store.js");
+    const listed = await tokens.listOnboardTokens(e);
+    expect(listed.some((t) => t.requestId === requestId)).toBe(false);
+  });
+
+  it("mints admittedBy auto for an auto-approved request", async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
+    const e = envWith(send, {
+      ONBOARD_AUTO_APPROVE: "true",
+      ONBOARD_AUTO_APPROVE_CHAIN_IDS: CHAIN,
+    } as Partial<Env>);
+
+    const { requestId, redeemCode } = await createRequest(e, "auto-onboard");
+    const res = await redeem(e, requestId!, redeemCode!);
+    expect(res.status).toBe(200);
+
+    const tokens = await import("../src/payments/onboard-token-store.js");
+    const listed = await tokens.listOnboardTokens(e);
+    const minted = listed.find((t) => t.requestId === requestId);
+    expect(minted?.admittedBy).toBe("auto");
+  });
 });
