@@ -1,5 +1,27 @@
 # plan-0052 — FOR-468 instance webhooks: review remediation
 
+> [!WARNING]
+> **IN PROGRESS — parts of this plan are currently self-contradictory. Do not
+> implement M1 or M4 as written.**
+>
+> M1/M4 specify adopting **CAIP-10 for both identifiers**. That decision was
+> taken before the review established that the fee-liability model itself is
+> unsettled, and it is now **superseded**:
+>
+> - Whether there are two identifiers at all depends on which root is liable for
+>   checkpoint fees — see
+>   [FOR-475](https://linear.app/forestrie/issue/FOR-475). Under own-root billing
+>   they collapse to one and **M4 dissolves**.
+> - The current standing guidance is: instance-webhook identifier → **root log
+>   UUID** (settled either way, and it keeps chain formats out of the
+>   coordinator); fee-account identifier **deferred** until FOR-475 lands.
+> - **M5 should be landed regardless** — its uniqueness index is the hedge that
+>   gives a reliable root-UUID ↔ `chainBinding` join whichever way FOR-475 goes.
+>
+> H1 is fixed and shipped. H2, M2, M3, M5 and L1–L5 are unaffected by FOR-475 and
+> may proceed. Current state of the workstream lives in devdocs
+> `status/status-2607-11-for-468-instance-webhooks-and-fee-liability.md`.
+
 **Status:** DRAFT
 **Date:** 2026-07-25
 **Related:**
@@ -7,7 +29,7 @@
 - Spec: [ADR-0005 amendment 2026-07-25](../adr/adr-0005-delegation-webhook-delivery.md),
   "Instance-level webhooks, inherited by copy"
 - Design: [ARC univocity instance registration](../arc/arc-univocity-instance-registration.md)
-- Linear: FOR-468
+- Linear: FOR-468; blocked-by [FOR-475](https://linear.app/forestrie/issue/FOR-475) (authorization and payment attribution)
 - PR under review: [canopy#174](https://github.com/forestrie/canopy/pull/174),
   branch `robin/webhook-instance-inherit`, diff `main...HEAD` (+1619/−56, 22 files)
 - Review lens: distributed systems / applied cryptography (backend implementation)
@@ -162,7 +184,11 @@ worth stating explicitly.
 - ADR-0005 "What shipped" records that this path now also registers the public
   root, not only the instance binding.
 
-### M1 — one canonical identifier format: CAIP-10
+### M1 — one canonical identifier format
+
+> **Superseded in part — see the warning at the top.** The CAIP-10 decision
+> below is on hold pending [FOR-475](https://linear.app/forestrie/issue/FOR-475).
+> The _problem_ statement stands; the _chosen form_ does not.
 
 **Decision (2026-07-26):** both identifiers adopt **CAIP-10**, and both are
 renamed off "key" — see M4. This section covers the format; M4 covers keeping
@@ -235,6 +261,10 @@ and `instance_webhooks` does not exist yet because #174 is unmerged. This is a
 definition change today and a live-data migration afterwards.
 
 ### M4 — two identifiers, one format: keep them apart by type
+
+> **May dissolve entirely — see the warning at the top.** If checkpoint fees are
+> billed to the log's own univocity root ([FOR-475](https://linear.app/forestrie/issue/FOR-475)),
+> there is one identifier and this finding goes away.
 
 Adopting CAIP-10 for both (M1) buys one parser and one spelling, and gives up
 the structural separation a differing representation would have provided. The
