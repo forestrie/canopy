@@ -10,7 +10,7 @@ export default defineWorkersConfig({
   test: {
     globals: true,
     pool: "@cloudflare/vitest-pool-workers",
-    exclude: ["**/node_modules/**", "test/receivables.test.ts"],
+    exclude: ["**/node_modules/**", "test/receivables*.test.ts"],
     poolOptions: {
       workers: {
         singleWorker: true,

@@ -17,7 +17,7 @@ export default defineWorkersProject({
   test: {
     globals: true,
     name: "receivables",
-    include: ["test/receivables.test.ts"],
+    include: ["test/receivables*.test.ts"],
     poolOptions: {
       workers: {
         singleWorker: true,

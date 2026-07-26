@@ -484,3 +484,165 @@ describe("runCheckpointIndexer", () => {
     expect(summary.accounts).toBe(0);
   });
 });
+
+describe("runCheckpointIndexer — starter credits (slice 04)", () => {
+  it("grants configured starter credits at first sight, idempotently", async () => {
+    const { fetchImpl } = stubRpc({ head: 2006, logs: [] });
+    globalThis.fetch = fetchImpl;
+    const starterEnv = { ...typedEnv, STARTER_CREDITS: "25" } as Env;
+    await runCheckpointIndexer(starterEnv);
+    const state = await stubOf(INSTANCE_ID).getIndexState(INSTANCE_ID);
+    expect(state.entitlement?.creditsBalance).toBe(25);
+    // A later sweep must not re-grant (the watermark exists; not first sight).
+    globalThis.fetch = stubRpc({ head: 2012, logs: [] }).fetchImpl;
+    await runCheckpointIndexer(starterEnv);
+    const after = await stubOf(INSTANCE_ID).getIndexState(INSTANCE_ID);
+    expect(after.entitlement?.creditsBalance).toBe(25);
+  });
+});
+
+describe("runCheckpointIndexer — enforcement (slice 04, ENFORCEMENT_ARMED)", () => {
+  const API_ORIGIN = "https://api.test.invalid";
+
+  function armedEnv(): Env {
+    return {
+      ...typedEnv,
+      ENFORCEMENT_ARMED: "true",
+      CANOPY_API_ORIGIN: API_ORIGIN,
+      CANOPY_OPS_ADMIN_TOKEN: "vitest-x402-ops-token",
+    } as Env;
+  }
+
+  /** Route enforcement PUTs to a recorder; everything else to the RPC stub. */
+  function stubWithEnforcement(rpc: ReturnType<typeof stubRpc>) {
+    const puts: { url: string; enabled: boolean; auth: string | null }[] = [];
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const url = String(input);
+      if (url.startsWith(API_ORIGIN)) {
+        const body = JSON.parse(String(init?.body)) as { enabled: boolean };
+        puts.push({
+          url,
+          enabled: body.enabled,
+          auth: new Headers(init?.headers).get("Authorization"),
+        });
+        return new Response(JSON.stringify({ enabled: body.enabled }), {
+          status: 200,
+        });
+      }
+      return (
+        rpc.fetchImpl as (
+          i: RequestInfo | URL,
+          n?: RequestInit,
+        ) => Promise<Response>
+      )(input, init);
+    }) as typeof fetch;
+    return puts;
+  }
+
+  async function driveInArrears(env: Env): Promise<void> {
+    await stubOf(INSTANCE_ID).applyCheckpointEvents(ACCOUNT, [], 1000);
+    const logs = [
+      rpcLog({ txHash: "0xe1", logIndex: 0, block: 1500, logKind: 1, size: 1 }),
+    ];
+    stubWithEnforcement(stubRpc({ head: 2006, logs }));
+    await runCheckpointIndexer(env);
+  }
+
+  it("freezes an in-arrears account once and records the marker", async () => {
+    const env = armedEnv();
+    await stubOf(INSTANCE_ID).applyCheckpointEvents(ACCOUNT, [], 1000);
+    const logs = [
+      rpcLog({ txHash: "0xe1", logIndex: 0, block: 1500, logKind: 1, size: 1 }),
+    ];
+    const puts = stubWithEnforcement(stubRpc({ head: 2006, logs }));
+    const summary = await runCheckpointIndexer(env);
+    expect(summary.errors).toBe(0);
+    expect(puts).toHaveLength(1);
+    expect(puts[0]!.enabled).toBe(false);
+    expect(puts[0]!.url).toBe(
+      `${API_ORIGIN}/api/payments/admin/registrations/${encodeURIComponent(ACCOUNT.root)}/enabled`,
+    );
+    expect(puts[0]!.auth).toBe("Bearer vitest-x402-ops-token");
+    const state = await stubOf(INSTANCE_ID).getIndexState(INSTANCE_ID);
+    expect(state.entitlement?.enforcementFrozen).toBe(true);
+
+    // Second sweep, still in arrears: no second flip.
+    const puts2 = stubWithEnforcement(stubRpc({ head: 2012, logs: [] }));
+    await runCheckpointIndexer(env);
+    expect(puts2).toHaveLength(0);
+  });
+
+  it("unfreezes only what it froze, after a top-up recovers the balance", async () => {
+    const env = armedEnv();
+    await driveInArrears(env);
+    await stubOf(INSTANCE_ID).recordPayment(ACCOUNT, "credits:topup", 10);
+
+    const puts = stubWithEnforcement(stubRpc({ head: 2012, logs: [] }));
+    await runCheckpointIndexer(env);
+    expect(puts).toHaveLength(1);
+    expect(puts[0]!.enabled).toBe(true);
+    const state = await stubOf(INSTANCE_ID).getIndexState(INSTANCE_ID);
+    expect(state.entitlement?.enforcementFrozen).toBe(false);
+  });
+
+  it("never unfreezes a current account it did not freeze (manual ops freeze)", async () => {
+    const env = armedEnv();
+    // Account current, marker false — a manual ops freeze is indistinguishable
+    // here, and the indexer must not touch the switch.
+    await stubOf(INSTANCE_ID).applyCheckpointEvents(ACCOUNT, [], 1000);
+    await stubOf(INSTANCE_ID).recordPayment(ACCOUNT, "credits:seed", 5);
+    const puts = stubWithEnforcement(stubRpc({ head: 2006, logs: [] }));
+    const summary = await runCheckpointIndexer(env);
+    expect(summary.errors).toBe(0);
+    expect(puts).toHaveLength(0);
+  });
+
+  it("counts an error when armed without CANOPY_API_ORIGIN, and does not mark frozen", async () => {
+    const env = {
+      ...typedEnv,
+      ENFORCEMENT_ARMED: "true",
+      CANOPY_OPS_ADMIN_TOKEN: "vitest-x402-ops-token",
+    } as Env;
+    await stubOf(INSTANCE_ID).applyCheckpointEvents(ACCOUNT, [], 1000);
+    const logs = [
+      rpcLog({ txHash: "0xe2", logIndex: 0, block: 1500, logKind: 1, size: 1 }),
+    ];
+    globalThis.fetch = stubRpc({ head: 2006, logs }).fetchImpl;
+    const summary = await runCheckpointIndexer(env);
+    expect(summary.errors).toBe(1);
+    const state = await stubOf(INSTANCE_ID).getIndexState(INSTANCE_ID);
+    expect(state.entitlement?.enforcementFrozen).toBe(false);
+  });
+
+  it("stays hands-off when not armed", async () => {
+    const puts: unknown[] = [];
+    await stubOf(INSTANCE_ID).applyCheckpointEvents(ACCOUNT, [], 1000);
+    const logs = [
+      rpcLog({ txHash: "0xe3", logIndex: 0, block: 1500, logKind: 1, size: 1 }),
+    ];
+    const rpc = stubRpc({ head: 2006, logs });
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      if (String(input).startsWith(API_ORIGIN)) {
+        puts.push(input);
+        return new Response("{}", { status: 200 });
+      }
+      return (
+        rpc.fetchImpl as (
+          i: RequestInfo | URL,
+          n?: RequestInit,
+        ) => Promise<Response>
+      )(input, init);
+    }) as typeof fetch;
+    await runCheckpointIndexer(typedEnv);
+    expect(puts).toHaveLength(0);
+    const state = await stubOf(INSTANCE_ID).getIndexState(INSTANCE_ID);
+    expect(state.entitlement?.arrears).toBe("in-arrears");
+    expect(state.entitlement?.enforcementFrozen).toBe(false);
+  });
+});

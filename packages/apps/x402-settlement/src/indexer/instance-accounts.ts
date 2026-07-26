@@ -60,3 +60,36 @@ export async function listRegisteredAccounts(
   } while (cursor);
   return accounts;
 }
+
+/**
+ * Read one registered account by id (slice 04: the credits settlement path
+ * needs the full AccountRef — the root comes from the registry, not the job).
+ * Returns null for missing, unparseable, unregistered, or non-canonical
+ * records.
+ */
+export async function readRegisteredAccount(
+  bucket: R2Bucket,
+  univocityInstanceId: string,
+): Promise<AccountRef | null> {
+  const got = await bucket.get(`${RESERVATION_PREFIX}${univocityInstanceId}`);
+  if (!got) return null;
+  let record: ReservationJson;
+  try {
+    record = JSON.parse(await got.text()) as ReservationJson;
+  } catch {
+    return null;
+  }
+  if (record.state !== "registered" || !record.r) return null;
+  let binding: { chainId: string; univocityAddr: string };
+  try {
+    binding = chainBindingFromUnivocityInstanceId(univocityInstanceId);
+  } catch {
+    return null;
+  }
+  return {
+    univocityInstanceId,
+    chainId: binding.chainId,
+    univocityAddr: binding.univocityAddr,
+    root: record.r,
+  };
+}

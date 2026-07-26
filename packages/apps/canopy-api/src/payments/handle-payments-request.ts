@@ -47,10 +47,16 @@ import {
   tokenHolder,
 } from "./instance-registry.js";
 
+import {
+  handleCreditsPurchase,
+  type CreditsPurchaseEnv,
+} from "./credits-purchase.js";
+
 export interface PaymentsHandlerEnv
   extends OnboardTokenStoreEnv,
     RegistrationStoreEnv,
-    CoordinatorEnabledClientEnv {
+    CoordinatorEnabledClientEnv,
+    CreditsPurchaseEnv {
   CANOPY_OPS_ADMIN_TOKEN?: string;
 }
 
@@ -235,6 +241,19 @@ export async function handlePaymentsRequest(
 ): Promise<Response | null> {
   if (pathname !== "/api/payments" && !pathname.startsWith("/api/payments/")) {
     return null;
+  }
+
+  // Payer-facing purchase — the ONLY route under /api/payments/** outside the
+  // ops bearer gate. The x402 payment is the authorization (as on onboard
+  // redeem); everything else below remains ops-token-gated.
+  const creditsMatch = /^\/api\/payments\/credits\/([^/]+)$/.exec(pathname);
+  if (creditsMatch) {
+    return handleCreditsPurchase(
+      request,
+      decodeURIComponent(creditsMatch[1]!),
+      env,
+      corsHeaders,
+    );
   }
 
   const isAdminJsonRoute = pathname.startsWith("/api/payments/admin/");

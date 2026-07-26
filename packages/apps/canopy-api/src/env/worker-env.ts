@@ -33,6 +33,8 @@ export interface Env {
   X402_PAYTO_ADDRESS?: string;
   /** Onboard-token price in atomic USDC (FOR-434; default $0.01 = "10000"). */
   X402_ONBOARD_PRICE_ATOMIC?: string;
+  /** Atomic USDC per checkpoint credit (slice 04); FOR-438 sets real numbers. */
+  X402_CREDIT_PRICE_ATOMIC?: string;
   // Massif height for this transparency log (1-based, typically 14)
   MASSIF_HEIGHT: string;
   // Number of DO shards for the sequencing queue (typically 4)

@@ -24,6 +24,7 @@ import {
   fetchCheckpointEvents,
   fetchScanBound,
 } from "./checkpoint-log-source.js";
+import { enforceAccount } from "./enforcement.js";
 import { listRegisteredAccounts } from "./instance-accounts.js";
 
 /** Fallback confirmations when a chain does not serve the `safe` tag. */
@@ -107,7 +108,9 @@ async function indexAccount(
 
   if (scanBound < 0) return { scanned: 0, applied: 0 };
 
-  const { lastBlock } = await stub.getIndexState(account.univocityInstanceId);
+  const state = await stub.getIndexState(account.univocityInstanceId);
+  const lastBlock = state.lastBlock;
+  let entitlement = state.entitlement;
 
   let from: number;
   if (lastBlock !== null) {
@@ -118,6 +121,19 @@ async function indexAccount(
     // First sight: initialise the watermark at the scan bound and observe
     // forward only. Recorded, so the choice is auditable.
     await stub.applyCheckpointEvents(account, [], scanBound);
+    // Starter credits (slice 04): granted the moment metering starts, so a
+    // fresh account is not born frozen once armed. Idempotent per account.
+    const starter = intFromEnv(env.STARTER_CREDITS, 0);
+    if (starter > 0) {
+      await stub.recordPayment(
+        account,
+        `starter:${account.univocityInstanceId}`,
+        starter,
+      );
+      console.log(
+        `indexer: ${account.univocityInstanceId} granted ${starter} starter credits`,
+      );
+    }
     console.log(
       `indexer: ${account.univocityInstanceId} watermark initialised at ${scanBound} (observe-forward)`,
     );
@@ -136,7 +152,7 @@ async function indexAccount(
       from,
       to,
     );
-    const entitlement = await stub.applyCheckpointEvents(
+    entitlement = await stub.applyCheckpointEvents(
       account,
       events.map((e) => ({
         idempotencyKey: e.idempotencyKey,
@@ -147,15 +163,15 @@ async function indexAccount(
     );
     scanned += 1;
     applied += events.length;
-    if (entitlement.arrears === "in-arrears") {
-      console.log(
-        `indexer[observe-only]: ${account.univocityInstanceId} in arrears ` +
-          `(balance ${entitlement.creditsBalance} < floor ${entitlement.creditFloor}); ` +
-          `ENFORCEMENT_ARMED is not set — kill switch untouched`,
-      );
-    }
     from = to + 1;
     ranges += 1;
+  }
+
+  // Reconcile the kill switch with the (possibly unchanged) posture every
+  // sweep — recovery via a credits purchase must unfreeze without waiting
+  // for new chain events. Observe-only logging lives in enforceAccount.
+  if (entitlement) {
+    await enforceAccount(env, stub, entitlement);
   }
   return { scanned, applied };
 }

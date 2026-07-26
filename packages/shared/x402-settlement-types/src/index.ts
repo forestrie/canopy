@@ -86,7 +86,7 @@ export interface PaymentPayload {
  * plan-2607-38). `statement` is the withdrawn per-registration model, retained
  * so a revived producer has a name.
  */
-export type SettlementKind = "onboard" | "grant" | "statement";
+export type SettlementKind = "onboard" | "grant" | "statement" | "credits";
 
 /**
  * Settlement job emitted by canopy-api and consumed by x402-settlement worker.
@@ -118,7 +118,15 @@ export interface SettlementJob {
   /** SHA-256 content hash of the registered statement — `statement` kind. */
   contentHash?: string;
   /**
+   * Fee account the purchase lands on (ADR-0059: the account id is the one
+   * off-chain memo binding a transfer to an account) — `credits` kind only.
+   */
+  univocityInstanceId?: string;
+  /** Number of checkpoint credits purchased — `credits` kind only. */
+  credits?: number;
+  /**
    * Dedup key. Onboard: `onboard:{requestId}:{authNonce}`.
+   * Credits: `credits:{univocityInstanceId}:{authNonce}`.
    * Statement (legacy): `{authId}:{contentHash}:{logId}`.
    */
   idempotencyKey: string;

@@ -26,6 +26,8 @@
     // Accrual indexer (plan-2607-43 slice 03). Observe-only until slice 04.
     "SUPPORTED_CHAINS_RPC": "{\"84532\":[\"https://sepolia.base.org\"]}",
     "ENFORCEMENT_ARMED": "false",
+    "CANOPY_API_ORIGIN": "",
+    "STARTER_CREDITS": "0",
   },
   // Reservation registry, read-only by convention (writer: canopy-api).
   "r2_buckets": [
@@ -73,6 +75,10 @@
         "SETTLE_TIMEOUT_MS": "5000",
         "SUPPORTED_CHAINS_RPC": "{\"84532\":[\"https://sepolia.base.org\"]}",
         "ENFORCEMENT_ARMED": "false",
+        "CANOPY_API_ORIGIN": "",
+        "STARTER_CREDITS": "0",
+        "CANOPY_API_ORIGIN": "",
+        "STARTER_CREDITS": "0",
       },
       // Accrual indexer sweep (slice 03); resumable, so cadence is a
       // freshness knob, not a correctness one.

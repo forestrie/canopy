@@ -207,6 +207,28 @@ if (vars) {
     "SUPPORTED_CHAINS_RPC",
     process.env.SUPPORTED_CHAINS_RPC?.trim(),
   );
+  // Kill-switch proxy target (plan-2607-43 slice 04): derived from the same
+  // CANOPY_FQDN the canopy-api deploy uses, so the armed indexer flips the
+  // switch through its own lane. Arming itself and starter credits are plain
+  // GitHub Environment vars — the "config flip" is a var change + redeploy.
+  const canopyFqdnRaw = process.env.CANOPY_FQDN?.trim();
+  varsBlock = setStringProperty(
+    varsBlock,
+    "CANOPY_API_ORIGIN",
+    canopyFqdnRaw
+      ? `https://${canopyFqdnRaw.replace(/^https?:\/\//, "")}`
+      : undefined,
+  );
+  varsBlock = setStringProperty(
+    varsBlock,
+    "ENFORCEMENT_ARMED",
+    process.env.ENFORCEMENT_ARMED?.trim(),
+  );
+  varsBlock = setStringProperty(
+    varsBlock,
+    "STARTER_CREDITS",
+    process.env.STARTER_CREDITS?.trim(),
+  );
   envBlock = replaceRange(envBlock, vars, varsBlock);
 }
 
@@ -236,6 +258,12 @@ const resolvedNetwork =
 const resolvedChains = /"SUPPORTED_CHAINS_RPC"\s*:\s*"/.test(envBlock)
   ? "set"
   : "ABSENT";
+const resolvedArmed =
+  /"ENFORCEMENT_ARMED"\s*:\s*"([^"]*)"/.exec(envBlock)?.[1] ?? "";
+const resolvedCanopyOrigin =
+  /"CANOPY_API_ORIGIN"\s*:\s*"([^"]*)"/.exec(envBlock)?.[1] ?? "";
 console.log(`resolved:X402_FACILITATOR_URL=${resolvedFacilitator}`);
 console.log(`resolved:X402_NETWORK=${resolvedNetwork}`);
 console.log(`resolved:SUPPORTED_CHAINS_RPC=${resolvedChains}`);
+console.log(`resolved:ENFORCEMENT_ARMED=${resolvedArmed}`);
+console.log(`resolved:CANOPY_API_ORIGIN=${resolvedCanopyOrigin}`);

@@ -16,6 +16,7 @@ import { X402SettlementDO } from "./durableobjects/x402settlement.js";
 import { ReceivablesDO } from "./durableobjects/receivables.js";
 import { generateCdpJwt, facilitatorRequiresAuth } from "./cdp-jwt.js";
 import { runCheckpointIndexer } from "./indexer/run-indexer.js";
+import { readRegisteredAccount } from "./indexer/instance-accounts.js";
 import type { Env } from "./env.js";
 
 export { X402SettlementDO };
@@ -103,6 +104,25 @@ export default {
             jobId: job.jobId,
             txHash: result.txHash,
           });
+          // Credits land only after on-chain settlement (slice 04). Failure
+          // to credit RETRIES the message — processJob is idempotent (cached
+          // settled result), so redelivery converges on the credit landing.
+          if (job.kind === "credits") {
+            try {
+              await creditSettledPurchase(env, job, result.txHash);
+            } catch (err) {
+              console.error(
+                "Settled credits purchase failed to credit; retrying",
+                {
+                  jobId: job.jobId,
+                  idempotencyKey: job.idempotencyKey,
+                  error: err instanceof Error ? err.message : String(err),
+                },
+              );
+              message.retry();
+              continue;
+            }
+          }
         } else {
           // Settlement failed - DO has recorded the failure and updated auth state.
           // We always ack to avoid DLQ; auth blocking provides visibility.
@@ -173,6 +193,66 @@ export default {
       return handleResetAuth(request, env);
     }
 
+    // Admin: watermark-set tool (plan-2607-03 R2 residual — the recorded
+    // arming gate): move a stalled account's cursor forward past a poisoned
+    // range without a deploy. Forward-only; the DO rejects rewinds.
+    const watermarkMatch = /^\/admin\/receivables\/([^/]+)\/watermark$/.exec(
+      url.pathname,
+    );
+    if (watermarkMatch && request.method === "PUT") {
+      const authErr = adminBearerOrUnauthorized(request, env);
+      if (authErr) return authErr;
+      const id = decodeURIComponent(watermarkMatch[1]!);
+      if (!isUnivocityInstanceId(id)) {
+        return jsonResponse(
+          { error: "path id must be a canonical univocity instance id" },
+          400,
+        );
+      }
+      let body: {
+        chainId?: unknown;
+        univocityAddr?: unknown;
+        lastBlock?: unknown;
+      };
+      try {
+        body = (await request.json()) as typeof body;
+      } catch {
+        return jsonResponse({ error: "invalid JSON body" }, 400);
+      }
+      if (
+        typeof body.chainId !== "string" ||
+        typeof body.univocityAddr !== "string" ||
+        typeof body.lastBlock !== "number"
+      ) {
+        return jsonResponse(
+          { error: "body requires chainId, univocityAddr, lastBlock" },
+          400,
+        );
+      }
+      const stub = env.RECEIVABLES_DO.get(env.RECEIVABLES_DO.idFromName(id));
+      try {
+        const result = await stub.setWatermark(
+          id,
+          body.chainId,
+          body.univocityAddr,
+          body.lastBlock,
+        );
+        return jsonResponse({
+          univocityInstanceId: id,
+          lastBlock: result.lastBlock,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("forward-only")) {
+          return jsonResponse({ error: msg }, 409);
+        }
+        if (msg.includes("no account bound")) {
+          return jsonResponse({ error: msg }, 404);
+        }
+        return jsonResponse({ error: msg }, 400);
+      }
+    }
+
     // Admin: receivables status read — the observe-only soak's observability
     // (plan-2607-43 slice 03): entitlement + the source watermark.
     const receivablesMatch = /^\/admin\/receivables\/([^/]+)$/.exec(
@@ -214,6 +294,50 @@ export default {
     ctx.waitUntil(runCheckpointIndexer(env));
   },
 };
+
+/**
+ * Credit a settled `kind="credits"` job to its ReceivablesDO account
+ * (plan-2607-43 slice 04). The AccountRef is rebuilt from the reservation
+ * registry — the root is not trusted from the job. Throws on any failure so
+ * the queue message retries; `recordPayment` is idempotent on the job's
+ * idempotencyKey, so redelivery cannot double-credit.
+ */
+async function creditSettledPurchase(
+  env: Env,
+  job: SettlementJob,
+  txHash: string | undefined,
+): Promise<void> {
+  const id = job.univocityInstanceId;
+  const credits = job.credits;
+  if (!id || !isUnivocityInstanceId(id)) {
+    throw new Error(
+      `credits job ${job.jobId} has no valid univocityInstanceId`,
+    );
+  }
+  if (!Number.isInteger(credits) || (credits as number) < 1) {
+    throw new Error(`credits job ${job.jobId} has no valid credits count`);
+  }
+  if (!env.R2_GRANTS) {
+    throw new Error("R2_GRANTS binding absent; cannot resolve account");
+  }
+  const account = await readRegisteredAccount(env.R2_GRANTS, id);
+  if (!account) {
+    throw new Error(`no registered account for ${id}`);
+  }
+  const stub = env.RECEIVABLES_DO.get(env.RECEIVABLES_DO.idFromName(id));
+  const entitlement = await stub.recordPayment(
+    account,
+    job.idempotencyKey,
+    credits as number,
+    txHash ?? null,
+  );
+  console.log("Credits landed", {
+    univocityInstanceId: id,
+    credits,
+    balance: entitlement.creditsBalance,
+    arrears: entitlement.arrears,
+  });
+}
 
 /**
  * Proxy /verify requests to upstream CDP x402 API.
