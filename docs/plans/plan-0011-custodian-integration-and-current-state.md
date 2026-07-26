@@ -41,12 +41,12 @@ The Univocity contracts tie the **first checkpoint** to the **authority key** ca
 
 **Supported on-chain (ES256 only):** Yes. `_Univocity.sol` distinguishes the **root** key (`rootX`, `rootY` from `grantData` on first CP, else from storage) from the **verifier** key that must have signed the **consistency receipt**. If `delegationProof.signature` is empty, verifier = root and the root signs the receipt. If a delegation proof is present, the verifier is **`delegationKey`** (64-byte P-256 pubkey in the proof); the **root** must have signed a canonical binding `SHA-256(abi.encodePacked(logId, mmrStart, mmrEnd, delegatedKeyX, delegatedKeyY))` (`verifyDelegationProofES256` in `delegationVerifier.sol`). The checkpoint index must lie in `[mmrStart, mmrEnd]`.
 
-| Scenario | `grantData` (first CP) | Who signs the consistency receipt | Extra calldata |
-|----------|-------------------------|-----------------------------------|----------------|
-| Bootstrap, no delegation | Bootstrap root (64 B) | Same bootstrap root | Empty `delegationProof` |
-| Bootstrap, with delegation | Bootstrap root (64 B) | **Delegate** (`delegationKey`) | Root-signed `DelegationProof` |
-| Child log, no delegation | Child root (64 B) | Child root | Empty `delegationProof` |
-| Child log, with delegation | Child root (64 B) | **Delegate** | Root-signed `DelegationProof` |
+| Scenario                   | `grantData` (first CP) | Who signs the consistency receipt | Extra calldata                |
+| -------------------------- | ---------------------- | --------------------------------- | ----------------------------- |
+| Bootstrap, no delegation   | Bootstrap root (64 B)  | Same bootstrap root               | Empty `delegationProof`       |
+| Bootstrap, with delegation | Bootstrap root (64 B)  | **Delegate** (`delegationKey`)    | Root-signed `DelegationProof` |
+| Child log, no delegation   | Child root (64 B)      | Child root                        | Empty `delegationProof`       |
+| Child log, with delegation | Child root (64 B)      | **Delegate**                      | Root-signed `DelegationProof` |
 
 **Bootstrap vs child:** The same delegation mechanism applies to **both** the root log’s first checkpoint and any **child** log’s first (and subsequent) checkpoints: `grantData` always anchors the **root**; delegation only changes **who may sign the receipt**, not what is committed in the grant leaf.
 
@@ -55,7 +55,7 @@ The Univocity contracts tie the **first checkpoint** to the **authority key** ca
 **Canopy-api today:** Register-grant and bootstrap mint only enforce **grant** shape, COSE verification, sequencing, and (where configured) receipt-based **inclusion** of the grant in a parent log. They do **not** assemble or validate Univocity **checkpoint** transactions or **`DelegationProof`**. So:
 
 - **Compatible without code changes:** If operators use **Custodian / canopy-api** only to mint grants with `grantData =` the true **root** key (bootstrap or child), the on-chain story already allows a **separate pipeline** (e.g. sealer) to publish checkpoints with a **delegate** signing the receipt and a proper `DelegationProof`.
-- **Not “supported” inside canopy-api:** There is nothing to “turn on” in canopy-api for delegation; it is not the layer that submits checkpoints. No **Custodian** API is *required* for delegation solely because Custodian signs **grants**; signing **delegation bindings** or **receipts** for the delegate is the concern of whatever component holds the root vs delegate private keys (often the sealer / ops keys, not the grant-mint path).
+- **Not “supported” inside canopy-api:** There is nothing to “turn on” in canopy-api for delegation; it is not the layer that submits checkpoints. No **Custodian** API is _required_ for delegation solely because Custodian signs **grants**; signing **delegation bindings** or **receipts** for the delegate is the concern of whatever component holds the root vs delegate private keys (often the sealer / ops keys, not the grant-mint path).
 
 **When would new work be needed?**
 
@@ -66,11 +66,11 @@ The Univocity contracts tie the **first checkpoint** to the **authority key** ca
 
 ### 0.2 Canopy alignment (bootstrap vs child logs)
 
-| Topic | State (2026-03) |
-|-------|------------------|
-| **Bootstrap `grantData`** | **Aligned.** `packages/apps/canopy-api/src/scrapi/bootstrap-grant.ts` loads the `:bootstrap` public key from Custodian (`fetchCustodianPublicKey`), normalizes to 64 bytes (`publicKeyToGrantData64`), and sets `grant.grantData` before encoding the grant payload. Minting signs via Custodian `POST /api/keys/:bootstrap/sign` (`custodian-grant.ts`). |
-| **Transparent statement wire format** | **Custodian / RFC 8152 profile only** (Plan 0014 hard cutover): COSE Sign1 payload is the **32-byte SHA-256 digest** of the grant v0 CBOR; full grant bytes live in unprotected header `-65538` (`HEADER_FORESTRIE_GRANT_V0`). Decode/verify in `transparent-statement.ts`, `custodian-grant.ts` (`verifyCustodianEs256GrantSign1`). |
-| **Child-log grants** | When canopy (or paid-grant flow) creates grants for non-root logs (subplan 06), `grantData` must be the **log root (authority)** key (64 bytes ES256 or 20 bytes KS256), not a delegate. If operators use ES256 delegation at checkpoint time, the delegate is **not** placed in `grantData` (§0.1.1). Not fully productized here; Phase 2 of Plan 0014 adds **`CUSTODIAN_APP_TOKEN`** and `signGrantPayloadWithCustodianCustodyKey` for custody-key signing when a call site exists. |
+| Topic                                 | State (2026-03)                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Bootstrap `grantData`**             | **Aligned.** `packages/apps/canopy-api/src/scrapi/bootstrap-grant.ts` loads the `:bootstrap` public key from Custodian (`fetchCustodianPublicKey`), normalizes to 64 bytes (`publicKeyToGrantData64`), and sets `grant.grantData` before encoding the grant payload. Minting signs via Custodian `POST /api/keys/:bootstrap/sign` (`custodian-grant.ts`).                                                                                                                             |
+| **Transparent statement wire format** | **Custodian / RFC 8152 profile only** (Plan 0014 hard cutover): COSE Sign1 payload is the **32-byte SHA-256 digest** of the grant v0 CBOR; full grant bytes live in unprotected header `-65538` (`HEADER_FORESTRIE_GRANT_V0`). Decode/verify in `transparent-statement.ts`, `custodian-grant.ts` (`verifyCustodianEs256GrantSign1`).                                                                                                                                                  |
+| **Child-log grants**                  | When canopy (or paid-grant flow) creates grants for non-root logs (subplan 06), `grantData` must be the **log root (authority)** key (64 bytes ES256 or 20 bytes KS256), not a delegate. If operators use ES256 delegation at checkpoint time, the delegate is **not** placed in `grantData` (§0.1.1). Not fully productized here; Phase 2 of Plan 0014 adds **`CUSTODIAN_APP_TOKEN`** and `signGrantPayloadWithCustodianCustodyKey` for custody-key signing when a call site exists. |
 
 **Implementation touchpoints:** `bootstrap-grant.ts`, `custodian-grant.ts`, `register-grant.ts` (bootstrap branch), `grant/transparent-statement.ts`, `index.ts` (`CUSTODIAN_*` env). A step-by-step checklist that predates Custodian naming is preserved [in the appendix](#a-original-bootstrap-grantdata-checklist-delegation-signer-era).
 
@@ -78,12 +78,12 @@ The Univocity contracts tie the **first checkpoint** to the **authority key** ca
 
 ## 1. Where we are (minimal)
 
-| Area | State |
-|------|--------|
-| **Register-grant and register-statement auth** | Done (Plan 0001, archived). Grant-based auth: `Authorization: Forestrie-Grant <base64>`; locate → verify; receipt-based inclusion when `inclusionEnv` set. Transparent statements use the **Custodian COSE profile** only (Plan 0014). |
-| **Bootstrap grant mint** | **Custodian.** `POST /api/grants/bootstrap` builds the grant (with correct `grantData`), calls Custodian `POST /api/keys/:bootstrap/sign` with **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`**, returns the transparent statement. |
-| **Canopy-api Custodian env** | **`CUSTODIAN_URL`**, secrets **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`** (Custodian `BOOTSTRAP_APP_TOKEN`), **`CUSTODIAN_APP_TOKEN`** (Custodian `APP_TOKEN`, Phase 2 / custody signing). Optional **`ROOT_LOG_ID`**, **`BOOTSTRAP_ALG`**. See `wrangler.jsonc` and `.dev.vars.bootstrap-example`. |
-| **Custodian (arbor)** | **Integrated with canopy-api** for bootstrap: CBOR `GET /api/keys/{id}/public`, `POST /api/keys/{id}/sign` (COSE Sign1 response), per arbor services/custodian and [arbor plan-0001](../../../arbor/docs/plan-0001-custodian-cbor-api.md). Key ops (create, list, delete) remain available for ops and future per-log keys. |
+| Area                                           | State                                                                                                                                                                                                                                                                                                                       |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Register-grant and register-statement auth** | Done (Plan 0001, archived). Grant-based auth: `Authorization: Forestrie-Grant <base64>`; locate → verify; receipt-based inclusion when `inclusionEnv` set. Transparent statements use the **Custodian COSE profile** only (Plan 0014).                                                                                      |
+| **Bootstrap grant mint**                       | **Custodian.** `POST /api/grants/bootstrap` builds the grant (with correct `grantData`), calls Custodian `POST /api/keys/:bootstrap/sign` with **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`**, returns the transparent statement.                                                                                                      |
+| **Canopy-api Custodian env**                   | **`CUSTODIAN_URL`**, secrets **`CUSTODIAN_BOOTSTRAP_APP_TOKEN`** (Custodian `BOOTSTRAP_APP_TOKEN`), **`CUSTODIAN_APP_TOKEN`** (Custodian `APP_TOKEN`, Phase 2 / custody signing). Optional **`ROOT_LOG_ID`**, **`BOOTSTRAP_ALG`**. See `wrangler.jsonc` and `.dev.vars.bootstrap-example`.                                  |
+| **Custodian (arbor)**                          | **Integrated with canopy-api** for bootstrap: CBOR `GET /api/keys/{id}/public`, `POST /api/keys/{id}/sign` (COSE Sign1 response), per arbor services/custodian and [arbor plan-0001](../../../arbor/docs/plan-0001-custodian-cbor-api.md). Key ops (create, list, delete) remain available for ops and future per-log keys. |
 
 ---
 
@@ -157,14 +157,14 @@ This appendix preserves earlier Plan 0011 content that described a **token-broke
 
 The table below was written when bootstrap relied on a **delegation-signer** public-key fetch. The same logical steps now use **Custodian** as key source and signer: read “delegation-signer” as “Custodian `:bootstrap`”, and note that **`bootstrap-public-key.ts`** was removed from canopy-api.
 
-| Step | Action | Implemented as (today) |
-|------|--------|------------------------|
-| **0.1** | Fetch bootstrap public key before building grant | `fetchCustodianPublicKey(custodianUrl, ":bootstrap")` in `bootstrap-grant.ts`. |
-| **0.2** | Normalize to 64 bytes (ES256) for grantData | `publicKeyToGrantData64` after PEM → uncompressed (`publicKeyPemToUncompressed65`). |
-| **0.3** | Build bootstrap grant with grantData = bootstrap key | Grant built with non-empty `grantData` before `encodeGrantPayload` / Custodian sign. |
-| **0.4** | Preserve signature flow end-to-end | Payload digest + Sign1 from Custodian; `mergeGrantHeadersIntoCustodianSign1` for idtimestamp when needed. |
-| **0.5** | (Optional) KS256 bootstrap | `BOOTSTRAP_ALG` / `bootstrapAlg` exists; KS256 paths return “not implemented” where applicable. |
-| **0.6** | Child-log grants (subplan 06) | Still future when first-checkpoint publishing for child logs is implemented. |
+| Step    | Action                                               | Implemented as (today)                                                                                    |
+| ------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **0.1** | Fetch bootstrap public key before building grant     | `fetchCustodianPublicKey(custodianUrl, ":bootstrap")` in `bootstrap-grant.ts`.                            |
+| **0.2** | Normalize to 64 bytes (ES256) for grantData          | `publicKeyToGrantData64` after PEM → uncompressed (`publicKeyPemToUncompressed65`).                       |
+| **0.3** | Build bootstrap grant with grantData = bootstrap key | Grant built with non-empty `grantData` before `encodeGrantPayload` / Custodian sign.                      |
+| **0.4** | Preserve signature flow end-to-end                   | Payload digest + Sign1 from Custodian; `mergeGrantHeadersIntoCustodianSign1` for idtimestamp when needed. |
+| **0.5** | (Optional) KS256 bootstrap                           | `BOOTSTRAP_ALG` / `bootstrapAlg` exists; KS256 paths return “not implemented” where applicable.           |
+| **0.6** | Child-log grants (subplan 06)                        | Still future when first-checkpoint publishing for child logs is implemented.                              |
 
 ### C. Superseded canopy implementation checklist (token-broker era)
 

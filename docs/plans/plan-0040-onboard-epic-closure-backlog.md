@@ -15,11 +15,11 @@
 
 Package A closure stack through FOR-177 is merged and dev-deployed:
 
-| Step | Issue | Outcome |
-|------|-------|---------|
-| R1 | FOR-175 | Review pass merged (canopy #40) |
-| R2 | FOR-176 | Dev auto-approve in wrangler (canopy #41); deploy-workers green |
-| R3 | FOR-177 | Mandate `live-onboard` CI job (mandate #9) |
+| Step | Issue   | Outcome                                                         |
+| ---- | ------- | --------------------------------------------------------------- |
+| R1   | FOR-175 | Review pass merged (canopy #40)                                 |
+| R2   | FOR-176 | Dev auto-approve in wrangler (canopy #41); deploy-workers green |
+| R3   | FOR-177 | Mandate `live-onboard` CI job (mandate #9)                      |
 
 **Remaining epic work:** operator UI (FOR-172) and cross-repo sign-off (FOR-178).
 FOR-172 is **not** required to close FOR-166 functionally — mandate CLI + dev
@@ -56,21 +56,21 @@ CLI until UI ships.
 - [ ] Canopy dev deploy includes `ONBOARD_AUTO_APPROVE=true` (FOR-176)
 - [ ] GitHub **dev** / Doppler `canopy` has `SUPPORTED_CHAINS_RPC` with Alchemy
 - [ ] Mandate Doppler `e2e` + GitHub **live-signer** secrets:
-  `E2E_CANOPY_API_URL`, `E2E_CANOPY_CHAIN_ID`, `E2E_CANOPY_UNIVOCITY_ADDR`
+      `E2E_CANOPY_API_URL`, `E2E_CANOPY_CHAIN_ID`, `E2E_CANOPY_UNIVOCITY_ADDR`
 - [ ] Mandate `live-onboard` job green on latest `workflow_dispatch`
 
 ### Acceptance matrix
 
-| # | Step | Command / action | Expected |
-|---|------|------------------|----------|
-| 1 | Request | `doppler run -- task onboard:request` (mandate) | `201`, redeem code |
-| 2 | Poll | `task onboard:status` | `approved` (auto-approve or ops) |
-| 3 | Redeem | `task onboard:redeem` | Plaintext bearer once |
-| 4 | Provision | `task provision` | PA genesis `201` |
-| 5 | Consume | Repeat genesis with same token | `403` / binding consumed |
-| 6 | Binding | Request with wrong Univocity addr | `422` |
-| 7 | CI | `gh workflow run live-owned-wallet.yml -R forestrie/mandate` | `live-onboard` green |
-| 8 | Docs | [FORKING.md §2](../../mandate/FORKING.md) | Matches lived path |
+| #   | Step      | Command / action                                             | Expected                         |
+| --- | --------- | ------------------------------------------------------------ | -------------------------------- |
+| 1   | Request   | `doppler run -- task onboard:request` (mandate)              | `201`, redeem code               |
+| 2   | Poll      | `task onboard:status`                                        | `approved` (auto-approve or ops) |
+| 3   | Redeem    | `task onboard:redeem`                                        | Plaintext bearer once            |
+| 4   | Provision | `task provision`                                             | PA genesis `201`                 |
+| 5   | Consume   | Repeat genesis with same token                               | `403` / binding consumed         |
+| 6   | Binding   | Request with wrong Univocity addr                            | `422`                            |
+| 7   | CI        | `gh workflow run live-owned-wallet.yml -R forestrie/mandate` | `live-onboard` green             |
+| 8   | Docs      | [FORKING.md §2](../../mandate/FORKING.md)                    | Matches lived path               |
 
 Row 6 can use mandate CLI with intentional wrong addr or curl CBOR create.
 
@@ -89,13 +89,13 @@ Row 6 can use mandate CLI with intentional wrong addr or curl CBOR create.
 
 ### Failure modes
 
-| Symptom | Likely cause | Fix |
-|---------|--------------|-----|
-| Create `502`/gate fail | RPC / Univocity addr | Check `SUPPORTED_CHAINS_RPC`, chain id |
-| Stuck `pending` | Auto-approve off or wrong chain | FOR-176 vars or manual ops approve |
-| Redeem `410` | Expired approved | Re-request; check TTL vars |
-| Provision `403` | Token consumed or wrong binding | New redeem; verify `consumedForestR` |
-| `live-onboard` red | Secrets or undeployed API | Sync Doppler → GitHub live-signer |
+| Symptom                | Likely cause                    | Fix                                    |
+| ---------------------- | ------------------------------- | -------------------------------------- |
+| Create `502`/gate fail | RPC / Univocity addr            | Check `SUPPORTED_CHAINS_RPC`, chain id |
+| Stuck `pending`        | Auto-approve off or wrong chain | FOR-176 vars or manual ops approve     |
+| Redeem `410`           | Expired approved                | Re-request; check TTL vars             |
+| Provision `403`        | Token consumed or wrong binding | New redeem; verify `consumedForestR`   |
+| `live-onboard` red     | Secrets or undeployed API       | Sync Doppler → GitHub live-signer      |
 
 ---
 
@@ -111,12 +111,12 @@ Quick summary: static `canopy-admin` Pages app; prerequisite API JSON parity
 
 ## Linear updates (when executing)
 
-| Issue | Action after work |
-|-------|-------------------|
-| FOR-176 | Done (deploy #41 merged + deploy-workers green) |
-| FOR-177 | Done (mandate #9 merged) |
-| FOR-178 | In Progress during matrix → Done on sign-off |
-| FOR-172 | Backlog → In Progress when UI branch starts |
+| Issue   | Action after work                                    |
+| ------- | ---------------------------------------------------- |
+| FOR-176 | Done (deploy #41 merged + deploy-workers green)      |
+| FOR-177 | Done (mandate #9 merged)                             |
+| FOR-178 | In Progress during matrix → Done on sign-off         |
+| FOR-172 | Backlog → In Progress when UI branch starts          |
 | FOR-166 | Done when FOR-178 complete (FOR-172 may remain open) |
 
 ---

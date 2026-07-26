@@ -35,13 +35,13 @@ reconcile.
 
 ## Remediation (implemented)
 
-| Area | Change |
-|------|--------|
-| **arbor-flux** | `flux-image-updates-merge.yaml`: `cancel-in-progress: false`; skip when branch already merged |
-| **forest-1** | `ops-cd-flow.md`: IUA → `flux/image-updates` → merge → `main` |
-| **canopy preflight** | `e2e-shared:validate-univocity-deploy` task; wired in `test:e2e:preflight` |
-| **canopy CI** | `tests-system.yml`: `E2E_MODE_C_WEBHOOK_IN_CI=1`, readiness script before system tier |
-| **canopy e2e** | Mode C spec default in CI when env flag set (playwright.config.ts unchanged guard, flag now on in CI) |
+| Area                 | Change                                                                                                |
+| -------------------- | ----------------------------------------------------------------------------------------------------- |
+| **arbor-flux**       | `flux-image-updates-merge.yaml`: `cancel-in-progress: false`; skip when branch already merged         |
+| **forest-1**         | `ops-cd-flow.md`: IUA → `flux/image-updates` → merge → `main`                                         |
+| **canopy preflight** | `e2e-shared:validate-univocity-deploy` task; wired in `test:e2e:preflight`                            |
+| **canopy CI**        | `tests-system.yml`: `E2E_MODE_C_WEBHOOK_IN_CI=1`, readiness script before system tier                 |
+| **canopy e2e**       | Mode C spec default in CI when env flag set (playwright.config.ts unchanged guard, flag now on in CI) |
 
 ## Verification
 

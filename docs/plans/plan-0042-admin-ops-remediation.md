@@ -25,12 +25,12 @@ scheduled unless bundled with adjacent work.
 
 ## Review scope and baseline
 
-| Area | Baseline reviewed |
-|------|-------------------|
-| Epic FOR-166 | Closed; FOR-178 matrix 8/8 on dev lane |
-| FOR-180 | PR #47 open — admin JSON parity, CORS PUT, kill-switch JSON mirror |
-| FOR-181–183 | Not started; stub `canopy-admin/index.html` on `main` |
-| Mandate CI | `live-onboard` green; `live-provision` / hands-off red (FOR-101) |
+| Area         | Baseline reviewed                                                  |
+| ------------ | ------------------------------------------------------------------ |
+| Epic FOR-166 | Closed; FOR-178 matrix 8/8 on dev lane                             |
+| FOR-180      | PR #47 open — admin JSON parity, CORS PUT, kill-switch JSON mirror |
+| FOR-181–183  | Not started; stub `canopy-admin/index.html` on `main`              |
+| Mandate CI   | `live-onboard` green; `live-provision` / hands-off red (FOR-101)   |
 
 **What FOR-180 gets right:** separates admin JSON from CBOR ops routes;
 constant-time bearer compare; redeem uses R2 CAS; auto-approve hard-blocked when
@@ -41,26 +41,26 @@ FOR-175; targeted unit tests for happy paths and CBOR backward compatibility.
 
 ## Findings summary
 
-| ID | Severity | Dimension | Finding |
-|----|----------|-----------|---------|
-| R-01 | **HIGH** | Security / liveness | Approve/reject use blind R2 writes; redeem uses CAS — TOCTOU can overwrite `redeemed` with `approved` |
-| R-02 | **HIGH** | Security | Stub admin UI renders user fields via `innerHTML` (XSS when FOR-181 ships) |
-| R-03 | **HIGH** | Security | Ops bearer in `sessionStorage` — any XSS on Pages origin = full ops compromise |
-| R-04 | **MEDIUM** | Security | Admin JSON routes return **CBOR** problem bodies on 401/409/404 |
-| R-05 | **MEDIUM** | Security | Admin list responses include PII without `Cache-Control: no-store` |
-| R-06 | **MEDIUM** | Security | `rejectReason` has no max length (storage / response abuse) |
-| R-07 | **MEDIUM** | Security | CORS `Access-Control-Allow-Origin: *` on all routes including admin |
-| R-08 | **MEDIUM** | Security | No rate limit on ops admin endpoints (bearer brute-force surface) |
-| R-09 | **MEDIUM** | Liveness | Reject path emits no webhook — ops automation blind to rejections |
-| R-10 | **MEDIUM** | Liveness | `countNonTerminalRequestsForBinding` full-prefix R2 scan on every create |
-| R-11 | **MEDIUM** | Liveness | `listOnboardTokens` unpaginated; degrades as token count grows |
-| R-12 | **MEDIUM** | Test coverage | FOR-180 tests miss list/tokens JSON, empty reject, race, expired approve |
-| R-13 | **MEDIUM** | Testability | No shared admin JSON client helper; error-format assertions ad hoc |
-| R-14 | **MEDIUM** | Best practice | Duplicated `jsonResponse`; admin vs CBOR error surfaces diverge |
-| R-15 | **MEDIUM** | Modern standards | Admin errors not RFC 7807 JSON; loose `Content-Type` sniff (`includes`) |
-| R-16 | **MEDIUM** | Test coverage | No automated UI tests; mandate live job stops before full provision |
-| R-17 | **LOW** | Best practice | Kill switch PUT has no confirm/audit trail beyond coordinator state |
-| R-18 | **LOW** | Modern standards | Static admin lacks CSP / `Referrer-Policy` (FOR-183 partial) |
+| ID   | Severity   | Dimension           | Finding                                                                                               |
+| ---- | ---------- | ------------------- | ----------------------------------------------------------------------------------------------------- |
+| R-01 | **HIGH**   | Security / liveness | Approve/reject use blind R2 writes; redeem uses CAS — TOCTOU can overwrite `redeemed` with `approved` |
+| R-02 | **HIGH**   | Security            | Stub admin UI renders user fields via `innerHTML` (XSS when FOR-181 ships)                            |
+| R-03 | **HIGH**   | Security            | Ops bearer in `sessionStorage` — any XSS on Pages origin = full ops compromise                        |
+| R-04 | **MEDIUM** | Security            | Admin JSON routes return **CBOR** problem bodies on 401/409/404                                       |
+| R-05 | **MEDIUM** | Security            | Admin list responses include PII without `Cache-Control: no-store`                                    |
+| R-06 | **MEDIUM** | Security            | `rejectReason` has no max length (storage / response abuse)                                           |
+| R-07 | **MEDIUM** | Security            | CORS `Access-Control-Allow-Origin: *` on all routes including admin                                   |
+| R-08 | **MEDIUM** | Security            | No rate limit on ops admin endpoints (bearer brute-force surface)                                     |
+| R-09 | **MEDIUM** | Liveness            | Reject path emits no webhook — ops automation blind to rejections                                     |
+| R-10 | **MEDIUM** | Liveness            | `countNonTerminalRequestsForBinding` full-prefix R2 scan on every create                              |
+| R-11 | **MEDIUM** | Liveness            | `listOnboardTokens` unpaginated; degrades as token count grows                                        |
+| R-12 | **MEDIUM** | Test coverage       | FOR-180 tests miss list/tokens JSON, empty reject, race, expired approve                              |
+| R-13 | **MEDIUM** | Testability         | No shared admin JSON client helper; error-format assertions ad hoc                                    |
+| R-14 | **MEDIUM** | Best practice       | Duplicated `jsonResponse`; admin vs CBOR error surfaces diverge                                       |
+| R-15 | **MEDIUM** | Modern standards    | Admin errors not RFC 7807 JSON; loose `Content-Type` sniff (`includes`)                               |
+| R-16 | **MEDIUM** | Test coverage       | No automated UI tests; mandate live job stops before full provision                                   |
+| R-17 | **LOW**    | Best practice       | Kill switch PUT has no confirm/audit trail beyond coordinator state                                   |
+| R-18 | **LOW**    | Modern standards    | Static admin lacks CSP / `Referrer-Policy` (FOR-183 partial)                                          |
 
 ---
 
@@ -254,12 +254,12 @@ as **FOR-184+** (create when executing).
 
 **When:** Before or as follow-up commit on PR #47.
 
-| Task | Finding | Effort |
-|------|---------|--------|
-| Add `no-store` to admin JSON responses | R-05 | S |
-| Cap `rejectReason` length | R-06 | S |
-| Extend tests: empty reject, list GET, tokens GET | R-12 | M |
-| Update ADR-0009 admin route + error notes | R-04 | S |
+| Task                                             | Finding | Effort |
+| ------------------------------------------------ | ------- | ------ |
+| Add `no-store` to admin JSON responses           | R-05    | S      |
+| Cap `rejectReason` length                        | R-06    | S      |
+| Extend tests: empty reject, list GET, tokens GET | R-12    | M      |
+| Update ADR-0009 admin route + error notes        | R-04    | S      |
 
 **Acceptance:**
 
@@ -276,11 +276,11 @@ Merge #47 → mark FOR-180 Done.
 
 **Priority:** P0 — do before FOR-181 ships to production lane.
 
-| Task | Finding |
-|------|---------|
-| CAS transitions for approve and reject | R-01 |
+| Task                                     | Finding    |
+| ---------------------------------------- | ---------- |
+| CAS transitions for approve and reject   | R-01       |
 | Unit tests: concurrent redeem vs approve | R-01, R-12 |
-| Emit `onboard.request.rejected` webhook | R-09 |
+| Emit `onboard.request.rejected` webhook  | R-09       |
 
 **Acceptance:** New `onboard-request-cas.test.ts` green; no blind
 `writeOnboardRequest` on status transitions except idempotent metadata patches.
@@ -291,11 +291,11 @@ Merge #47 → mark FOR-180 Done.
 
 **Priority:** P1 — unblocks reliable FOR-181 error UX.
 
-| Task | Finding |
-|------|---------|
+| Task                                       | Finding    |
+| ------------------------------------------ | ---------- |
 | JSON problem responses on all admin routes | R-04, R-15 |
-| Shared `admin-json-response` module | R-14 |
-| Test helper + 401/409 JSON assertions | R-12, R-13 |
+| Shared `admin-json-response` module        | R-14       |
+| Test helper + 401/409 JSON assertions      | R-12, R-13 |
 
 **Acceptance:** Browser `fetch` never needs CBOR decoder on admin paths.
 
@@ -303,11 +303,11 @@ Merge #47 → mark FOR-180 Done.
 
 ### Phase 3 — FOR-181 UI security (in plan-0041 Phase B)
 
-| Task | Finding |
-|------|---------|
-| DOM-safe rendering (no innerHTML for user data) | R-02 |
-| Error toast from JSON problem `detail` | R-04 |
-| Reject modal with reason length hint (512) | R-06 |
+| Task                                            | Finding |
+| ----------------------------------------------- | ------- |
+| DOM-safe rendering (no innerHTML for user data) | R-02    |
+| Error toast from JSON problem `detail`          | R-04    |
+| Reject modal with reason length hint (512)      | R-06    |
 
 Do **not** ship FOR-181 without R-02 fix.
 
@@ -317,32 +317,32 @@ Do **not** ship FOR-181 without R-02 fix.
 
 **Priority:** P2 — before prod Pages deploy (FOR-183).
 
-| Task | Finding |
-|------|---------|
-| CORS allowlist env for admin origins | R-07 |
-| Ops admin rate limiter binding | R-08 |
-| CSP + Referrer-Policy on static admin | R-18 |
-| README: token rotation, Access roadmap | R-03 |
+| Task                                   | Finding |
+| -------------------------------------- | ------- |
+| CORS allowlist env for admin origins   | R-07    |
+| Ops admin rate limiter binding         | R-08    |
+| CSP + Referrer-Policy on static admin  | R-18    |
+| README: token rotation, Access roadmap | R-03    |
 
 ---
 
 ### Phase 5 — Scale + inventory (FOR-187, pairs with FOR-182)
 
-| Task | Finding |
-|------|---------|
-| Paginate `admin/tokens` | R-11 |
-| Kill switch confirm dialog + audit note in UI | R-17 |
-| Monitor R-10; spike index if p95 create > 2s | R-10 |
+| Task                                          | Finding |
+| --------------------------------------------- | ------- |
+| Paginate `admin/tokens`                       | R-11    |
+| Kill switch confirm dialog + audit note in UI | R-17    |
+| Monitor R-10; spike index if p95 create > 2s  | R-10    |
 
 ---
 
 ### Phase 6 — Verification uplift (FOR-188)
 
-| Task | Finding |
-|------|---------|
-| Mandate live job extension post FOR-101 | R-16 |
-| Optional Playwright smoke against Pages preview URL | R-16 |
-| Manual AC matrix S1–S15 sign-off in FOR-183 | plan-0041 |
+| Task                                                | Finding   |
+| --------------------------------------------------- | --------- |
+| Mandate live job extension post FOR-101             | R-16      |
+| Optional Playwright smoke against Pages preview URL | R-16      |
+| Manual AC matrix S1–S15 sign-off in FOR-183         | plan-0041 |
 
 ---
 
@@ -375,25 +375,25 @@ FOR-185 can parallel FOR-184 but should land before FOR-181 merge.
 
 ## Risk register (residual after remediation)
 
-| Risk | Mitigation | Owner |
-|------|------------|-------|
-| Ops bearer theft via XSS | CSP + DOM-safe UI; rotate token; v2 Access | FOR-186, FOR-183 |
-| R2 list latency at scale | Monitor; FOR-187 index spike | Platform |
-| Webhook loss | Best-effort by design; ops uses admin UI | Accept |
-| Coordinator down during kill switch | UI 503 handling (FOR-182) | FOR-182 |
-| Auto-approve misconfig in prod | `NODE_ENV=prod` guard + deploy review | Existing |
+| Risk                                | Mitigation                                 | Owner            |
+| ----------------------------------- | ------------------------------------------ | ---------------- |
+| Ops bearer theft via XSS            | CSP + DOM-safe UI; rotate token; v2 Access | FOR-186, FOR-183 |
+| R2 list latency at scale            | Monitor; FOR-187 index spike               | Platform         |
+| Webhook loss                        | Best-effort by design; ops uses admin UI   | Accept           |
+| Coordinator down during kill switch | UI 503 handling (FOR-182)                  | FOR-182          |
+| Auto-approve misconfig in prod      | `NODE_ENV=prod` guard + deploy review      | Existing         |
 
 ---
 
 ## Suggested Linear issues
 
-| Issue | Title | Phase |
-|-------|-------|-------|
-| FOR-184 | CAS approve/reject + reject webhook | 1 |
-| FOR-185 | Admin JSON problem details + test helpers | 2 |
-| FOR-186 | Prod CORS allowlist, ops rate limit, CSP | 4 |
-| FOR-187 | Admin token pagination + binding index spike | 5 |
-| FOR-188 | Live provision CI + optional Playwright | 6 |
+| Issue   | Title                                        | Phase |
+| ------- | -------------------------------------------- | ----- |
+| FOR-184 | CAS approve/reject + reject webhook          | 1     |
+| FOR-185 | Admin JSON problem details + test helpers    | 2     |
+| FOR-186 | Prod CORS allowlist, ops rate limit, CSP     | 4     |
+| FOR-187 | Admin token pagination + binding index spike | 5     |
+| FOR-188 | Live provision CI + optional Playwright      | 6     |
 
 Parent: FOR-172 (or link as related to FOR-166 follow-up epic if preferred).
 
@@ -419,10 +419,10 @@ cd ../mandate && pnpm test -- test/onboard-request.live.test.ts
 
 ## Decision log
 
-| Decision | Rationale |
-|----------|-----------|
-| CAS before FOR-181 prod | Prevents state clobber under real ops + mandate concurrency |
-| Defer binding index until metrics | YAGNI for dev lane; document threshold |
-| sessionStorage v1 OK | Matches internal ops console; document rotation |
-| Playwright defer | Pages URL not stable until FOR-183 |
-| JSON admin mirror stays separate from CBOR ops | CLI/mandate remain CBOR-native per ADR-0009 |
+| Decision                                       | Rationale                                                   |
+| ---------------------------------------------- | ----------------------------------------------------------- |
+| CAS before FOR-181 prod                        | Prevents state clobber under real ops + mandate concurrency |
+| Defer binding index until metrics              | YAGNI for dev lane; document threshold                      |
+| sessionStorage v1 OK                           | Matches internal ops console; document rotation             |
+| Playwright defer                               | Pages URL not stable until FOR-183                          |
+| JSON admin mirror stays separate from CBOR ops | CLI/mandate remain CBOR-native per ADR-0009                 |

@@ -18,12 +18,12 @@ bearer when `ENABLE_WALLET_CHALLENGE=true`).
 
 Post-merge CI was unblocked by **weakening** e2e coverage (#34, #35):
 
-| Workaround | Location | Why it is not acceptable |
-|------------|----------|---------------------------|
-| `test.skip` | `coordinator-api.spec.ts` signing-route test | User-route auth never exercised in deploy coordinator project |
-| `postSigningRouteBestEffort` (accept 401) | bootstrap + stretch system specs | Signing-route setup silently skipped; no assertion that session path works |
-| Removed signing-route step | `coordinator-byok-material.spec.ts` | BYOK material flow no longer registers wallet mode on coordinator |
-| Public `pending-delegation` instead of session `GET /api/delegations/pending` | coordinator BYOK specs | Shard fan-out + session auth on aggregate pending not tested |
+| Workaround                                                                    | Location                                     | Why it is not acceptable                                                   |
+| ----------------------------------------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------- |
+| `test.skip`                                                                   | `coordinator-api.spec.ts` signing-route test | User-route auth never exercised in deploy coordinator project              |
+| `postSigningRouteBestEffort` (accept 401)                                     | bootstrap + stretch system specs             | Signing-route setup silently skipped; no assertion that session path works |
+| Removed signing-route step                                                    | `coordinator-byok-material.spec.ts`          | BYOK material flow no longer registers wallet mode on coordinator          |
+| Public `pending-delegation` instead of session `GET /api/delegations/pending` | coordinator BYOK specs                       | Shard fan-out + session auth on aggregate pending not tested               |
 
 These were **expedient deploy fixes**, not the target test model. This plan
 defines the replacement.
@@ -179,24 +179,24 @@ expect(signingRoute.status()).toBe(200);
 
 ### Phase 5 — CI wiring
 
-| Workflow | Change |
-|----------|--------|
-| Deploy Workers post-deploy | Coordinator project must run new KS256 wallet-challenge spec |
-| `tests-system.yml` push | Consider `require_coordinator_e2e: true` when coordinator secrets present (optional; today coordinator only runs on deploy) |
-| Doppler dev | Document test KS256 key optional env `E2E_COORDINATOR_WALLET_CHALLENGE_KEY_HEX` for local runs without bootstrap key file |
+| Workflow                   | Change                                                                                                                      |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Deploy Workers post-deploy | Coordinator project must run new KS256 wallet-challenge spec                                                                |
+| `tests-system.yml` push    | Consider `require_coordinator_e2e: true` when coordinator secrets present (optional; today coordinator only runs on deploy) |
+| Doppler dev                | Document test KS256 key optional env `E2E_COORDINATOR_WALLET_CHALLENGE_KEY_HEX` for local runs without bootstrap key file   |
 
 ## Test matrix (acceptance)
 
-| Behavior | Spec | Auth |
-|----------|------|------|
-| Operator custody-keys | `coordinator-api.spec.ts` | App token |
-| Public certificate ingest | `coordinator-api.spec.ts` | None |
-| Session signing-route CRUD | `coordinator-wallet-challenge-ks256.spec.ts` | KS256 session |
-| Session aggregate pending | same | KS256 session |
-| ES256 BYOK material round-trip | `coordinator-byok-material.spec.ts` | ES256 session (after FOR-139) |
-| Bootstrap delegation loop | `bootstrap-delegation-coordinator.ts` | KS256 session; ES256 after FOR-139 |
-| Webhook + admin enabled | `coordinator-webhook.spec.ts` | App token (unchanged) |
-| App token rejected on user route | `coordinator-wallet-challenge-ks256.spec.ts` | Negative |
+| Behavior                         | Spec                                         | Auth                               |
+| -------------------------------- | -------------------------------------------- | ---------------------------------- |
+| Operator custody-keys            | `coordinator-api.spec.ts`                    | App token                          |
+| Public certificate ingest        | `coordinator-api.spec.ts`                    | None                               |
+| Session signing-route CRUD       | `coordinator-wallet-challenge-ks256.spec.ts` | KS256 session                      |
+| Session aggregate pending        | same                                         | KS256 session                      |
+| ES256 BYOK material round-trip   | `coordinator-byok-material.spec.ts`          | ES256 session (after FOR-139)      |
+| Bootstrap delegation loop        | `bootstrap-delegation-coordinator.ts`        | KS256 session; ES256 after FOR-139 |
+| Webhook + admin enabled          | `coordinator-webhook.spec.ts`                | App token (unchanged)              |
+| App token rejected on user route | `coordinator-wallet-challenge-ks256.spec.ts` | Negative                           |
 
 ## Non-goals
 

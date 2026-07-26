@@ -22,10 +22,10 @@ Custodian service. **Signing and verification** for grants under this plan must
 follow the **normative COSE Sign1 model (RFC 8152)** end-to-end, matching
 Custodian’s `POST /api/keys/{keyId}/sign` output — see §Decision: normative COSE.
 
-| Custodian secret (cluster) | Canopy Workers secret (suggested name) | Custodian usage |
-|----------------------------|----------------------------------------|-------------------|
-| `BOOTSTRAP_APP_TOKEN` | `CUSTODIAN_BOOTSTRAP_APP_TOKEN` | `:bootstrap` key routes (`POST /api/keys/:bootstrap/sign`, destructive key ops, etc.) |
-| `APP_TOKEN` | `CUSTODIAN_APP_TOKEN` | Custody keys: `POST /api/keys`, `POST /api/keys/{id}/sign`, `POST /api/keys/list`, etc. |
+| Custodian secret (cluster) | Canopy Workers secret (suggested name) | Custodian usage                                                                         |
+| -------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------- |
+| `BOOTSTRAP_APP_TOKEN`      | `CUSTODIAN_BOOTSTRAP_APP_TOKEN`        | `:bootstrap` key routes (`POST /api/keys/:bootstrap/sign`, destructive key ops, etc.)   |
+| `APP_TOKEN`                | `CUSTODIAN_APP_TOKEN`                  | Custody keys: `POST /api/keys`, `POST /api/keys/{id}/sign`, `POST /api/keys/list`, etc. |
 
 **Terminology:** **Custodian** is the arbor key-custody service (`services/custodian`).
 
@@ -86,7 +86,7 @@ not retain branches that accept it.
 
 - `GET /api/keys/{keyId}/public` — **no auth**; CBOR: `keyId`, `publicKey`,
   `alg`.
-- `POST /api/keys/{keyId}/sign` — **CBOR** body: `payload` (bstr) *or*
+- `POST /api/keys/{keyId}/sign` — **CBOR** body: `payload` (bstr) _or_
   `payloadHash` (bstr, 32 bytes). **`BOOTSTRAP_APP_TOKEN`** for key id
   **`:bootstrap`**; **`APP_TOKEN`** for custody keys. Response:
   **`application/cose; cose-type="cose-sign1"`** — raw **COSE_Sign1** with
@@ -242,7 +242,7 @@ at the first call site; **(c)** ensure any verifier for those statements is the
 ### 2.2 Implementation sketch
 
 - `POST {CUSTODIAN_URL}/api/keys/{keyId}/sign` with **`Authorization: Bearer
-  <CUSTODIAN_APP_TOKEN>`**, CBOR `payload` or `payloadHash` per grant-encoding
+<CUSTODIAN_APP_TOKEN>`**, CBOR `payload` or `payloadHash` per grant-encoding
   rules **and** Custodian’s documented semantics for what is hashed/signed.
 - Map **keyId** from config or from grant metadata (document per feature).
 - **Verification** of server-minted or client-presented grants must go through

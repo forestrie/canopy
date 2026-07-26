@@ -66,17 +66,17 @@ directly via `receipt-verify.ts`.
 
 ### Phase 3 — audit (coverage matrix + flags)
 
-| Reference (go / algorithms.py) | TS function | Existing test | Status / gap |
-|---|---|---|---|
-| `included_root` / `hash_pospair64` | `algorithms.calculateRoot` | KAT + KAT39 parity (new) | **fixed**, pinned to golden hex |
-| `verify_inclusion` | `algorithms.verifyInclusion` | KAT39 parity (new) | correct post-fix |
-| `index_height` / `pos_height` | `math.heightIndex` | KAT39 parity (new) | correct |
-| `mmr_index` | `index.mmrIndex`, `math.mmrIndexFromLeafIndex` | KAT39 parity (new) | correct |
-| `leaf_count` == `PeaksBitmap` | `math.leafCount` | KAT39 parity (new) | **fixed** (was `(n+1)/2`) |
-| `peaks` (accumulator) | — (none in merklelog) | KAT39 full-peaks (new) | gap: no exported `peaks`; duplicated privately in `resolve-receipt.ts` |
-| consistency proof | `algorithms.verifyConsistency` | none | **stub, always true** — documented TODO |
-| peak bagging | `algorithms.bagPeaks` | `algorithms.test.ts` (length only) | not position-committed, **unused** by receipt path — documented warning |
-| `leaf_index` | `math.leafIndex` | none | not parity-tested; same bug class as old `leafCount` — flagged |
+| Reference (go / algorithms.py)     | TS function                                    | Existing test                      | Status / gap                                                            |
+| ---------------------------------- | ---------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------- |
+| `included_root` / `hash_pospair64` | `algorithms.calculateRoot`                     | KAT + KAT39 parity (new)           | **fixed**, pinned to golden hex                                         |
+| `verify_inclusion`                 | `algorithms.verifyInclusion`                   | KAT39 parity (new)                 | correct post-fix                                                        |
+| `index_height` / `pos_height`      | `math.heightIndex`                             | KAT39 parity (new)                 | correct                                                                 |
+| `mmr_index`                        | `index.mmrIndex`, `math.mmrIndexFromLeafIndex` | KAT39 parity (new)                 | correct                                                                 |
+| `leaf_count` == `PeaksBitmap`      | `math.leafCount`                               | KAT39 parity (new)                 | **fixed** (was `(n+1)/2`)                                               |
+| `peaks` (accumulator)              | — (none in merklelog)                          | KAT39 full-peaks (new)             | gap: no exported `peaks`; duplicated privately in `resolve-receipt.ts`  |
+| consistency proof                  | `algorithms.verifyConsistency`                 | none                               | **stub, always true** — documented TODO                                 |
+| peak bagging                       | `algorithms.bagPeaks`                          | `algorithms.test.ts` (length only) | not position-committed, **unused** by receipt path — documented warning |
+| `leaf_index`                       | `math.leafIndex`                               | none                               | not parity-tested; same bug class as old `leafCount` — flagged          |
 
 Flags actioned in code:
 
@@ -123,15 +123,15 @@ this fix).
 - [x] Prettier clean on all files changed here.
 - [x] Dry-run build of `canopy-api` succeeds (`wrangler deploy --dry-run`).
 - [x] Deployed `canopy-api` to **dev** (`canopy-api-dev`, version
-  `e2cefb47-56df-419b-96bf-b166f0ade250`) — the fix is live; merklelog is bundled.
+      `e2cefb47-56df-419b-96bf-b166f0ade250`) — the fix is live; merklelog is bundled.
 - [ ] `auth-data-log-chain` (system e2e) green + BYOK stretch. **Blocked locally**
-  by the documented Custodian **401** (`valid app token required`): the runner
-  fails in `beforeAll` at `postCustodianCreateEs256Key` (minting the bootstrap
-  grant), **before** the `register-grant` path that exercises `calculateRoot`.
-  This is the same local credential blocker recorded in plan-0026; **CI** (with a
-  valid `CUSTODIAN_APP_TOKEN`) is the integration source of truth and should be
-  used to confirm green after this change lands. The offline KATs reproduce the
-  exact failure mode and pass post-fix, so the e2e is expected to flip green.
+      by the documented Custodian **401** (`valid app token required`): the runner
+      fails in `beforeAll` at `postCustodianCreateEs256Key` (minting the bootstrap
+      grant), **before** the `register-grant` path that exercises `calculateRoot`.
+      This is the same local credential blocker recorded in plan-0026; **CI** (with a
+      valid `CUSTODIAN_APP_TOKEN`) is the integration source of truth and should be
+      used to confirm green after this change lands. The offline KATs reproduce the
+      exact failure mode and pass post-fix, so the e2e is expected to flip green.
 
 ## Scope / risk notes
 

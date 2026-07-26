@@ -22,12 +22,12 @@ This plan removes reliance on stored `CANOPY_PERF_*LPS_*` variables and generate
 
 ## Resulting behavior
 
-| Location | Behavior |
-|----------|----------|
-| `.github/workflows/perf-canopy.yml` | Step **Build shard-balanced log ID list** runs `generate-shard-balanced-ids.js --format csv`; writes `log_ids` to `GITHUB_OUTPUT`. |
-| `perf/scripts/generate-grant-pool.ts` | Unchanged: consumes `CANOPY_PERF_LOG_IDS`. |
-| `perf/scripts/generate-shard-balanced-ids.js` | CLI: `--logs-per-shard` + `--format csv|env|json|human`; no args = legacy human + JSON dump. |
-| `taskfiles/perf.yml` / `taskfiles/grant.yml` | Unchanged: local runs still pass `CANOPY_PERF_LOG_IDS` (or generate via script). |
+| Location                                      | Behavior                                                                                                                           |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | --- | ---- | ------------------------------------------- |
+| `.github/workflows/perf-canopy.yml`           | Step **Build shard-balanced log ID list** runs `generate-shard-balanced-ids.js --format csv`; writes `log_ids` to `GITHUB_OUTPUT`. |
+| `perf/scripts/generate-grant-pool.ts`         | Unchanged: consumes `CANOPY_PERF_LOG_IDS`.                                                                                         |
+| `perf/scripts/generate-shard-balanced-ids.js` | CLI: `--logs-per-shard` + `--format csv                                                                                            | env | json | human`; no args = legacy human + JSON dump. |
+| `taskfiles/perf.yml` / `taskfiles/grant.yml`  | Unchanged: local runs still pass `CANOPY_PERF_LOG_IDS` (or generate via script).                                                   |
 
 ## Target behavior
 

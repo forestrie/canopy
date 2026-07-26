@@ -16,13 +16,13 @@
 
 ## 2. Current vs desired behaviour
 
-| Aspect | Current | Desired (this plan) |
-|--------|--------|--------|
-| Grant supply | Location header (fetch) or body; receipt sometimes separate (X-Grant-Receipt-Location or server-built). | Caller provides **grant in Authorization header**: `Authorization: Forestrie-Grant <base64>` (transparent statement). No fetch by Canopy. |
-| Receipt | Separate fetch or built server-side. | Receipt is **part of the artifact** (unprotected headers of the transparent statement). |
-| Get grant from request | resolveGrantFromRequest may fetch URL, build receipt. | Read grant from **Authorization: Forestrie-Grant** (base64 decode → COSE decode); yield **GrantResult** (grant + receipt from same bytes). No fetch. |
-| grantAuthorize | Takes (request, grant, env); may read request for receipt. | Takes (grantResult, env); verifies receipt only. No request. No fetch. |
-| Caller | Resolve → grantAuthorize → logId/signer checks. | Provide grant in **Authorization: Forestrie-Grant** → get GrantResult → grantAuthorize(grantResult, env) → logId/signer checks. |
+| Aspect                 | Current                                                                                                 | Desired (this plan)                                                                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Grant supply           | Location header (fetch) or body; receipt sometimes separate (X-Grant-Receipt-Location or server-built). | Caller provides **grant in Authorization header**: `Authorization: Forestrie-Grant <base64>` (transparent statement). No fetch by Canopy.            |
+| Receipt                | Separate fetch or built server-side.                                                                    | Receipt is **part of the artifact** (unprotected headers of the transparent statement).                                                              |
+| Get grant from request | resolveGrantFromRequest may fetch URL, build receipt.                                                   | Read grant from **Authorization: Forestrie-Grant** (base64 decode → COSE decode); yield **GrantResult** (grant + receipt from same bytes). No fetch. |
+| grantAuthorize         | Takes (request, grant, env); may read request for receipt.                                              | Takes (grantResult, env); verifies receipt only. No request. No fetch.                                                                               |
+| Caller                 | Resolve → grantAuthorize → logId/signer checks.                                                         | Provide grant in **Authorization: Forestrie-Grant** → get GrantResult → grantAuthorize(grantResult, env) → logId/signer checks.                      |
 
 ## 3. Artifact format: SCITT transparent statement
 
@@ -34,8 +34,8 @@ The single artifact is a **SCITT transparent statement**: a signed statement (CO
 ```ts
 type GrantResult = {
   grant: Grant;
-  receipt: { root: Uint8Array; proof: Proof };  // decoded from the artifact’s unprotected headers
-  bytes?: Uint8Array;                          // raw artifact if callers need it
+  receipt: { root: Uint8Array; proof: Proof }; // decoded from the artifact’s unprotected headers
+  bytes?: Uint8Array; // raw artifact if callers need it
 };
 ```
 
@@ -57,17 +57,17 @@ type GrantResult = {
 
 ## 6. Caller flow (registerSignedStatement, registerGrant)
 
-- **registerSignedStatement**:  
-  - Caller sends grant in **Authorization: Forestrie-Grant &lt;base64&gt;** (transparent statement).  
-  - `grantResult = getGrantFromRequest(request)` (read header, base64 decode + COSE decode); if error, return 401/400/403.  
-  - `err = await grantAuthorize(grantResult, env)`; if err, return err.  
-  - Check request path logId matches `grantResult.grant.logId`; parse statement; **`isStatementRegistrationGrant(grantResult.grant)`**; check statement signer matches `statementSignerBindingBytes(grantResult.grant)` (**`grantData`** only; ARC-0001 §6).  
+- **registerSignedStatement**:
+  - Caller sends grant in **Authorization: Forestrie-Grant &lt;base64&gt;** (transparent statement).
+  - `grantResult = getGrantFromRequest(request)` (read header, base64 decode + COSE decode); if error, return 401/400/403.
+  - `err = await grantAuthorize(grantResult, env)`; if err, return err.
+  - Check request path logId matches `grantResult.grant.logId`; parse statement; **`isStatementRegistrationGrant(grantResult.grant)`**; check statement signer matches `statementSignerBindingBytes(grantResult.grant)` (**`grantData`** only; ARC-0001 §6).
   - Enqueue, etc.
 
-- **registerGrant**:  
-  - Caller sends grant in **Authorization: Forestrie-Grant &lt;base64&gt;** (transparent statement).  
-  - `grantResult = getGrantFromRequest(request)`; if error, return 401/400/403.  
-  - `grantAuthorize(grantResult, env)` when in non-bootstrap inclusion path.  
+- **registerGrant**:
+  - Caller sends grant in **Authorization: Forestrie-Grant &lt;base64&gt;** (transparent statement).
+  - `grantResult = getGrantFromRequest(request)`; if error, return 401/400/403.
+  - `grantAuthorize(grantResult, env)` when in non-bootstrap inclusion path.
   - Check grant.logId matches URL logId; enqueue. (Canopy does not store the grant artifact; caller is responsible for persistence.)
 
 ## 7. Implementation steps (summary)
@@ -110,10 +110,10 @@ Earlier guidance incorrectly stated that idtimestamp could be in the grant paylo
 
 ### 9.4 Suggested header labels
 
-| Purpose | Label | Name | Value / notes |
-|--------|-------|------|----------------|
-| **Receipt (inclusion proof)** | **396** | `vdp` (verifiable data structure proofs) | IANA-assigned. Map with key `-1` → array of proof entries; each entry `{ 1: mmrIndex, 2: path }`. **Use 396** for the receipt in the transparent statement unprotected headers. |
-| **Idtimestamp** | **-65537** | (private use) | **Required** for completed transparent statements. Idtimestamp is **never** in the payload. **Use unprotected header label -65537** (COSE private use, RFC 9052: integers &lt; -65536): value = 8-byte bstr (big-endian). Writers set -65537 to the idtimestamp assigned by the log after sequencing. Parsers and verifiers read idtimestamp from -65537 only. |
+| Purpose                       | Label      | Name                                     | Value / notes                                                                                                                                                                                                                                                                                                                                                  |
+| ----------------------------- | ---------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Receipt (inclusion proof)** | **396**    | `vdp` (verifiable data structure proofs) | IANA-assigned. Map with key `-1` → array of proof entries; each entry `{ 1: mmrIndex, 2: path }`. **Use 396** for the receipt in the transparent statement unprotected headers.                                                                                                                                                                                |
+| **Idtimestamp**               | **-65537** | (private use)                            | **Required** for completed transparent statements. Idtimestamp is **never** in the payload. **Use unprotected header label -65537** (COSE private use, RFC 9052: integers &lt; -65536): value = 8-byte bstr (big-endian). Writers set -65537 to the idtimestamp assigned by the log after sequencing. Parsers and verifiers read idtimestamp from -65537 only. |
 
 **Recommendation:** Use **396** for the receipt; use **-65537** for idtimestamp. The payload is the grant content without idtimestamp (the statement that was registered). Implementation must not require or expect idtimestamp in the payload; GrantResult.grant.idtimestamp (for verification) must be taken from the -65537 header when decoding the transparent statement.
 
@@ -122,7 +122,7 @@ Earlier guidance incorrectly stated that idtimestamp could be in the grant paylo
 The sibling repository **univocity** (Univocity smart contracts) is consistent with this design:
 
 - **PublishGrant** (`src/interfaces/types.sol`): The struct has `logId`, `grant`, `request`, `maxHeight`, `minGrowth`, `ownerLogId`, `grantData`. It has **no idtimestamp field**. The NatSpec states: "Leaf inner hash: logId, grant, maxHeight, minGrowth, ownerLogId, grantData (no request)."
-- **_leafCommitment** (`src/algorithms/lib/LibLogState.sol`): Signature is `_leafCommitment(bytes8 grantIDTimestampBe, PublishGrant calldata g)`. The idtimestamp is a **separate** parameter, not part of the grant. Inner = `sha256(abi.encodePacked(g.logId, g.grant, g.maxHeight, g.minGrowth, g.ownerLogId, g.grantData))`; leaf = `sha256(abi.encodePacked(grantIDTimestampBe, inner))`. So leaf = H(idTimestampBE \|\| inner) with inner = hash of grant content only.
+- **\_leafCommitment** (`src/algorithms/lib/LibLogState.sol`): Signature is `_leafCommitment(bytes8 grantIDTimestampBe, PublishGrant calldata g)`. The idtimestamp is a **separate** parameter, not part of the grant. Inner = `sha256(abi.encodePacked(g.logId, g.grant, g.maxHeight, g.minGrowth, g.ownerLogId, g.grantData))`; leaf = `sha256(abi.encodePacked(grantIDTimestampBe, inner))`. So leaf = H(idTimestampBE \|\| inner) with inner = hash of grant content only.
 - **LibLeafEncoding** (`src/algorithms/lib/LibLeafEncoding.sol`): `innerPreimage(PublishGrant memory g)` uses only PublishGrant fields; `leafCommitment(bytes8 grantIDTimestampBe, PublishGrant memory g)` returns `sha256(abi.encodePacked(grantIDTimestampBe, sha256(innerPreimage(g))))`.
 - **publishCheckpoint** (`src/contracts/_Univocity.sol`): Takes `bytes8 grantIDTimestampBe` and `PublishGrant calldata publishGrant` as **separate** arguments. Inclusion is verified with `_leafCommitment(grantIDTimestampBe, publishGrant)`.
 

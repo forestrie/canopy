@@ -3,6 +3,7 @@
 **Status:** ACTIVE  
 **Date:** 2026-06-21  
 **Related:**
+
 - [FOR-94](https://linear.app/forestrie/issue/FOR-94) (M3 — COSE delegation baseline)
 - [arc-univocity-instance-registration.md](../arc/arc-univocity-instance-registration.md) (deferred COSE scope)
 - [plan-0024](plan-0024-byok-checkpoint-seal-rca.md) (integer-key payload field 5)
@@ -27,17 +28,17 @@ instead of inlined `validate-byok-material.ts`.
 
 Wire format matches arbor `delegationcert`:
 
-| Piece | Rule |
-|-------|------|
-| Outer | Untagged COSE_Sign1 `[protected_bstr, {}, payload_bstr, signature_bstr]` |
-| Protected | int-key map: `1` alg, `3` cty=`application/forestrie.delegation+cbor`, `4` kid |
-| ES256 kid | 16-byte `SHA-256(raw P-256 pubkey)[0:16]` |
-| KS256 kid | 20-byte Ethereum root signer address |
-| Payload | int-key map labels `1,3,4,5,6,7,8,9,10` per Go constants |
-| Field `5` | **Inline** int-key COSE_Key map (EC2 P-256), never a nested bstr |
-| ES256 sig | 64-byte IEEE P1363 `r‖s`; digest = `SHA-256(Sig_structure)` |
-| KS256 sig | 65-byte `r‖s‖v`; digest = `keccak256(Sig_structure)` |
-| Sig_structure | `["Signature1", protected, h'', payload]` via `@canopy/encoding` |
+| Piece         | Rule                                                                           |
+| ------------- | ------------------------------------------------------------------------------ |
+| Outer         | Untagged COSE_Sign1 `[protected_bstr, {}, payload_bstr, signature_bstr]`       |
+| Protected     | int-key map: `1` alg, `3` cty=`application/forestrie.delegation+cbor`, `4` kid |
+| ES256 kid     | 16-byte `SHA-256(raw P-256 pubkey)[0:16]`                                      |
+| KS256 kid     | 20-byte Ethereum root signer address                                           |
+| Payload       | int-key map labels `1,3,4,5,6,7,8,9,10` per Go constants                       |
+| Field `5`     | **Inline** int-key COSE_Key map (EC2 P-256), never a nested bstr               |
+| ES256 sig     | 64-byte IEEE P1363 `r‖s`; digest = `SHA-256(Sig_structure)`                    |
+| KS256 sig     | 65-byte `r‖s‖v`; digest = `keccak256(Sig_structure)`                           |
+| Sig_structure | `["Signature1", protected, h'', payload]` via `@canopy/encoding`               |
 
 Reference implementations today:
 
@@ -83,7 +84,7 @@ packages/libs/delegation-cose/
 
 **Forbidden dependencies:** `@canopy/api`, `delegation-coordinator`, Playwright,
 `node:crypto` in library source (signing keys passed in via Web Crypto /
-callbacks). *Tests* may use `node:crypto` for PEM import fixtures.
+callbacks). _Tests_ may use `node:crypto` for PEM import fixtures.
 
 ## Public API (minimal surface)
 
@@ -238,22 +239,22 @@ Existing `byok-delegation-cbor.test.ts` must stay green after helper refactor.
 
 ## Risks and mitigations
 
-| Risk | Mitigation |
-|------|------------|
-| CBOR map key encoding drift vs Go | Golden vectors from current green e2e; integer-key encoder only |
-| Web Crypto unavailable in some Node tests | Vitest with `webcrypto` global; sign callbacks in tests |
-| ERC-1271 coupling | Hooks interface; viem stays in canopy-api/coordinator callers |
-| Scope creep into receipt verify | Library = delegation **certificate** only |
+| Risk                                      | Mitigation                                                      |
+| ----------------------------------------- | --------------------------------------------------------------- |
+| CBOR map key encoding drift vs Go         | Golden vectors from current green e2e; integer-key encoder only |
+| Web Crypto unavailable in some Node tests | Vitest with `webcrypto` global; sign callbacks in tests         |
+| ERC-1271 coupling                         | Hooks interface; viem stays in canopy-api/coordinator callers   |
+| Scope creep into receipt verify           | Library = delegation **certificate** only                       |
 
 ## Acceptance mapping (FOR-94)
 
-| Criterion | Slice |
-|-----------|-------|
-| Unit tests ES256 assemble+verify round-trip | 1 |
-| Unit tests KS256 assemble+verify round-trip | 2–3 |
-| Cross-impl vector check | 4 |
-| canopy e2e uses package; ad-hoc helper removed | 5 |
-| Framework-agnostic / no app deps | package layout + dependency rules |
+| Criterion                                      | Slice                             |
+| ---------------------------------------------- | --------------------------------- |
+| Unit tests ES256 assemble+verify round-trip    | 1                                 |
+| Unit tests KS256 assemble+verify round-trip    | 2–3                               |
+| Cross-impl vector check                        | 4                                 |
+| canopy e2e uses package; ad-hoc helper removed | 5                                 |
+| Framework-agnostic / no app deps               | package layout + dependency rules |
 
 ## Suggested branch
 

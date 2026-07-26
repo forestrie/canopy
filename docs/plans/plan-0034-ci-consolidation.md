@@ -7,13 +7,13 @@ Status: **IMPLEMENTED**
 Consolidated GitHub Actions into three test entry points and a release promotion
 gate:
 
-| Workflow | Trigger | Role |
-| -------- | ------- | ---- |
-| `ci.yml` | push, PR | Lint, format, unit tests |
-| `tests-integration.yml` | push, PR | Playwright **integration** vs **dev** |
-| `tests-system.yml` | dispatch, call, push main (deduped) | Univocity prepare + full dev suite |
-| `deploy-workers.yml` | push main, dispatch, call | Deploy; chains **tests-system** on dev |
-| `release.yaml` | `v*` tags | Dev deploy → system e2e → prod promote → health |
+| Workflow                | Trigger                             | Role                                            |
+| ----------------------- | ----------------------------------- | ----------------------------------------------- |
+| `ci.yml`                | push, PR                            | Lint, format, unit tests                        |
+| `tests-integration.yml` | push, PR                            | Playwright **integration** vs **dev**           |
+| `tests-system.yml`      | dispatch, call, push main (deduped) | Univocity prepare + full dev suite              |
+| `deploy-workers.yml`    | push main, dispatch, call           | Deploy; chains **tests-system** on dev          |
+| `release.yaml`          | `v*` tags                           | Dev deploy → system e2e → prod promote → health |
 
 Retired **`pr-dev-deploy-e2e.yml`** and **`api-e2e-playwright.yml`**.
 

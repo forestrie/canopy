@@ -22,26 +22,26 @@ receipt signature verification failed.
 
 ## Evidence
 
-| Source | Observation |
-|--------|-------------|
-| CI run `26711640692` (commit `739d7b2`) | Failure at `auth-data-log-chain.spec.ts:162` — data grant `register-grant` **403** with generic receipt verification detail |
-| Code at `739d7b2` | [`receipt-authority-resolver.ts`](../packages/apps/canopy-api/src/env/receipt-authority-resolver.ts) line 79: `` cacheKey = `${ownerLogIdLowerHex32}\0${receiptCoseBytes.byteLength}` `` |
-| E2e flow | `beforeAll` completes **bootstrap receipt** on **R**; test registers **auth** receipt on **R**; data grant passes **auth completed grant** as `parentGrant` — same `ownerLogId` (**R**), third receipt verify on same isolate |
-| Unit test | [`receipt-authority-resolver-cache.test.ts`](../packages/apps/canopy-api/test/receipt-authority-resolver-cache.test.ts): legacy length-only key collides; SHA suffix differs; keys from first resolve do not verify second receipt |
-| H0 ruled out | **403** receipt message, not 400 / parent absent |
+| Source                                  | Observation                                                                                                                                                                                                                        |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CI run `26711640692` (commit `739d7b2`) | Failure at `auth-data-log-chain.spec.ts:162` — data grant `register-grant` **403** with generic receipt verification detail                                                                                                        |
+| Code at `739d7b2`                       | [`receipt-authority-resolver.ts`](../packages/apps/canopy-api/src/env/receipt-authority-resolver.ts) line 79: `` cacheKey = `${ownerLogIdLowerHex32}\0${receiptCoseBytes.byteLength}` ``                                           |
+| E2e flow                                | `beforeAll` completes **bootstrap receipt** on **R**; test registers **auth** receipt on **R**; data grant passes **auth completed grant** as `parentGrant` — same `ownerLogId` (**R**), third receipt verify on same isolate      |
+| Unit test                               | [`receipt-authority-resolver-cache.test.ts`](../packages/apps/canopy-api/test/receipt-authority-resolver-cache.test.ts): legacy length-only key collides; SHA suffix differs; keys from first resolve do not verify second receipt |
+| H0 ruled out                            | **403** receipt message, not 400 / parent absent                                                                                                                                                                                   |
 
 ## Hypothesis closure
 
-| ID | Verdict | Notes |
-|----|---------|-------|
-| **H0** | RULED OUT | Body decoded; failure inside `grantAuthorize` |
-| **H1** | Symptom of **H2** | Signature failed because wrong cached verify keys, not wrong crypto primitive |
-| **H2** | **CONFIRMED** | See evidence table |
-| **H3** | RULED OUT | No `inclusion-failed` discriminator on deployed commit; inclusion not primary failure mode for cache bug |
-| **H4** | RULED OUT | E2e uses `GET resolve-receipt` body; delegation cert copy exists on HTTP path since before Map fix |
-| **H5** | RULED OUT | Would yield “delegation chain could not be verified”, not generic receipt failure |
-| **H6** | RULED OUT | Same receipt bytes as successful `GET resolve-receipt`; assembly not client-corrupt |
-| **H7** | RULED OUT | Auth grant receipt poll + GET **200** on same stack |
+| ID     | Verdict           | Notes                                                                                                    |
+| ------ | ----------------- | -------------------------------------------------------------------------------------------------------- |
+| **H0** | RULED OUT         | Body decoded; failure inside `grantAuthorize`                                                            |
+| **H1** | Symptom of **H2** | Signature failed because wrong cached verify keys, not wrong crypto primitive                            |
+| **H2** | **CONFIRMED**     | See evidence table                                                                                       |
+| **H3** | RULED OUT         | No `inclusion-failed` discriminator on deployed commit; inclusion not primary failure mode for cache bug |
+| **H4** | RULED OUT         | E2e uses `GET resolve-receipt` body; delegation cert copy exists on HTTP path since before Map fix       |
+| **H5** | RULED OUT         | Would yield “delegation chain could not be verified”, not generic receipt failure                        |
+| **H6** | RULED OUT         | Same receipt bytes as successful `GET resolve-receipt`; assembly not client-corrupt                      |
+| **H7** | RULED OUT         | Auth grant receipt poll + GET **200** on same stack                                                      |
 
 ## Remediation (implemented)
 
@@ -64,11 +64,11 @@ receipt signature verification failed.
 
 ## A/B evidence (CI forensics, 2026-05-31)
 
-| Run ID | Commit | Deploy | E2e detail (data grant 403) | Inferred |
-|--------|--------|--------|-------------------------------|----------|
-| `26711640692` | `739d7b2` | success | Generic *receipt signature or inclusion proof* | legacy-generic (pre split-403) |
-| `26712925739` | `d2ccb42` | success | *signature did not verify* (delegation cert message) | **B** or **A** (client-only diagnostics) |
-| `26713274032` | `cbabc6b` | success | *signature-failed-inclusion-ok* (inclusion matches, sig fails) | **B**-leaning (cert likely present on explicit peak path) |
+| Run ID        | Commit    | Deploy  | E2e detail (data grant 403)                                    | Inferred                                                  |
+| ------------- | --------- | ------- | -------------------------------------------------------------- | --------------------------------------------------------- |
+| `26711640692` | `739d7b2` | success | Generic _receipt signature or inclusion proof_                 | legacy-generic (pre split-403)                            |
+| `26712925739` | `d2ccb42` | success | _signature did not verify_ (delegation cert message)           | **B** or **A** (client-only diagnostics)                  |
+| `26713274032` | `cbabc6b` | success | _signature-failed-inclusion-ok_ (inclusion matches, sig fails) | **B**-leaning (cert likely present on explicit peak path) |
 
 Deploy job **succeeded** on all rows; failures are **API e2e (dev, system)** only. Coordinator worker deploy is often **skipped** when only `canopy-api` changes; `COORDINATOR_APP_TOKEN` is still configured on canopy-api deploy.
 
@@ -122,12 +122,12 @@ Doppler tokens are invalid locally.
 
 Worker `extensions` + e2e `parent-grant-ab-split` on three retries:
 
-| Signal | Value |
-|--------|--------|
-| `hasDelegationCertBeforeHydrate` / resolve-receipt | **true** |
-| `parentReceiptVerify` | **signature-failed** |
-| `verifyKeyCount` | **2** (custodian delegation chain only; coordinator public-root **404**) |
-| `receiptMatchesResolveReceiptBody` | **true** |
+| Signal                                             | Value                                                                    |
+| -------------------------------------------------- | ------------------------------------------------------------------------ |
+| `hasDelegationCertBeforeHydrate` / resolve-receipt | **true**                                                                 |
+| `parentReceiptVerify`                              | **signature-failed**                                                     |
+| `verifyKeyCount`                                   | **2** (custodian delegation chain only; coordinator public-root **404**) |
+| `receiptMatchesResolveReceiptBody`                 | **true**                                                                 |
 
 **Verdict: B** — cert is present on client and worker paths; two custodian verify keys are tried; COSE peak signature still fails. Not hypothesis A (missing cert). Remaining work is likely **sealer peak signer vs delegation cert key** or **grant–leaf binding** on forest-dev-5 (compare Arbor `signEmptyPeakReceipt` lease with cert label 5).
 
