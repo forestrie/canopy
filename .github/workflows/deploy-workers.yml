@@ -457,6 +457,7 @@ jobs:
         env:
           CDP_API_KEY_ID: ${{ secrets.CDP_API_KEY_ID }}
           CDP_API_KEY_SECRET: ${{ secrets.CDP_API_KEY_SECRET }}
+          CANOPY_OPS_ADMIN_TOKEN: ${{ secrets.CANOPY_OPS_ADMIN_TOKEN }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
@@ -507,6 +508,14 @@ jobs:
           fi
           if [ "$NEEDS_CDP" = "0" ]; then
             echo "Facilitator ${RESOLVED_FACILITATOR:-<unset>} needs no auth; CDP credentials optional."
+          fi
+          # Ops bearer for /admin/** (reset-auth, receivables status) — the
+          # same operator identity canopy-api uses (plan-2607-43 slice 03).
+          OPS=$(trim_ws "${CANOPY_OPS_ADMIN_TOKEN:-}")
+          if [ -n "$OPS" ]; then
+            put_wrangler_secret CANOPY_OPS_ADMIN_TOKEN "$OPS"
+          else
+            echo "CANOPY_OPS_ADMIN_TOKEN not set; /admin/** stays fail-closed (401)."
           fi
           wrangler deploy "${CONFIG_FLAG[@]}" --env "$ENV"
 

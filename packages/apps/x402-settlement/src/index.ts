@@ -10,9 +10,12 @@
 
 import type { SettlementJob } from "@canopy/x402-settlement-types";
 import { hashLogId } from "@canopy/forestrie-sharding";
+import { checkBearer } from "@canopy/ops-bearer";
+import { isUnivocityInstanceId } from "@canopy/univocity-instance-id";
 import { X402SettlementDO } from "./durableobjects/x402settlement.js";
 import { ReceivablesDO } from "./durableobjects/receivables.js";
 import { generateCdpJwt, facilitatorRequiresAuth } from "./cdp-jwt.js";
+import { runCheckpointIndexer } from "./indexer/run-indexer.js";
 import type { Env } from "./env.js";
 
 export { X402SettlementDO };
@@ -27,6 +30,38 @@ function resolveShardId(authId: string, shardCount: number): string {
   const hash = hashLogId(authId);
   const index = hash % shardCount;
   return `shard-${index}`;
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+/**
+ * Ops gate for `/admin/**` — the same operator identity as canopy-api's
+ * `/api/payments/**` (CANOPY_OPS_ADMIN_TOKEN, pushed as a wrangler secret).
+ * Closes the previously unauthenticated reset-auth (ARC-0026 finding).
+ */
+function adminBearerOrUnauthorized(
+  request: Request,
+  env: Env,
+): Response | null {
+  const outcome = checkBearer(
+    request,
+    env.CANOPY_OPS_ADMIN_TOKEN?.trim() ?? "",
+  );
+  if (outcome === "ok") return null;
+  return jsonResponse(
+    {
+      error:
+        outcome === "missing"
+          ? "Authorization: Bearer <CANOPY_OPS_ADMIN_TOKEN> required"
+          : "Invalid ops admin token",
+    },
+    401,
+  );
 }
 
 export default {
@@ -133,10 +168,50 @@ export default {
 
     // Admin: reset auth state (for recovery from blocked state)
     if (url.pathname === "/admin/reset-auth" && request.method === "POST") {
+      const authErr = adminBearerOrUnauthorized(request, env);
+      if (authErr) return authErr;
       return handleResetAuth(request, env);
     }
 
+    // Admin: receivables status read — the observe-only soak's observability
+    // (plan-2607-43 slice 03): entitlement + the source watermark.
+    const receivablesMatch = /^\/admin\/receivables\/([^/]+)$/.exec(
+      url.pathname,
+    );
+    if (receivablesMatch && request.method === "GET") {
+      const authErr = adminBearerOrUnauthorized(request, env);
+      if (authErr) return authErr;
+      const id = decodeURIComponent(receivablesMatch[1]!);
+      if (!isUnivocityInstanceId(id)) {
+        return jsonResponse(
+          { error: "path id must be a canonical univocity instance id" },
+          400,
+        );
+      }
+      const stub = env.RECEIVABLES_DO.get(env.RECEIVABLES_DO.idFromName(id));
+      const state = await stub.getIndexState(id);
+      if (!state.entitlement && state.lastBlock === null) {
+        return jsonResponse({ error: "no account state for instance" }, 404);
+      }
+      return jsonResponse({
+        univocityInstanceId: id,
+        entitlement: state.entitlement,
+        watermarkBlock: state.lastBlock,
+      });
+    }
+
     return new Response("Not Found", { status: 404 });
+  },
+
+  /**
+   * Cron: the accrual indexer sweep (plan-2607-43 slice 03, observe-only).
+   */
+  async scheduled(
+    _controller: ScheduledController,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<void> {
+    ctx.waitUntil(runCheckpointIndexer(env));
   },
 };
 
