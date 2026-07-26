@@ -72,15 +72,50 @@ asserts token record after every conflict path); dangling-`reserved` retry
 by the same holder completes; legacy-token genesis fallback covered;
 `admittedBy` matrix (ops / payment / auto) round-trips to the registration.
 
-### R2 (F2) — collision-safe, non-fatal migration rewrite *(unchanged)*
+### R2 (F2) — collision-safe, non-fatal migration rewrite
 
-Select rewrite candidates by "not canonical" via the shared validator
-(closes the silent third-format and case-prefix skips); on
-`instance_webhooks` PK collision, DELETE the legacy row (canonical is newer
-by construction) and warn; wrap per-row work in try/catch so no data shape
-can throw out of the DO constructor.
-Acceptance: legacy+canonical twin rows boot cleanly; third-format row
-converted or warned, never silently skipped.
+**Root cause, recorded so the fix is reviewed against it.** The hazardous
+state (a legacy-keyed and a canonical-keyed `instance_webhooks` row for the
+same instance) is produced by version skew during the rollout of the
+migration itself: the parallel deploy matrix can put the new canopy-api
+(which sends canonical values in the deprecated `instanceKey` field — our
+own deploy-order shim) live ahead of the coordinator, whose **old** code
+stores keys as opaque labels. The rewrite then UPDATEs a **primary key**
+into a collision, and because `ensureSchema()` is constructor-fatal and
+re-runs per instantiation, the failure is a self-sustaining crash loop
+across **every** shard (`instance_webhooks` is replicated to all). The
+migration argued idempotency per row; it never argued convergence over all
+reachable data states. F5 is the same skew window seen from the other side.
+
+**Changes** (one private method, `rewriteLegacyUnivocityInstanceIds`):
+
+1. Select rewrite candidates by **"not canonical"** via the shared
+   validator, not `NOT LIKE 'eip155:%'` — also closes the silent
+   third-format (`eip155:{id}:{40hex}` without `0x`) and case-prefix skips.
+2. On `instance_webhooks` PK collision, **DELETE the legacy row, keep the
+   canonical one, warn**. Keep-canonical is provable, not a judgment call:
+   old code never *generated* canonical values, so a canonical-keyed row can
+   only have been written by post-cutover traffic and is strictly newer
+   than any legacy row for the same instance.
+3. Wrap the whole rewrite phase per-row in try/catch — **a data problem
+   must degrade to a warning, never brick liveness.** This is the category
+   rule, not just a patch: constructor-fatal `ensureSchema()` was safe
+   while every migration was additive DDL (`ADD COLUMN` cannot collide);
+   this migration crossed into data-rewriting DML, where any unhandled data
+   shape becomes an outage that hides its own cause.
+
+**Rule capture** (so the lesson outlives this fix): add to
+`docs/agents/gotchas.md` — (a) a migration touching a unique/PK column must
+handle target-exists; (b) DML (data-rewriting) migrations in a DO
+constructor must be non-fatal per row; (c) data states producible by your
+own compatibility shims during rollout are part of the migration's input
+domain.
+
+**Acceptance:** seeded legacy+canonical twin rows boot cleanly with the
+canonical row surviving and a warning emitted; third-format row converted
+(or warned, never silently skipped); a deliberately malformed value cannot
+make the constructor throw (fuzz the rewrite with junk shapes); existing
+migration suite (fresh / legacy / pre-FOR-468 DO) still green.
 
 ### R3 (F3) — reject dual-field mismatch *(unchanged)*
 
