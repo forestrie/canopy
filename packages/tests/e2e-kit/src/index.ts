@@ -23,6 +23,11 @@ export {
   univocityInstanceIdE2e,
   type E2eChainBinding,
 } from "./onboard-token-e2e.js";
+export {
+  purchaseCreditsE2e,
+  signX402PaymentE2e,
+  type CreditsPurchaseResultE2e,
+} from "./x402-payer-e2e.js";
 export { playwrightFetch } from "./playwright-fetch.js";
 
 /** SCRAPI registration primitives — re-exported from @forestrie/scrapi-client
