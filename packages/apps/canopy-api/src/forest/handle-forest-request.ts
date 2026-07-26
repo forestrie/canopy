@@ -40,7 +40,6 @@ import {
   GenesisWebhookUrlValidationError,
   validateGenesisWebhookUrl,
 } from "./validate-genesis-webhook-url.js";
-import type { RegistrationClass } from "../payments/registration-class.js";
 import type { OnboardTokenChainBinding } from "../payments/onboard-token-record.js";
 import { claimOnboardTokenForestRCas } from "../payments/onboard-token-store.js";
 import { normalizeHexAddress } from "../rpc/eth-rpc.js";

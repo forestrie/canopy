@@ -134,7 +134,7 @@ describe("ops onboard-token API", () => {
 });
 
 describe("genesis onboard-token auth", () => {
-  it("POST genesis with valid onboard token records payment-authoritative registration", async () => {
+  it("POST genesis with a valid onboard token records the registration (class retired)", async () => {
     const minted = await mintOnboardToken(poolEnv, {
       chainBinding: { chainId: "84532", univocityAddr: "42".repeat(20) },
     });

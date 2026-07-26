@@ -22,30 +22,44 @@ const BANNED = [
   /liableAccount/,
   /accountKey/,
   /account_key/,
+  // Slice 05 closes the list (plan-2607-43 D6): the pre-ADR-0059 registration
+  // taxonomy is retired everywhere outside tolerant readers of legacy R2
+  // records. \b keeps LegacyRegistrationClass (the tolerated spelling) legal
+  // in its one allowlisted home without matching new uses of the bare name.
+  /payment-authoritative/i,
+  /\bRegistrationClass/,
+  /endorsedBy/,
 ];
 
-/** path-prefix → reason. Entries removed by the slice named in the reason. */
+/**
+ * path-prefix → reason. FROZEN as of slice 05 (plan-2607-43 D6): every entry
+ * is either the gate itself, a migration over legacy stored state, a tolerant
+ * reader of legacy stored records, or a test pinning one of those. Adding an
+ * entry requires the same justification discipline — new product code never
+ * qualifies.
+ */
 const ALLOWLIST = {
   "scripts/check-naming.mjs": "the gate itself",
-  "packages/apps/canopy-api/src/forest/forward-coordinator-registration.ts":
-    "dual-field wire shim, drops in slice 05",
-  "packages/apps/canopy-api/test/forest-genesis-coordinator-forward.test.ts":
-    "asserts the dual-field shim, drops in slice 05",
   "packages/apps/delegation-coordinator/src/durableobjects/delegation-store.ts":
-    "legacy column/value migration, drops when the migration retires",
-  "packages/apps/x402-settlement/src/durableobjects/receivables.ts":
-    "legacy column rename migration (pre-v3 local state), drops when it retires",
+    "legacy column/value migration over deployed shard state; retires with the migration",
   "packages/apps/delegation-coordinator/src/legacy-instance-id.ts":
-    "legacy-form conversion, drops when migration and shim retire",
-  "packages/apps/delegation-coordinator/src/handlers/put-webhook.ts":
-    "deprecated request-field shim, drops in slice 05",
-  "packages/apps/delegation-coordinator/src/handlers/instance-webhook.ts":
-    "legacy response-field alias, drops in slice 05",
-  "packages/apps/delegation-coordinator/src/types/":
-    "deprecated wire-field declarations, drop in slice 05",
-  "packages/apps/delegation-coordinator/test/":
-    "migration + shim coverage, tightens in slice 05",
-  "docs/": "historical docs; aligned in slice 05",
+    "legacy-form conversion used only by the delegation-store migration",
+  "packages/apps/x402-settlement/src/durableobjects/receivables.ts":
+    "legacy column rename migration (pre-v3 local state); retires with the migration",
+  "packages/apps/canopy-api/src/payments/registration-record.ts":
+    "tolerant reader: legacy registration.json objects carry class values (no data rewrite); retire with a record backfill",
+  "packages/apps/canopy-api/src/payments/registration-store.ts":
+    "tolerant reader for legacy registration.json fields; retire with a record backfill",
+  "packages/apps/canopy-api/test/payments-registration.test.ts":
+    "pins the tolerant reader against a legacy record fixture",
+  "packages/apps/delegation-coordinator/test/unit/univocity-instance-id-migration.test.ts":
+    "seeds legacy instance_key state to pin the migration",
+  "packages/apps/delegation-coordinator/test/unit/webhook-legacy-instance-binding.test.ts":
+    "pins slice-05 strictness: retired field ignored, legacy forms rejected",
+  "packages/apps/delegation-coordinator/test/unit/instance-webhook.test.ts":
+    "pins retired-alias absence in responses and rejection in requests",
+  "packages/apps/delegation-coordinator/test/unit/webhook.test.ts":
+    "pins retired-alias rejection on the log-webhook route",
 };
 
 const files = execFileSync("git", ["ls-files", "--", "packages", "scripts"], {

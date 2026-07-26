@@ -17,8 +17,6 @@ export interface PutInstanceWebhookRequest {
  */
 export interface InstanceWebhookResponse {
   univocityInstanceId: string;
-  /** Deprecated alias for `univocityInstanceId`; dropped in plan-2607-43 slice 05. */
-  instanceKey?: string;
   webhookUrl?: string;
   createdAt?: number;
   updatedAt?: number;

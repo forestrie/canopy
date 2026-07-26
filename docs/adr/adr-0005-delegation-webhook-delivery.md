@@ -8,6 +8,11 @@
 [ARC-0015 x402 settlement architecture](../../../devdocs/arc/arc-0015-x402-settlement-architecture.md),
 [plan-0021 delegation coordinator APIs](../plans/plan-0021-delegation-coordinator-apis.md)
 
+> **Terminology amendment (plan-2607-43 D6, slice 05):** the instance-binding
+> field this ADR calls `instanceKey` is now `univocityInstanceId` (canonical
+> CAIP-10; devdocs ADR-0059). The deploy-window alias was dropped in slice 05;
+> occurrences below are historical.
+
 ---
 
 ## Context

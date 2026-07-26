@@ -23,9 +23,4 @@
 export interface PutWebhookRequest {
   url?: string;
   univocityInstanceId?: string;
-  /**
-   * Deprecated alias for `univocityInstanceId` (same canonical value rules,
-   * same app-token requirement). Dropped in plan-2607-43 slice 05.
-   */
-  instanceKey?: string;
 }

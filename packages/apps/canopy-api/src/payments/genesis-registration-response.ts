@@ -2,7 +2,7 @@ import type { CoordinatorRegistrationStatus } from "../forest/coordinator-regist
 import type { ForestGenesisChainBinding } from "../forest/genesis-wire.js";
 
 /**
- * Class and endorsedBy are gone (ADR-0059, slice 02): every instance root is
+ * The legacy class/endorsement fields are gone (ADR-0059, slice 02): every instance root is
  * its own account, so the registration response carries only the account
  * identity.
  */
