@@ -468,7 +468,7 @@ jobs:
             printf '%s' "$value" | wrangler secret put "$name" --config wrangler.runtime.jsonc --env "$ENV"
           }
           ENV="${DEPLOY_ENV}"
-          for key in X402_SETTLEMENT_QUEUE_NAME X402_SETTLEMENT_SCRIPT_NAME CANOPY_ID; do
+          for key in X402_SETTLEMENT_QUEUE_NAME X402_SETTLEMENT_SCRIPT_NAME CANOPY_ID SUPPORTED_CHAINS_RPC; do
             if [ -z "$(trim_ws "${!key:-}")" ]; then
               echo "::error::${key} is required in GitHub Environment ${ENV}."
               exit 1

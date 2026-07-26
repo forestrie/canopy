@@ -1,16 +1,17 @@
 /**
  * Accrual indexer composition (plan-2607-43 slice 03): enumerate registered
- * accounts, walk `CheckpointPublished` from each account's watermark with a
- * confirmation lag, and apply idempotent accrual batches to the per-account
- * ReceivablesDO. Observe-only: balances may run negative and arrears is
- * computed, but the kill switch is never touched until `ENFORCEMENT_ARMED`
- * (slice 04).
+ * accounts, walk `CheckpointPublished` from each account's watermark up to
+ * the chain's safe head, and apply idempotent accrual batches to the
+ * per-account ReceivablesDO. Observe-only: balances may run negative and
+ * arrears is computed, but the kill switch is never touched until
+ * `ENFORCEMENT_ARMED` (slice 04).
  *
  * Backfill posture: a first-seen account starts observing from the current
- * confirmed head (watermark initialised without a scan) unless
- * `INDEXER_BACKFILL_FROM_BLOCK` names an explicit start. Pre-pricing
- * (FOR-438) there is nothing to bill retroactively, and ADR-0058 §7 makes
- * chain reconciliation the backstop for anything missed.
+ * scan bound (watermark initialised without a scan) unless
+ * `INDEXER_BACKFILL_FROM_BLOCK` — a JSON map `{chainId: block}` — names an
+ * explicit start for its chain. Pre-pricing (FOR-438) there is nothing to
+ * bill retroactively, and ADR-0058 §7 makes chain reconciliation the
+ * backstop for anything missed.
  */
 
 import {
@@ -21,11 +22,11 @@ import type { Env } from "../env.js";
 import type { AccountRef } from "../durableobjects/receivables.js";
 import {
   fetchCheckpointEvents,
-  fetchLatestBlock,
+  fetchScanBound,
 } from "./checkpoint-log-source.js";
 import { listRegisteredAccounts } from "./instance-accounts.js";
 
-/** Blocks behind head the scan stops — reorg tolerance on Base. */
+/** Fallback confirmations when a chain does not serve the `safe` tag. */
 const DEFAULT_CONFIRMATIONS = 6;
 /** eth_getLogs span per request; public RPCs commonly cap around 10k. */
 const DEFAULT_MAX_BLOCK_RANGE = 5000;
@@ -44,15 +45,53 @@ function intFromEnv(raw: string | undefined, fallback: number): number {
   return Number.isSafeInteger(n) && n > 0 ? n : fallback;
 }
 
+/**
+ * `INDEXER_BACKFILL_FROM_BLOCK` is a per-chain JSON map — cross-chain block
+ * heights are not comparable, and a deployment-global scalar would latch
+ * every future first-seen account into a deep backfill (plan-2607-03 E5).
+ * Documented as a one-shot ops action: set, let first sight consume it,
+ * unset.
+ */
+function backfillMap(raw: string | undefined): Record<string, number> {
+  const trimmed = raw?.trim();
+  if (!trimmed) return {};
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      // A bare number is the retired deployment-global scalar (E5) — warn
+      // rather than silently latching nothing.
+      throw new Error("not an object");
+    }
+    const out: Record<string, number> = {};
+    for (const [chainId, block] of Object.entries(parsed)) {
+      if (
+        typeof block === "number" &&
+        Number.isSafeInteger(block) &&
+        block >= 0
+      ) {
+        out[chainId] = block;
+      }
+    }
+    return out;
+  } catch {
+    console.warn(
+      "indexer: INDEXER_BACKFILL_FROM_BLOCK is not a JSON {chainId: block} map; ignored",
+    );
+    return {};
+  }
+}
+
 async function indexAccount(
   env: Env,
   account: AccountRef,
   rpcUrls: string[],
+  scanBound: number,
+  backfillFrom: number | undefined,
 ): Promise<{ scanned: number; applied: number }> {
-  const confirmations = intFromEnv(
-    env.INDEXER_CONFIRMATIONS,
-    DEFAULT_CONFIRMATIONS,
-  );
   const maxRange = intFromEnv(
     env.INDEXER_MAX_BLOCK_RANGE,
     DEFAULT_MAX_BLOCK_RANGE,
@@ -66,36 +105,31 @@ async function indexAccount(
     env.RECEIVABLES_DO.idFromName(account.univocityInstanceId),
   );
 
-  const head = await fetchLatestBlock(rpcUrls);
-  const confirmedHead = head - confirmations;
-  if (confirmedHead < 0) return { scanned: 0, applied: 0 };
+  if (scanBound < 0) return { scanned: 0, applied: 0 };
 
   const { lastBlock } = await stub.getIndexState(account.univocityInstanceId);
 
   let from: number;
   if (lastBlock !== null) {
     from = lastBlock + 1;
+  } else if (backfillFrom !== undefined) {
+    from = backfillFrom;
   } else {
-    const backfill = Number.parseInt(env.INDEXER_BACKFILL_FROM_BLOCK ?? "", 10);
-    if (Number.isSafeInteger(backfill) && backfill >= 0) {
-      from = backfill;
-    } else {
-      // First sight: initialise the watermark at the confirmed head and
-      // observe forward only. Recorded, so the choice is auditable.
-      await stub.applyCheckpointEvents(account, [], confirmedHead);
-      console.log(
-        `indexer: ${account.univocityInstanceId} watermark initialised at ${confirmedHead} (observe-forward)`,
-      );
-      return { scanned: 0, applied: 0 };
-    }
+    // First sight: initialise the watermark at the scan bound and observe
+    // forward only. Recorded, so the choice is auditable.
+    await stub.applyCheckpointEvents(account, [], scanBound);
+    console.log(
+      `indexer: ${account.univocityInstanceId} watermark initialised at ${scanBound} (observe-forward)`,
+    );
+    return { scanned: 0, applied: 0 };
   }
 
   let scanned = 0;
   let applied = 0;
   let ranges = 0;
   const contractAddress = `0x${account.univocityAddr}`;
-  while (from <= confirmedHead && ranges < maxRanges) {
-    const to = Math.min(from + maxRange - 1, confirmedHead);
+  while (from <= scanBound && ranges < maxRanges) {
+    const to = Math.min(from + maxRange - 1, scanBound);
     const events = await fetchCheckpointEvents(
       rpcUrls,
       contractAddress,
@@ -127,8 +161,11 @@ async function indexAccount(
 }
 
 /**
- * One cron sweep. Per-account failures degrade to logs — one bad RPC or one
- * poisoned account must not starve the rest of the sweep.
+ * One cron sweep. Per-account failures degrade to logs, and the sweep body
+ * itself is guarded — a malformed chain config or an R2 failure must become
+ * an app-level `sweep failed` line, never an unhandled rejection inside the
+ * scheduled handler's waitUntil (plan-2607-03 A1). Exactly one summary line
+ * is emitted per tick, whatever happened.
  */
 export async function runCheckpointIndexer(
   env: Env,
@@ -139,37 +176,62 @@ export async function runCheckpointIndexer(
     applied: 0,
     errors: 0,
   };
-  const rawChains = env.SUPPORTED_CHAINS_RPC?.trim();
-  if (!rawChains) {
-    console.warn("indexer: SUPPORTED_CHAINS_RPC unset; sweep skipped");
-    return summary;
-  }
-  if (!env.R2_GRANTS) {
-    console.warn("indexer: R2_GRANTS binding absent; sweep skipped");
-    return summary;
-  }
-  const chains = parseSupportedChainsRpc(rawChains);
-  const accounts = await listRegisteredAccounts(env.R2_GRANTS);
-  summary.accounts = accounts.length;
+  try {
+    const rawChains = env.SUPPORTED_CHAINS_RPC?.trim();
+    if (!rawChains) {
+      console.warn("indexer: SUPPORTED_CHAINS_RPC unset; sweep skipped");
+    } else if (!env.R2_GRANTS) {
+      console.warn("indexer: R2_GRANTS binding absent; sweep skipped");
+    } else {
+      const chains = parseSupportedChainsRpc(rawChains);
+      const accounts = await listRegisteredAccounts(env.R2_GRANTS);
+      summary.accounts = accounts.length;
+      const backfill = backfillMap(env.INDEXER_BACKFILL_FROM_BLOCK);
+      const confirmations = intFromEnv(
+        env.INDEXER_CONFIRMATIONS,
+        DEFAULT_CONFIRMATIONS,
+      );
 
-  for (const account of accounts) {
-    const rpcUrls = rpcUrlsForChainId(chains, account.chainId);
-    if (!rpcUrls) {
-      console.warn(
-        `indexer: no RPC configured for chain ${account.chainId} (${account.univocityInstanceId}); skipped`,
-      );
-      continue;
+      // One scan bound per chain per sweep: fewer RPC calls, and no
+      // intra-sweep head skew between accounts on the same chain.
+      const bounds = new Map<string, number>();
+
+      for (const account of accounts) {
+        const rpcUrls = rpcUrlsForChainId(chains, account.chainId);
+        if (!rpcUrls) {
+          console.warn(
+            `indexer: no RPC configured for chain ${account.chainId} (${account.univocityInstanceId}); skipped`,
+          );
+          continue;
+        }
+        try {
+          let bound = bounds.get(account.chainId);
+          if (bound === undefined) {
+            bound = await fetchScanBound(rpcUrls, confirmations);
+            bounds.set(account.chainId, bound);
+          }
+          const r = await indexAccount(
+            env,
+            account,
+            rpcUrls,
+            bound,
+            backfill[account.chainId],
+          );
+          summary.scanned += r.scanned;
+          summary.applied += r.applied;
+        } catch (error) {
+          summary.errors += 1;
+          console.error(
+            `indexer: ${account.univocityInstanceId} failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
     }
-    try {
-      const r = await indexAccount(env, account, rpcUrls);
-      summary.scanned += r.scanned;
-      summary.applied += r.applied;
-    } catch (error) {
-      summary.errors += 1;
-      console.error(
-        `indexer: ${account.univocityInstanceId} failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+  } catch (error) {
+    summary.errors += 1;
+    console.error(
+      `indexer: sweep failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
   console.log(
     `indexer: sweep complete accounts=${summary.accounts} ranges=${summary.scanned} events=${summary.applied} errors=${summary.errors}`,

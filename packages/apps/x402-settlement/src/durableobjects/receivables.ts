@@ -51,6 +51,13 @@ export type ArrearsState = "current" | "suspect" | "in-arrears";
  * The dedup only has to outlive the window in which an event can be
  * *redelivered* — for the indexer that is the watermark lag, hours at most —
  * so the table is bounded rather than growing for the life of the account.
+ *
+ * LOAD-BEARING COUPLING: this bound is safe only because watermarks are
+ * monotonic — no source ever rescans a range older than its watermark. Any
+ * future ops watermark-REWIND tool (the slice-04 arming gate is a
+ * watermark-SET tool for stalled accounts, which only moves forward past a
+ * poisoned range) turns this retention window into a re-count window; extend
+ * or suspend the GC before building one.
  */
 const ACCRUAL_KEY_RETENTION_SECONDS = 7 * 24 * 60 * 60;
 
@@ -291,6 +298,77 @@ export class ReceivablesDO extends DurableObject<Env> {
   }
 
   /**
+   * The one accrual core (plan-2607-03 R6): dedup, event insert, balance and
+   * count update, retention GC. Both the single-event and the batch entry
+   * points delegate here so the idempotency logic cannot drift into a
+   * double-count.
+   *
+   * @returns total count newly applied (0 when everything was a replay).
+   */
+  private applyAccrualCore(
+    account: AccountRef,
+    events: Array<{
+      idempotencyKey: string;
+      count: number;
+      logKind?: number;
+      size?: number;
+    }>,
+  ): number {
+    let applied = 0;
+    for (const event of events) {
+      const key = event.idempotencyKey?.trim();
+      if (!key) {
+        throw new Error("accrual requires a non-empty idempotencyKey");
+      }
+      if (!Number.isInteger(event.count) || event.count < 1) {
+        throw new Error(
+          `accrual requires a positive integer count, got ${event.count}`,
+        );
+      }
+      const seen = this.ctx.storage.sql
+        .exec<{
+          n: number;
+        }>(
+          `SELECT COUNT(*) AS n FROM accrual_events WHERE idempotency_key = ?`,
+          key,
+        )
+        .toArray()[0];
+      if (seen && seen.n > 0) continue;
+      this.ctx.storage.sql.exec(
+        `INSERT INTO accrual_events (idempotency_key, univocity_instance_id, count, log_kind, size, accrued_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        key,
+        account.univocityInstanceId,
+        event.count,
+        event.logKind ?? null,
+        event.size ?? null,
+        this.now(),
+      );
+      applied += event.count;
+    }
+    if (applied > 0) {
+      // Bound the dedup table. Opportunistic on write: no alarm to schedule
+      // and no unbounded growth, at the cost of a cheap DELETE per accrual.
+      this.ctx.storage.sql.exec(
+        `DELETE FROM accrual_events WHERE accrued_at < ?`,
+        this.now() - ACCRUAL_KEY_RETENTION_SECONDS,
+      );
+      this.ctx.storage.sql.exec(
+        `UPDATE account
+            SET checkpoints_accrued = checkpoints_accrued + ?,
+                credits_balance = credits_balance - ?,
+                updated_at = ?
+          WHERE univocity_instance_id = ?`,
+        applied,
+        applied,
+        this.now(),
+        account.univocityInstanceId,
+      );
+    }
+    return applied;
+  }
+
+  /**
    * Read entitlement for the ops status route (and, later, arming).
    *
    * Returns null for an account with no recorded activity. A caller MUST treat
@@ -327,11 +405,19 @@ export class ReceivablesDO extends DurableObject<Env> {
           `refusing read for ${univocityInstanceId}`,
       );
     }
-    const wm = this.ctx.storage.sql
-      .exec<{
-        last_block: number;
-      }>(`SELECT last_block FROM watermarks LIMIT 1`)
-      .toArray()[0];
+    // Keyed even though one binding per DO holds today: the schema invites
+    // per-chain cursors later, and an unkeyed LIMIT 1 would then return an
+    // arbitrary row (plan-2607-03 B4).
+    const wm = r
+      ? this.ctx.storage.sql
+          .exec<{ last_block: number }>(
+            `SELECT last_block FROM watermarks
+              WHERE chain_id = ? AND univocity_addr = ?`,
+            r.chain_id,
+            r.univocity_addr,
+          )
+          .toArray()[0]
+      : undefined;
     return {
       entitlement: r ? this.toEntitlement(r) : null,
       lastBlock: wm?.last_block ?? null,
@@ -359,52 +445,15 @@ export class ReceivablesDO extends DurableObject<Env> {
     }
     this.bind(account);
 
-    let applied = 0;
-    for (const event of events) {
-      const key = event.idempotencyKey?.trim();
-      if (!key) {
-        throw new Error(
-          "applyCheckpointEvents requires a non-empty idempotencyKey per event",
-        );
-      }
-      const seen = this.ctx.storage.sql
-        .exec<{
-          n: number;
-        }>(
-          `SELECT COUNT(*) AS n FROM accrual_events WHERE idempotency_key = ?`,
-          key,
-        )
-        .toArray()[0];
-      if (seen && seen.n > 0) continue;
-      this.ctx.storage.sql.exec(
-        `INSERT INTO accrual_events (idempotency_key, univocity_instance_id, count, log_kind, size, accrued_at)
-         VALUES (?, ?, 1, ?, ?, ?)`,
-        key,
-        account.univocityInstanceId,
-        event.logKind,
-        event.size,
-        this.now(),
-      );
-      applied += 1;
-    }
-
-    if (applied > 0) {
-      this.ctx.storage.sql.exec(
-        `DELETE FROM accrual_events WHERE accrued_at < ?`,
-        this.now() - ACCRUAL_KEY_RETENTION_SECONDS,
-      );
-      this.ctx.storage.sql.exec(
-        `UPDATE account
-            SET checkpoints_accrued = checkpoints_accrued + ?,
-                credits_balance = credits_balance - ?,
-                updated_at = ?
-          WHERE univocity_instance_id = ?`,
-        applied,
-        applied,
-        this.now(),
-        account.univocityInstanceId,
-      );
-    }
+    this.applyAccrualCore(
+      account,
+      events.map((event) => ({
+        idempotencyKey: event.idempotencyKey,
+        count: 1,
+        logKind: event.logKind,
+        size: event.size,
+      })),
+    );
 
     this.ctx.storage.sql.exec(
       `INSERT INTO watermarks (chain_id, univocity_addr, last_block, updated_at)
@@ -458,46 +507,10 @@ export class ReceivablesDO extends DurableObject<Env> {
         `accrueCheckpoints requires a positive integer count, got ${count}`,
       );
     }
-    const current = this.bind(account);
+    this.bind(account);
 
-    const seen = this.ctx.storage.sql
-      .exec<{
-        n: number;
-      }>(
-        `SELECT COUNT(*) AS n FROM accrual_events WHERE idempotency_key = ?`,
-        idempotencyKey.trim(),
-      )
-      .toArray()[0];
-    if (seen && seen.n > 0) {
-      // Already applied. Return current state unchanged.
-      return this.toEntitlement(current);
-    }
+    this.applyAccrualCore(account, [{ idempotencyKey, count }]);
 
-    // Bound the dedup table. Opportunistic on write: no alarm to schedule and
-    // no unbounded growth, at the cost of a cheap DELETE per accrual.
-    this.ctx.storage.sql.exec(
-      `DELETE FROM accrual_events WHERE accrued_at < ?`,
-      this.now() - ACCRUAL_KEY_RETENTION_SECONDS,
-    );
-    this.ctx.storage.sql.exec(
-      `INSERT INTO accrual_events (idempotency_key, univocity_instance_id, count, accrued_at)
-       VALUES (?, ?, ?, ?)`,
-      idempotencyKey.trim(),
-      account.univocityInstanceId,
-      count,
-      this.now(),
-    );
-    this.ctx.storage.sql.exec(
-      `UPDATE account
-          SET checkpoints_accrued = checkpoints_accrued + ?,
-              credits_balance = credits_balance - ?,
-              updated_at = ?
-        WHERE univocity_instance_id = ?`,
-      count,
-      count,
-      this.now(),
-      account.univocityInstanceId,
-    );
     const updated = this.row();
     if (!updated) {
       throw new Error("ReceivablesDO: account row missing after accrual");
