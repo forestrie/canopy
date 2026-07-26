@@ -54,6 +54,7 @@ set of operational and correctness issues around the fan-out.
 | M2  | Medium          | Liveness      | `delegation-coordinator/src/handlers/instance-webhook.ts:55`                                                     | Re-point and delete fan out non-atomically, report the first failure only, and self-repair only if the caller retries                                                                                                                                        | Revocation must not half-apply                                                                                |
 | M3  | Medium          | Scale         | `delegation-store.ts` `handlePutInstanceWebhook`                                                                 | A re-point is one unbounded synchronous `UPDATE` plus two `COUNT(*)` per shard                                                                                                                                                                               | Motivating case is an owner operating _many_ logs                                                             |
 | M4  | Medium          | Correctness   | same files                                                                                                       | `univocityInstanceId` (authority hierarchy) and `univocityPaymentInstanceId` (payment graph) are different entities; under CAIP-10 they share a format, so branded types and column naming must carry the distinction                                        | ARC: the two graphs must stay separate; glossary: "Avoid: conflating with the per-forest authority hierarchy" |
+| M5  | Medium          | Correctness   | `canopy-api/src/payments/registration-store.ts` · genesis                                                        | Two different roots may claim the same univocity contract; nothing checks `chainBinding` uniqueness. Chain-derived ids (M1/M4) make them collapse to one instance and share one webhook                                                                      | ARC asserts one contract ↔ one rootLogId                                                                     |
 | L1  | Low             | Best practice | `delegation-store.ts:358`                                                                                        | New columns live only in the migration path, not the base `CREATE TABLE`                                                                                                                                                                                     | Inconsistent with the neighbouring `ensureEnabledAuthorityColumns`                                            |
 | L2  | Low             | Best practice | `delegation-store.ts` `countInstanceMemberLogs`                                                                  | `webhook_source` interpolated into SQL rather than bound                                                                                                                                                                                                     | Every other predicate in the file is bound                                                                    |
 | L3  | Low             | Correctness   | `instance-webhook.ts:124`                                                                                        | `Math.min(createdAt ?? Infinity, shardResult.createdAt ?? 0)` collapses to `0` if any shard omits `createdAt`                                                                                                                                                | Latent only                                                                                                   |
@@ -252,6 +253,34 @@ For a **regular** forest these resolve to different univocity instances. They
 coincide only when the root is itself payment-authoritative — which is exactly
 the case a test is most likely to cover, so a swap can pass CI.
 
+**What this costs, concretely.** Canopy issues **Acme** (a mandate operator) an
+onboard token. Acme genesises their forest with it → `class =
+payment-authoritative`, instance `eip155:84532:0xACME`. Acme sponsors a
+customer, **Bob**, with an endorsement grant. Bob deploys **his own** univocity
+contract and genesises his forest with Acme's grant → `class = regular`,
+`endorsedBy = Acme`, instance `eip155:84532:0xB0B`.
+
+For any log in Bob's forest:
+
+- `univocityInstanceId` = `eip155:84532:0xB0B` — **Bob holds the signing keys**,
+  so `delegation.required` must reach Bob's webhook.
+- `univocityPaymentInstanceId` = `eip155:84532:0xACME` — **Acme vouched to
+  reimburse canopy**, so receivables accrue to Acme.
+
+Two CAIP-10 strings of identical shape naming two different companies. Nothing
+in the values says which is which — only which walk produced them.
+
+| Swap                                    | Functional failure                                                                                                                                                                                                                                                                                                                                                                               |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Payment id used for **webhook routing** | Bob's delegation requests go to Acme's endpoint. Acme does not hold Bob's keys, so either its receiver refuses on the ownership check or a naive receiver signs with the wrong key and the coordinator rejects the certificate against Bob's registered root. **Bob's logs quietly stop being able to extend.** Nothing errors at the canopy end — delivery succeeded, the log just goes silent. |
+| Instance id used for **receivables**    | Bob's usage accrues to Bob rather than Acme. Acme is under-billed; Bob accrues arrears on an account he never agreed to and that has no onboard token behind it. The arrears kill switch then freezes **Bob's root** — and freezing a root freezes its whole subtree's ability to extend. A billing misattribution becomes an availability action against the wrong party.                       |
+
+**Why this is likely rather than theoretical.** The two values are _identical_
+whenever a root is itself payment-authoritative — canopy's own first-party
+forests, and any operator not sponsoring anyone. That describes most test
+fixtures, so a swap passes CI and diverges only for sponsored forests: exactly
+the multi-tenant production case.
+
 FOR-468's choice is **correct**: `delegation.required` must reach whoever holds
 custody of the log's keys, which is the authority hierarchy, not the payer. An
 earlier draft of this review proposed unifying the two; withdrawn.
@@ -296,18 +325,55 @@ tie to the glossary survives.
   **CAIP-10**, not "CAIP-2" as currently written. This batches with the
   correction already queued for that section.
 
-**New consequence of choosing CAIP-10 for both — record it.** `one contract ↔
-one rootLogId` is asserted by the ARC but **not enforced**; there is no
-uniqueness constraint on `chainBinding` anywhere. Under a chain-derived
-`univocityInstanceId`, two roots sharing a contract collapse to **one** instance
-and therefore share one instance webhook. That is almost certainly the intent —
-same contract implies same operator — but it is now load-bearing on an
-unenforced invariant. Either enforce uniqueness at registration, or state the
-assumption in the ARC.
+**Uniqueness this now depends on.** A chain-derived `univocityInstanceId`
+means two roots sharing a contract collapse to one instance and share one
+webhook. That is the intent, but it is now load-bearing on an invariant the
+ARC asserts and nothing enforces — see **M5**.
 
 **Branch:** M1 and M4 ship together — same files, and strictness without the
 renaming leaves two identical-looking identifiers that merely validate the same.
 The ADR-0058 §2 half batches with the pending devdocs correction.
+
+### M5 — enforce one contract, one root, at registration
+
+The ARC asserts `one contract ↔ one rootLogId`. Only half of it is enforced, and
+not the half that matters once identifiers are chain-derived (M1/M4).
+
+**Already prevented — a root rebinding to another instance.**
+`writeRegistration` is write-once: it `head`s the R2 key and returns if a record
+exists, so a root's `chainBinding` is immutable after genesis. Separately,
+`claimOnboardTokenForestRCas` enforces one onboard token ↔ one forest R by CAS.
+
+**Not prevented — two roots claiming the same contract.** Nothing checks whether
+a `chainBinding` is already held by a different registration. Two genesis calls,
+different `R`, same `(chainId, univocityAddr)` both succeed.
+
+Why it matters now: `univocityInstanceId` is derived from the chain binding, so
+two such roots collapse to **one** instance and share **one** instance webhook —
+delegation requests for both roots' logs are delivered to whichever endpoint was
+registered last. Before FOR-468 this was inert; with instance-level webhooks it
+routes signing requests.
+
+It also affects billing symmetrically: two payment-authoritative roots sharing a
+contract are one `univocityPaymentInstanceId`, so their receivables merge into a
+single account.
+
+**Acceptance criteria**
+
+- Genesis rejects a registration whose `chainBinding` is already recorded
+  against a different root, with a `409` naming the existing root.
+- The check is atomic against concurrent genesis for distinct `R` — a plain
+  read-then-write leaves the race open. A CAS-backed index keyed by the
+  canonical `univocityInstanceId` (mirroring `claimOnboardTokenForestRCas`) is
+  the natural shape, and doubles as a reverse lookup instance → root.
+- The `head`-then-`put` in `writeRegistration` is likewise not atomic; if the
+  same-R race is judged reachable on the endorsement path, close it with the
+  same CAS primitive.
+- The ARC states the invariant as **enforced** rather than assumed, and names
+  where.
+
+**Branch:** with M1 + M4 — the uniqueness index is keyed by the canonical
+identifier those introduce.
 
 ### M2 — make the fan-out's partial state visible and repairable
 
@@ -416,6 +482,7 @@ end-to-end `delegation.required` delivery to an inherited webhook. Missing:
 | H1      | Follow-up branch off `main`; does not block #174                           |
 | H2      | Fold into #174 — it is the branch that introduced the blocking call        |
 | M1 + M4 | One branch, together — same files, before #174 merges (nothing stored yet) |
+| M5      | With M1 + M4 — index keyed by the canonical identifier                     |
 | M2, M3  | Follow-up branch off `main`                                                |
 | L1–L3   | Follow-up branch, batched                                                  |
 | L4      | Superseded by M1/M4                                                        |
