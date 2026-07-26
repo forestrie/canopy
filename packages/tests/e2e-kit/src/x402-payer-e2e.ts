@@ -207,6 +207,42 @@ export function x402PayerKeyE2e(): string | undefined {
   );
 }
 
+/** Payer address for the resolved key (see {@link x402PayerKeyE2e}). */
+export function x402PayerAddressE2e(): string | undefined {
+  const key = x402PayerKeyE2e();
+  return key ? deriveAddress(key) : undefined;
+}
+
+const BASE_SEPOLIA_USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+const DEFAULT_BASE_SEPOLIA_RPC = "https://sepolia.base.org";
+
+/**
+ * Payer's Base Sepolia USDC balance in atomic units (6 decimals). Used by the
+ * pay-e2e to SKIP rather than fail while the wallet is unfunded — an unfunded
+ * payer is an environment condition, not a product defect.
+ */
+export async function usdcBalanceE2e(
+  address: string,
+  rpcUrl = process.env.E2E_UNIVOCITY_RPC_URL?.trim() ||
+    DEFAULT_BASE_SEPOLIA_RPC,
+): Promise<bigint> {
+  const data = `0x70a08231${address.replace(/^0x/, "").padStart(64, "0")}`;
+  const res = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "eth_call",
+      params: [{ to: BASE_SEPOLIA_USDC, data }, "latest"],
+    }),
+  });
+  if (!res.ok) throw new Error(`USDC balance RPC failed: ${res.status}`);
+  const json = (await res.json()) as { result?: string; error?: unknown };
+  if (json.error) throw new Error(`USDC balance RPC error`);
+  return json.result && json.result !== "0x" ? BigInt(json.result) : 0n;
+}
+
 export interface CreditsPurchaseResultE2e {
   univocityInstanceId: string;
   credits: number;
