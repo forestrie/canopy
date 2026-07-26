@@ -16,6 +16,7 @@
   "dependencies": {
     "@forestrie/delegation-cose": "workspace:*",
     "@forestrie/encoding": "workspace:*",
+    "@canopy/univocity-instance-id": "workspace:*",
     "@canopy/webhook-url": "workspace:*",
     "@canopy/forestrie-sharding": "workspace:*",
     "@noble/curves": "^1.9.7",

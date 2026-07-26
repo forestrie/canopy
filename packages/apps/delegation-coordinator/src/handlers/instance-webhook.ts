@@ -1,6 +1,10 @@
 /**
- * `/api/instances/{instanceKey}/webhook` — instance-level webhook registration
- * and re-point (ADR-0005 amendment, FOR-468).
+ * `/api/instances/{univocityInstanceId}/webhook` — instance-level webhook
+ * registration and re-point (ADR-0005 amendment, FOR-468).
+ *
+ * The path segment is the canonical CAIP-10 univocity instance id
+ * `eip155:{chainId}:0x{40 lowercase hex}` (ADR-0059 D1/D6); anything else is
+ * rejected with 400.
  *
  * A univocity instance owner may operate many logs and hold custody of most of
  * their signing keys, so an instance-level webhook serves every log of that
@@ -19,9 +23,9 @@
  * brokers genesis registration.
  */
 
+import { parseUnivocityInstanceId } from "@canopy/univocity-instance-id";
 import type { Env } from "../env.js";
 import { checkBearerToken } from "../auth/check-bearer-token.js";
-import { normalizeInstanceKey } from "../instance-key.js";
 import type {
   InstanceWebhookResponse,
   PutInstanceWebhookRequest,
@@ -37,16 +41,16 @@ import {
   problemResponse,
 } from "./handler.js";
 
-/** Normalize an instance key path segment or return a 400 problem. */
-function normalizePathInstanceKey(segment: string): string | Response {
+/** Parse a univocity instance id path segment or return a 400 problem. */
+function parsePathUnivocityInstanceId(segment: string): string | Response {
   try {
-    return normalizeInstanceKey(segment);
+    return parseUnivocityInstanceId(segment);
   } catch (error) {
     return problemResponse(
       400,
       "about:blank",
       "Invalid request",
-      error instanceof Error ? error.message : "Invalid instanceKey",
+      error instanceof Error ? error.message : "Invalid univocityInstanceId",
     );
   }
 }
@@ -54,11 +58,11 @@ function normalizePathInstanceKey(segment: string): string | Response {
 /** Fan a request out to every shard's instance-webhook route. */
 async function fanOutToShards(
   env: Env,
-  instanceKey: string,
+  univocityInstanceId: string,
   init: RequestInit,
 ): Promise<{ responses: Response[]; shardCount: number }> {
   const shardCount = getShardCount(env);
-  const path = `/instance-webhook/${encodeURIComponent(instanceKey)}`;
+  const path = `/instance-webhook/${encodeURIComponent(univocityInstanceId)}`;
   const responses = await Promise.all(
     Array.from({ length: shardCount }, (_, i) =>
       getStoreStub(env, i).fetch(`https://do.internal${path}`, init),
@@ -68,18 +72,18 @@ async function fanOutToShards(
 }
 
 /**
- * PUT /api/instances/{instanceKey}/webhook — set or re-point.
+ * PUT /api/instances/{univocityInstanceId}/webhook — set or re-point.
  *
- * @returns `{ instanceKey, webhookUrl, memberLogs, updatedLogs, shards }`.
+ * @returns `{ univocityInstanceId, webhookUrl, memberLogs, updatedLogs, shards }`.
  */
 export async function handlePutInstanceWebhook(
-  instanceKeySegment: string,
+  instanceIdSegment: string,
   request: Request,
   env: Env,
 ): Promise<Response> {
   try {
-    const instanceKey = normalizePathInstanceKey(instanceKeySegment);
-    if (instanceKey instanceof Response) return instanceKey;
+    const univocityInstanceId = parsePathUnivocityInstanceId(instanceIdSegment);
+    if (univocityInstanceId instanceof Response) return univocityInstanceId;
 
     const authErr = checkBearerToken(request, env.COORDINATOR_APP_TOKEN);
     if (authErr) return authErr;
@@ -98,13 +102,17 @@ export async function handlePutInstanceWebhook(
       return problemResponse(400, "about:blank", "Invalid request", detail);
     }
 
-    const { responses, shardCount } = await fanOutToShards(env, instanceKey, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: validatedUrl }),
-    });
+    const { responses, shardCount } = await fanOutToShards(
+      env,
+      univocityInstanceId,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: validatedUrl }),
+      },
+    );
 
-    // A shard rejecting rejects for all (same body, same key): surface it
+    // A shard rejecting rejects for all (same body, same id): surface it
     // verbatim. The re-point is idempotent, so a partial fan-out is repaired by
     // retrying the same PUT.
     let memberLogs = 0;
@@ -126,7 +134,9 @@ export async function handlePutInstanceWebhook(
     }
 
     const resp: InstanceWebhookResponse = {
-      instanceKey,
+      univocityInstanceId,
+      // Legacy alias for one deploy cycle; dropped in plan-2607-43 slice 05.
+      instanceKey: univocityInstanceId,
       webhookUrl: validatedUrl,
       memberLogs,
       updatedLogs,
@@ -141,29 +151,33 @@ export async function handlePutInstanceWebhook(
 }
 
 /**
- * GET /api/instances/{instanceKey}/webhook — read the instance webhook.
+ * GET /api/instances/{univocityInstanceId}/webhook — read the instance webhook.
  *
- * @returns `{ instanceKey, webhookUrl?, memberLogs }` or 404 when unknown.
+ * @returns `{ univocityInstanceId, webhookUrl?, memberLogs }` or 404 when unknown.
  */
 export async function handleGetInstanceWebhook(
-  instanceKeySegment: string,
+  instanceIdSegment: string,
   request: Request,
   env: Env,
 ): Promise<Response> {
   try {
-    const instanceKey = normalizePathInstanceKey(instanceKeySegment);
-    if (instanceKey instanceof Response) return instanceKey;
+    const univocityInstanceId = parsePathUnivocityInstanceId(instanceIdSegment);
+    if (univocityInstanceId instanceof Response) return univocityInstanceId;
 
     const authErr = checkBearerToken(request, env.COORDINATOR_APP_TOKEN);
     if (authErr) return authErr;
 
-    const { responses } = await fanOutToShards(env, instanceKey, {
+    const { responses } = await fanOutToShards(env, univocityInstanceId, {
       method: "GET",
     });
 
     let found = false;
     let memberLogs = 0;
-    const resp: InstanceWebhookResponse = { instanceKey };
+    const resp: InstanceWebhookResponse = {
+      univocityInstanceId,
+      // Legacy alias for one deploy cycle; dropped in plan-2607-43 slice 05.
+      instanceKey: univocityInstanceId,
+    };
     for (const res of responses) {
       if (res.status === 404) continue;
       if (!res.ok) {
@@ -192,26 +206,28 @@ export async function handleGetInstanceWebhook(
 }
 
 /**
- * DELETE /api/instances/{instanceKey}/webhook — drop it everywhere.
+ * DELETE /api/instances/{univocityInstanceId}/webhook — drop it everywhere.
  *
  * Member logs that inherited the URL revert to having none, i.e. pre-emptive
  * supply only — a supported configuration, not an error.
  */
 export async function handleDeleteInstanceWebhook(
-  instanceKeySegment: string,
+  instanceIdSegment: string,
   request: Request,
   env: Env,
 ): Promise<Response> {
   try {
-    const instanceKey = normalizePathInstanceKey(instanceKeySegment);
-    if (instanceKey instanceof Response) return instanceKey;
+    const univocityInstanceId = parsePathUnivocityInstanceId(instanceIdSegment);
+    if (univocityInstanceId instanceof Response) return univocityInstanceId;
 
     const authErr = checkBearerToken(request, env.COORDINATOR_APP_TOKEN);
     if (authErr) return authErr;
 
-    const { responses, shardCount } = await fanOutToShards(env, instanceKey, {
-      method: "DELETE",
-    });
+    const { responses, shardCount } = await fanOutToShards(
+      env,
+      univocityInstanceId,
+      { method: "DELETE" },
+    );
 
     let updatedLogs = 0;
     for (const res of responses) {
@@ -226,7 +242,9 @@ export async function handleDeleteInstanceWebhook(
     }
 
     const resp: InstanceWebhookResponse = {
-      instanceKey,
+      univocityInstanceId,
+      // Legacy alias for one deploy cycle; dropped in plan-2607-43 slice 05.
+      instanceKey: univocityInstanceId,
       updatedLogs,
       shards: shardCount,
     };

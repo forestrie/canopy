@@ -111,6 +111,12 @@ export interface OnboardingHandlerEnv
   ONBOARD_AUTO_APPROVE?: string;
   ONBOARD_AUTO_APPROVE_CHAIN_IDS?: string;
   ONBOARD_AUTO_APPROVE_LABEL_PREFIX?: string;
+  /**
+   * Admission policy (ADR-0059 decision 3): `vetted` — ops approval only,
+   * payment never solicited; `paid` / `either` — a pending request may be
+   * approved by paying at redeem. Defaults to `either`.
+   */
+  ONBOARD_ADMISSION?: string;
   ONBOARD_CREATE_RATE_LIMITER?: {
     limit(options: { key: string }): Promise<{ success: boolean }>;
   };
@@ -147,6 +153,14 @@ function defaultTokenTtlSec(env: OnboardingHandlerEnv): number {
     if (Number.isFinite(n) && n > 0) return n;
   }
   return 604_800;
+}
+
+type OnboardAdmission = "vetted" | "paid" | "either";
+
+function onboardAdmission(env: OnboardingHandlerEnv): OnboardAdmission {
+  const raw = env.ONBOARD_ADMISSION?.trim().toLowerCase();
+  if (raw === "vetted" || raw === "paid") return raw;
+  return "either";
 }
 
 function maxPendingPerBinding(env: OnboardingHandlerEnv): number {
@@ -409,6 +423,16 @@ async function handleRedeem(
   const status = effectiveStatus(record);
   let settlementJob: SettlementJob | undefined;
   if (status === "pending") {
+    // Admission policy (ADR-0059 decision 3): under `vetted`, payment is never
+    // solicited — a pending request waits for ops approval and redeem says so.
+    if (onboardAdmission(env) === "vetted") {
+      return attachCors(
+        ClientErrors.conflict(
+          "Request awaiting operator approval; this deployment does not accept payment as approval.",
+        ),
+        corsHeaders,
+      );
+    }
     const resourceUrl = request.url;
     const outcome = await verifyOnboardPayment(request, env, resourceUrl);
     if (outcome.status === "challenge" || outcome.status === "invalid") {
@@ -498,6 +522,9 @@ async function handleRedeem(
     requestId,
     chainBinding: transition.record.chainBinding,
     expiry: now + defaultTokenTtlSec(env),
+    // A settlement job exists only when payment approved the request on this
+    // call; every other path through here was ops-approved.
+    admittedBy: settlementJob ? "payment" : "ops",
   });
 
   const withRef: OnboardRequestRecord = {

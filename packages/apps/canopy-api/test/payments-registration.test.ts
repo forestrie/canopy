@@ -152,6 +152,82 @@ describe("genesis onboard-token auth", () => {
     expect(body.chainBinding?.chainId).toBe("84532");
   });
 
+  it("records admittedBy on the registration from the onboard token", async () => {
+    const minted = await mintOnboardToken(poolEnv, { admittedBy: "ops" });
+    const logId = crypto.randomUUID();
+    const res = await worker.fetch(
+      new Request(`http://localhost/api/forest/${logId}/genesis`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${minted.token}`,
+          "Content-Type": "application/cbor",
+        },
+        body: encodeCborDeterministic(
+          validGenesisV2Es256CborMap({
+            univocityAddr: new Uint8Array(20).fill(0x51),
+          }),
+        ) as Uint8Array,
+      }),
+      poolEnv,
+      {} as ExecutionContext,
+    );
+    expect(res.status).toBe(201);
+    const stored = await poolEnv.R2_GRANTS.get(
+      `forests/forest/${logId}/registration.json`,
+    );
+    expect(stored).not.toBeNull();
+    const record = JSON.parse(await stored!.text()) as {
+      admittedBy?: string;
+    };
+    expect(record.admittedBy).toBe("ops");
+  });
+
+  it("returns 409 when a second forest claims the same univocity instance", async () => {
+    const addr = new Uint8Array(20).fill(0x52);
+    const first = await mintOnboardToken(poolEnv);
+    const firstRoot = crypto.randomUUID();
+    const firstRes = await worker.fetch(
+      new Request(`http://localhost/api/forest/${firstRoot}/genesis`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${first.token}`,
+          "Content-Type": "application/cbor",
+        },
+        body: encodeCborDeterministic(
+          validGenesisV2Es256CborMap({ univocityAddr: addr }),
+        ) as Uint8Array,
+      }),
+      poolEnv,
+      {} as ExecutionContext,
+    );
+    expect(firstRes.status).toBe(201);
+
+    const second = await mintOnboardToken(poolEnv);
+    const secondRoot = crypto.randomUUID();
+    const secondRes = await worker.fetch(
+      new Request(`http://localhost/api/forest/${secondRoot}/genesis`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${second.token}`,
+          "Content-Type": "application/cbor",
+        },
+        body: encodeCborDeterministic(
+          validGenesisV2Es256CborMap({ univocityAddr: addr }),
+        ) as Uint8Array,
+      }),
+      poolEnv,
+      {} as ExecutionContext,
+    );
+    expect(secondRes.status).toBe(409);
+
+    // The claim index names the holder, so the conflict is diagnosable.
+    const claim = await poolEnv.R2_GRANTS.get(
+      `forests/index/chain-binding/eip155:84532:0x${"52".repeat(20)}`,
+    );
+    expect(claim).not.toBeNull();
+    expect((await claim!.text()).trim()).toBe(firstRoot);
+  });
+
   it("rejects genesis POST without auth", async () => {
     const logId = crypto.randomUUID();
     const res = await worker.fetch(
@@ -222,8 +298,12 @@ describe("genesis endorsement-grant auth", () => {
           Authorization: authHeader,
           "Content-Type": "application/cbor",
         },
+        // A distinct contract: one univocity instance is one account, so a
+        // second forest claiming the endorser's binding is a 409 (ADR-0059).
         body: encodeCborDeterministic(
-          validGenesisV2Es256CborMap(),
+          validGenesisV2Es256CborMap({
+            univocityAddr: new Uint8Array(20).fill(0x43),
+          }),
         ) as Uint8Array,
       }),
       poolEnv,

@@ -20,7 +20,11 @@ import {
   type CoordinatorForwardEnv,
 } from "./forward-coordinator-registration.js";
 import { getForestGenesis } from "./get-forest-genesis.js";
-import { instanceKeyFromGenesisChainBinding } from "./instance-key.js";
+import {
+  tryUnivocityInstanceIdFromChainBinding,
+  type UnivocityInstanceId,
+} from "@canopy/univocity-instance-id";
+import { claimUnivocityInstance } from "../payments/instance-registry.js";
 import { handlePrepareChildLog } from "./prepare-child-log.js";
 import {
   postForestGenesis,
@@ -95,7 +99,7 @@ async function coordinatorStatusForGenesis(
   env: ForestHandlerEnv,
   genesisResult: PostGenesisSuccess,
   webhookUrl: string | undefined,
-  instanceKey: string | undefined,
+  univocityInstanceId: UnivocityInstanceId | undefined,
   timeoutMs?: number,
 ): Promise<CoordinatorRegistrationStatus> {
   return forwardCoordinatorRegistration({
@@ -105,7 +109,7 @@ async function coordinatorStatusForGenesis(
     genesisAlg: genesisResult.genesisAlg,
     bootstrapKey: genesisResult.bootstrapKey,
     ...(webhookUrl ? { webhookUrl } : {}),
-    ...(instanceKey ? { instanceKey } : {}),
+    ...(univocityInstanceId ? { univocityInstanceId } : {}),
     ...(timeoutMs ? { timeoutMs } : {}),
   });
 }
@@ -133,11 +137,26 @@ async function finishGenesisPost(
   endorsedBy: string | undefined,
   webhookUrl: string | undefined,
 ): Promise<Response> {
-  await writeRegistration(env, genesisResult.logIdWire, record);
+  const univocityInstanceId = tryUnivocityInstanceIdFromChainBinding({
+    chainId: genesisResult.chainBinding.chainId,
+    univocityAddr: genesisAddrHex(genesisResult.chainBinding),
+  });
 
-  const instanceKey = instanceKeyFromGenesisChainBinding(
-    genesisResult.chainBinding,
-  );
+  // One account per univocity instance (ADR-0059): claim the instance for
+  // this R before any registration state exists, so a lost race cannot leave
+  // a registration record behind. Idempotent for the same R, so retries of a
+  // partially-failed genesis still succeed.
+  if (univocityInstanceId) {
+    const rUuid = logIdWireToUuid(genesisResult.logIdWire);
+    const claim = await claimUnivocityInstance(env, univocityInstanceId, rUuid);
+    if (!claim.ok) {
+      return problemResponse(409, "Conflict", "about:blank", {
+        detail: `Univocity instance ${univocityInstanceId} is already registered to forest root ${claim.claimedBy}`,
+      });
+    }
+  }
+
+  await writeRegistration(env, genesisResult.logIdWire, record);
 
   let coordinator: CoordinatorRegistrationStatus | undefined;
   if (webhookUrl) {
@@ -145,7 +164,7 @@ async function finishGenesisPost(
       env,
       genesisResult,
       webhookUrl,
-      instanceKey,
+      univocityInstanceId,
     );
     if (coordinator.publicRoot !== "ok" || coordinator.webhook !== "ok") {
       const detail =
@@ -153,7 +172,7 @@ async function finishGenesisPost(
         `coordinator registration incomplete (publicRoot=${coordinator.publicRoot}, webhook=${coordinator.webhook})`;
       return ServerErrors.serviceUnavailable(detail);
     }
-  } else if (instanceKey && isCoordinatorForwardConfigured(env)) {
+  } else if (univocityInstanceId && isCoordinatorForwardConfigured(env)) {
     // No explicit webhook: bind the log to its univocity instance so an
     // instance-level webhook is inherited by copy (FOR-468). Best-effort — this
     // path forwarded nothing at all before, so a coordinator failure here
@@ -167,7 +186,7 @@ async function finishGenesisPost(
       env,
       genesisResult,
       undefined,
-      instanceKey,
+      univocityInstanceId,
       BEST_EFFORT_COORDINATOR_TIMEOUT_MS,
     );
   }
@@ -290,6 +309,7 @@ export async function handleForestRequest(
             class: "payment-authoritative",
             onboardTokenRef: auth.tokenHash,
             chainBinding: genesisResult.chainBinding,
+            admittedBy: auth.tokenRecord.admittedBy,
           }),
           undefined,
           webhookParsed.webhookUrl,

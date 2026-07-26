@@ -210,3 +210,47 @@ describe("dual-auth onboard: unapproved request is offered the paid route", () =
     expect(send).not.toHaveBeenCalled();
   });
 });
+
+describe("admission policy (ADR-0059 decision 3)", () => {
+  it("vetted: a pending request is never offered payment — 409, no challenge", async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
+    const e = envWith(send, {
+      ONBOARD_AUTO_APPROVE: "false",
+      ONBOARD_ADMISSION: "vetted",
+    } as Partial<Env>);
+
+    const { requestId, redeemCode } = await createRequest(e, "vetted-onboard");
+    const res = await redeem(e, requestId!, redeemCode!);
+
+    expect(res.status).toBe(409);
+    expect(res.headers.get("X-PAYMENT-REQUIRED")).toBeNull();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("vetted: an ops-approved request still redeems normally", async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
+    const e = envWith(send, {
+      ONBOARD_AUTO_APPROVE: "false",
+      ONBOARD_ADMISSION: "vetted",
+    } as Partial<Env>);
+
+    const { requestId, redeemCode } = await createRequest(e, "vetted-approved");
+    const approveRes = await worker.fetch(
+      new Request(
+        `http://localhost/api/onboarding/requests/${requestId}/approve`,
+        { method: "POST", headers: { Authorization: `Bearer ${OPS}` } },
+      ),
+      e,
+      testCtx,
+    );
+    expect(approveRes.status).toBe(200);
+
+    const res = await redeem(e, requestId!, redeemCode!);
+    expect(res.status).toBe(200);
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as { token?: string };
+    expect(body.token).toBeTruthy();
+    expect(send).not.toHaveBeenCalled();
+  });
+});

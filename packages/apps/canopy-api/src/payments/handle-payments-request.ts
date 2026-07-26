@@ -258,7 +258,11 @@ export async function handlePaymentsRequest(
         );
       }
 
-      const minted = await mintOnboardToken(env, { label, expiry });
+      const minted = await mintOnboardToken(env, {
+        label,
+        expiry,
+        admittedBy: "ops",
+      });
       return attachCors(
         cborResponse(
           {

@@ -1,4 +1,7 @@
-import type { OnboardTokenChainBinding } from "./onboard-token-record.js";
+import type {
+  OnboardAdmittedBy,
+  OnboardTokenChainBinding,
+} from "./onboard-token-record.js";
 import type { OnboardTokenRecord } from "./onboard-token-record.js";
 
 export interface MintOnboardTokenOptions {
@@ -6,6 +9,7 @@ export interface MintOnboardTokenOptions {
   expiry?: number;
   requestId?: string;
   chainBinding?: OnboardTokenChainBinding;
+  admittedBy?: OnboardAdmittedBy;
 }
 
 export interface MintOnboardTokenResult {

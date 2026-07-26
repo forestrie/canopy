@@ -1,6 +1,6 @@
 /**
  * Instance-level webhook request/response shapes for
- * `/api/instances/{instanceKey}/webhook`.
+ * `/api/instances/{univocityInstanceId}/webhook`.
  */
 
 /** PUT body — the instance-wide `delegation.required` endpoint. */
@@ -16,7 +16,9 @@ export interface PutInstanceWebhookRequest {
  * per-request cross-shard hop for.
  */
 export interface InstanceWebhookResponse {
-  instanceKey: string;
+  univocityInstanceId: string;
+  /** Deprecated alias for `univocityInstanceId`; dropped in plan-2607-43 slice 05. */
+  instanceKey?: string;
   webhookUrl?: string;
   createdAt?: number;
   updatedAt?: number;

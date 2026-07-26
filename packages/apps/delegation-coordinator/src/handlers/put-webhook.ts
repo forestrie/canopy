@@ -5,20 +5,23 @@
  * URL validated via
  * [@canopy/webhook-url](https://github.com/forestrie/canopy/tree/main/packages/libs/webhook-url).
  *
- * `instanceKey` binds the log to a univocity instance and copies that
+ * `univocityInstanceId` binds the log to a univocity instance and copies that
  * instance's webhook into the log's own config row (ADR-0005 amendment,
  * FOR-468). The copy is what keeps the delegation request path inside a single
  * shard; see {@link handlePutInstanceWebhook} for the fan-out that pays for it.
+ * `instanceKey` is accepted as a deprecated alias for one deploy cycle
+ * (plan-2607-43 slice 01; dropped in slice 05); values under either name must
+ * be canonical CAIP-10 (ADR-0059 D1/D6).
  *
- * `url` accepts either token; **`instanceKey` requires the app token**. An
- * instance is not a log, so authority over one log says nothing about the
- * instance a caller may claim to belong to.
+ * `url` accepts either token; **`univocityInstanceId` requires the app
+ * token**. An instance is not a log, so authority over one log says nothing
+ * about the instance a caller may claim to belong to.
  */
 
+import { parseUnivocityInstanceId } from "@canopy/univocity-instance-id";
 import type { Env } from "../env.js";
 import { checkBearerToken } from "../auth/check-bearer-token.js";
 import { issuerTokenForLog } from "../auth/issuer-token-for-log.js";
-import { normalizeInstanceKey } from "../instance-key.js";
 import type { PutWebhookRequest } from "../types/put-webhook-request.js";
 import {
   WebhookUrlValidationError,
@@ -51,13 +54,15 @@ export async function handlePutWebhook(
 
     const body = (await request.json()) as PutWebhookRequest;
     const rawUrl = body.url?.trim() ?? "";
-    const rawInstanceKey = body.instanceKey?.trim() ?? "";
-    if (!rawUrl && !rawInstanceKey) {
+    const rawUnivocityInstanceId = body.univocityInstanceId?.trim() ?? "";
+    const rawLegacyInstanceKey = body.instanceKey?.trim() ?? "";
+    const rawInstanceId = rawUnivocityInstanceId || rawLegacyInstanceKey;
+    if (!rawUrl && !rawInstanceId) {
       return problemResponse(
         400,
         "about:blank",
         "Invalid request",
-        "url or instanceKey is required",
+        "url or univocityInstanceId is required",
       );
     }
 
@@ -77,28 +82,37 @@ export async function handlePutWebhook(
       }
     }
 
-    if (rawInstanceKey) {
+    if (rawInstanceId) {
+      if (!rawUnivocityInstanceId) {
+        // Compatibility shim, dropped in plan-2607-43 slice 05.
+        console.warn(
+          "deprecated field instanceKey on PUT /api/logs/{logId}/webhook; send univocityInstanceId",
+        );
+      }
       // Naming an instance copies that instance's webhook URL into this log's
       // row, so it must not be reachable with authority over this log alone.
-      // The coordinator cannot check the claim — it treats the key as an opaque
+      // The coordinator cannot check the claim — it treats the id as an opaque
       // label and never resolves it on chain — so a per-log issuer token could
       // otherwise name any instance, read its endpoint back off this log's
       // config, and aim `delegation.required` events at its receiver. Restrict
-      // the field to the app token, which is how canopy-api always calls: it
-      // derives the key from the registration record it already holds.
+      // the field — under either name — to the app token, which is how
+      // canopy-api always calls: it derives the id from the registration
+      // record it already holds.
       if (checkBearerToken(request, env.COORDINATOR_APP_TOKEN)) {
         return problemResponse(
           403,
           "about:blank",
           "Forbidden",
-          "instanceKey requires the coordinator app token",
+          "univocityInstanceId requires the coordinator app token",
         );
       }
       try {
-        forwarded.instanceKey = normalizeInstanceKey(rawInstanceKey);
+        forwarded.univocityInstanceId = parseUnivocityInstanceId(rawInstanceId);
       } catch (error) {
         const detail =
-          error instanceof Error ? error.message : "Invalid instanceKey";
+          error instanceof Error
+            ? error.message
+            : "Invalid univocityInstanceId";
         return problemResponse(400, "about:blank", "Invalid request", detail);
       }
     }

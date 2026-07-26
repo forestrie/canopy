@@ -23,8 +23,8 @@ import { mintTestOnboardToken } from "./helpers/onboard-token.js";
 const poolEnv = env as unknown as Env;
 const COORD_URL = "https://coordinator.test";
 const COORD_TOKEN = "coordinator-app-token-test";
-/** `{chainId}:{univocityAddr}` of the genesis test fixture's chain binding. */
-const TEST_INSTANCE_KEY = `84532:${"42".repeat(20)}`;
+/** Canonical univocityInstanceId of the genesis test fixture's chain binding. */
+const TEST_UNIVOCITY_INSTANCE_ID = `eip155:84532:0x${"42".repeat(20)}`;
 
 function bytesToBase64(value: Uint8Array): string {
   let binary = "";
@@ -170,7 +170,7 @@ describe("forwardCoordinatorRegistration", () => {
       logIdWire: logIdToWireBytes(crypto.randomUUID()),
       genesisAlg: COSE_ALG_KS256,
       bootstrapKey: new Uint8Array(20).fill(0xbb),
-      instanceKey: TEST_INSTANCE_KEY,
+      univocityInstanceId: TEST_UNIVOCITY_INSTANCE_ID,
       fetchImpl,
     });
 
@@ -179,11 +179,14 @@ describe("forwardCoordinatorRegistration", () => {
     expect(status).toEqual({
       publicRoot: "ok",
       webhook: "inherited",
-      instanceKey: TEST_INSTANCE_KEY,
+      univocityInstanceId: TEST_UNIVOCITY_INSTANCE_ID,
     });
     expect(calls).toHaveLength(2);
+    // Both field names carry the canonical value until the coordinator-side
+    // deprecation window closes (plan-2607-43 slice 05).
     expect(JSON.parse(calls[1]!.body!)).toEqual({
-      instanceKey: TEST_INSTANCE_KEY,
+      univocityInstanceId: TEST_UNIVOCITY_INSTANCE_ID,
+      instanceKey: TEST_UNIVOCITY_INSTANCE_ID,
     });
   });
 
@@ -229,7 +232,7 @@ describe("forwardCoordinatorRegistration", () => {
       logIdWire: logIdToWireBytes(crypto.randomUUID()),
       genesisAlg: COSE_ALG_KS256,
       bootstrapKey: new Uint8Array(20).fill(0xbb),
-      instanceKey: TEST_INSTANCE_KEY,
+      univocityInstanceId: TEST_UNIVOCITY_INSTANCE_ID,
       timeoutMs: 50,
       fetchImpl,
     });
@@ -326,18 +329,19 @@ describe("POST genesis coordinator forward", () => {
       coordinator?: {
         publicRoot: string;
         webhook: string;
-        instanceKey: string;
+        univocityInstanceId: string;
       };
     };
     expect(body.coordinator).toEqual({
       publicRoot: "ok",
       webhook: "inherited",
-      instanceKey: TEST_INSTANCE_KEY,
+      univocityInstanceId: TEST_UNIVOCITY_INSTANCE_ID,
     });
     expect(calls).toHaveLength(2);
     expect(calls[1]!.url).toContain("/webhook");
     expect(JSON.parse(calls[1]!.body!)).toEqual({
-      instanceKey: TEST_INSTANCE_KEY,
+      univocityInstanceId: TEST_UNIVOCITY_INSTANCE_ID,
+      instanceKey: TEST_UNIVOCITY_INSTANCE_ID,
     });
 
     vi.unstubAllGlobals();
@@ -442,7 +446,7 @@ describe("POST genesis coordinator forward", () => {
     expect(body.coordinator).toEqual({
       publicRoot: "ok",
       webhook: "ok",
-      instanceKey: TEST_INSTANCE_KEY,
+      univocityInstanceId: TEST_UNIVOCITY_INSTANCE_ID,
     });
     expect(calls).toHaveLength(2);
     expect(JSON.parse(calls[0]!.body!)).toEqual({
@@ -454,7 +458,8 @@ describe("POST genesis coordinator forward", () => {
     // so a later instance re-point knows the log exists without claiming it.
     expect(JSON.parse(calls[1]!.body!)).toEqual({
       url: "https://agent.example/hook",
-      instanceKey: TEST_INSTANCE_KEY,
+      univocityInstanceId: TEST_UNIVOCITY_INSTANCE_ID,
+      instanceKey: TEST_UNIVOCITY_INSTANCE_ID,
     });
 
     vi.unstubAllGlobals();

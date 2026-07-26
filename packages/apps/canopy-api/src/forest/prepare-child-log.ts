@@ -68,7 +68,7 @@ import {
   GenesisWebhookUrlValidationError,
   validateGenesisWebhookUrl,
 } from "./validate-genesis-webhook-url.js";
-import { instanceKeyFromStoredChainBinding } from "./instance-key.js";
+import { tryUnivocityInstanceIdFromChainBinding } from "@canopy/univocity-instance-id";
 import { readRegistration } from "../payments/registration-store.js";
 
 export interface PrepareChildLogEnv extends CoordinatorForwardEnv {
@@ -292,8 +292,8 @@ export async function handlePrepareChildLog(
   // parent without one leaves the child with no instance, which is supported —
   // the owner then pre-supplies the delegation.
   const parentRegistration = await readRegistration(env, grant.ownerLogId);
-  const instanceKey = parentRegistration
-    ? instanceKeyFromStoredChainBinding(parentRegistration.chainBinding)
+  const univocityInstanceId = parentRegistration
+    ? tryUnivocityInstanceIdFromChainBinding(parentRegistration.chainBinding)
     : undefined;
 
   const status = await forwardCoordinatorRegistration({
@@ -305,7 +305,7 @@ export async function handlePrepareChildLog(
     ...(webhookParsed.webhookUrl
       ? { webhookUrl: webhookParsed.webhookUrl }
       : {}),
-    ...(instanceKey ? { instanceKey } : {}),
+    ...(univocityInstanceId ? { univocityInstanceId } : {}),
   });
 
   if (status.publicRoot !== "ok") {
@@ -325,7 +325,9 @@ export async function handlePrepareChildLog(
     {
       publicRoot: status.publicRoot,
       webhook: status.webhook,
-      ...(status.instanceKey ? { instanceKey: status.instanceKey } : {}),
+      ...(status.univocityInstanceId
+        ? { univocityInstanceId: status.univocityInstanceId }
+        : {}),
       ...(status.detail ? { detail: status.detail } : {}),
     },
     201,

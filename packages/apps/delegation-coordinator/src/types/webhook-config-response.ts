@@ -9,6 +9,8 @@
 export interface WebhookConfigResponse {
   webhookUrl?: string;
   /** Univocity instance this log is bound to, when one was registered. */
+  univocityInstanceId?: string;
+  /** Deprecated alias for `univocityInstanceId`; dropped in plan-2607-43 slice 05. */
   instanceKey?: string;
   /**
    * True when `webhookUrl` was copied from the instance-level webhook rather
