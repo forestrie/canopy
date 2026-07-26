@@ -192,6 +192,21 @@ export function signX402PaymentE2e(
   return Buffer.from(JSON.stringify(payload)).toString("base64");
 }
 
+/**
+ * The dev payer key: `CANOPY_X402_DEV_PRIVATE_KEY` when set (a dedicated
+ * payer wallet can be split out later without code change), else the
+ * already-funded deployer EOA `DEPLOY_KEY` — in dev both are testnet-only
+ * wallets in the same trust domain, and the payer role is gasless (EIP-3009:
+ * the facilitator submits the transaction), so USDC balance is all it needs.
+ */
+export function x402PayerKeyE2e(): string | undefined {
+  return (
+    process.env.CANOPY_X402_DEV_PRIVATE_KEY?.trim() ||
+    process.env.DEPLOY_KEY?.trim() ||
+    undefined
+  );
+}
+
 export interface CreditsPurchaseResultE2e {
   univocityInstanceId: string;
   credits: number;
@@ -209,10 +224,10 @@ export async function purchaseCreditsE2e(
   binding: E2eChainBinding,
   credits: number,
 ): Promise<CreditsPurchaseResultE2e> {
-  const privateKey = process.env.CANOPY_X402_DEV_PRIVATE_KEY?.trim();
+  const privateKey = x402PayerKeyE2e();
   if (!privateKey) {
     throw new Error(
-      "CANOPY_X402_DEV_PRIVATE_KEY is required to pay a credits challenge",
+      "CANOPY_X402_DEV_PRIVATE_KEY (or DEPLOY_KEY) is required to pay a credits challenge",
     );
   }
   const id = univocityInstanceIdE2e(binding);
