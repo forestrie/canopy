@@ -46,6 +46,10 @@ import { sha256Hex } from "@e2e-utils/statement-sign-bytes";
 import { postRegisterGrantExpect303 } from "@e2e-utils/bootstrap-grant-setup";
 import { mintOnboardTokenE2e } from "@e2e-utils/onboard-token-e2e";
 import {
+  es256BootstrapContractAddrBytes,
+  univocityGenesisChainId,
+} from "@forestrie/canopy-e2e-kit";
+import {
   hasModeCWebhookSealE2eEnv,
   modeCWebhookSealSkipReason,
 } from "@e2e-utils/mode-c-e2e-env";
@@ -110,7 +114,10 @@ test.describe("BYOK checkpoint seal e2e", () => {
       mode: "wallet",
     });
 
-    const onboardToken = await mintOnboardTokenE2e(unauthorizedRequest);
+    const onboardToken = await mintOnboardTokenE2e(unauthorizedRequest, {
+      chainId: univocityGenesisChainId(),
+      univocityAddr: es256BootstrapContractAddrBytes(),
+    });
 
     const { grantBase64: mintGrantB64, grantData } =
       await mintByokBootstrapGrant({
