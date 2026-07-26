@@ -53,6 +53,19 @@ function hexToInt(hex: string | undefined, label: string): number {
   return n;
 }
 
+/**
+ * Structural invariant of this exact event layout: data word 4 is the head
+ * offset of `accumulator`, always 7 words × 32 = 0xe0. topic0 pins the
+ * signature but NOT indexed-ness, so a contract revision that re-indexes
+ * parameters keeps topic0 while shifting every data word — this tripwire
+ * turns that silent corruption into a loud per-account stall, which is
+ * recoverable by rescan once the decoder is fixed (a skip would be
+ * permanent loss). Residual: an owner can craft a mismatched log to stall
+ * their own meter — their own account, remediable by the ops watermark tool
+ * (slice-04 arming gate).
+ */
+const ACCUMULATOR_HEAD_OFFSET = 7 * 32;
+
 /** 0-indexed 32-byte word of the ABI data section, as an integer. */
 function dataWordInt(data: string, word: number, label: string): number {
   const start = 2 + word * 64;
@@ -90,23 +103,71 @@ export async function fetchCheckpointEvents(
   if (!Array.isArray(result)) {
     throw new Error("checkpoint log source: eth_getLogs returned non-array");
   }
-  return (result as RpcLog[]).map((log) => {
-    const txHash = log.transactionHash;
-    if (!txHash) {
-      throw new Error("checkpoint log source: log missing transactionHash");
-    }
-    const logIndex = hexToInt(log.logIndex, "logIndex");
-    const logId = log.topics?.[1];
-    if (!logId) {
-      throw new Error("checkpoint log source: log missing topics[1] (logId)");
-    }
+  const events: CheckpointLogEvent[] = [];
+  for (const log of result as RpcLog[]) {
+    // Layout tripwire BEFORE quarantine: a shifted layout must stall, not be
+    // skipped as N malformed events (plan-2607-03 R2).
     const data = log.data ?? "0x";
-    return {
-      idempotencyKey: `${txHash}:${logIndex}`,
-      logId,
-      logKind: dataWordInt(data, 2, "logKind"),
-      size: dataWordInt(data, 3, "size"),
-      blockNumber: hexToInt(log.blockNumber, "blockNumber"),
-    };
-  });
+    if (data.length >= 2 + 5 * 64) {
+      const headOffset = dataWordInt(data, 4, "accumulator head offset");
+      if (headOffset !== ACCUMULATOR_HEAD_OFFSET) {
+        throw new Error(
+          `checkpoint log source: data word 4 is ${headOffset}, expected ${ACCUMULATOR_HEAD_OFFSET} — event layout drift?`,
+        );
+      }
+    }
+    // Per-event quarantine: a malformed log is skipped with a warning and
+    // the range still applies — a permanently missed event is the ADR-0058
+    // §7 trade and the reconciliation backstop's job; a permanent stall
+    // would also block every later event (plan-2607-03 B2).
+    try {
+      const txHash = log.transactionHash;
+      if (!txHash) {
+        throw new Error("log missing transactionHash");
+      }
+      const logIndex = hexToInt(log.logIndex, "logIndex");
+      const logId = log.topics?.[1];
+      if (!logId) {
+        throw new Error("log missing topics[1] (logId)");
+      }
+      events.push({
+        idempotencyKey: `${txHash}:${logIndex}`,
+        logId,
+        logKind: dataWordInt(data, 2, "logKind"),
+        size: dataWordInt(data, 3, "size"),
+        blockNumber: hexToInt(log.blockNumber, "blockNumber"),
+      });
+    } catch (error) {
+      console.warn(
+        `checkpoint log source: skipped malformed log (tx ${log.transactionHash ?? "?"} index ${log.logIndex ?? "?"}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+  return events;
+}
+
+/**
+ * Scan bound: the chain's `safe` head where served, else `latest` minus
+ * `fallbackConfirmations`. The safe tag sits behind every honest replica's
+ * view, which is what makes advancing a monotonic watermark against a
+ * load-balanced RPC pool sound (plan-2607-03 B3) — a number-lag off the
+ * unsafe head is not.
+ */
+export async function fetchScanBound(
+  rpcUrls: string[],
+  fallbackConfirmations: number,
+): Promise<number> {
+  try {
+    const block = (await ethRpcWithFailover(rpcUrls, "eth_getBlockByNumber", [
+      "safe",
+      false,
+    ])) as { number?: string } | null;
+    if (block?.number) {
+      return hexToInt(block.number, "safe block number");
+    }
+  } catch {
+    // Chain (or node) does not serve the tag; fall through.
+  }
+  const latest = await fetchLatestBlock(rpcUrls);
+  return latest - fallbackConfirmations;
 }

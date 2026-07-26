@@ -175,6 +175,14 @@ try {
       apiNetwork !== "eip155:8453",
       `${tag}: configured for mainnet (eip155:8453) but no production lane exists`,
     );
+
+    // The accrual indexer silently skips every sweep when this resolves
+    // empty — a lane missing the var deploys green and soaks nothing
+    // (plan-2607-03 G1/R1). Value is JSON-escaped JSON; assert non-empty.
+    check(
+      /"SUPPORTED_CHAINS_RPC"\s*:\s*"(?:[^"\\]|\\.)+"/.test(settlement),
+      `${tag}: x402-settlement resolves an empty SUPPORTED_CHAINS_RPC — the indexer would skip every sweep`,
+    );
   }
 
   const [a, b] = resolved;

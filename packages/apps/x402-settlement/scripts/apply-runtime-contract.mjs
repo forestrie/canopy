@@ -231,5 +231,11 @@ const resolvedFacilitator =
   /"X402_FACILITATOR_URL"\s*:\s*"([^"]*)"/.exec(envBlock)?.[1] ?? "";
 const resolvedNetwork =
   /"X402_NETWORK"\s*:\s*"([^"]*)"/.exec(envBlock)?.[1] ?? "";
+// Injection is load-bearing for the accrual indexer in prod (the literal is
+// deliberately absent there); surface it so the deploy log can catch a miss.
+const resolvedChains = /"SUPPORTED_CHAINS_RPC"\s*:\s*"/.test(envBlock)
+  ? "set"
+  : "ABSENT";
 console.log(`resolved:X402_FACILITATOR_URL=${resolvedFacilitator}`);
 console.log(`resolved:X402_NETWORK=${resolvedNetwork}`);
+console.log(`resolved:SUPPORTED_CHAINS_RPC=${resolvedChains}`);

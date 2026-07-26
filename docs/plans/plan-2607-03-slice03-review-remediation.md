@@ -1,13 +1,13 @@
 ---
 id: 2607-03
-status: draft
+status: implemented
 created: 2026-07-26
 refs: [ADR-0059, FOR-435]
 ---
 
 # Plan 2607-03 — slice-03 (accrual indexer) review remediation
 
-**Status:** DRAFT · **Date:** 2026-07-26
+**Status:** IMPLEMENTED (R1–R6; Lows in §Deferred remain open) · **Date:** 2026-07-26
 **Related:** [canopy #179](https://github.com/forestrie/canopy/pull/179) (merged `242eb94`),
 [devdocs plan-2607-43 slice 03](../../../devdocs/plans/plan-2607-43-instance-root-fee-accounts/03-accrual-observe-only.md),
 [FOR-435](https://linear.app/forestrie/issue/FOR-435)

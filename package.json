@@ -15,7 +15,7 @@
     "verify:grant-flow": "pnpm --filter @canopy/perf run verify-grant-flow",
     "lint": "pnpm -r lint",
     "format": "prettier --write packages",
-    "check": "prettier --check packages && node scripts/check-naming.mjs",
+    "check": "prettier --check packages && node scripts/check-naming.mjs && node scripts/check-r2-discipline.mjs",
     "install:task": "sh -c 'curl -sSfL https://taskfile.dev/install.sh | sh -s -- -d -b /usr/local/bin'",
     "perf:k6:bundle-canopy-api": "esbuild perf/k6/canopy-api/scenarios/write-constant-arrival.js --bundle --platform=neutral --target=es2015 --external:k6 --external:k6/http --external:k6/metrics --external:k6/data --external:k6/execution --outfile=perf/k6/canopy-api/dist/write-constant-arrival.bundle.js"
   },
