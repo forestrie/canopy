@@ -15,6 +15,7 @@ Platform-wide plans: [devdocs/plans/](../../../devdocs/plans/README.md).
 
 | Plan                                                                  | Status      | Read when                                                        |
 | --------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------- |
+| [plan-2607-02](plan-2607-02-slice01-review-remediation.md)            | DRAFT       | PR #176 review remediation (univocityInstanceId slice 01)        |
 | [plan-0029](plan-0029-delegate-grant-validation-to-univocity.md)      | DRAFT       | Univocity grant validation delegation                            |
 | [plan-0030](plan-0030-forests-storage-and-uuid-logid.md)              | ACTIVE      | UUID log IDs, forests/ layout                                    |
 | [plan-0034](plan-0034-ci-consolidation.md)                            | IMPLEMENTED | CI: ci.yml, tests-integration, tests-system, release promotion   |
