@@ -97,6 +97,13 @@ export interface AccountEntitlement extends AccountRef {
   creditFloor: number;
   arrears: ArrearsState;
   /**
+   * True when the *indexer* froze this account's root log (slice 04 arming).
+   * The kill switch is one shared operator bit; this marker is what lets the
+   * indexer unfreeze on recovery without ever overriding a manual ops freeze
+   * it did not perform.
+   */
+  enforcementFrozen: boolean;
+  /**
    * Size of the grant hierarchy under this root. A legitimate price input (§4)
    * because the root owner monetises everything beneath them. Dormant since
    * slice 02 — the intra-instance tree is derivable from LogRegistered events.
@@ -116,6 +123,7 @@ interface AccountRow extends Record<string, SqlStorageValue> {
   credits_balance: number;
   credit_floor: number;
   arrears: string;
+  enforcement_frozen: number;
   subtree_registrations: number;
   subtree_max_depth: number;
   updated_at: number;
@@ -138,6 +146,7 @@ export class ReceivablesDO extends DurableObject<Env> {
         credit_floor INTEGER NOT NULL DEFAULT 0,
         arrears TEXT NOT NULL DEFAULT 'current'
           CHECK (arrears IN ('current', 'suspect', 'in-arrears')),
+        enforcement_frozen INTEGER NOT NULL DEFAULT 0,
         subtree_registrations INTEGER NOT NULL DEFAULT 0,
         subtree_max_depth INTEGER NOT NULL DEFAULT 0,
         updated_at INTEGER NOT NULL
@@ -215,6 +224,8 @@ export class ReceivablesDO extends DurableObject<Env> {
     for (const [table, column, ddl] of [
       ["account", "credits_balance", "INTEGER NOT NULL DEFAULT 0"],
       ["account", "credit_floor", "INTEGER NOT NULL DEFAULT 0"],
+      // v4 (slice 04): indexer-owned freeze marker.
+      ["account", "enforcement_frozen", "INTEGER NOT NULL DEFAULT 0"],
       ["accrual_events", "log_kind", "INTEGER"],
       ["accrual_events", "size", "INTEGER"],
     ] as const) {
@@ -245,6 +256,7 @@ export class ReceivablesDO extends DurableObject<Env> {
       creditsBalance: r.credits_balance,
       creditFloor: r.credit_floor,
       arrears: r.arrears as ArrearsState,
+      enforcementFrozen: r.enforcement_frozen !== 0,
       subtreeRegistrations: r.subtree_registrations,
       subtreeMaxDepth: r.subtree_max_depth,
       updatedAt: r.updated_at,
@@ -364,8 +376,22 @@ export class ReceivablesDO extends DurableObject<Env> {
         this.now(),
         account.univocityInstanceId,
       );
+      this.recomputeArrears(account.univocityInstanceId);
     }
     return applied;
+  }
+
+  /** Re-derive the stored arrears posture after any balance change. */
+  private recomputeArrears(univocityInstanceId: string): void {
+    const current = this.row();
+    if (current && this.derivedArrears(current) !== current.arrears) {
+      this.ctx.storage.sql.exec(
+        `UPDATE account SET arrears = ?, updated_at = ? WHERE univocity_instance_id = ?`,
+        this.derivedArrears(current),
+        this.now(),
+        univocityInstanceId,
+      );
+    }
   }
 
   /**
@@ -467,19 +493,6 @@ export class ReceivablesDO extends DurableObject<Env> {
       this.now(),
     );
 
-    const current = this.row();
-    if (!current) {
-      throw new Error("ReceivablesDO: account row missing after batch apply");
-    }
-    const arrears = this.derivedArrears(current);
-    if (arrears !== current.arrears) {
-      this.ctx.storage.sql.exec(
-        `UPDATE account SET arrears = ?, updated_at = ? WHERE univocity_instance_id = ?`,
-        arrears,
-        this.now(),
-        account.univocityInstanceId,
-      );
-    }
     const updated = this.row();
     if (!updated) {
       throw new Error("ReceivablesDO: account row missing after batch apply");
@@ -577,5 +590,157 @@ export class ReceivablesDO extends DurableObject<Env> {
     );
     const updated = this.row();
     return updated ? this.toEntitlement(updated) : null;
+  }
+
+  /**
+   * Credit a settled purchase to the account (slice 04), **idempotently** on
+   * the job's idempotency key. Balance goes up, arrears recomputes — an
+   * account that tops up above its floor becomes `current` on this write, and
+   * the armed indexer unfreezes it on the next sweep.
+   *
+   * `payment_events` is NEVER garbage-collected: unlike accrual dedup keys
+   * (bounded by watermark monotonicity), payment rows are the financial
+   * record backing the per-cycle statement of account (plan-2607-03 E4 —
+   * retention/cycling is deliberate slice-05+ work, not a GC bound here).
+   */
+  async recordPayment(
+    account: AccountRef,
+    idempotencyKey: string,
+    credits: number,
+    txHash?: string | null,
+  ): Promise<AccountEntitlement> {
+    this.ensureSchema();
+    const key = idempotencyKey?.trim();
+    if (!key) {
+      throw new Error("recordPayment requires a non-empty idempotencyKey");
+    }
+    if (!Number.isInteger(credits) || credits < 1) {
+      throw new Error(
+        `recordPayment requires a positive integer credits, got ${credits}`,
+      );
+    }
+    this.bind(account);
+
+    const seen = this.ctx.storage.sql
+      .exec<{
+        n: number;
+      }>(
+        `SELECT COUNT(*) AS n FROM payment_events WHERE idempotency_key = ?`,
+        key,
+      )
+      .toArray()[0];
+    if (!seen || seen.n === 0) {
+      this.ctx.storage.sql.exec(
+        `INSERT INTO payment_events (idempotency_key, univocity_instance_id, credits, tx_hash, paid_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        key,
+        account.univocityInstanceId,
+        credits,
+        txHash ?? null,
+        this.now(),
+      );
+      this.ctx.storage.sql.exec(
+        `UPDATE account
+            SET credits_balance = credits_balance + ?,
+                updated_at = ?
+          WHERE univocity_instance_id = ?`,
+        credits,
+        this.now(),
+        account.univocityInstanceId,
+      );
+      this.recomputeArrears(account.univocityInstanceId);
+    }
+    const updated = this.row();
+    if (!updated) {
+      throw new Error("ReceivablesDO: account row missing after payment");
+    }
+    return this.toEntitlement(updated);
+  }
+
+  /**
+   * Record whether the *indexer* holds the freeze on this account's root log.
+   * Set true only after a successful arm (kill-switch off), false only after
+   * a successful unfreeze — so the marker tracks actions actually taken, and
+   * a manual ops freeze (marker false) is never undone by recovery.
+   */
+  async setEnforcementFrozen(
+    univocityInstanceId: string,
+    frozen: boolean,
+  ): Promise<AccountEntitlement | null> {
+    this.ensureSchema();
+    const r = this.row();
+    if (!r) return null;
+    if (r.univocity_instance_id !== univocityInstanceId) {
+      throw new Error(
+        `ReceivablesDO is bound to account ${r.univocity_instance_id}; ` +
+          `refusing write for ${univocityInstanceId}`,
+      );
+    }
+    this.ctx.storage.sql.exec(
+      `UPDATE account SET enforcement_frozen = ?, updated_at = ? WHERE univocity_instance_id = ?`,
+      frozen ? 1 : 0,
+      this.now(),
+      univocityInstanceId,
+    );
+    const updated = this.row();
+    return updated ? this.toEntitlement(updated) : null;
+  }
+
+  /**
+   * Ops watermark-set tool (plan-2607-03 R2 residual; the recorded arming
+   * gate): move a stalled account's cursor **forward** past a poisoned range
+   * without a deploy. Strictly forward-only — rewinding would turn the
+   * accrual dedup retention window into a double-count window (see
+   * {@link ACCRUAL_KEY_RETENTION_SECONDS}); events skipped by a forward set
+   * are the ADR-0058 §7 reconciliation trade, made deliberately by ops.
+   */
+  async setWatermark(
+    univocityInstanceId: string,
+    chainId: string,
+    univocityAddr: string,
+    lastBlock: number,
+  ): Promise<{ lastBlock: number }> {
+    this.ensureSchema();
+    if (!Number.isInteger(lastBlock) || lastBlock < 0) {
+      throw new Error(
+        `setWatermark requires a non-negative integer lastBlock, got ${lastBlock}`,
+      );
+    }
+    const r = this.row();
+    if (!r) {
+      throw new Error("setWatermark: no account bound to this instance");
+    }
+    if (r.univocity_instance_id !== univocityInstanceId) {
+      throw new Error(
+        `ReceivablesDO is bound to account ${r.univocity_instance_id}; ` +
+          `refusing write for ${univocityInstanceId}`,
+      );
+    }
+    const current = this.ctx.storage.sql
+      .exec<{
+        last_block: number;
+      }>(
+        `SELECT last_block FROM watermarks WHERE chain_id = ? AND univocity_addr = ?`,
+        chainId,
+        univocityAddr,
+      )
+      .toArray()[0];
+    if (current && lastBlock < current.last_block) {
+      throw new Error(
+        `setWatermark is forward-only: requested ${lastBlock} < current ${current.last_block}`,
+      );
+    }
+    this.ctx.storage.sql.exec(
+      `INSERT INTO watermarks (chain_id, univocity_addr, last_block, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT (chain_id, univocity_addr)
+       DO UPDATE SET last_block = excluded.last_block,
+                     updated_at = excluded.updated_at`,
+      chainId,
+      univocityAddr,
+      lastBlock,
+      this.now(),
+    );
+    return { lastBlock };
   }
 }

@@ -215,6 +215,10 @@ jobs:
       # worker delegates creation-grant validation and genesis storage to it.
       UNIVOCITY_SERVICE_URL: ${{ vars.UNIVOCITY_SERVICE_URL }}
       SUPPORTED_CHAINS_RPC: ${{ vars.SUPPORTED_CHAINS_RPC }}
+      # Slice-04 arming knobs (x402-settlement): flip ENFORCEMENT_ARMED per
+      # lane to arm; STARTER_CREDITS defaults to 0 when unset.
+      ENFORCEMENT_ARMED: ${{ vars.ENFORCEMENT_ARMED }}
+      STARTER_CREDITS: ${{ vars.STARTER_CREDITS }}
       R2_MMRS_BUCKET_NAME: ${{ vars.R2_MMRS_BUCKET_NAME }}
       R2_GRANTS_BUCKET_NAME: ${{ vars.R2_GRANTS_BUCKET_NAME }}
       SEQUENCING_QUEUE_SCRIPT_NAME: ${{ vars.SEQUENCING_QUEUE_SCRIPT_NAME }}

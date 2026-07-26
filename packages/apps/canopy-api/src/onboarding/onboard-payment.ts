@@ -179,6 +179,21 @@ export async function verifyOnboardPayment(
   env: OnboardPaymentEnv,
   resourceUrl: string,
 ): Promise<OnboardPaymentOutcome> {
+  return verifyExactPayment(request, env, resourceUrl, priceAtomic(env));
+}
+
+/**
+ * The one x402 exact-scheme verify core, shared by the onboard and credits
+ * (slice 04) purchase paths so the FOR-442 mode pin and the FOR-441/R3 local
+ * amount assertion cannot drift apart. `requiredPriceAtomic` is the total
+ * charge for THIS purchase.
+ */
+export async function verifyExactPayment(
+  request: Request,
+  env: OnboardPaymentEnv,
+  resourceUrl: string,
+  requiredPriceAtomic: string,
+): Promise<OnboardPaymentOutcome> {
   const raw = request.headers.get(X402_HEADERS.paymentSignature);
   const parsed = parsePaymentHeader(raw, {
     network: env.X402_NETWORK,
@@ -188,10 +203,11 @@ export async function verifyOnboardPayment(
     return { status: "challenge", reason: parsed.error };
   }
 
-  const requirements = getPaymentRequirementsForVerify(
-    resourceUrl,
-    reqConfig(env),
-  );
+  const requirements = getPaymentRequirementsForVerify(resourceUrl, {
+    network: env.X402_NETWORK,
+    payTo: env.X402_PAYTO_ADDRESS,
+    priceAtomic: requiredPriceAtomic,
+  });
 
   // FOR-442: never let a mode flag weaken the paid path. `verify-only` makes
   // verifyPayment return isValid WITHOUT calling the facilitator, which would

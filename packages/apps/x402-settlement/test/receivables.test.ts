@@ -31,12 +31,16 @@ describe("ReceivablesDO — entitlement reads", () => {
     expect(await stub.getEntitlement(key)).toBeNull();
   });
 
-  it("reports accrued checkpoints and a starting arrears posture", async () => {
+  it("reports accrued checkpoints and the balance-derived arrears posture", async () => {
     const { stub, account, key } = freshStub();
     await stub.accrueCheckpoints(account, "evt-1", 3);
     const e = await stub.getEntitlement(key);
     expect(e?.checkpointsAccrued).toBe(3);
-    expect(e?.arrears).toBe("current");
+    // 3 accrued against 0 credits: balance -3 < floor 0. Since slice 04 the
+    // single-event path derives arrears through the same core as the batch
+    // path, so unpaid accrual is visible immediately.
+    expect(e?.creditsBalance).toBe(-3);
+    expect(e?.arrears).toBe("in-arrears");
     expect(e?.root).toBe(account.root);
   });
 });
@@ -218,5 +222,88 @@ describe("ReceivablesDO — prepaid credits and batch apply (ADR-0059 D3, slice 
     const state = await stub.getIndexState(key);
     expect(state.entitlement).toBeNull();
     expect(state.lastBlock).toBeNull();
+  });
+});
+
+describe("ReceivablesDO — recordPayment (slice 04)", () => {
+  it("credits the balance and is idempotent on the job key", async () => {
+    const { stub, account, key } = freshStub();
+    const e1 = await stub.recordPayment(account, "credits:k1", 5, "0xtx1");
+    expect(e1.creditsBalance).toBe(5);
+    const e2 = await stub.recordPayment(account, "credits:k1", 5, "0xtx1");
+    expect(e2.creditsBalance).toBe(5);
+    const e3 = await stub.recordPayment(account, "credits:k2", 3, null);
+    expect(e3.creditsBalance).toBe(8);
+    expect((await stub.getEntitlement(key))?.creditsBalance).toBe(8);
+  });
+
+  it("recovers arrears when the balance tops back above the floor", async () => {
+    const { stub, account, key } = freshStub();
+    await stub.accrueCheckpoints(account, "cp:1", 3);
+    expect((await stub.getEntitlement(key))?.arrears).toBe("in-arrears");
+    const e = await stub.recordPayment(account, "credits:topup", 10);
+    expect(e.creditsBalance).toBe(7);
+    expect(e.arrears).toBe("current");
+  });
+
+  it("rejects a non-positive credits count and an empty key", async () => {
+    const { stub, account } = freshStub();
+    await expect(stub.recordPayment(account, "", 5)).rejects.toThrow(
+      /idempotencyKey/,
+    );
+    await expect(stub.recordPayment(account, "k", 0)).rejects.toThrow(
+      /positive integer/,
+    );
+  });
+});
+
+describe("ReceivablesDO — enforcement frozen marker (slice 04)", () => {
+  it("defaults false, sets, clears, and survives a payment write", async () => {
+    const { stub, account, key } = freshStub();
+    await stub.recordPayment(account, "credits:seed", 1);
+    expect((await stub.getEntitlement(key))?.enforcementFrozen).toBe(false);
+    const frozen = await stub.setEnforcementFrozen(key, true);
+    expect(frozen?.enforcementFrozen).toBe(true);
+    await stub.recordPayment(account, "credits:more", 1);
+    expect((await stub.getEntitlement(key))?.enforcementFrozen).toBe(true);
+    const thawed = await stub.setEnforcementFrozen(key, false);
+    expect(thawed?.enforcementFrozen).toBe(false);
+  });
+
+  it("refuses a write for a different account", async () => {
+    const { stub, account } = freshStub();
+    await stub.recordPayment(account, "credits:seed", 1);
+    await expect(
+      stub.setEnforcementFrozen("eip155:84532:0x" + "ee".repeat(20), true),
+    ).rejects.toThrow(/bound to account/);
+  });
+});
+
+describe("ReceivablesDO — setWatermark ops tool (slice 04)", () => {
+  it("moves the cursor forward and rejects a rewind", async () => {
+    const { stub, account, key } = freshStub();
+    await stub.applyCheckpointEvents(account, [], 1000);
+    const set = await stub.setWatermark(
+      key,
+      account.chainId,
+      account.univocityAddr,
+      2000,
+    );
+    expect(set.lastBlock).toBe(2000);
+    expect((await stub.getIndexState(key)).lastBlock).toBe(2000);
+    await expect(
+      stub.setWatermark(key, account.chainId, account.univocityAddr, 1500),
+    ).rejects.toThrow(/forward-only/);
+  });
+
+  it("requires a bound account and a sane block number", async () => {
+    const { stub, account, key } = freshStub();
+    await expect(
+      stub.setWatermark(key, account.chainId, account.univocityAddr, 100),
+    ).rejects.toThrow(/no account bound/);
+    await stub.applyCheckpointEvents(account, [], 10);
+    await expect(
+      stub.setWatermark(key, account.chainId, account.univocityAddr, -1),
+    ).rejects.toThrow(/non-negative/);
   });
 });

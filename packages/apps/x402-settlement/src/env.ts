@@ -33,6 +33,18 @@ export interface Env {
   CANOPY_OPS_ADMIN_TOKEN?: string;
   /** Slice-04 arming flag; slice 03 is observe-only and never flips the switch. */
   ENFORCEMENT_ARMED?: string;
+  /**
+   * canopy-api origin for the kill-switch proxy (slice 04 arming path);
+   * injected per lane from CANOPY_FQDN at deploy. Required only once
+   * ENFORCEMENT_ARMED is true — the indexer fails loudly if armed without it.
+   */
+  CANOPY_API_ORIGIN?: string;
+  /**
+   * Credits granted to a first-seen registered account (slice 04; FOR-438
+   * decides the real amount — may stay 0). Applied idempotently at indexer
+   * first sight, the moment metering starts.
+   */
+  STARTER_CREDITS?: string;
   /** Indexer tuning (defaults in run-indexer.ts). */
   INDEXER_CONFIRMATIONS?: string;
   INDEXER_MAX_BLOCK_RANGE?: string;

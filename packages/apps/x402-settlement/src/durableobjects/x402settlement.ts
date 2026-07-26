@@ -102,6 +102,17 @@ export class X402SettlementDO extends DurableObject<Env> {
         `ALTER TABLE settled_jobs ADD COLUMN ${col} TEXT`,
       );
     }
+    // Slice 04: credits-purchase attribution — born under the D6 name.
+    if (!existing.has("univocity_instance_id")) {
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE settled_jobs ADD COLUMN univocity_instance_id TEXT`,
+      );
+    }
+    if (!existing.has("credits")) {
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE settled_jobs ADD COLUMN credits INTEGER`,
+      );
+    }
   }
 
   /**
@@ -249,8 +260,8 @@ export class X402SettlementDO extends DurableObject<Env> {
     this.ctx.storage.sql.exec(
       `INSERT INTO settled_jobs
         (idempotency_key, job_id, auth_id, payer, amount, settled_at, tx_hash,
-         kind, request_id, onboard_token_ref, log_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         kind, request_id, onboard_token_ref, log_id, univocity_instance_id, credits)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       job.idempotencyKey,
       job.jobId,
       job.authId,
@@ -262,6 +273,8 @@ export class X402SettlementDO extends DurableObject<Env> {
       job.requestId ?? null,
       job.onboardTokenRef ?? null,
       job.logId ?? null,
+      job.univocityInstanceId ?? null,
+      job.credits ?? null,
     );
 
     // Reset failure count on success
