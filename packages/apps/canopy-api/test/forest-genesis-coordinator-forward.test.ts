@@ -203,6 +203,67 @@ describe("forwardCoordinatorRegistration", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  // H2: the best-effort genesis forward reports its result and never acts on
+  // it, so it must not be able to hold genesis open on a slow coordinator.
+  // Non-fatal is not the same as non-blocking.
+  it("bounds the coordinator request when timeoutMs is set", async () => {
+    // Settles only when the caller's own AbortSignal fires. The signal is
+    // captured as well as used, so a missing bound fails this test on the
+    // assertion rather than by hanging.
+    const seen: (AbortSignal | null | undefined)[] = [];
+    const fetchImpl = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        seen.push(init?.signal);
+        if (!init?.signal) return new Response("{}", { status: 200 });
+        return new Promise<Response>((_resolve, reject) => {
+          init.signal!.addEventListener("abort", () =>
+            reject(new Error("aborted")),
+          );
+        });
+      },
+    ) as typeof fetch;
+
+    const status = await forwardCoordinatorRegistration({
+      coordinatorBaseUrl: COORD_URL,
+      coordinatorAppToken: COORD_TOKEN,
+      logIdWire: logIdToWireBytes(crypto.randomUUID()),
+      genesisAlg: COSE_ALG_KS256,
+      bootstrapKey: new Uint8Array(20).fill(0xbb),
+      instanceKey: TEST_INSTANCE_KEY,
+      timeoutMs: 50,
+      fetchImpl,
+    });
+
+    expect(seen[0]).toBeInstanceOf(AbortSignal);
+    expect(status.publicRoot).toBe("error");
+    expect(status.webhook).toBe("skipped");
+  });
+
+  it("leaves the request unbounded when timeoutMs is omitted", async () => {
+    const seen: (AbortSignal | null | undefined)[] = [];
+    const fetchImpl = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        seen.push(init?.signal);
+        return new Response("{}", { status: 200 });
+      },
+    ) as typeof fetch;
+
+    await forwardCoordinatorRegistration({
+      coordinatorBaseUrl: COORD_URL,
+      coordinatorAppToken: COORD_TOKEN,
+      logIdWire: logIdToWireBytes(crypto.randomUUID()),
+      genesisAlg: COSE_ALG_KS256,
+      bootstrapKey: new Uint8Array(20).fill(0xbb),
+      webhookUrl: "https://agent.example/hook",
+      fetchImpl,
+    });
+
+    // The strict path keeps its pre-existing behaviour: a failure there is
+    // already fatal with a 503, so the caller learns something either way.
+    expect(seen).toHaveLength(2);
+    expect(seen.every((sig) => sig === undefined)).toBe(true);
+  });
+
   it("reports error when public-root fails", async () => {
     const fetchImpl = vi.fn(async () => new Response("{}", { status: 500 }));
     const status = await forwardCoordinatorRegistration({

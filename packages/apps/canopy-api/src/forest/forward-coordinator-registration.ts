@@ -43,6 +43,19 @@ export interface ForwardCoordinatorRegistrationInput {
    * re-point reaches it.
    */
   instanceKey?: string;
+  /**
+   * Bound each coordinator request with an `AbortSignal`, in milliseconds.
+   *
+   * Genesis without an explicit `webhookUrl` forwards **best-effort** — the
+   * result is reported and never acted on — so it must not be able to hold
+   * genesis open on a slow or unreachable coordinator. Non-fatal is not the
+   * same as non-blocking (FOR-468 review, H2).
+   *
+   * Omitted leaves the request unbounded, which is the pre-existing behaviour
+   * of the strict path: there a failure is already fatal with a 503, so the
+   * caller learns something either way.
+   */
+  timeoutMs?: number;
   fetchImpl?: typeof fetch;
 }
 
@@ -95,12 +108,20 @@ export function buildCoordinatorPublicRootBody(
   throw new Error(`unsupported genesisAlg ${genesisAlg}`);
 }
 
+/** `AbortSignal` for a bounded request, or undefined when unbounded. */
+function timeoutSignal(timeoutMs: number | undefined): AbortSignal | undefined {
+  return typeof timeoutMs === "number" && timeoutMs > 0
+    ? AbortSignal.timeout(timeoutMs)
+    : undefined;
+}
+
 async function postPublicRoot(
   fetchImpl: typeof fetch,
   baseUrl: string,
   token: string,
   apiLogId: string,
   body: PublicRootJsonBody,
+  timeoutMs?: number,
 ): Promise<Response> {
   return fetchImpl(`${baseUrl}/api/logs/${apiLogId}/public-root`, {
     method: "POST",
@@ -110,6 +131,7 @@ async function postPublicRoot(
       Accept: "application/json",
     },
     body: JSON.stringify(body),
+    signal: timeoutSignal(timeoutMs),
   });
 }
 
@@ -119,6 +141,7 @@ async function putWebhook(
   token: string,
   apiLogId: string,
   body: { url?: string; instanceKey?: string },
+  timeoutMs?: number,
 ): Promise<Response> {
   return fetchImpl(`${baseUrl}/api/logs/${apiLogId}/webhook`, {
     method: "PUT",
@@ -128,6 +151,7 @@ async function putWebhook(
       Accept: "application/json",
     },
     body: JSON.stringify(body),
+    signal: timeoutSignal(timeoutMs),
   });
 }
 
@@ -167,6 +191,7 @@ export async function forwardCoordinatorRegistration(
       token,
       apiLogId,
       publicRootBody,
+      input.timeoutMs,
     );
     if (!rootResp.ok) {
       status.detail = `public-root returned ${rootResp.status}`;
@@ -191,10 +216,17 @@ export async function forwardCoordinatorRegistration(
   }
 
   try {
-    const hookResp = await putWebhook(fetchImpl, baseUrl, token, apiLogId, {
-      ...(webhookUrl ? { url: webhookUrl } : {}),
-      ...(instanceKey ? { instanceKey } : {}),
-    });
+    const hookResp = await putWebhook(
+      fetchImpl,
+      baseUrl,
+      token,
+      apiLogId,
+      {
+        ...(webhookUrl ? { url: webhookUrl } : {}),
+        ...(instanceKey ? { instanceKey } : {}),
+      },
+      input.timeoutMs,
+    );
     if (!hookResp.ok) {
       status.webhook = "error";
       status.detail = `webhook returned ${hookResp.status}`;

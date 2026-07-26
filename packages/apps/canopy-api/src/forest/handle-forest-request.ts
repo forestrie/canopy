@@ -82,11 +82,21 @@ function parseGenesisWebhookUrlParam(
   }
 }
 
+/**
+ * Bound on the best-effort genesis forward (FOR-468 review, H2).
+ *
+ * The branch below reports its result and never acts on it, so it must not be
+ * able to hold genesis open on a slow or unreachable coordinator. Two sequential
+ * requests share this bound, so worst case is roughly twice it.
+ */
+const BEST_EFFORT_COORDINATOR_TIMEOUT_MS = 3000;
+
 async function coordinatorStatusForGenesis(
   env: ForestHandlerEnv,
   genesisResult: PostGenesisSuccess,
   webhookUrl: string | undefined,
   instanceKey: string | undefined,
+  timeoutMs?: number,
 ): Promise<CoordinatorRegistrationStatus> {
   return forwardCoordinatorRegistration({
     coordinatorBaseUrl: env.DELEGATION_COORDINATOR_URL!.trim(),
@@ -96,6 +106,7 @@ async function coordinatorStatusForGenesis(
     bootstrapKey: genesisResult.bootstrapKey,
     ...(webhookUrl ? { webhookUrl } : {}),
     ...(instanceKey ? { instanceKey } : {}),
+    ...(timeoutMs ? { timeoutMs } : {}),
   });
 }
 
@@ -148,11 +159,16 @@ async function finishGenesisPost(
     // path forwarded nothing at all before, so a coordinator failure here
     // leaves genesis no worse off than it was, and the owner can register the
     // log against the instance later. It is reported, not fatal.
+    //
+    // Bounded, because non-fatal is not the same as non-blocking: the result is
+    // reported and never acted on, so a slow coordinator must not be able to
+    // hold genesis — the primary onboarding path — open (review finding H2).
     coordinator = await coordinatorStatusForGenesis(
       env,
       genesisResult,
       undefined,
       instanceKey,
+      BEST_EFFORT_COORDINATOR_TIMEOUT_MS,
     );
   }
 
