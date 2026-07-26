@@ -47,7 +47,7 @@ function generateTokenValue(): string {
 
 export async function mintOnboardToken(
   env: OnboardTokenStoreEnv,
-  options: MintOnboardTokenOptions = {},
+  options: MintOnboardTokenOptions,
 ): Promise<MintOnboardTokenResult> {
   const token = generateTokenValue();
   const hash = await hashOnboardToken(token);
@@ -59,6 +59,7 @@ export async function mintOnboardToken(
     status: "active",
     requestId: options.requestId,
     chainBinding: options.chainBinding,
+    admittedBy: options.admittedBy,
   };
   await env.R2_GRANTS.put(onboardTokenR2Key(hash), encodeRecord(record), {
     httpMetadata: { contentType: "application/json" },

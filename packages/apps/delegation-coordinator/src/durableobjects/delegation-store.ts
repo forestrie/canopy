@@ -35,7 +35,11 @@ import type {
   InstanceWebhookResponse,
   PutInstanceWebhookRequest,
 } from "../types/instance-webhook.js";
-import { normalizeInstanceKey } from "../instance-key.js";
+import {
+  isUnivocityInstanceId,
+  parseUnivocityInstanceId,
+} from "@canopy/univocity-instance-id";
+import { univocityInstanceIdFromLegacyInstanceKey } from "../legacy-instance-id.js";
 import type { PutEnabledRequest } from "../types/put-enabled-request.js";
 import type { WebhookConfigResponse } from "../types/webhook-config-response.js";
 import type { EnabledResponse } from "../types/enabled-response.js";
@@ -193,9 +197,9 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
       const instanceWebhookMatch = /^\/instance-webhook\/(.+)$/.exec(pathname);
       if (instanceWebhookMatch) {
-        let instanceKey: string;
+        let univocityInstanceId: string;
         try {
-          instanceKey = normalizeInstanceKey(
+          univocityInstanceId = parseUnivocityInstanceId(
             decodeURIComponent(instanceWebhookMatch[1]!),
           );
         } catch (error) {
@@ -205,19 +209,21 @@ export class DelegationStoreDO extends DurableObject<Env> {
               title: "Invalid request",
               status: 400,
               detail:
-                error instanceof Error ? error.message : "Invalid instanceKey",
+                error instanceof Error
+                  ? error.message
+                  : "Invalid univocityInstanceId",
             },
             { status: 400 },
           );
         }
         if (method === "GET") {
-          return this.handleGetInstanceWebhook(instanceKey);
+          return this.handleGetInstanceWebhook(univocityInstanceId);
         }
         if (method === "PUT") {
-          return this.handlePutInstanceWebhook(instanceKey, request);
+          return this.handlePutInstanceWebhook(univocityInstanceId, request);
         }
         if (method === "DELETE") {
-          return this.handleDeleteInstanceWebhook(instanceKey);
+          return this.handleDeleteInstanceWebhook(univocityInstanceId);
         }
       }
 
@@ -359,6 +365,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
       CREATE TABLE IF NOT EXISTS log_delegation_config (
         log_id_hex32 TEXT PRIMARY KEY,
         webhook_url TEXT,
+        univocity_instance_id TEXT,
+        webhook_source TEXT,
         enabled INTEGER NOT NULL DEFAULT 1,
         user_enabled INTEGER NOT NULL DEFAULT 1,
         operator_enabled INTEGER NOT NULL DEFAULT 1,
@@ -368,7 +376,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     `);
 
     this.ensureEnabledAuthorityColumns();
-    this.ensureLogConfigInstanceColumns();
+    this.ensureLogConfigUnivocityInstanceIdColumns();
 
     // Instance-level webhooks (FOR-468). Per-univocity-instance, replicated to
     // every shard — like delegate_keys — so a log's shard can copy the URL into
@@ -376,16 +384,19 @@ export class DelegationStoreDO extends DurableObject<Env> {
     // delegation request path. Re-pointing fans the update out to all shards.
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS instance_webhooks (
-        instance_key TEXT PRIMARY KEY,
+        univocity_instance_id TEXT PRIMARY KEY,
         webhook_url TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )
     `);
 
+    this.ensureInstanceWebhooksUnivocityInstanceIdColumn();
+    this.rewriteLegacyUnivocityInstanceIds();
+
     this.ctx.storage.sql.exec(`
       CREATE INDEX IF NOT EXISTS idx_log_delegation_config_instance
-      ON log_delegation_config (instance_key)
+      ON log_delegation_config (univocity_instance_id)
     `);
 
     this.ctx.storage.sql.exec(`
@@ -528,7 +539,11 @@ export class DelegationStoreDO extends DurableObject<Env> {
   }
 
   /**
-   * Add instance_key / webhook_source columns on legacy databases (FOR-468).
+   * Bring pre-existing log_delegation_config tables to the current instance
+   * columns. Fresh databases get `univocity_instance_id` / `webhook_source`
+   * from the base CREATE TABLE (FOR-468 review L1); legacy tables either
+   * rename `instance_key` in place (ADR-0059 D1) or, when they pre-date
+   * FOR-468 entirely, add both columns.
    *
    * `webhook_source` records whether `webhook_url` was set directly on the log
    * (`log`) or copied from its instance (`instance`). Only copies are rewritten
@@ -536,7 +551,18 @@ export class DelegationStoreDO extends DurableObject<Env> {
    * Existing rows pre-date instances and keep a NULL source, which reads as an
    * explicit per-log URL.
    */
-  private ensureLogConfigInstanceColumns(): void {
+  private ensureLogConfigUnivocityInstanceIdColumns(): void {
+    try {
+      [
+        ...this.ctx.storage.sql.exec(
+          `SELECT univocity_instance_id FROM log_delegation_config LIMIT 0`,
+        ),
+      ];
+      return;
+    } catch {
+      // legacy table; renamed or extended below
+    }
+    let hasLegacyColumn = true;
     try {
       [
         ...this.ctx.storage.sql.exec(
@@ -544,12 +570,118 @@ export class DelegationStoreDO extends DurableObject<Env> {
         ),
       ];
     } catch {
+      hasLegacyColumn = false;
+    }
+    if (hasLegacyColumn) {
       this.ctx.storage.sql.exec(
-        `ALTER TABLE log_delegation_config ADD COLUMN instance_key TEXT`,
+        `ALTER TABLE log_delegation_config
+         RENAME COLUMN instance_key TO univocity_instance_id`,
+      );
+    } else {
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE log_delegation_config ADD COLUMN univocity_instance_id TEXT`,
       );
       this.ctx.storage.sql.exec(
         `ALTER TABLE log_delegation_config ADD COLUMN webhook_source TEXT`,
       );
+    }
+  }
+
+  /** Rename instance_webhooks.instance_key on legacy databases (ADR-0059 D1). */
+  private ensureInstanceWebhooksUnivocityInstanceIdColumn(): void {
+    try {
+      [
+        ...this.ctx.storage.sql.exec(
+          `SELECT univocity_instance_id FROM instance_webhooks LIMIT 0`,
+        ),
+      ];
+    } catch {
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE instance_webhooks
+         RENAME COLUMN instance_key TO univocity_instance_id`,
+      );
+    }
+  }
+
+  /**
+   * Rewrite stored legacy-form values to canonical CAIP-10 (ADR-0059 D6).
+   * Runs every boot, so per-row idempotency is not enough: the method must
+   * CONVERGE over every reachable data state of each table. Rollout version
+   * skew — our own deploy-window shims writing canonical values ahead of
+   * this migration — can leave a legacy-keyed and a canonical-keyed
+   * `instance_webhooks` row for the same instance, so rewriting that primary
+   * key must handle target-exists: the legacy row is deleted and the
+   * canonical one kept. Keep-canonical is provable, not a judgment call:
+   * pre-cutover code never generated canonical values, so a canonical-keyed
+   * row is post-cutover and strictly newer than any legacy twin. Every other
+   * data problem degrades to a warning — this runs on the constructor path,
+   * where a throw is a crash loop on every shard, and no binding is silently
+   * dropped.
+   */
+  private rewriteLegacyUnivocityInstanceIds(): void {
+    for (const { table, rowKey, keyIsUnique } of [
+      // univocity_instance_id is not unique in log_delegation_config; no
+      // collision handling needed there, only the non-fatal wrapper.
+      {
+        table: "log_delegation_config",
+        rowKey: "log_id_hex32",
+        keyIsUnique: false,
+      },
+      {
+        table: "instance_webhooks",
+        rowKey: "univocity_instance_id",
+        keyIsUnique: true,
+      },
+    ]) {
+      const rows = [
+        ...this.ctx.storage.sql.exec(
+          `SELECT ${rowKey} AS row_key, univocity_instance_id AS id
+           FROM ${table}
+           WHERE univocity_instance_id IS NOT NULL`,
+        ),
+      ] as { row_key: string; id: string }[];
+      for (const row of rows) {
+        try {
+          if (isUnivocityInstanceId(row.id)) continue;
+          const canonical = univocityInstanceIdFromLegacyInstanceKey(row.id);
+          if (!canonical) {
+            console.warn(
+              `univocity_instance_id migration: ${table} value "${row.id}" is neither canonical nor legacy; left unchanged`,
+            );
+            continue;
+          }
+          if (keyIsUnique) {
+            const collides =
+              [
+                ...this.ctx.storage.sql.exec(
+                  `SELECT 1 FROM ${table} WHERE ${rowKey} = ?`,
+                  canonical,
+                ),
+              ].length > 0;
+            if (collides) {
+              this.ctx.storage.sql.exec(
+                `DELETE FROM ${table} WHERE ${rowKey} = ?`,
+                row.row_key,
+              );
+              console.warn(
+                `univocity_instance_id migration: ${table} legacy row "${row.id}" collides with existing canonical "${canonical}"; legacy row deleted, canonical kept`,
+              );
+              continue;
+            }
+          }
+          this.ctx.storage.sql.exec(
+            `UPDATE ${table} SET univocity_instance_id = ? WHERE ${rowKey} = ?`,
+            canonical,
+            row.row_key,
+          );
+        } catch (error) {
+          console.warn(
+            `univocity_instance_id migration: ${table} row "${row.row_key}" not rewritten: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
     }
   }
 
@@ -2080,7 +2212,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
   /** Read log_delegation_config row or null when unset. */
   private readDelegationConfigRow(logIdHex32: string): {
     webhook_url: string | null;
-    instance_key: string | null;
+    univocity_instance_id: string | null;
     webhook_source: string | null;
     enabled: number;
     user_enabled: number;
@@ -2090,7 +2222,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
   } | null {
     const rows = [
       ...this.ctx.storage.sql.exec(
-        `SELECT webhook_url, instance_key, webhook_source, enabled,
+        `SELECT webhook_url, univocity_instance_id, webhook_source, enabled,
                 user_enabled, operator_enabled, created_at, updated_at
          FROM log_delegation_config WHERE log_id_hex32 = ?`,
         logIdHex32,
@@ -2099,7 +2231,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     if (rows.length === 0) return null;
     return rows[0] as {
       webhook_url: string | null;
-      instance_key: string | null;
+      univocity_instance_id: string | null;
       webhook_source: string | null;
       enabled: number;
       user_enabled: number;
@@ -2112,7 +2244,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
   /** Map config row to public webhook JSON (no secrets). */
   private webhookConfigResponseFromRow(row: {
     webhook_url: string | null;
-    instance_key?: string | null;
+    univocity_instance_id?: string | null;
     webhook_source?: string | null;
     user_enabled: number;
     operator_enabled: number;
@@ -2127,8 +2259,10 @@ export class DelegationStoreDO extends DurableObject<Env> {
     if (row.webhook_url) {
       resp.webhookUrl = row.webhook_url;
     }
-    if (row.instance_key) {
-      resp.instanceKey = row.instance_key;
+    if (row.univocity_instance_id) {
+      resp.univocityInstanceId = row.univocity_instance_id;
+      // Legacy alias for one deploy cycle; dropped in plan-2607-43 slice 05.
+      resp.instanceKey = row.univocity_instance_id;
     }
     if (row.webhook_url && row.webhook_source === WEBHOOK_SOURCE_INSTANCE) {
       resp.inherited = true;
@@ -2151,11 +2285,12 @@ export class DelegationStoreDO extends DurableObject<Env> {
   /**
    * PUT /webhook/{logIdHex32} — set an explicit URL and/or bind to an instance.
    *
-   * With `instanceKey` and no `url` this is registration-time **inheritance by
-   * copy** (ADR-0005 amendment): the instance's webhook — replicated to this
-   * shard by the instance fan-out — is written into the log's own row, so the
-   * delegation request path never leaves the shard to find it. An instance with
-   * no webhook yet still records the binding; the next re-point fills it in.
+   * With `univocityInstanceId` and no `url` this is registration-time
+   * **inheritance by copy** (ADR-0005 amendment): the instance's webhook —
+   * replicated to this shard by the instance fan-out — is written into the
+   * log's own row, so the delegation request path never leaves the shard to
+   * find it. An instance with no webhook yet still records the binding; the
+   * next re-point fills it in.
    */
   private async handlePutWebhookConfig(
     logIdHex32: string,
@@ -2163,24 +2298,27 @@ export class DelegationStoreDO extends DurableObject<Env> {
   ): Promise<Response> {
     const body = (await request.json()) as PutWebhookRequest;
     const hasUrl = typeof body.url === "string" && body.url.length > 0;
-    const hasInstanceKey =
-      typeof body.instanceKey === "string" && body.instanceKey.length > 0;
-    if (!hasUrl && !hasInstanceKey) {
+    const hasUnivocityInstanceId =
+      typeof body.univocityInstanceId === "string" &&
+      body.univocityInstanceId.length > 0;
+    if (!hasUrl && !hasUnivocityInstanceId) {
       return Response.json(
         {
           type: "about:blank",
           title: "Invalid request",
           status: 400,
-          detail: "url or instanceKey is required",
+          detail: "url or univocityInstanceId is required",
         },
         { status: 400 },
       );
     }
 
-    let instanceKey: string | null = null;
-    if (hasInstanceKey) {
+    let univocityInstanceId: string | null = null;
+    if (hasUnivocityInstanceId) {
       try {
-        instanceKey = normalizeInstanceKey(body.instanceKey!);
+        univocityInstanceId = parseUnivocityInstanceId(
+          body.univocityInstanceId!,
+        );
       } catch (error) {
         return Response.json(
           {
@@ -2188,7 +2326,9 @@ export class DelegationStoreDO extends DurableObject<Env> {
             title: "Invalid request",
             status: 400,
             detail:
-              error instanceof Error ? error.message : "Invalid instanceKey",
+              error instanceof Error
+                ? error.message
+                : "Invalid univocityInstanceId",
           },
           { status: 400 },
         );
@@ -2200,7 +2340,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
     const userEnabled = existing?.user_enabled ?? 1;
     const operatorEnabled = existing?.operator_enabled ?? 1;
     const createdAt = existing?.created_at ?? now;
-    const effectiveInstanceKey = instanceKey ?? existing?.instance_key ?? null;
+    const effectiveUnivocityInstanceId =
+      univocityInstanceId ?? existing?.univocity_instance_id ?? null;
 
     let webhookUrl: string | null;
     let webhookSource: string | null;
@@ -2211,23 +2352,23 @@ export class DelegationStoreDO extends DurableObject<Env> {
       // Inherit by copy. Absent instance webhook leaves the URL null, which
       // keeps meaning "pre-emptive supply only" until the instance is pointed.
       webhookUrl =
-        this.readInstanceWebhookRow(instanceKey!)?.webhook_url ?? null;
+        this.readInstanceWebhookRow(univocityInstanceId!)?.webhook_url ?? null;
       webhookSource = WEBHOOK_SOURCE_INSTANCE;
     }
 
     this.ctx.storage.sql.exec(
       `INSERT INTO log_delegation_config
-         (log_id_hex32, webhook_url, instance_key, webhook_source, enabled,
-          user_enabled, operator_enabled, created_at, updated_at)
+         (log_id_hex32, webhook_url, univocity_instance_id, webhook_source,
+          enabled, user_enabled, operator_enabled, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(log_id_hex32) DO UPDATE SET
          webhook_url = excluded.webhook_url,
-         instance_key = excluded.instance_key,
+         univocity_instance_id = excluded.univocity_instance_id,
          webhook_source = excluded.webhook_source,
          updated_at = excluded.updated_at`,
       logIdHex32,
       webhookUrl,
-      effectiveInstanceKey,
+      effectiveUnivocityInstanceId,
       webhookSource,
       userEnabled && operatorEnabled ? 1 : 0,
       userEnabled,
@@ -2247,7 +2388,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
    *
    * Also clears `webhook_source`, so a later instance re-point does not
    * resurrect a URL the log's owner deliberately removed. The instance binding
-   * itself is kept for provenance; re-opt in with `PUT { instanceKey }`.
+   * itself is kept for provenance; re-opt in with `PUT { univocityInstanceId }`.
    */
   private handleDeleteWebhookConfig(logIdHex32: string): Response {
     const now = Date.now();
@@ -2268,7 +2409,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
   }
 
   /** Read this shard's replica of an instance webhook row, or null. */
-  private readInstanceWebhookRow(instanceKey: string): {
+  private readInstanceWebhookRow(univocityInstanceId: string): {
     webhook_url: string;
     created_at: number;
     updated_at: number;
@@ -2276,8 +2417,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
     const rows = [
       ...this.ctx.storage.sql.exec(
         `SELECT webhook_url, created_at, updated_at
-         FROM instance_webhooks WHERE instance_key = ?`,
-        instanceKey,
+         FROM instance_webhooks WHERE univocity_instance_id = ?`,
+        univocityInstanceId,
       ),
     ];
     if (rows.length === 0) return null;
@@ -2290,28 +2431,32 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
   /** Count this shard's logs bound to an instance, optionally inherited only. */
   private countInstanceMemberLogs(
-    instanceKey: string,
+    univocityInstanceId: string,
     inheritedOnly: boolean,
   ): number {
     const sql = inheritedOnly
       ? `SELECT COUNT(*) AS n FROM log_delegation_config
-         WHERE instance_key = ? AND webhook_source = '${WEBHOOK_SOURCE_INSTANCE}'`
-      : `SELECT COUNT(*) AS n FROM log_delegation_config WHERE instance_key = ?`;
-    const rows = [...this.ctx.storage.sql.exec(sql, instanceKey)];
+         WHERE univocity_instance_id = ? AND webhook_source = '${WEBHOOK_SOURCE_INSTANCE}'`
+      : `SELECT COUNT(*) AS n FROM log_delegation_config WHERE univocity_instance_id = ?`;
+    const rows = [...this.ctx.storage.sql.exec(sql, univocityInstanceId)];
     return Number((rows[0] as { n: number } | undefined)?.n ?? 0);
   }
 
-  /** GET /instance-webhook/{instanceKey} — this shard's view of an instance. */
-  private handleGetInstanceWebhook(instanceKey: string): Response {
-    const row = this.readInstanceWebhookRow(instanceKey);
-    const memberLogs = this.countInstanceMemberLogs(instanceKey, false);
+  /** GET /instance-webhook/{id} — this shard's view of an instance. */
+  private handleGetInstanceWebhook(univocityInstanceId: string): Response {
+    const row = this.readInstanceWebhookRow(univocityInstanceId);
+    const memberLogs = this.countInstanceMemberLogs(univocityInstanceId, false);
     if (!row && memberLogs === 0) {
       return Response.json(
         { type: "about:blank", title: "Not Found", status: 404 },
         { status: 404 },
       );
     }
-    const resp: InstanceWebhookResponse = { instanceKey, memberLogs };
+    const resp: InstanceWebhookResponse = {
+      univocityInstanceId,
+      instanceKey: univocityInstanceId,
+      memberLogs,
+    };
     if (row) {
       resp.webhookUrl = row.webhook_url;
       resp.createdAt = row.created_at;
@@ -2321,7 +2466,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
   }
 
   /**
-   * PUT /instance-webhook/{instanceKey} — set or re-point the instance webhook.
+   * PUT /instance-webhook/{id} — set or re-point the instance webhook.
    *
    * This is the accepted cost of inherit-by-copy: the worker fans this call out
    * to every shard, and each shard rewrites the copies its own logs hold. Logs
@@ -2329,7 +2474,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
    * as are logs whose owner cleared the webhook (source NULL).
    */
   private async handlePutInstanceWebhook(
-    instanceKey: string,
+    univocityInstanceId: string,
     request: Request,
   ): Promise<Response> {
     const body = (await request.json()) as PutInstanceWebhookRequest;
@@ -2346,67 +2491,72 @@ export class DelegationStoreDO extends DurableObject<Env> {
     }
 
     const now = Date.now();
-    const existing = this.readInstanceWebhookRow(instanceKey);
+    const existing = this.readInstanceWebhookRow(univocityInstanceId);
     const createdAt = existing?.created_at ?? now;
 
     this.ctx.storage.sql.exec(
       `INSERT INTO instance_webhooks
-         (instance_key, webhook_url, created_at, updated_at)
+         (univocity_instance_id, webhook_url, created_at, updated_at)
        VALUES (?, ?, ?, ?)
-       ON CONFLICT(instance_key) DO UPDATE SET
+       ON CONFLICT(univocity_instance_id) DO UPDATE SET
          webhook_url = excluded.webhook_url,
          updated_at = excluded.updated_at`,
-      instanceKey,
+      univocityInstanceId,
       body.url,
       createdAt,
       now,
     );
 
-    const updatedLogs = this.countInstanceMemberLogs(instanceKey, true);
+    const updatedLogs = this.countInstanceMemberLogs(univocityInstanceId, true);
     this.ctx.storage.sql.exec(
       `UPDATE log_delegation_config
        SET webhook_url = ?, updated_at = ?
-       WHERE instance_key = ? AND webhook_source = ?`,
+       WHERE univocity_instance_id = ? AND webhook_source = ?`,
       body.url,
       now,
-      instanceKey,
+      univocityInstanceId,
       WEBHOOK_SOURCE_INSTANCE,
     );
 
     const resp: InstanceWebhookResponse = {
-      instanceKey,
+      univocityInstanceId,
+      instanceKey: univocityInstanceId,
       webhookUrl: body.url,
       createdAt,
       updatedAt: now,
-      memberLogs: this.countInstanceMemberLogs(instanceKey, false),
+      memberLogs: this.countInstanceMemberLogs(univocityInstanceId, false),
       updatedLogs,
     };
     return Response.json(resp);
   }
 
   /**
-   * DELETE /instance-webhook/{instanceKey} — drop the instance webhook.
+   * DELETE /instance-webhook/{id} — drop the instance webhook.
    *
    * Clears the copies inherited by member logs too; those logs revert to
    * "no webhook", i.e. pre-emptive supply only. Bindings are retained so a
    * later PUT re-points them.
    */
-  private handleDeleteInstanceWebhook(instanceKey: string): Response {
+  private handleDeleteInstanceWebhook(univocityInstanceId: string): Response {
     const now = Date.now();
-    const updatedLogs = this.countInstanceMemberLogs(instanceKey, true);
+    const updatedLogs = this.countInstanceMemberLogs(univocityInstanceId, true);
     this.ctx.storage.sql.exec(
       `UPDATE log_delegation_config
        SET webhook_url = NULL, updated_at = ?
-       WHERE instance_key = ? AND webhook_source = ?`,
+       WHERE univocity_instance_id = ? AND webhook_source = ?`,
       now,
-      instanceKey,
+      univocityInstanceId,
       WEBHOOK_SOURCE_INSTANCE,
     );
     this.ctx.storage.sql.exec(
-      `DELETE FROM instance_webhooks WHERE instance_key = ?`,
-      instanceKey,
+      `DELETE FROM instance_webhooks WHERE univocity_instance_id = ?`,
+      univocityInstanceId,
     );
-    const resp: InstanceWebhookResponse = { instanceKey, updatedLogs };
+    const resp: InstanceWebhookResponse = {
+      univocityInstanceId,
+      instanceKey: univocityInstanceId,
+      updatedLogs,
+    };
     return Response.json(resp);
   }
 

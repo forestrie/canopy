@@ -16,6 +16,6 @@ export interface CoordinatorRegistrationStatus {
   publicRoot: CoordinatorForwardStepStatus;
   webhook: CoordinatorForwardStepStatus;
   /** Univocity instance the log was bound to, when one was derivable. */
-  instanceKey?: string;
+  univocityInstanceId?: string;
   detail?: string;
 }

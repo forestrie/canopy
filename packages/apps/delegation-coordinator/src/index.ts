@@ -53,7 +53,7 @@ function matchLogRoute(pathname: string, suffix: string): string | null {
   return match ? decodeURIComponent(match[1]!) : null;
 }
 
-/** Extract instance key from /api/instances/{instanceKey}/{suffix}. */
+/** Extract instance id from /api/instances/{univocityInstanceId}/{suffix}. */
 function matchInstanceRoute(pathname: string, suffix: string): string | null {
   const match = new RegExp(`^/api/instances/([^/]+)/${suffix}$`).exec(pathname);
   return match ? decodeURIComponent(match[1]!) : null;
@@ -184,16 +184,16 @@ export default {
       }
     }
 
-    const instanceWebhookKey = matchInstanceRoute(pathname, "webhook");
-    if (instanceWebhookKey) {
+    const instanceWebhookId = matchInstanceRoute(pathname, "webhook");
+    if (instanceWebhookId) {
       if (method === "GET") {
-        return handleGetInstanceWebhook(instanceWebhookKey, request, env);
+        return handleGetInstanceWebhook(instanceWebhookId, request, env);
       }
       if (method === "PUT") {
-        return handlePutInstanceWebhook(instanceWebhookKey, request, env);
+        return handlePutInstanceWebhook(instanceWebhookId, request, env);
       }
       if (method === "DELETE") {
-        return handleDeleteInstanceWebhook(instanceWebhookKey, request, env);
+        return handleDeleteInstanceWebhook(instanceWebhookId, request, env);
       }
     }
 

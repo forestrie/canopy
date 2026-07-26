@@ -221,7 +221,7 @@ describe("webhook + enabled CRUD", () => {
   // coordinator has no way to test the claim, so authority over one log would
   // otherwise be enough to read any instance's endpoint back off it and point
   // `delegation.required` events at that receiver (FOR-468 review, H1).
-  it("refuses an instanceKey presented with a per-log issuerToken", async () => {
+  it("refuses a univocityInstanceId presented with a per-log issuerToken", async () => {
     const issuerLogUuid = randomUUID();
     const issuerLogHex = normalizeLogIdToHex32(issuerLogUuid);
 
@@ -242,7 +242,7 @@ describe("webhook + enabled CRUD", () => {
     );
     expect(routeRes.status).toBe(200);
 
-    const instanceKey = `84532:${"ab".repeat(20)}`;
+    const univocityInstanceId = `eip155:84532:0x${"ab".repeat(20)}`;
 
     const forbidden = await fetchWithDoRetry(
       `http://localhost/api/logs/${issuerLogUuid}/webhook`,
@@ -251,10 +251,24 @@ describe("webhook + enabled CRUD", () => {
         headers: authHeaders(ISSUER_TOKEN, {
           "Content-Type": "application/json",
         }),
-        body: JSON.stringify({ instanceKey }),
+        body: JSON.stringify({ univocityInstanceId }),
       },
     );
     expect(forbidden.status).toBe(403);
+
+    // The deprecated alias must keep the same app-token requirement: the shim
+    // renames the field, not the authority it demands (plan-2607-43 slice 01).
+    const forbiddenAlias = await fetchWithDoRetry(
+      `http://localhost/api/logs/${issuerLogUuid}/webhook`,
+      {
+        method: "PUT",
+        headers: authHeaders(ISSUER_TOKEN, {
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({ instanceKey: univocityInstanceId }),
+      },
+    );
+    expect(forbiddenAlias.status).toBe(403);
 
     // The same issuer token still sets an explicit per-log URL, and the app
     // token still binds the instance — only the combination is refused.
@@ -277,7 +291,7 @@ describe("webhook + enabled CRUD", () => {
         headers: authHeaders(TEST_TOKEN, {
           "Content-Type": "application/json",
         }),
-        body: JSON.stringify({ instanceKey }),
+        body: JSON.stringify({ univocityInstanceId }),
       },
     );
     expect(appTokenOk.status).toBe(200);

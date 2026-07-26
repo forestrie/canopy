@@ -62,6 +62,7 @@ export function registrationRecordFromChainBinding(
         class: "payment-authoritative";
         onboardTokenRef: string;
         chainBinding: ForestGenesisChainBinding;
+        admittedBy?: RegistrationRecord["admittedBy"];
       }
     | {
         class: "regular";
@@ -75,6 +76,7 @@ export function registrationRecordFromChainBinding(
       class: opts.class,
       onboardTokenRef: opts.onboardTokenRef,
       chainBinding,
+      ...(opts.admittedBy ? { admittedBy: opts.admittedBy } : {}),
     };
   }
   return {

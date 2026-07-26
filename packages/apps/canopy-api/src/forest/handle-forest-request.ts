@@ -20,7 +20,16 @@ import {
   type CoordinatorForwardEnv,
 } from "./forward-coordinator-registration.js";
 import { getForestGenesis } from "./get-forest-genesis.js";
-import { instanceKeyFromGenesisChainBinding } from "./instance-key.js";
+import {
+  tryUnivocityInstanceIdFromChainBinding,
+  type UnivocityInstanceId,
+} from "@canopy/univocity-instance-id";
+import {
+  completeUnivocityInstanceReservation,
+  requestHolder,
+  tokenHolder,
+  type ReservationHolder,
+} from "../payments/instance-registry.js";
 import { handlePrepareChildLog } from "./prepare-child-log.js";
 import {
   postForestGenesis,
@@ -95,7 +104,7 @@ async function coordinatorStatusForGenesis(
   env: ForestHandlerEnv,
   genesisResult: PostGenesisSuccess,
   webhookUrl: string | undefined,
-  instanceKey: string | undefined,
+  univocityInstanceId: UnivocityInstanceId | undefined,
   timeoutMs?: number,
 ): Promise<CoordinatorRegistrationStatus> {
   return forwardCoordinatorRegistration({
@@ -105,7 +114,7 @@ async function coordinatorStatusForGenesis(
     genesisAlg: genesisResult.genesisAlg,
     bootstrapKey: genesisResult.bootstrapKey,
     ...(webhookUrl ? { webhookUrl } : {}),
-    ...(instanceKey ? { instanceKey } : {}),
+    ...(univocityInstanceId ? { univocityInstanceId } : {}),
     ...(timeoutMs ? { timeoutMs } : {}),
   });
 }
@@ -125,6 +134,43 @@ function onboardChainBindingMatches(
   return actualHex === expected.univocityAddr;
 }
 
+/**
+ * Complete (or, absent any reservation, directly take) the instance claim
+ * for `rUuid` — ADR-0059 decision 8: genesis never *takes* a claim it could
+ * lose from an admission flow; it completes the reservation that flow
+ * already holds. `acceptHolders` empty means "no reserving admission
+ * preceded this genesis" (endorsement mode, legacy bindingless tokens) — a
+ * missing record is then claimed directly, but a foreign reservation still
+ * conflicts.
+ */
+async function completeInstanceClaim(
+  env: ForestHandlerEnv,
+  univocityInstanceId: UnivocityInstanceId,
+  acceptHolders: ReservationHolder[],
+  rUuid: string,
+): Promise<Response | null> {
+  const done = await completeUnivocityInstanceReservation(
+    env,
+    univocityInstanceId,
+    acceptHolders,
+    rUuid,
+  );
+  if (done.ok) return null;
+  if (done.reason === "conflict") {
+    // A registered conflict names the holding R (public log identity, and
+    // the diagnosable case); a reserved conflict stays anonymous — a foreign
+    // reservation's holder is not the caller's to learn.
+    return problemResponse(409, "Conflict", "about:blank", {
+      detail: done.claimedBy
+        ? `Univocity instance ${univocityInstanceId} is already registered to forest root ${done.claimedBy}`
+        : `Univocity instance ${univocityInstanceId} is already reserved`,
+    });
+  }
+  return ServerErrors.serviceUnavailable(
+    "instance reservation update lost a race; retry the genesis request",
+  );
+}
+
 async function finishGenesisPost(
   env: ForestHandlerEnv,
   genesisResult: PostGenesisSuccess,
@@ -132,12 +178,24 @@ async function finishGenesisPost(
   record: Parameters<typeof writeRegistration>[2],
   endorsedBy: string | undefined,
   webhookUrl: string | undefined,
+  opts?: { instanceClaimHandled?: boolean },
 ): Promise<Response> {
-  await writeRegistration(env, genesisResult.logIdWire, record);
+  const univocityInstanceId = tryUnivocityInstanceIdFromChainBinding({
+    chainId: genesisResult.chainBinding.chainId,
+    univocityAddr: genesisAddrHex(genesisResult.chainBinding),
+  });
 
-  const instanceKey = instanceKeyFromGenesisChainBinding(
-    genesisResult.chainBinding,
-  );
+  if (!opts?.instanceClaimHandled && univocityInstanceId) {
+    const claimErr = await completeInstanceClaim(
+      env,
+      univocityInstanceId,
+      [],
+      logIdWireToUuid(genesisResult.logIdWire),
+    );
+    if (claimErr) return claimErr;
+  }
+
+  await writeRegistration(env, genesisResult.logIdWire, record);
 
   let coordinator: CoordinatorRegistrationStatus | undefined;
   if (webhookUrl) {
@@ -145,7 +203,7 @@ async function finishGenesisPost(
       env,
       genesisResult,
       webhookUrl,
-      instanceKey,
+      univocityInstanceId,
     );
     if (coordinator.publicRoot !== "ok" || coordinator.webhook !== "ok") {
       const detail =
@@ -153,7 +211,7 @@ async function finishGenesisPost(
         `coordinator registration incomplete (publicRoot=${coordinator.publicRoot}, webhook=${coordinator.webhook})`;
       return ServerErrors.serviceUnavailable(detail);
     }
-  } else if (instanceKey && isCoordinatorForwardConfigured(env)) {
+  } else if (univocityInstanceId && isCoordinatorForwardConfigured(env)) {
     // No explicit webhook: bind the log to its univocity instance so an
     // instance-level webhook is inherited by copy (FOR-468). Best-effort — this
     // path forwarded nothing at all before, so a coordinator failure here
@@ -167,7 +225,7 @@ async function finishGenesisPost(
       env,
       genesisResult,
       undefined,
-      instanceKey,
+      univocityInstanceId,
       BEST_EFFORT_COORDINATOR_TIMEOUT_MS,
     );
   }
@@ -269,6 +327,32 @@ export async function handleForestRequest(
         }
 
         const rUuid = logIdWireToUuid(genesisResult.logIdWire);
+
+        // Complete the reservation BEFORE consuming the token (ADR-0059
+        // decision 8): a conflict here leaves the presented token intact and
+        // reusable, never burned against an instance another root holds.
+        // Legacy bindingless tokens have no reservation and fall through to
+        // the direct claim inside completion.
+        const genesisInstanceId = tryUnivocityInstanceIdFromChainBinding({
+          chainId: genesisResult.chainBinding.chainId,
+          univocityAddr: genesisAddrHex(genesisResult.chainBinding),
+        });
+        if (genesisInstanceId) {
+          const holders: ReservationHolder[] = [
+            tokenHolder(auth.tokenHash),
+            ...(auth.tokenRecord.requestId
+              ? [requestHolder(auth.tokenRecord.requestId)]
+              : []),
+          ];
+          const claimErr = await completeInstanceClaim(
+            env,
+            genesisInstanceId,
+            holders,
+            rUuid,
+          );
+          if (claimErr) return attachCors(claimErr, corsHeaders);
+        }
+
         const claim = await claimOnboardTokenForestRCas(
           env,
           auth.tokenHash,
@@ -290,9 +374,11 @@ export async function handleForestRequest(
             class: "payment-authoritative",
             onboardTokenRef: auth.tokenHash,
             chainBinding: genesisResult.chainBinding,
+            admittedBy: auth.tokenRecord.admittedBy,
           }),
           undefined,
           webhookParsed.webhookUrl,
+          { instanceClaimHandled: true },
         );
 
         return attachCors(res, corsHeaders);

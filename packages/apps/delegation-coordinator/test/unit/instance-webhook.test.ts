@@ -5,7 +5,8 @@
  * instance gets the instance's URL written into its **own** row, a re-point
  * fans that copy out again, an explicit per-log URL survives a re-point, and
  * having no webhook at all stays a supported configuration rather than an
- * error.
+ * error. Instances are named by the canonical CAIP-10 univocity instance id
+ * (ADR-0059 D1/D6); the legacy `{chainId}:{40hex}` form is rejected.
  */
 
 import { randomUUID } from "node:crypto";
@@ -35,30 +36,33 @@ function jsonAuthHeaders(token: string = TEST_TOKEN): HeadersInit {
 
 interface WebhookConfigBody {
   webhookUrl?: string;
+  univocityInstanceId?: string;
   instanceKey?: string;
   inherited?: boolean;
   enabled: boolean;
 }
 
 interface InstanceWebhookBody {
-  instanceKey: string;
+  univocityInstanceId: string;
+  instanceKey?: string;
   webhookUrl?: string;
   memberLogs?: number;
   updatedLogs?: number;
   shards?: number;
 }
 
-/** A fresh instance key per test, so shard state never leaks between them. */
-function freshInstanceKey(): string {
-  return `eip155:11155111:${randomUUID().replace(/-/g, "")}`;
+/** A fresh canonical instance id per test, so shard state never leaks between them. */
+function freshUnivocityInstanceId(): string {
+  const addr = (randomUUID() + randomUUID()).replace(/-/g, "").slice(0, 40);
+  return `eip155:11155111:0x${addr}`;
 }
 
 async function putInstanceWebhook(
-  instanceKey: string,
+  univocityInstanceId: string,
   url: string,
 ): Promise<Response> {
   return fetchWithDoRetry(
-    `http://localhost/api/instances/${encodeURIComponent(instanceKey)}/webhook`,
+    `http://localhost/api/instances/${encodeURIComponent(univocityInstanceId)}/webhook`,
     {
       method: "PUT",
       headers: jsonAuthHeaders(),
@@ -69,12 +73,12 @@ async function putInstanceWebhook(
 
 async function bindLogToInstance(
   logUuid: string,
-  instanceKey: string,
+  univocityInstanceId: string,
 ): Promise<Response> {
   return fetchWithDoRetry(`http://localhost/api/logs/${logUuid}/webhook`, {
     method: "PUT",
     headers: jsonAuthHeaders(),
-    body: JSON.stringify({ instanceKey }),
+    body: JSON.stringify({ univocityInstanceId }),
   });
 }
 
@@ -89,20 +93,24 @@ async function getLogWebhook(logUuid: string): Promise<WebhookConfigBody> {
 
 describe("instance webhook inheritance by copy", () => {
   it("copies an existing instance webhook into a log at registration", async () => {
-    const instanceKey = freshInstanceKey();
+    const univocityInstanceId = freshUnivocityInstanceId();
     const instanceUrl = "https://hooks.example.test/instance-a";
-    const putRes = await putInstanceWebhook(instanceKey, instanceUrl);
+    const putRes = await putInstanceWebhook(univocityInstanceId, instanceUrl);
     expect(putRes.status).toBe(200);
     const putBody = (await putRes.json()) as InstanceWebhookBody;
     expect(putBody.webhookUrl).toBe(instanceUrl);
+    expect(putBody.univocityInstanceId).toBe(univocityInstanceId);
+    // Legacy alias carried during the shim cycle (dropped in slice 05).
+    expect(putBody.instanceKey).toBe(univocityInstanceId);
     expect(putBody.shards).toBeGreaterThan(1);
 
     const logUuid = randomUUID();
-    const bindRes = await bindLogToInstance(logUuid, instanceKey);
+    const bindRes = await bindLogToInstance(logUuid, univocityInstanceId);
     expect(bindRes.status).toBe(200);
     const bindBody = (await bindRes.json()) as WebhookConfigBody;
     expect(bindBody.webhookUrl).toBe(instanceUrl);
-    expect(bindBody.instanceKey).toBe(instanceKey);
+    expect(bindBody.univocityInstanceId).toBe(univocityInstanceId);
+    expect(bindBody.instanceKey).toBe(univocityInstanceId);
     expect(bindBody.inherited).toBe(true);
 
     const readBack = await getLogWebhook(logUuid);
@@ -111,19 +119,19 @@ describe("instance webhook inheritance by copy", () => {
   });
 
   it("binds a log before the instance has a webhook, then fills it on re-point", async () => {
-    const instanceKey = freshInstanceKey();
+    const univocityInstanceId = freshUnivocityInstanceId();
     const logUuid = randomUUID();
 
     // Absence is a supported configuration: binding with no instance webhook
     // yet must succeed and leave the log with no URL.
-    const bindRes = await bindLogToInstance(logUuid, instanceKey);
+    const bindRes = await bindLogToInstance(logUuid, univocityInstanceId);
     expect(bindRes.status).toBe(200);
     const bindBody = (await bindRes.json()) as WebhookConfigBody;
     expect(bindBody.webhookUrl).toBeUndefined();
-    expect(bindBody.instanceKey).toBe(instanceKey);
+    expect(bindBody.univocityInstanceId).toBe(univocityInstanceId);
 
     const url = "https://hooks.example.test/instance-late";
-    const res = await putInstanceWebhook(instanceKey, url);
+    const res = await putInstanceWebhook(univocityInstanceId, url);
     expect(res.status).toBe(200);
     const body = (await res.json()) as InstanceWebhookBody;
     expect(body.updatedLogs).toBe(1);
@@ -133,21 +141,25 @@ describe("instance webhook inheritance by copy", () => {
   });
 
   it("re-points every member log, across shards, in one operation", async () => {
-    const instanceKey = freshInstanceKey();
+    const univocityInstanceId = freshUnivocityInstanceId();
     const firstUrl = "https://hooks.example.test/instance-v1";
     const secondUrl = "https://hooks.example.test/instance-v2";
-    expect((await putInstanceWebhook(instanceKey, firstUrl)).status).toBe(200);
+    expect(
+      (await putInstanceWebhook(univocityInstanceId, firstUrl)).status,
+    ).toBe(200);
 
     // Enough logs that they cannot all land in the same shard (shard count 4).
     const logUuids = Array.from({ length: 12 }, () => randomUUID());
     for (const logUuid of logUuids) {
-      expect((await bindLogToInstance(logUuid, instanceKey)).status).toBe(200);
+      expect(
+        (await bindLogToInstance(logUuid, univocityInstanceId)).status,
+      ).toBe(200);
     }
     for (const logUuid of logUuids) {
       expect((await getLogWebhook(logUuid)).webhookUrl).toBe(firstUrl);
     }
 
-    const repoint = await putInstanceWebhook(instanceKey, secondUrl);
+    const repoint = await putInstanceWebhook(univocityInstanceId, secondUrl);
     expect(repoint.status).toBe(200);
     const repointBody = (await repoint.json()) as InstanceWebhookBody;
     expect(repointBody.updatedLogs).toBe(logUuids.length);
@@ -159,16 +171,20 @@ describe("instance webhook inheritance by copy", () => {
   });
 
   it("leaves an explicit per-log webhook untouched when the instance re-points", async () => {
-    const instanceKey = freshInstanceKey();
+    const univocityInstanceId = freshUnivocityInstanceId();
     expect(
-      (await putInstanceWebhook(instanceKey, "https://hooks.example.test/inst"))
-        .status,
+      (
+        await putInstanceWebhook(
+          univocityInstanceId,
+          "https://hooks.example.test/inst",
+        )
+      ).status,
     ).toBe(200);
 
     const inheritedLog = randomUUID();
-    expect((await bindLogToInstance(inheritedLog, instanceKey)).status).toBe(
-      200,
-    );
+    expect(
+      (await bindLogToInstance(inheritedLog, univocityInstanceId)).status,
+    ).toBe(200);
 
     const overriddenLog = randomUUID();
     const ownUrl = "https://hooks.example.test/log-specific";
@@ -177,17 +193,17 @@ describe("instance webhook inheritance by copy", () => {
       {
         method: "PUT",
         headers: jsonAuthHeaders(),
-        body: JSON.stringify({ url: ownUrl, instanceKey }),
+        body: JSON.stringify({ url: ownUrl, univocityInstanceId }),
       },
     );
     expect(overrideRes.status).toBe(200);
     const overrideBody = (await overrideRes.json()) as WebhookConfigBody;
     expect(overrideBody.webhookUrl).toBe(ownUrl);
-    expect(overrideBody.instanceKey).toBe(instanceKey);
+    expect(overrideBody.univocityInstanceId).toBe(univocityInstanceId);
     expect(overrideBody.inherited).toBeUndefined();
 
     const repoint = await putInstanceWebhook(
-      instanceKey,
+      univocityInstanceId,
       "https://hooks.example.test/inst-moved",
     );
     const repointBody = (await repoint.json()) as InstanceWebhookBody;
@@ -201,16 +217,22 @@ describe("instance webhook inheritance by copy", () => {
   });
 
   it("DELETE drops the instance webhook and the copies it placed", async () => {
-    const instanceKey = freshInstanceKey();
+    const univocityInstanceId = freshUnivocityInstanceId();
     expect(
-      (await putInstanceWebhook(instanceKey, "https://hooks.example.test/gone"))
-        .status,
+      (
+        await putInstanceWebhook(
+          univocityInstanceId,
+          "https://hooks.example.test/gone",
+        )
+      ).status,
     ).toBe(200);
     const logUuid = randomUUID();
-    expect((await bindLogToInstance(logUuid, instanceKey)).status).toBe(200);
+    expect((await bindLogToInstance(logUuid, univocityInstanceId)).status).toBe(
+      200,
+    );
 
     const delRes = await fetchWithDoRetry(
-      `http://localhost/api/instances/${encodeURIComponent(instanceKey)}/webhook`,
+      `http://localhost/api/instances/${encodeURIComponent(univocityInstanceId)}/webhook`,
       { method: "DELETE", headers: authHeaders() },
     );
     expect(delRes.status).toBe(200);
@@ -220,32 +242,35 @@ describe("instance webhook inheritance by copy", () => {
     // Reverts to "no webhook" — pre-emptive supply only, not an error.
     const after = await getLogWebhook(logUuid);
     expect(after.webhookUrl).toBeUndefined();
-    expect(after.instanceKey).toBe(instanceKey);
+    expect(after.univocityInstanceId).toBe(univocityInstanceId);
   });
 
   it("GET aggregates member logs across shards and 404s for an unknown instance", async () => {
-    const instanceKey = freshInstanceKey();
+    const univocityInstanceId = freshUnivocityInstanceId();
     const missing = await fetchWithDoRetry(
-      `http://localhost/api/instances/${encodeURIComponent(instanceKey)}/webhook`,
+      `http://localhost/api/instances/${encodeURIComponent(univocityInstanceId)}/webhook`,
       { method: "GET", headers: authHeaders() },
     );
     expect(missing.status).toBe(404);
 
     const url = "https://hooks.example.test/instance-get";
-    expect((await putInstanceWebhook(instanceKey, url)).status).toBe(200);
+    expect((await putInstanceWebhook(univocityInstanceId, url)).status).toBe(
+      200,
+    );
     for (let i = 0; i < 5; i++) {
-      expect((await bindLogToInstance(randomUUID(), instanceKey)).status).toBe(
-        200,
-      );
+      expect(
+        (await bindLogToInstance(randomUUID(), univocityInstanceId)).status,
+      ).toBe(200);
     }
 
     const res = await fetchWithDoRetry(
-      `http://localhost/api/instances/${encodeURIComponent(instanceKey)}/webhook`,
+      `http://localhost/api/instances/${encodeURIComponent(univocityInstanceId)}/webhook`,
       { method: "GET", headers: authHeaders() },
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as InstanceWebhookBody;
     expect(body.webhookUrl).toBe(url);
+    expect(body.univocityInstanceId).toBe(univocityInstanceId);
     expect(body.memberLogs).toBe(5);
   });
 
@@ -253,16 +278,19 @@ describe("instance webhook inheritance by copy", () => {
     fetchMock.activate();
     fetchMock.disableNetConnect();
     try {
-      const instanceKey = freshInstanceKey();
+      const univocityInstanceId = freshUnivocityInstanceId();
       const origin = "https://instance-hooks.example.test";
       const path = "/delegation-required";
       expect(
-        (await putInstanceWebhook(instanceKey, `${origin}${path}`)).status,
+        (await putInstanceWebhook(univocityInstanceId, `${origin}${path}`))
+          .status,
       ).toBe(200);
 
       const logUuid = randomUUID();
       const logHex32 = normalizeLogIdToHex32(logUuid);
-      expect((await bindLogToInstance(logUuid, instanceKey)).status).toBe(200);
+      expect(
+        (await bindLogToInstance(logUuid, univocityInstanceId)).status,
+      ).toBe(200);
 
       let receivedBody = "";
       fetchMock
@@ -314,7 +342,7 @@ describe("instance webhook inheritance by copy", () => {
 describe("instance webhook validation and auth", () => {
   it("requires the coordinator app token", async () => {
     const res = await fetchWithDoRetry(
-      `http://localhost/api/instances/${encodeURIComponent(freshInstanceKey())}/webhook`,
+      `http://localhost/api/instances/${encodeURIComponent(freshUnivocityInstanceId())}/webhook`,
       { method: "GET" },
     );
     expect(res.status).toBe(401);
@@ -322,13 +350,13 @@ describe("instance webhook validation and auth", () => {
 
   it("rejects a private instance webhook URL", async () => {
     const res = await putInstanceWebhook(
-      freshInstanceKey(),
+      freshUnivocityInstanceId(),
       "https://10.0.0.1/hook",
     );
     expect(res.status).toBe(400);
   });
 
-  it("rejects a malformed instance key", async () => {
+  it("rejects a malformed instance id path segment", async () => {
     const res = await fetchWithDoRetry(
       `http://localhost/api/instances/${encodeURIComponent("bad key!")}/webhook`,
       {
@@ -340,7 +368,39 @@ describe("instance webhook validation and auth", () => {
     expect(res.status).toBe(400);
   });
 
-  it("rejects a log webhook PUT carrying neither url nor instanceKey", async () => {
+  it("rejects the retired legacy {chainId}:{40hex} form in the path", async () => {
+    const legacy = `84532:${"ab".repeat(20)}`;
+    const res = await fetchWithDoRetry(
+      `http://localhost/api/instances/${encodeURIComponent(legacy)}/webhook`,
+      {
+        method: "PUT",
+        headers: jsonAuthHeaders(),
+        body: JSON.stringify({ url: "https://hooks.example.test/x" }),
+      },
+    );
+    expect(res.status).toBe(400);
+  });
+
+  // Superseded by the value-form shim (plan-2607-02 R5): for the deploy
+  // window a legacy value in either body field converts to canonical instead
+  // of rejecting. Strict rejection returns in plan-2607-43 slice 05; see
+  // webhook-legacy-instance-binding.test.ts for the conversion assertions.
+  it("accepts a legacy-format value in either instance-binding body field (R5 shim)", async () => {
+    const legacy = `84532:${"ab".repeat(20)}`;
+    for (const field of ["univocityInstanceId", "instanceKey"]) {
+      const res = await fetchWithDoRetry(
+        `http://localhost/api/logs/${randomUUID()}/webhook`,
+        {
+          method: "PUT",
+          headers: jsonAuthHeaders(),
+          body: JSON.stringify({ [field]: legacy }),
+        },
+      );
+      expect(res.status).toBe(200);
+    }
+  });
+
+  it("rejects a log webhook PUT carrying neither url nor univocityInstanceId", async () => {
     const res = await fetchWithDoRetry(
       `http://localhost/api/logs/${randomUUID()}/webhook`,
       {
@@ -352,19 +412,41 @@ describe("instance webhook validation and auth", () => {
     expect(res.status).toBe(400);
   });
 
-  it("normalizes instance key case on both write and read", async () => {
-    const instanceKey = freshInstanceKey();
-    const url = "https://hooks.example.test/case";
-    expect(
-      (await putInstanceWebhook(instanceKey.toUpperCase(), url)).status,
-    ).toBe(200);
+  it("rejects a checksum-cased id: exact canonical form only, no case folding", async () => {
+    const univocityInstanceId = freshUnivocityInstanceId();
+    const res = await putInstanceWebhook(
+      univocityInstanceId.toUpperCase(),
+      "https://hooks.example.test/case",
+    );
+    expect(res.status).toBe(400);
+
+    const bindRes = await bindLogToInstance(
+      randomUUID(),
+      univocityInstanceId.toUpperCase(),
+    );
+    expect(bindRes.status).toBe(400);
+  });
+
+  it("accepts the deprecated instanceKey body field with a canonical value", async () => {
+    const univocityInstanceId = freshUnivocityInstanceId();
+    const url = "https://hooks.example.test/deprecated-alias";
+    expect((await putInstanceWebhook(univocityInstanceId, url)).status).toBe(
+      200,
+    );
 
     const logUuid = randomUUID();
-    expect(
-      (await bindLogToInstance(logUuid, instanceKey.toUpperCase())).status,
-    ).toBe(200);
-    const body = await getLogWebhook(logUuid);
-    expect(body.instanceKey).toBe(instanceKey);
+    const res = await fetchWithDoRetry(
+      `http://localhost/api/logs/${logUuid}/webhook`,
+      {
+        method: "PUT",
+        headers: jsonAuthHeaders(),
+        body: JSON.stringify({ instanceKey: univocityInstanceId }),
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as WebhookConfigBody;
+    expect(body.univocityInstanceId).toBe(univocityInstanceId);
+    expect(body.instanceKey).toBe(univocityInstanceId);
     expect(body.webhookUrl).toBe(url);
   });
 });

@@ -9,6 +9,10 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import worker from "../src/index";
 import type { Env } from "../src/index";
 import { mintOnboardToken } from "../src/payments/onboard-token-store.js";
+import {
+  hashOnboardToken,
+  onboardTokenR2Key,
+} from "../src/payments/onboard-token-hash.js";
 import { validGenesisV2Es256CborMap } from "./helpers/genesis-v2-body.js";
 import {
   bootstrapConfigCallData,
@@ -538,6 +542,10 @@ describe("onboard token binding at genesis", () => {
       e,
       testCtx,
     );
+    // Same token, different R: the auth-stage consumedForestR check fires
+    // before any reservation logic, so this stays the token-consumed 403.
+    // (A *different* token contesting the instance gets the 409 — see
+    // payments-registration.test.ts.)
     expect(second.status).toBe(403);
   });
 
@@ -575,7 +583,9 @@ describe("onboard token binding at genesis", () => {
 
     const [a, b] = await Promise.all([genesisReq(rootA), genesisReq(rootB)]);
     const statuses = [a.status, b.status].sort();
-    expect(statuses).toEqual([201, 403]);
+    // Loser fails at the instance-completion CAS (409) before its token
+    // would have been consumed (ADR-0059 decision 8).
+    expect(statuses).toEqual([201, 409]);
   });
 
   it("rejects genesis when token chain binding mismatches genesis body", async () => {
@@ -608,7 +618,21 @@ describe("onboard token binding at genesis", () => {
 
   it("legacy ops-mint token without binding still works", async () => {
     const e = envWithOnboard();
-    const minted = await mintOnboardToken(e, { label: "legacy" });
+    // Mint now requires a binding; lane-A legacy tokens predate that rule,
+    // so seed the at-rest record shape directly.
+    const legacyToken = "legacy-".concat(crypto.randomUUID());
+    const legacyHash = await hashOnboardToken(legacyToken);
+    await e.R2_GRANTS.put(
+      onboardTokenR2Key(legacyHash),
+      JSON.stringify({
+        hash: legacyHash,
+        label: "legacy",
+        createdAt: Math.floor(Date.now() / 1000),
+        status: "active",
+      }),
+      { httpMetadata: { contentType: "application/json" } },
+    );
+    const minted = { token: legacyToken, record: { hash: legacyHash } };
     const root = crypto.randomUUID();
     const res = await worker.fetch(
       new Request(`http://localhost/api/forest/${root}/genesis`, {

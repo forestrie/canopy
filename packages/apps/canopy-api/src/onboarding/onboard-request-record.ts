@@ -20,4 +20,6 @@ export interface OnboardRequestRecord {
   onboardTokenRef?: string;
   rejectReason?: string;
   redeemedAt?: number;
+  /** Approved by the dev auto-approve path, not an operator (ADR-0059 D3/F6). */
+  autoApproved?: boolean;
 }

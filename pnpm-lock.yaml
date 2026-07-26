@@ -56,6 +56,9 @@ importers:
       '@canopy/forestrie-sharding':
         specifier: workspace:*
         version: link:../../shared/forestrie-sharding
+      '@canopy/univocity-instance-id':
+        specifier: workspace:*
+        version: link:../../shared/univocity-instance-id
       '@canopy/webhook-url':
         specifier: workspace:*
         version: link:../../shared/webhook-url
@@ -117,6 +120,9 @@ importers:
       '@canopy/forestrie-sharding':
         specifier: workspace:*
         version: link:../../shared/forestrie-sharding
+      '@canopy/univocity-instance-id':
+        specifier: workspace:*
+        version: link:../../shared/univocity-instance-id
       '@canopy/webhook-url':
         specifier: workspace:*
         version: link:../../shared/webhook-url
@@ -331,6 +337,15 @@ importers:
         version: 5.9.3
 
   packages/shared/forestrie-sharding:
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@24.8.1)(tsx@4.21.0)
+
+  packages/shared/univocity-instance-id:
     devDependencies:
       typescript:
         specifier: ^5.9.2

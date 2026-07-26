@@ -33,7 +33,8 @@ export interface ForwardCoordinatorRegistrationInput {
    */
   webhookUrl?: string;
   /**
-   * Univocity instance this log belongs to (`{chainId}:{univocityAddr}`).
+   * Univocity instance this log belongs to — the canonical CAIP-10
+   * `univocityInstanceId` (ADR-0059 decision 7).
    *
    * Registering it binds the log to its instance, and the coordinator **copies**
    * the instance-level webhook into this log's own config row (ADR-0005
@@ -41,8 +42,12 @@ export interface ForwardCoordinatorRegistrationInput {
    * register one webhook instead of one per log. If the instance has no webhook
    * the binding is still recorded — the log then has none, and a later instance
    * re-point reaches it.
+   *
+   * On the wire the value is sent as both `univocityInstanceId` and the
+   * deprecated `instanceKey` field so deploy order against the coordinator
+   * does not matter; the legacy field drops in plan-2607-43 slice 05.
    */
-  instanceKey?: string;
+  univocityInstanceId?: string;
   /**
    * Bound each coordinator request with an `AbortSignal`, in milliseconds.
    *
@@ -140,7 +145,7 @@ async function putWebhook(
   baseUrl: string,
   token: string,
   apiLogId: string,
-  body: { url?: string; instanceKey?: string },
+  body: { url?: string; univocityInstanceId?: string; instanceKey?: string },
   timeoutMs?: number,
 ): Promise<Response> {
   return fetchImpl(`${baseUrl}/api/logs/${apiLogId}/webhook`, {
@@ -207,12 +212,12 @@ export async function forwardCoordinatorRegistration(
   // Nothing to register — neither an explicit webhook nor an instance to
   // inherit one from. Public root is done; the webhook step stays `skipped`.
   const webhookUrl = input.webhookUrl?.trim();
-  const instanceKey = input.instanceKey?.trim();
-  if (!webhookUrl && !instanceKey) {
+  const univocityInstanceId = input.univocityInstanceId?.trim();
+  if (!webhookUrl && !univocityInstanceId) {
     return status;
   }
-  if (instanceKey) {
-    status.instanceKey = instanceKey;
+  if (univocityInstanceId) {
+    status.univocityInstanceId = univocityInstanceId;
   }
 
   try {
@@ -223,7 +228,11 @@ export async function forwardCoordinatorRegistration(
       apiLogId,
       {
         ...(webhookUrl ? { url: webhookUrl } : {}),
-        ...(instanceKey ? { instanceKey } : {}),
+        // Both field names carry the same canonical value until the
+        // coordinator-side deprecation window closes (slice 05).
+        ...(univocityInstanceId
+          ? { univocityInstanceId, instanceKey: univocityInstanceId }
+          : {}),
       },
       input.timeoutMs,
     );
