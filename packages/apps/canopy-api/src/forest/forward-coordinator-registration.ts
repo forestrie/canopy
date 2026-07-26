@@ -32,6 +32,30 @@ export interface ForwardCoordinatorRegistrationInput {
    * needs, so the webhook step is reported `skipped`.
    */
   webhookUrl?: string;
+  /**
+   * Univocity instance this log belongs to (`{chainId}:{univocityAddr}`).
+   *
+   * Registering it binds the log to its instance, and the coordinator **copies**
+   * the instance-level webhook into this log's own config row (ADR-0005
+   * amendment, FOR-468). That is what lets an owner who operates many logs
+   * register one webhook instead of one per log. If the instance has no webhook
+   * the binding is still recorded — the log then has none, and a later instance
+   * re-point reaches it.
+   */
+  instanceKey?: string;
+  /**
+   * Bound each coordinator request with an `AbortSignal`, in milliseconds.
+   *
+   * Genesis without an explicit `webhookUrl` forwards **best-effort** — the
+   * result is reported and never acted on — so it must not be able to hold
+   * genesis open on a slow or unreachable coordinator. Non-fatal is not the
+   * same as non-blocking (FOR-468 review, H2).
+   *
+   * Omitted leaves the request unbounded, which is the pre-existing behaviour
+   * of the strict path: there a failure is already fatal with a 503, so the
+   * caller learns something either way.
+   */
+  timeoutMs?: number;
   fetchImpl?: typeof fetch;
 }
 
@@ -84,12 +108,20 @@ export function buildCoordinatorPublicRootBody(
   throw new Error(`unsupported genesisAlg ${genesisAlg}`);
 }
 
+/** `AbortSignal` for a bounded request, or undefined when unbounded. */
+function timeoutSignal(timeoutMs: number | undefined): AbortSignal | undefined {
+  return typeof timeoutMs === "number" && timeoutMs > 0
+    ? AbortSignal.timeout(timeoutMs)
+    : undefined;
+}
+
 async function postPublicRoot(
   fetchImpl: typeof fetch,
   baseUrl: string,
   token: string,
   apiLogId: string,
   body: PublicRootJsonBody,
+  timeoutMs?: number,
 ): Promise<Response> {
   return fetchImpl(`${baseUrl}/api/logs/${apiLogId}/public-root`, {
     method: "POST",
@@ -99,6 +131,7 @@ async function postPublicRoot(
       Accept: "application/json",
     },
     body: JSON.stringify(body),
+    signal: timeoutSignal(timeoutMs),
   });
 }
 
@@ -107,7 +140,8 @@ async function putWebhook(
   baseUrl: string,
   token: string,
   apiLogId: string,
-  webhookUrl: string,
+  body: { url?: string; instanceKey?: string },
+  timeoutMs?: number,
 ): Promise<Response> {
   return fetchImpl(`${baseUrl}/api/logs/${apiLogId}/webhook`, {
     method: "PUT",
@@ -116,7 +150,8 @@ async function putWebhook(
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({ url: webhookUrl }),
+    body: JSON.stringify(body),
+    signal: timeoutSignal(timeoutMs),
   });
 }
 
@@ -156,6 +191,7 @@ export async function forwardCoordinatorRegistration(
       token,
       apiLogId,
       publicRootBody,
+      input.timeoutMs,
     );
     if (!rootResp.ok) {
       status.detail = `public-root returned ${rootResp.status}`;
@@ -168,11 +204,15 @@ export async function forwardCoordinatorRegistration(
     return status;
   }
 
-  // No webhook to register (e.g. child onboarding): public root is done, webhook
-  // stays `skipped`.
+  // Nothing to register — neither an explicit webhook nor an instance to
+  // inherit one from. Public root is done; the webhook step stays `skipped`.
   const webhookUrl = input.webhookUrl?.trim();
-  if (!webhookUrl) {
+  const instanceKey = input.instanceKey?.trim();
+  if (!webhookUrl && !instanceKey) {
     return status;
+  }
+  if (instanceKey) {
+    status.instanceKey = instanceKey;
   }
 
   try {
@@ -181,14 +221,20 @@ export async function forwardCoordinatorRegistration(
       baseUrl,
       token,
       apiLogId,
-      webhookUrl,
+      {
+        ...(webhookUrl ? { url: webhookUrl } : {}),
+        ...(instanceKey ? { instanceKey } : {}),
+      },
+      input.timeoutMs,
     );
     if (!hookResp.ok) {
       status.webhook = "error";
       status.detail = `webhook returned ${hookResp.status}`;
       return status;
     }
-    status.webhook = "ok";
+    // An explicit URL is `ok`; a bare instance binding is `inherited` — the log
+    // gets whatever webhook the instance has, which may legitimately be none.
+    status.webhook = webhookUrl ? "ok" : "inherited";
     return status;
   } catch (error) {
     status.webhook = "error";

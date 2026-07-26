@@ -20,6 +20,7 @@ import {
   type CoordinatorForwardEnv,
 } from "./forward-coordinator-registration.js";
 import { getForestGenesis } from "./get-forest-genesis.js";
+import { instanceKeyFromGenesisChainBinding } from "./instance-key.js";
 import { handlePrepareChildLog } from "./prepare-child-log.js";
 import {
   postForestGenesis,
@@ -81,10 +82,21 @@ function parseGenesisWebhookUrlParam(
   }
 }
 
+/**
+ * Bound on the best-effort genesis forward (FOR-468 review, H2).
+ *
+ * The branch below reports its result and never acts on it, so it must not be
+ * able to hold genesis open on a slow or unreachable coordinator. Two sequential
+ * requests share this bound, so worst case is roughly twice it.
+ */
+const BEST_EFFORT_COORDINATOR_TIMEOUT_MS = 3000;
+
 async function coordinatorStatusForGenesis(
   env: ForestHandlerEnv,
   genesisResult: PostGenesisSuccess,
-  webhookUrl: string,
+  webhookUrl: string | undefined,
+  instanceKey: string | undefined,
+  timeoutMs?: number,
 ): Promise<CoordinatorRegistrationStatus> {
   return forwardCoordinatorRegistration({
     coordinatorBaseUrl: env.DELEGATION_COORDINATOR_URL!.trim(),
@@ -92,7 +104,9 @@ async function coordinatorStatusForGenesis(
     logIdWire: genesisResult.logIdWire,
     genesisAlg: genesisResult.genesisAlg,
     bootstrapKey: genesisResult.bootstrapKey,
-    webhookUrl,
+    ...(webhookUrl ? { webhookUrl } : {}),
+    ...(instanceKey ? { instanceKey } : {}),
+    ...(timeoutMs ? { timeoutMs } : {}),
   });
 }
 
@@ -121,12 +135,17 @@ async function finishGenesisPost(
 ): Promise<Response> {
   await writeRegistration(env, genesisResult.logIdWire, record);
 
+  const instanceKey = instanceKeyFromGenesisChainBinding(
+    genesisResult.chainBinding,
+  );
+
   let coordinator: CoordinatorRegistrationStatus | undefined;
   if (webhookUrl) {
     coordinator = await coordinatorStatusForGenesis(
       env,
       genesisResult,
       webhookUrl,
+      instanceKey,
     );
     if (coordinator.publicRoot !== "ok" || coordinator.webhook !== "ok") {
       const detail =
@@ -134,6 +153,23 @@ async function finishGenesisPost(
         `coordinator registration incomplete (publicRoot=${coordinator.publicRoot}, webhook=${coordinator.webhook})`;
       return ServerErrors.serviceUnavailable(detail);
     }
+  } else if (instanceKey && isCoordinatorForwardConfigured(env)) {
+    // No explicit webhook: bind the log to its univocity instance so an
+    // instance-level webhook is inherited by copy (FOR-468). Best-effort — this
+    // path forwarded nothing at all before, so a coordinator failure here
+    // leaves genesis no worse off than it was, and the owner can register the
+    // log against the instance later. It is reported, not fatal.
+    //
+    // Bounded, because non-fatal is not the same as non-blocking: the result is
+    // reported and never acted on, so a slow coordinator must not be able to
+    // hold genesis — the primary onboarding path — open (review finding H2).
+    coordinator = await coordinatorStatusForGenesis(
+      env,
+      genesisResult,
+      undefined,
+      instanceKey,
+      BEST_EFFORT_COORDINATOR_TIMEOUT_MS,
+    );
   }
 
   const rUuid = logIdWireToUuid(genesisResult.logIdWire);

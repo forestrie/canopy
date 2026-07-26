@@ -215,6 +215,74 @@ describe("webhook + enabled CRUD", () => {
     void issuerLogHex;
   });
 
+  // The counterpart of the case above: an issuer token speaks for its own log,
+  // so it may set that log's `url` — but not claim membership of an instance.
+  // Binding copies the instance's webhook URL into this log's row, and the
+  // coordinator has no way to test the claim, so authority over one log would
+  // otherwise be enough to read any instance's endpoint back off it and point
+  // `delegation.required` events at that receiver (FOR-468 review, H1).
+  it("refuses an instanceKey presented with a per-log issuerToken", async () => {
+    const issuerLogUuid = randomUUID();
+    const issuerLogHex = normalizeLogIdToHex32(issuerLogUuid);
+
+    const routeToken = mintTestSessionToken({
+      authLogIdHex32: issuerLogHex,
+      scopes: ["logs:signing-route:write"],
+    });
+
+    const routeRes = await fetchWithDoRetry(
+      `http://localhost/api/logs/${issuerLogUuid}/signing-route`,
+      {
+        method: "POST",
+        headers: sessionHeaders(routeToken, {
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({ mode: "wallet", issuerToken: ISSUER_TOKEN }),
+      },
+    );
+    expect(routeRes.status).toBe(200);
+
+    const instanceKey = `84532:${"ab".repeat(20)}`;
+
+    const forbidden = await fetchWithDoRetry(
+      `http://localhost/api/logs/${issuerLogUuid}/webhook`,
+      {
+        method: "PUT",
+        headers: authHeaders(ISSUER_TOKEN, {
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({ instanceKey }),
+      },
+    );
+    expect(forbidden.status).toBe(403);
+
+    // The same issuer token still sets an explicit per-log URL, and the app
+    // token still binds the instance — only the combination is refused.
+    const urlOk = await fetchWithDoRetry(
+      `http://localhost/api/logs/${issuerLogUuid}/webhook`,
+      {
+        method: "PUT",
+        headers: authHeaders(ISSUER_TOKEN, {
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({ url: webhookUrl }),
+      },
+    );
+    expect(urlOk.status).toBe(200);
+
+    const appTokenOk = await fetchWithDoRetry(
+      `http://localhost/api/logs/${issuerLogUuid}/webhook`,
+      {
+        method: "PUT",
+        headers: authHeaders(TEST_TOKEN, {
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({ instanceKey }),
+      },
+    );
+    expect(appTokenOk.status).toBe(200);
+  });
+
   it("PUT /enabled on a new log creates row via transitional app token", async () => {
     const freshUuid = randomUUID();
     const freshHex = normalizeLogIdToHex32(freshUuid);

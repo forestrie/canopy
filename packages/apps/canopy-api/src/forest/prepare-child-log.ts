@@ -68,6 +68,8 @@ import {
   GenesisWebhookUrlValidationError,
   validateGenesisWebhookUrl,
 } from "./validate-genesis-webhook-url.js";
+import { instanceKeyFromStoredChainBinding } from "./instance-key.js";
+import { readRegistration } from "../payments/registration-store.js";
 
 export interface PrepareChildLogEnv extends CoordinatorForwardEnv {
   /** Genesis lookup bucket (resolves whether the parent is the forest root). */
@@ -282,13 +284,28 @@ export async function handlePrepareChildLog(
   const webhookParsed = parsePrepareWebhookUrl(request, env);
   if (webhookParsed instanceof Response) return webhookParsed;
 
+  // Only the root registers a webhook of its own (the genesis-only forward), so
+  // a child would otherwise have none at all. Binding the child to its parent's
+  // univocity instance makes the instance webhook be copied into the child's
+  // config row, with no per-child registration (ADR-0053 amendment, FOR-468).
+  // The parent's registration record is what carries the chain binding; a
+  // parent without one leaves the child with no instance, which is supported —
+  // the owner then pre-supplies the delegation.
+  const parentRegistration = await readRegistration(env, grant.ownerLogId);
+  const instanceKey = parentRegistration
+    ? instanceKeyFromStoredChainBinding(parentRegistration.chainBinding)
+    : undefined;
+
   const status = await forwardCoordinatorRegistration({
     coordinatorBaseUrl: env.DELEGATION_COORDINATOR_URL!.trim(),
     coordinatorAppToken: env.COORDINATOR_APP_TOKEN!.trim(),
     logIdWire: grant.logId,
     genesisAlg: COSE_ALG_ES256,
     bootstrapKey: childOwnerKey,
-    webhookUrl: webhookParsed.webhookUrl,
+    ...(webhookParsed.webhookUrl
+      ? { webhookUrl: webhookParsed.webhookUrl }
+      : {}),
+    ...(instanceKey ? { instanceKey } : {}),
   });
 
   if (status.publicRoot !== "ok") {
@@ -308,6 +325,7 @@ export async function handlePrepareChildLog(
     {
       publicRoot: status.publicRoot,
       webhook: status.webhook,
+      ...(status.instanceKey ? { instanceKey: status.instanceKey } : {}),
       ...(status.detail ? { detail: status.detail } : {}),
     },
     201,

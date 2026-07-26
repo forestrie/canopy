@@ -29,6 +29,9 @@ import {
   handleGetWebhook,
   handlePutWebhook,
   handleDeleteWebhook,
+  handleGetInstanceWebhook,
+  handlePutInstanceWebhook,
+  handleDeleteInstanceWebhook,
   handleGetEnabled,
   handlePutEnabled,
   handleAdminGetEnabled,
@@ -47,6 +50,12 @@ export {
 /** Extract log id path segment from /api/logs/{logId}/{suffix}. */
 function matchLogRoute(pathname: string, suffix: string): string | null {
   const match = new RegExp(`^/api/logs/([^/]+)/${suffix}$`).exec(pathname);
+  return match ? decodeURIComponent(match[1]!) : null;
+}
+
+/** Extract instance key from /api/instances/{instanceKey}/{suffix}. */
+function matchInstanceRoute(pathname: string, suffix: string): string | null {
+  const match = new RegExp(`^/api/instances/([^/]+)/${suffix}$`).exec(pathname);
   return match ? decodeURIComponent(match[1]!) : null;
 }
 
@@ -172,6 +181,19 @@ export default {
       }
       if (method === "DELETE") {
         return handleDeleteWebhook(webhookLogId, request, env);
+      }
+    }
+
+    const instanceWebhookKey = matchInstanceRoute(pathname, "webhook");
+    if (instanceWebhookKey) {
+      if (method === "GET") {
+        return handleGetInstanceWebhook(instanceWebhookKey, request, env);
+      }
+      if (method === "PUT") {
+        return handlePutInstanceWebhook(instanceWebhookKey, request, env);
+      }
+      if (method === "DELETE") {
+        return handleDeleteInstanceWebhook(instanceWebhookKey, request, env);
       }
     }
 

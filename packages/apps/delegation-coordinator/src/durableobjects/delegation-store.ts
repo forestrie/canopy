@@ -31,6 +31,11 @@ import type { RegisterDelegateKeysRequest } from "../types/register-delegate-key
 import type { SigningRoute } from "../types/signing-route.js";
 import type { SubmitDelegationCertificateRequest } from "../types/submit-delegation-certificate-request.js";
 import type { PutWebhookRequest } from "../types/put-webhook-request.js";
+import type {
+  InstanceWebhookResponse,
+  PutInstanceWebhookRequest,
+} from "../types/instance-webhook.js";
+import { normalizeInstanceKey } from "../instance-key.js";
 import type { PutEnabledRequest } from "../types/put-enabled-request.js";
 import type { WebhookConfigResponse } from "../types/webhook-config-response.js";
 import type { EnabledResponse } from "../types/enabled-response.js";
@@ -59,6 +64,12 @@ import {
   computeRetryWaitMs,
   parseRetryConfig,
 } from "../webhook/retry-config.js";
+
+/** `log_delegation_config.webhook_source` for a URL copied from the instance. */
+const WEBHOOK_SOURCE_INSTANCE = "instance";
+
+/** `log_delegation_config.webhook_source` for a URL set directly on the log. */
+const WEBHOOK_SOURCE_LOG = "log";
 
 /** Pending row TTL before prune (seconds). */
 const PENDING_TTL_SECONDS = 60 * 60;
@@ -177,6 +188,36 @@ export class DelegationStoreDO extends DurableObject<Env> {
         }
         if (method === "DELETE") {
           return this.handleDeleteWebhookConfig(logIdHex32);
+        }
+      }
+
+      const instanceWebhookMatch = /^\/instance-webhook\/(.+)$/.exec(pathname);
+      if (instanceWebhookMatch) {
+        let instanceKey: string;
+        try {
+          instanceKey = normalizeInstanceKey(
+            decodeURIComponent(instanceWebhookMatch[1]!),
+          );
+        } catch (error) {
+          return Response.json(
+            {
+              type: "about:blank",
+              title: "Invalid request",
+              status: 400,
+              detail:
+                error instanceof Error ? error.message : "Invalid instanceKey",
+            },
+            { status: 400 },
+          );
+        }
+        if (method === "GET") {
+          return this.handleGetInstanceWebhook(instanceKey);
+        }
+        if (method === "PUT") {
+          return this.handlePutInstanceWebhook(instanceKey, request);
+        }
+        if (method === "DELETE") {
+          return this.handleDeleteInstanceWebhook(instanceKey);
         }
       }
 
@@ -327,6 +368,25 @@ export class DelegationStoreDO extends DurableObject<Env> {
     `);
 
     this.ensureEnabledAuthorityColumns();
+    this.ensureLogConfigInstanceColumns();
+
+    // Instance-level webhooks (FOR-468). Per-univocity-instance, replicated to
+    // every shard — like delegate_keys — so a log's shard can copy the URL into
+    // its own config row at registration without a cross-shard hop on the
+    // delegation request path. Re-pointing fans the update out to all shards.
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS instance_webhooks (
+        instance_key TEXT PRIMARY KEY,
+        webhook_url TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    this.ctx.storage.sql.exec(`
+      CREATE INDEX IF NOT EXISTS idx_log_delegation_config_instance
+      ON log_delegation_config (instance_key)
+    `);
 
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS webhook_deliveries (
@@ -463,6 +523,32 @@ export class DelegationStoreDO extends DurableObject<Env> {
       this.ctx.storage.sql.exec(
         `UPDATE log_delegation_config
          SET operator_enabled = enabled, user_enabled = 1`,
+      );
+    }
+  }
+
+  /**
+   * Add instance_key / webhook_source columns on legacy databases (FOR-468).
+   *
+   * `webhook_source` records whether `webhook_url` was set directly on the log
+   * (`log`) or copied from its instance (`instance`). Only copies are rewritten
+   * by an instance re-point, so an explicit per-log override survives one.
+   * Existing rows pre-date instances and keep a NULL source, which reads as an
+   * explicit per-log URL.
+   */
+  private ensureLogConfigInstanceColumns(): void {
+    try {
+      [
+        ...this.ctx.storage.sql.exec(
+          `SELECT instance_key FROM log_delegation_config LIMIT 0`,
+        ),
+      ];
+    } catch {
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE log_delegation_config ADD COLUMN instance_key TEXT`,
+      );
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE log_delegation_config ADD COLUMN webhook_source TEXT`,
       );
     }
   }
@@ -1994,6 +2080,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
   /** Read log_delegation_config row or null when unset. */
   private readDelegationConfigRow(logIdHex32: string): {
     webhook_url: string | null;
+    instance_key: string | null;
+    webhook_source: string | null;
     enabled: number;
     user_enabled: number;
     operator_enabled: number;
@@ -2002,8 +2090,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
   } | null {
     const rows = [
       ...this.ctx.storage.sql.exec(
-        `SELECT webhook_url, enabled, user_enabled, operator_enabled,
-                created_at, updated_at
+        `SELECT webhook_url, instance_key, webhook_source, enabled,
+                user_enabled, operator_enabled, created_at, updated_at
          FROM log_delegation_config WHERE log_id_hex32 = ?`,
         logIdHex32,
       ),
@@ -2011,6 +2099,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
     if (rows.length === 0) return null;
     return rows[0] as {
       webhook_url: string | null;
+      instance_key: string | null;
+      webhook_source: string | null;
       enabled: number;
       user_enabled: number;
       operator_enabled: number;
@@ -2022,6 +2112,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
   /** Map config row to public webhook JSON (no secrets). */
   private webhookConfigResponseFromRow(row: {
     webhook_url: string | null;
+    instance_key?: string | null;
+    webhook_source?: string | null;
     user_enabled: number;
     operator_enabled: number;
     created_at: number;
@@ -2034,6 +2126,12 @@ export class DelegationStoreDO extends DurableObject<Env> {
     };
     if (row.webhook_url) {
       resp.webhookUrl = row.webhook_url;
+    }
+    if (row.instance_key) {
+      resp.instanceKey = row.instance_key;
+    }
+    if (row.webhook_url && row.webhook_source === WEBHOOK_SOURCE_INSTANCE) {
+      resp.inherited = true;
     }
     return resp;
   }
@@ -2050,22 +2148,51 @@ export class DelegationStoreDO extends DurableObject<Env> {
     return Response.json(this.webhookConfigResponseFromRow(row));
   }
 
-  /** PUT /webhook/{logIdHex32} — set webhook URL. */
+  /**
+   * PUT /webhook/{logIdHex32} — set an explicit URL and/or bind to an instance.
+   *
+   * With `instanceKey` and no `url` this is registration-time **inheritance by
+   * copy** (ADR-0005 amendment): the instance's webhook — replicated to this
+   * shard by the instance fan-out — is written into the log's own row, so the
+   * delegation request path never leaves the shard to find it. An instance with
+   * no webhook yet still records the binding; the next re-point fills it in.
+   */
   private async handlePutWebhookConfig(
     logIdHex32: string,
     request: Request,
   ): Promise<Response> {
     const body = (await request.json()) as PutWebhookRequest;
-    if (!body.url || typeof body.url !== "string") {
+    const hasUrl = typeof body.url === "string" && body.url.length > 0;
+    const hasInstanceKey =
+      typeof body.instanceKey === "string" && body.instanceKey.length > 0;
+    if (!hasUrl && !hasInstanceKey) {
       return Response.json(
         {
           type: "about:blank",
           title: "Invalid request",
           status: 400,
-          detail: "url is required",
+          detail: "url or instanceKey is required",
         },
         { status: 400 },
       );
+    }
+
+    let instanceKey: string | null = null;
+    if (hasInstanceKey) {
+      try {
+        instanceKey = normalizeInstanceKey(body.instanceKey!);
+      } catch (error) {
+        return Response.json(
+          {
+            type: "about:blank",
+            title: "Invalid request",
+            status: 400,
+            detail:
+              error instanceof Error ? error.message : "Invalid instanceKey",
+          },
+          { status: 400 },
+        );
+      }
     }
 
     const now = Date.now();
@@ -2073,17 +2200,35 @@ export class DelegationStoreDO extends DurableObject<Env> {
     const userEnabled = existing?.user_enabled ?? 1;
     const operatorEnabled = existing?.operator_enabled ?? 1;
     const createdAt = existing?.created_at ?? now;
+    const effectiveInstanceKey = instanceKey ?? existing?.instance_key ?? null;
+
+    let webhookUrl: string | null;
+    let webhookSource: string | null;
+    if (hasUrl) {
+      webhookUrl = body.url!;
+      webhookSource = WEBHOOK_SOURCE_LOG;
+    } else {
+      // Inherit by copy. Absent instance webhook leaves the URL null, which
+      // keeps meaning "pre-emptive supply only" until the instance is pointed.
+      webhookUrl =
+        this.readInstanceWebhookRow(instanceKey!)?.webhook_url ?? null;
+      webhookSource = WEBHOOK_SOURCE_INSTANCE;
+    }
 
     this.ctx.storage.sql.exec(
       `INSERT INTO log_delegation_config
-         (log_id_hex32, webhook_url, enabled, user_enabled, operator_enabled,
-          created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+         (log_id_hex32, webhook_url, instance_key, webhook_source, enabled,
+          user_enabled, operator_enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(log_id_hex32) DO UPDATE SET
          webhook_url = excluded.webhook_url,
+         instance_key = excluded.instance_key,
+         webhook_source = excluded.webhook_source,
          updated_at = excluded.updated_at`,
       logIdHex32,
-      body.url,
+      webhookUrl,
+      effectiveInstanceKey,
+      webhookSource,
       userEnabled && operatorEnabled ? 1 : 0,
       userEnabled,
       operatorEnabled,
@@ -2097,7 +2242,13 @@ export class DelegationStoreDO extends DurableObject<Env> {
     );
   }
 
-  /** DELETE /webhook/{logIdHex32} — clear webhook URL. */
+  /**
+   * DELETE /webhook/{logIdHex32} — clear webhook URL.
+   *
+   * Also clears `webhook_source`, so a later instance re-point does not
+   * resurrect a URL the log's owner deliberately removed. The instance binding
+   * itself is kept for provenance; re-opt in with `PUT { instanceKey }`.
+   */
   private handleDeleteWebhookConfig(logIdHex32: string): Response {
     const now = Date.now();
     const existing = this.readDelegationConfigRow(logIdHex32);
@@ -2107,13 +2258,156 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
     this.ctx.storage.sql.exec(
       `UPDATE log_delegation_config
-       SET webhook_url = NULL, updated_at = ?
+       SET webhook_url = NULL, webhook_source = NULL, updated_at = ?
        WHERE log_id_hex32 = ?`,
       now,
       logIdHex32,
     );
 
     return Response.json({ ok: true });
+  }
+
+  /** Read this shard's replica of an instance webhook row, or null. */
+  private readInstanceWebhookRow(instanceKey: string): {
+    webhook_url: string;
+    created_at: number;
+    updated_at: number;
+  } | null {
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT webhook_url, created_at, updated_at
+         FROM instance_webhooks WHERE instance_key = ?`,
+        instanceKey,
+      ),
+    ];
+    if (rows.length === 0) return null;
+    return rows[0] as {
+      webhook_url: string;
+      created_at: number;
+      updated_at: number;
+    };
+  }
+
+  /** Count this shard's logs bound to an instance, optionally inherited only. */
+  private countInstanceMemberLogs(
+    instanceKey: string,
+    inheritedOnly: boolean,
+  ): number {
+    const sql = inheritedOnly
+      ? `SELECT COUNT(*) AS n FROM log_delegation_config
+         WHERE instance_key = ? AND webhook_source = '${WEBHOOK_SOURCE_INSTANCE}'`
+      : `SELECT COUNT(*) AS n FROM log_delegation_config WHERE instance_key = ?`;
+    const rows = [...this.ctx.storage.sql.exec(sql, instanceKey)];
+    return Number((rows[0] as { n: number } | undefined)?.n ?? 0);
+  }
+
+  /** GET /instance-webhook/{instanceKey} — this shard's view of an instance. */
+  private handleGetInstanceWebhook(instanceKey: string): Response {
+    const row = this.readInstanceWebhookRow(instanceKey);
+    const memberLogs = this.countInstanceMemberLogs(instanceKey, false);
+    if (!row && memberLogs === 0) {
+      return Response.json(
+        { type: "about:blank", title: "Not Found", status: 404 },
+        { status: 404 },
+      );
+    }
+    const resp: InstanceWebhookResponse = { instanceKey, memberLogs };
+    if (row) {
+      resp.webhookUrl = row.webhook_url;
+      resp.createdAt = row.created_at;
+      resp.updatedAt = row.updated_at;
+    }
+    return Response.json(resp);
+  }
+
+  /**
+   * PUT /instance-webhook/{instanceKey} — set or re-point the instance webhook.
+   *
+   * This is the accepted cost of inherit-by-copy: the worker fans this call out
+   * to every shard, and each shard rewrites the copies its own logs hold. Logs
+   * carrying an explicit per-log URL (`webhook_source = 'log'`) are left alone,
+   * as are logs whose owner cleared the webhook (source NULL).
+   */
+  private async handlePutInstanceWebhook(
+    instanceKey: string,
+    request: Request,
+  ): Promise<Response> {
+    const body = (await request.json()) as PutInstanceWebhookRequest;
+    if (!body.url || typeof body.url !== "string") {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Invalid request",
+          status: 400,
+          detail: "url is required",
+        },
+        { status: 400 },
+      );
+    }
+
+    const now = Date.now();
+    const existing = this.readInstanceWebhookRow(instanceKey);
+    const createdAt = existing?.created_at ?? now;
+
+    this.ctx.storage.sql.exec(
+      `INSERT INTO instance_webhooks
+         (instance_key, webhook_url, created_at, updated_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(instance_key) DO UPDATE SET
+         webhook_url = excluded.webhook_url,
+         updated_at = excluded.updated_at`,
+      instanceKey,
+      body.url,
+      createdAt,
+      now,
+    );
+
+    const updatedLogs = this.countInstanceMemberLogs(instanceKey, true);
+    this.ctx.storage.sql.exec(
+      `UPDATE log_delegation_config
+       SET webhook_url = ?, updated_at = ?
+       WHERE instance_key = ? AND webhook_source = ?`,
+      body.url,
+      now,
+      instanceKey,
+      WEBHOOK_SOURCE_INSTANCE,
+    );
+
+    const resp: InstanceWebhookResponse = {
+      instanceKey,
+      webhookUrl: body.url,
+      createdAt,
+      updatedAt: now,
+      memberLogs: this.countInstanceMemberLogs(instanceKey, false),
+      updatedLogs,
+    };
+    return Response.json(resp);
+  }
+
+  /**
+   * DELETE /instance-webhook/{instanceKey} — drop the instance webhook.
+   *
+   * Clears the copies inherited by member logs too; those logs revert to
+   * "no webhook", i.e. pre-emptive supply only. Bindings are retained so a
+   * later PUT re-points them.
+   */
+  private handleDeleteInstanceWebhook(instanceKey: string): Response {
+    const now = Date.now();
+    const updatedLogs = this.countInstanceMemberLogs(instanceKey, true);
+    this.ctx.storage.sql.exec(
+      `UPDATE log_delegation_config
+       SET webhook_url = NULL, updated_at = ?
+       WHERE instance_key = ? AND webhook_source = ?`,
+      now,
+      instanceKey,
+      WEBHOOK_SOURCE_INSTANCE,
+    );
+    this.ctx.storage.sql.exec(
+      `DELETE FROM instance_webhooks WHERE instance_key = ?`,
+      instanceKey,
+    );
+    const resp: InstanceWebhookResponse = { instanceKey, updatedLogs };
+    return Response.json(resp);
   }
 
   /** GET /enabled/{logIdHex32} — read enabled flags JSON. */

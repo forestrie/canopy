@@ -227,3 +227,69 @@ instance-level webhook widens the set of logs a single endpoint is asked about.
 This is in addition to the existing JWKS signature check and `requestKey` dedup.
 
 *Tracked as FOR-468.*
+
+### What shipped (FOR-468)
+
+Recording the realization; the decision above is unchanged.
+
+**Instance registry, replicated per shard.** `instance_webhooks (instance_key,
+webhook_url, …)` is written to **every** shard, the same way delegate-key
+registration already fans out. A log's own shard can therefore read its
+instance's URL locally and copy it into `log_delegation_config` at registration,
+so even the copy costs no cross-shard hop.
+
+**Provenance decides what a re-point may overwrite.**
+`log_delegation_config.webhook_source` is `'log'` for a URL set directly on the
+log, `'instance'` for a copy, and NULL for rows that pre-date instances or whose
+owner cleared the webhook. `PUT /api/instances/{instanceKey}/webhook` rewrites
+only `'instance'` rows — so an explicit per-log webhook survives a re-point, and
+a deliberate `DELETE /api/logs/{logId}/webhook` is not undone by one. A log
+re-opts in with `PUT /api/logs/{logId}/webhook { instanceKey }`.
+
+**Instance key.** `{chainId}:{univocityAddr}` — a rendering of the
+`chainBinding` already carried on `RegistrationRecord`, so no second notion of
+account is introduced. The coordinator treats it as an opaque label and never
+resolves it on chain.
+
+Because it cannot test the claim, **`instanceKey` on
+`PUT /api/logs/{logId}/webhook` requires `COORDINATOR_APP_TOKEN`**, though `url`
+on the same route still accepts a per-log `issuerToken`. Binding copies the
+instance's webhook URL into the log's own row, so accepting the field from a
+caller who speaks only for that one log would let anyone holding a log claim
+another operator's instance, read its endpoint back off their own config, and
+have `delegation.required` events delivered to its receiver. Authority over a
+log is not authority over an instance. canopy-api is unaffected: it brokers
+these calls with the app token and derives the key from the registration record
+it already holds.
+
+This is a confidentiality boundary, not an authority one. A delegation
+certificate authenticates itself — the coordinator verifies it against the
+**target log's** registered public root and rejects it unless the logId inside
+the signed payload matches — so a certificate produced by the wrong root for
+someone else's log is inert, and delivery to the wrong receiver could never have
+yielded a usable delegation. The reference receiver's `logId` ownership check is
+therefore defence in depth: it stops a receiver being used as a signing oracle
+over caller-chosen `(logId, mmrStart, mmrEnd, delegatedPublicKey)` tuples, and
+stops foreign events consuming its dedup state.
+
+**Where the binding gets registered.** canopy-api sends `instanceKey` on the
+genesis coordinator forward, and `POST /api/forest/{child}/prepare` derives it
+from the **parent's** registration record — which is what makes ADR-0053 child
+logs inherit with no per-child registration. Genesis with no explicit
+`webhookUrl` now forwards the binding **best-effort**: that path forwarded
+nothing at all before, so a coordinator failure leaves genesis no worse off and
+is reported in `coordinator.webhook` rather than being fatal. An explicit
+`webhookUrl` keeps its existing strict behaviour. The webhook step reports
+`inherited` when only a binding was registered — the log takes whatever the
+instance has, which may legitimately be nothing.
+
+**Receiver.** The in-repo reference receiver
+(`packages/tests/e2e-kit/src/mode-c-webhook-receiver.ts`) now checks the event's
+`logId` against the set of logs it owns and answers `403` otherwise, in addition
+to the JWKS signature check and `requestKey` dedup, and signs for the log the
+event names rather than a single configured one.
+
+**Deferred.** No admin UI for the re-point — it is an app-token API call.
+`prepare` resolves the instance one level up, so a grandchild whose parent has
+no registration record of its own gets no instance binding; that log registers
+against the instance explicitly, or pre-supplies.
