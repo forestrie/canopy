@@ -11,6 +11,7 @@ import type { Env } from "../src/index";
 import {
   isOnboardTokenActive,
   mintOnboardToken,
+  readOnboardTokenRecord,
   revokeOnboardToken,
 } from "../src/payments/onboard-token-store.js";
 import { validGenesisV2Es256CborMap } from "./helpers/genesis-v2-body.js";
@@ -251,6 +252,37 @@ describe("genesis onboard-token auth", () => {
     };
     expect(record.state).toBe("registered");
     expect(record.r).toBe(firstRoot);
+
+    // The F1 guarantee (ADR-0059 decision 8): the losing token was NOT
+    // consumed by the conflict...
+    const survivor = await readOnboardTokenRecord(poolEnv, second.record.hash);
+    expect(survivor?.consumedForestR).toBeUndefined();
+
+    // ...and remains fully usable: after ops releases the claim, the same
+    // token completes genesis for the losing root.
+    const { releaseUnivocityInstanceReservation } = await import(
+      "../src/payments/instance-registry.js"
+    );
+    const released = await releaseUnivocityInstanceReservation(
+      poolEnv,
+      `eip155:84532:0x${"52".repeat(20)}`,
+    );
+    expect(released?.r).toBe(firstRoot);
+    const retry = await worker.fetch(
+      new Request(`http://localhost/api/forest/${secondRoot}/genesis`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${second.token}`,
+          "Content-Type": "application/cbor",
+        },
+        body: encodeCborDeterministic(
+          validGenesisV2Es256CborMap({ univocityAddr: addr }),
+        ) as Uint8Array,
+      }),
+      poolEnv,
+      {} as ExecutionContext,
+    );
+    expect(retry.status).toBe(201);
   });
 
   it("break-glass mint requires a chain binding and reserves the instance", async () => {
