@@ -1,9 +1,13 @@
 import type { RegistrationClass } from "./registration-class.js";
 import type { OnboardAdmittedBy } from "./onboard-token-record.js";
 
-/** Co-located with genesis under `forests/forest/{R}/registration.json`. */
+/**
+ * Co-located with genesis under `forests/forest/{R}/registration.json`.
+ * `class` and `endorsedBy` are legacy fields (pre-ADR-0059): read-tolerated,
+ * never written since plan-2607-43 slice 02.
+ */
 export interface RegistrationRecord {
-  class: RegistrationClass;
+  class?: RegistrationClass;
   onboardTokenRef?: string;
   endorsedBy?: string;
   chainBinding: {

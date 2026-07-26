@@ -162,7 +162,8 @@ describe("genesis onboard-token auth", () => {
       chainBinding?: { chainId?: string };
     };
     expect(body.R).toBe(logId);
-    expect(body.class).toBe("payment-authoritative");
+    // Class is retired (ADR-0059, slice 02): every root is its own account.
+    expect(body.class).toBeUndefined();
     expect(body.chainBinding?.chainId).toBe("84532");
   });
 
@@ -405,28 +406,8 @@ describe("genesis onboard-token auth", () => {
   });
 });
 
-describe("genesis endorsement-grant auth", () => {
-  it("POST genesis with GF_DERIVED grant records regular registration", async () => {
-    const paRoot = crypto.randomUUID();
-    const paToken = await mintOnboardToken(poolEnv, {
-      chainBinding: { chainId: "84532", univocityAddr: "42".repeat(20) },
-    });
-    const paGenesis = await worker.fetch(
-      new Request(`http://localhost/api/forest/${paRoot}/genesis`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${paToken.token}`,
-          "Content-Type": "application/cbor",
-        },
-        body: encodeCborDeterministic(
-          validGenesisV2Es256CborMap(),
-        ) as Uint8Array,
-      }),
-      poolEnv,
-      {} as ExecutionContext,
-    );
-    expect(paGenesis.status).toBe(201);
-
+describe("genesis endorsement-grant auth (retired, ADR-0059 slice 02)", () => {
+  it("rejects any Forestrie-Grant genesis with a pointer at the onboarding flow", async () => {
     const childRoot = crypto.randomUUID();
     const signer = (await crypto.subtle.generateKey(
       { name: "ECDSA", namedCurve: "P-256" },
@@ -443,82 +424,8 @@ describe("genesis endorsement-grant auth", () => {
     );
     const grant = {
       logId: uuidToBytes(childRoot),
-      ownerLogId: uuidToBytes(paRoot),
+      ownerLogId: uuidToBytes(crypto.randomUUID()),
       grant: derivedEndorsementGrantFlags(),
-      grantData: new Uint8Array(0),
-    };
-    const authHeader = await forestrieGrantAuthorizationHeader(
-      grant,
-      signer.privateKey,
-      kid,
-    );
-
-    const res = await worker.fetch(
-      new Request(`http://localhost/api/forest/${childRoot}/genesis`, {
-        method: "POST",
-        headers: {
-          Authorization: authHeader,
-          "Content-Type": "application/cbor",
-        },
-        // A distinct contract: one univocity instance is one account, so a
-        // second forest claiming the endorser's binding is a 409 (ADR-0059).
-        body: encodeCborDeterministic(
-          validGenesisV2Es256CborMap({
-            univocityAddr: new Uint8Array(20).fill(0x43),
-          }),
-        ) as Uint8Array,
-      }),
-      poolEnv,
-      {} as ExecutionContext,
-    );
-    expect(res.status).toBe(201);
-    const body = decodeCborAsObject(
-      new Uint8Array(await res.arrayBuffer()),
-    ) as {
-      class?: string;
-      endorsedBy?: string;
-      R?: string;
-    };
-    expect(body.R).toBe(childRoot);
-    expect(body.class).toBe("regular");
-    expect(body.endorsedBy).toBe(paRoot);
-  });
-
-  it("rejects genesis POST when grant lacks GF_DERIVED", async () => {
-    const paRoot = crypto.randomUUID();
-    const paToken = await mintOnboardToken(poolEnv, {
-      chainBinding: { chainId: "84532", univocityAddr: "42".repeat(20) },
-    });
-    await worker.fetch(
-      new Request(`http://localhost/api/forest/${paRoot}/genesis`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${paToken.token}`,
-          "Content-Type": "application/cbor",
-        },
-        body: encodeCborDeterministic(
-          validGenesisV2Es256CborMap(),
-        ) as Uint8Array,
-      }),
-      poolEnv,
-      {} as ExecutionContext,
-    );
-
-    const childRoot = crypto.randomUUID();
-    const signer = (await crypto.subtle.generateKey(
-      { name: "ECDSA", namedCurve: "P-256" },
-      true,
-      ["sign", "verify"],
-    )) as CryptoKeyPair;
-    const kid = crypto.getRandomValues(new Uint8Array(16));
-    const { uuidToBytes } = await import("../src/grant/uuid-bytes.js");
-    const { forestrieGrantAuthorizationHeader } = await import(
-      "./helpers/custodian-transparent-grant.js"
-    );
-    const grant = {
-      logId: uuidToBytes(childRoot),
-      ownerLogId: uuidToBytes(paRoot),
-      grant: new Uint8Array(8),
       grantData: new Uint8Array(0),
     };
     const authHeader = await forestrieGrantAuthorizationHeader(
@@ -542,5 +449,30 @@ describe("genesis endorsement-grant auth", () => {
       {} as ExecutionContext,
     );
     expect(res.status).toBe(403);
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as { detail?: string };
+    expect(body.detail).toMatch(/retired.*onboard/i);
+  });
+
+  it("reads a legacy registration record carrying class and endorsedBy", async () => {
+    const { readRegistration } = await import(
+      "../src/payments/registration-store.js"
+    );
+    const { logIdToWireBytes } = await import("../src/grant/log-id-wire.js");
+    const legacyR = crypto.randomUUID();
+    await poolEnv.R2_GRANTS.put(
+      `forests/forest/${legacyR}/registration.json`,
+      JSON.stringify({
+        class: "regular",
+        endorsedBy: crypto.randomUUID(),
+        chainBinding: { chainId: "84532", univocityAddr: "42".repeat(20) },
+        createdAt: 1719000000,
+      }),
+      { httpMetadata: { contentType: "application/json" } },
+    );
+    const record = await readRegistration(poolEnv, logIdToWireBytes(legacyR));
+    expect(record?.class).toBe("regular");
+    expect(record?.chainBinding.chainId).toBe("84532");
   });
 });

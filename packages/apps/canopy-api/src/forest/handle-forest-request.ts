@@ -174,9 +174,7 @@ async function completeInstanceClaim(
 async function finishGenesisPost(
   env: ForestHandlerEnv,
   genesisResult: PostGenesisSuccess,
-  registrationClass: RegistrationClass,
   record: Parameters<typeof writeRegistration>[2],
-  endorsedBy: string | undefined,
   webhookUrl: string | undefined,
   opts?: { instanceClaimHandled?: boolean },
 ): Promise<Response> {
@@ -234,9 +232,7 @@ async function finishGenesisPost(
   return cborResponse(
     buildGenesisRegistrationResponse(
       rUuid,
-      registrationClass,
       genesisResult.chainBinding,
-      endorsedBy,
       coordinator,
     ),
     201,
@@ -312,7 +308,7 @@ export async function handleForestRequest(
         return attachCors(genesisResult, corsHeaders);
       }
 
-      if (auth.mode === "onboard") {
+      {
         const tokenBinding = auth.tokenRecord.chainBinding;
         if (
           tokenBinding &&
@@ -369,36 +365,17 @@ export async function handleForestRequest(
         const res = await finishGenesisPost(
           env,
           genesisResult,
-          "payment-authoritative",
           registrationRecordFromChainBinding({
-            class: "payment-authoritative",
             onboardTokenRef: auth.tokenHash,
             chainBinding: genesisResult.chainBinding,
             admittedBy: auth.tokenRecord.admittedBy,
           }),
-          undefined,
           webhookParsed.webhookUrl,
           { instanceClaimHandled: true },
         );
 
         return attachCors(res, corsHeaders);
       }
-
-      return attachCors(
-        await finishGenesisPost(
-          env,
-          genesisResult,
-          "regular",
-          registrationRecordFromChainBinding({
-            class: "regular",
-            endorsedBy: auth.endorserUuid,
-            chainBinding: genesisResult.chainBinding,
-          }),
-          auth.endorserUuid,
-          webhookParsed.webhookUrl,
-        ),
-        corsHeaders,
-      );
     }
     return attachCors(
       problemResponse(405, "Method Not Allowed", "about:blank", {

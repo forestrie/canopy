@@ -1,28 +1,27 @@
 import type { CoordinatorRegistrationStatus } from "../forest/coordinator-registration-status.js";
 import type { ForestGenesisChainBinding } from "../forest/genesis-wire.js";
-import type { RegistrationClass } from "./registration-class.js";
 
+/**
+ * Class and endorsedBy are gone (ADR-0059, slice 02): every instance root is
+ * its own account, so the registration response carries only the account
+ * identity.
+ */
 export interface GenesisRegistrationResponseBody {
   R: string;
-  class: RegistrationClass;
   chainBinding: {
     chainId: string;
     univocityAddr: string;
   };
-  endorsedBy?: string;
   coordinator?: CoordinatorRegistrationStatus;
 }
 
 export function buildGenesisRegistrationResponse(
   r: string,
-  registrationClass: RegistrationClass,
   chainBinding: ForestGenesisChainBinding,
-  endorsedBy?: string,
   coordinator?: CoordinatorRegistrationStatus,
 ): GenesisRegistrationResponseBody {
   const body: GenesisRegistrationResponseBody = {
     R: r,
-    class: registrationClass,
     chainBinding: {
       chainId: chainBinding.chainId,
       univocityAddr: Array.from(chainBinding.address)
@@ -30,7 +29,6 @@ export function buildGenesisRegistrationResponse(
         .join(""),
     },
   };
-  if (endorsedBy) body.endorsedBy = endorsedBy;
   if (coordinator) body.coordinator = coordinator;
   return body;
 }
