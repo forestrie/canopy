@@ -14,6 +14,9 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
+    "@canopy/ops-bearer": "workspace:*",
+    "@canopy/univocity-instance-id": "workspace:*",
+    "@forestrie/chain-rpc": "workspace:*",
     "@canopy/x402-settlement-types": "workspace:*",
     "@canopy/forestrie-sharding": "workspace:*"
   },

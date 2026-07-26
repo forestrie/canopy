@@ -56,6 +56,9 @@ importers:
       '@canopy/forestrie-sharding':
         specifier: workspace:*
         version: link:../../shared/forestrie-sharding
+      '@canopy/ops-bearer':
+        specifier: workspace:*
+        version: link:../../shared/ops-bearer
       '@canopy/univocity-instance-id':
         specifier: workspace:*
         version: link:../../shared/univocity-instance-id
@@ -194,9 +197,18 @@ importers:
       '@canopy/forestrie-sharding':
         specifier: workspace:*
         version: link:../../shared/forestrie-sharding
+      '@canopy/ops-bearer':
+        specifier: workspace:*
+        version: link:../../shared/ops-bearer
+      '@canopy/univocity-instance-id':
+        specifier: workspace:*
+        version: link:../../shared/univocity-instance-id
       '@canopy/x402-settlement-types':
         specifier: workspace:*
         version: link:../../shared/x402-settlement-types
+      '@forestrie/chain-rpc':
+        specifier: workspace:*
+        version: link:../../libs/chain-rpc
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: ^0.9.13
@@ -337,6 +349,15 @@ importers:
         version: 5.9.3
 
   packages/shared/forestrie-sharding:
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@24.8.1)(tsx@4.21.0)
+
+  packages/shared/ops-bearer:
     devDependencies:
       typescript:
         specifier: ^5.9.2

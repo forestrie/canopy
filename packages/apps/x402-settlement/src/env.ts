@@ -25,4 +25,18 @@ export interface Env {
   CDP_API_KEY_ID?: string;
   /** CDP API key secret - PEM-encoded EC private key (Wrangler secret) */
   CDP_API_KEY_SECRET?: string;
+  /** Reservation registry, read-only by convention (writer: canopy-api). */
+  R2_GRANTS?: R2Bucket;
+  /** Per-chain RPC URL lists, JSON (see @forestrie/chain-rpc). */
+  SUPPORTED_CHAINS_RPC?: string;
+  /** Ops bearer for /admin/** (Wrangler secret; same identity as canopy-api). */
+  CANOPY_OPS_ADMIN_TOKEN?: string;
+  /** Slice-04 arming flag; slice 03 is observe-only and never flips the switch. */
+  ENFORCEMENT_ARMED?: string;
+  /** Indexer tuning (defaults in run-indexer.ts). */
+  INDEXER_CONFIRMATIONS?: string;
+  INDEXER_MAX_BLOCK_RANGE?: string;
+  INDEXER_MAX_RANGES_PER_RUN?: string;
+  /** Optional explicit backfill start for first-seen accounts. */
+  INDEXER_BACKFILL_FROM_BLOCK?: string;
 }

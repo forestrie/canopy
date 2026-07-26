@@ -17,6 +17,7 @@
   "dependencies": {
     "@forestrie/chain-rpc": "workspace:*",
     "@forestrie/encoding": "workspace:*",
+    "@canopy/ops-bearer": "workspace:*",
     "@canopy/univocity-instance-id": "workspace:*",
     "@canopy/webhook-url": "workspace:*",
     "@canopy/forestrie-ingress-types": "workspace:*",

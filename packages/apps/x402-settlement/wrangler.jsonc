@@ -23,7 +23,17 @@
     "X402_FACILITATOR_URL": "https://x402.org/facilitator",
     "X402_NETWORK": "eip155:84532",
     "SETTLE_TIMEOUT_MS": "5000",
+    // Accrual indexer (plan-2607-43 slice 03). Observe-only until slice 04.
+    "SUPPORTED_CHAINS_RPC": "{\"84532\":[\"https://sepolia.base.org\"]}",
+    "ENFORCEMENT_ARMED": "false",
   },
+  // Reservation registry, read-only by convention (writer: canopy-api).
+  "r2_buckets": [
+    {
+      "binding": "R2_GRANTS",
+      "bucket_name": "canopy-dev-1-grants",
+    },
+  ],
   "durable_objects": {
     "bindings": [
       {
@@ -61,7 +71,22 @@
         "X402_FACILITATOR_URL": "https://x402.org/facilitator",
         "X402_NETWORK": "eip155:84532",
         "SETTLE_TIMEOUT_MS": "5000",
+        "SUPPORTED_CHAINS_RPC": "{\"84532\":[\"https://sepolia.base.org\"]}",
+        "ENFORCEMENT_ARMED": "false",
       },
+      // Accrual indexer sweep (slice 03); resumable, so cadence is a
+      // freshness knob, not a correctness one.
+      "triggers": {
+        "crons": ["*/5 * * * *"],
+      },
+      "r2_buckets": [
+        {
+          "binding": "R2_GRANTS",
+          // PLACEHOLDER: rewritten from R2_GRANTS_BUCKET_NAME at deploy
+          // (scripts/apply-runtime-contract.mjs), mirroring canopy-api.
+          "bucket_name": "canopy-dev-1-grants",
+        },
+      ],
       "queues": {
         "consumers": [
           {
@@ -78,6 +103,10 @@
             "name": "X402_SETTLEMENT_DO",
             "class_name": "X402SettlementDO",
           },
+          {
+            "name": "RECEIVABLES_DO",
+            "class_name": "ReceivablesDO",
+          },
         ],
       },
     },
@@ -92,13 +121,26 @@
         // vars: canopy-api builds the 402 challenge, this worker settles it, and
         // a mismatch fails at settle time (plan-2607-39 D1).
         //
-        // NOTE: unlike the other three workers, this one has NO
-        // apply-runtime-contract.mjs — every name and var below is a checked-in
-        // literal that CI deploys verbatim. Phase 1 of plan-2607-39 fixes that.
+        // apply-runtime-contract.mjs rewrites name, queue names, CANOPY_ID,
+        // X402_NETWORK, X402_FACILITATOR_URL, SUPPORTED_CHAINS_RPC and the
+        // R2_GRANTS bucket at deploy; remaining literals deploy verbatim.
         "X402_FACILITATOR_URL": "https://x402.org/facilitator",
         "X402_NETWORK": "eip155:84532",
         "SETTLE_TIMEOUT_MS": "5000",
+        // SUPPORTED_CHAINS_RPC deliberately absent: injected at deploy from
+        // the environment (apply-runtime-contract.mjs), as canopy-api does.
+        "ENFORCEMENT_ARMED": "false",
       },
+      "triggers": {
+        "crons": ["*/5 * * * *"],
+      },
+      "r2_buckets": [
+        {
+          "binding": "R2_GRANTS",
+          // PLACEHOLDER: rewritten from R2_GRANTS_BUCKET_NAME at deploy.
+          "bucket_name": "canopy-prod-1-grants",
+        },
+      ],
       "queues": {
         "consumers": [
           {
@@ -114,6 +156,10 @@
           {
             "name": "X402_SETTLEMENT_DO",
             "class_name": "X402SettlementDO",
+          },
+          {
+            "name": "RECEIVABLES_DO",
+            "class_name": "ReceivablesDO",
           },
         ],
       },

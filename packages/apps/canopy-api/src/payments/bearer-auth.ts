@@ -2,6 +2,7 @@
  * Constant-time Bearer token check for ops/admin routes.
  */
 
+import { checkBearer } from "@canopy/ops-bearer";
 import { ClientErrors } from "../cbor-api/problem-details.js";
 
 export interface BearerAuthMessages {
@@ -22,28 +23,11 @@ export function bearerTokenOrUnauthorized(
   expectedTokenTrimmed: string,
   messages: BearerAuthMessages = DEFAULT_MESSAGES,
 ): Response | null {
-  if (!expectedTokenTrimmed) {
-    return ClientErrors.unauthorized(messages.missing);
-  }
-  const auth = request.headers.get("Authorization")?.trim() ?? "";
-  const m = /^Bearer\s+(.+)$/i.exec(auth);
-  if (!m) {
-    return ClientErrors.unauthorized(messages.missing);
-  }
-  const presented = m[1]!.trim();
-  if (presented.length !== expectedTokenTrimmed.length) {
-    return ClientErrors.unauthorized(messages.invalid);
-  }
-  const a = new TextEncoder().encode(presented);
-  const b = new TextEncoder().encode(expectedTokenTrimmed);
-  if (a.byteLength !== b.byteLength) {
-    return ClientErrors.unauthorized(messages.invalid);
-  }
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a[i]! ^ b[i]!;
-  }
-  return diff === 0 ? null : ClientErrors.unauthorized(messages.invalid);
+  const outcome = checkBearer(request, expectedTokenTrimmed);
+  if (outcome === "ok") return null;
+  return ClientErrors.unauthorized(
+    outcome === "missing" ? messages.missing : messages.invalid,
+  );
 }
 
 /** Ops admin bearer for onboard-token mint/list/revoke. */

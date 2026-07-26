@@ -5,7 +5,8 @@ import type { Env } from "../src/env.js";
 const typedEnv = env as Env;
 
 const ACCOUNT = {
-  accountKey: "84532:abababababababababababababababababababab",
+  univocityInstanceId:
+    "eip155:84532:0xabababababababababababababababababababab",
   chainId: "84532",
   univocityAddr: "abababababababababababababababababababab",
   root: "11111111-1111-4111-8111-111111111111",
@@ -15,8 +16,8 @@ const ACCOUNT = {
 let n = 0;
 function freshStub() {
   n += 1;
-  const key = `${ACCOUNT.accountKey}#${n}`;
-  const account = { ...ACCOUNT, accountKey: key };
+  const key = `${ACCOUNT.univocityInstanceId}#${n}`;
+  const account = { ...ACCOUNT, univocityInstanceId: key };
   const id = typedEnv.RECEIVABLES_DO.idFromName(key);
   return { stub: typedEnv.RECEIVABLES_DO.get(id), account, key };
 }
@@ -79,7 +80,8 @@ describe("ReceivablesDO — instance identity is bound (FOR-472)", () => {
     await stub.accrueCheckpoints(account, "evt-1", 1);
     const other = {
       ...account,
-      accountKey: "1:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      univocityInstanceId:
+        "eip155:1:0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
     };
     // Routing the wrong account here would otherwise land a second row and
     // read back cleanly — silent cross-account contamination.
@@ -91,7 +93,7 @@ describe("ReceivablesDO — instance identity is bound (FOR-472)", () => {
   it("refuses a read for a different account", async () => {
     const { stub, account } = freshStub();
     await stub.accrueCheckpoints(account, "evt-1", 1);
-    await expect(stub.getEntitlement("84532:ffff")).rejects.toThrow(
+    await expect(stub.getEntitlement("eip155:84532:0xffff")).rejects.toThrow(
       /bound to account/,
     );
   });
@@ -148,5 +150,73 @@ describe("ReceivablesDO — arrears posture (§7)", () => {
     // Billing and deactivation stay separate (§7): a posture change is a
     // judgement, not a balance mutation.
     expect((await stub.getEntitlement(key))?.checkpointsAccrued).toBe(7);
+  });
+});
+
+describe("ReceivablesDO — prepaid credits and batch apply (ADR-0059 D3, slice 03)", () => {
+  it("decrements the prepaid balance per accrued checkpoint", async () => {
+    const { stub, account, key } = freshStub();
+    await stub.accrueCheckpoints(account, "evt-1", 2);
+    const e = await stub.getEntitlement(key);
+    expect(e?.creditsBalance).toBe(-2);
+    expect(e?.creditFloor).toBe(0);
+  });
+
+  it("applies a batch idempotently and advances the watermark", async () => {
+    const { stub, account, key } = freshStub();
+    const events = [
+      { idempotencyKey: "0xtx1:0", logKind: 1, size: 4 },
+      { idempotencyKey: "0xtx1:1", logKind: 2, size: 9 },
+    ];
+    const first = await stub.applyCheckpointEvents(account, events, 1000);
+    expect(first.checkpointsAccrued).toBe(2);
+    expect(first.creditsBalance).toBe(-2);
+
+    // A rescan of the same range replays the same events: no double count,
+    // and the watermark never rewinds.
+    const replay = await stub.applyCheckpointEvents(account, events, 900);
+    expect(replay.checkpointsAccrued).toBe(2);
+    const state = await stub.getIndexState(key);
+    expect(state.lastBlock).toBe(1000);
+  });
+
+  it("advances the watermark on an empty range — empty scans still progress", async () => {
+    const { stub, account, key } = freshStub();
+    await stub.applyCheckpointEvents(account, [], 555);
+    const state = await stub.getIndexState(key);
+    expect(state.lastBlock).toBe(555);
+    // No events → no account activity beyond the row itself.
+    expect(state.entitlement?.checkpointsAccrued).toBe(0);
+  });
+
+  it("derives arrears from balance vs floor on batch apply", async () => {
+    const { stub, account, key } = freshStub();
+    const e = await stub.applyCheckpointEvents(
+      account,
+      [{ idempotencyKey: "0xtx2:0", logKind: 2, size: 1 }],
+      10,
+    );
+    // Zero credits, one accrual: below the default floor of 0.
+    expect(e.creditsBalance).toBe(-1);
+    expect(e.arrears).toBe("in-arrears");
+    expect((await stub.getEntitlement(key))?.arrears).toBe("in-arrears");
+  });
+
+  it("rejects an event with an empty idempotency key", async () => {
+    const { stub, account } = freshStub();
+    await expect(
+      stub.applyCheckpointEvents(
+        account,
+        [{ idempotencyKey: " ", logKind: 1, size: 1 }],
+        10,
+      ),
+    ).rejects.toThrow(/idempotencyKey/);
+  });
+
+  it("getIndexState returns nulls for an untouched account", async () => {
+    const { stub, key } = freshStub();
+    const state = await stub.getIndexState(key);
+    expect(state.entitlement).toBeNull();
+    expect(state.lastBlock).toBeNull();
   });
 });

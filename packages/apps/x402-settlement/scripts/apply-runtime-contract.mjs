@@ -108,10 +108,21 @@ function replaceRange(text, range, replacement) {
 
 function setStringProperty(block, key, value) {
   if (!value) return block;
-  const re = new RegExp(`("${key}"\\s*:\\s*)"[^"]*"`);
-  if (re.test(block)) return block.replace(re, `$1"${value}"`);
-  const insert = `\n        "${key}": "${value}",`;
+  const jsonValue = JSON.stringify(value);
+  const re = new RegExp(
+    `("${key}"\\s*:\\s*)(?:"(?:\\\\.|[^"\\\\])*"|[^,\\n]+)`,
+  );
+  if (re.test(block)) return block.replace(re, `$1${jsonValue}`);
+  const insert = `\n        "${key}": ${jsonValue},`;
   return block.replace(/\n\s*}$/, `${insert}\n      }`);
+}
+
+function setR2BucketName(envBlock, bindingName, bucketName) {
+  if (!bucketName) return envBlock;
+  const re = new RegExp(
+    `("binding"\\s*:\\s*"${bindingName}"[\\s\\S]*?"bucket_name"\\s*:\\s*)"[^"]*"`,
+  );
+  return envBlock.replace(re, `$1"${bucketName}"`);
 }
 
 function envWorkerNamePattern() {
@@ -189,7 +200,22 @@ if (vars) {
     "X402_FACILITATOR_URL",
     process.env.X402_FACILITATOR_URL,
   );
+  // Accrual indexer (plan-2607-43 slice 03): must resolve the same RPC set
+  // as canopy-api so both sides of the pipe read one chain contract.
+  varsBlock = setStringProperty(
+    varsBlock,
+    "SUPPORTED_CHAINS_RPC",
+    process.env.SUPPORTED_CHAINS_RPC?.trim(),
+  );
   envBlock = replaceRange(envBlock, vars, varsBlock);
+}
+
+if (process.env.R2_GRANTS_BUCKET_NAME) {
+  envBlock = setR2BucketName(
+    envBlock,
+    "R2_GRANTS",
+    process.env.R2_GRANTS_BUCKET_NAME,
+  );
 }
 
 config = replaceRange(config, target, envBlock);

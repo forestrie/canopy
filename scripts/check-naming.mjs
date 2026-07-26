@@ -14,12 +14,14 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 const BANNED = [
-  // Slice 01 seeded instanceKey; slice 02 retired the payment graph, so the
-  // liable-account vocabulary is dead too. Slices 03/04 add: accountKey,
-  // account_key.
+  // Slice 01 seeded instanceKey; slice 02 retired the payment graph (and the
+  // liable-account vocabulary); slice 03 re-keyed the receivables store, so
+  // the account-key spelling is dead too. One identifier, one name.
   /instanceKey/,
   /instance_key/,
   /liableAccount/,
+  /accountKey/,
+  /account_key/,
 ];
 
 /** path-prefix → reason. Entries removed by the slice named in the reason. */
@@ -31,6 +33,8 @@ const ALLOWLIST = {
     "asserts the dual-field shim, drops in slice 05",
   "packages/apps/delegation-coordinator/src/durableobjects/delegation-store.ts":
     "legacy column/value migration, drops when the migration retires",
+  "packages/apps/x402-settlement/src/durableobjects/receivables.ts":
+    "legacy column rename migration (pre-v3 local state), drops when it retires",
   "packages/apps/delegation-coordinator/src/legacy-instance-id.ts":
     "legacy-form conversion, drops when migration and shim retire",
   "packages/apps/delegation-coordinator/src/handlers/put-webhook.ts":
@@ -65,7 +69,9 @@ for (const file of files) {
   for (const banned of BANNED) {
     lines.forEach((line, i) => {
       if (banned.test(line)) {
-        hits.push(`${file}:${i + 1}: banned name ${banned.source}: ${line.trim()}`);
+        hits.push(
+          `${file}:${i + 1}: banned name ${banned.source}: ${line.trim()}`,
+        );
       }
     });
   }
