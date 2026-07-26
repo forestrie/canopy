@@ -1,11 +1,13 @@
 /**
  * ReceivablesDO Durable Object — what a root-log owner owes the pipe operator.
  *
- * Implements ADR-0058 (pipe-fee receivables, root-only liability). One instance
- * per **liable account**, addressed by `liableAccountKey()` — the lowercased
- * `<chainId>:<univocityAddr>` of the payment-authoritative registration. Only
- * the root-log owner is liable (§1); canopy never bills or meters individual
- * logs in a hierarchy, so there is no per-log state here.
+ * Implements ADR-0058 (pipe-fee receivables, root-only liability) as amended
+ * by ADR-0059: one instance per account, and the account IS the univocity
+ * instance — addressed by its canonical `univocityInstanceId` (the account
+ * re-keying and wiring land in plan-2607-43 slice 03; this store has no
+ * callers until then). Only the root-log owner is liable (§1); canopy never
+ * bills or meters individual logs in a hierarchy, so there is no per-log
+ * state here.
  *
  * **Sharding: deliberately one instance per account, not sharded.** The sibling
  * `X402SettlementDO` shards by `DO_SHARD_COUNT` because settlement jobs for

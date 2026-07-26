@@ -14,9 +14,12 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 const BANNED = [
-  // Slice 01. Slices 03/04 add: accountKey, account_key, liableAccount.
+  // Slice 01 seeded instanceKey; slice 02 retired the payment graph, so the
+  // liable-account vocabulary is dead too. Slices 03/04 add: accountKey,
+  // account_key.
   /instanceKey/,
   /instance_key/,
+  /liableAccount/,
 ];
 
 /** path-prefix → reason. Entries removed by the slice named in the reason. */

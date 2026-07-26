@@ -56,33 +56,18 @@ export async function readRegistration(
   }
 }
 
-export function registrationRecordFromChainBinding(
-  opts:
-    | {
-        class: "payment-authoritative";
-        onboardTokenRef: string;
-        chainBinding: ForestGenesisChainBinding;
-        admittedBy?: RegistrationRecord["admittedBy"];
-      }
-    | {
-        class: "regular";
-        endorsedBy: string;
-        chainBinding: ForestGenesisChainBinding;
-      },
-): Omit<RegistrationRecord, "createdAt"> {
-  const chainBinding = chainBindingToStored(opts.chainBinding);
-  if (opts.class === "payment-authoritative") {
-    return {
-      class: opts.class,
-      onboardTokenRef: opts.onboardTokenRef,
-      chainBinding,
-      ...(opts.admittedBy ? { admittedBy: opts.admittedBy } : {}),
-    };
-  }
+export function registrationRecordFromChainBinding(opts: {
+  onboardTokenRef: string;
+  chainBinding: ForestGenesisChainBinding;
+  admittedBy?: RegistrationRecord["admittedBy"];
+}): Omit<RegistrationRecord, "createdAt"> {
+  // `class` and `endorsedBy` are never written any more (ADR-0059, slice 02):
+  // every instance root is its own account. Readers stay tolerant of legacy
+  // records that carry them.
   return {
-    class: opts.class,
-    endorsedBy: opts.endorsedBy,
-    chainBinding,
+    onboardTokenRef: opts.onboardTokenRef,
+    chainBinding: chainBindingToStored(opts.chainBinding),
+    ...(opts.admittedBy ? { admittedBy: opts.admittedBy } : {}),
   };
 }
 
