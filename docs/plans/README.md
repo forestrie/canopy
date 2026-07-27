@@ -15,6 +15,7 @@ Platform-wide plans: [devdocs/plans/](../../../devdocs/plans/README.md).
 
 | Plan                                                                  | Status      | Read when                                                        |
 | --------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------- |
+| [plan-2607-06](plan-2607-06-metering-canary.md)                       | DRAFT       | FOR-479: nightly metering canary (liveness probe)                |
 | [plan-2607-05](plan-2607-05-registration-block-review-remediation.md) | COMPLETE    | plan-2607-04 review remediation (R1 null-floor race)             |
 | [plan-2607-04](plan-2607-04-registration-block-metering-floor.md)     | COMPLETE    | FOR-477: registrationBlock as indexer metering floor (PR #189)   |
 | [plan-2607-03](plan-2607-03-slice03-review-remediation.md)            | IMPLEMENTED | PR #179 review remediation (accrual indexer slice 03)            |
