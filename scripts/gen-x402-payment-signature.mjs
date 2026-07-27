@@ -471,7 +471,9 @@ async function checkBalanceGuardrail(privateKey, network) {
   }
 
   const rpcUrl =
-    process.env.CANOPY_X402_DEV_RPC_URL || DEFAULT_BASE_SEPOLIA_RPC;
+    process.env.CANOPY_X402_DEV_RPC_URL ||
+    process.env.RPC_URL ||
+    DEFAULT_BASE_SEPOLIA_RPC;
 
   // Derive address from private key.
   let address;

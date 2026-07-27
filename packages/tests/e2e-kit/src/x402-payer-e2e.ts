@@ -223,7 +223,8 @@ const DEFAULT_BASE_SEPOLIA_RPC = "https://sepolia.base.org";
  */
 export async function usdcBalanceE2e(
   address: string,
-  rpcUrl = process.env.E2E_UNIVOCITY_RPC_URL?.trim() ||
+  rpcUrl = process.env.RPC_URL?.trim() ||
+    process.env.E2E_UNIVOCITY_RPC_URL?.trim() ||
     DEFAULT_BASE_SEPOLIA_RPC,
 ): Promise<bigint> {
   const data = `0x70a08231${address.replace(/^0x/, "").padStart(64, "0")}`;

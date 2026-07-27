@@ -215,6 +215,11 @@ jobs:
       # worker delegates creation-grant validation and genesis storage to it.
       UNIVOCITY_SERVICE_URL: ${{ vars.UNIVOCITY_SERVICE_URL }}
       SUPPORTED_CHAINS_RPC: ${{ vars.SUPPORTED_CHAINS_RPC }}
+      # Keyed RPC endpoint (Doppler `alchemy` project → GitHub Environment
+      # secret). When set, the "Bind chain RPC endpoint" step below derives
+      # SUPPORTED_CHAINS_RPC from it — the one place the Base Sepolia chain id
+      # is bound to an endpoint. The public-RPC var above is the fallback.
+      RPC_URL: ${{ secrets.RPC_URL }}
       # Slice-04 arming knobs (x402-settlement): flip ENFORCEMENT_ARMED per
       # lane to arm; STARTER_CREDITS defaults to 0 when unset.
       ENFORCEMENT_ARMED: ${{ vars.ENFORCEMENT_ARMED }}
@@ -234,6 +239,20 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ inputs.ref || github.ref }}
+
+      # The single chain binding: chain id 84532 (Base Sepolia) maps to the
+      # keyed RPC_URL exactly here; every consumer (canopy-api, x402
+      # settlement indexer) resolves through the SUPPORTED_CHAINS_RPC map
+      # this writes. GITHUB_ENV values override the job-level fallback var.
+      - name: Bind chain RPC endpoint
+        run: |
+          if [ -n "${RPC_URL:-}" ]; then
+            echo "::add-mask::${RPC_URL}"
+            printf 'SUPPORTED_CHAINS_RPC={"84532":["%s"]}\n' "$RPC_URL" >> "$GITHUB_ENV"
+            echo "chain 84532 bound to the keyed RPC endpoint"
+          else
+            echo "RPC_URL secret unset; using public-RPC fallback var"
+          fi
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
