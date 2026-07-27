@@ -1,6 +1,6 @@
 ---
 id: 2607-04
-status: draft
+status: complete
 created: 2026-07-27
 refs: [FOR-477, ADR-0059, ADR-0058, plan-2607-43]
 ---
