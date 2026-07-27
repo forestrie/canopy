@@ -6,12 +6,15 @@
  * arrears is computed, but the kill switch is never touched until
  * `ENFORCEMENT_ARMED` (slice 04).
  *
- * Backfill posture: a first-seen account starts observing from the current
- * scan bound (watermark initialised without a scan) unless
- * `INDEXER_BACKFILL_FROM_BLOCK` — a JSON map `{chainId: block}` — names an
- * explicit start for its chain. Pre-pricing (FOR-438) there is nothing to
- * bill retroactively, and ADR-0058 §7 makes chain reconciliation the
- * backstop for anything missed.
+ * Backfill posture (plan-2607-04 / FOR-477): a first-seen account scans from
+ * its recorded `registrationBlock` — the chain head observed when its
+ * reservation completed to `registered`, the account's metering floor —
+ * inclusive, so checkpoints anchored between registration and first sight
+ * are counted. Records without a floor (legacy, or a failed genesis-time
+ * observation, ops-repairable) observe forward from the scan bound;
+ * ADR-0058 §7 chain reconciliation is the backstop for anything missed.
+ * The retired `INDEXER_BACKFILL_FROM_BLOCK` env knob is gone: the floor is
+ * a fact about the account, not deployment config.
  */
 
 import {
@@ -33,6 +36,20 @@ const DEFAULT_CONFIRMATIONS = 6;
 const DEFAULT_MAX_BLOCK_RANGE = 5000;
 /** Ranges per account per run — bounds cron CPU; the watermark resumes. */
 const DEFAULT_MAX_RANGES_PER_RUN = 6;
+/**
+ * How long first sight holds for an explicit-null floor awaiting ops repair
+ * (plan-2607-05 R1a). Long enough for a human to act on the genesis-time
+ * observation failure, short enough that an unrepaired account still starts
+ * metering the same day.
+ */
+const NULL_FLOOR_REPAIR_GRACE_SECONDS = 3600;
+
+function withinNullFloorRepairGrace(reservedAt: number | undefined): boolean {
+  if (reservedAt === undefined) return false;
+  return (
+    Math.floor(Date.now() / 1000) - reservedAt < NULL_FLOOR_REPAIR_GRACE_SECONDS
+  );
+}
 
 export interface IndexerRunSummary {
   accounts: number;
@@ -46,52 +63,11 @@ function intFromEnv(raw: string | undefined, fallback: number): number {
   return Number.isSafeInteger(n) && n > 0 ? n : fallback;
 }
 
-/**
- * `INDEXER_BACKFILL_FROM_BLOCK` is a per-chain JSON map — cross-chain block
- * heights are not comparable, and a deployment-global scalar would latch
- * every future first-seen account into a deep backfill (plan-2607-03 E5).
- * Documented as a one-shot ops action: set, let first sight consume it,
- * unset.
- */
-function backfillMap(raw: string | undefined): Record<string, number> {
-  const trimmed = raw?.trim();
-  if (!trimmed) return {};
-  try {
-    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      Array.isArray(parsed)
-    ) {
-      // A bare number is the retired deployment-global scalar (E5) — warn
-      // rather than silently latching nothing.
-      throw new Error("not an object");
-    }
-    const out: Record<string, number> = {};
-    for (const [chainId, block] of Object.entries(parsed)) {
-      if (
-        typeof block === "number" &&
-        Number.isSafeInteger(block) &&
-        block >= 0
-      ) {
-        out[chainId] = block;
-      }
-    }
-    return out;
-  } catch {
-    console.warn(
-      "indexer: INDEXER_BACKFILL_FROM_BLOCK is not a JSON {chainId: block} map; ignored",
-    );
-    return {};
-  }
-}
-
 async function indexAccount(
   env: Env,
   account: AccountRef,
   rpcUrls: string[],
   scanBound: number,
-  backfillFrom: number | undefined,
 ): Promise<{ scanned: number; applied: number }> {
   const maxRange = intFromEnv(
     env.INDEXER_MAX_BLOCK_RANGE,
@@ -115,14 +91,11 @@ async function indexAccount(
   let from: number;
   if (lastBlock !== null) {
     from = lastBlock + 1;
-  } else if (backfillFrom !== undefined) {
-    from = backfillFrom;
   } else {
-    // First sight: initialise the watermark at the scan bound and observe
-    // forward only. Recorded, so the choice is auditable.
-    await stub.applyCheckpointEvents(account, [], scanBound);
-    // Starter credits (slice 04): granted the moment metering starts, so a
-    // fresh account is not born frozen once armed. Idempotent per account.
+    // First sight. Starter credits (slice 04) are granted here, before any
+    // floor decision, so a fresh account is not born frozen once armed —
+    // whichever scan-start applies. Idempotent per account, so the retry
+    // when the floor still sits above the scan bound is harmless.
     const starter = intFromEnv(env.STARTER_CREDITS, 0);
     if (starter > 0) {
       await stub.recordPayment(
@@ -134,10 +107,41 @@ async function indexAccount(
         `indexer: ${account.univocityInstanceId} granted ${starter} starter credits`,
       );
     }
-    console.log(
-      `indexer: ${account.univocityInstanceId} watermark initialised at ${scanBound} (observe-forward)`,
-    );
-    return { scanned: 0, applied: 0 };
+    if (account.registrationBlock != null) {
+      // Metering floor (plan-2607-04): scan from the recorded registration
+      // block, inclusive — counts checkpoints anchored between registration
+      // and this sweep, the FOR-477 first-sight miss. The floor commonly
+      // sits above the safe-head scan bound for the first sweeps after
+      // registration; the loop below then scans nothing and the watermark
+      // stays uninitialised until the bound catches up.
+      from = account.registrationBlock;
+      console.log(
+        `indexer: ${account.univocityInstanceId} first sight from registrationBlock ${from}`,
+      );
+    } else if (
+      account.registrationBlock === null &&
+      withinNullFloorRepairGrace(account.reservedAt)
+    ) {
+      // Explicit null: the genesis-time observation failed and an ops
+      // repair is pending (plan-2607-05 R1a). Observe-forward here would
+      // initialise the forward-only watermark and make the repair inert
+      // within one cron tick — so hold first sight while the record is
+      // young enough for a repair to plausibly land.
+      console.log(
+        `indexer: ${account.univocityInstanceId} first sight held; awaiting registrationBlock repair`,
+      );
+      return { scanned: 0, applied: 0 };
+    } else {
+      // No usable floor (legacy record, or a null floor whose repair grace
+      // expired): initialise the watermark at the scan bound and observe
+      // forward only. Recorded, so the choice is auditable; ADR-0058 §7
+      // reconciliation is the backstop for anything missed.
+      await stub.applyCheckpointEvents(account, [], scanBound);
+      console.log(
+        `indexer: ${account.univocityInstanceId} watermark initialised at ${scanBound} (observe-forward)`,
+      );
+      return { scanned: 0, applied: 0 };
+    }
   }
 
   let scanned = 0;
@@ -202,7 +206,6 @@ export async function runCheckpointIndexer(
       const chains = parseSupportedChainsRpc(rawChains);
       const accounts = await listRegisteredAccounts(env.R2_GRANTS);
       summary.accounts = accounts.length;
-      const backfill = backfillMap(env.INDEXER_BACKFILL_FROM_BLOCK);
       const confirmations = intFromEnv(
         env.INDEXER_CONFIRMATIONS,
         DEFAULT_CONFIRMATIONS,
@@ -226,13 +229,7 @@ export async function runCheckpointIndexer(
             bound = await fetchScanBound(rpcUrls, confirmations);
             bounds.set(account.chainId, bound);
           }
-          const r = await indexAccount(
-            env,
-            account,
-            rpcUrls,
-            bound,
-            backfill[account.chainId],
-          );
+          const r = await indexAccount(env, account, rpcUrls, bound);
           summary.scanned += r.scanned;
           summary.applied += r.applied;
         } catch (error) {

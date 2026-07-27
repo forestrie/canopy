@@ -109,7 +109,7 @@ describe("credits purchase route", () => {
   it("rejects non-POST and non-canonical ids", async () => {
     const { handlerEnv } = creditsEnv();
     const id = freshInstance();
-    await completeUnivocityInstanceReservation(poolEnv, id, [], ROOT);
+    await completeUnivocityInstanceReservation(poolEnv, id, [], ROOT, null);
     expect((await post(handlerEnv, id, { method: "GET" })).status).toBe(405);
     expect((await post(handlerEnv, "eip155:84532:nothex")).status).toBe(400);
   });
@@ -129,7 +129,7 @@ describe("credits purchase route", () => {
   it("challenges with a 402 whose amount is credits x unit price", async () => {
     const { handlerEnv, sent } = creditsEnv();
     const id = freshInstance();
-    await completeUnivocityInstanceReservation(poolEnv, id, [], ROOT);
+    await completeUnivocityInstanceReservation(poolEnv, id, [], ROOT, null);
 
     const res = await post(handlerEnv, id, { credits: "5" });
     expect(res.status).toBe(402);
@@ -148,7 +148,7 @@ describe("credits purchase route", () => {
   it("rejects an out-of-range credits parameter", async () => {
     const { handlerEnv } = creditsEnv();
     const id = freshInstance();
-    await completeUnivocityInstanceReservation(poolEnv, id, [], ROOT);
+    await completeUnivocityInstanceReservation(poolEnv, id, [], ROOT, null);
     expect((await post(handlerEnv, id, { credits: "0" })).status).toBe(400);
     expect((await post(handlerEnv, id, { credits: "1000001" })).status).toBe(
       400,
@@ -160,7 +160,7 @@ describe("credits purchase route", () => {
     stubFacilitatorValid();
     const { handlerEnv, sent } = creditsEnv();
     const id = freshInstance();
-    await completeUnivocityInstanceReservation(poolEnv, id, [], ROOT);
+    await completeUnivocityInstanceReservation(poolEnv, id, [], ROOT, null);
 
     const nonce = `0x${"c1".repeat(16)}`;
     const res = await post(handlerEnv, id, {
@@ -198,7 +198,7 @@ describe("credits purchase route", () => {
     stubFacilitatorValid();
     const { handlerEnv, sent } = creditsEnv();
     const id = freshInstance();
-    await completeUnivocityInstanceReservation(poolEnv, id, [], ROOT);
+    await completeUnivocityInstanceReservation(poolEnv, id, [], ROOT, null);
 
     const res = await post(handlerEnv, id, {
       credits: "5",

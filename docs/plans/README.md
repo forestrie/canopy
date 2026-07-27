@@ -15,6 +15,8 @@ Platform-wide plans: [devdocs/plans/](../../../devdocs/plans/README.md).
 
 | Plan                                                                  | Status      | Read when                                                        |
 | --------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------- |
+| [plan-2607-05](plan-2607-05-registration-block-review-remediation.md) | DRAFT       | plan-2607-04 review remediation (R1 null-floor race)             |
+| [plan-2607-04](plan-2607-04-registration-block-metering-floor.md)     | DRAFT       | FOR-477: registrationBlock as indexer metering floor             |
 | [plan-2607-03](plan-2607-03-slice03-review-remediation.md)            | IMPLEMENTED | PR #179 review remediation (accrual indexer slice 03)            |
 | [plan-2607-02](plan-2607-02-slice01-review-remediation.md)            | DRAFT       | PR #176 review remediation (univocityInstanceId slice 01)        |
 | [plan-0029](plan-0029-delegate-grant-validation-to-univocity.md)      | DRAFT       | Univocity grant validation delegation                            |

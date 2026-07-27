@@ -14,6 +14,12 @@ import {
   readOnboardTokenRecord,
   revokeOnboardToken,
 } from "../src/payments/onboard-token-store.js";
+import {
+  completeUnivocityInstanceReservation,
+  readUnivocityInstanceReservation,
+  reserveUnivocityInstance,
+  setUnivocityInstanceRegistrationBlock,
+} from "../src/payments/instance-registry.js";
 import { validGenesisV2Es256CborMap } from "./helpers/genesis-v2-body.js";
 
 const poolEnv = env as unknown as Env;
@@ -387,6 +393,215 @@ describe("genesis onboard-token auth", () => {
       {} as ExecutionContext,
     );
     expect(gone.status).toBe(404);
+  });
+
+  it("ops chain-bindings PATCH repairs the registration block", async () => {
+    const id = `eip155:84532:0x${"64".repeat(20)}`;
+    await reserveUnivocityInstance(poolEnv, id, "token:64");
+    const encoded = encodeURIComponent(id);
+    const patch = (body: unknown) =>
+      worker.fetch(
+        new Request(`http://localhost/api/payments/chain-bindings/${encoded}`, {
+          method: "PATCH",
+          headers: opsHeaders(),
+          body: encodeCborDeterministic(
+            new Map<number, unknown>([[1, body]]),
+          ) as Uint8Array,
+        }),
+        envWithOps(),
+        {} as ExecutionContext,
+      );
+
+    const repaired = await patch(44668380);
+    expect(repaired.status).toBe(200);
+    const record = decodeCborAsObject(
+      new Uint8Array(await repaired.arrayBuffer()),
+    ) as { registrationBlock?: number; state?: string };
+    expect(record.registrationBlock).toBe(44668380);
+    expect(record.state).toBe("reserved");
+
+    expect((await patch("later")).status).toBe(400);
+    expect((await patch(-5)).status).toBe(400);
+
+    const missing = await worker.fetch(
+      new Request(
+        `http://localhost/api/payments/chain-bindings/${encodeURIComponent(
+          `eip155:84532:0x${"65".repeat(20)}`,
+        )}`,
+        {
+          method: "PATCH",
+          headers: opsHeaders(),
+          body: encodeCborDeterministic(
+            new Map<number, unknown>([[1, 1]]),
+          ) as Uint8Array,
+        },
+      ),
+      envWithOps(),
+      {} as ExecutionContext,
+    );
+    expect(missing.status).toBe(404);
+  });
+
+  it("reservation completion records the registrationBlock on both paths", async () => {
+    // CAS completion of a held reservation.
+    const held = `eip155:84532:0x${"66".repeat(20)}`;
+    const rHeld = "66666666-6666-4666-8666-666666666666";
+    await reserveUnivocityInstance(poolEnv, held, "token:66");
+    const completed = await completeUnivocityInstanceReservation(
+      poolEnv,
+      held,
+      ["token:66"],
+      rHeld,
+      44668380,
+    );
+    expect(completed.ok).toBe(true);
+    expect(
+      (await readUnivocityInstanceReservation(poolEnv, held))
+        ?.registrationBlock,
+    ).toBe(44668380);
+
+    // Direct-create (no reserving admission): the failed-observation posture
+    // records an explicit null, distinguishable from a legacy absent field.
+    const direct = `eip155:84532:0x${"67".repeat(20)}`;
+    const rDirect = "67676767-6767-4767-8767-676767676767";
+    const created = await completeUnivocityInstanceReservation(
+      poolEnv,
+      direct,
+      [],
+      rDirect,
+      null,
+    );
+    expect(created.ok).toBe(true);
+    const record = await readUnivocityInstanceReservation(poolEnv, direct);
+    expect(record?.state).toBe("registered");
+    expect(record?.registrationBlock).toBeNull();
+  });
+
+  it("completion preserves a repaired floor when its own observation fails", async () => {
+    // plan-2607-05 R2: null must not clobber an ops-repaired value...
+    const repaired = `eip155:84532:0x${"68".repeat(20)}`;
+    await reserveUnivocityInstance(poolEnv, repaired, "token:68");
+    await setUnivocityInstanceRegistrationBlock(poolEnv, repaired, 100);
+    const nullDone = await completeUnivocityInstanceReservation(
+      poolEnv,
+      repaired,
+      ["token:68"],
+      "68686868-6868-4868-8868-686868686868",
+      null,
+    );
+    expect(nullDone.ok).toBe(true);
+    expect(
+      (await readUnivocityInstanceReservation(poolEnv, repaired))
+        ?.registrationBlock,
+    ).toBe(100);
+
+    // ...while a successful observation wins — it is the measurement at the
+    // true registration moment.
+    const observed = `eip155:84532:0x${"69".repeat(20)}`;
+    await reserveUnivocityInstance(poolEnv, observed, "token:69");
+    await setUnivocityInstanceRegistrationBlock(poolEnv, observed, 100);
+    const observedDone = await completeUnivocityInstanceReservation(
+      poolEnv,
+      observed,
+      ["token:69"],
+      "69696969-6969-4969-8969-696969696969",
+      200,
+    );
+    expect(observedDone.ok).toBe(true);
+    expect(
+      (await readUnivocityInstanceReservation(poolEnv, observed))
+        ?.registrationBlock,
+    ).toBe(200);
+  });
+
+  it("genesis POST records the observed chain head as the registrationBlock", async () => {
+    const head = 44668380;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (
+      _input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
+      const body = init?.body
+        ? (JSON.parse(String(init.body)) as { method?: string })
+        : {};
+      if (body.method === "eth_blockNumber") {
+        return new Response(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            result: `0x${head.toString(16)}`,
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          error: { message: "unexpected method in registration-block test" },
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+    try {
+      const minted = await mintOnboardToken(poolEnv, {
+        chainBinding: { chainId: "84532", univocityAddr: "42".repeat(20) },
+      });
+      const logId = crypto.randomUUID();
+      const res = await worker.fetch(
+        new Request(`http://localhost/api/forest/${logId}/genesis`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${minted.token}`,
+            "Content-Type": "application/cbor",
+          },
+          body: encodeCborDeterministic(
+            validGenesisV2Es256CborMap(),
+          ) as Uint8Array,
+        }),
+        poolEnv,
+        {} as ExecutionContext,
+      );
+      expect(res.status).toBe(201);
+      const record = await readUnivocityInstanceReservation(
+        poolEnv,
+        `eip155:84532:0x${"42".repeat(20)}`,
+      );
+      expect(record?.state).toBe("registered");
+      expect(record?.registrationBlock).toBe(head);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("ops chain-bindings PATCH repairs a registered record", async () => {
+    const id = `eip155:84532:0x${"70".repeat(20)}`;
+    await reserveUnivocityInstance(poolEnv, id, "token:70");
+    await completeUnivocityInstanceReservation(
+      poolEnv,
+      id,
+      ["token:70"],
+      "70707070-7070-4070-8070-707070707070",
+      null,
+    );
+    const res = await worker.fetch(
+      new Request(
+        `http://localhost/api/payments/chain-bindings/${encodeURIComponent(id)}`,
+        {
+          method: "PATCH",
+          headers: opsHeaders(),
+          body: encodeCborDeterministic(
+            new Map<number, unknown>([[1, 44668367]]),
+          ) as Uint8Array,
+        },
+      ),
+      envWithOps(),
+      {} as ExecutionContext,
+    );
+    expect(res.status).toBe(200);
+    const record = await readUnivocityInstanceReservation(poolEnv, id);
+    expect(record?.state).toBe("registered");
+    expect(record?.registrationBlock).toBe(44668367);
   });
 
   it("rejects genesis POST without auth", async () => {

@@ -399,53 +399,147 @@ describe("runCheckpointIndexer", () => {
     expect(state.entitlement?.checkpointsAccrued ?? 0).toBe(0);
   });
 
-  it("backfills a first-seen account from the per-chain map", async () => {
+  it("scans a first-seen account from its recorded registrationBlock", async () => {
+    // The FOR-477 live-miss shape: a checkpoint anchored after registration
+    // (block 700) but before the first sweep must be counted.
+    await typedEnv.R2_GRANTS!.put(
+      RESERVATION_KEY,
+      JSON.stringify({
+        state: "registered",
+        holder: "genesis",
+        reservedAt: 1719000000,
+        r: ROOT,
+        registrationBlock: 500,
+      }),
+    );
     const logs = [
       rpcLog({ txHash: "0xb1", logIndex: 0, block: 700, logKind: 1, size: 1 }),
     ];
     const { fetchImpl, calls } = stubRpc({ head: 2006, logs });
     globalThis.fetch = fetchImpl;
-    const backfillEnv = {
-      ...typedEnv,
-      INDEXER_BACKFILL_FROM_BLOCK: '{"84532": 500}',
-    } as Env;
-    const summary = await runCheckpointIndexer(backfillEnv);
+    const summary = await runCheckpointIndexer(typedEnv);
     expect(summary.applied).toBe(1);
+    // Inclusive floor: the scan starts AT the registration block.
     const getLogs = calls.filter((c) => c.method === "eth_getLogs");
     expect(getLogs[0]!.params[0]).toMatchObject({ fromBlock: "0x1f4" });
     const state = await stubOf(INSTANCE_ID).getIndexState(INSTANCE_ID);
     expect(state.lastBlock).toBe(2000);
   });
 
-  it("ignores a backfill entry for another chain (observe-forward)", async () => {
+  it("holds first sight while the registrationBlock sits above the scan bound", async () => {
+    // Registration observed `latest`; the scan bound is the older safe head.
+    // Nothing scans and the watermark stays uninitialised until the bound
+    // catches up — then the floor applies as usual.
+    await typedEnv.R2_GRANTS!.put(
+      RESERVATION_KEY,
+      JSON.stringify({
+        state: "registered",
+        holder: "genesis",
+        reservedAt: 1719000000,
+        r: ROOT,
+        registrationBlock: 2003,
+      }),
+    );
     const { fetchImpl, calls } = stubRpc({ head: 2006, logs: [] });
     globalThis.fetch = fetchImpl;
-    const backfillEnv = {
-      ...typedEnv,
-      INDEXER_BACKFILL_FROM_BLOCK: '{"1": 500}',
-    } as Env;
-    await runCheckpointIndexer(backfillEnv);
+    const summary = await runCheckpointIndexer(typedEnv);
+    expect(summary.errors).toBe(0);
+    expect(calls.some((c) => c.method === "eth_getLogs")).toBe(false);
+    const held = await stubOf(INSTANCE_ID).getIndexState(INSTANCE_ID);
+    expect(held.lastBlock).toBeNull();
+    const logs = [
+      rpcLog({ txHash: "0xh1", logIndex: 0, block: 2004, logKind: 1, size: 1 }),
+    ];
+    globalThis.fetch = stubRpc({ head: 2012, logs }).fetchImpl;
+    const later = await runCheckpointIndexer(typedEnv);
+    expect(later.applied).toBe(1);
+    const state = await stubOf(INSTANCE_ID).getIndexState(INSTANCE_ID);
+    expect(state.lastBlock).toBe(2006);
+  });
+
+  it("holds first sight for an explicit-null floor within the repair grace", async () => {
+    // plan-2607-05 R1a: null means the genesis-time observation failed and
+    // an ops repair is pending. Observe-forward would initialise the
+    // forward-only watermark and make the repair inert — so first sight
+    // holds while the record is young. A repair landing mid-grace applies
+    // as the floor on the next sweep.
+    await typedEnv.R2_GRANTS!.put(
+      RESERVATION_KEY,
+      JSON.stringify({
+        state: "registered",
+        holder: "genesis",
+        reservedAt: Math.floor(Date.now() / 1000) - 60,
+        r: ROOT,
+        registrationBlock: null,
+      }),
+    );
+    const { fetchImpl, calls } = stubRpc({ head: 2006, logs: [] });
+    globalThis.fetch = fetchImpl;
+    const summary = await runCheckpointIndexer(typedEnv);
+    expect(summary.errors).toBe(0);
+    expect(calls.some((c) => c.method === "eth_getLogs")).toBe(false);
+    const held = await stubOf(INSTANCE_ID).getIndexState(INSTANCE_ID);
+    expect(held.lastBlock).toBeNull();
+
+    // The repair lands; the next sweep scans from the repaired floor.
+    await typedEnv.R2_GRANTS!.put(
+      RESERVATION_KEY,
+      JSON.stringify({
+        state: "registered",
+        holder: "genesis",
+        reservedAt: Math.floor(Date.now() / 1000) - 60,
+        r: ROOT,
+        registrationBlock: 500,
+      }),
+    );
+    const logs = [
+      rpcLog({ txHash: "0xr1", logIndex: 0, block: 700, logKind: 1, size: 1 }),
+    ];
+    globalThis.fetch = stubRpc({ head: 2006, logs }).fetchImpl;
+    const repaired = await runCheckpointIndexer(typedEnv);
+    expect(repaired.applied).toBe(1);
+    const state = await stubOf(INSTANCE_ID).getIndexState(INSTANCE_ID);
+    expect(state.lastBlock).toBe(2000);
+  });
+
+  it("degrades an explicit-null floor to observe-forward after the grace", async () => {
+    await typedEnv.R2_GRANTS!.put(
+      RESERVATION_KEY,
+      JSON.stringify({
+        state: "registered",
+        holder: "genesis",
+        reservedAt: Math.floor(Date.now() / 1000) - 7200,
+        r: ROOT,
+        registrationBlock: null,
+      }),
+    );
+    const { fetchImpl, calls } = stubRpc({ head: 2006, logs: [] });
+    globalThis.fetch = fetchImpl;
+    const summary = await runCheckpointIndexer(typedEnv);
+    expect(summary.errors).toBe(0);
     expect(calls.some((c) => c.method === "eth_getLogs")).toBe(false);
     const state = await stubOf(INSTANCE_ID).getIndexState(INSTANCE_ID);
     expect(state.lastBlock).toBe(2000);
   });
 
-  it("warns and observes forward on a malformed backfill value", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("observes forward when the recorded registrationBlock is malformed", async () => {
+    await typedEnv.R2_GRANTS!.put(
+      RESERVATION_KEY,
+      JSON.stringify({
+        state: "registered",
+        holder: "genesis",
+        reservedAt: 1719000000,
+        r: ROOT,
+        registrationBlock: "yesterday",
+      }),
+    );
     const { fetchImpl, calls } = stubRpc({ head: 2006, logs: [] });
     globalThis.fetch = fetchImpl;
-    const backfillEnv = {
-      ...typedEnv,
-      INDEXER_BACKFILL_FROM_BLOCK: "12345",
-    } as Env;
-    const summary = await runCheckpointIndexer(backfillEnv);
+    const summary = await runCheckpointIndexer(typedEnv);
     expect(summary.errors).toBe(0);
     expect(calls.some((c) => c.method === "eth_getLogs")).toBe(false);
-    expect(
-      warn.mock.calls.some((c) =>
-        String(c[0]).includes("INDEXER_BACKFILL_FROM_BLOCK"),
-      ),
-    ).toBe(true);
+    const state = await stubOf(INSTANCE_ID).getIndexState(INSTANCE_ID);
+    expect(state.lastBlock).toBe(2000);
   });
 
   it("skips reserved (unregistered) records", async () => {
@@ -498,6 +592,31 @@ describe("runCheckpointIndexer — starter credits (slice 04)", () => {
     await runCheckpointIndexer(starterEnv);
     const after = await stubOf(INSTANCE_ID).getIndexState(INSTANCE_ID);
     expect(after.entitlement?.creditsBalance).toBe(25);
+  });
+
+  it("grants starter credits on the registrationBlock first-sight path too", async () => {
+    // Regression guard (plan-2607-04): the grant must not be exclusive to
+    // the observe-forward branch, or every floor-bearing account is born
+    // frozen once armed.
+    await typedEnv.R2_GRANTS!.put(
+      RESERVATION_KEY,
+      JSON.stringify({
+        state: "registered",
+        holder: "genesis",
+        reservedAt: 1719000000,
+        r: ROOT,
+        registrationBlock: 500,
+      }),
+    );
+    const logs = [
+      rpcLog({ txHash: "0xs1", logIndex: 0, block: 700, logKind: 1, size: 1 }),
+    ];
+    globalThis.fetch = stubRpc({ head: 2006, logs }).fetchImpl;
+    const starterEnv = { ...typedEnv, STARTER_CREDITS: "25" } as Env;
+    await runCheckpointIndexer(starterEnv);
+    const state = await stubOf(INSTANCE_ID).getIndexState(INSTANCE_ID);
+    expect(state.entitlement?.creditsBalance).toBe(24);
+    expect(state.entitlement?.checkpointsAccrued).toBe(1);
   });
 });
 

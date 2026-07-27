@@ -17,6 +17,31 @@ const RESERVATION_PREFIX = "forests/index/chain-binding/";
 interface ReservationJson {
   state?: string;
   r?: string;
+  registrationBlock?: unknown;
+  reservedAt?: unknown;
+}
+
+/**
+ * Tolerant read of the metering floor. Explicit `null` survives — it means
+ * "observation failed, repair pending" and first sight holds for a grace
+ * window (plan-2607-05 R1a); anything malformed degrades to "absent"
+ * (legacy: observe-forward immediately).
+ */
+function registrationBlockOf(
+  record: ReservationJson,
+): number | null | undefined {
+  const block = record.registrationBlock;
+  if (block === null) return null;
+  return typeof block === "number" && Number.isSafeInteger(block) && block >= 0
+    ? block
+    : undefined;
+}
+
+function reservedAtOf(record: ReservationJson): number | undefined {
+  const at = record.reservedAt;
+  return typeof at === "number" && Number.isSafeInteger(at) && at > 0
+    ? at
+    : undefined;
 }
 
 export async function listRegisteredAccounts(
@@ -49,11 +74,15 @@ export async function listRegisteredAccounts(
         );
         continue;
       }
+      const registrationBlock = registrationBlockOf(record);
+      const reservedAt = reservedAtOf(record);
       accounts.push({
         univocityInstanceId,
         chainId: binding.chainId,
         univocityAddr: binding.univocityAddr,
         root: record.r,
+        ...(registrationBlock !== undefined ? { registrationBlock } : {}),
+        ...(reservedAt !== undefined ? { reservedAt } : {}),
       });
     }
     cursor = page.truncated ? page.cursor : undefined;
@@ -86,10 +115,14 @@ export async function readRegisteredAccount(
   } catch {
     return null;
   }
+  const registrationBlock = registrationBlockOf(record);
+  const reservedAt = reservedAtOf(record);
   return {
     univocityInstanceId,
     chainId: binding.chainId,
     univocityAddr: binding.univocityAddr,
     root: record.r,
+    ...(registrationBlock !== undefined ? { registrationBlock } : {}),
+    ...(reservedAt !== undefined ? { reservedAt } : {}),
   };
 }
