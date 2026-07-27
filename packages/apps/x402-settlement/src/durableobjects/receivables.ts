@@ -75,6 +75,17 @@ export interface AccountRef {
   univocityAddr: string;
   /** UUID of the root-log registration — the kill-switch key (slice 04). */
   root: string;
+  /**
+   * Metering floor recorded at registration (plan-2607-04 / FOR-477): the
+   * first-sight scan starts here, inclusive. Explicit `null` means the
+   * genesis-time observation failed and an ops repair is pending — first
+   * sight holds for a grace window before degrading to observe-forward
+   * (plan-2607-05 R1a). Absent means a legacy record with nothing to wait
+   * for: observe-forward immediately.
+   */
+  registrationBlock?: number | null;
+  /** Reservation epoch-seconds; bounds the null-floor repair grace. */
+  reservedAt?: number;
 }
 
 /** One anchored checkpoint observed on-chain (source-agnostic). */

@@ -37,6 +37,21 @@ export interface InstanceReservation {
   reservedAt: number;
   /** Forest root UUID; present once `registered`. */
   r?: string;
+  /**
+   * Chain head observed when the reservation completed to `registered` —
+   * the account's metering floor: the accrual indexer's first-sight scan
+   * starts here, inclusive (plan-2607-04 / FOR-477). Best-effort: `null`
+   * when the genesis-time RPC observation failed, repairable via the ops
+   * chain-bindings PATCH. The operator bills from registration, never from
+   * contract deployment — pre-registration self-anchored checkpoints are
+   * deliberately outside the floor.
+   */
+  registrationBlock?: number | null;
+}
+
+/** A usable metering floor: a non-negative safe integer block height. */
+export function isValidRegistrationBlock(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 export type ReserveResult =
@@ -69,6 +84,15 @@ function decodeReservation(text: string): InstanceReservation | null {
       typeof parsed.reservedAt !== "number"
     ) {
       return null;
+    }
+    // Tolerant read: a malformed registrationBlock degrades to "absent"
+    // rather than invalidating the record.
+    if (
+      parsed.registrationBlock !== undefined &&
+      parsed.registrationBlock !== null &&
+      !isValidRegistrationBlock(parsed.registrationBlock)
+    ) {
+      delete parsed.registrationBlock;
     }
     return parsed;
   } catch {
@@ -137,12 +161,18 @@ export async function reserveUnivocityInstance(
  * genesis, which never passed through a reserving admission — the record is
  * created directly as `registered` with holder `genesis`,
  * claim-before-consume order preserved by the caller.
+ *
+ * `registrationBlock` is the caller's best-effort chain-head observation for
+ * this registration (`null` when unavailable); recorded on whichever path
+ * performs the write. An idempotent retry against an already-`registered`
+ * record keeps the original observation.
  */
 export async function completeUnivocityInstanceReservation(
   env: InstanceRegistryEnv,
   id: UnivocityInstanceId,
   acceptHolders: ReservationHolder[],
   rUuid: string,
+  registrationBlock: number | null,
 ): Promise<CompleteResult> {
   const existing = await readRaw(env, id);
 
@@ -152,12 +182,19 @@ export async function completeUnivocityInstanceReservation(
       holder: "genesis",
       reservedAt: Math.floor(Date.now() / 1000),
       r: rUuid,
+      registrationBlock,
     };
     if (await putReservation(env, id, record, { etagDoesNotMatch: "*" })) {
       return { ok: true, record };
     }
     // Lost a create race; re-read and fall through to the held-record logic.
-    return completeUnivocityInstanceReservation(env, id, acceptHolders, rUuid);
+    return completeUnivocityInstanceReservation(
+      env,
+      id,
+      acceptHolders,
+      rUuid,
+      registrationBlock,
+    );
   }
 
   const { record, etag } = existing;
@@ -170,10 +207,14 @@ export async function completeUnivocityInstanceReservation(
     return { ok: false, reason: "conflict" };
   }
 
+  // A failed observation must not clobber a floor already repaired onto the
+  // held reservation (plan-2607-05 R2); a successful one wins — it is the
+  // measurement at the true registration moment.
   const updated: InstanceReservation = {
     ...record,
     state: "registered",
     r: rUuid,
+    registrationBlock: registrationBlock ?? record.registrationBlock ?? null,
   };
   if (await putReservation(env, id, updated, { etagMatches: etag })) {
     return { ok: true, record: updated };
@@ -193,6 +234,34 @@ export async function readUnivocityInstanceReservation(
 ): Promise<InstanceReservation | null> {
   const raw = await readRaw(env, id);
   return raw?.record ?? null;
+}
+
+export type SetRegistrationBlockResult =
+  | { ok: true; record: InstanceReservation }
+  | { ok: false; reason: "not_found" }
+  | { ok: false; reason: "cas_failed" };
+
+/**
+ * Ops repair of the metering floor (plan-2607-04): the ONLY mutation path
+ * for `registrationBlock` besides genesis itself. Deliberately not exposed
+ * to account owners — the floor is the operator's meter; an owner-set
+ * inflated floor before first sight is a billing bypass.
+ */
+export async function setUnivocityInstanceRegistrationBlock(
+  env: InstanceRegistryEnv,
+  id: UnivocityInstanceId,
+  registrationBlock: number,
+): Promise<SetRegistrationBlockResult> {
+  const existing = await readRaw(env, id);
+  if (!existing) return { ok: false, reason: "not_found" };
+  const updated: InstanceReservation = {
+    ...existing.record,
+    registrationBlock,
+  };
+  if (await putReservation(env, id, updated, { etagMatches: existing.etag })) {
+    return { ok: true, record: updated };
+  }
+  return { ok: false, reason: "cas_failed" };
 }
 
 /**

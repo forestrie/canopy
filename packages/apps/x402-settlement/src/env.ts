@@ -49,11 +49,4 @@ export interface Env {
   INDEXER_CONFIRMATIONS?: string;
   INDEXER_MAX_BLOCK_RANGE?: string;
   INDEXER_MAX_RANGES_PER_RUN?: string;
-  /**
-   * Optional explicit backfill start for first-seen accounts: a JSON map of
-   * `{"chainId": blockNumber}` (e.g. `{"84532": 12345}`). Accounts on chains
-   * absent from the map observe-forward from the scan bound. One-shot ops
-   * action — set, let first sight consume it, unset (plan-2607-03 R5).
-   */
-  INDEXER_BACKFILL_FROM_BLOCK?: string;
 }

@@ -41,9 +41,11 @@ import {
   tryUnivocityInstanceIdFromChainBinding,
 } from "@canopy/univocity-instance-id";
 import {
+  isValidRegistrationBlock,
   readUnivocityInstanceReservation,
   releaseUnivocityInstanceReservation,
   reserveUnivocityInstance,
+  setUnivocityInstanceRegistrationBlock,
   tokenHolder,
 } from "./instance-registry.js";
 
@@ -436,6 +438,51 @@ export async function handlePaymentsRequest(
           { univocityInstanceId: id, released: true, ...released },
           200,
         ),
+        corsHeaders,
+      );
+    }
+    // Repair the metering floor (plan-2607-04): the only mutation path for
+    // `registrationBlock` besides genesis. Ops-authed by the bearer gate
+    // above — never account-owner-facing (the floor is the operator's meter).
+    if (request.method === "PATCH") {
+      const ctErr = requireContentTypeCbor(request);
+      if (ctErr) return attachCors(ctErr, corsHeaders);
+      let registrationBlock: unknown;
+      try {
+        const m = decodeBodyAsIntKeyMap(await parseCborBody(request));
+        registrationBlock = m?.get(1);
+      } catch {
+        return attachCors(
+          ClientErrors.badRequest("Invalid CBOR body"),
+          corsHeaders,
+        );
+      }
+      if (!isValidRegistrationBlock(registrationBlock)) {
+        return attachCors(
+          ClientErrors.badRequest(
+            "registrationBlock (1) must be a non-negative safe integer",
+          ),
+          corsHeaders,
+        );
+      }
+      const set = await setUnivocityInstanceRegistrationBlock(
+        env,
+        id,
+        registrationBlock,
+      );
+      if (!set.ok) {
+        return attachCors(
+          set.reason === "not_found"
+            ? ClientErrors.notFound("Not Found", "No reservation for instance")
+            : problemResponse(409, "Conflict", "about:blank", {
+                detail:
+                  "reservation update lost a race; retry the PATCH request",
+              }),
+          corsHeaders,
+        );
+      }
+      return attachCors(
+        cborResponse({ univocityInstanceId: id, ...set.record }, 200),
         corsHeaders,
       );
     }

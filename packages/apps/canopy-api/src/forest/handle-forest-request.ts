@@ -30,6 +30,8 @@ import {
   tokenHolder,
   type ReservationHolder,
 } from "../payments/instance-registry.js";
+import { observeRegistrationBlock } from "../payments/registration-block.js";
+import type { SupportedChainsEnv } from "../env/supported-chains-for-env.js";
 import { handlePrepareChildLog } from "./prepare-child-log.js";
 import {
   postForestGenesis,
@@ -47,7 +49,8 @@ import type { ForestGenesisChainBinding } from "./genesis-wire.js";
 
 export interface ForestHandlerEnv
   extends PostGenesisEnv,
-    CoordinatorForwardEnv {
+    CoordinatorForwardEnv,
+    SupportedChainsEnv {
   NODE_ENV: string;
   resolveReceiptAuthority?: ReceiptAuthorityResolver;
 }
@@ -147,12 +150,17 @@ async function completeInstanceClaim(
   univocityInstanceId: UnivocityInstanceId,
   acceptHolders: ReservationHolder[],
   rUuid: string,
+  chainId: string,
 ): Promise<Response | null> {
+  // Metering floor (plan-2607-04): observe the chain head as this record
+  // becomes `registered`. Best-effort — null on failure, never blocks.
+  const registrationBlock = await observeRegistrationBlock(env, chainId);
   const done = await completeUnivocityInstanceReservation(
     env,
     univocityInstanceId,
     acceptHolders,
     rUuid,
+    registrationBlock,
   );
   if (done.ok) return null;
   if (done.reason === "conflict") {
@@ -188,6 +196,7 @@ async function finishGenesisPost(
       univocityInstanceId,
       [],
       logIdWireToUuid(genesisResult.logIdWire),
+      genesisResult.chainBinding.chainId,
     );
     if (claimErr) return claimErr;
   }
@@ -344,6 +353,7 @@ export async function handleForestRequest(
             genesisInstanceId,
             holders,
             rUuid,
+            genesisResult.chainBinding.chainId,
           );
           if (claimErr) return attachCors(claimErr, corsHeaders);
         }
