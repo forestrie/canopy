@@ -287,6 +287,29 @@ varsBlock = setStringProperty(
   "SUPPORTED_CHAINS_RPC",
   loadSupportedChainsRpcResolved(),
 );
+// Slice-06 attestation gate (ADR-0059 D8): armed per lane by GitHub var, no
+// code change. AUD override optional — the request origin is always accepted.
+varsBlock = setStringProperty(
+  varsBlock,
+  "ONBOARD_REQUIRE_KEY_ATTESTATION",
+  process.env.ONBOARD_REQUIRE_KEY_ATTESTATION?.trim(),
+);
+varsBlock = setStringProperty(
+  varsBlock,
+  "ONBOARD_ATTESTATION_AUD",
+  process.env.ONBOARD_ATTESTATION_AUD?.trim(),
+);
+// Duplicate keys silently override injections (JSONC last-key-wins — the
+// canopy#185 failure class); fail the deploy instead.
+{
+  const seen = new Set();
+  for (const m of varsBlock.matchAll(/"([A-Z0-9_]+)"\s*:/g)) {
+    if (seen.has(m[1])) {
+      fail(`duplicate var ${m[1]} in resolved env vars block`);
+    }
+    seen.add(m[1]);
+  }
+}
 envBlock = replaceRange(envBlock, vars, varsBlock);
 envBlock = setR2BucketName(
   envBlock,

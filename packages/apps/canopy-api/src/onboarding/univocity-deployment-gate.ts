@@ -54,8 +54,14 @@ export async function verifyUnivocityDeployment(
     };
   }
 
-  if (await readPositiveGateCache(env, trimmedChainId, addr)) {
-    return { ok: true, univocityAddr: addr };
+  const cached = await readPositiveGateCache(env, trimmedChainId, addr);
+  if (cached) {
+    return {
+      ok: true,
+      univocityAddr: addr,
+      bootstrapAlg: cached.alg,
+      bootstrapKey: cached.key,
+    };
   }
 
   const rpcUrls = rpcUrlsForEnvChainId(env, trimmedChainId);
@@ -68,6 +74,7 @@ export async function verifyUnivocityDeployment(
   }
 
   const timeout = rpcTimeoutMs(env);
+  let identity: { alg: number; key: Uint8Array };
   try {
     const probe = await probeUnivocityIdentity(rpcUrls, addr, timeout);
     if (!probe.ok) {
@@ -77,6 +84,7 @@ export async function verifyUnivocityDeployment(
         detail: probe.detail,
       };
     }
+    identity = { alg: probe.alg, key: probe.key };
   } catch (error) {
     return {
       ok: false,
@@ -88,6 +96,11 @@ export async function verifyUnivocityDeployment(
     };
   }
 
-  await writePositiveGateCache(env, trimmedChainId, addr);
-  return { ok: true, univocityAddr: addr };
+  await writePositiveGateCache(env, trimmedChainId, addr, identity);
+  return {
+    ok: true,
+    univocityAddr: addr,
+    bootstrapAlg: identity.alg,
+    bootstrapKey: identity.key,
+  };
 }

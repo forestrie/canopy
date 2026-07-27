@@ -113,6 +113,7 @@
         "ONBOARD_AUTO_APPROVE": "true",
         "ONBOARD_AUTO_APPROVE_CHAIN_IDS": "84532",
         "ONBOARD_AUTO_APPROVE_LABEL_PREFIX": "dev-auto-",
+        "ONBOARD_REQUIRE_KEY_ATTESTATION": "false",
       },
       "ratelimits": [
         {

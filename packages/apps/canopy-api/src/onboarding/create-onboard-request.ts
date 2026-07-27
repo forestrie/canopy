@@ -7,6 +7,8 @@ export interface CreateOnboardRequestInput {
   mandateOrigin?: string;
   plannedForestR?: string;
   ttlSec: number;
+  /** A valid bootstrap-key attestation accompanied the request (slice 06). */
+  attested?: boolean;
 }
 
 export interface CreateOnboardRequestResult {
