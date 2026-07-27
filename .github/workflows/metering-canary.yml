@@ -54,7 +54,9 @@ jobs:
 
       - name: Run metering canary
         env:
-          FORESTRIE_BASE_URL: ${{ vars.CANOPY_BASE_URL }}
+          # The dev environment publishes the API as a bare FQDN (the
+          # health-check derivation); CANOPY_BASE_URL wins when set.
+          FORESTRIE_BASE_URL: ${{ vars.CANOPY_BASE_URL || format('https://{0}', vars.CANOPY_FQDN) }}
           X402_SETTLEMENT_URL: ${{ vars.X402_SETTLEMENT_URL }}
           CANOPY_OPS_ADMIN_TOKEN: ${{ secrets.CANOPY_OPS_ADMIN_TOKEN }}
           CANOPY_X402_DEV_PRIVATE_KEY: ${{ secrets.CANOPY_X402_DEV_PRIVATE_KEY }}
