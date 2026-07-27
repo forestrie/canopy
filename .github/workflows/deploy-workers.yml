@@ -224,6 +224,10 @@ jobs:
       # lane to arm; STARTER_CREDITS defaults to 0 when unset.
       ENFORCEMENT_ARMED: ${{ vars.ENFORCEMENT_ARMED }}
       STARTER_CREDITS: ${{ vars.STARTER_CREDITS }}
+      # Slice-06 attestation gate (canopy-api): flip per lane once the CLI
+      # produces attestations; AUD override optional.
+      ONBOARD_REQUIRE_KEY_ATTESTATION: ${{ vars.ONBOARD_REQUIRE_KEY_ATTESTATION }}
+      ONBOARD_ATTESTATION_AUD: ${{ vars.ONBOARD_ATTESTATION_AUD }}
       R2_MMRS_BUCKET_NAME: ${{ vars.R2_MMRS_BUCKET_NAME }}
       R2_GRANTS_BUCKET_NAME: ${{ vars.R2_GRANTS_BUCKET_NAME }}
       SEQUENCING_QUEUE_SCRIPT_NAME: ${{ vars.SEQUENCING_QUEUE_SCRIPT_NAME }}

@@ -85,6 +85,7 @@ export async function createOnboardRequest(
     redeemCodeHash,
     createdAt: now,
     expiresAt: now + input.ttlSec,
+    ...(input.attested ? { attested: true } : {}),
   };
   await env.R2_GRANTS.put(
     onboardRequestR2Key(requestId),

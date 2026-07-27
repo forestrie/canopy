@@ -87,6 +87,12 @@ export interface Env {
   ONBOARD_AUTO_APPROVE_LABEL_PREFIX?: string;
   ONBOARD_TOKEN_TTL_SEC?: string;
   ONBOARD_GATE_CACHE_TTL_SEC?: string;
+  /** Slice-06 flag: require the bootstrap-key attestation on onboard requests. */
+  ONBOARD_REQUIRE_KEY_ATTESTATION?: string;
+  /** Accepted attestation `aud` override (request origin always accepted). */
+  ONBOARD_ATTESTATION_AUD?: string;
+  /** Ceiling on attestation exp-iat (seconds; default 86400). */
+  ONBOARD_ATTESTATION_MAX_WINDOW_SEC?: string;
   ONBOARD_MAX_PENDING_PER_BINDING?: string;
   ONBOARD_RPC_TIMEOUT_MS?: string;
   ONBOARD_CREATE_RATE_LIMITER?: {

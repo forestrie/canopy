@@ -53,6 +53,10 @@ import {
 } from "./onboard-request-store.js";
 import { verifyUnivocityDeployment } from "./univocity-deployment-gate.js";
 import type { UnivocityGateEnv } from "./univocity-deployment-gate.js";
+import {
+  DEFAULT_ATTESTATION_MAX_WINDOW_SEC,
+  verifyOnboardAttestation,
+} from "./onboard-attestation.js";
 import type { SettlementJob } from "@canopy/x402-settlement-types";
 import {
   verifyOnboardPayment,
@@ -70,6 +74,8 @@ const CBOR_UNIVOCITY_ADDR = 3;
 const CBOR_CONTACT_EMAIL = 4;
 const CBOR_MANDATE_ORIGIN = 5;
 const CBOR_PLANNED_FOREST_R = 6;
+/** COSE_Sign1 bootstrap-key attestation bytes (slice 06, ADR-0059 D8). */
+const CBOR_ATTESTATION = 7;
 const CBOR_REDEEM_CODE = 1;
 const CBOR_REJECT_REASON = 1;
 
@@ -116,6 +122,12 @@ export interface OnboardingHandlerEnv
   ONBOARD_AUTO_APPROVE?: string;
   ONBOARD_AUTO_APPROVE_CHAIN_IDS?: string;
   ONBOARD_AUTO_APPROVE_LABEL_PREFIX?: string;
+  /** Slice-06 flag (ADR-0059 D8): require the bootstrap-key attestation. */
+  ONBOARD_REQUIRE_KEY_ATTESTATION?: string;
+  /** Accepted attestation `aud` override (request origin always accepted). */
+  ONBOARD_ATTESTATION_AUD?: string;
+  /** Ceiling on attestation exp-iat (seconds; default 86400). */
+  ONBOARD_ATTESTATION_MAX_WINDOW_SEC?: string;
   /**
    * Admission policy (ADR-0059 decision 3): `vetted` — ops approval only,
    * payment never solicited; `paid` / `either` — a pending request may be
@@ -291,6 +303,7 @@ async function handleCreateRequest(
   let contactEmail: string | undefined;
   let mandateOrigin: string | undefined;
   let plannedForestR: string | undefined;
+  let attestation: Uint8Array | undefined;
 
   try {
     const bodyBytes = new Uint8Array(await request.arrayBuffer());
@@ -306,6 +319,10 @@ async function handleCreateRequest(
       contactEmail = readString(m, CBOR_CONTACT_EMAIL);
       mandateOrigin = readString(m, CBOR_MANDATE_ORIGIN);
       plannedForestR = readString(m, CBOR_PLANNED_FOREST_R);
+      const rawAttestation = m.get(CBOR_ATTESTATION);
+      if (rawAttestation instanceof Uint8Array && rawAttestation.length > 0) {
+        attestation = rawAttestation;
+      }
     }
   } catch {
     return attachCors(
@@ -347,6 +364,65 @@ async function handleCreateRequest(
     );
   }
 
+  // Bootstrap-key registrant attestation (slice 06, ADR-0059 D8). The gate
+  // probe supplies the chain-declared (alg, key) trust anchor. An attestation
+  // is VERIFIED whenever present — a request carrying a bad one is rejected
+  // even while the flag is off, so a broken producer is caught before the
+  // flag arms; the flag only controls whether absence is fatal. Break-glass
+  // ops mint is the documented waiver (visible via admittedBy).
+  const requireAttestation =
+    env.ONBOARD_REQUIRE_KEY_ATTESTATION?.trim() === "true";
+  if (!attestation && requireAttestation) {
+    return attachCors(
+      ClientErrors.badRequest(
+        "onboard request requires a bootstrap-key attestation (CBOR key 7)",
+      ),
+      corsHeaders,
+    );
+  }
+  if (attestation) {
+    const requestOrigin = new URL(request.url).origin;
+    const audOverride = env.ONBOARD_ATTESTATION_AUD?.trim();
+    const maxWindowRaw = Number.parseInt(
+      env.ONBOARD_ATTESTATION_MAX_WINDOW_SEC?.trim() ?? "",
+      10,
+    );
+    const verdict = verifyOnboardAttestation(attestation, {
+      alg: gate.bootstrapAlg,
+      key: gate.bootstrapKey,
+      chainId: chainId.trim(),
+      univocityAddr: gate.univocityAddr,
+      acceptedAud: audOverride ? [audOverride, requestOrigin] : [requestOrigin],
+      nowSec: Math.floor(Date.now() / 1000),
+      maxWindowSec:
+        Number.isFinite(maxWindowRaw) && maxWindowRaw > 0
+          ? maxWindowRaw
+          : DEFAULT_ATTESTATION_MAX_WINDOW_SEC,
+    });
+    if (!verdict.ok) {
+      return attachCors(
+        problemResponse(403, "Forbidden", "about:blank", {
+          detail: `attestation rejected: ${verdict.detail}`,
+        }),
+        corsHeaders,
+      );
+    }
+    // Retention (D8): one small COSE object per instance, standing dispute
+    // evidence, verifiable against chain state forever. Deliberately outside
+    // the TTL'd request record; last attestation per instance wins.
+    const instanceId = tryUnivocityInstanceIdFromChainBinding({
+      chainId: chainId.trim(),
+      univocityAddr: gate.univocityAddr,
+    });
+    if (instanceId) {
+      await env.R2_GRANTS.put(
+        `payments/attestations/${instanceId}.cose`,
+        attestation,
+        { httpMetadata: { contentType: "application/cose" } },
+      );
+    }
+  }
+
   const pendingCount = await countNonTerminalRequestsForBinding(
     env,
     chainId.trim(),
@@ -371,6 +447,7 @@ async function handleCreateRequest(
     mandateOrigin,
     plannedForestR,
     ttlSec: defaultRequestTtlSec(env),
+    attested: attestation !== undefined,
   });
 
   scheduleOnboardWebhook(ctx, env, "onboard.request.created", {

@@ -71,6 +71,9 @@ importers:
       '@forestrie/chain-rpc':
         specifier: workspace:*
         version: link:../../libs/chain-rpc
+      '@forestrie/delegation-cose':
+        specifier: workspace:*
+        version: link:../../libs/delegation-cose
       '@forestrie/encoding':
         specifier: workspace:*
         version: link:../../shared/encoding

@@ -86,7 +86,9 @@ export async function probeUnivocityIdentity(
   rpcUrls: string[],
   addressHex: string,
   rpcTimeoutMs: number,
-): Promise<{ ok: true } | { ok: false; detail: string }> {
+): Promise<
+  { ok: true; alg: number; key: Uint8Array } | { ok: false; detail: string }
+> {
   const { ethCallWithFailover } = await import("../rpc/eth-rpc.js");
   const to = `0x${addressHex}`;
 
@@ -133,5 +135,5 @@ export async function probeUnivocityIdentity(
     return { ok: false, detail: "rootLogId probe returned invalid data" };
   }
 
-  return { ok: true };
+  return { ok: true, alg: boot.alg, key: boot.key };
 }

@@ -22,4 +22,10 @@ export interface OnboardRequestRecord {
   redeemedAt?: number;
   /** Approved by the dev auto-approve path, not an operator (ADR-0059 D3/F6). */
   autoApproved?: boolean;
+  /**
+   * A valid bootstrap-key attestation accompanied the request (slice 06,
+   * ADR-0059 D8). The COSE object itself is retained durably at
+   * `payments/attestations/{univocityInstanceId}.cose`.
+   */
+  attested?: boolean;
 }
