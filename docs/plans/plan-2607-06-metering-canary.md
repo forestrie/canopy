@@ -1,8 +1,8 @@
 ---
 id: 2607-06
-status: draft
+status: complete
 created: 2026-07-27
-refs: [FOR-479, plan-2607-04, plan-2607-43, ADR-0058]
+refs: [FOR-479, FOR-496, plan-2607-04, plan-2607-43, ADR-0058]
 ---
 
 # plan-2607-06 — nightly metering canary (liveness probe)
@@ -89,3 +89,13 @@ secrets). `gh variable set` is operator-run, not agent-run.
 - Nightly schedule enabled; failure notifications reach the repo watchers.
 - `/admin/sweep` covered by a unit test (auth, summary shape) and used by
   the script.
+
+## Delivery record (2026-07-27)
+
+Shipped in canopy#191 (+ env fix #192). Four green end-to-end runs:
+local pre-merge (exercised the frozen → top-up → settle → cron-unfreeze
+path and the sweep-404 degradation; PASS accrued 2→3), branch dispatch
+30308454375 (sweep live; PASS 3→4), main dispatch 30308887860 (PASS
+4→5). Loud-failure criterion evidenced by dispatch 30308206530 (env
+misconfiguration → red run within seconds). Nightly schedule active
+(03:17 UTC).
