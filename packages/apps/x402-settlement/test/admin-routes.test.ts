@@ -41,6 +41,32 @@ describe("/admin/reset-auth gate", () => {
   });
 });
 
+describe("/admin/sweep", () => {
+  it("401s without the ops bearer", async () => {
+    const req = new Request("http://localhost/admin/sweep", {
+      method: "POST",
+    });
+    expect((await callFetch(req, opsEnv())).status).toBe(401);
+  });
+
+  it("runs a sweep and returns the run summary shape", async () => {
+    // SUPPORTED_CHAINS_RPC unset in the pool env: the sweep is skipped
+    // internally but still returns the summary — the canary asserts on the
+    // receivables read, not this response, so shape is the contract here.
+    const req = new Request("http://localhost/admin/sweep", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${OPS}` },
+    });
+    const res = await callFetch(req, opsEnv());
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(typeof body.accounts).toBe("number");
+    expect(typeof body.scanned).toBe("number");
+    expect(typeof body.applied).toBe("number");
+    expect(typeof body.errors).toBe("number");
+  });
+});
+
 describe("/admin/receivables/{id}", () => {
   it("401s without the bearer and 400s a non-canonical id", async () => {
     const e = opsEnv();

@@ -1,0 +1,66 @@
+name: Metering canary
+
+permissions:
+  contents: read
+
+# Nightly ACTIVE liveness probe of the metering pipeline (plan-2607-06 /
+# FOR-479): pay → unfreeze → register → seal → publish → chain → indexer →
+# accrual, against the pinned canary instance on the target lane. This is
+# deliberately NOT per-PR CI: safe-head lag (~6 min) plus indexer cadence
+# make the honest end-to-end latency ~10-15 min by construction.
+#
+# Alerting v1 is this scheduled workflow failing — no custom channel.
+# The completeness/integrity counterpart is the ADR-0058 §7 reconciliation
+# job (FOR-496); it cannot detect a silent pipeline, which is this canary's
+# whole job.
+
+on:
+  schedule:
+    - cron: "17 3 * * *" # nightly, off the on-the-hour crowd
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "GitHub Environment for vars and secrets"
+        required: true
+        default: dev
+        type: choice
+        options:
+          - dev
+
+jobs:
+  canary:
+    name: Metering canary (${{ inputs.environment || 'dev' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: ${{ inputs.environment || 'dev' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.6.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Run metering canary
+        env:
+          FORESTRIE_BASE_URL: ${{ vars.CANOPY_BASE_URL }}
+          X402_SETTLEMENT_URL: ${{ vars.X402_SETTLEMENT_URL }}
+          CANOPY_OPS_ADMIN_TOKEN: ${{ secrets.CANOPY_OPS_ADMIN_TOKEN }}
+          CANOPY_X402_DEV_PRIVATE_KEY: ${{ secrets.CANOPY_X402_DEV_PRIVATE_KEY }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          CANARY_INSTANCE_ID: ${{ vars.CANARY_INSTANCE_ID }}
+          CANARY_LOG_ID: ${{ vars.CANARY_LOG_ID }}
+          CANARY_GRANT_B64: ${{ vars.CANARY_GRANT_B64 }}
+          CANARY_LOG_PEM: ${{ secrets.CANARY_LOG_PEM }}
+        run: node scripts/metering-canary.mjs

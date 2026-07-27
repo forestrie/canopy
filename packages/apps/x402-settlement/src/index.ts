@@ -193,6 +193,18 @@ export default {
       return handleResetAuth(request, env);
     }
 
+    // Admin: on-demand indexer sweep (plan-2607-06) — the metering canary's
+    // deterministic nudge: removes the 5-min cron wait from its poll budget
+    // and forces the top-up → unfreeze kill-switch reconcile. Same body as
+    // the cron tick; safe to run concurrently with it (accrual is idempotent
+    // and the watermark forward-only).
+    if (url.pathname === "/admin/sweep" && request.method === "POST") {
+      const authErr = adminBearerOrUnauthorized(request, env);
+      if (authErr) return authErr;
+      const summary = await runCheckpointIndexer(env);
+      return jsonResponse(summary);
+    }
+
     // Admin: watermark-set tool (plan-2607-03 R2 residual — the recorded
     // arming gate): move a stalled account's cursor forward past a poisoned
     // range without a deploy. Forward-only; the DO rejects rewinds.
