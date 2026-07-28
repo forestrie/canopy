@@ -93,11 +93,15 @@ export default {
     const { pathname } = url;
     const segments = pathname.split("/").slice(1);
 
-    // CORS headers for development
+    // CORS headers for development. X-PAYMENT must be requestable and the
+    // challenge/settlement headers readable for the browser x402 payer (the
+    // mandate console credits purchase); Authorization carries the D8
+    // account-read attestation.
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-PAYMENT",
+      "Access-Control-Expose-Headers": "X-PAYMENT-REQUIRED, X-PAYMENT-RESPONSE",
     };
 
     // Handle OPTIONS preflight
