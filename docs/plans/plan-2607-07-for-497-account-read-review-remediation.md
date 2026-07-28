@@ -1,6 +1,6 @@
 ---
 id: 2607-07
-status: implemented
+status: complete
 created: 2026-07-28
 refs:
   - FOR-497
@@ -12,12 +12,11 @@ refs:
 
 # Plan 2607-07 — FOR-497 account-read review remediation
 
-**Status:** IMPLEMENTED · **Created:** 2026-07-28
+**Status:** COMPLETE · **Created:** 2026-07-28
 
 > Delivery: R1, R2, R3, R5 landed on the PR #195 branch (2026-07-28).
 > R4 re-triaged to [FOR-498](https://linear.app/forestrie/issue/FOR-498)
-> (security, unparented, deliberately deferred). Flip to COMPLETE when
-> #195 merges.
+> (security, unparented, deliberately deferred). #195 merged 2026-07-28 (`8d8a466`).
 
 ## Context
 
