@@ -240,6 +240,12 @@ export interface InstanceReservationPage {
 }
 
 /**
+ * The caller-supplied list cursor was rejected by R2 — a client error (400),
+ * unlike every other failure in the listing, which is infrastructure (5xx).
+ */
+export class InvalidReservationCursorError extends Error {}
+
+/**
  * Page through the reservation registry (ops enumeration, FOR-478). `limit`
  * bounds the R2 keys examined per page, not the rows returned — unparseable
  * records are skipped (the per-id GET 404s them too), so a short page is not
@@ -249,27 +255,50 @@ export async function listUnivocityInstanceReservations(
   env: InstanceRegistryEnv,
   opts: { cursor?: string; limit: number },
 ): Promise<InstanceReservationPage> {
-  const page = await env.R2_GRANTS.list({
-    prefix: RESERVATION_PREFIX,
-    cursor: opts.cursor,
-    limit: opts.limit,
-  });
-  const items: InstanceReservationListItem[] = [];
-  for (const obj of page.objects) {
-    const got = await env.R2_GRANTS.get(obj.key);
-    if (!got) continue;
-    const record = decodeReservation(await got.text());
-    if (!record) {
-      console.warn(
-        `instance-registry: unparseable reservation at ${obj.key}; skipped`,
-      );
-      continue;
-    }
-    items.push({
-      univocityInstanceId: obj.key.slice(RESERVATION_PREFIX.length),
-      ...record,
+  let page;
+  try {
+    page = await env.R2_GRANTS.list({
+      prefix: RESERVATION_PREFIX,
+      cursor: opts.cursor,
+      limit: opts.limit,
     });
+  } catch (err) {
+    // Only `list()` ever sees the caller's opaque cursor, and only when one
+    // was supplied can its rejection be the caller's fault (plan-2607-08 R1).
+    // A transient list() failure with a cursor present is conflated here —
+    // an accepted boundary; hydration failures below always stay infra.
+    if (opts.cursor !== undefined) {
+      throw new InvalidReservationCursorError(
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+    throw err;
   }
+
+  // Hydrate the page concurrently (plan-2607-08 R2): the page cap bounds the
+  // fan-out and Promise.all preserves R2's lexicographic listing order.
+  const hydrated = await Promise.all(
+    page.objects.map(
+      async (obj): Promise<InstanceReservationListItem | null> => {
+        const got = await env.R2_GRANTS.get(obj.key);
+        if (!got) return null;
+        const record = decodeReservation(await got.text());
+        if (!record) {
+          console.warn(
+            `instance-registry: unparseable reservation at ${obj.key}; skipped`,
+          );
+          return null;
+        }
+        return {
+          univocityInstanceId: obj.key.slice(RESERVATION_PREFIX.length),
+          ...record,
+        };
+      },
+    ),
+  );
+  const items = hydrated.filter(
+    (item): item is InstanceReservationListItem => item !== null,
+  );
   return page.truncated ? { items, cursor: page.cursor } : { items };
 }
 

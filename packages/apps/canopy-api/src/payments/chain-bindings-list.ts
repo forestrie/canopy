@@ -21,6 +21,7 @@
 import { cborResponse, problemResponse } from "../cbor-api/cbor-response.js";
 import { ClientErrors } from "../cbor-api/problem-details.js";
 import {
+  InvalidReservationCursorError,
   listUnivocityInstanceReservations,
   type InstanceRegistryEnv,
   type InstanceReservationListItem,
@@ -71,9 +72,14 @@ export async function handleChainBindingsList(
   let page;
   try {
     page = await listUnivocityInstanceReservations(env, { cursor, limit });
-  } catch {
-    // R2 rejects malformed cursors; nothing else in the listing throws.
-    return ClientErrors.badRequest("invalid cursor");
+  } catch (err) {
+    // Only a rejected caller-supplied cursor is a client error; hydration
+    // and cursorless list failures propagate to the platform 500
+    // (plan-2607-08 R1 — a 400 during an R2 incident misleads ops).
+    if (err instanceof InvalidReservationCursorError) {
+      return ClientErrors.badRequest("invalid cursor");
+    }
+    throw err;
   }
 
   const instances = await Promise.all(
