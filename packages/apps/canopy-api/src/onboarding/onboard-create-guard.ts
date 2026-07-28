@@ -35,6 +35,30 @@ export async function checkOnboardRedeemRateLimit(
   );
 }
 
+/**
+ * Rate-limit the fee-account read (FOR-497 review R1, plan-2607-07).
+ *
+ * The read's chain probe runs before signature verification — necessarily,
+ * the trust anchor is chain-declared — and the gate cache only bounds
+ * repeats for the same instance, so an address sweep is otherwise a metered
+ * RPC amplification vector. Reuses the onboard limiter binding with an
+ * `account-read:` key prefix so reads cannot exhaust the create or redeem
+ * budgets (or vice versa). No-op when the binding is absent.
+ */
+export async function checkAccountReadRateLimit(
+  request: Request,
+  env: OnboardCreateRateLimitEnv,
+): Promise<Response | null> {
+  const limiter = env.ONBOARD_CREATE_RATE_LIMITER;
+  if (!limiter) return null;
+  const ip = request.headers.get("CF-Connecting-IP")?.trim() || "unknown";
+  const { success } = await limiter.limit({ key: `account-read:${ip}` });
+  if (success) return null;
+  return ClientErrors.tooManyRequests(
+    "Account read rate limit exceeded; retry later",
+  );
+}
+
 export async function checkOnboardCreateRateLimit(
   request: Request,
   env: OnboardCreateRateLimitEnv,

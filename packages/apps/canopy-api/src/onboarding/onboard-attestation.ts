@@ -61,7 +61,7 @@ export const DEFAULT_ATTESTATION_MAX_WINDOW_SEC = 24 * 60 * 60;
 /** Clock-skew tolerance on `iat`. */
 const IAT_SKEW_SEC = 300;
 
-export interface OnboardAttestationExpectation {
+export interface BootstrapKeyCwtExpectation {
   /** Chain-declared bootstrap alg (COSE id) — the envelope must match. */
   alg: number;
   /** Chain-declared bootstrap key (ES256: 64-byte x‖y; KS256: 20-byte address). */
@@ -76,7 +76,7 @@ export interface OnboardAttestationExpectation {
   maxWindowSec?: number;
 }
 
-export type OnboardAttestationResult =
+export type BootstrapKeyCwtResult =
   | { ok: true; iss: string; aud: string; iat: number; exp: number }
   | { ok: false; detail: string };
 
@@ -147,15 +147,19 @@ function verifyKs256(
 }
 
 /**
- * Verify an onboard attestation against chain-derived expectations.
+ * Verify a bootstrap-key-signed CWT envelope against chain-derived
+ * expectations. `expectedContentType` is the domain separator: each protocol
+ * that reuses the D8 pattern (onboarding, the FOR-497 account read) names its
+ * own signed content type, so envelopes never verify across protocols.
  *
  * Pure: no I/O, no clock reads — the caller supplies `nowSec` and the
  * chain-probed `(alg, key)` so tests can pin every branch.
  */
-export function verifyOnboardAttestation(
+export function verifyBootstrapKeyCwt(
   attestation: Uint8Array,
-  expected: OnboardAttestationExpectation,
-): OnboardAttestationResult {
+  expected: BootstrapKeyCwtExpectation,
+  expectedContentType: string,
+): BootstrapKeyCwtResult {
   let parts: ReturnType<typeof decodeCoseSign1Parts>;
   try {
     parts = decodeCoseSign1Parts(attestation);
@@ -183,7 +187,7 @@ export function verifyOnboardAttestation(
     };
   }
   const contentType = mapGetString(header, HDR_CONTENT_TYPE);
-  if (contentType !== ONBOARD_ATTESTATION_CONTENT_TYPE) {
+  if (contentType !== expectedContentType) {
     // Domain separation: a bootstrap grant / delegation certificate signed by
     // the same key carries a different signed content type and must not
     // verify here (and vice versa).
@@ -268,4 +272,16 @@ export function verifyOnboardAttestation(
   }
 
   return { ok: true, iss: iss ?? expectedIss, aud, iat, exp };
+}
+
+/** Verify an onboard attestation against chain-derived expectations. */
+export function verifyOnboardAttestation(
+  attestation: Uint8Array,
+  expected: BootstrapKeyCwtExpectation,
+): BootstrapKeyCwtResult {
+  return verifyBootstrapKeyCwt(
+    attestation,
+    expected,
+    ONBOARD_ATTESTATION_CONTENT_TYPE,
+  );
 }

@@ -22,7 +22,11 @@
  * Hosted in `x402-settlement` rather than `canopy-api` (§5). Per ADR-0059
  * decision 6 / plan-2607-02 D4 there is **no** canopy-api binding: the data
  * plane never reads entitlement, and enforcement is the kill switch, flipped
- * by the indexer only once `ENFORCEMENT_ARMED` is true (slice 04).
+ * by the indexer only once `ENFORCEMENT_ARMED` is true (slice 04). The one
+ * canopy-fronted read of entitlement is the FOR-497 owner-facing account
+ * read, and it stays inside this posture: it goes through the ops HTTP
+ * surface (`/admin/receivables/{id}`), never a DO binding, and gates no
+ * data-plane request.
  *
  * **The accounting here is deliberately imprecise (§7).** Noticing arrears is
  * sufficient; ops reconciliation against public chain records is an acceptable

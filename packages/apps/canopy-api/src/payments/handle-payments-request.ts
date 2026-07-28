@@ -53,12 +53,14 @@ import {
   handleCreditsPurchase,
   type CreditsPurchaseEnv,
 } from "./credits-purchase.js";
+import { handleAccountRead, type AccountReadEnv } from "./account-read.js";
 
 export interface PaymentsHandlerEnv
   extends OnboardTokenStoreEnv,
     RegistrationStoreEnv,
     CoordinatorEnabledClientEnv,
-    CreditsPurchaseEnv {
+    CreditsPurchaseEnv,
+    AccountReadEnv {
   CANOPY_OPS_ADMIN_TOKEN?: string;
 }
 
@@ -253,6 +255,20 @@ export async function handlePaymentsRequest(
     return handleCreditsPurchase(
       request,
       decodeURIComponent(creditsMatch[1]!),
+      env,
+      corsHeaders,
+    );
+  }
+
+  // Owner-facing fee-account read (FOR-497) — outside the ops bearer gate:
+  // the bootstrap-key attestation in the Authorization header is the
+  // authorization, verified against the chain-declared key inside the
+  // handler. Everything else below remains ops-token-gated.
+  const accountMatch = /^\/api\/payments\/accounts\/([^/]+)$/.exec(pathname);
+  if (accountMatch) {
+    return handleAccountRead(
+      request,
+      decodeURIComponent(accountMatch[1]!),
       env,
       corsHeaders,
     );
