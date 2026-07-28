@@ -11,10 +11,12 @@
  * envelope's signed content type is the read-domain one — an onboarding
  * attestation cannot be replayed here (see `account-read-attestation.ts`).
  *
- * The verify path's chain probe is bounded by the onboarding gate cache
- * (`verifyUnivocityDeployment` reads/writes the positive cache), so repeated
- * reads for one instance cost one RPC probe per cache TTL, not one per
- * request.
+ * The verify path's chain probe is bounded twice: the onboarding gate cache
+ * (`verifyUnivocityDeployment` reads/writes the positive cache) collapses
+ * repeated reads of one instance to one RPC probe per cache TTL, and the
+ * shared per-IP rate limiter (plan-2607-07 R1) caps address sweeps — the
+ * probe necessarily runs before signature verification, since the trust
+ * anchor is chain-declared.
  */
 
 import { cborResponse, problemResponse } from "../cbor-api/cbor-response.js";
@@ -25,6 +27,10 @@ import {
 } from "../cbor-api/admin-json-response.js";
 import { verifyUnivocityDeployment } from "../onboarding/univocity-deployment-gate.js";
 import type { UnivocityGateEnv } from "../onboarding/univocity-gate-env.js";
+import {
+  checkAccountReadRateLimit,
+  type OnboardCreateRateLimitEnv,
+} from "../onboarding/onboard-create-guard.js";
 import {
   DEFAULT_ACCOUNT_READ_MAX_WINDOW_SEC,
   verifyAccountReadAttestation,
@@ -43,7 +49,8 @@ export const ACCOUNT_READ_AUTH_SCHEME = "Forestrie-Account-Read";
 
 export interface AccountReadEnv
   extends UnivocityGateEnv,
-    SettlementReceivablesClientEnv {
+    SettlementReceivablesClientEnv,
+    OnboardCreateRateLimitEnv {
   /** Shared with onboarding: both attestations name the operator origin. */
   ONBOARD_ATTESTATION_AUD?: string;
   /** Ceiling on read-attestation exp-iat (seconds; default 300). */
@@ -118,6 +125,9 @@ export async function handleAccountRead(
       useJson ? await problemResponseToAdminJson(res) : res,
       corsHeaders,
     );
+
+  const rateLimited = await checkAccountReadRateLimit(request, env);
+  if (rateLimited) return finish(rateLimited);
 
   if (request.method !== "GET") {
     return finish(
@@ -194,15 +204,21 @@ export async function handleAccountRead(
     );
   }
 
-  const body = {
+  const body: Record<string, unknown> = {
     univocityInstanceId,
     creditsBalance: result.read.creditsBalance,
     checkpointsAccrued: result.read.checkpointsAccrued,
     arrears: result.read.arrears,
     enforcementFrozen: result.read.enforcementFrozen,
-    registrationBlock: result.read.registrationBlock ?? null,
     watermarkBlock: result.read.watermarkBlock,
   };
+  // Tri-state passthrough (plan-2607-07 R2): explicit null means the
+  // genesis-time floor observation failed and an ops repair is pending;
+  // ABSENT means a legacy record with no floor to wait for. Collapsing the
+  // two would mislabel legacy accounts in the console.
+  if ("registrationBlock" in result.read) {
+    body.registrationBlock = result.read.registrationBlock ?? null;
+  }
   return attachCors(
     useJson ? adminJsonResponse(body, 200) : cborResponse(body, 200),
     corsHeaders,

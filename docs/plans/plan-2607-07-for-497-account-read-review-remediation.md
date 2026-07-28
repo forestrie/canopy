@@ -1,6 +1,6 @@
 ---
 id: 2607-07
-status: draft
+status: implemented
 created: 2026-07-28
 refs:
   - FOR-497
@@ -12,7 +12,12 @@ refs:
 
 # Plan 2607-07 — FOR-497 account-read review remediation
 
-**Status:** DRAFT · **Created:** 2026-07-28
+**Status:** IMPLEMENTED · **Created:** 2026-07-28
+
+> Delivery: R1, R2, R3, R5 landed on the PR #195 branch (2026-07-28).
+> R4 re-triaged to [FOR-498](https://linear.app/forestrie/issue/FOR-498)
+> (security, unparented, deliberately deferred). Flip to COMPLETE when
+> #195 merges.
 
 ## Context
 
@@ -72,7 +77,7 @@ there) so the invariant reads "the **data plane** never reads entitlement;
 the owner-facing control-plane read goes through the ops HTTP surface" —
 preventing both misreading it as violated and silent erosion later.
 
-### R4 (Low — hardening, deferrable): dedicated read-domain aud override
+### R4 (Low — hardening, deferred to FOR-498): dedicated read-domain aud override
 
 The route reuses `ONBOARD_ATTESTATION_AUD` as the accepted-aud override. If
 an operator ever points the onboarding override at a ceremony-specific

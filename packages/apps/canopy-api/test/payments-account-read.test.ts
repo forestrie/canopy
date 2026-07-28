@@ -5,7 +5,9 @@
  * x402-settlement upstreams.
  */
 import { p256 } from "@noble/curves/p256";
+import { secp256k1 } from "@noble/curves/secp256k1";
 import { sha256 } from "@noble/hashes/sha2";
+import { keccak_256 } from "@noble/hashes/sha3";
 import {
   encodeCborDeterministic,
   encodeSigStructure,
@@ -26,6 +28,7 @@ import {
 import { ACCOUNT_READ_AUTH_SCHEME } from "../src/payments/account-read.js";
 import {
   COSE_ALG_ES256,
+  COSE_ALG_KS256,
   bootstrapConfigCallData,
   rootLogIdCallData,
 } from "../src/onboarding/univocity-identity-probe.js";
@@ -45,26 +48,34 @@ const testCtx = {
 
 const ES256_PRIV = new Uint8Array(32).fill(7);
 const ES256_PUB_XY = p256.getPublicKey(ES256_PRIV, false).slice(1);
+const KS256_PRIV = new Uint8Array(32).fill(9);
+const KS256_ADDR_BYTES = keccak_256(
+  secp256k1.getPublicKey(KS256_PRIV, false).slice(1),
+).slice(-20);
 
 interface AttestationTweaks {
+  signAlg?: number;
   contentType?: string;
   aud?: string;
   iat?: number;
   exp?: number;
+  univocityAddr?: string;
 }
 
 function buildReadAttestation(
   nowSec: number,
   t: AttestationTweaks = {},
 ): Uint8Array {
+  const signAlg = t.signAlg ?? COSE_ALG_ES256;
+  const addr = t.univocityAddr ?? ADDR;
   const protectedBytes = encodeCborDeterministic(
     new Map<number, unknown>([
-      [1, COSE_ALG_ES256],
+      [1, signAlg],
       [3, t.contentType ?? ACCOUNT_READ_ATTESTATION_CONTENT_TYPE],
     ]),
   );
   const claims = new Map<number, unknown>([
-    [1, INSTANCE_ID],
+    [1, `eip155:${CHAIN}:0x${addr}`],
     [3, t.aud ?? AUD],
     [4, t.exp ?? nowSec + 120],
     [6, t.iat ?? nowSec - 60],
@@ -72,20 +83,29 @@ function buildReadAttestation(
       CLAIM_CHAIN_BINDING,
       new Map<number, unknown>([
         [1, CHAIN],
-        [2, ADDR],
+        [2, addr],
       ]),
     ],
   ]);
   const payloadBytes = encodeCborDeterministic(claims);
-  const signature = p256
-    .sign(
-      sha256(
-        encodeSigStructure(protectedBytes, new Uint8Array(0), payloadBytes),
-      ),
-      ES256_PRIV,
-      { prehash: false },
-    )
-    .toCompactRawBytes();
+  const sigStructure = encodeSigStructure(
+    protectedBytes,
+    new Uint8Array(0),
+    payloadBytes,
+  );
+  let signature: Uint8Array;
+  if (signAlg === COSE_ALG_ES256) {
+    signature = p256
+      .sign(sha256(sigStructure), ES256_PRIV, { prehash: false })
+      .toCompactRawBytes();
+  } else {
+    const sig = secp256k1.sign(keccak_256(sigStructure), KS256_PRIV, {
+      prehash: false,
+    });
+    signature = new Uint8Array(65);
+    signature.set(sig.toCompactRawBytes(), 0);
+    signature[64] = (sig.recovery ?? 0) + 27;
+  }
   return encodeCborDeterministic([
     protectedBytes,
     new Map(),
@@ -153,16 +173,17 @@ const SUPPORTED_CHAINS_RPC = JSON.stringify({
   [CHAIN]: ["https://rpc.example.invalid"],
 });
 
-function bootstrapResultHex(): string {
-  const alg = ((1n << 64n) + BigInt(COSE_ALG_ES256))
-    .toString(16)
-    .padStart(64, "f");
+function bootstrapResultHex(
+  alg: number = COSE_ALG_ES256,
+  keyBytes: Uint8Array = ES256_PUB_XY,
+): string {
+  const algWord = ((1n << 64n) + BigInt(alg)).toString(16).padStart(64, "f");
   const offset = "40".padStart(64, "0");
-  const len = "40".padStart(64, "0");
-  const key = Array.from(ES256_PUB_XY)
+  const len = keyBytes.length.toString(16).padStart(64, "0");
+  const key = Array.from(keyBytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  return `0x${alg}${offset}${len}${key}`;
+  return `0x${algWord}${offset}${len}${key}`;
 }
 
 const RECEIVABLES_BODY = {
@@ -193,6 +214,7 @@ function stubUpstreams(
     status: 200,
     body: RECEIVABLES_BODY,
   },
+  bootstrap: string = bootstrapResultHex(),
 ): void {
   globalThis.fetch = vi.fn(async (input, init) => {
     const url = String(input instanceof Request ? input.url : input);
@@ -207,7 +229,7 @@ function stubUpstreams(
       const data = body.params?.[0]?.data as string | undefined;
       const result =
         data === bootstrapConfigCallData()
-          ? bootstrapResultHex()
+          ? bootstrap
           : data === rootLogIdCallData()
             ? `0x${"00".repeat(32)}`
             : "0x";
@@ -346,5 +368,59 @@ describe("GET /api/payments/accounts/{id}", () => {
       freshAuthHeader(),
     );
     expect(res.status).toBe(503);
+  });
+
+  it("accepts a KS256 read attestation end-to-end (EOA recovery)", async () => {
+    // Distinct instance so no ES256 gate-cache entry can shadow the probe.
+    const addr = "c".repeat(40);
+    stubUpstreams(
+      { status: 200, body: RECEIVABLES_BODY },
+      bootstrapResultHex(COSE_ALG_KS256, KS256_ADDR_BYTES),
+    );
+    const res = await getAccount(
+      requestEnv(),
+      freshAuthHeader({ signAlg: COSE_ALG_KS256, univocityAddr: addr }),
+      `eip155:${CHAIN}:0x${addr}`,
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("403s a wrong-aud attestation at the route (cross-operator replay)", async () => {
+    stubUpstreams();
+    const res = await getAccount(
+      requestEnv(),
+      freshAuthHeader({ aud: "https://other-operator.test" }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("429s before any upstream call when the shared limiter denies", async () => {
+    stubUpstreams();
+    const res = await getAccount(
+      requestEnv({
+        ONBOARD_CREATE_RATE_LIMITER: {
+          limit: async () => ({ success: false }),
+        },
+      }),
+      freshAuthHeader(),
+    );
+    expect(res.status).toBe(429);
+    // The limiter must run before the chain probe and the settlement read.
+    expect(vi.mocked(globalThis.fetch).mock.calls.length).toBe(0);
+  });
+
+  it("omits registrationBlock for a legacy account (absent, not null)", async () => {
+    const { registrationBlock: _rb, ...legacyEntitlement } =
+      RECEIVABLES_BODY.entitlement;
+    stubUpstreams({
+      status: 200,
+      body: { ...RECEIVABLES_BODY, entitlement: legacyEntitlement },
+    });
+    const res = await getAccount(requestEnv(), freshAuthHeader());
+    expect(res.status).toBe(200);
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as Record<string, unknown>;
+    expect(Object.hasOwn(body, "registrationBlock")).toBe(false);
   });
 });
