@@ -233,6 +233,70 @@ describe("GET /api/payments/chain-bindings", () => {
     expect(new Set(ids).size).toBe(3);
   });
 
+  it("degrades a row when settlement returns 500, listing stays 200", async () => {
+    const id = instanceId("ee");
+    await reserveUnivocityInstance(poolEnv, id, "request:r-4");
+    await completeUnivocityInstanceReservation(
+      poolEnv,
+      id,
+      ["request:r-4"],
+      "11111111-2222-4333-8444-555555555555",
+      null,
+    );
+
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response("upstream exploded", {
+          status: 500,
+          headers: { "Content-Type": "text/plain" },
+        }),
+    ) as typeof fetch;
+
+    const res = await getList(listEnv());
+    expect(res.status).toBe(200);
+    const body = await decodeList(res);
+    expect(body.instances).toHaveLength(1);
+    expect(body.instances![0]!.receivables).toBeNull();
+    expect(body.instances![0]!.receivablesDetail).toContain(
+      "upstream exploded",
+    );
+  });
+
+  it("surfaces a hydration failure as 500, never invalid-cursor 400", async () => {
+    const id = instanceId("aa");
+    await reserveUnivocityInstance(poolEnv, id, "token:aa");
+
+    const r2 = poolEnv.R2_GRANTS;
+    const broken = {
+      list: (opts: R2ListOptions) => r2.list(opts),
+      get: async () => {
+        throw new Error("r2 get transient failure");
+      },
+    } as unknown as typeof r2;
+
+    const res = await getList(listEnv({ R2_GRANTS: broken }));
+    expect(res.status).toBe(500);
+  });
+
+  it("maps a rejected caller cursor to 400, a cursorless list failure to 500", async () => {
+    const r2 = poolEnv.R2_GRANTS;
+    const broken = {
+      list: async () => {
+        throw new Error("boom");
+      },
+      get: (key: string) => r2.get(key),
+    } as unknown as typeof r2;
+
+    const withCursor = await getList(
+      listEnv({ R2_GRANTS: broken }),
+      "?cursor=opaque",
+    );
+    expect(withCursor.status).toBe(400);
+
+    const withoutCursor = await getList(listEnv({ R2_GRANTS: broken }));
+    expect(withoutCursor.status).toBe(500);
+  });
+
   it("rejects malformed limits", async () => {
     for (const bad of ["0", "101", "abc", "-1", "2.5"]) {
       const res = await getList(listEnv(), `?limit=${bad}`);
