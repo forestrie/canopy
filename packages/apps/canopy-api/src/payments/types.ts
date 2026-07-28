@@ -4,6 +4,11 @@
 
 export type { ClaimForestRResult } from "./claim-forest-r-result.js";
 export type {
+  SettlementReceivablesClientEnv,
+  SettlementReceivablesRead,
+  SettlementReceivablesResult,
+} from "./settlement-receivables-result.js";
+export type {
   CoordinatorEnabledClientEnv,
   CoordinatorEnabledResponse,
   CoordinatorEnabledResult,

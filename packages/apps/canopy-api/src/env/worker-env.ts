@@ -93,6 +93,10 @@ export interface Env {
   ONBOARD_ATTESTATION_AUD?: string;
   /** Ceiling on attestation exp-iat (seconds; default 86400). */
   ONBOARD_ATTESTATION_MAX_WINDOW_SEC?: string;
+  /** x402-settlement worker base URL for the fee-account read (FOR-497). */
+  X402_SETTLEMENT_URL?: string;
+  /** Ceiling on account-read attestation exp-iat (seconds; default 300). */
+  ACCOUNT_READ_ATTESTATION_MAX_WINDOW_SEC?: string;
   ONBOARD_MAX_PENDING_PER_BINDING?: string;
   ONBOARD_RPC_TIMEOUT_MS?: string;
   ONBOARD_CREATE_RATE_LIMITER?: {
