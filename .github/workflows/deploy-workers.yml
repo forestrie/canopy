@@ -228,6 +228,9 @@ jobs:
       # produces attestations; AUD override optional.
       ONBOARD_REQUIRE_KEY_ATTESTATION: ${{ vars.ONBOARD_REQUIRE_KEY_ATTESTATION }}
       ONBOARD_ATTESTATION_AUD: ${{ vars.ONBOARD_ATTESTATION_AUD }}
+      # FOR-497 fee-account read: x402-settlement origin canopy-api fronts
+      # server-side (same var the metering canary uses).
+      X402_SETTLEMENT_URL: ${{ vars.X402_SETTLEMENT_URL }}
       R2_MMRS_BUCKET_NAME: ${{ vars.R2_MMRS_BUCKET_NAME }}
       R2_GRANTS_BUCKET_NAME: ${{ vars.R2_GRANTS_BUCKET_NAME }}
       SEQUENCING_QUEUE_SCRIPT_NAME: ${{ vars.SEQUENCING_QUEUE_SCRIPT_NAME }}

@@ -299,6 +299,14 @@ varsBlock = setStringProperty(
   "ONBOARD_ATTESTATION_AUD",
   process.env.ONBOARD_ATTESTATION_AUD?.trim(),
 );
+// FOR-497 fee-account read: the x402-settlement origin canopy-api fronts
+// server-side (same GitHub var the metering canary uses). Optional — the
+// route fails closed (503) on a lane that leaves it unset.
+varsBlock = setStringProperty(
+  varsBlock,
+  "X402_SETTLEMENT_URL",
+  process.env.X402_SETTLEMENT_URL?.trim(),
+);
 // Duplicate keys silently override injections (JSONC last-key-wins — the
 // canopy#185 failure class); fail the deploy instead.
 {
