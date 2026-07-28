@@ -54,13 +54,18 @@ import {
   type CreditsPurchaseEnv,
 } from "./credits-purchase.js";
 import { handleAccountRead, type AccountReadEnv } from "./account-read.js";
+import {
+  handleChainBindingsList,
+  type ChainBindingsListEnv,
+} from "./chain-bindings-list.js";
 
 export interface PaymentsHandlerEnv
   extends OnboardTokenStoreEnv,
     RegistrationStoreEnv,
     CoordinatorEnabledClientEnv,
     CreditsPurchaseEnv,
-    AccountReadEnv {
+    AccountReadEnv,
+    ChainBindingsListEnv {
   CANOPY_OPS_ADMIN_TOKEN?: string;
 }
 
@@ -415,6 +420,12 @@ export async function handlePaymentsRequest(
   // dangling `reserved` records, squats made before the registrant
   // attestation is enforced, abandoned roots. Release is the recovery route
   // the reservation model depends on — a paid reservation never expires.
+  // Ops enumeration with receivables join (FOR-478) — the list counterpart
+  // of the per-id inspection route below.
+  if (pathname === "/api/payments/chain-bindings") {
+    return attachCors(await handleChainBindingsList(request, env), corsHeaders);
+  }
+
   const bindingMatch = /^\/api\/payments\/chain-bindings\/([^/]+)$/.exec(
     pathname,
   );

@@ -71,8 +71,10 @@ export function tokenHolder(tokenHash: string): ReservationHolder {
   return `token:${tokenHash}`;
 }
 
+const RESERVATION_PREFIX = "forests/index/chain-binding/";
+
 function instanceIndexR2Key(id: UnivocityInstanceId): string {
-  return `forests/index/chain-binding/${id}`;
+  return `${RESERVATION_PREFIX}${id}`;
 }
 
 function decodeReservation(text: string): InstanceReservation | null {
@@ -225,6 +227,50 @@ export async function completeUnivocityInstanceReservation(
     return { ok: true, record: reread.record };
   }
   return { ok: false, reason: "cas_failed" };
+}
+
+export interface InstanceReservationListItem extends InstanceReservation {
+  univocityInstanceId: string;
+}
+
+export interface InstanceReservationPage {
+  items: InstanceReservationListItem[];
+  /** Present when the listing is truncated; pass back to continue. */
+  cursor?: string;
+}
+
+/**
+ * Page through the reservation registry (ops enumeration, FOR-478). `limit`
+ * bounds the R2 keys examined per page, not the rows returned — unparseable
+ * records are skipped (the per-id GET 404s them too), so a short page is not
+ * the end of the listing; only an absent `cursor` is.
+ */
+export async function listUnivocityInstanceReservations(
+  env: InstanceRegistryEnv,
+  opts: { cursor?: string; limit: number },
+): Promise<InstanceReservationPage> {
+  const page = await env.R2_GRANTS.list({
+    prefix: RESERVATION_PREFIX,
+    cursor: opts.cursor,
+    limit: opts.limit,
+  });
+  const items: InstanceReservationListItem[] = [];
+  for (const obj of page.objects) {
+    const got = await env.R2_GRANTS.get(obj.key);
+    if (!got) continue;
+    const record = decodeReservation(await got.text());
+    if (!record) {
+      console.warn(
+        `instance-registry: unparseable reservation at ${obj.key}; skipped`,
+      );
+      continue;
+    }
+    items.push({
+      univocityInstanceId: obj.key.slice(RESERVATION_PREFIX.length),
+      ...record,
+    });
+  }
+  return page.truncated ? { items, cursor: page.cursor } : { items };
 }
 
 /** Read the reservation record for `id`, if any (ops inspection, R4). */
