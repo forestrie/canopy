@@ -1,8 +1,11 @@
 import {
+  createErc1271VerifyHooks,
   isChainIdSupported,
   parseSupportedChainsRpc,
   rpcUrlsForChainId,
   supportedChainIds,
+  type Erc1271VerifyHooks,
+  type EthRpcOptions,
   type SupportedChainsConfig,
 } from "@forestrie/chain-rpc";
 
@@ -30,6 +33,22 @@ export function rpcUrlsForEnvChainId(
   const config = supportedChainsConfigForEnv(env);
   if (!config) return null;
   return rpcUrlsForChainId(config, chainId);
+}
+
+/**
+ * ERC-1271 verify hooks for a KS256 root on the binding chain, or
+ * `undefined` when no RPC is configured for it (verification is then
+ * EOA-only; a contract-account root cannot validate without RPC).
+ */
+export function erc1271HooksForEnvChainId(
+  env: SupportedChainsEnv,
+  chainId: string,
+  options: EthRpcOptions = {},
+): Erc1271VerifyHooks | undefined {
+  const rpcUrls = rpcUrlsForEnvChainId(env, chainId);
+  return rpcUrls?.length
+    ? createErc1271VerifyHooks(rpcUrls, options)
+    : undefined;
 }
 
 export function isSupportedChainIdForEnv(

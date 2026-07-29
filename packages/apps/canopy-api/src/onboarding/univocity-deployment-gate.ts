@@ -14,7 +14,7 @@ import type { UnivocityGateResult } from "./univocity-gate-result.js";
 
 export type { UnivocityGateEnv, UnivocityGateResult } from "./types.js";
 
-function rpcTimeoutMs(env: UnivocityGateEnv): number {
+export function rpcTimeoutMs(env: UnivocityGateEnv): number {
   const raw = env.ONBOARD_RPC_TIMEOUT_MS?.trim();
   if (raw) {
     const n = Number.parseInt(raw, 10);

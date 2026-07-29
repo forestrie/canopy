@@ -56,6 +56,8 @@ interface AttestationTweaks {
   univocityAddr?: string;
   iss?: string | null;
   corruptSignature?: boolean;
+  /** Replace the computed signature (contract-signer envelopes). */
+  signature?: Uint8Array;
 }
 
 function buildAttestation(
@@ -106,6 +108,7 @@ function buildAttestation(
     signature.set(sig.toCompactRawBytes(), 0);
     signature[64] = (sig.recovery ?? 0) + 27;
   }
+  if (t.signature) signature = t.signature;
   if (t.corruptSignature) signature[10]! ^= 0xff;
 
   return encodeCborDeterministic([
@@ -131,8 +134,8 @@ function expectation(
 }
 
 describe("verifyOnboardAttestation — per-alg vectors", () => {
-  it("accepts a valid ES256 attestation", () => {
-    const v = verifyOnboardAttestation(
+  it("accepts a valid ES256 attestation", async () => {
+    const v = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_ES256),
       expectation(),
     );
@@ -140,20 +143,20 @@ describe("verifyOnboardAttestation — per-alg vectors", () => {
     if (v.ok) expect(v.iss).toBe(`eip155:${CHAIN}:0x${ADDR}`);
   });
 
-  it("accepts a valid KS256 attestation via EOA recovery", () => {
-    const v = verifyOnboardAttestation(
+  it("accepts a valid KS256 attestation via EOA recovery", async () => {
+    const v = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_KS256),
       expectation({ alg: COSE_ALG_KS256, key: KS256_ADDR }),
     );
     expect(v.ok).toBe(true);
   });
 
-  it("rejects a corrupted signature under both algs", () => {
+  it("rejects a corrupted signature under both algs", async () => {
     for (const [alg, key] of [
       [COSE_ALG_ES256, ES256_PUB_XY],
       [COSE_ALG_KS256, KS256_ADDR],
     ] as const) {
-      const v = verifyOnboardAttestation(
+      const v = await verifyOnboardAttestation(
         buildAttestation(alg, { corruptSignature: true }),
         expectation({ alg, key }),
       );
@@ -161,10 +164,10 @@ describe("verifyOnboardAttestation — per-alg vectors", () => {
     }
   });
 
-  it("rejects an envelope alg that disagrees with the chain alg", () => {
+  it("rejects an envelope alg that disagrees with the chain alg", async () => {
     // Envelope claims KS256 while the chain declares ES256 — the trust
     // anchor comes from the chain, never from the envelope.
-    const v = verifyOnboardAttestation(
+    const v = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_ES256, { alg: COSE_ALG_KS256 }),
       expectation(),
     );
@@ -172,8 +175,8 @@ describe("verifyOnboardAttestation — per-alg vectors", () => {
     if (!v.ok) expect(v.detail).toContain("does not match chain bootstrapAlg");
   });
 
-  it("rejects a KS256 signature recovering to a different address", () => {
-    const v = verifyOnboardAttestation(
+  it("rejects a KS256 signature recovering to a different address", async () => {
+    const v = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_KS256),
       expectation({ alg: COSE_ALG_KS256, key: new Uint8Array(20).fill(1) }),
     );
@@ -182,8 +185,8 @@ describe("verifyOnboardAttestation — per-alg vectors", () => {
 });
 
 describe("verifyOnboardAttestation — claims discipline", () => {
-  it("rejects a wrong aud (cross-operator replay)", () => {
-    const v = verifyOnboardAttestation(
+  it("rejects a wrong aud (cross-operator replay)", async () => {
+    const v = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_ES256, { aud: "https://other-operator.test" }),
       expectation(),
     );
@@ -191,21 +194,21 @@ describe("verifyOnboardAttestation — claims discipline", () => {
     if (!v.ok) expect(v.detail).toContain("aud");
   });
 
-  it("rejects expired and not-yet-valid windows", () => {
-    const expired = verifyOnboardAttestation(
+  it("rejects expired and not-yet-valid windows", async () => {
+    const expired = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_ES256, { iat: NOW - 7200, exp: NOW - 3600 }),
       expectation(),
     );
     expect(expired.ok).toBe(false);
-    const future = verifyOnboardAttestation(
+    const future = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_ES256, { iat: NOW + 3600, exp: NOW + 7200 }),
       expectation(),
     );
     expect(future.ok).toBe(false);
   });
 
-  it("rejects a window wider than the policy ceiling", () => {
-    const v = verifyOnboardAttestation(
+  it("rejects a window wider than the policy ceiling", async () => {
+    const v = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_ES256, {
         iat: NOW - 60,
         exp: NOW - 60 + 48 * 3600,
@@ -216,8 +219,8 @@ describe("verifyOnboardAttestation — claims discipline", () => {
     if (!v.ok) expect(v.detail).toContain("policy ceiling");
   });
 
-  it("rejects a chainBinding claim that names a different contract", () => {
-    const v = verifyOnboardAttestation(
+  it("rejects a chainBinding claim that names a different contract", async () => {
+    const v = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_ES256, { univocityAddr: "c".repeat(40) }),
       expectation(),
     );
@@ -225,13 +228,13 @@ describe("verifyOnboardAttestation — claims discipline", () => {
     if (!v.ok) expect(v.detail).toContain("chainBinding");
   });
 
-  it("tolerates a missing iss but rejects one naming another instance", () => {
-    const missing = verifyOnboardAttestation(
+  it("tolerates a missing iss but rejects one naming another instance", async () => {
+    const missing = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_ES256, { iss: null }),
       expectation(),
     );
     expect(missing.ok).toBe(true);
-    const other = verifyOnboardAttestation(
+    const other = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_ES256, {
         iss: `eip155:${CHAIN}:0x${"d".repeat(40)}`,
       }),
@@ -240,11 +243,11 @@ describe("verifyOnboardAttestation — claims discipline", () => {
     expect(other.ok).toBe(false);
   });
 
-  it("unconfusability: a differently content-typed envelope never verifies", () => {
+  it("unconfusability: a differently content-typed envelope never verifies", async () => {
     // The same key signs bootstrap grants and delegation certificates under
     // other content types — signed-content-type discrimination must reject
     // them even with a valid signature.
-    const v = verifyOnboardAttestation(
+    const v = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_ES256, {
         contentType: "application/forestrie.delegation+cbor",
       }),
@@ -252,11 +255,83 @@ describe("verifyOnboardAttestation — claims discipline", () => {
     );
     expect(v.ok).toBe(false);
     if (!v.ok) expect(v.detail).toContain("content type");
-    const untyped = verifyOnboardAttestation(
+    const untyped = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_ES256, { contentType: null }),
       expectation(),
     );
     expect(untyped.ok).toBe(false);
+  });
+});
+
+describe("verifyOnboardAttestation — contract-account roots (ERC-1271 hooks)", () => {
+  // Safe 1x1 (Mode D, plan-2607-45): the KS256 address belongs to a contract
+  // account; hooks replace recovery and the 65-byte EOA rule must not apply.
+  const CONTRACT_ADDR = new Uint8Array(20).fill(0xcd);
+  const CONTRACT_SIG = new Uint8Array(96).fill(0x33);
+
+  function hooksOf(overrides: {
+    hasContractCode?: () => Promise<boolean>;
+    isValidSignature?: () => Promise<boolean>;
+  }) {
+    return {
+      hasContractCode: overrides.hasContractCode ?? (async () => true),
+      isValidSignature: overrides.isValidSignature ?? (async () => true),
+    };
+  }
+
+  it("accepts a non-65-byte contract signature when ERC-1271 accepts", async () => {
+    const v = await verifyOnboardAttestation(
+      buildAttestation(COSE_ALG_KS256, { signature: CONTRACT_SIG }),
+      expectation({ alg: COSE_ALG_KS256, key: CONTRACT_ADDR }),
+      hooksOf({}),
+    );
+    expect(v.ok).toBe(true);
+  });
+
+  it("rejects when ERC-1271 rejects", async () => {
+    const v = await verifyOnboardAttestation(
+      buildAttestation(COSE_ALG_KS256, { signature: CONTRACT_SIG }),
+      expectation({ alg: COSE_ALG_KS256, key: CONTRACT_ADDR }),
+      hooksOf({ isValidSignature: async () => false }),
+    );
+    expect(v.ok).toBe(false);
+  });
+
+  it("fails closed when the code check errors — never falls back to ecrecover", async () => {
+    // A perfectly valid EOA-signed envelope must still reject when we cannot
+    // establish whether the address holds code.
+    const v = await verifyOnboardAttestation(
+      buildAttestation(COSE_ALG_KS256),
+      expectation({ alg: COSE_ALG_KS256, key: KS256_ADDR }),
+      hooksOf({
+        hasContractCode: async () => {
+          throw new Error("rpc down");
+        },
+      }),
+    );
+    expect(v.ok).toBe(false);
+  });
+
+  it("fails closed when the ERC-1271 call errors", async () => {
+    const v = await verifyOnboardAttestation(
+      buildAttestation(COSE_ALG_KS256, { signature: CONTRACT_SIG }),
+      expectation({ alg: COSE_ALG_KS256, key: CONTRACT_ADDR }),
+      hooksOf({
+        isValidSignature: async () => {
+          throw new Error("rpc down");
+        },
+      }),
+    );
+    expect(v.ok).toBe(false);
+  });
+
+  it("EOA roots verify unchanged when the address has no code", async () => {
+    const v = await verifyOnboardAttestation(
+      buildAttestation(COSE_ALG_KS256),
+      expectation({ alg: COSE_ALG_KS256, key: KS256_ADDR }),
+      hooksOf({ hasContractCode: async () => false }),
+    );
+    expect(v.ok).toBe(true);
   });
 });
 

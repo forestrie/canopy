@@ -132,6 +132,9 @@ importers:
       '@canopy/webhook-url':
         specifier: workspace:*
         version: link:../../shared/webhook-url
+      '@forestrie/chain-rpc':
+        specifier: workspace:*
+        version: link:../../libs/chain-rpc
       '@forestrie/delegation-cose':
         specifier: workspace:*
         version: link:../../libs/delegation-cose

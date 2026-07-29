@@ -25,7 +25,11 @@ import {
   adminJsonResponse,
   problemResponseToAdminJson,
 } from "../cbor-api/admin-json-response.js";
-import { verifyUnivocityDeployment } from "../onboarding/univocity-deployment-gate.js";
+import { erc1271HooksForEnvChainId } from "../env/supported-chains-for-env.js";
+import {
+  rpcTimeoutMs,
+  verifyUnivocityDeployment,
+} from "../onboarding/univocity-deployment-gate.js";
 import type { UnivocityGateEnv } from "../onboarding/univocity-gate-env.js";
 import {
   checkAccountReadRateLimit,
@@ -173,15 +177,21 @@ export async function handleAccountRead(
 
   const requestOrigin = new URL(request.url).origin;
   const audOverride = env.ONBOARD_ATTESTATION_AUD?.trim();
-  const verdict = verifyAccountReadAttestation(attestation, {
-    alg: gate.bootstrapAlg,
-    key: gate.bootstrapKey,
-    chainId,
-    univocityAddr: gate.univocityAddr,
-    acceptedAud: audOverride ? [audOverride, requestOrigin] : [requestOrigin],
-    nowSec: Math.floor(Date.now() / 1000),
-    maxWindowSec: maxWindowSec(env),
-  });
+  const verdict = await verifyAccountReadAttestation(
+    attestation,
+    {
+      alg: gate.bootstrapAlg,
+      key: gate.bootstrapKey,
+      chainId,
+      univocityAddr: gate.univocityAddr,
+      acceptedAud: audOverride ? [audOverride, requestOrigin] : [requestOrigin],
+      nowSec: Math.floor(Date.now() / 1000),
+      maxWindowSec: maxWindowSec(env),
+    },
+    // Safe 1x1 (Mode D, plan-2607-45): a contract-account bootstrap key
+    // validates the read attestation via ERC-1271; EOA roots are unaffected.
+    erc1271HooksForEnvChainId(env, chainId, { timeoutMs: rpcTimeoutMs(env) }),
+  );
   if (!verdict.ok) {
     return finish(
       problemResponse(403, "Forbidden", "about:blank", {

@@ -5,23 +5,13 @@
 
 import { keccak_256 } from "@noble/hashes/sha3";
 import { secp256k1 } from "@noble/curves/secp256k1";
-import { encodeFunctionData, parseAbi } from "viem";
 import {
   COSE_ALG_KS256,
   decodeCoseSign1,
   encodeSigStructure,
 } from "@forestrie/encoding";
-import {
-  bytesToHex,
-  ethRpcWithFailover,
-  hasContractCodeAt,
-} from "@forestrie/chain-rpc";
+import { createErc1271VerifyHooks } from "@forestrie/chain-rpc";
 import type { ParsedKs256RootKey } from "./parsed-ks256-root-key.js";
-
-const ERC1271_ABI = parseAbi([
-  "function isValidSignature(bytes32 hash, bytes signature) view returns (bytes4)",
-]);
-const ERC1271_MAGIC = "0x1626ba7e";
 
 export interface Ks256VerifyOptions {
   /** Preference-ordered JSON-RPC URLs for ERC-1271 `eth_call` and `eth_getCode`. */
@@ -65,36 +55,6 @@ function recoverSignerAddress(
   }
 }
 
-function encodeIsValidSignatureCall(
-  hash: Uint8Array,
-  signature: Uint8Array,
-): `0x${string}` {
-  const hashHex = `0x${bytesToHex(hash)}` as `0x${string}`;
-  const sigHex = `0x${bytesToHex(signature)}` as `0x${string}`;
-  return encodeFunctionData({
-    abi: ERC1271_ABI,
-    functionName: "isValidSignature",
-    args: [hashHex, sigHex],
-  });
-}
-
-async function verifyErc1271Signature(
-  rpcUrls: string[],
-  signer: Uint8Array,
-  hash: Uint8Array,
-  signature: Uint8Array,
-): Promise<boolean> {
-  const data = encodeIsValidSignatureCall(hash, signature);
-  const result = (await ethRpcWithFailover(rpcUrls, "eth_call", [
-    { to: `0x${bytesToHex(signer)}`, data },
-    "latest",
-  ])) as string;
-  return (
-    typeof result === "string" &&
-    result.toLowerCase().startsWith(ERC1271_MAGIC.toLowerCase())
-  );
-}
-
 /**
  * Verify a COSE Sign1 with KS256 (Keccak Sig_structure + 65-byte eth sig).
  */
@@ -127,9 +87,10 @@ export async function verifyKs256CoseSign1(
 
   const rpcUrls = opts?.rpcUrls?.filter((u) => u.trim().length > 0) ?? [];
   if (rpcUrls.length > 0) {
+    const hooks = createErc1271VerifyHooks(rpcUrls);
     try {
-      if (await hasContractCodeAt(rpcUrls, bytesToHex(root.address))) {
-        return verifyErc1271Signature(rpcUrls, root.address, hash, signature);
+      if (await hooks.hasContractCode(root.address)) {
+        return await hooks.isValidSignature(root.address, hash, signature);
       }
     } catch (e) {
       if (opts?.logFailures) {

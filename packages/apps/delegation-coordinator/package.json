@@ -14,6 +14,7 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
+    "@forestrie/chain-rpc": "workspace:*",
     "@forestrie/delegation-cose": "workspace:*",
     "@forestrie/encoding": "workspace:*",
     "@canopy/univocity-instance-id": "workspace:*",

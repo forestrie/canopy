@@ -19,7 +19,10 @@
  *   also signs (their content type differs, so neither verifies as the
  *   other);
  * - KS256 uses the one existing `@forestrie/delegation-cose` profile
- *   (keccak256 over Sig_structure, EOA recovery) — no second convention.
+ *   (keccak256 over Sig_structure) — no second convention. The 20-byte
+ *   address may be a contract account (plan-2607-45 Safe 1x1 Mode D):
+ *   optional ERC-1271 hooks extend WHO may hold the address, never WHAT is
+ *   signed. EOA roots recover as before.
  *
  * Self-contained, no challenge round-trip: the key may be in cold custody,
  * and replay within the window only yields duplicate pending requests for
@@ -31,7 +34,10 @@ import { p256 } from "@noble/curves/p256";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { sha256 } from "@noble/hashes/sha2";
 import { keccak_256 } from "@noble/hashes/sha3";
-import { decodeCoseSign1Parts } from "@forestrie/delegation-cose";
+import {
+  decodeCoseSign1Parts,
+  type Ks256VerifyHooks,
+} from "@forestrie/delegation-cose";
 import {
   decodeCborDeterministic,
   encodeSigStructure,
@@ -118,15 +124,31 @@ function verifyEs256(
   }
 }
 
-function verifyKs256(
+async function verifyKs256(
   sigStructure: Uint8Array,
   signature: Uint8Array,
   keyAddress: Uint8Array,
-): boolean {
-  // The delegation-cose KS256 profile: keccak256(Sig_structure), 65-byte
-  // r‖s‖v EOA recovery, address comparison.
-  if (signature.length !== 65 || keyAddress.length !== 20) return false;
+  hooks?: Ks256VerifyHooks,
+): Promise<boolean> {
+  if (keyAddress.length !== 20) return false;
   const hash = keccak_256(sigStructure);
+  if (hooks) {
+    // Contract-account root: ERC-1271 replaces recovery, and the 65-byte
+    // EOA length rule does not apply (a Safe owner signature is a different
+    // shape). Fail closed — when the address holds code, or the code check
+    // itself fails, an RPC error must reject rather than fall back to
+    // ecrecover.
+    try {
+      if (await hooks.hasContractCode(keyAddress)) {
+        return await hooks.isValidSignature(keyAddress, hash, signature);
+      }
+    } catch {
+      return false;
+    }
+  }
+  // The delegation-cose KS256 EOA profile: keccak256(Sig_structure), 65-byte
+  // r‖s‖v EOA recovery, address comparison.
+  if (signature.length !== 65) return false;
   let v = signature[64]!;
   if (v >= 27) v -= 27;
   if (v > 3) return false;
@@ -152,14 +174,17 @@ function verifyKs256(
  * that reuses the D8 pattern (onboarding, the FOR-497 account read) names its
  * own signed content type, so envelopes never verify across protocols.
  *
- * Pure: no I/O, no clock reads — the caller supplies `nowSec` and the
- * chain-probed `(alg, key)` so tests can pin every branch.
+ * No clock reads — the caller supplies `nowSec` and the chain-probed
+ * `(alg, key)` so tests can pin every branch. The only I/O is the optional
+ * KS256 `hooks` (ERC-1271 over RPC) for contract-account roots; without
+ * hooks the function stays pure.
  */
-export function verifyBootstrapKeyCwt(
+export async function verifyBootstrapKeyCwt(
   attestation: Uint8Array,
   expected: BootstrapKeyCwtExpectation,
   expectedContentType: string,
-): BootstrapKeyCwtResult {
+  hooks?: Ks256VerifyHooks,
+): Promise<BootstrapKeyCwtResult> {
   let parts: ReturnType<typeof decodeCoseSign1Parts>;
   try {
     parts = decodeCoseSign1Parts(attestation);
@@ -203,7 +228,7 @@ export function verifyBootstrapKeyCwt(
     expected.alg === COSE_ALG_ES256
       ? verifyEs256(sigStructure, parts.signature, expected.key)
       : expected.alg === COSE_ALG_KS256
-        ? verifyKs256(sigStructure, parts.signature, expected.key)
+        ? await verifyKs256(sigStructure, parts.signature, expected.key, hooks)
         : false;
   if (!signatureOk) {
     return { ok: false, detail: "attestation signature invalid" };
@@ -278,10 +303,12 @@ export function verifyBootstrapKeyCwt(
 export function verifyOnboardAttestation(
   attestation: Uint8Array,
   expected: BootstrapKeyCwtExpectation,
-): BootstrapKeyCwtResult {
+  hooks?: Ks256VerifyHooks,
+): Promise<BootstrapKeyCwtResult> {
   return verifyBootstrapKeyCwt(
     attestation,
     expected,
     ONBOARD_ATTESTATION_CONTENT_TYPE,
+    hooks,
   );
 }

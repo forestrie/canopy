@@ -51,7 +51,11 @@ import {
   writeOnboardRequest,
   type OnboardRequestStoreEnv,
 } from "./onboard-request-store.js";
-import { verifyUnivocityDeployment } from "./univocity-deployment-gate.js";
+import { erc1271HooksForEnvChainId } from "../env/supported-chains-for-env.js";
+import {
+  rpcTimeoutMs,
+  verifyUnivocityDeployment,
+} from "./univocity-deployment-gate.js";
 import type { UnivocityGateEnv } from "./univocity-deployment-gate.js";
 import {
   DEFAULT_ATTESTATION_MAX_WINDOW_SEC,
@@ -387,18 +391,28 @@ async function handleCreateRequest(
       env.ONBOARD_ATTESTATION_MAX_WINDOW_SEC?.trim() ?? "",
       10,
     );
-    const verdict = verifyOnboardAttestation(attestation, {
-      alg: gate.bootstrapAlg,
-      key: gate.bootstrapKey,
-      chainId: chainId.trim(),
-      univocityAddr: gate.univocityAddr,
-      acceptedAud: audOverride ? [audOverride, requestOrigin] : [requestOrigin],
-      nowSec: Math.floor(Date.now() / 1000),
-      maxWindowSec:
-        Number.isFinite(maxWindowRaw) && maxWindowRaw > 0
-          ? maxWindowRaw
-          : DEFAULT_ATTESTATION_MAX_WINDOW_SEC,
-    });
+    const verdict = await verifyOnboardAttestation(
+      attestation,
+      {
+        alg: gate.bootstrapAlg,
+        key: gate.bootstrapKey,
+        chainId: chainId.trim(),
+        univocityAddr: gate.univocityAddr,
+        acceptedAud: audOverride
+          ? [audOverride, requestOrigin]
+          : [requestOrigin],
+        nowSec: Math.floor(Date.now() / 1000),
+        maxWindowSec:
+          Number.isFinite(maxWindowRaw) && maxWindowRaw > 0
+            ? maxWindowRaw
+            : DEFAULT_ATTESTATION_MAX_WINDOW_SEC,
+      },
+      // Safe 1x1 (Mode D, plan-2607-45): the bootstrap key may be a contract
+      // account — ERC-1271 hooks let it validate; EOA roots are unaffected.
+      erc1271HooksForEnvChainId(env, chainId.trim(), {
+        timeoutMs: rpcTimeoutMs(env),
+      }),
+    );
     if (!verdict.ok) {
       return attachCors(
         problemResponse(403, "Forbidden", "about:blank", {
