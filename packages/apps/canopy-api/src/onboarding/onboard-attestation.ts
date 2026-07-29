@@ -19,7 +19,10 @@
  *   also signs (their content type differs, so neither verifies as the
  *   other);
  * - KS256 uses the one existing `@forestrie/delegation-cose` profile
- *   (keccak256 over Sig_structure, EOA recovery) — no second convention.
+ *   (keccak256 over Sig_structure) — no second convention. The 20-byte
+ *   address may be a contract account (plan-2607-45 Safe 1x1 Mode D):
+ *   optional ERC-1271 hooks extend WHO may hold the address, never WHAT is
+ *   signed. EOA roots recover as before.
  *
  * Self-contained, no challenge round-trip: the key may be in cold custody,
  * and replay within the window only yields duplicate pending requests for
@@ -31,7 +34,11 @@ import { p256 } from "@noble/curves/p256";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { sha256 } from "@noble/hashes/sha2";
 import { keccak_256 } from "@noble/hashes/sha3";
-import { decodeCoseSign1Parts } from "@forestrie/delegation-cose";
+import {
+  decodeCoseSign1Parts,
+  type Ks256VerifyHooks,
+} from "@forestrie/delegation-cose";
+import { Erc1271UnavailableError } from "@forestrie/chain-rpc";
 import {
   decodeCborDeterministic,
   encodeSigStructure,
@@ -78,7 +85,18 @@ export interface BootstrapKeyCwtExpectation {
 
 export type BootstrapKeyCwtResult =
   | { ok: true; iss: string; aud: string; iat: number; exp: number }
-  | { ok: false; detail: string };
+  | {
+      ok: false;
+      detail: string;
+      /**
+       * Verification could not be performed (every RPC endpoint failed while
+       * resolving an ERC-1271 question). Still fail-closed, but boundaries
+       * SHOULD map this to a 503-shaped response — matching the deployment
+       * gate's RPC-failure handling — rather than a 403 verdict
+       * (plan-2607-09 R1).
+       */
+      unavailable?: true;
+    };
 
 function asMap(value: unknown): Map<unknown, unknown> | null {
   return value instanceof Map ? value : null;
@@ -118,15 +136,34 @@ function verifyEs256(
   }
 }
 
-function verifyKs256(
+async function verifyKs256(
   sigStructure: Uint8Array,
   signature: Uint8Array,
   keyAddress: Uint8Array,
-): boolean {
-  // The delegation-cose KS256 profile: keccak256(Sig_structure), 65-byte
-  // r‖s‖v EOA recovery, address comparison.
-  if (signature.length !== 65 || keyAddress.length !== 20) return false;
+  hooks?: Ks256VerifyHooks,
+): Promise<boolean> {
+  if (keyAddress.length !== 20) return false;
   const hash = keccak_256(sigStructure);
+  if (hooks) {
+    // Contract-account root: ERC-1271 replaces recovery, and the 65-byte
+    // EOA length rule does not apply (a Safe owner signature is a different
+    // shape). Fail closed — when the address holds code, or the code check
+    // itself fails, an RPC error must reject rather than fall back to
+    // ecrecover. RPC unavailability propagates so the boundary can answer
+    // 503 instead of a 403 verdict; any other hook error stays a plain
+    // rejection.
+    try {
+      if (await hooks.hasContractCode(keyAddress)) {
+        return await hooks.isValidSignature(keyAddress, hash, signature);
+      }
+    } catch (error) {
+      if (error instanceof Erc1271UnavailableError) throw error;
+      return false;
+    }
+  }
+  // The delegation-cose KS256 EOA profile: keccak256(Sig_structure), 65-byte
+  // r‖s‖v EOA recovery, address comparison.
+  if (signature.length !== 65) return false;
   let v = signature[64]!;
   if (v >= 27) v -= 27;
   if (v > 3) return false;
@@ -147,19 +184,58 @@ function verifyKs256(
 }
 
 /**
+ * Environment-supplied capabilities a per-alg signature verifier may draw
+ * on. Each alg takes only what its trust anchor requires: the ES256 key is
+ * a self-contained public key, so its verifier uses none; the KS256 key is
+ * an ACCOUNT ADDRESS, which may be a contract, so its verifier resolves
+ * through `erc1271` when present. A future alg adds a row to
+ * {@link ALG_VERIFIERS} plus whatever capability it needs — the dispatch
+ * itself does not change.
+ */
+export interface BootstrapKeyVerifyCapabilities {
+  /** ERC-1271 resolution for address-anchored algs (contract accounts). */
+  erc1271?: Ks256VerifyHooks;
+}
+
+type BootstrapKeySignatureVerifier = (
+  sigStructure: Uint8Array,
+  signature: Uint8Array,
+  key: Uint8Array,
+  capabilities: BootstrapKeyVerifyCapabilities,
+) => Promise<boolean>;
+
+/** Chain `bootstrapAlg` → signature verifier; an unlisted alg never verifies. */
+const ALG_VERIFIERS: ReadonlyMap<number, BootstrapKeySignatureVerifier> =
+  new Map([
+    [
+      COSE_ALG_ES256,
+      async (sigStructure, signature, key) =>
+        verifyEs256(sigStructure, signature, key),
+    ],
+    [
+      COSE_ALG_KS256,
+      (sigStructure, signature, key, capabilities) =>
+        verifyKs256(sigStructure, signature, key, capabilities.erc1271),
+    ],
+  ]);
+
+/**
  * Verify a bootstrap-key-signed CWT envelope against chain-derived
  * expectations. `expectedContentType` is the domain separator: each protocol
  * that reuses the D8 pattern (onboarding, the FOR-497 account read) names its
  * own signed content type, so envelopes never verify across protocols.
  *
- * Pure: no I/O, no clock reads — the caller supplies `nowSec` and the
- * chain-probed `(alg, key)` so tests can pin every branch.
+ * No clock reads — the caller supplies `nowSec` and the chain-probed
+ * `(alg, key)` so tests can pin every branch. The only I/O is what
+ * `capabilities` carries (ERC-1271 over RPC for contract-account KS256
+ * roots); with an empty capabilities bag the function stays pure.
  */
-export function verifyBootstrapKeyCwt(
+export async function verifyBootstrapKeyCwt(
   attestation: Uint8Array,
   expected: BootstrapKeyCwtExpectation,
   expectedContentType: string,
-): BootstrapKeyCwtResult {
+  capabilities: BootstrapKeyVerifyCapabilities = {},
+): Promise<BootstrapKeyCwtResult> {
   let parts: ReturnType<typeof decodeCoseSign1Parts>;
   try {
     parts = decodeCoseSign1Parts(attestation);
@@ -199,12 +275,23 @@ export function verifyBootstrapKeyCwt(
     new Uint8Array(0),
     parts.payloadBytes,
   );
-  const signatureOk =
-    expected.alg === COSE_ALG_ES256
-      ? verifyEs256(sigStructure, parts.signature, expected.key)
-      : expected.alg === COSE_ALG_KS256
-        ? verifyKs256(sigStructure, parts.signature, expected.key)
-        : false;
+  const verifySignature = ALG_VERIFIERS.get(expected.alg);
+  let signatureOk: boolean;
+  try {
+    signatureOk = verifySignature
+      ? await verifySignature(
+          sigStructure,
+          parts.signature,
+          expected.key,
+          capabilities,
+        )
+      : false;
+  } catch (error) {
+    if (error instanceof Erc1271UnavailableError) {
+      return { ok: false, unavailable: true, detail: error.message };
+    }
+    throw error;
+  }
   if (!signatureOk) {
     return { ok: false, detail: "attestation signature invalid" };
   }
@@ -278,10 +365,12 @@ export function verifyBootstrapKeyCwt(
 export function verifyOnboardAttestation(
   attestation: Uint8Array,
   expected: BootstrapKeyCwtExpectation,
-): BootstrapKeyCwtResult {
+  capabilities?: BootstrapKeyVerifyCapabilities,
+): Promise<BootstrapKeyCwtResult> {
   return verifyBootstrapKeyCwt(
     attestation,
     expected,
     ONBOARD_ATTESTATION_CONTENT_TYPE,
+    capabilities,
   );
 }

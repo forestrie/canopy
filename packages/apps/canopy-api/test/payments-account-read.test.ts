@@ -128,8 +128,8 @@ function expectation(nowSec: number) {
 const NOW = 1_753_600_000;
 
 describe("verifyAccountReadAttestation — read-domain discipline", () => {
-  it("accepts a valid read-typed attestation", () => {
-    const v = verifyAccountReadAttestation(
+  it("accepts a valid read-typed attestation", async () => {
+    const v = await verifyAccountReadAttestation(
       buildReadAttestation(NOW),
       expectation(NOW),
     );
@@ -137,8 +137,8 @@ describe("verifyAccountReadAttestation — read-domain discipline", () => {
     if (v.ok) expect(v.iss).toBe(INSTANCE_ID);
   });
 
-  it("rejects an onboarding-typed envelope (captured-attestation replay)", () => {
-    const v = verifyAccountReadAttestation(
+  it("rejects an onboarding-typed envelope (captured-attestation replay)", async () => {
+    const v = await verifyAccountReadAttestation(
       buildReadAttestation(NOW, {
         contentType: ONBOARD_ATTESTATION_CONTENT_TYPE,
       }),
@@ -148,8 +148,8 @@ describe("verifyAccountReadAttestation — read-domain discipline", () => {
     if (!v.ok) expect(v.detail).toContain("content type");
   });
 
-  it("rejects a read-typed envelope on the onboarding verifier (reverse replay)", () => {
-    const v = verifyOnboardAttestation(
+  it("rejects a read-typed envelope on the onboarding verifier (reverse replay)", async () => {
+    const v = await verifyOnboardAttestation(
       buildReadAttestation(NOW),
       expectation(NOW),
     );
@@ -157,8 +157,8 @@ describe("verifyAccountReadAttestation — read-domain discipline", () => {
     if (!v.ok) expect(v.detail).toContain("content type");
   });
 
-  it("enforces the tighter read window ceiling (onboarding's hour is too wide)", () => {
-    const v = verifyAccountReadAttestation(
+  it("enforces the tighter read window ceiling (onboarding's hour is too wide)", async () => {
+    const v = await verifyAccountReadAttestation(
       buildReadAttestation(NOW, { iat: NOW - 60, exp: NOW - 60 + 3600 }),
       expectation(NOW),
     );
@@ -215,6 +215,7 @@ function stubUpstreams(
     body: RECEIVABLES_BODY,
   },
   bootstrap: string = bootstrapResultHex(),
+  opts: { getCodeFails?: boolean } = {},
 ): void {
   globalThis.fetch = vi.fn(async (input, init) => {
     const url = String(input instanceof Request ? input.url : input);
@@ -225,6 +226,18 @@ function stubUpstreams(
       });
     }
     const body = init?.body ? JSON.parse(String(init.body)) : {};
+    if (body.method === "eth_getCode") {
+      // Default: EOA root (no code) so KS256 verification stays on
+      // ecrecover; getCodeFails models a full RPC outage during the
+      // ERC-1271 code check.
+      if (opts.getCodeFails) {
+        return new Response("boom", { status: 503 });
+      }
+      return new Response(
+        JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0x" }),
+        { status: 200 },
+      );
+    }
     if (body.method === "eth_call") {
       const data = body.params?.[0]?.data as string | undefined;
       const result =
@@ -366,6 +379,23 @@ describe("GET /api/payments/accounts/{id}", () => {
     const res = await getAccount(
       requestEnv({ X402_SETTLEMENT_URL: undefined }),
       freshAuthHeader(),
+    );
+    expect(res.status).toBe(503);
+  });
+
+  it("503s (not 403) when the ERC-1271 code check has an RPC outage", async () => {
+    // plan-2607-09 R1: "could not ask the chain" is an availability outcome,
+    // matching the deployment gate's RPC-failure shape — never a verdict.
+    const addr = "d".repeat(40);
+    stubUpstreams(
+      { status: 200, body: RECEIVABLES_BODY },
+      bootstrapResultHex(COSE_ALG_KS256, KS256_ADDR_BYTES),
+      { getCodeFails: true },
+    );
+    const res = await getAccount(
+      requestEnv(),
+      freshAuthHeader({ signAlg: COSE_ALG_KS256, univocityAddr: addr }),
+      `eip155:${CHAIN}:0x${addr}`,
     );
     expect(res.status).toBe(503);
   });

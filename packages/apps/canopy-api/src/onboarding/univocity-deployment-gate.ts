@@ -1,9 +1,12 @@
 import { normalizeHexAddress } from "@forestrie/chain-rpc";
 import {
+  erc1271HooksForEnvChainId,
   isSupportedChainIdForEnv,
   rpcUrlsForEnvChainId,
   supportedChainIdsForEnv,
 } from "../env/supported-chains-for-env.js";
+import type { BootstrapKeyVerifyCapabilities } from "./onboard-attestation.js";
+import { COSE_ALG_KS256 } from "./univocity-identity-probe.js";
 import {
   readPositiveGateCache,
   writePositiveGateCache,
@@ -14,13 +17,41 @@ import type { UnivocityGateResult } from "./univocity-gate-result.js";
 
 export type { UnivocityGateEnv, UnivocityGateResult } from "./types.js";
 
-function rpcTimeoutMs(env: UnivocityGateEnv): number {
+export function rpcTimeoutMs(env: UnivocityGateEnv): number {
   const raw = env.ONBOARD_RPC_TIMEOUT_MS?.trim();
   if (raw) {
     const n = Number.parseInt(raw, 10);
     if (Number.isFinite(n) && n > 0) return n;
   }
   return 5000;
+}
+
+/**
+ * Verify capabilities for a gate-admitted `(alg, key)`: the ERC-1271 hook
+ * when RPC is configured for the binding chain. A KS256 root admitted via a
+ * warm gate cache can outlive a `SUPPORTED_CHAINS_RPC` change — warn loudly
+ * in that case, because a contract-account root will then 403 with a generic
+ * invalid-signature detail while EOA roots keep passing (plan-2607-09 C3).
+ */
+export function attestationVerifyCapabilities(
+  env: UnivocityGateEnv,
+  chainId: string,
+  bootstrapAlg: number,
+): BootstrapKeyVerifyCapabilities {
+  const erc1271 = erc1271HooksForEnvChainId(env, chainId, {
+    timeoutMs: rpcTimeoutMs(env),
+  });
+  if (!erc1271 && bootstrapAlg === COSE_ALG_KS256) {
+    console.warn(
+      JSON.stringify({
+        tag: "erc1271HooksMissing",
+        chainId,
+        detail:
+          "no RPC configured for chain; a contract-account KS256 root cannot verify (EOA recovery only)",
+      }),
+    );
+  }
+  return { erc1271 };
 }
 
 export async function verifyUnivocityDeployment(

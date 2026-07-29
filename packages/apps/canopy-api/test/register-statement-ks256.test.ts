@@ -2,7 +2,8 @@
  * KS256 register-statement: kid binding + verifyKs256CoseSign1 dispatch.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { Erc1271UnavailableError } from "@forestrie/chain-rpc";
 import { grantDataToBytes } from "../src/grant/grant-data.js";
 import { authLogBootstrapShapedFlags } from "../src/grant/grant-flags.js";
 import type { Grant } from "../src/grant/types.js";
@@ -83,6 +84,42 @@ describe("register-statement KS256", () => {
       address: grantAddress,
     });
     expect(ok).toBe(false);
+  });
+
+  describe("ERC-1271 unavailability (plan-2607-09 R1)", () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    function stubRpcDown(): void {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response("boom", { status: 503 })),
+      );
+    }
+
+    it("default: RPC outage collapses to fail-closed false", async () => {
+      stubRpcDown();
+      const sign1 = signKs256StatementForTest(statementPayload);
+      const ok = await verifyKs256CoseSign1(
+        sign1,
+        { kind: "KS256", alg: COSE_ALG_KS256, address: grantAddress },
+        { rpcUrls: ["https://rpc.down"] },
+      );
+      expect(ok).toBe(false);
+    });
+
+    it("throwOnUnavailable: RPC outage throws the typed error for a 503 boundary", async () => {
+      stubRpcDown();
+      const sign1 = signKs256StatementForTest(statementPayload);
+      await expect(
+        verifyKs256CoseSign1(
+          sign1,
+          { kind: "KS256", alg: COSE_ALG_KS256, address: grantAddress },
+          { rpcUrls: ["https://rpc.down"], throwOnUnavailable: true },
+        ),
+      ).rejects.toThrow(Erc1271UnavailableError);
+    });
   });
 
   it("golden: fixed payload produces stable sign1 and verifies", async () => {

@@ -25,7 +25,10 @@ import {
   adminJsonResponse,
   problemResponseToAdminJson,
 } from "../cbor-api/admin-json-response.js";
-import { verifyUnivocityDeployment } from "../onboarding/univocity-deployment-gate.js";
+import {
+  attestationVerifyCapabilities,
+  verifyUnivocityDeployment,
+} from "../onboarding/univocity-deployment-gate.js";
 import type { UnivocityGateEnv } from "../onboarding/univocity-gate-env.js";
 import {
   checkAccountReadRateLimit,
@@ -173,20 +176,32 @@ export async function handleAccountRead(
 
   const requestOrigin = new URL(request.url).origin;
   const audOverride = env.ONBOARD_ATTESTATION_AUD?.trim();
-  const verdict = verifyAccountReadAttestation(attestation, {
-    alg: gate.bootstrapAlg,
-    key: gate.bootstrapKey,
-    chainId,
-    univocityAddr: gate.univocityAddr,
-    acceptedAud: audOverride ? [audOverride, requestOrigin] : [requestOrigin],
-    nowSec: Math.floor(Date.now() / 1000),
-    maxWindowSec: maxWindowSec(env),
-  });
+  const verdict = await verifyAccountReadAttestation(
+    attestation,
+    {
+      alg: gate.bootstrapAlg,
+      key: gate.bootstrapKey,
+      chainId,
+      univocityAddr: gate.univocityAddr,
+      acceptedAud: audOverride ? [audOverride, requestOrigin] : [requestOrigin],
+      nowSec: Math.floor(Date.now() / 1000),
+      maxWindowSec: maxWindowSec(env),
+    },
+    // Safe 1x1 (Mode D, plan-2607-45): a contract-account bootstrap key
+    // validates the read attestation via ERC-1271; EOA roots are unaffected.
+    attestationVerifyCapabilities(env, chainId, gate.bootstrapAlg),
+  );
   if (!verdict.ok) {
+    // RPC outage is an availability outcome, not a verdict — 503 like the
+    // deployment gate's RPC-failure path (plan-2607-09 R1).
     return finish(
-      problemResponse(403, "Forbidden", "about:blank", {
-        detail: `attestation rejected: ${verdict.detail}`,
-      }),
+      verdict.unavailable
+        ? problemResponse(503, "Service Unavailable", "about:blank", {
+            detail: `attestation verification unavailable: ${verdict.detail}`,
+          })
+        : problemResponse(403, "Forbidden", "about:blank", {
+            detail: `attestation rejected: ${verdict.detail}`,
+          }),
     );
   }
 
