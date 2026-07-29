@@ -169,21 +169,57 @@ async function verifyKs256(
 }
 
 /**
+ * Environment-supplied capabilities a per-alg signature verifier may draw
+ * on. Each alg takes only what its trust anchor requires: the ES256 key is
+ * a self-contained public key, so its verifier uses none; the KS256 key is
+ * an ACCOUNT ADDRESS, which may be a contract, so its verifier resolves
+ * through `erc1271` when present. A future alg adds a row to
+ * {@link ALG_VERIFIERS} plus whatever capability it needs — the dispatch
+ * itself does not change.
+ */
+export interface BootstrapKeyVerifyCapabilities {
+  /** ERC-1271 resolution for address-anchored algs (contract accounts). */
+  erc1271?: Ks256VerifyHooks;
+}
+
+type BootstrapKeySignatureVerifier = (
+  sigStructure: Uint8Array,
+  signature: Uint8Array,
+  key: Uint8Array,
+  capabilities: BootstrapKeyVerifyCapabilities,
+) => Promise<boolean>;
+
+/** Chain `bootstrapAlg` → signature verifier; an unlisted alg never verifies. */
+const ALG_VERIFIERS: ReadonlyMap<number, BootstrapKeySignatureVerifier> =
+  new Map([
+    [
+      COSE_ALG_ES256,
+      async (sigStructure, signature, key) =>
+        verifyEs256(sigStructure, signature, key),
+    ],
+    [
+      COSE_ALG_KS256,
+      (sigStructure, signature, key, capabilities) =>
+        verifyKs256(sigStructure, signature, key, capabilities.erc1271),
+    ],
+  ]);
+
+/**
  * Verify a bootstrap-key-signed CWT envelope against chain-derived
  * expectations. `expectedContentType` is the domain separator: each protocol
  * that reuses the D8 pattern (onboarding, the FOR-497 account read) names its
  * own signed content type, so envelopes never verify across protocols.
  *
  * No clock reads — the caller supplies `nowSec` and the chain-probed
- * `(alg, key)` so tests can pin every branch. The only I/O is the optional
- * KS256 `hooks` (ERC-1271 over RPC) for contract-account roots; without
- * hooks the function stays pure.
+ * `(alg, key)` so tests can pin every branch. The only I/O is what
+ * `capabilities` carries (ERC-1271 over RPC for contract-account KS256
+ * roots); with an empty capabilities bag the function stays pure.
  */
 export async function verifyBootstrapKeyCwt(
   attestation: Uint8Array,
   expected: BootstrapKeyCwtExpectation,
   expectedContentType: string,
-  hooks?: Ks256VerifyHooks,
+  capabilities: BootstrapKeyVerifyCapabilities = {},
 ): Promise<BootstrapKeyCwtResult> {
   let parts: ReturnType<typeof decodeCoseSign1Parts>;
   try {
@@ -224,12 +260,15 @@ export async function verifyBootstrapKeyCwt(
     new Uint8Array(0),
     parts.payloadBytes,
   );
-  const signatureOk =
-    expected.alg === COSE_ALG_ES256
-      ? verifyEs256(sigStructure, parts.signature, expected.key)
-      : expected.alg === COSE_ALG_KS256
-        ? await verifyKs256(sigStructure, parts.signature, expected.key, hooks)
-        : false;
+  const verifySignature = ALG_VERIFIERS.get(expected.alg);
+  const signatureOk = verifySignature
+    ? await verifySignature(
+        sigStructure,
+        parts.signature,
+        expected.key,
+        capabilities,
+      )
+    : false;
   if (!signatureOk) {
     return { ok: false, detail: "attestation signature invalid" };
   }
@@ -303,12 +342,12 @@ export async function verifyBootstrapKeyCwt(
 export function verifyOnboardAttestation(
   attestation: Uint8Array,
   expected: BootstrapKeyCwtExpectation,
-  hooks?: Ks256VerifyHooks,
+  capabilities?: BootstrapKeyVerifyCapabilities,
 ): Promise<BootstrapKeyCwtResult> {
   return verifyBootstrapKeyCwt(
     attestation,
     expected,
     ONBOARD_ATTESTATION_CONTENT_TYPE,
-    hooks,
+    capabilities,
   );
 }

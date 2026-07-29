@@ -175,6 +175,17 @@ describe("verifyOnboardAttestation — per-alg vectors", () => {
     if (!v.ok) expect(v.detail).toContain("does not match chain bootstrapAlg");
   });
 
+  it("an alg with no verifier row never verifies", async () => {
+    // The strategy-table contract: a chain-declared alg outside ALG_VERIFIERS
+    // fails signature verification rather than falling into either branch.
+    const v = await verifyOnboardAttestation(
+      buildAttestation(COSE_ALG_ES256, { alg: -999 }),
+      expectation({ alg: -999 }),
+    );
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.detail).toContain("signature invalid");
+  });
+
   it("rejects a KS256 signature recovering to a different address", async () => {
     const v = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_KS256),
@@ -283,7 +294,7 @@ describe("verifyOnboardAttestation — contract-account roots (ERC-1271 hooks)",
     const v = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_KS256, { signature: CONTRACT_SIG }),
       expectation({ alg: COSE_ALG_KS256, key: CONTRACT_ADDR }),
-      hooksOf({}),
+      { erc1271: hooksOf({}) },
     );
     expect(v.ok).toBe(true);
   });
@@ -292,7 +303,7 @@ describe("verifyOnboardAttestation — contract-account roots (ERC-1271 hooks)",
     const v = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_KS256, { signature: CONTRACT_SIG }),
       expectation({ alg: COSE_ALG_KS256, key: CONTRACT_ADDR }),
-      hooksOf({ isValidSignature: async () => false }),
+      { erc1271: hooksOf({ isValidSignature: async () => false }) },
     );
     expect(v.ok).toBe(false);
   });
@@ -303,11 +314,13 @@ describe("verifyOnboardAttestation — contract-account roots (ERC-1271 hooks)",
     const v = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_KS256),
       expectation({ alg: COSE_ALG_KS256, key: KS256_ADDR }),
-      hooksOf({
-        hasContractCode: async () => {
-          throw new Error("rpc down");
-        },
-      }),
+      {
+        erc1271: hooksOf({
+          hasContractCode: async () => {
+            throw new Error("rpc down");
+          },
+        }),
+      },
     );
     expect(v.ok).toBe(false);
   });
@@ -316,11 +329,13 @@ describe("verifyOnboardAttestation — contract-account roots (ERC-1271 hooks)",
     const v = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_KS256, { signature: CONTRACT_SIG }),
       expectation({ alg: COSE_ALG_KS256, key: CONTRACT_ADDR }),
-      hooksOf({
-        isValidSignature: async () => {
-          throw new Error("rpc down");
-        },
-      }),
+      {
+        erc1271: hooksOf({
+          isValidSignature: async () => {
+            throw new Error("rpc down");
+          },
+        }),
+      },
     );
     expect(v.ok).toBe(false);
   });
@@ -329,7 +344,7 @@ describe("verifyOnboardAttestation — contract-account roots (ERC-1271 hooks)",
     const v = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_KS256),
       expectation({ alg: COSE_ALG_KS256, key: KS256_ADDR }),
-      hooksOf({ hasContractCode: async () => false }),
+      { erc1271: hooksOf({ hasContractCode: async () => false }) },
     );
     expect(v.ok).toBe(true);
   });

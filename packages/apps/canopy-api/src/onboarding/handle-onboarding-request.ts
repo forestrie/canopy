@@ -408,10 +408,13 @@ async function handleCreateRequest(
             : DEFAULT_ATTESTATION_MAX_WINDOW_SEC,
       },
       // Safe 1x1 (Mode D, plan-2607-45): the bootstrap key may be a contract
-      // account — ERC-1271 hooks let it validate; EOA roots are unaffected.
-      erc1271HooksForEnvChainId(env, chainId.trim(), {
-        timeoutMs: rpcTimeoutMs(env),
-      }),
+      // account — the ERC-1271 capability lets it validate; EOA roots are
+      // unaffected.
+      {
+        erc1271: erc1271HooksForEnvChainId(env, chainId.trim(), {
+          timeoutMs: rpcTimeoutMs(env),
+        }),
+      },
     );
     if (!verdict.ok) {
       return attachCors(

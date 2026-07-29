@@ -13,11 +13,11 @@
  * interactive, and the key is at hand when the request is made.
  */
 
-import type { Ks256VerifyHooks } from "@forestrie/delegation-cose";
 import {
   verifyBootstrapKeyCwt,
   type BootstrapKeyCwtExpectation,
   type BootstrapKeyCwtResult,
+  type BootstrapKeyVerifyCapabilities,
 } from "../onboarding/onboard-attestation.js";
 
 /** Signed content type — the domain separator for the read envelope. */
@@ -34,7 +34,7 @@ export const DEFAULT_ACCOUNT_READ_MAX_WINDOW_SEC = 300;
 export function verifyAccountReadAttestation(
   attestation: Uint8Array,
   expected: BootstrapKeyCwtExpectation,
-  hooks?: Ks256VerifyHooks,
+  capabilities?: BootstrapKeyVerifyCapabilities,
 ): Promise<BootstrapKeyCwtResult> {
   return verifyBootstrapKeyCwt(
     attestation,
@@ -43,6 +43,6 @@ export function verifyAccountReadAttestation(
       ...expected,
     },
     ACCOUNT_READ_ATTESTATION_CONTENT_TYPE,
-    hooks,
+    capabilities,
   );
 }

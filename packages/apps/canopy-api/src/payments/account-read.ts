@@ -190,7 +190,11 @@ export async function handleAccountRead(
     },
     // Safe 1x1 (Mode D, plan-2607-45): a contract-account bootstrap key
     // validates the read attestation via ERC-1271; EOA roots are unaffected.
-    erc1271HooksForEnvChainId(env, chainId, { timeoutMs: rpcTimeoutMs(env) }),
+    {
+      erc1271: erc1271HooksForEnvChainId(env, chainId, {
+        timeoutMs: rpcTimeoutMs(env),
+      }),
+    },
   );
   if (!verdict.ok) {
     return finish(
