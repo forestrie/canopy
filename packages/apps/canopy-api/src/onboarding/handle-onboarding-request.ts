@@ -51,9 +51,8 @@ import {
   writeOnboardRequest,
   type OnboardRequestStoreEnv,
 } from "./onboard-request-store.js";
-import { erc1271HooksForEnvChainId } from "../env/supported-chains-for-env.js";
 import {
-  rpcTimeoutMs,
+  attestationVerifyCapabilities,
   verifyUnivocityDeployment,
 } from "./univocity-deployment-gate.js";
 import type { UnivocityGateEnv } from "./univocity-deployment-gate.js";
@@ -410,17 +409,19 @@ async function handleCreateRequest(
       // Safe 1x1 (Mode D, plan-2607-45): the bootstrap key may be a contract
       // account — the ERC-1271 capability lets it validate; EOA roots are
       // unaffected.
-      {
-        erc1271: erc1271HooksForEnvChainId(env, chainId.trim(), {
-          timeoutMs: rpcTimeoutMs(env),
-        }),
-      },
+      attestationVerifyCapabilities(env, chainId.trim(), gate.bootstrapAlg),
     );
     if (!verdict.ok) {
+      // RPC outage is an availability outcome, not a verdict — 503 like the
+      // deployment gate's RPC-failure path (plan-2607-09 R1).
       return attachCors(
-        problemResponse(403, "Forbidden", "about:blank", {
-          detail: `attestation rejected: ${verdict.detail}`,
-        }),
+        verdict.unavailable
+          ? problemResponse(503, "Service Unavailable", "about:blank", {
+              detail: `attestation verification unavailable: ${verdict.detail}`,
+            })
+          : problemResponse(403, "Forbidden", "about:blank", {
+              detail: `attestation rejected: ${verdict.detail}`,
+            }),
         corsHeaders,
       );
     }

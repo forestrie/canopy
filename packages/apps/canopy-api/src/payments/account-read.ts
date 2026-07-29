@@ -25,9 +25,8 @@ import {
   adminJsonResponse,
   problemResponseToAdminJson,
 } from "../cbor-api/admin-json-response.js";
-import { erc1271HooksForEnvChainId } from "../env/supported-chains-for-env.js";
 import {
-  rpcTimeoutMs,
+  attestationVerifyCapabilities,
   verifyUnivocityDeployment,
 } from "../onboarding/univocity-deployment-gate.js";
 import type { UnivocityGateEnv } from "../onboarding/univocity-gate-env.js";
@@ -190,17 +189,19 @@ export async function handleAccountRead(
     },
     // Safe 1x1 (Mode D, plan-2607-45): a contract-account bootstrap key
     // validates the read attestation via ERC-1271; EOA roots are unaffected.
-    {
-      erc1271: erc1271HooksForEnvChainId(env, chainId, {
-        timeoutMs: rpcTimeoutMs(env),
-      }),
-    },
+    attestationVerifyCapabilities(env, chainId, gate.bootstrapAlg),
   );
   if (!verdict.ok) {
+    // RPC outage is an availability outcome, not a verdict — 503 like the
+    // deployment gate's RPC-failure path (plan-2607-09 R1).
     return finish(
-      problemResponse(403, "Forbidden", "about:blank", {
-        detail: `attestation rejected: ${verdict.detail}`,
-      }),
+      verdict.unavailable
+        ? problemResponse(503, "Service Unavailable", "about:blank", {
+            detail: `attestation verification unavailable: ${verdict.detail}`,
+          })
+        : problemResponse(403, "Forbidden", "about:blank", {
+            detail: `attestation rejected: ${verdict.detail}`,
+          }),
     );
   }
 

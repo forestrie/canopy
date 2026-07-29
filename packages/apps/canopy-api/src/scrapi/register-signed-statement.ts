@@ -42,6 +42,7 @@ import { verifyCoseSign1 } from "@forestrie/encoding";
 import { grantDataToBytes } from "../grant/grant-data.js";
 import type { ParsedKs256RootKey } from "../grant/parsed-ks256-root-key.js";
 import { verifyKs256CoseSign1, COSE_ALG_KS256 } from "../grant/ks256-verify.js";
+import { Erc1271UnavailableError } from "@forestrie/chain-rpc";
 import {
   getSignerFromCoseSign1,
   GrantAuthErrors,
@@ -248,15 +249,25 @@ export async function registerSignedStatement(
       const ks256RpcUrls = ks256ChainId
         ? (rpcUrlsForEnvChainId(supportedChainsEnv, ks256ChainId) ?? undefined)
         : undefined;
-      const statementSigOk = await verifyKs256CoseSign1(
-        statementData,
-        ks256Root,
-        {
+      let statementSigOk: boolean;
+      try {
+        statementSigOk = await verifyKs256CoseSign1(statementData, ks256Root, {
           rpcUrls: ks256RpcUrls,
           logFailures: true,
           logPrefix: "register-statement-ks256",
-        },
-      );
+          throwOnUnavailable: true,
+        });
+      } catch (error) {
+        // RPC outage is an availability outcome, not a verification verdict
+        // — clients must see a retryable 503, not invalid-statement
+        // (plan-2607-09 R1).
+        if (error instanceof Erc1271UnavailableError) {
+          return ServerErrors.serviceUnavailable(
+            "Statement signature verification unavailable: ERC-1271 RPC failed.",
+          );
+        }
+        throw error;
+      }
       if (!statementSigOk) {
         return ClientErrors.invalidStatement(
           "Statement COSE signature verification failed.",

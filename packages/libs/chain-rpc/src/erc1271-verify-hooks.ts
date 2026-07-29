@@ -17,6 +17,23 @@ import {
 } from "./eth-rpc.js";
 import type { EthRpcOptions } from "./eth-rpc.js";
 
+/**
+ * Every RPC endpoint failed while resolving an ERC-1271 question. Callers
+ * fail closed on this, but SHOULD surface it as an availability outcome
+ * (503-shaped), not a verification verdict — "could not ask the contract"
+ * is not "the contract said no".
+ */
+export class Erc1271UnavailableError extends Error {
+  constructor(operation: string, cause: unknown) {
+    super(
+      `ERC-1271 ${operation} unavailable: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+    );
+    this.name = "Erc1271UnavailableError";
+  }
+}
+
 /** `isValidSignature(bytes32,bytes)` selector. */
 const ERC1271_SELECTOR = "1626ba7e";
 
@@ -91,19 +108,31 @@ export function createErc1271VerifyHooks(
 ): Erc1271VerifyHooks {
   return {
     async hasContractCode(address: Uint8Array): Promise<boolean> {
-      return hasContractCodeAt(rpcUrls, bytesToHex(address), options);
+      try {
+        return await hasContractCodeAt(rpcUrls, bytesToHex(address), options);
+      } catch (error) {
+        throw new Erc1271UnavailableError("eth_getCode", error);
+      }
     },
     async isValidSignature(
       address: Uint8Array,
       hash: Uint8Array,
       signature: Uint8Array,
     ): Promise<boolean> {
-      const result = await ethCallWithFailover(
-        rpcUrls,
-        `0x${bytesToHex(address)}`,
-        encodeIsValidSignatureCall(hash, signature),
-        options,
-      );
+      // Encoding failures (bad hash length) are caller bugs, not
+      // availability — keep them outside the unavailable wrapping.
+      const data = encodeIsValidSignatureCall(hash, signature);
+      let result: unknown;
+      try {
+        result = await ethCallWithFailover(
+          rpcUrls,
+          `0x${bytesToHex(address)}`,
+          data,
+          options,
+        );
+      } catch (error) {
+        throw new Erc1271UnavailableError("isValidSignature eth_call", error);
+      }
       return (
         typeof result === "string" &&
         result.toLowerCase().startsWith(ERC1271_MAGIC)

@@ -13,6 +13,7 @@ import {
 } from "@forestrie/encoding";
 import { env } from "cloudflare:test";
 import { describe, expect, it, vi, afterEach } from "vitest";
+import { Erc1271UnavailableError } from "@forestrie/chain-rpc";
 import worker from "../src/index";
 import type { Env } from "../src/index";
 import {
@@ -347,6 +348,34 @@ describe("verifyOnboardAttestation — contract-account roots (ERC-1271 hooks)",
       { erc1271: hooksOf({ hasContractCode: async () => false }) },
     );
     expect(v.ok).toBe(true);
+  });
+
+  it("RPC unavailability is an availability outcome, not a verdict", async () => {
+    // The typed error surfaces as { unavailable: true } so boundaries answer
+    // 503; a plain hook error (previous tests) stays a plain rejection.
+    const v = await verifyOnboardAttestation(
+      buildAttestation(COSE_ALG_KS256, { signature: CONTRACT_SIG }),
+      expectation({ alg: COSE_ALG_KS256, key: CONTRACT_ADDR }),
+      {
+        erc1271: hooksOf({
+          hasContractCode: async () => {
+            throw new Erc1271UnavailableError("eth_getCode", new Error("down"));
+          },
+        }),
+      },
+    );
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.unavailable).toBe(true);
+  });
+
+  it("a plain verifier rejection is NOT marked unavailable", async () => {
+    const v = await verifyOnboardAttestation(
+      buildAttestation(COSE_ALG_KS256, { signature: CONTRACT_SIG }),
+      expectation({ alg: COSE_ALG_KS256, key: CONTRACT_ADDR }),
+      { erc1271: hooksOf({ isValidSignature: async () => false }) },
+    );
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.unavailable).toBeUndefined();
   });
 });
 

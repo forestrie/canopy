@@ -38,6 +38,7 @@ import {
   decodeCoseSign1Parts,
   type Ks256VerifyHooks,
 } from "@forestrie/delegation-cose";
+import { Erc1271UnavailableError } from "@forestrie/chain-rpc";
 import {
   decodeCborDeterministic,
   encodeSigStructure,
@@ -84,7 +85,18 @@ export interface BootstrapKeyCwtExpectation {
 
 export type BootstrapKeyCwtResult =
   | { ok: true; iss: string; aud: string; iat: number; exp: number }
-  | { ok: false; detail: string };
+  | {
+      ok: false;
+      detail: string;
+      /**
+       * Verification could not be performed (every RPC endpoint failed while
+       * resolving an ERC-1271 question). Still fail-closed, but boundaries
+       * SHOULD map this to a 503-shaped response — matching the deployment
+       * gate's RPC-failure handling — rather than a 403 verdict
+       * (plan-2607-09 R1).
+       */
+      unavailable?: true;
+    };
 
 function asMap(value: unknown): Map<unknown, unknown> | null {
   return value instanceof Map ? value : null;
@@ -137,12 +149,15 @@ async function verifyKs256(
     // EOA length rule does not apply (a Safe owner signature is a different
     // shape). Fail closed — when the address holds code, or the code check
     // itself fails, an RPC error must reject rather than fall back to
-    // ecrecover.
+    // ecrecover. RPC unavailability propagates so the boundary can answer
+    // 503 instead of a 403 verdict; any other hook error stays a plain
+    // rejection.
     try {
       if (await hooks.hasContractCode(keyAddress)) {
         return await hooks.isValidSignature(keyAddress, hash, signature);
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof Erc1271UnavailableError) throw error;
       return false;
     }
   }
@@ -261,14 +276,22 @@ export async function verifyBootstrapKeyCwt(
     parts.payloadBytes,
   );
   const verifySignature = ALG_VERIFIERS.get(expected.alg);
-  const signatureOk = verifySignature
-    ? await verifySignature(
-        sigStructure,
-        parts.signature,
-        expected.key,
-        capabilities,
-      )
-    : false;
+  let signatureOk: boolean;
+  try {
+    signatureOk = verifySignature
+      ? await verifySignature(
+          sigStructure,
+          parts.signature,
+          expected.key,
+          capabilities,
+        )
+      : false;
+  } catch (error) {
+    if (error instanceof Erc1271UnavailableError) {
+      return { ok: false, unavailable: true, detail: error.message };
+    }
+    throw error;
+  }
   if (!signatureOk) {
     return { ok: false, detail: "attestation signature invalid" };
   }

@@ -215,6 +215,7 @@ function stubUpstreams(
     body: RECEIVABLES_BODY,
   },
   bootstrap: string = bootstrapResultHex(),
+  opts: { getCodeFails?: boolean } = {},
 ): void {
   globalThis.fetch = vi.fn(async (input, init) => {
     const url = String(input instanceof Request ? input.url : input);
@@ -226,7 +227,12 @@ function stubUpstreams(
     }
     const body = init?.body ? JSON.parse(String(init.body)) : {};
     if (body.method === "eth_getCode") {
-      // EOA root: no code, so KS256 verification stays on ecrecover.
+      // Default: EOA root (no code) so KS256 verification stays on
+      // ecrecover; getCodeFails models a full RPC outage during the
+      // ERC-1271 code check.
+      if (opts.getCodeFails) {
+        return new Response("boom", { status: 503 });
+      }
       return new Response(
         JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0x" }),
         { status: 200 },
@@ -373,6 +379,23 @@ describe("GET /api/payments/accounts/{id}", () => {
     const res = await getAccount(
       requestEnv({ X402_SETTLEMENT_URL: undefined }),
       freshAuthHeader(),
+    );
+    expect(res.status).toBe(503);
+  });
+
+  it("503s (not 403) when the ERC-1271 code check has an RPC outage", async () => {
+    // plan-2607-09 R1: "could not ask the chain" is an availability outcome,
+    // matching the deployment gate's RPC-failure shape — never a verdict.
+    const addr = "d".repeat(40);
+    stubUpstreams(
+      { status: 200, body: RECEIVABLES_BODY },
+      bootstrapResultHex(COSE_ALG_KS256, KS256_ADDR_BYTES),
+      { getCodeFails: true },
+    );
+    const res = await getAccount(
+      requestEnv(),
+      freshAuthHeader({ signAlg: COSE_ALG_KS256, univocityAddr: addr }),
+      `eip155:${CHAIN}:0x${addr}`,
     );
     expect(res.status).toBe(503);
   });

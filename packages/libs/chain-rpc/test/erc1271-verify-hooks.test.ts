@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createErc1271VerifyHooks,
   encodeIsValidSignatureCall,
+  Erc1271UnavailableError,
 } from "../src/erc1271-verify-hooks.js";
 
 const ADDRESS = new Uint8Array(20).fill(0xaa);
@@ -78,7 +79,7 @@ describe("createErc1271VerifyHooks", () => {
     const hooks = createErc1271VerifyHooks(["https://rpc"]);
     await expect(
       hooks.isValidSignature(ADDRESS, HASH, new Uint8Array(65)),
-    ).rejects.toThrow("All RPC endpoints failed");
+    ).rejects.toThrow(Erc1271UnavailableError);
   });
 
   it("reports contract code presence and propagates getCode failure", async () => {
@@ -94,7 +95,7 @@ describe("createErc1271VerifyHooks", () => {
       async () => new Response("boom", { status: 500 }),
     );
     await expect(hooks.hasContractCode(ADDRESS)).rejects.toThrow(
-      "All RPC endpoints failed",
+      Erc1271UnavailableError,
     );
   });
 });

@@ -10,7 +10,10 @@ import {
   decodeCoseSign1,
   encodeSigStructure,
 } from "@forestrie/encoding";
-import { createErc1271VerifyHooks } from "@forestrie/chain-rpc";
+import {
+  createErc1271VerifyHooks,
+  Erc1271UnavailableError,
+} from "@forestrie/chain-rpc";
 import type { ParsedKs256RootKey } from "./parsed-ks256-root-key.js";
 
 export interface Ks256VerifyOptions {
@@ -18,6 +21,14 @@ export interface Ks256VerifyOptions {
   rpcUrls?: string[];
   logFailures?: boolean;
   logPrefix?: string;
+  /**
+   * Rethrow {@link Erc1271UnavailableError} (after logging) instead of
+   * collapsing it to `false`, so the boundary can answer 503 instead of a
+   * verification verdict (plan-2607-09 R1). Default false: every existing
+   * chain (delegation-verify, receipt resolution, child-log prepare) keeps
+   * logged fail-closed `false`.
+   */
+  throwOnUnavailable?: boolean;
 }
 
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
@@ -102,6 +113,9 @@ export async function verifyKs256CoseSign1(
             error: e instanceof Error ? e.message : String(e),
           }),
         );
+      }
+      if (opts?.throwOnUnavailable && e instanceof Erc1271UnavailableError) {
+        throw e;
       }
       return false;
     }

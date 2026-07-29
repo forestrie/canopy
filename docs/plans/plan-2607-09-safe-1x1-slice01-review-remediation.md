@@ -1,6 +1,8 @@
 # plan-2607-09 — Safe 1x1 slice 01 review remediation
 
-**Status:** DRAFT
+**Status:** IMPLEMENTED (2026-07-29 — R1 + C3 applied on the PR branch; C2
+applied as observable-swallow, full convergence deferred to the ADR-0010
+migration)
 **Date:** 2026-07-29
 **Related:** devdocs plan-2607-45 slice 01, FOR-500, canopy#200 (branch
 `mandate-1`), review via forestrie-agents `review-changes`.
@@ -52,11 +54,20 @@ coordinator padded-magic fix, onboarding CORS regression suite.
   roots).
 - Branch: current stack (canopy#200 follow-up commit or immediate successor).
 
-### Deferred (Low)
+### Applied (2026-07-29, on the PR branch)
 
-- C2: coordinator convergence — fold into the ADR-0010 `KS256_RPC_URL` →
-  supported-chains migration follow-on.
-- C3: when hooks are absent and the KS256 key has code (cheap to detect only
-  when hooks exist — so instead: emit a structured warn from the call sites
-  when `erc1271HooksForEnvChainId` returns undefined for a chain the gate
-  admitted via cache).
+- **R1**: `Erc1271UnavailableError` thrown by the chain-rpc factory;
+  `BootstrapKeyCwtResult` gains `unavailable: true`; onboarding create and
+  account read map it to 503; the grant verifier gains an opt-in
+  `throwOnUnavailable` (only `register-signed-statement` opts in → 503;
+  delegation-verify / receipt-resolution / child-log chains keep logged
+  fail-closed `false` byte-for-byte — deliberate blast-radius containment).
+  Tests: verifier-level unavailable vs plain-rejection distinction,
+  account-read route 503, grant seam default-vs-opt-in.
+- **C2 (partial)**: coordinator hooks now log every swallowed RPC error
+  (`ks256RpcVerifyHooksFailure`); behavior unchanged. Full fail-closed
+  convergence stays with the ADR-0010 `KS256_RPC_URL` → supported-chains
+  migration.
+- **C3**: shared `attestationVerifyCapabilities` helper warns
+  (`erc1271HooksMissing`) when a KS256 root is gate-admitted for a chain
+  with no RPC configured.

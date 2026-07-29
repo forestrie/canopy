@@ -11,12 +11,24 @@
  * be matched as a right-zero-padded word: `eth_call` returns the `bytes4`
  * ABI-encoded to 32 bytes, so strict equality against `0x1626ba7e` would
  * reject every genuine contract signature (e.g. a Safe root). RPC errors
- * are swallowed to `false` here, preserving this worker's existing
- * fail-to-EOA-branch behavior.
+ * are swallowed to `false` here (logged, never silent), preserving this
+ * worker's existing fail-to-EOA-branch behavior; converging on canopy-api's
+ * strict fail-closed shape rides the ADR-0010 `KS256_RPC_URL` →
+ * supported-chains migration (plan-2607-09 C2, FOR-504 neighborhood).
  */
 
 import { createErc1271VerifyHooks } from "@forestrie/chain-rpc";
 import type { Ks256VerifyHooks } from "@forestrie/delegation-cose";
+
+function warnSwallowed(operation: string, error: unknown): void {
+  console.warn(
+    JSON.stringify({
+      tag: "ks256RpcVerifyHooksFailure",
+      operation,
+      error: error instanceof Error ? error.message : String(error),
+    }),
+  );
+}
 
 /**
  * Build ERC-1271 hooks from a JSON-RPC URL (coordinator worker).
@@ -30,7 +42,8 @@ export function createKs256RpcVerifyHooks(rpcUrl: string): Ks256VerifyHooks {
     async hasContractCode(address: Uint8Array): Promise<boolean> {
       try {
         return await hooks.hasContractCode(address);
-      } catch {
+      } catch (error) {
+        warnSwallowed("eth_getCode", error);
         return false;
       }
     },
@@ -41,7 +54,8 @@ export function createKs256RpcVerifyHooks(rpcUrl: string): Ks256VerifyHooks {
     ): Promise<boolean> {
       try {
         return await hooks.isValidSignature(address, hash, signature);
-      } catch {
+      } catch (error) {
+        warnSwallowed("isValidSignature", error);
         return false;
       }
     },
