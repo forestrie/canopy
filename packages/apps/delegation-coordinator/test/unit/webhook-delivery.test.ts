@@ -10,6 +10,8 @@ import {
 import { requestKeyFor } from "../../src/webhook/request-key.js";
 import type { DelegationRequiredEvent } from "../../src/types/delegation-required-event.js";
 import { fetchWithDoRetry } from "./fetch-with-do-retry.js";
+import { testDelegatedCoseKey } from "./byok-material-fixture.js";
+import { delegateKeyEntryWithVoucher } from "./registrar-voucher-fixture.js";
 import {
   mintTestSessionToken,
   sessionHeaders,
@@ -18,6 +20,15 @@ import {
 const TEST_TOKEN = "test-coordinator-token";
 const WEBHOOK_ORIGIN = "https://hooks.example.test";
 const WEBHOOK_PATH = "/delegation-required";
+const FAR_FUTURE = 4_102_444_800; // 2100-01-01
+
+/** Poll until `cond` holds — fixed sleeps race waitUntil-driven delivery. */
+async function waitFor(cond: () => boolean, timeoutMs = 2_000): Promise<void> {
+  const start = Date.now();
+  while (!cond() && Date.now() - start < timeoutMs) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
 
 function authHeaders(extra?: HeadersInit): HeadersInit {
   return {
@@ -308,6 +319,127 @@ describe("webhook delivery", () => {
       expect(
         pending.entries.some((e) => e.mmrStart === 4 && e.mmrEnd === 11),
       ).toBe(true);
+
+      // Positive control, same log + same interceptor: flip the route back to
+      // http and the very same demand path DOES deliver — proving the
+      // suppression assert above cannot pass vacuously (e.g. enqueue never
+      // running or the interceptor being mis-wired).
+      const httpRes = await fetchWithDoRetry(
+        `http://localhost/api/logs/${logUuid}/signing-route`,
+        {
+          method: "POST",
+          headers: sessionHeaders(routeToken, {
+            "Content-Type": "application/json",
+          }),
+          body: JSON.stringify({ mode: "http" }),
+        },
+      );
+      expect(httpRes.status).toBe(200);
+
+      const controlMiss = await postIssue({
+        logHex32,
+        mmrStart: 5,
+        mmrEnd: 12,
+        delegatedPublicKey: delegatedKey(10),
+      });
+      expect(controlMiss.status).toBe(202);
+      await waitFor(() => delivered);
+      expect(delivered).toBe(true);
+    } finally {
+      fetchMock.deactivate();
+    }
+  });
+
+  // H4 genesis PUSH suppression: setting a signing route fires the standing
+  // delegation webhook when a standing delegate key exists — but never for a
+  // wallet route, whose root signs interactively (Safe 1x1 Mode D, FOR-504).
+  it("H4 standing push: wallet route stays quiet, http route fires", async () => {
+    fetchMock.activate();
+    fetchMock.disableNetConnect();
+    try {
+      const logUuid = randomUUID();
+      const logHex32 = normalizeLogIdToHex32(logUuid);
+      // Own path: earlier tests leave persist()ed interceptors on
+      // WEBHOOK_PATH whose closures would swallow this test's deliveries.
+      const h4Path = "/delegation-required-h4";
+      const webhookUrl = `${WEBHOOK_ORIGIN}${h4Path}`;
+
+      await registerWebhook(logUuid, webhookUrl);
+
+      // A standing delegate key is registered BEFORE any route exists — the
+      // route-set trigger is the only push candidate in this test.
+      const keysRes = await fetchWithDoRetry(
+        "http://localhost/api/sealer/delegate-keys",
+        {
+          method: "POST",
+          headers: authHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({
+            sealerId: "sealer-h4",
+            keys: [
+              await delegateKeyEntryWithVoucher({
+                sealerId: "sealer-h4",
+                publicKey: testDelegatedCoseKey(77),
+                epoch: 2,
+                notAfter: FAR_FUTURE,
+              }),
+            ],
+          }),
+        },
+      );
+      expect(keysRes.status).toBe(200);
+
+      let deliveries = 0;
+      let lastBody = "";
+      fetchMock
+        .get(WEBHOOK_ORIGIN)
+        .intercept({ path: h4Path, method: "POST" })
+        .reply(200, (opts) => {
+          deliveries += 1;
+          lastBody = opts.body as string;
+          return "ok";
+        })
+        .persist();
+
+      const routeToken = mintTestSessionToken({
+        authLogIdHex32: logHex32,
+        scopes: ["logs:signing-route:write"],
+      });
+      const walletRes = await fetchWithDoRetry(
+        `http://localhost/api/logs/${logUuid}/signing-route`,
+        {
+          method: "POST",
+          headers: sessionHeaders(routeToken, {
+            "Content-Type": "application/json",
+          }),
+          body: JSON.stringify({ mode: "wallet" }),
+        },
+      );
+      expect(walletRes.status).toBe(200);
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(deliveries).toBe(0);
+
+      // Positive control: the http route's H4 push fires for the same
+      // standing key, over the window-less [0,0] range.
+      const httpRes = await fetchWithDoRetry(
+        `http://localhost/api/logs/${logUuid}/signing-route`,
+        {
+          method: "POST",
+          headers: sessionHeaders(routeToken, {
+            "Content-Type": "application/json",
+          }),
+          body: JSON.stringify({ mode: "http" }),
+        },
+      );
+      expect(httpRes.status).toBe(200);
+
+      await waitFor(() => deliveries > 0);
+      expect(deliveries).toBe(1);
+      const event = JSON.parse(lastBody) as DelegationRequiredEvent;
+      expect(event.type).toBe("delegation.required");
+      expect(event.logId).toBe(logHex32);
+      expect(event.mmrStart).toBe(0);
+      expect(event.mmrEnd).toBe(0);
     } finally {
       fetchMock.deactivate();
     }
