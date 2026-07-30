@@ -111,7 +111,9 @@ export async function verifyUnivocityDeployment(
     if (!probe.ok) {
       return {
         ok: false,
-        status: 422,
+        // RPC unavailability is 503, never a verdict; decode-level
+        // rejections stay 422 (plan-2607-46 slice 01).
+        status: probe.unavailable ? 503 : 422,
         detail: probe.detail,
       };
     }

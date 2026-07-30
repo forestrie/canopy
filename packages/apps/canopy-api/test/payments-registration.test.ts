@@ -20,7 +20,10 @@ import {
   reserveUnivocityInstance,
   setUnivocityInstanceRegistrationBlock,
 } from "../src/payments/instance-registry.js";
-import { validGenesisV2Es256CborMap } from "./helpers/genesis-v2-body.js";
+import {
+  seedGenesisChainIdentity,
+  validGenesisV2Es256CborMap,
+} from "./helpers/genesis-v2-body.js";
 
 const poolEnv = env as unknown as Env;
 const OPS = "vitest-ops-admin-token";
@@ -145,6 +148,7 @@ describe("genesis onboard-token auth", () => {
       chainBinding: { chainId: "84532", univocityAddr: "42".repeat(20) },
     });
     const logId = crypto.randomUUID();
+    await seedGenesisChainIdentity(poolEnv, validGenesisV2Es256CborMap());
     const res = await worker.fetch(
       new Request(`http://localhost/api/forest/${logId}/genesis`, {
         method: "POST",
@@ -179,6 +183,12 @@ describe("genesis onboard-token auth", () => {
       chainBinding: { chainId: "84532", univocityAddr: "51".repeat(20) },
     });
     const logId = crypto.randomUUID();
+    await seedGenesisChainIdentity(
+      poolEnv,
+      validGenesisV2Es256CborMap({
+        univocityAddr: new Uint8Array(20).fill(0x51),
+      }),
+    );
     const res = await worker.fetch(
       new Request(`http://localhost/api/forest/${logId}/genesis`, {
         method: "POST",
@@ -212,6 +222,10 @@ describe("genesis onboard-token auth", () => {
       chainBinding: { chainId: "84532", univocityAddr: "52".repeat(20) },
     });
     const firstRoot = crypto.randomUUID();
+    await seedGenesisChainIdentity(
+      poolEnv,
+      validGenesisV2Es256CborMap({ univocityAddr: addr }),
+    );
     const firstRes = await worker.fetch(
       new Request(`http://localhost/api/forest/${firstRoot}/genesis`, {
         method: "POST",
@@ -232,6 +246,10 @@ describe("genesis onboard-token auth", () => {
       chainBinding: { chainId: "84532", univocityAddr: "52".repeat(20) },
     });
     const secondRoot = crypto.randomUUID();
+    await seedGenesisChainIdentity(
+      poolEnv,
+      validGenesisV2Es256CborMap({ univocityAddr: addr }),
+    );
     const secondRes = await worker.fetch(
       new Request(`http://localhost/api/forest/${secondRoot}/genesis`, {
         method: "POST",
@@ -275,6 +293,10 @@ describe("genesis onboard-token auth", () => {
       `eip155:84532:0x${"52".repeat(20)}`,
     );
     expect(released?.r).toBe(firstRoot);
+    await seedGenesisChainIdentity(
+      poolEnv,
+      validGenesisV2Es256CborMap({ univocityAddr: addr }),
+    );
     const retry = await worker.fetch(
       new Request(`http://localhost/api/forest/${secondRoot}/genesis`, {
         method: "POST",
@@ -548,6 +570,7 @@ describe("genesis onboard-token auth", () => {
         chainBinding: { chainId: "84532", univocityAddr: "42".repeat(20) },
       });
       const logId = crypto.randomUUID();
+      await seedGenesisChainIdentity(poolEnv, validGenesisV2Es256CborMap());
       const res = await worker.fetch(
         new Request(`http://localhost/api/forest/${logId}/genesis`, {
           method: "POST",
@@ -606,6 +629,7 @@ describe("genesis onboard-token auth", () => {
 
   it("rejects genesis POST without auth", async () => {
     const logId = crypto.randomUUID();
+    await seedGenesisChainIdentity(poolEnv, validGenesisV2Es256CborMap());
     const res = await worker.fetch(
       new Request(`http://localhost/api/forest/${logId}/genesis`, {
         method: "POST",
@@ -649,6 +673,7 @@ describe("genesis endorsement-grant auth (retired, ADR-0059 slice 02)", () => {
       kid,
     );
 
+    await seedGenesisChainIdentity(poolEnv, validGenesisV2Es256CborMap());
     const res = await worker.fetch(
       new Request(`http://localhost/api/forest/${childRoot}/genesis`, {
         method: "POST",

@@ -9,7 +9,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import type { Env } from "../src/index";
 import { mintOnboardToken } from "../src/payments/onboard-token-store.js";
-import { validGenesisV2Es256CborMap } from "./helpers/genesis-v2-body.js";
+import {
+  seedGenesisChainIdentity,
+  validGenesisV2Es256CborMap,
+} from "./helpers/genesis-v2-body.js";
 import { expectAdminJsonProblem } from "./helpers/admin-json.js";
 
 const poolEnv = env as unknown as Env;
@@ -48,6 +51,7 @@ async function registerPaymentAuthoritativeForest(): Promise<string> {
     chainBinding: { chainId: "84532", univocityAddr: "42".repeat(20) },
   });
   const logId = crypto.randomUUID();
+  await seedGenesisChainIdentity(poolEnv, validGenesisV2Es256CborMap());
   const res = await worker.fetch(
     new Request(`http://localhost/api/forest/${logId}/genesis`, {
       method: "POST",

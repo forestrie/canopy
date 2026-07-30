@@ -42,7 +42,10 @@ import {
 } from "../src/grant/log-id-wire.js";
 import worker from "../src/index";
 import type { Env } from "../src/index";
-import { validGenesisV2Es256CborMap } from "./helpers/genesis-v2-body.js";
+import {
+  seedGenesisChainIdentity,
+  validGenesisV2Es256CborMap,
+} from "./helpers/genesis-v2-body.js";
 import { mintTestOnboardToken } from "./helpers/onboard-token.js";
 
 const poolEnv = env as unknown as Env;
@@ -161,8 +164,10 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
     const bootstrapKey = new Uint8Array(64).fill(0x22);
     const auth = await genesisAuthHeader(e);
 
+    const m = validGenesisV2Es256CborMap({ bootstrapKey });
+    await seedGenesisChainIdentity(e, m);
     const res = await worker.fetch(
-      genesisRequest(logId, validGenesisV2Es256CborMap({ bootstrapKey }), auth),
+      genesisRequest(logId, m, auth),
       e,
       {} as ExecutionContext,
     );
@@ -298,6 +303,7 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
   it("returns 201 idempotently when genesis.cbor already exists", async () => {
     const logId = crypto.randomUUID();
     const auth = await genesisAuthHeader(poolEnv);
+    await seedGenesisChainIdentity(poolEnv, validGenesisV2Es256CborMap());
     const mk = () => genesisRequest(logId, validGenesisV2Es256CborMap(), auth);
 
     expect(
@@ -358,6 +364,7 @@ describe("POST /api/forest/{log-id}/genesis (pool test env)", () => {
     const miss = await worker.fetch(getReq, poolEnv, {} as ExecutionContext);
     expect(miss.status).toBe(404);
 
+    await seedGenesisChainIdentity(poolEnv, validGenesisV2Es256CborMap());
     const postOk = await worker.fetch(
       genesisRequest(
         logId,
