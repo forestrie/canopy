@@ -97,7 +97,8 @@
         "X402_NETWORK": "eip155:84532",
         "X402_PAYTO_ADDRESS": "0x75be7950F26fe7F15336a10b33A8D8134faDb787",
         "X402_PRICE_EXACT": "$0.001",
-        "X402_ONBOARD_PRICE_ATOMIC": "10000",
+        // 100 USDC (6 decimals) — onboard pricing decision 2026-07-31 (FOR-438).
+        "X402_ONBOARD_PRICE_ATOMIC": "100000000",
         "X402_CREDIT_PRICE_ATOMIC": "10000",
         "X402_PRICE_UPTO_MAX": "$1.00",
         "GRANT_STORAGE_PUBLIC_BASE": "https://grants-dev.forestrie.dev",
@@ -180,7 +181,8 @@
         "X402_NETWORK": "eip155:84532",
         "X402_PAYTO_ADDRESS": "0x75be7950F26fe7F15336a10b33A8D8134faDb787",
         "X402_PRICE_EXACT": "$0.001",
-        "X402_ONBOARD_PRICE_ATOMIC": "10000",
+        // 100 USDC (6 decimals) — onboard pricing decision 2026-07-31 (FOR-438).
+        "X402_ONBOARD_PRICE_ATOMIC": "100000000",
         "X402_CREDIT_PRICE_ATOMIC": "10000",
         "X402_PRICE_UPTO_MAX": "$1.00",
         "GRANT_STORAGE_PUBLIC_BASE": "https://grants.forestrie.dev",
