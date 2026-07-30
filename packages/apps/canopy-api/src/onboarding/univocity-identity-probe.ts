@@ -87,7 +87,8 @@ export async function probeUnivocityIdentity(
   addressHex: string,
   rpcTimeoutMs: number,
 ): Promise<
-  { ok: true; alg: number; key: Uint8Array } | { ok: false; detail: string }
+  | { ok: true; alg: number; key: Uint8Array }
+  | { ok: false; detail: string; unavailable?: boolean }
 > {
   const { ethCallWithFailover } = await import("../rpc/eth-rpc.js");
   const to = `0x${addressHex}`;
@@ -101,8 +102,12 @@ export async function probeUnivocityIdentity(
       { timeoutMs: rpcTimeoutMs },
     );
   } catch (error) {
+    // A failed eth_call across every endpoint is an availability outcome,
+    // never a verdict (plan-2607-46 slice 01; the current RPC lib cannot
+    // separate revert from transport — slice 03 refines this).
     return {
       ok: false,
+      unavailable: true,
       detail:
         error instanceof Error
           ? `bootstrapConfig probe failed: ${error.message}`
@@ -125,6 +130,7 @@ export async function probeUnivocityIdentity(
   } catch (error) {
     return {
       ok: false,
+      unavailable: true,
       detail:
         error instanceof Error
           ? `rootLogId probe failed: ${error.message}`

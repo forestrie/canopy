@@ -8,12 +8,19 @@ import { env } from "cloudflare:test";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import worker from "../src/index";
 import type { Env } from "../src/index";
-import { mintOnboardToken } from "../src/payments/onboard-token-store.js";
+import {
+  mintOnboardToken,
+  readOnboardTokenRecord,
+} from "../src/payments/onboard-token-store.js";
 import {
   hashOnboardToken,
   onboardTokenR2Key,
 } from "../src/payments/onboard-token-hash.js";
-import { validGenesisV2Es256CborMap } from "./helpers/genesis-v2-body.js";
+import { onboardRequestR2Key } from "../src/onboarding/onboard-request-hash.js";
+import {
+  seedGenesisChainIdentity,
+  validGenesisV2Es256CborMap,
+} from "./helpers/genesis-v2-body.js";
 import {
   bootstrapConfigCallData,
   rootLogIdCallData,
@@ -323,6 +330,9 @@ describe("onboard approve redeem flow", () => {
     };
     expect(body.token?.length).toBeGreaterThan(0);
 
+    // Idempotent re-redeem (plan-2607-46 slice 02): the same redeemCode on a
+    // redeemed request re-issues a FRESH token (never 409, never a payment),
+    // and the previous ref is revoked — at most one active token per request.
     const again = await worker.fetch(
       new Request(
         `http://localhost/api/onboarding/requests/${requestId}/redeem`,
@@ -335,7 +345,94 @@ describe("onboard approve redeem flow", () => {
       e,
       testCtx,
     );
-    expect(again.status).toBe(409);
+    expect(again.status).toBe(200);
+    const reissued = decodeCborAsObject(
+      new Uint8Array(await again.arrayBuffer()),
+    ) as { token?: string; ref?: string };
+    expect(reissued.token?.length).toBeGreaterThan(0);
+    expect(reissued.token).not.toBe(body.token);
+
+    const firstHash = await hashOnboardToken(body.token!);
+    const firstRecord = await readOnboardTokenRecord(e, firstHash);
+    expect(firstRecord?.status).toBe("revoked");
+    const reissuedRecord = await readOnboardTokenRecord(e, reissued.ref!);
+    expect(reissuedRecord?.status).toBe("active");
+
+    // A wrong redeemCode still never re-issues.
+    const wrongCode = await worker.fetch(
+      new Request(
+        `http://localhost/api/onboarding/requests/${requestId}/redeem`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/cbor" },
+          body: createBody({ 1: "00".repeat(32) }),
+        },
+      ),
+      e,
+      testCtx,
+    );
+    expect(wrongCode.status).toBe(401);
+  });
+
+  it("re-redeem never demands payment under paid admission", async () => {
+    // Admission was recorded at first redeem and any x402 authorization was
+    // claim-burned before the redeemed transition — a 402 on re-redeem would
+    // double-charge (plan-2607-46 slice 02).
+    const e = envWithOnboard({ ONBOARD_ADMISSION: "paid" } as Partial<Env>);
+    const { requestId, redeemCode } = await createApprovedFlow(
+      e,
+      "paid-reissue",
+    );
+    const redeem = () =>
+      worker.fetch(
+        new Request(
+          `http://localhost/api/onboarding/requests/${requestId}/redeem`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/cbor" },
+            body: createBody({ 1: redeemCode }),
+          },
+        ),
+        e,
+        testCtx,
+      );
+    expect((await redeem()).status).toBe(200);
+    const again = await redeem();
+    expect(again.status).toBe(200);
+  });
+
+  it("re-redeem of an expired redeemed request returns 410", async () => {
+    const e = envWithOnboard();
+    const { requestId, redeemCode } = await createApprovedFlow(
+      e,
+      "expired-reissue",
+    );
+    const redeem = () =>
+      worker.fetch(
+        new Request(
+          `http://localhost/api/onboarding/requests/${requestId}/redeem`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/cbor" },
+            body: createBody({ 1: redeemCode }),
+          },
+        ),
+        e,
+        testCtx,
+      );
+    expect((await redeem()).status).toBe(200);
+
+    // Force the request past its expiry; a redeemed record never expires via
+    // effectiveStatus, so the re-redeem branch checks the window explicitly.
+    const key = onboardRequestR2Key(requestId!);
+    const raw = await e.R2_GRANTS.get(key);
+    const record = JSON.parse(await raw!.text()) as { expiresAt: number };
+    record.expiresAt = Math.floor(Date.now() / 1000) - 10;
+    await e.R2_GRANTS.put(key, JSON.stringify(record), {
+      httpMetadata: { contentType: "application/json" },
+    });
+
+    expect((await redeem()).status).toBe(410);
   });
 
   it("parallel redeem: only one caller receives token", async () => {
@@ -508,12 +605,12 @@ describe("onboard token binding at genesis", () => {
 
     const rootA = crypto.randomUUID();
     const addrBytes = new Uint8Array(20).fill(0xaa);
-    const genesisBody = encodeCborDeterministic(
-      validGenesisV2Es256CborMap({
-        chainId: CHAIN,
-        univocityAddr: addrBytes,
-      }),
-    ) as Uint8Array;
+    const genesisMap = validGenesisV2Es256CborMap({
+      chainId: CHAIN,
+      univocityAddr: addrBytes,
+    });
+    await seedGenesisChainIdentity(e, genesisMap);
+    const genesisBody = encodeCborDeterministic(genesisMap) as Uint8Array;
 
     const first = await worker.fetch(
       new Request(`http://localhost/api/forest/${rootA}/genesis`, {
@@ -557,12 +654,12 @@ describe("onboard token binding at genesis", () => {
     });
 
     const addrBytes = new Uint8Array(20).fill(0xaa);
-    const genesisBody = encodeCborDeterministic(
-      validGenesisV2Es256CborMap({
-        chainId: CHAIN,
-        univocityAddr: addrBytes,
-      }),
-    ) as Uint8Array;
+    const genesisMap = validGenesisV2Es256CborMap({
+      chainId: CHAIN,
+      univocityAddr: addrBytes,
+    });
+    await seedGenesisChainIdentity(e, genesisMap);
+    const genesisBody = encodeCborDeterministic(genesisMap) as Uint8Array;
 
     const rootA = crypto.randomUUID();
     const rootB = crypto.randomUUID();
@@ -596,6 +693,13 @@ describe("onboard token binding at genesis", () => {
     });
     const root = crypto.randomUUID();
     const wrongAddr = new Uint8Array(20).fill(0xbb);
+    // Seed the gate for the wrong-addr body too: the chain-anchored key check
+    // passes so the failure under test stays the TOKEN binding mismatch.
+    const wrongMap = validGenesisV2Es256CborMap({
+      chainId: CHAIN,
+      univocityAddr: wrongAddr,
+    });
+    await seedGenesisChainIdentity(e, wrongMap);
     const res = await worker.fetch(
       new Request(`http://localhost/api/forest/${root}/genesis`, {
         method: "POST",
@@ -603,12 +707,7 @@ describe("onboard token binding at genesis", () => {
           Authorization: `Bearer ${minted.token}`,
           "Content-Type": "application/cbor",
         },
-        body: encodeCborDeterministic(
-          validGenesisV2Es256CborMap({
-            chainId: CHAIN,
-            univocityAddr: wrongAddr,
-          }),
-        ) as Uint8Array,
+        body: encodeCborDeterministic(wrongMap) as Uint8Array,
       }),
       e,
       testCtx,
@@ -634,6 +733,8 @@ describe("onboard token binding at genesis", () => {
     );
     const minted = { token: legacyToken, record: { hash: legacyHash } };
     const root = crypto.randomUUID();
+    const legacyMap = validGenesisV2Es256CborMap();
+    await seedGenesisChainIdentity(e, legacyMap);
     const res = await worker.fetch(
       new Request(`http://localhost/api/forest/${root}/genesis`, {
         method: "POST",
@@ -641,9 +742,7 @@ describe("onboard token binding at genesis", () => {
           Authorization: `Bearer ${minted.token}`,
           "Content-Type": "application/cbor",
         },
-        body: encodeCborDeterministic(
-          validGenesisV2Es256CborMap(),
-        ) as Uint8Array,
+        body: encodeCborDeterministic(legacyMap) as Uint8Array,
       }),
       e,
       testCtx,

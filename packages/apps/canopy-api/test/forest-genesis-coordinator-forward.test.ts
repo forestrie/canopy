@@ -15,6 +15,7 @@ import { logIdToWireBytes } from "../src/grant/log-id-wire.js";
 import worker from "../src/index";
 import type { Env } from "../src/index";
 import {
+  seedGenesisChainIdentity,
   validGenesisV2Es256CborMap,
   validGenesisV2Ks256CborMap,
 } from "./helpers/genesis-v2-body.js";
@@ -315,6 +316,7 @@ describe("POST genesis coordinator forward", () => {
     ) as typeof fetch;
     vi.stubGlobal("fetch", fetchImpl);
 
+    await seedGenesisChainIdentity(e, validGenesisV2Es256CborMap());
     const res = await worker.fetch(
       genesisRequest(logId, validGenesisV2Es256CborMap(), { auth }),
       e,
@@ -349,6 +351,7 @@ describe("POST genesis coordinator forward", () => {
     const auth = await genesisAuthHeader(poolEnv);
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
+    await seedGenesisChainIdentity(poolEnv, validGenesisV2Es256CborMap());
     const res = await worker.fetch(
       genesisRequest(logId, validGenesisV2Es256CborMap(), { auth }),
       poolEnv,
@@ -426,6 +429,10 @@ describe("POST genesis coordinator forward", () => {
     ) as typeof fetch;
     vi.stubGlobal("fetch", fetchImpl);
 
+    await seedGenesisChainIdentity(
+      e,
+      validGenesisV2Es256CborMap({ bootstrapKey }),
+    );
     const res = await worker.fetch(
       genesisRequest(logId, validGenesisV2Es256CborMap({ bootstrapKey }), {
         auth,
@@ -484,6 +491,10 @@ describe("POST genesis coordinator forward", () => {
     ) as typeof fetch;
     vi.stubGlobal("fetch", fetchImpl);
 
+    await seedGenesisChainIdentity(
+      e,
+      validGenesisV2Ks256CborMap({ bootstrapKey }),
+    );
     const res = await worker.fetch(
       genesisRequest(logId, validGenesisV2Ks256CborMap({ bootstrapKey }), {
         auth,
@@ -523,6 +534,7 @@ describe("POST genesis coordinator forward", () => {
     ) as typeof fetch;
     vi.stubGlobal("fetch", fetchImpl);
 
+    await seedGenesisChainIdentity(e, validGenesisV2Ks256CborMap());
     const res = await worker.fetch(
       genesisRequest(logId, validGenesisV2Ks256CborMap(), {
         auth,

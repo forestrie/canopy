@@ -63,6 +63,7 @@ describe("postForestGenesis uups-counterfactual", () => {
 
     const r2 = {
       head: async () => null,
+      get: async () => null,
       put: async () => undefined,
     } as unknown as R2Bucket;
 

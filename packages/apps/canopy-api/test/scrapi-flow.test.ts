@@ -14,7 +14,10 @@ import { uuidToBytes } from "../src/grant";
 import type { Grant } from "../src/grant";
 import { custodianStatementKidFromXyGrantData } from "../src/grant/custodian-statement-kid.js";
 import { forestrieGrantAuthorizationHeader } from "./helpers/custodian-transparent-grant";
-import { validGenesisV2Es256CborMap } from "./helpers/genesis-v2-body.js";
+import {
+  seedGenesisChainIdentity,
+  validGenesisV2Es256CborMap,
+} from "./helpers/genesis-v2-body.js";
 import { mintTestOnboardToken } from "./helpers/onboard-token.js";
 
 const testEnv = env as unknown as Env;
@@ -43,6 +46,10 @@ beforeAll(async () => {
   flowBootstrapLogId = crypto.randomUUID();
   const { token } = await mintTestOnboardToken(testEnv, "scrapi-flow");
 
+  await seedGenesisChainIdentity(
+    testEnv,
+    validGenesisV2Es256CborMap({ bootstrapKey: flowGrantData64 }),
+  );
   const genesisBody = encodeCborDeterministic(
     validGenesisV2Es256CborMap({
       bootstrapKey: flowGrantData64,

@@ -20,6 +20,8 @@ import { opsAdminBearerOrUnauthorized } from "../payments/bearer-auth.js";
 import {
   listOnboardTokens,
   mintOnboardToken,
+  readOnboardTokenRecord,
+  revokeOnboardToken,
   type OnboardTokenStoreEnv,
 } from "../payments/onboard-token-store.js";
 import { shouldAutoApproveRequest } from "./onboard-auto-approve.js";
@@ -425,20 +427,6 @@ async function handleCreateRequest(
         corsHeaders,
       );
     }
-    // Retention (D8): one small COSE object per instance, standing dispute
-    // evidence, verifiable against chain state forever. Deliberately outside
-    // the TTL'd request record; last attestation per instance wins.
-    const instanceId = tryUnivocityInstanceIdFromChainBinding({
-      chainId: chainId.trim(),
-      univocityAddr: gate.univocityAddr,
-    });
-    if (instanceId) {
-      await env.R2_GRANTS.put(
-        `payments/attestations/${instanceId}.cose`,
-        attestation,
-        { httpMetadata: { contentType: "application/cose" } },
-      );
-    }
   }
 
   const pendingCount = await countNonTerminalRequestsForBinding(
@@ -467,6 +455,25 @@ async function handleCreateRequest(
     ttlSec: defaultRequestTtlSec(env),
     attested: attestation !== undefined,
   });
+
+  // Retention (D8): one small COSE object per instance, standing dispute
+  // evidence, verifiable against chain state forever. Deliberately outside
+  // the TTL'd request record; last attestation per instance wins. Written
+  // only once the request record exists — a quota- or cap-rejected create
+  // must not overwrite the standing blob (plan-2607-46 slice 01 hygiene).
+  if (attestation) {
+    const instanceId = tryUnivocityInstanceIdFromChainBinding({
+      chainId: chainId.trim(),
+      univocityAddr: gate.univocityAddr,
+    });
+    if (instanceId) {
+      await env.R2_GRANTS.put(
+        `payments/attestations/${instanceId}.cose`,
+        attestation,
+        { httpMetadata: { contentType: "application/cose" } },
+      );
+    }
+  }
 
   scheduleOnboardWebhook(ctx, env, "onboard.request.created", {
     requestId: record.requestId,
@@ -510,6 +517,70 @@ function readString(m: Map<number, unknown>, key: number): string | undefined {
   if (typeof v !== "string") return undefined;
   const s = v.trim();
   return s || undefined;
+}
+
+/**
+ * Re-issue the onboard token for an already-redeemed request (plan-2607-46
+ * slice 02, decisions Q2): fresh token with the same binding/admission, the
+ * previous ref revoked — at most one active token per request, and a lost
+ * (possibly stolen) token dies on recovery. Valid until the request expires;
+ * `effectiveStatus` never expires a `redeemed` record, so the window is
+ * checked here explicitly.
+ */
+async function reissueRedeemedToken(
+  env: OnboardingHandlerEnv,
+  record: OnboardRequestRecord,
+  ctx: ExecutionContext,
+): Promise<Response> {
+  const now = Math.floor(Date.now() / 1000);
+  if (record.expiresAt <= now) {
+    return problemResponse(410, "Gone", "about:blank", {
+      detail: "Request expired; the redeem code no longer re-issues a token",
+    });
+  }
+
+  // Admission carries over from the original token when it is still
+  // readable; the crash-before-ref-write corner has no old token to copy
+  // from, so fall back to what the request itself records.
+  const previousRef = record.onboardTokenRef;
+  const previous = previousRef
+    ? await readOnboardTokenRecord(env, previousRef)
+    : null;
+  const admittedBy =
+    previous?.admittedBy ?? (record.autoApproved ? "auto" : "ops");
+
+  const minted = await mintOnboardToken(env, {
+    label: record.label,
+    requestId: record.requestId,
+    chainBinding: record.chainBinding,
+    expiry: now + defaultTokenTtlSec(env),
+    admittedBy,
+  });
+
+  if (previousRef) {
+    await revokeOnboardToken(env, previousRef);
+  }
+
+  const withRef: OnboardRequestRecord = {
+    ...record,
+    onboardTokenRef: minted.record.hash,
+  };
+  await writeOnboardRequest(env, withRef);
+
+  scheduleOnboardWebhook(ctx, env, "onboard.request.redeemed", {
+    requestId: withRef.requestId,
+    onboardTokenRef: withRef.onboardTokenRef,
+  });
+
+  return cborResponse(
+    {
+      token: minted.token,
+      ref: minted.record.hash,
+      label: withRef.label,
+    },
+    200,
+    NO_STORE_HEADERS,
+  );
 }
 
 async function handleRedeem(
@@ -640,8 +711,19 @@ async function handleRedeem(
       requestId,
       now: Date.now(),
     });
+  } else if (status === "redeemed") {
+    // Idempotent re-redeem (plan-2607-46 slice 02): the redeemCode already
+    // authenticated the holder, so a client that lost the token after the
+    // approved→redeemed commit recovers here with a fresh token. Never a new
+    // payment — admission was recorded at first redeem and any x402
+    // authorization was claim-burned before the transition, so a 402 here
+    // would double-charge.
+    return attachCors(
+      await reissueRedeemedToken(env, record, ctx),
+      corsHeaders,
+    );
   } else if (status !== "approved") {
-    // expired / redeemed / rejected — existing state errors.
+    // expired / rejected — existing state errors.
     const gateErr = redeemOrStatusHttpError(record);
     if (gateErr.kind === "response") {
       return attachCors(gateErr.response, corsHeaders);

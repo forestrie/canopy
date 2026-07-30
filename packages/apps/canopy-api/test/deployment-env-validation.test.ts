@@ -10,7 +10,10 @@ import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import worker from "../src/index";
 import type { Env } from "../src/index";
-import { validGenesisV2Es256CborMap } from "./helpers/genesis-v2-body.js";
+import {
+  seedGenesisChainIdentity,
+  validGenesisV2Es256CborMap,
+} from "./helpers/genesis-v2-body.js";
 import { mintTestOnboardToken } from "./helpers/onboard-token.js";
 
 const poolEnv = env as unknown as Env;
@@ -151,6 +154,7 @@ describe("Forest genesis route env (non-pool NODE_ENV)", () => {
     const uniqueLogId = crypto.randomUUID();
     const url = `http://localhost/api/forest/${uniqueLogId}/genesis`;
     const { token } = await mintTestOnboardToken(okEnv);
+    await seedGenesisChainIdentity(okEnv, validGenesisV2Es256CborMap());
 
     const response = await worker.fetch(
       new Request(url, {

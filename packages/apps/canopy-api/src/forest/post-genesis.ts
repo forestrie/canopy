@@ -45,12 +45,15 @@ import {
 } from "./genesis-wire.js";
 import { isSupportedChainIdForEnv } from "../env/supported-chains-for-env.js";
 import type { SupportedChainsEnv } from "../env/supported-chains-for-env.js";
+import { verifyUnivocityDeployment } from "../onboarding/univocity-deployment-gate.js";
+import type { UnivocityGateEnv } from "../onboarding/univocity-gate-env.js";
+import { problemResponse } from "../cbor-api/cbor-response.js";
 import {
   postGenesisToUnivocity,
   type UnivocityGenesisClient,
 } from "./univocity-genesis-client.js";
 
-export interface PostGenesisEnv extends SupportedChainsEnv {
+export interface PostGenesisEnv extends SupportedChainsEnv, UnivocityGateEnv {
   R2_GRANTS: R2Bucket;
   /** CREATE3 factory for uups-counterfactual address re-derivation (optional). */
   CREATE3_FACTORY_ADDRESS?: string;
@@ -63,6 +66,10 @@ export interface PostGenesisEnv extends SupportedChainsEnv {
    */
   UNIVOCITY_SERVICE_URL?: string;
   UNIVOCITY_API_TOKEN?: string;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function univocityGenesisClientFromEnv(
@@ -310,6 +317,39 @@ export async function postForestGenesis(
     return ClientErrors.badRequest("genesisAlg and bootstrapKey are required");
   }
 
+  // ADR-0059 enforced at the registration boundary (plan-2607-46 slice 01):
+  // the deployed univocity instance's bootstrapConfig() is the authority for
+  // (alg, key) — genesis may not register anything else, on first write OR
+  // retry. Counterfactual instances are exempt: their address is CREATE3-bound
+  // to the log id above and the contract may not be deployed yet. RPC outage
+  // is 503 unavailable, never a verdict.
+  if (
+    binding.variant !== FOREST_GENESIS_UNIVOCITY_VARIANT_UUPS_COUNTERFACTUAL
+  ) {
+    const addrHex = `0x${bytesToHex(binding.addr)}`;
+    const gate = await verifyUnivocityDeployment(env, binding.chainId, addrHex);
+    if (!gate.ok) {
+      return problemResponse(
+        gate.status,
+        gate.status >= 500 ? "Service Unavailable" : "Unprocessable Entity",
+        "about:blank",
+        { detail: `genesis bootstrap-key check: ${gate.detail}` },
+      );
+    }
+    if (
+      gate.bootstrapAlg !== genesisAlg ||
+      !bytesEqual(gate.bootstrapKey, bootstrapKey)
+    ) {
+      return problemResponse(422, "Unprocessable Entity", "about:blank", {
+        detail:
+          `genesis bootstrapKey/alg does not match the univocity instance ` +
+          `bootstrapConfig() at ${addrHex} on chain ${binding.chainId} ` +
+          `(chain: alg ${gate.bootstrapAlg}, key 0x${bytesToHex(gate.bootstrapKey).slice(0, 8)}…; ` +
+          `body: alg ${genesisAlg}, key 0x${bytesToHex(bootstrapKey).slice(0, 8)}…)`,
+      });
+    }
+  }
+
   const storageSeg = logIdToStorageSegment(logId);
   const body = encodeCborDeterministic(out);
   const chainBinding: ForestGenesisChainBinding = {
@@ -343,8 +383,21 @@ export async function postForestGenesis(
   }
 
   const key = `forests/forest/${storageSeg}/genesis.cbor`;
-  const head = await env.R2_GRANTS.head(key);
-  if (head) {
+  const existing = await env.R2_GRANTS.get(key);
+  if (existing) {
+    // Same-R retry must present the SAME genesis, byte for byte — both maps
+    // are deterministic CBOR built by this handler, so byte equality is the
+    // field comparison. Echoing the new body here (the old behavior) let a
+    // retry silently diverge from the stored genesis (plan-2607-46 slice 01).
+    const stored = new Uint8Array(await existing.arrayBuffer());
+    if (!bytesEqual(stored, body)) {
+      return problemResponse(409, "Conflict", "about:blank", {
+        detail:
+          "genesis already exists for this log id with different content; " +
+          "a retry must repeat the registered genesis exactly " +
+          "(bootstrapKey, alg, chain binding, variant)",
+      });
+    }
     return {
       logIdWire: logId,
       storageSeg,
