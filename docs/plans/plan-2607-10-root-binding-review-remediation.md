@@ -1,12 +1,16 @@
 # plan-2607-10 — plan-2607-46 (root binding) review remediation
 
-**Status:** DRAFT
-**Date:** 2026-07-30
-**Related:** devdocs plan-2607-46 (slices 01–04); FOR-506 (canopy#203, merged),
-FOR-507/FOR-508 (canopy#204, open); review run 2026-07-30 per the
-forestrie-agents review-changes command — 3 parallel lenses
-(security/crypto, correctness/liveness, tests/devops), High/Medium claims
-re-verified (including live GitHub-environment checks for R3).
+**Status:** IMPLEMENTED (2026-07-30) — R1–R6 + L1/L3/L4/L5/L6 applied on PR #204; R7 deferred (dormant, blocked on the univocity store contract); R3's ops half (arming prod `RPC_URL`) stays an enact-time check. Implementation notes:
+
+- R3 was resolved by DROPPING the prod checked-in default (the keyed `KS256_RPC_URL` secret keeps winning there until injection is armed) + an `erc1271RpcSource` info log naming the winning source per chain.
+- R4's new lane-wiring assertions immediately caught a live bug: the coordinator contract's `setStringProperty` wrote JSON-valued vars with UNESCAPED quotes — the `SUPPORTED_CHAINS_RPC` injection produced invalid config. Fixed with JSON.stringify + escape-aware matching.
+- R1 uses mint → etag-CAS ref-write → revoke-sweep (`revokeOtherActiveTokensForRequest`), which also self-heals orphans from earlier crashes; losers revoke their own mint and retry (3 attempts, then 409).
+  **Date:** 2026-07-30
+  **Related:** devdocs plan-2607-46 (slices 01–04); FOR-506 (canopy#203, merged),
+  FOR-507/FOR-508 (canopy#204, open); review run 2026-07-30 per the
+  forestrie-agents review-changes command — 3 parallel lenses
+  (security/crypto, correctness/liveness, tests/devops), High/Medium claims
+  re-verified (including live GitHub-environment checks for R3).
 
 ## 1. Scope
 

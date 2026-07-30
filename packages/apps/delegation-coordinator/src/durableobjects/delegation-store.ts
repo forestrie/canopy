@@ -57,7 +57,7 @@ import {
   verifyOnchainDelegationSignatureEs256,
   verifyOnchainDelegationSignatureKs256,
 } from "@forestrie/delegation-cose";
-import { swallowingKs256VerifyHooks } from "../ks256-rpc-verify-hooks.js";
+import { Erc1271UnavailableError } from "@forestrie/chain-rpc";
 import {
   chainIdFromUnivocityInstanceId,
   strictHooksForChain,
@@ -361,6 +361,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
         alg TEXT NOT NULL,
         x BLOB NOT NULL,
         y BLOB NOT NULL,
+        chain_id TEXT,
         uploaded_at INTEGER NOT NULL
       )
     `);
@@ -544,23 +545,12 @@ export class DelegationStoreDO extends DurableObject<Env> {
   }
 
   /**
-   * Bring pre-existing log_delegation_config tables to the current instance
-   * columns. Fresh databases get `univocity_instance_id` / `webhook_source`
-   * from the base CREATE TABLE (FOR-468 review L1); legacy tables either
-   * rename `instance_key` in place (ADR-0059 D1) or, when they pre-date
-   * FOR-468 entirely, add both columns.
-   *
-   * `webhook_source` records whether `webhook_url` was set directly on the log
-   * (`log`) or copied from its instance (`instance`). Only copies are rewritten
-   * by an instance re-point, so an explicit per-log override survives one.
-   * Existing rows pre-date instances and keep a NULL source, which reads as an
-   * explicit per-log URL.
-   */
-  /**
    * Nullable `chain_id` on public_roots (plan-2607-46 slice 03): the log's
    * EIP-155 chain, carried on the public-root PUT so ERC-1271 verification
    * can select chain-scoped RPC without depending on the best-effort
-   * instance-binding write. Legacy rows stay NULL and fall back to
+   * instance-binding write. Fresh databases get the column from the base
+   * CREATE TABLE (FOR-468 review L1 convention); this handles legacy tables
+   * only. Legacy rows stay NULL and fall back to
    * `log_delegation_config.univocity_instance_id`.
    */
   private ensurePublicRootChainColumn(): void {
@@ -578,6 +568,19 @@ export class DelegationStoreDO extends DurableObject<Env> {
     }
   }
 
+  /**
+   * Bring pre-existing log_delegation_config tables to the current instance
+   * columns. Fresh databases get `univocity_instance_id` / `webhook_source`
+   * from the base CREATE TABLE (FOR-468 review L1); legacy tables either
+   * rename `instance_key` in place (ADR-0059 D1) or, when they pre-date
+   * FOR-468 entirely, add both columns.
+   *
+   * `webhook_source` records whether `webhook_url` was set directly on the log
+   * (`log`) or copied from its instance (`instance`). Only copies are rewritten
+   * by an instance re-point, so an explicit per-log override survives one.
+   * Existing rows pre-date instances and keep a NULL source, which reads as an
+   * explicit per-log URL.
+   */
   private ensureLogConfigUnivocityInstanceIdColumns(): void {
     try {
       [
@@ -1035,18 +1038,32 @@ export class DelegationStoreDO extends DurableObject<Env> {
   }
 
   /**
-   * Swallowing KS256 hooks scoped to the log's chain, or undefined when the
+   * STRICT chain-asserted KS256 hooks for the log, or undefined when the
    * chain is unresolvable or has no RPC configured — the KS256 verify then
-   * runs EOA-recovery-only and a contract root fails closed.
+   * runs EOA-recovery-only and a contract root fails closed. Callers catch
+   * {@link Erc1271UnavailableError} and answer 503: an RPC outage is an
+   * availability outcome, never a verdict (plan-2607-10 R2 — matches the
+   * wallet-challenge path).
    */
   private ks256HooksForLog(
     logIdHex32: string,
   ): import("@forestrie/delegation-cose").Ks256VerifyHooks | undefined {
     const chainId = this.resolveLogChainId(logIdHex32);
     if (!chainId) return undefined;
-    const strict = strictHooksForChain(this.env, chainId);
-    if (!strict) return undefined;
-    return swallowingKs256VerifyHooks(strict);
+    return strictHooksForChain(this.env, chainId);
+  }
+
+  /** 503 problem response for an ERC-1271 availability failure. */
+  private erc1271UnavailableResponse(): Response {
+    return Response.json(
+      {
+        type: "about:blank",
+        title: "Service Unavailable",
+        status: 503,
+        detail: "ERC-1271 root verification is unavailable — retry",
+      },
+      { status: 503 },
+    );
   }
 
   /** Map SQLite public_roots row to validation PublicRootMaterial. */
@@ -1290,6 +1307,9 @@ export class DelegationStoreDO extends DurableObject<Env> {
         ks256Hooks: this.ks256HooksForLog(logIdHex32),
       });
     } catch (error) {
+      if (error instanceof Erc1271UnavailableError) {
+        return this.erc1271UnavailableResponse();
+      }
       const detail =
         error instanceof ByokCertificateValidationError
           ? error.message
@@ -1337,12 +1357,19 @@ export class DelegationStoreDO extends DurableObject<Env> {
       };
       let ok: boolean;
       if (root.alg === "KS256") {
-        ok = await verifyOnchainDelegationSignatureKs256(
-          scope,
-          signature,
-          root.key,
-          this.ks256HooksForLog(logIdHex32),
-        );
+        try {
+          ok = await verifyOnchainDelegationSignatureKs256(
+            scope,
+            signature,
+            root.key,
+            this.ks256HooksForLog(logIdHex32),
+          );
+        } catch (error) {
+          if (error instanceof Erc1271UnavailableError) {
+            return this.erc1271UnavailableResponse();
+          }
+          throw error;
+        }
       } else {
         // The contract's P256 verifier rejects malleable high-s signatures;
         // store the normalized form since signers make no low-s guarantee.

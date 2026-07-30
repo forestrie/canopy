@@ -30,6 +30,15 @@ export function chainIdFromUnivocityInstanceId(
 }
 
 let warnedDeprecatedFallback = false;
+/** Chains whose winning RPC source has been logged this isolate. */
+const loggedSourceForChain = new Set<string>();
+
+/** One info line per chain per isolate naming which config source served. */
+function logSelectedSource(chainId: string, source: string): void {
+  if (loggedSourceForChain.has(chainId)) return;
+  loggedSourceForChain.add(chainId);
+  console.log(JSON.stringify({ tag: "erc1271RpcSource", chainId, source }));
+}
 
 /**
  * Preference-ordered RPC URLs for one chain, or null when none configured.
@@ -43,7 +52,10 @@ export function rpcUrlsForChain(
     try {
       const parsed = parseSupportedChainsRpc(rawConfig);
       const urls = rpcUrlsForChainId(parsed, chainId);
-      if (urls?.length) return urls;
+      if (urls?.length) {
+        logSelectedSource(chainId, "SUPPORTED_CHAINS_RPC");
+        return urls;
+      }
     } catch (error) {
       console.warn(
         JSON.stringify({
@@ -65,6 +77,7 @@ export function rpcUrlsForChain(
         }),
       );
     }
+    logSelectedSource(chainId, "KS256_RPC_URL(deprecated)");
     return [legacy];
   }
   return null;

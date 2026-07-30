@@ -54,6 +54,14 @@ export function attestationVerifyCapabilities(
   return { erc1271 };
 }
 
+/**
+ * Chain-anchored `(alg, key)` for a univocity instance, positive-cached in
+ * R2 for `ONBOARD_GATE_CACHE_TTL_SEC` (default 300 s). Consequence
+ * (plan-2607-10 L1): after an on-chain `bootstrapConfig()` rotation, a
+ * request or genesis matching the SUPERSEDED identity is admitted for up to
+ * one TTL. The cache is chain-sourced and rewrite-on-miss only — reads
+ * cannot extend it — so the window is bounded and non-renewable.
+ */
 export async function verifyUnivocityDeployment(
   env: UnivocityGateEnv,
   chainId: string,

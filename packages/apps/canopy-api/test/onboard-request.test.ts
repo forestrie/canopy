@@ -9,6 +9,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import worker from "../src/index";
 import type { Env } from "../src/index";
 import {
+  listOnboardTokens,
   mintOnboardToken,
   readOnboardTokenRecord,
 } from "../src/payments/onboard-token-store.js";
@@ -17,6 +18,7 @@ import {
   onboardTokenR2Key,
 } from "../src/payments/onboard-token-hash.js";
 import { onboardRequestR2Key } from "../src/onboarding/onboard-request-hash.js";
+import { readOnboardRequest } from "../src/onboarding/onboard-request-store.js";
 import {
   seedGenesisChainIdentity,
   validGenesisV2Es256CborMap,
@@ -372,6 +374,79 @@ describe("onboard approve redeem flow", () => {
       testCtx,
     );
     expect(wrongCode.status).toBe(401);
+  });
+
+  it("concurrent re-redeems leave exactly one active token (plan-2607-10 R1)", async () => {
+    const e = envWithOnboard();
+    const { requestId, redeemCode } = await createApprovedFlow(
+      e,
+      "concurrent-reissue",
+    );
+    const redeem = () =>
+      worker.fetch(
+        new Request(
+          `http://localhost/api/onboarding/requests/${requestId}/redeem`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/cbor" },
+            body: createBody({ 1: redeemCode }),
+          },
+        ),
+        e,
+        testCtx,
+      );
+    expect((await redeem()).status).toBe(200);
+
+    const [a, b] = await Promise.all([redeem(), redeem()]);
+    // Both may win via server-side retry, or one may report contention.
+    expect([200, 409]).toContain(a.status);
+    expect([200, 409]).toContain(b.status);
+
+    const tokens = (await listOnboardTokens(e)).filter(
+      (t) => t.requestId === requestId,
+    );
+    const active = tokens.filter((t) => t.status === "active");
+    expect(active).toHaveLength(1);
+    const record = await readOnboardRequest(e, requestId!);
+    expect(record?.onboardTokenRef).toBe(active[0]!.hash);
+  });
+
+  it("re-redeem sweeps orphaned active tokens from earlier crashes (plan-2607-10 R1)", async () => {
+    const e = envWithOnboard();
+    const { requestId, redeemCode } = await createApprovedFlow(
+      e,
+      "orphan-sweep",
+    );
+    const redeem = () =>
+      worker.fetch(
+        new Request(
+          `http://localhost/api/onboarding/requests/${requestId}/redeem`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/cbor" },
+            body: createBody({ 1: redeemCode }),
+          },
+        ),
+        e,
+        testCtx,
+      );
+    expect((await redeem()).status).toBe(200);
+
+    // Simulate a crashed reissue: an active token minted for this request
+    // that no record ref points at.
+    const orphan = await mintOnboardToken(e, {
+      label: "orphan",
+      requestId: requestId!,
+      chainBinding: { chainId: CHAIN, univocityAddr: DEPLOYED_ADDR },
+    });
+
+    expect((await redeem()).status).toBe(200);
+    const orphanAfter = await readOnboardTokenRecord(e, orphan.record.hash);
+    expect(orphanAfter?.status).toBe("revoked");
+    const active = (await listOnboardTokens(e)).filter(
+      (t) => t.requestId === requestId && t.status === "active",
+    );
+    expect(active).toHaveLength(1);
   });
 
   it("re-redeem never demands payment under paid admission", async () => {

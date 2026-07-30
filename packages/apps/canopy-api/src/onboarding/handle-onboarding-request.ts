@@ -22,6 +22,7 @@ import {
   mintOnboardToken,
   readOnboardTokenRecord,
   revokeOnboardToken,
+  revokeOtherActiveTokensForRequest,
   type OnboardTokenStoreEnv,
 } from "../payments/onboard-token-store.js";
 import { shouldAutoApproveRequest } from "./onboard-auto-approve.js";
@@ -46,6 +47,8 @@ import {
   effectiveStatus,
   listOnboardRequests,
   readOnboardRequest,
+  readOnboardRequestWithEtag,
+  writeOnboardRequestCas,
   transitionApprovedToRedeemedCas,
   transitionPendingToApprovedCas,
   transitionPendingToRejectedCas,
@@ -526,6 +529,12 @@ function readString(m: Map<number, unknown>, key: number): string | undefined {
  * (possibly stolen) token dies on recovery. Valid until the request expires;
  * `effectiveStatus` never expires a `redeemed` record, so the window is
  * checked here explicitly.
+ *
+ * Fenced against concurrency and crashes (plan-2607-10 R1): the ref-write
+ * is an etag CAS — a losing writer revokes its own mint and retries — and
+ * the winner then revokes EVERY other active token for the request, which
+ * also self-heals orphans left by earlier crashed reissues. Order matters:
+ * mint → CAS ref → sweep, so the record never points at a revoked token.
  */
 async function reissueRedeemedToken(
   env: OnboardingHandlerEnv,
@@ -533,53 +542,75 @@ async function reissueRedeemedToken(
   ctx: ExecutionContext,
 ): Promise<Response> {
   const now = Math.floor(Date.now() / 1000);
-  if (record.expiresAt <= now) {
-    return problemResponse(410, "Gone", "about:blank", {
-      detail: "Request expired; the redeem code no longer re-issues a token",
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const current = await readOnboardRequestWithEtag(env, record.requestId);
+    if (!current) {
+      return problemResponse(404, "Not Found", "about:blank", {
+        detail: "Request not found",
+      });
+    }
+    if (current.record.expiresAt <= now) {
+      return problemResponse(410, "Gone", "about:blank", {
+        detail: "Request expired; the redeem code no longer re-issues a token",
+      });
+    }
+
+    // Admission carries over from the original token when it is still
+    // readable; the crash-before-ref-write corner has no old token to copy
+    // from, so fall back to what the request itself records.
+    const previousRef = current.record.onboardTokenRef;
+    const previous = previousRef
+      ? await readOnboardTokenRecord(env, previousRef)
+      : null;
+    const admittedBy =
+      previous?.admittedBy ?? (current.record.autoApproved ? "auto" : "ops");
+
+    const minted = await mintOnboardToken(env, {
+      label: current.record.label,
+      requestId: current.record.requestId,
+      chainBinding: current.record.chainBinding,
+      expiry: now + defaultTokenTtlSec(env),
+      admittedBy,
     });
+
+    const withRef: OnboardRequestRecord = {
+      ...current.record,
+      onboardTokenRef: minted.record.hash,
+    };
+    const won = await writeOnboardRequestCas(env, withRef, current.etag);
+    if (!won) {
+      // Lost a concurrent reissue: this mint must not survive as an orphan.
+      await revokeOnboardToken(env, minted.record.hash);
+      continue;
+    }
+
+    await revokeOtherActiveTokensForRequest(
+      env,
+      withRef.requestId,
+      minted.record.hash,
+    );
+
+    // Re-emitted per reissue — consumers must tolerate repeat delivery for
+    // one requestId (the ref identifies the current token).
+    scheduleOnboardWebhook(ctx, env, "onboard.request.redeemed", {
+      requestId: withRef.requestId,
+      onboardTokenRef: withRef.onboardTokenRef,
+    });
+
+    return cborResponse(
+      {
+        token: minted.token,
+        ref: minted.record.hash,
+        label: withRef.label,
+      },
+      200,
+      NO_STORE_HEADERS,
+    );
   }
 
-  // Admission carries over from the original token when it is still
-  // readable; the crash-before-ref-write corner has no old token to copy
-  // from, so fall back to what the request itself records.
-  const previousRef = record.onboardTokenRef;
-  const previous = previousRef
-    ? await readOnboardTokenRecord(env, previousRef)
-    : null;
-  const admittedBy =
-    previous?.admittedBy ?? (record.autoApproved ? "auto" : "ops");
-
-  const minted = await mintOnboardToken(env, {
-    label: record.label,
-    requestId: record.requestId,
-    chainBinding: record.chainBinding,
-    expiry: now + defaultTokenTtlSec(env),
-    admittedBy,
-  });
-
-  if (previousRef) {
-    await revokeOnboardToken(env, previousRef);
-  }
-
-  const withRef: OnboardRequestRecord = {
-    ...record,
-    onboardTokenRef: minted.record.hash,
-  };
-  await writeOnboardRequest(env, withRef);
-
-  scheduleOnboardWebhook(ctx, env, "onboard.request.redeemed", {
-    requestId: withRef.requestId,
-    onboardTokenRef: withRef.onboardTokenRef,
-  });
-
-  return cborResponse(
-    {
-      token: minted.token,
-      ref: minted.record.hash,
-      label: withRef.label,
-    },
-    200,
-    NO_STORE_HEADERS,
+  return ClientErrors.conflict(
+    "Concurrent re-redeem contention; retry the redeem request",
   );
 }
 

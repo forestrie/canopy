@@ -10,7 +10,10 @@
   "observability": {
     "enabled": true,
   },
-  // Top-level vars for vitest (@cloudflare/vitest-pool-workers)
+  // Top-level vars for vitest (@cloudflare/vitest-pool-workers) ONLY.
+  // wrangler env vars REPLACE (never merge) this block, and CI always
+  // deploys with --env — never run a bare `wrangler deploy`, which would
+  // ship these test values (plan-2607-10 L6).
   "vars": {
     "NODE_ENV": "test",
     "COORDINATOR_SHARD_COUNT": "4",
@@ -121,10 +124,12 @@
         "PINNED_REGISTRAR_KEY": "z1YarLKXrsRe5egrwrFfbeYadd9lOqplKxbRuMGymHUOSY7YAfdOhhPWb3H72TrPMiMLw0CBMpDPXUGMEvbkOQ==",
         "ENFORCE_DELEGATE_KEY_MEMBERSHIP": "true",
         "ENABLE_WALLET_CHALLENGE": "true",
-        // ADR-0010 per-chain RPC for ERC-1271 (plan-2607-46 slice 03);
-        // deploy contract overrides with the keyed endpoint when RPC_URL is
-        // bound for the lane.
-        "SUPPORTED_CHAINS_RPC": "{\"84532\":[\"https://sepolia.base.org\"]}",
+        // SUPPORTED_CHAINS_RPC deliberately NOT checked in for prod
+        // (plan-2607-10 R3): the prod GitHub environment has no RPC_URL
+        // secret, so the deploy contract injects nothing — a checked-in
+        // keyless default would silently shadow the keyed KS256_RPC_URL
+        // wrangler secret. Until prod's RPC_URL is armed (enact check), the
+        // deprecated-but-chain-asserted KS256_RPC_URL fallback serves.
         "WEBHOOK_RETRY_LADDER": "[1,2,4,8]",
         "WEBHOOK_RETRY_SCALE_MS": "1000",
       },

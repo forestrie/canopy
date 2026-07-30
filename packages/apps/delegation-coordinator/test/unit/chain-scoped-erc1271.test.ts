@@ -245,3 +245,30 @@ describe("chain-scoped ERC-1271 (plan-2607-46 slice 03)", () => {
     void logHex;
   });
 });
+
+describe("public-root chain_id COALESCE (plan-2607-10 L4)", () => {
+  it("a re-PUT without chainBinding keeps the stored chain; a new one overwrites", async () => {
+    const logUuid = randomUUID();
+    await postPublicRoot(logUuid, addressKeyB64(0x6a), { chainId: CHAIN_ID });
+
+    // Legacy/version-skew writer omits the binding: chain_id must survive.
+    await postPublicRoot(logUuid, addressKeyB64(0x6a));
+    let got = await fetchWithDoRetry(
+      `http://localhost/api/logs/${logUuid}/public-root`,
+    );
+    let decoded = decodeCborStruct<TrustRootResponseCbor>(
+      new Uint8Array(await got.arrayBuffer()),
+    );
+    expect(decoded.chainId).toBe(CHAIN_ID);
+
+    // An explicit non-null binding corrects it.
+    await postPublicRoot(logUuid, addressKeyB64(0x6a), { chainId: "31337" });
+    got = await fetchWithDoRetry(
+      `http://localhost/api/logs/${logUuid}/public-root`,
+    );
+    decoded = decodeCborStruct<TrustRootResponseCbor>(
+      new Uint8Array(await got.arrayBuffer()),
+    );
+    expect(decoded.chainId).toBe("31337");
+  });
+});

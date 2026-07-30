@@ -66,6 +66,19 @@ async function putRecordCas(
   return written != null;
 }
 
+/**
+ * Conditional (etag CAS) record write for multi-writer paths — the
+ * re-redeem reissue uses this so concurrent reissues cannot interleave
+ * (plan-2607-10 R1).
+ */
+export async function writeOnboardRequestCas(
+  env: OnboardRequestStoreEnv,
+  record: OnboardRequestRecord,
+  etag: string,
+): Promise<boolean> {
+  return putRecordCas(env, record, etag);
+}
+
 export async function createOnboardRequest(
   env: OnboardRequestStoreEnv,
   input: CreateOnboardRequestInput,
