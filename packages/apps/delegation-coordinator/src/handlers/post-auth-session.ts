@@ -9,12 +9,12 @@ import { consumeWalletChallengeNonce } from "../auth/wallet-challenge/nonce-clie
 import { coordinatorOrigin } from "../auth/coordinator-origin.js";
 import {
   es256PublicKeyMatchesRoot,
-  ks256AddressMatchesRoot,
   loadRegisteredPublicRoot,
 } from "../auth/wallet-challenge/public-root-match.js";
 import { mintSessionToken } from "../auth/wallet-challenge/session-token.js";
 import { verifyEs256ControlPlaneSignature } from "../auth/wallet-challenge/verify-es256.js";
-import { verifyKs256ControlPlaneSignature } from "../auth/wallet-challenge/verify-ks256.js";
+import { verifyKs256ControlPlaneSignatureForRoot } from "../auth/wallet-challenge/verify-ks256.js";
+import { createErc1271VerifyHooks } from "@forestrie/chain-rpc";
 import { normalizeLogIdToHex32 } from "../log-id.js";
 import type { SessionExchangeRequest } from "../types/wallet-challenge.js";
 import { base64ToBytes } from "../encoding.js";
@@ -206,19 +206,9 @@ export async function handlePostAuthSession(
       );
     }
 
-    const recovered = await verifyKs256ControlPlaneSignature(
-      envelope,
-      signature,
-    );
-    if (!recovered) {
-      return problemResponse(
-        401,
-        "about:blank",
-        "Unauthorized",
-        "Invalid challenge signature",
-      );
-    }
-
+    // Root first: contract-account roots (Safe 1x1 Mode D) dispatch to
+    // ERC-1271 with the EIP-191 challenge digest instead of personal_sign
+    // recovery (plan-2607-04 R1 / FOR-505).
     const root = await loadRegisteredPublicRoot(env, authLogIdHex32);
     if (!root) {
       return problemResponse(
@@ -236,7 +226,33 @@ export async function handlePostAuthSession(
         "Registered publicRoot alg does not match KS256 challenge",
       );
     }
-    if (!ks256AddressMatchesRoot(recovered, root.key)) {
+
+    // STRICT hooks here (not the swallowing cert-verify wrapper): an RPC
+    // outage must surface as 503, never collapse into a 403 verdict.
+    const rpcUrl = env.KS256_RPC_URL?.trim();
+    const verdict = await verifyKs256ControlPlaneSignatureForRoot(
+      envelope,
+      signature,
+      root.key,
+      rpcUrl ? createErc1271VerifyHooks([rpcUrl]) : undefined,
+    );
+    if (verdict === "unavailable") {
+      return problemResponse(
+        503,
+        "about:blank",
+        "Service Unavailable",
+        "ERC-1271 root verification is unavailable — retry",
+      );
+    }
+    if (verdict === "invalid_signature") {
+      return problemResponse(
+        401,
+        "about:blank",
+        "Unauthorized",
+        "Invalid challenge signature",
+      );
+    }
+    if (verdict !== "valid") {
       return problemResponse(
         403,
         "about:blank",
