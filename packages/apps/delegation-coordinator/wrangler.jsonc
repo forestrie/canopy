@@ -23,6 +23,10 @@
     "COORDINATOR_DOMAIN": "localhost",
     "ENABLE_WALLET_CHALLENGE": "true",
     "WALLET_CHALLENGE_SIGNING_SECRET": "test-wallet-challenge-secret",
+    // ADR-0010 per-chain RPC for ERC-1271 (plan-2607-46 slice 03); unit tests
+    // intercept these with fetchMock. 31337 exists only for the wrong-chain
+    // spec (its endpoint answers eth_chainId 0x1).
+    "SUPPORTED_CHAINS_RPC": "{\"84532\":[\"https://rpc.test\"],\"31337\":[\"https://rpc-wrongserve.test\"]}",
     "WEBHOOK_RETRY_LADDER": "[1,2]",
     "WEBHOOK_RETRY_SCALE_MS": "10",
     "WEBHOOK_SIGNING_KEY_PEM": "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgtqphxBbS+VoJfXxw\n4APhrI8JxK4XLq3VmRdDS+8uAmOhRANCAAS0OmAJaG1Vw/Q6LILankbebW96imXI\nEBpPd7YHJNzaTnbqktHURsl1tNwUEDJI9sR0dkYXVCz5vJHYpY2bD0TS\n-----END PRIVATE KEY-----",
@@ -60,6 +64,10 @@
         "COORDINATOR_PUBLIC_URL": "https://coordinator-a.forest-2.forestrie.dev",
         "COORDINATOR_DOMAIN": "coordinator-a.forest-2.forestrie.dev",
         "ENABLE_WALLET_CHALLENGE": "true",
+        // ADR-0010 per-chain RPC for ERC-1271 (plan-2607-46 slice 03). The
+        // keyed Alchemy endpoint stays in the KS256_RPC_URL secret as the
+        // deprecated fallback until removed; both are eth_chainId-asserted.
+        "SUPPORTED_CHAINS_RPC": "{\"84532\":[\"https://sepolia.base.org\"]}",
         "WEBHOOK_RETRY_LADDER": "[1,2,4,8]",
         "WEBHOOK_RETRY_SCALE_MS": "1000",
         // FOR-390: base64 x||y of the custodian's registrar voucher public key
@@ -113,6 +121,10 @@
         "PINNED_REGISTRAR_KEY": "z1YarLKXrsRe5egrwrFfbeYadd9lOqplKxbRuMGymHUOSY7YAfdOhhPWb3H72TrPMiMLw0CBMpDPXUGMEvbkOQ==",
         "ENFORCE_DELEGATE_KEY_MEMBERSHIP": "true",
         "ENABLE_WALLET_CHALLENGE": "true",
+        // ADR-0010 per-chain RPC for ERC-1271 (plan-2607-46 slice 03);
+        // deploy contract overrides with the keyed endpoint when RPC_URL is
+        // bound for the lane.
+        "SUPPORTED_CHAINS_RPC": "{\"84532\":[\"https://sepolia.base.org\"]}",
         "WEBHOOK_RETRY_LADDER": "[1,2,4,8]",
         "WEBHOOK_RETRY_SCALE_MS": "1000",
       },

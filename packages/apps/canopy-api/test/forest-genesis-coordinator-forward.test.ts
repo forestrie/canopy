@@ -457,6 +457,10 @@ describe("POST genesis coordinator forward", () => {
       alg: "ES256",
       x: bytesToBase64(bootstrapKey.slice(0, 32)),
       y: bytesToBase64(bootstrapKey.slice(32, 64)),
+      // plan-2607-46 slice 03: genesis carries the chain binding so the
+      // coordinator's ERC-1271 RPC selection never depends on the
+      // best-effort instance write.
+      chainBinding: { chainId: "84532", univocityAddr: "42".repeat(20) },
     });
     // An explicit URL wins for this log, and the instance binding rides along
     // so a later instance re-point knows the log exists without claiming it.
@@ -507,6 +511,7 @@ describe("POST genesis coordinator forward", () => {
     expect(publicRootBody).toEqual({
       alg: COSE_ALG_KS256,
       key: bytesToBase64(bootstrapKey),
+      chainBinding: { chainId: "84532", univocityAddr: "42".repeat(20) },
     });
 
     vi.unstubAllGlobals();

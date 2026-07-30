@@ -14,8 +14,8 @@ import type { TrustRootResponseCbor } from "../../types/trust-root-response.js";
 
 /** Parsed public root material for signer comparison. */
 export type PublicRootMaterial =
-  | { alg: "ES256"; x: Uint8Array; y: Uint8Array }
-  | { alg: "KS256"; key: Uint8Array };
+  | { alg: "ES256"; x: Uint8Array; y: Uint8Array; chainId?: string }
+  | { alg: "KS256"; key: Uint8Array; chainId?: string };
 
 /**
  * Load registered public root for an authority log from the sharded store.
@@ -39,13 +39,17 @@ export async function loadRegisteredPublicRoot(
   const decoded = decodeCborStruct<TrustRootResponseCbor>(
     new Uint8Array(await resp.arrayBuffer()),
   );
+  const chainId =
+    typeof decoded.chainId === "string" && decoded.chainId
+      ? decoded.chainId
+      : undefined;
   if (decoded.alg === "ES256" && decoded.x && decoded.y) {
-    return { alg: "ES256", x: decoded.x, y: decoded.y };
+    return { alg: "ES256", x: decoded.x, y: decoded.y, chainId };
   }
   const algInt =
     typeof decoded.alg === "number" ? decoded.alg : Number(decoded.alg);
   if (algInt === COSE_ALG_KS256 && decoded.key) {
-    return { alg: "KS256", key: decoded.key };
+    return { alg: "KS256", key: decoded.key, chainId };
   }
   return null;
 }

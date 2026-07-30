@@ -1,6 +1,6 @@
 {
   "name": "@forestrie/chain-rpc",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "license": "MIT",
   "type": "module",
   "description": "Supported chains RPC config parsing, env substitution, and JSON-RPC failover",

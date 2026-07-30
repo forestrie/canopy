@@ -99,3 +99,85 @@ describe("createErc1271VerifyHooks", () => {
     );
   });
 });
+
+describe("createErc1271VerifyHooks expectedChainId (plan-2607-46 slice 03)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // Each test uses a distinct URL: endpoint chain ids are memoized
+  // per-isolate by URL, which is the production behavior under test.
+
+  function stubChainAwareRpc(chainIdHex: string, callResult: string) {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: unknown, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as { method: string };
+        calls.push(body.method);
+        const result = body.method === "eth_chainId" ? chainIdHex : callResult;
+        return rpcResponse(result);
+      }),
+    );
+    return calls;
+  }
+
+  it("asserts eth_chainId once per endpoint and proceeds on match", async () => {
+    const calls = stubChainAwareRpc("0x14a34", MAGIC_WORD);
+    const hooks = createErc1271VerifyHooks(["https://match.rpc.test"], {
+      expectedChainId: "84532",
+    });
+    await expect(
+      hooks.isValidSignature(ADDRESS, HASH, new Uint8Array(65)),
+    ).resolves.toBe(true);
+    await expect(
+      hooks.isValidSignature(ADDRESS, HASH, new Uint8Array(65)),
+    ).resolves.toBe(true);
+    expect(calls.filter((m) => m === "eth_chainId")).toHaveLength(1);
+  });
+
+  it("refuses an endpoint serving the wrong chain as unavailable", async () => {
+    stubChainAwareRpc("0x1", MAGIC_WORD);
+    const hooks = createErc1271VerifyHooks(["https://wrong.rpc.test"], {
+      expectedChainId: "84532",
+    });
+    await expect(
+      hooks.isValidSignature(ADDRESS, HASH, new Uint8Array(65)),
+    ).rejects.toBeInstanceOf(Erc1271UnavailableError);
+    await expect(hooks.hasContractCode(ADDRESS)).rejects.toBeInstanceOf(
+      Erc1271UnavailableError,
+    );
+  });
+
+  it("is byte-for-byte unchanged when the option is absent", async () => {
+    const calls = stubChainAwareRpc("0x1", MAGIC_WORD);
+    const hooks = createErc1271VerifyHooks(["https://unasserted.rpc.test"]);
+    await expect(
+      hooks.isValidSignature(ADDRESS, HASH, new Uint8Array(65)),
+    ).resolves.toBe(true);
+    expect(calls).not.toContain("eth_chainId");
+  });
+
+  it("a failed chain probe retries on the next call instead of sticking", async () => {
+    let failing = true;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: unknown, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as { method: string };
+        if (failing) throw new Error("rpc down");
+        const result = body.method === "eth_chainId" ? "0x14a34" : MAGIC_WORD;
+        return rpcResponse(result);
+      }),
+    );
+    const hooks = createErc1271VerifyHooks(["https://flaky.rpc.test"], {
+      expectedChainId: "84532",
+    });
+    await expect(hooks.hasContractCode(ADDRESS)).rejects.toBeInstanceOf(
+      Erc1271UnavailableError,
+    );
+    failing = false;
+    await expect(
+      hooks.isValidSignature(ADDRESS, HASH, new Uint8Array(65)),
+    ).resolves.toBe(true);
+  });
+});

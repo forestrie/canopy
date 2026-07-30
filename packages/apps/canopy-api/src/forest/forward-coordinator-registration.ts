@@ -57,6 +57,12 @@ export interface ForwardCoordinatorRegistrationInput {
    * caller learns something either way.
    */
   timeoutMs?: number;
+  /**
+   * The log's chain binding, carried on the public-root POST (plan-2607-46
+   * slice 03) so coordinator ERC-1271 RPC selection never depends on the
+   * best-effort instance-binding write.
+   */
+  chainBinding?: { chainId: string; univocityAddr: string };
   fetchImpl?: typeof fetch;
 }
 
@@ -65,6 +71,7 @@ interface PublicRootJsonBody {
   x?: string;
   y?: string;
   key?: string;
+  chainBinding?: { chainId: string; univocityAddr?: string };
 }
 
 export function isCoordinatorForwardConfigured(
@@ -179,6 +186,9 @@ export async function forwardCoordinatorRegistration(
       input.genesisAlg,
       input.bootstrapKey,
     );
+    if (input.chainBinding) {
+      publicRootBody.chainBinding = input.chainBinding;
+    }
   } catch (error) {
     status.detail =
       error instanceof Error ? error.message : "invalid bootstrap key";

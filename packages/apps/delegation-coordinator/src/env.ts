@@ -65,7 +65,15 @@ export interface Env {
    */
   COORDINATOR_RESET_ALLOWED?: string;
   /**
-   * Optional JSON-RPC URL for KS256 ERC-1271 delegation certificate verify.
+   * ADR-0010 per-chain RPC config: JSON `{chainId: [urls]}`. ERC-1271
+   * verification selects endpoints by the log's chain binding (plan-2607-46
+   * slice 03) and asserts `eth_chainId` on first use.
+   */
+  SUPPORTED_CHAINS_RPC?: string;
+  /**
+   * @deprecated Single-URL fallback for {@link SUPPORTED_CHAINS_RPC}; still
+   * chain-asserted per log. Remove once SUPPORTED_CHAINS_RPC is configured
+   * everywhere (plan-2607-46 enact-time check).
    */
   KS256_RPC_URL?: string;
   /**

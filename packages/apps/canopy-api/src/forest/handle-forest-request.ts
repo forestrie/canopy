@@ -115,6 +115,10 @@ async function coordinatorStatusForGenesis(
     logIdWire: genesisResult.logIdWire,
     genesisAlg: genesisResult.genesisAlg,
     bootstrapKey: genesisResult.bootstrapKey,
+    chainBinding: {
+      chainId: genesisResult.chainBinding.chainId,
+      univocityAddr: genesisAddrHex(genesisResult.chainBinding),
+    },
     ...(webhookUrl ? { webhookUrl } : {}),
     ...(univocityInstanceId ? { univocityInstanceId } : {}),
     ...(timeoutMs ? { timeoutMs } : {}),

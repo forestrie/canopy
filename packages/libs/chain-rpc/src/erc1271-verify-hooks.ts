@@ -13,6 +13,7 @@
 import {
   bytesToHex,
   ethCallWithFailover,
+  ethRpc,
   hasContractCodeAt,
 } from "./eth-rpc.js";
 import type { EthRpcOptions } from "./eth-rpc.js";
@@ -91,6 +92,42 @@ export function encodeIsValidSignatureCall(
   return `0x${ERC1271_SELECTOR}${bytesToHex(hash)}${word(0x40)}${word(signature.length)}${sigPadded}`;
 }
 
+/** Options for {@link createErc1271VerifyHooks}. */
+export interface Erc1271VerifyHooksOptions extends EthRpcOptions {
+  /**
+   * Decimal EIP-155 chain id the endpoints MUST serve (plan-2607-46 slice
+   * 03). When set, each endpoint's `eth_chainId` is probed lazily on first
+   * use (memoized per isolate) and endpoints that disagree are refused; if
+   * no endpoint matches, hooks throw {@link Erc1271UnavailableError} — a
+   * wrong-chain RPC is a misconfiguration, never a verification verdict.
+   */
+  expectedChainId?: string;
+}
+
+/** Per-isolate memo of each endpoint's answered chain id. */
+const endpointChainIds = new Map<string, Promise<number>>();
+
+function probeEndpointChainId(
+  url: string,
+  options: EthRpcOptions,
+): Promise<number> {
+  let pending = endpointChainIds.get(url);
+  if (!pending) {
+    pending = ethRpc(url, "eth_chainId", [], options).then((result) => {
+      const parsed =
+        typeof result === "string" ? Number.parseInt(result, 16) : Number.NaN;
+      if (!Number.isSafeInteger(parsed)) {
+        throw new Error(`eth_chainId returned invalid data from ${url}`);
+      }
+      return parsed;
+    });
+    // Do not memoize failures — a transient outage must not poison the URL.
+    pending.catch(() => endpointChainIds.delete(url));
+    endpointChainIds.set(url, pending);
+  }
+  return pending;
+}
+
 /**
  * Build ERC-1271 hooks over JSON-RPC with failover.
  *
@@ -100,16 +137,57 @@ export function encodeIsValidSignatureCall(
  * contract signature.
  *
  * @param rpcUrls - Preference-ordered endpoints for the binding chain.
- * @param options - Per-request timeout passed to each attempt.
+ * @param options - Per-request timeout and optional expected chain id.
  */
 export function createErc1271VerifyHooks(
   rpcUrls: string[],
-  options: EthRpcOptions = {},
+  options: Erc1271VerifyHooksOptions = {},
 ): Erc1271VerifyHooks {
+  const { expectedChainId, ...rpcOptions } = options;
+
+  let asserted: Promise<string[]> | undefined;
+  function urlsForCalls(): Promise<string[]> {
+    if (!expectedChainId) return Promise.resolve(rpcUrls);
+    if (!asserted) {
+      asserted = (async () => {
+        const expected = Number.parseInt(expectedChainId, 10);
+        const matching: string[] = [];
+        const reasons: string[] = [];
+        for (const url of rpcUrls) {
+          try {
+            const got = await probeEndpointChainId(url, rpcOptions);
+            if (got === expected) {
+              matching.push(url);
+            } else {
+              reasons.push(`${url}: serves chain ${got}, expected ${expected}`);
+            }
+          } catch (error) {
+            reasons.push(
+              `${url}: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+        if (matching.length === 0) {
+          throw new Erc1271UnavailableError(
+            "eth_chainId",
+            new Error(reasons.join("; ") || "no endpoints configured"),
+          );
+        }
+        return matching;
+      })();
+      // A failed assertion must retry on the next call, not stick.
+      asserted.catch(() => {
+        asserted = undefined;
+      });
+    }
+    return asserted;
+  }
+
   return {
     async hasContractCode(address: Uint8Array): Promise<boolean> {
+      const urls = await urlsForCalls();
       try {
-        return await hasContractCodeAt(rpcUrls, bytesToHex(address), options);
+        return await hasContractCodeAt(urls, bytesToHex(address), rpcOptions);
       } catch (error) {
         throw new Erc1271UnavailableError("eth_getCode", error);
       }
@@ -122,13 +200,14 @@ export function createErc1271VerifyHooks(
       // Encoding failures (bad hash length) are caller bugs, not
       // availability — keep them outside the unavailable wrapping.
       const data = encodeIsValidSignatureCall(hash, signature);
+      const urls = await urlsForCalls();
       let result: unknown;
       try {
         result = await ethCallWithFailover(
-          rpcUrls,
+          urls,
           `0x${bytesToHex(address)}`,
           data,
-          options,
+          rpcOptions,
         );
       } catch (error) {
         throw new Erc1271UnavailableError("isValidSignature eth_call", error);

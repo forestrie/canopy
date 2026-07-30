@@ -205,6 +205,18 @@ varsBlock = setStringProperty(
   "COORDINATOR_DOMAIN",
   coordinatorHostnames[0],
 );
+// ADR-0010 per-chain RPC for ERC-1271 (plan-2607-46 slice 03): same job-level
+// value canopy-api and x402-settlement consume — the keyed RPC_URL binding
+// when set, else the lane's public-RPC var. Optional so a lane without either
+// keeps the checked-in fallback.
+const supportedChainsRpc = process.env.SUPPORTED_CHAINS_RPC?.trim();
+if (supportedChainsRpc) {
+  varsBlock = setStringProperty(
+    varsBlock,
+    "SUPPORTED_CHAINS_RPC",
+    supportedChainsRpc,
+  );
+}
 envBlock = replaceRange(envBlock, vars, varsBlock);
 
 if (!coordinatorHostnames.length) {

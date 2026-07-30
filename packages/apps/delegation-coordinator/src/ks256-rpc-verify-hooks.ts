@@ -31,6 +31,37 @@ function warnSwallowed(operation: string, error: unknown): void {
 }
 
 /**
+ * Swallowing wrapper over STRICT ERC-1271 hooks: RPC failure logs and
+ * verifies false, preserving the DO cert-verify fail-to-EOA-branch shape.
+ */
+export function swallowingKs256VerifyHooks(
+  strict: import("@forestrie/chain-rpc").Erc1271VerifyHooks,
+): Ks256VerifyHooks {
+  return {
+    async hasContractCode(address: Uint8Array): Promise<boolean> {
+      try {
+        return await strict.hasContractCode(address);
+      } catch (error) {
+        warnSwallowed("eth_getCode", error);
+        return false;
+      }
+    },
+    async isValidSignature(
+      address: Uint8Array,
+      hash: Uint8Array,
+      signature: Uint8Array,
+    ): Promise<boolean> {
+      try {
+        return await strict.isValidSignature(address, hash, signature);
+      } catch (error) {
+        warnSwallowed("isValidSignature", error);
+        return false;
+      }
+    },
+  };
+}
+
+/**
  * Build ERC-1271 hooks from a JSON-RPC URL (coordinator worker).
  *
  * @param rpcUrl - HTTPS JSON-RPC endpoint (e.g. Base Sepolia).

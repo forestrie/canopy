@@ -15,4 +15,6 @@ export interface SubmitPublicRootRequest {
   y?: string;
   /** Base64 opaque root key: 64 bytes (ES256 x‖y) or 20 bytes (KS256 address). */
   key?: string;
+  /** The log's chain binding (plan-2607-46 slice 03), sent at genesis. */
+  chainBinding?: { chainId: string; univocityAddr?: string };
 }

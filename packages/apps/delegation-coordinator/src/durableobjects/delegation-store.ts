@@ -57,7 +57,11 @@ import {
   verifyOnchainDelegationSignatureEs256,
   verifyOnchainDelegationSignatureKs256,
 } from "@forestrie/delegation-cose";
-import { createKs256RpcVerifyHooks } from "../ks256-rpc-verify-hooks.js";
+import { swallowingKs256VerifyHooks } from "../ks256-rpc-verify-hooks.js";
+import {
+  chainIdFromUnivocityInstanceId,
+  strictHooksForChain,
+} from "../chain-rpc-selection.js";
 import type { OnchainDelegationProofWire } from "../types/delegation-issue-response.js";
 import {
   buildDelegationRequiredEvent,
@@ -377,6 +381,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
     this.ensureEnabledAuthorityColumns();
     this.ensureLogConfigUnivocityInstanceIdColumns();
+    this.ensurePublicRootChainColumn();
 
     // Instance-level webhooks (FOR-468). Per-univocity-instance, replicated to
     // every shard — like delegate_keys — so a log's shard can copy the URL into
@@ -551,6 +556,28 @@ export class DelegationStoreDO extends DurableObject<Env> {
    * Existing rows pre-date instances and keep a NULL source, which reads as an
    * explicit per-log URL.
    */
+  /**
+   * Nullable `chain_id` on public_roots (plan-2607-46 slice 03): the log's
+   * EIP-155 chain, carried on the public-root PUT so ERC-1271 verification
+   * can select chain-scoped RPC without depending on the best-effort
+   * instance-binding write. Legacy rows stay NULL and fall back to
+   * `log_delegation_config.univocity_instance_id`.
+   */
+  private ensurePublicRootChainColumn(): void {
+    try {
+      [
+        ...this.ctx.storage.sql.exec(
+          `SELECT chain_id FROM public_roots LIMIT 0`,
+        ),
+      ];
+      return;
+    } catch {
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE public_roots ADD COLUMN chain_id TEXT`,
+      );
+    }
+  }
+
   private ensureLogConfigUnivocityInstanceIdColumns(): void {
     try {
       [
@@ -854,6 +881,20 @@ export class DelegationStoreDO extends DurableObject<Env> {
       );
     }
 
+    const chainIdRaw = body.chainBinding?.chainId?.trim();
+    if (chainIdRaw !== undefined && !/^\d+$/.test(chainIdRaw)) {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Invalid request",
+          status: 400,
+          detail: "chainBinding.chainId must be a decimal EIP-155 id",
+        },
+        { status: 400 },
+      );
+    }
+    const chainId = chainIdRaw ?? null;
+
     const algRaw = body.alg;
     if (algRaw === "ES256") {
       if (!body.x || !body.y) {
@@ -881,17 +922,19 @@ export class DelegationStoreDO extends DurableObject<Env> {
         );
       }
       this.ctx.storage.sql.exec(
-        `INSERT INTO public_roots (log_id_hex32, alg, x, y, uploaded_at)
-         VALUES (?, ?, ?, ?, ?)
+        `INSERT INTO public_roots (log_id_hex32, alg, x, y, chain_id, uploaded_at)
+         VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT(log_id_hex32) DO UPDATE SET
            alg = excluded.alg,
            x = excluded.x,
            y = excluded.y,
+           chain_id = COALESCE(excluded.chain_id, public_roots.chain_id),
            uploaded_at = excluded.uploaded_at`,
         logIdHex32,
         body.alg,
         x,
         y,
+        chainId,
         Date.now(),
       );
       return Response.json({ ok: true });
@@ -940,21 +983,70 @@ export class DelegationStoreDO extends DurableObject<Env> {
     }
 
     this.ctx.storage.sql.exec(
-      `INSERT INTO public_roots (log_id_hex32, alg, x, y, uploaded_at)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO public_roots (log_id_hex32, alg, x, y, chain_id, uploaded_at)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(log_id_hex32) DO UPDATE SET
          alg = excluded.alg,
          x = excluded.x,
          y = excluded.y,
+         chain_id = COALESCE(excluded.chain_id, public_roots.chain_id),
          uploaded_at = excluded.uploaded_at`,
       logIdHex32,
       String(algInt),
       key,
       new Uint8Array(0),
+      chainId,
       Date.now(),
     );
 
     return Response.json({ ok: true });
+  }
+
+  /** Chain id from the log's instance binding row, or null. */
+  private chainIdFromInstanceBinding(logIdHex32: string): string | null {
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT univocity_instance_id FROM log_delegation_config WHERE log_id_hex32 = ?`,
+        logIdHex32,
+      ),
+    ];
+    const instanceId = (
+      rows[0] as { univocity_instance_id: string | null } | undefined
+    )?.univocity_instance_id;
+    return instanceId ? chainIdFromUnivocityInstanceId(instanceId) : null;
+  }
+
+  /**
+   * The log's EIP-155 chain for ERC-1271 RPC selection (plan-2607-46 slice
+   * 03): public_roots.chain_id first (written by the genesis registration
+   * PUT), instance binding as fallback for legacy rows; null = unresolvable
+   * — contract-root verification then fails closed.
+   */
+  private resolveLogChainId(logIdHex32: string): string | null {
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT chain_id FROM public_roots WHERE log_id_hex32 = ?`,
+        logIdHex32,
+      ),
+    ];
+    const stored = (rows[0] as { chain_id: string | null } | undefined)
+      ?.chain_id;
+    return stored ?? this.chainIdFromInstanceBinding(logIdHex32);
+  }
+
+  /**
+   * Swallowing KS256 hooks scoped to the log's chain, or undefined when the
+   * chain is unresolvable or has no RPC configured — the KS256 verify then
+   * runs EOA-recovery-only and a contract root fails closed.
+   */
+  private ks256HooksForLog(
+    logIdHex32: string,
+  ): import("@forestrie/delegation-cose").Ks256VerifyHooks | undefined {
+    const chainId = this.resolveLogChainId(logIdHex32);
+    if (!chainId) return undefined;
+    const strict = strictHooksForChain(this.env, chainId);
+    if (!strict) return undefined;
+    return swallowingKs256VerifyHooks(strict);
   }
 
   /** Map SQLite public_roots row to validation PublicRootMaterial. */
@@ -1019,7 +1111,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
   private handleGetPublicRoot(logIdHex32: string): Response {
     const rows = [
       ...this.ctx.storage.sql.exec(
-        `SELECT alg, x, y FROM public_roots WHERE log_id_hex32 = ?`,
+        `SELECT alg, x, y, chain_id FROM public_roots WHERE log_id_hex32 = ?`,
         logIdHex32,
       ),
     ];
@@ -1044,11 +1136,15 @@ export class DelegationStoreDO extends DurableObject<Env> {
       alg: string;
       x: ArrayBuffer;
       y: ArrayBuffer;
+      chain_id: string | null;
     };
 
     let resp: TrustRootResponseCbor;
     try {
       resp = this.trustRootCborFromRow(logIdHex32, row);
+      const chainId =
+        row.chain_id ?? this.chainIdFromInstanceBinding(logIdHex32);
+      if (chainId) resp.chainId = chainId;
     } catch (error) {
       const detail =
         error instanceof Error ? error.message : "invalid stored public root";
@@ -1191,7 +1287,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
         issuedAt: body.issuedAt,
         expiresAt: body.expiresAt,
         publicRoot: this.publicRootMaterialFromRow(rootRow),
-        ks256RpcUrl: this.env.KS256_RPC_URL,
+        ks256Hooks: this.ks256HooksForLog(logIdHex32),
       });
     } catch (error) {
       const detail =
@@ -1241,14 +1337,11 @@ export class DelegationStoreDO extends DurableObject<Env> {
       };
       let ok: boolean;
       if (root.alg === "KS256") {
-        const hooks = this.env.KS256_RPC_URL
-          ? createKs256RpcVerifyHooks(this.env.KS256_RPC_URL)
-          : undefined;
         ok = await verifyOnchainDelegationSignatureKs256(
           scope,
           signature,
           root.key,
-          hooks,
+          this.ks256HooksForLog(logIdHex32),
         );
       } else {
         // The contract's P256 verifier rejects malleable high-s signatures;
