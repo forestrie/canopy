@@ -787,8 +787,9 @@ export class DelegationStoreDO extends DurableObject<Env> {
     // H4 genesis PUSH (FOR-390 phase H): the moment a signing route is known,
     // if a standing delegate key is already registered, fire delegation.required
     // for it so a hands-off (Mode C) signer auto-pre-delegates and the first
-    // seal is a coverage hit. enqueueWebhookDelivery no-ops for routes without a
-    // webhook (wallet mode pulls C3 instead). Idempotent by request_key.
+    // seal is a coverage hit. enqueueWebhookDelivery no-ops for routes without
+    // a webhook and for wallet-mode routes (which pull C3 instead).
+    // Idempotent by request_key.
     this.ctx.waitUntil(
       this.enqueueStandingDelegationWebhook(
         logIdHex32,
@@ -2661,6 +2662,18 @@ export class DelegationStoreDO extends DurableObject<Env> {
     );
   }
 
+  /** Signing-route mode for a log, or null when no route is recorded. */
+  private signingRouteMode(logIdHex32: string): string | null {
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT mode FROM signing_routes WHERE log_id_hex32 = ?`,
+        logIdHex32,
+      ),
+    ];
+    if (rows.length === 0) return null;
+    return (rows[0] as { mode: string }).mode;
+  }
+
   /** Insert webhook_deliveries row and attempt first delivery. */
   private async enqueueWebhookDelivery(input: {
     logIdHex32: string;
@@ -2673,6 +2686,12 @@ export class DelegationStoreDO extends DurableObject<Env> {
   }): Promise<void> {
     const config = this.readDelegationConfigRow(input.logIdHex32);
     if (!config?.webhook_url || !this.effectiveEnabled(config)) {
+      return;
+    }
+    // Wallet-routed (interactive) logs are served by the pending queue; a
+    // webhook copied in via instance binding must not page a signer that
+    // cannot sign (Safe 1x1 Mode D — FOR-504).
+    if (this.signingRouteMode(input.logIdHex32) === "wallet") {
       return;
     }
 

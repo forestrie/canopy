@@ -10,6 +10,10 @@ import {
 import { requestKeyFor } from "../../src/webhook/request-key.js";
 import type { DelegationRequiredEvent } from "../../src/types/delegation-required-event.js";
 import { fetchWithDoRetry } from "./fetch-with-do-retry.js";
+import {
+  mintTestSessionToken,
+  sessionHeaders,
+} from "./wallet-session-helpers.js";
 
 const TEST_TOKEN = "test-coordinator-token";
 const WEBHOOK_ORIGIN = "https://hooks.example.test";
@@ -242,5 +246,70 @@ describe("webhook delivery", () => {
     });
     expect(miss.status).toBe(202);
     await new Promise((resolve) => setTimeout(resolve, 30));
+  });
+
+  // Safe 1x1 (Mode D): a wallet-routed log may still carry a webhook (e.g.
+  // copied in by instance binding), but its root signs interactively — the
+  // signer webhook must stay quiet and the demand must land in pending.
+  it("signing-route mode=wallet suppresses emit, pending row remains", async () => {
+    fetchMock.activate();
+    fetchMock.disableNetConnect();
+    try {
+      const logUuid = randomUUID();
+      const logHex32 = normalizeLogIdToHex32(logUuid);
+      const webhookUrl = `${WEBHOOK_ORIGIN}${WEBHOOK_PATH}`;
+
+      await registerWebhook(logUuid, webhookUrl);
+
+      const routeToken = mintTestSessionToken({
+        authLogIdHex32: logHex32,
+        scopes: ["logs:signing-route:write"],
+      });
+      const routeRes = await fetchWithDoRetry(
+        `http://localhost/api/logs/${logUuid}/signing-route`,
+        {
+          method: "POST",
+          headers: sessionHeaders(routeToken, {
+            "Content-Type": "application/json",
+          }),
+          body: JSON.stringify({ mode: "wallet" }),
+        },
+      );
+      expect(routeRes.status).toBe(200);
+
+      let delivered = false;
+      fetchMock
+        .get(WEBHOOK_ORIGIN)
+        .intercept({ path: WEBHOOK_PATH, method: "POST" })
+        .reply(200, () => {
+          delivered = true;
+          return "ok";
+        })
+        .persist();
+
+      const miss = await postIssue({
+        logHex32,
+        mmrStart: 4,
+        mmrEnd: 11,
+        delegatedPublicKey: delegatedKey(9),
+      });
+      expect(miss.status).toBe(202);
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(delivered).toBe(false);
+
+      const pendingRes = await fetchWithDoRetry(
+        `http://localhost/api/logs/${logUuid}/pending-delegation`,
+      );
+      expect(pendingRes.status).toBe(200);
+      const pending = (await pendingRes.json()) as {
+        entries: Array<{ mmrStart: number; mmrEnd: number }>;
+      };
+      expect(
+        pending.entries.some((e) => e.mmrStart === 4 && e.mmrEnd === 11),
+      ).toBe(true);
+    } finally {
+      fetchMock.deactivate();
+    }
   });
 });
