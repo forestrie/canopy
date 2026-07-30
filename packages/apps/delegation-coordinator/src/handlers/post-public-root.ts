@@ -91,6 +91,7 @@ export async function handlePostPublicRoot(
           alg: body.alg,
           x: body.x,
           y: body.y,
+          chainBinding: body.chainBinding,
         }),
       });
     }
@@ -140,6 +141,7 @@ export async function handlePostPublicRoot(
         logIdHex32,
         alg: body.alg,
         key: body.key,
+        chainBinding: body.chainBinding,
       }),
     });
   } catch (error) {

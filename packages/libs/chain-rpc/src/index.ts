@@ -16,7 +16,10 @@ export {
   rpcUrlsForChainId,
   supportedChainIds,
 } from "./supported-chains-config.js";
-export type { Erc1271VerifyHooks } from "./erc1271-verify-hooks.js";
+export type {
+  Erc1271VerifyHooks,
+  Erc1271VerifyHooksOptions,
+} from "./erc1271-verify-hooks.js";
 export {
   createErc1271VerifyHooks,
   encodeIsValidSignatureCall,

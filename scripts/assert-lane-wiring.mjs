@@ -29,6 +29,7 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const API_DIR = join(REPO_ROOT, "packages/apps/canopy-api");
 const SETTLEMENT_DIR = join(REPO_ROOT, "packages/apps/x402-settlement");
+const COORDINATOR_DIR = join(REPO_ROOT, "packages/apps/delegation-coordinator");
 
 /**
  * Per-lane contract fixtures. These mirror what forest-1's
@@ -120,6 +121,22 @@ try {
       l.contract,
       `settlement-${l.lane}.jsonc`,
     ),
+    coordinator: applyContract(
+      COORDINATOR_DIR,
+      l.wranglerEnv,
+      l.contract,
+      `coordinator-${l.lane}.jsonc`,
+    ),
+    // The same lane WITHOUT the job-level SUPPORTED_CHAINS_RPC binding: the
+    // coordinator contract must then leave the env block untouched — dev
+    // keeps its checked-in keyless default, prod deliberately has NONE so
+    // the keyed KS256_RPC_URL secret keeps winning (plan-2607-10 R3/R4).
+    coordinatorNoRpc: applyContract(
+      COORDINATOR_DIR,
+      l.wranglerEnv,
+      { ...l.contract, SUPPORTED_CHAINS_RPC: "" },
+      `coordinator-norpc-${l.lane}.jsonc`,
+    ),
   }));
 
   for (const r of resolved) {
@@ -183,6 +200,33 @@ try {
       /"SUPPORTED_CHAINS_RPC"\s*:\s*"(?:[^"\\]|\\.)+"/.test(settlement),
       `${tag}: x402-settlement resolves an empty SUPPORTED_CHAINS_RPC — the indexer would skip every sweep`,
     );
+    // Coordinator ERC-1271 RPC selection (plan-2607-46 slice 03 /
+    // plan-2607-10 R3+R4): the injected keyed value must land in the env
+    // block verbatim when bound...
+    const coord = envBlock(r.coordinator, r.wranglerEnv);
+    const injected = match(
+      coord,
+      /"SUPPORTED_CHAINS_RPC"\s*:\s*"((?:[^"\\]|\\.)+)"/,
+    );
+    check(
+      injected === r.contract.SUPPORTED_CHAINS_RPC.replaceAll('"', '\\"'),
+      `${tag}: coordinator SUPPORTED_CHAINS_RPC injection lost — resolved "${injected}"`,
+    );
+    // ...and with no binding, dev keeps its checked-in default while prod
+    // must resolve NONE (the deprecated keyed secret then serves).
+    const coordNoRpc = envBlock(r.coordinatorNoRpc, r.wranglerEnv);
+    const hasVar = /"SUPPORTED_CHAINS_RPC"\s*:/.test(coordNoRpc);
+    if (r.wranglerEnv === "prod") {
+      check(
+        !hasVar,
+        `${tag}: prod coordinator gained a keyless SUPPORTED_CHAINS_RPC default — it would shadow the keyed KS256_RPC_URL secret`,
+      );
+    } else {
+      check(
+        hasVar,
+        `${tag}: dev coordinator lost its checked-in SUPPORTED_CHAINS_RPC default`,
+      );
+    }
   }
 
   const [a, b] = resolved;

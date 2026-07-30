@@ -84,6 +84,29 @@ export async function listOnboardTokens(
   return out;
 }
 
+/**
+ * Revoke every ACTIVE token bound to a request except `keepHash`
+ * (plan-2607-10 R1): enforces at-most-one-active-token per request and
+ * self-heals orphans left by earlier crashed or concurrent reissues.
+ *
+ * @returns hashes revoked.
+ */
+export async function revokeOtherActiveTokensForRequest(
+  env: OnboardTokenStoreEnv,
+  requestId: string,
+  keepHash: string,
+): Promise<string[]> {
+  const revoked: string[] = [];
+  for (const record of await listOnboardTokens(env)) {
+    if (record.requestId !== requestId) continue;
+    if (record.hash === keepHash) continue;
+    if (record.status !== "active") continue;
+    await revokeOnboardToken(env, record.hash);
+    revoked.push(record.hash);
+  }
+  return revoked;
+}
+
 export async function readOnboardTokenRecord(
   env: OnboardTokenStoreEnv,
   hash: string,

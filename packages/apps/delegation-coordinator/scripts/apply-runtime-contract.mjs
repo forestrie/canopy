@@ -99,9 +99,15 @@ function replaceRange(text, range, replacement) {
 
 function setStringProperty(block, key, value) {
   if (!value) return block;
-  const re = new RegExp(`("${key}"\\s*:\\s*)"[^"]*"`);
-  if (re.test(block)) return block.replace(re, `$1"${value}"`);
-  const insert = `\n        "${key}": "${value}",`;
+  // JSON-escape the value (it may itself be JSON, e.g. SUPPORTED_CHAINS_RPC)
+  // and match existing escaped values — raw interpolation wrote invalid
+  // config for quote-bearing values (plan-2607-10 R4 caught this).
+  const jsonValue = JSON.stringify(value);
+  const re = new RegExp(`("${key}"\\s*:\\s*)"(?:[^"\\\\]|\\\\.)*"`);
+  if (re.test(block)) {
+    return block.replace(re, (_m, prefix) => `${prefix}${jsonValue}`);
+  }
+  const insert = `\n        "${key}": ${jsonValue},`;
   return block.replace(/\n\s*}$/, `${insert}\n      }`);
 }
 
@@ -205,6 +211,18 @@ varsBlock = setStringProperty(
   "COORDINATOR_DOMAIN",
   coordinatorHostnames[0],
 );
+// ADR-0010 per-chain RPC for ERC-1271 (plan-2607-46 slice 03): same job-level
+// value canopy-api and x402-settlement consume — the keyed RPC_URL binding
+// when set, else the lane's public-RPC var. Optional so a lane without either
+// keeps the checked-in fallback.
+const supportedChainsRpc = process.env.SUPPORTED_CHAINS_RPC?.trim();
+if (supportedChainsRpc) {
+  varsBlock = setStringProperty(
+    varsBlock,
+    "SUPPORTED_CHAINS_RPC",
+    supportedChainsRpc,
+  );
+}
 envBlock = replaceRange(envBlock, vars, varsBlock);
 
 if (!coordinatorHostnames.length) {

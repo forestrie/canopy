@@ -14,7 +14,7 @@ import {
 import { mintSessionToken } from "../auth/wallet-challenge/session-token.js";
 import { verifyEs256ControlPlaneSignature } from "../auth/wallet-challenge/verify-es256.js";
 import { verifyKs256ControlPlaneSignatureForRoot } from "../auth/wallet-challenge/verify-ks256.js";
-import { createErc1271VerifyHooks } from "@forestrie/chain-rpc";
+import { strictHooksForChain } from "../chain-rpc-selection.js";
 import { normalizeLogIdToHex32 } from "../log-id.js";
 import type { SessionExchangeRequest } from "../types/wallet-challenge.js";
 import { base64ToBytes } from "../encoding.js";
@@ -227,14 +227,28 @@ export async function handlePostAuthSession(
       );
     }
 
+    // The envelope's chainId is signed into the wcc-1 message; when both it
+    // and the log's stored binding are known they must agree (plan-2607-46
+    // slice 03) — a wallet on the wrong chain gets a verdict, not a session.
+    if (envelope.chainId && root.chainId && envelope.chainId !== root.chainId) {
+      return problemResponse(
+        403,
+        "about:blank",
+        "Forbidden",
+        `Envelope chainId ${envelope.chainId} does not match the log's chain binding ${root.chainId}`,
+      );
+    }
+
     // STRICT hooks here (not the swallowing cert-verify wrapper): an RPC
-    // outage must surface as 503, never collapse into a 403 verdict.
-    const rpcUrl = env.KS256_RPC_URL?.trim();
+    // outage must surface as 503, never collapse into a 403 verdict. RPC is
+    // selected by the log's chain binding and eth_chainId-asserted; with no
+    // resolvable binding, hooks stay absent and a contract root fails
+    // closed at the signer-mismatch gate (EOA recovery is chain-free).
     const verdict = await verifyKs256ControlPlaneSignatureForRoot(
       envelope,
       signature,
       root.key,
-      rpcUrl ? createErc1271VerifyHooks([rpcUrl]) : undefined,
+      root.chainId ? strictHooksForChain(env, root.chainId) : undefined,
     );
     if (verdict === "unavailable") {
       return problemResponse(

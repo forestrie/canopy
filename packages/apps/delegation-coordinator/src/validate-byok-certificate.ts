@@ -3,7 +3,7 @@
  *
  * Mirrors [arbor sealer](https://github.com/forestrie/arbor/blob/main/services/sealer/)
  * delegationcert rules for payload field 5 (integer-key COSE_Key). KS256 paths
- * use ERC-1271 via {@link createKs256RpcVerifyHooks} per
+ * use ERC-1271 via caller-supplied chain-scoped hooks per
  * [univocity docs/arc](https://github.com/forestrie/univocity/blob/main/docs/arc/).
  */
 
@@ -18,7 +18,7 @@ import {
   verifyDelegationCertificateEs256,
   verifyDelegationCertificateKs256,
 } from "@forestrie/delegation-cose";
-import { createKs256RpcVerifyHooks } from "./ks256-rpc-verify-hooks.js";
+import type { Ks256VerifyHooks } from "@forestrie/delegation-cose";
 
 /** COSE payload map key for embedded delegated COSE_Key. */
 const PAYLOAD_DELEGATED_KEY = 5;
@@ -109,7 +109,8 @@ async function importEs256PublicKey(
  * @param opts.issuedAt - Submit-body issuedAt; must match COSE payload field 8.
  * @param opts.expiresAt - Submit-body expiresAt; must match COSE payload field 9.
  * @param opts.publicRoot - Stored log public root for verify.
- * @param opts.ks256RpcUrl - Optional JSON-RPC for KS256 ERC-1271.
+ * @param opts.ks256Hooks - Optional chain-scoped ERC-1271 hooks for KS256
+ *   contract roots (plan-2607-46 slice 03); absent = EOA recovery only.
  * @throws {@link ByokCertificateValidationError} when validation fails.
  */
 export async function validateByokDelegationCertificate(opts: {
@@ -121,7 +122,7 @@ export async function validateByokDelegationCertificate(opts: {
   issuedAt: number;
   expiresAt: number;
   publicRoot: PublicRootMaterial;
-  ks256RpcUrl?: string;
+  ks256Hooks?: Ks256VerifyHooks;
 }): Promise<void> {
   const info = parseDelegationCertificate(opts.certificate);
   if (info.logIdHex32 !== opts.logIdHex32) {
@@ -180,13 +181,10 @@ export async function validateByokDelegationCertificate(opts: {
     );
     ok = await verifyDelegationCertificateEs256(opts.certificate, rootKey);
   } else {
-    const hooks = opts.ks256RpcUrl
-      ? createKs256RpcVerifyHooks(opts.ks256RpcUrl)
-      : undefined;
     ok = await verifyDelegationCertificateKs256(
       opts.certificate,
       opts.publicRoot.key,
-      hooks,
+      opts.ks256Hooks,
     );
   }
   if (!ok) {

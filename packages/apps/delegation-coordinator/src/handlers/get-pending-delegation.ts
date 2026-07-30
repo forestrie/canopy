@@ -1,5 +1,8 @@
 /**
- * GET /api/logs/{logId}/pending-delegation — sealer poll (unauthenticated).
+ * GET /api/logs/{logId}/pending-delegation — public read (unauthenticated
+ * BY DECISION — ADR-0008 amendment 2026-07-30 / plan-2607-46 slice 04): the
+ * sole per-log delivery surface for wallet-routed (Mode D) logs and the C3
+ * standing entry; consumed by the tokenless forestrie-cli delegate flow.
  *
  * Returns pending hints for one log when delegation surfacing is enabled.
  */

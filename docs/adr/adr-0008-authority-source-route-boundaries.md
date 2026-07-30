@@ -1,6 +1,8 @@
 # ADR-0008 — Authority-source route boundaries
 
-**Status:** Accepted (2026-06-23)
+**Status:** Accepted (2026-06-23); amended 2026-07-30 — the public
+pending-delegation read is confirmed intentional for wallet-routed (Safe 1x1
+Mode D) logs (plan-2607-46 decisions Q4).
 **Date:** 2026-06-23
 **Related:**
 [ADR-0007 wallet-challenge sessions](adr-0007-wallet-challenge-coordinator-auth.md),
@@ -48,6 +50,22 @@ webhook events expose `certificateSubmitUrl`.
 `logId`; this is intentional for the sealer poll path (see ARC-0022). Enumeration
 of arbitrary log IDs is not a confidentiality goal; edge rate limiting may
 apply if abuse appears.
+
+**Amendment (2026-07-30, plan-2607-46 slice 04 / FOR-508).** Since the
+wallet-mode webhook suppression (FOR-504), this route is the **sole per-log
+delivery surface** for wallet-routed (Safe 1x1 Mode D) logs and the only
+source of the C3 standing entry. Its actual consumers are the forestrie-cli
+delegate-in-advance flow (root-PEM-only, no operator token by design —
+ADR-0050 / plan-2607-20) and the e2e kits; the arbor sealer does NOT use it
+(it uses `POST /api/delegations` + `GET /api/delegations/active`). The route
+stays unauthenticated as a recorded decision: certificate material is
+public-by-publication (certificates land in published checkpoints), and the
+only net-new signal is *unserved-demand liveness* for a named log id, which
+is accepted. The authenticated alternative
+(`GET /api/delegations/pending`, session scope `delegations:read`) is the
+console's surface — authLogId-fanout, no standing entry — and is not a
+substitute. Gating or payload-trimming this route would break the tokenless
+CLI flow; revisit only with a replacement tokenless auth story.
 
 ### User session routes (`/api/`)
 

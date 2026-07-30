@@ -11,4 +11,10 @@ export interface PutPublicRootBody {
   x?: string;
   y?: string;
   key?: string;
+  /**
+   * The log's chain binding, carried at genesis registration (plan-2607-46
+   * slice 03) so ERC-1271 RPC selection never depends on the best-effort
+   * instance-binding webhook write.
+   */
+  chainBinding?: { chainId: string; univocityAddr?: string };
 }
