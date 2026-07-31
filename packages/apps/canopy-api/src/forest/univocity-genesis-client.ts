@@ -8,8 +8,13 @@
  *
  * Status mapping (mirrors univocity handlePostGenesis):
  *   - 201 -> created
- *   - 409 -> exists (idempotent; already migrated/provisioned)
- *   - 4xx -> rejected (bad genesis / anchor mismatch surfaced by univocity)
+ *   - 409 -> exists (idempotent; already migrated/provisioned). Since the
+ *     arbor claim-first genesis (arbor plan-2607-10, main 7206074) a 409 is
+ *     ONLY the same-R exists case — a cross-forest claim conflict answers
+ *     422, which lands in `rejected` below. Note exists does NOT imply
+ *     byte-equality: univocity's PutGenesisIfAbsent never diffs a repost,
+ *     so callers must read back and diff when they hold no local copy.
+ *   - 4xx -> rejected (bad genesis / anchor mismatch / claim conflict)
  *   - else -> unavailable (transient/unreachable; treat as 502/503)
  *
  * See plan-0029 (canopy) / plan-0008 (arbor).
@@ -34,6 +39,19 @@ async function readDetail(res: Response): Promise<string> {
     return (await res.text()).slice(0, 512);
   } catch {
     return "";
+  }
+}
+
+/**
+ * Every subrequest body must be consumed, even on the statuses whose body
+ * is irrelevant — an undrained stream holds the request context (and, in
+ * workerd, its storage connections) open.
+ */
+async function drain(res: Response): Promise<void> {
+  try {
+    await res.body?.cancel();
+  } catch {
+    // Best-effort — an already-disturbed stream is fine.
   }
 }
 
@@ -72,8 +90,14 @@ export async function postGenesisToUnivocity(
     };
   }
 
-  if (res.status === 201) return { kind: "created" };
-  if (res.status === 409) return { kind: "exists" };
+  if (res.status === 201) {
+    await drain(res);
+    return { kind: "created" };
+  }
+  if (res.status === 409) {
+    await drain(res);
+    return { kind: "exists" };
+  }
   if (res.status >= 400 && res.status < 500) {
     return {
       kind: "rejected",
@@ -84,5 +108,49 @@ export async function postGenesisToUnivocity(
   return {
     kind: "unavailable",
     detail: `univocity genesis returned ${res.status}: ${await readDetail(res)}`,
+  };
+}
+
+export type UnivocityGenesisReadBack =
+  | { kind: "ok"; body: Uint8Array }
+  | { kind: "missing" }
+  | { kind: "unavailable"; detail: string };
+
+/**
+ * Read back the genesis univocity holds for forest root `R`
+ * (`GET /api/forest/{R}/genesis`, unauthenticated, raw CBOR). Used by the
+ * forward path when univocity answers exists but the local authoritative
+ * copy is absent (a created-then-local-put-fail crash window): exists does
+ * not imply byte-equality, so the retry body must be diffed against the
+ * stored document before it may become the local copy.
+ */
+export async function getGenesisFromUnivocity(
+  client: UnivocityGenesisClient,
+  rootStorageSeg: string,
+): Promise<UnivocityGenesisReadBack> {
+  let res: Response;
+  try {
+    res = await fetch(
+      joinUrl(client.serviceUrl, `/api/forest/${rootStorageSeg}/genesis`),
+    );
+  } catch (e) {
+    return {
+      kind: "unavailable",
+      detail:
+        e instanceof Error
+          ? `univocity genesis read-back unreachable: ${e.message}`
+          : "univocity genesis read-back unreachable",
+    };
+  }
+  if (res.status === 200) {
+    return { kind: "ok", body: new Uint8Array(await res.arrayBuffer()) };
+  }
+  if (res.status === 404) {
+    await drain(res);
+    return { kind: "missing" };
+  }
+  return {
+    kind: "unavailable",
+    detail: `univocity genesis read-back returned ${res.status}: ${await readDetail(res)}`,
   };
 }
