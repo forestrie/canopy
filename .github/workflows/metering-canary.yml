@@ -65,4 +65,6 @@ jobs:
           CANARY_LOG_ID: ${{ vars.CANARY_LOG_ID }}
           CANARY_GRANT_B64: ${{ vars.CANARY_GRANT_B64 }}
           CANARY_LOG_PEM: ${{ secrets.CANARY_LOG_PEM }}
+          DELEGATION_COORDINATOR_URL: ${{ vars.DELEGATION_COORDINATOR_URL }}
+          KNOWN_SEALER_KEY: ${{ vars.KNOWN_SEALER_KEY }}
         run: node scripts/metering-canary.mjs

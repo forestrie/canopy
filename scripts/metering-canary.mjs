@@ -25,6 +25,9 @@
  *   CANARY_LOG_ID             root log UUID
  *   CANARY_GRANT_B64          completed self-referential root grant
  *   CANARY_LOG_PEM            ES256 private key PEM for the canary log
+ *   DELEGATION_COORDINATOR_URL  coordinator origin for `forestrie delegate`
+ *   KNOWN_SEALER_KEY          registrar voucher-signing key, base64 x||y
+ *   CANARY_DELEGATE_TTL_SECONDS  advance-delegation TTL (default 129600 = 36 h)
  *   FORESTRIE_VERSION         CLI release tag (default v0.6.0)
  */
 
@@ -62,6 +65,9 @@ const INSTANCE_ID = env("CANARY_INSTANCE_ID");
 const LOG_ID = env("CANARY_LOG_ID");
 const GRANT_B64 = env("CANARY_GRANT_B64");
 const LOG_PEM = env("CANARY_LOG_PEM");
+const COORDINATOR_URL = env("DELEGATION_COORDINATOR_URL");
+const SEALER_VOUCHER_KEY = env("KNOWN_SEALER_KEY");
+const DELEGATE_TTL_SECONDS = env("CANARY_DELEGATE_TTL_SECONDS", "129600");
 const CLI_VERSION = env("FORESTRIE_VERSION", "v0.6.0");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -217,9 +223,33 @@ async function main() {
     );
   }
 
-  // 3. Register a fresh statement through the CLI (publish liveness: with
-  //    sealing pre-delegated the receipt path completes in seconds).
+  // 3. Refresh the advance delegation. Delegations are finite leases (the
+  //    default TTL is the coordinator's suggestedTtlSeconds, 6 h) — the
+  //    one-shot bring-up pre-delegation expired on 2026-07-28 and every seal
+  //    after it sat as a pending demand nothing could sign (the root PEM
+  //    lives only here). Minting per run makes the canary self-healing and
+  //    exercises the delegate-in-advance surface nightly; 36 h bridges a
+  //    skipped night.
   const cli = await fetchCli(work);
+  run(cli, [
+    "delegate",
+    "--coordinator-url",
+    COORDINATOR_URL,
+    "--log-id",
+    LOG_ID,
+    "--sign-with",
+    pemPath,
+    "--known-sealer-key",
+    SEALER_VOUCHER_KEY,
+    "--ttl-seconds",
+    DELEGATE_TTL_SECONDS,
+  ]);
+  console.log(
+    `canary: advance delegation refreshed (ttl=${DELEGATE_TTL_SECONDS}s)`,
+  );
+
+  // 4. Register a fresh statement through the CLI (publish liveness: with
+  //    sealing delegated the receipt path completes in seconds).
   const stmtJson = join(work, "statement.json");
   const stmtCose = join(work, "statement.cose");
   writeFileSync(
@@ -253,7 +283,7 @@ async function main() {
   }
   console.log("canary: statement registered, receipt returned");
 
-  // 4. Poll for accrual: sweep + read until the checkpoint lands. Safe-head
+  // 5. Poll for accrual: sweep + read until the checkpoint lands. Safe-head
   //    lag (~6 min on Base Sepolia) dominates; the sweep removes the cron
   //    wait, not the chain wait.
   const deadline = Date.now() + POLL_BUDGET_MS;
