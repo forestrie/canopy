@@ -49,6 +49,7 @@ import { verifyUnivocityDeployment } from "../onboarding/univocity-deployment-ga
 import type { UnivocityGateEnv } from "../onboarding/univocity-gate-env.js";
 import { problemResponse } from "../cbor-api/cbor-response.js";
 import {
+  getGenesisFromUnivocity,
   postGenesisToUnivocity,
   type UnivocityGenesisClient,
 } from "./univocity-genesis-client.js";
@@ -357,19 +358,16 @@ export async function postForestGenesis(
     chainId: binding.chainId,
   };
 
+  // Forward first, but NEVER return success without the local R2 copy —
+  // it is authoritative for reads until the log's first checkpoint
+  // (plan-2607-10 R7). Both `created` and `exists` fall through to the
+  // local-copy logic below; the old exists early-return let a crash between
+  // univocity create and the local put strand every retry on a success
+  // response whose genesis could never be read back.
   const univocity = univocityGenesisClientFromEnv(env);
+  let forwardExists = false;
   if (univocity) {
     const fwd = await postGenesisToUnivocity(univocity, storageSeg, body);
-    if (fwd.kind === "exists") {
-      return {
-        logIdWire: logId,
-        storageSeg,
-        chainBinding,
-        genesisAlg,
-        bootstrapKey,
-        alreadyExisted: true,
-      };
-    }
     if (fwd.kind === "rejected") {
       return ClientErrors.badRequest(
         fwd.detail || "univocity rejected the genesis document",
@@ -380,6 +378,7 @@ export async function postForestGenesis(
         fwd.detail || "univocity genesis store is unavailable",
       );
     }
+    forwardExists = fwd.kind === "exists";
   }
 
   const key = `forests/forest/${storageSeg}/genesis.cbor`;
@@ -408,6 +407,31 @@ export async function postForestGenesis(
     };
   }
 
+  if (forwardExists && univocity) {
+    // Univocity holds a genesis but we hold no local copy: the
+    // created-then-local-put-fail crash window. Univocity's IfAbsent never
+    // byte-checks a repost, so the retry body must be diffed against the
+    // STORED document before it may become the local authoritative copy —
+    // adopting it blind would let a divergent retry split the two stores.
+    const back = await getGenesisFromUnivocity(univocity, storageSeg);
+    if (back.kind !== "ok") {
+      return ServerErrors.serviceUnavailable(
+        back.kind === "missing"
+          ? "univocity reported an existing genesis but did not serve it " +
+              "on read-back; retry"
+          : back.detail,
+      );
+    }
+    if (!bytesEqual(back.body, body)) {
+      return problemResponse(409, "Conflict", "about:blank", {
+        detail:
+          "genesis already exists for this log id with different content; " +
+          "a retry must repeat the registered genesis exactly " +
+          "(bootstrapKey, alg, chain binding, variant)",
+      });
+    }
+  }
+
   try {
     await env.R2_GRANTS.put(key, body);
   } catch (e) {
@@ -423,6 +447,6 @@ export async function postForestGenesis(
     chainBinding,
     genesisAlg,
     bootstrapKey,
-    alreadyExisted: false,
+    alreadyExisted: forwardExists,
   };
 }
