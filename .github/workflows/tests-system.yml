@@ -351,9 +351,14 @@ jobs:
           X402_SETTLEMENT_URL: ${{ vars.X402_SETTLEMENT_URL }}
           E2E_UNIVOCITY_GENESIS_LOG_ID_KS256: ${{ needs.t3-resolve-univocity.outputs.ks256_log_id || needs.t2-bootstrap-univocity.outputs.ks256_log_id }}
           E2E_UNIVOCITY_GENESIS_LOG_ID_ES256: ${{ needs.t3-resolve-univocity.outputs.es256_log_id || needs.t2-bootstrap-univocity.outputs.es256_log_id }}
-          E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64: ${{ needs.t3-resolve-univocity.outputs.es256_bootstrap_pem_b64 || needs.t2-bootstrap-univocity.outputs.es256_bootstrap_pem_b64 }}
+          # T3 cannot hand the pinned PEM through a job output — GitHub REDACTS
+          # outputs containing secret values ("Skip output … since it may
+          # contain secret"), so the secret is read directly here; T2's
+          # ephemeral in-run PEM is not a registered secret and passes through.
+          E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64: ${{ needs.t2-bootstrap-univocity.outputs.es256_bootstrap_pem_b64 || inputs.es256_bootstrap_pem_b64 || secrets.E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64 || '' }}
           E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER: ${{ needs.t3-resolve-univocity.outputs.ks256_bootstrap_signer || needs.t2-bootstrap-univocity.outputs.ks256_bootstrap_signer }}
-          E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_B64: ${{ needs.t3-resolve-univocity.outputs.ks256_bootstrap_key_b64 || needs.t2-bootstrap-univocity.outputs.ks256_bootstrap_key_b64 }}
+          # Same redaction hazard as the ES256 PEM above.
+          E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_B64: ${{ needs.t2-bootstrap-univocity.outputs.ks256_bootstrap_key_b64 || inputs.ks256_bootstrap_key_b64 || secrets.E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_B64 || '' }}
           E2E_UNIVOCITY_ES256_ALLOW_BOOTSTRAP: ${{ needs.t2-bootstrap-univocity.outputs.es256_fresh || needs.t3-resolve-univocity.outputs.es256_fresh }}
           E2E_UNIVOCITY_KS256_ALLOW_BOOTSTRAP: ${{ needs.t2-bootstrap-univocity.outputs.ks256_fresh || needs.t3-resolve-univocity.outputs.ks256_fresh }}
           E2E_TESTING_TIER: ${{ inputs.e2e_tier || 't3' }}
