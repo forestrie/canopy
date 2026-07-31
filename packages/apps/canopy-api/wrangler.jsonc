@@ -99,6 +99,8 @@
         "X402_PRICE_EXACT": "$0.001",
         // 100 USDC (6 decimals) — onboard pricing decision 2026-07-31 (FOR-438).
         "X402_ONBOARD_PRICE_ATOMIC": "100000000",
+        // 0.01 USDC (6 decimals) per checkpoint credit — nominal checkpoint
+        // pricing decision 2026-07-31 (FOR-438); 1 credit = 1 checkpoint.
         "X402_CREDIT_PRICE_ATOMIC": "10000",
         "X402_PRICE_UPTO_MAX": "$1.00",
         "GRANT_STORAGE_PUBLIC_BASE": "https://grants-dev.forestrie.dev",
@@ -183,6 +185,8 @@
         "X402_PRICE_EXACT": "$0.001",
         // 100 USDC (6 decimals) — onboard pricing decision 2026-07-31 (FOR-438).
         "X402_ONBOARD_PRICE_ATOMIC": "100000000",
+        // 0.01 USDC (6 decimals) per checkpoint credit — nominal checkpoint
+        // pricing decision 2026-07-31 (FOR-438); 1 credit = 1 checkpoint.
         "X402_CREDIT_PRICE_ATOMIC": "10000",
         "X402_PRICE_UPTO_MAX": "$1.00",
         "GRANT_STORAGE_PUBLIC_BASE": "https://grants.forestrie.dev",
