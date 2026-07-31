@@ -14,9 +14,11 @@ import {
 import {
   exportEs256RootXy,
   generateEs256RootKeyPair,
+  importEs256PemKeyPair,
   uploadByokRootPublicKey,
   verifyByokDelegationCertificate,
 } from "@e2e-utils/coordinator-delegation-helpers";
+import { bootstrapEs256PrivateKeyPem } from "@e2e-utils/mint-es256-root-grant-e2e";
 import {
   exchangeEs256ControlPlaneSession,
   postSigningRouteWithSession,
@@ -82,7 +84,14 @@ test.describe("BYOK checkpoint seal e2e", () => {
     const rootLogId = randomUUID();
     const rootLogHex32 = normalizeForestrieHexId32(rootLogId);
     const baseURL = testInfo.project.use.baseURL ?? "";
-    const rootKeyPair = await generateEs256RootKeyPair();
+    // The root key MUST be the pinned bootstrap key: genesis chain-anchors
+    // bootstrapKey to the contract's on-chain bootstrapConfig() (canopy#203),
+    // so a freshly generated key can never register against the pinned
+    // instance. Fresh keys remain fine where no pin exists (unit-style runs).
+    const pinnedPem = bootstrapEs256PrivateKeyPem();
+    const rootKeyPair = pinnedPem
+      ? await importEs256PemKeyPair(pinnedPem)
+      : await generateEs256RootKeyPair();
     const signedMaterialKeys = new Set<string>();
     const byokPollStats = {
       pendingEntriesSeen: 0,
