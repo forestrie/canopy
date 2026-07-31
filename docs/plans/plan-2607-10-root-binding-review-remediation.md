@@ -1,6 +1,6 @@
 # plan-2607-10 — plan-2607-46 (root binding) review remediation
 
-**Status:** IMPLEMENTED (2026-07-30) — R1–R6 + L1/L3/L4/L5/L6 applied on PR #204; R7 deferred (dormant, blocked on the univocity store contract); R3's ops half (arming prod `RPC_URL`) stays an enact-time check. Implementation notes:
+**Status:** COMPLETE (2026-07-31) — R1–R6 + L1/L3/L4/L5/L6 applied on PR #204; R7 implemented on PR #209 (no longer dormant — UNIVOCITY_SERVICE_URL is armed on both lanes; the store contract settled with arbor's claim-first genesis: 422 = claim conflict, 409 = same-R exists, and canopy read-back-and-diffs on exists when its local copy is missing); R3's ops half (arming prod `RPC_URL`) was enacted 2026-07-31 (prod RPC_URL secret set). Implementation notes:
 
 - R3 was resolved by DROPPING the prod checked-in default (the keyed `KS256_RPC_URL` secret keeps winning there until injection is armed) + an `erc1271RpcSource` info log naming the winning source per chain.
 - R4's new lane-wiring assertions immediately caught a live bug: the coordinator contract's `setStringProperty` wrote JSON-valued vars with UNESCAPED quotes — the `SUPPORTED_CHAINS_RPC` injection produced invalid config. Fixed with JSON.stringify + escape-aware matching.
