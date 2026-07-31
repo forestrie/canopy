@@ -12,7 +12,7 @@ sealer → publisher → chain → indexer → accrual. **Explicitly a liveness
 canary, not the integrity test** (grilling 2026-07-27): the ADR-0058 §7
 reconciliation job is the completeness backstop and, once built, subsumes
 this canary's accrual-count assertion — but reconciliation can never detect
-*silence* (a dead pipeline publishes nothing and reconciles perfectly, the
+_silence_ (a dead pipeline publishes nothing and reconciles perfectly, the
 2026-07-26 incident shape), and on a traffic-less dev lane the canary is
 the only traffic. The two are complementary; this is the cheap half.
 
@@ -99,3 +99,21 @@ path and the sweep-404 degradation; PASS accrued 2→3), branch dispatch
 4→5). Loud-failure criterion evidenced by dispatch 30308206530 (env
 misconfiguration → red run within seconds). Nightly schedule active
 (03:17 UTC).
+
+## Remediation record (2026-07-31)
+
+Every scheduled nightly run 2026-07-28 → 2026-07-31 failed at the receipt
+step. Root cause: the "pre-delegated to the standing sealer key" design
+assumed the bring-up delegation was standing, but `forestrie delegate`
+mints a finite lease (`--ttl-seconds` defaults to the coordinator's
+`suggestedTtlSeconds`, 6 h). The bring-up cert expired on 2026-07-28;
+each subsequent seal filed a pending demand nothing could sign (the
+canary root PEM exists only as the workflow secret; the log has no
+signer webhook). The concurrent lane-A univocity outage (arbor-flux#52,
+arbor#85) masked the distinct cause. Fix: the script now refreshes the
+advance delegation every run before registering (36 h TTL default,
+`CANARY_DELEGATE_TTL_SECONDS` to override) — self-healing, and nightly
+coverage of the delegate-in-advance surface. New env:
+`DELEGATION_COORDINATOR_URL` (existing dev var) and `KNOWN_SEALER_KEY`
+(registrar voucher key — public; same value the ietf-126-demo preflight
+pins), both operator-set GitHub vars per the original delivery pattern.
