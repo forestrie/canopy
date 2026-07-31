@@ -22,9 +22,11 @@ import { readUnivocityInstanceReservation } from "./instance-registry.js";
 import type { RegistrationStoreEnv } from "./registration-store.js";
 
 /**
- * Nominal per-credit price: $0.01 USDC (6 decimals). Deliberately just a
- * default — FOR-438's numbers are plugged in via `X402_CREDIT_PRICE_ATOMIC`
- * with no code change.
+ * Per-credit price: $0.01 USDC (6 decimals), one credit per checkpoint.
+ * This is the DECIDED nominal price (FOR-438, 2026-07-31) — a value
+ * decision, explicitly not derived from measured gas (FOR-437 gas serves
+ * only as a cost floor) — and both lanes pin the same value in
+ * `X402_CREDIT_PRICE_ATOMIC`; production repricing is config-only.
  */
 const DEFAULT_CREDIT_PRICE_ATOMIC = "10000";
 /** Credits bought when the caller does not say. */

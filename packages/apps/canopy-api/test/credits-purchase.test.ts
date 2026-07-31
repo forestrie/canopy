@@ -145,6 +145,40 @@ describe("credits purchase route", () => {
     expect(sent).toHaveLength(0);
   });
 
+  it("pins the 402 challenge schema shared with every payer (FOR-438)", async () => {
+    // Both consoles (mandate /fees + /onboard pay-to-approve) and the CLI
+    // payer parse exactly this surface: schema drift here breaks payers that
+    // are deployed independently of canopy. Change deliberately or never.
+    const { handlerEnv } = creditsEnv();
+    const id = freshInstance();
+    await completeUnivocityInstanceReservation(poolEnv, id, [], ROOT, null);
+
+    const res = await post(handlerEnv, id, { credits: "1" });
+    expect(res.status).toBe(402);
+    const challenge = JSON.parse(
+      atob(res.headers.get("X-PAYMENT-REQUIRED")!),
+    ) as {
+      x402Version: number;
+      accepts: Array<Record<string, unknown>>;
+      resource: Record<string, unknown>;
+    };
+    expect(challenge.x402Version).toBe(2);
+    expect(challenge.accepts).toHaveLength(1);
+    expect(challenge.accepts[0]).toMatchObject({
+      scheme: "exact",
+      network: "eip155:84532",
+      // One credit at the decided nominal price: 0.01 USDC (FOR-438).
+      amount: "10000",
+      asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      payTo: PAY_TO,
+      maxTimeoutSeconds: 300,
+      // EIP-712 domain for USDC transferWithAuthorization — the browser
+      // payer refuses challenges without it.
+      extra: { name: "USDC", version: "2" },
+    });
+    expect(typeof challenge.resource.url).toBe("string");
+  });
+
   it("rejects an out-of-range credits parameter", async () => {
     const { handlerEnv } = creditsEnv();
     const id = freshInstance();
