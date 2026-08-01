@@ -151,3 +151,14 @@ export {
   type ReceiptVerifyResult,
   type ReceiptVerifyStage,
 } from "@forestrie/receipt-verify";
+export {
+  assertPinCoherence,
+  checkPinCoherence,
+  formatPinCoherenceReport,
+  type PinContract,
+  type PinCoherenceReport,
+  type PinDeclaration,
+  type PinInvariant,
+  type PinKeyKind,
+  type PinViolation,
+} from "./pin-coherence.js";
