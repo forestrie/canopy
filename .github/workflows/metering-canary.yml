@@ -9,10 +9,15 @@ permissions:
 # deliberately NOT per-PR CI: safe-head lag (~6 min) plus indexer cadence
 # make the honest end-to-end latency ~10-15 min by construction.
 #
-# Alerting v1 is this scheduled workflow failing — no custom channel.
 # The completeness/integrity counterpart is the ADR-0058 §7 reconciliation
 # job (FOR-496); it cannot detect a silent pipeline, which is this canary's
 # whole job.
+#
+# Alerting (plan-2608-02, FOR-518): the verdict goes to a Linear issue via the
+# org `linear-health-alert` action. "Alerting v1 is this workflow failing" was
+# not alerting — this canary was red from 2026-07-28 to 07-31 and was found by
+# accident, while investigating an unrelated deploy failure. A canary nobody is
+# told about is just a test that runs at night.
 
 on:
   schedule:
@@ -68,3 +73,32 @@ jobs:
           DELEGATION_COORDINATOR_URL: ${{ vars.DELEGATION_COORDINATOR_URL }}
           KNOWN_SEALER_KEY: ${{ vars.KNOWN_SEALER_KEY }}
         run: node scripts/metering-canary.mjs
+
+      # Last, and always. A cancelled run is reported as failing on purpose: a
+      # canary that could not finish has not proved the pipeline is alive, and
+      # this workflow's only output is that proof.
+      - name: Report canary health
+        if: always()
+        uses: forestrie/.github/actions/linear-health-alert@main
+        with:
+          alert_key: canopy-metering-canary
+          state: ${{ job.status == 'success' && 'green' || 'failing' }}
+          title: "Metering canary is red (${{ inputs.environment || 'dev' }})"
+          labels: cicd
+          linear_api_key: ${{ secrets.LINEAR_API_KEY }}
+          body_md: |
+            The metering canary failed on `${{ inputs.environment || 'dev' }}`.
+            Job status: `${{ job.status }}`.
+
+            It probes the whole metering pipeline against the pinned canary
+            instance — pay → unfreeze → register → seal → publish → chain →
+            indexer → accrual — so a failure means one of those links is dead,
+            not that a test is flaky. On a traffic-less lane this canary is the
+            only traffic, and reconciliation (FOR-496) cannot see a silent
+            pipeline.
+
+            Start with the step that failed in the run linked below. Common
+            causes: the pinned canary account frozen for want of credits, the
+            standing sealer delegation expired, or the indexer not advancing.
+
+            This issue closes itself when the canary next passes.
