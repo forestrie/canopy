@@ -15,6 +15,10 @@
 #             second decision point (plan 2608-05 Q2). The existing
 #             `publish-*.yml` workflows fire unchanged.
 #
+# `[no-release]` suppresses the SERVICE tag ONLY. A package version bump still
+# publishes — that is Q2, not an oversight. To hold a package back, do not bump
+# its version.
+#
 # `@forestrie/canopy-e2e-kit` sat at npm 0.6.1 while this repo reached 0.9.1,
 # across exactly the window the platform contract changed, and every consumer
 # of the published kit — the T3 qualification harness included — silently
