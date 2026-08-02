@@ -149,3 +149,90 @@ describe("pin coherence", () => {
     expect(() => assertPinCoherence(report)).toThrow(/keyMatchesInstance/);
   });
 });
+
+/**
+ * The fifth incident, 2026-08-02: canopy v0.1.8's release was blocked by a
+ * pin that was correctly signalling "not configured".
+ *
+ * `e2e-univocity-ci-resolve-pins.sh` fills an unconfigured KS256 address with
+ * KS256_UNIVOCITY_MANIFEST_PLACEHOLDER. Read as a real instance that is a
+ * half-configured pin, and the gate fails a lane that is behaving correctly.
+ */
+describe("absentWhen — declared not-configured sentinels", () => {
+  const PLACEHOLDER = "0x0000000000000000000000000000000000000002";
+
+  const sentinelPin = (absentWhen?: string[]) =>
+    contract([
+      {
+        id: "ks256-bootstrap",
+        instanceVar: "KS_ADDR",
+        keyVar: "KS_SIGNER",
+        keyKind: "eth-address",
+        alg: "ks256",
+        chainVar: "CHAIN",
+        invariants: ["instanceHasCode", "keyMatchesInstance"],
+        ...(absentWhen ? { absentWhen } : {}),
+      },
+    ]);
+
+  it("skips the pin, naming the placeholder, when the sentinel is the address", async () => {
+    const report = await checkPinCoherence(sentinelPin([PLACEHOLDER]), {
+      rpcUrl: RPC,
+      env: { KS_ADDR: PLACEHOLDER, CHAIN: "84532" },
+    });
+    expect(report.violations).toHaveLength(0);
+    expect(report.checked).toHaveLength(0);
+    expect(report.skipped).toHaveLength(1);
+    expect(report.skipped[0]!.reason).toContain("not-configured placeholder");
+    expect(report.skipped[0]!.reason).toContain(PLACEHOLDER);
+  });
+
+  it("without absentWhen the same state is a violation — the v0.1.8 regression", async () => {
+    const report = await checkPinCoherence(sentinelPin(), {
+      rpcUrl: RPC,
+      env: { KS_ADDR: PLACEHOLDER, CHAIN: "84532" },
+    });
+    expect(report.violations).toHaveLength(1);
+    expect(report.violations[0]!.invariant).toBe("pairPresent");
+  });
+
+  it("matches the sentinel case-insensitively", async () => {
+    const report = await checkPinCoherence(sentinelPin([PLACEHOLDER]), {
+      rpcUrl: RPC,
+      env: {
+        KS_ADDR: PLACEHOLDER.toUpperCase().replace("0X", "0x"),
+        CHAIN: "84532",
+      },
+    });
+    expect(report.skipped).toHaveLength(1);
+  });
+
+  it("still flags a placeholder address that arrives WITH a key — a real misconfiguration", async () => {
+    // A key with no real contract is not "not configured"; it is a lane that
+    // believes it is wired and is not. That must never be silently skipped.
+    const report = await checkPinCoherence(sentinelPin([PLACEHOLDER]), {
+      rpcUrl: RPC,
+      env: {
+        KS_ADDR: PLACEHOLDER,
+        KS_SIGNER: "0x1111111111111111111111111111111111111111",
+        CHAIN: "84532",
+      },
+    });
+    expect(report.violations).toHaveLength(1);
+    expect(report.violations[0]!.invariant).toBe("pairPresent");
+    expect(report.violations[0]!.actual).toContain("only KS_SIGNER");
+  });
+
+  it("does not skip a real address just because absentWhen is declared", async () => {
+    const report = await checkPinCoherence(sentinelPin([PLACEHOLDER]), {
+      rpcUrl: RPC,
+      env: {
+        KS_ADDR: "0x00000000000000000000000000000000000000ff",
+        CHAIN: "84532",
+      },
+    });
+    expect(report.skipped).toHaveLength(0);
+    expect(report.violations).toHaveLength(1);
+    expect(report.violations[0]!.invariant).toBe("pairPresent");
+  });
+});

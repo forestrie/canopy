@@ -39,10 +39,18 @@ describe("canopy pin contract", () => {
     expect(byId.get("es256-bootstrap")?.keySecret).toBe(
       "E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE",
     );
-    // No ks256 pin: on the dev tier that pin is half-present (instance set via
-    // the job-output chain, key absent), which the checker correctly flags and
-    // which blocked canopy v0.1.8. See the rationale in pin-contract.jsonc.
-    expect(byId.has("ks256-bootstrap")).toBe(false);
+    // The address half, not the key: T3 resolves the signer without the key
+    // crossing a job boundary (canopy#211/#215), and a ks256 bootstrapConfig()
+    // carries exactly those 20 address bytes.
+    expect(byId.get("ks256-bootstrap")?.keyVar).toBe(
+      "E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER",
+    );
+    // Without this the T3 not-configured sentinel reads as a real instance,
+    // the pin looks half-configured, and the gate blocks the release — which
+    // is exactly what happened to canopy v0.1.8.
+    expect(byId.get("ks256-bootstrap")?.absentWhen).toContain(
+      "0x0000000000000000000000000000000000000002",
+    );
   });
 
   it("parses comments and trailing commas, which the contract uses", () => {

@@ -47,6 +47,22 @@ export interface PinDeclaration {
   alg: "ks256" | "es256";
   chainVar: string;
   invariants: PinInvariant[];
+  /**
+   * Values of `instanceVar` that mean "this lane does not configure this pin",
+   * treated exactly as if the var were unset.
+   *
+   * Some tiers substitute a documented sentinel rather than leaving the var
+   * empty — `e2e-univocity-ci-resolve-pins.sh` fills an unconfigured KS256 pin
+   * with `KS256_UNIVOCITY_MANIFEST_PLACEHOLDER`. Without this the sentinel
+   * reads as a real instance, the pin looks half-configured, and the check
+   * fails on a lane that is correctly signalling "not configured". That
+   * happened: it blocked canopy v0.1.8.
+   *
+   * DECLARED, not inferred: the checker never guesses which addresses are
+   * placeholders, because a guess that is wrong in the other direction would
+   * silently skip a real pin.
+   */
+  absentWhen?: string[];
 }
 
 export interface PinContract {
@@ -135,9 +151,29 @@ export async function checkPinCoherence(
   };
 
   for (const pin of contract.pins) {
-    const instance = env[pin.instanceVar]?.trim();
+    const rawInstance = env[pin.instanceVar]?.trim();
     const source = keySourceVar(pin);
     const keyPresent = Boolean(source && env[source]?.trim());
+
+    // A declared sentinel means "this lane does not configure this pin" and is
+    // treated as unset. Reported as its own skip reason rather than folded into
+    // the both-unset case, so a lane sitting on a placeholder is visible in the
+    // report instead of looking like it was never wired at all.
+    const isSentinel = Boolean(
+      rawInstance &&
+        pin.absentWhen?.some(
+          (v) => v.toLowerCase() === rawInstance.toLowerCase(),
+        ),
+    );
+    const instance = isSentinel ? undefined : rawInstance;
+
+    if (isSentinel && !keyPresent) {
+      report.skipped.push({
+        pin: pin.id,
+        reason: `${pin.instanceVar} is the declared not-configured placeholder ${rawInstance}`,
+      });
+      continue;
+    }
 
     if (!instance && !keyPresent) {
       report.skipped.push({
