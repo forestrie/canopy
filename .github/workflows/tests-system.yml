@@ -152,6 +152,11 @@ jobs:
               - ".github/workflows/deploy-workers.yml"
 
   t2-bootstrap-univocity:
+    # secret-egress-ok: the exported bootstrap keys are ephemeral, minted in-run
+    # ci-prepare.sh generates them and they die with the run, so they are not
+    # registered secrets and GitHub does not drop the outputs. No caller passes
+    # the optional key inputs; secrets.DEPLOY_KEY never reaches an output.
+    # See devdocs plan-2608-04.
     name: T2 bootstrap Univocity (ephemeral)
     needs: [paths]
     if: |
@@ -229,6 +234,10 @@ jobs:
         run: task e2e-univocity:ci-prepare
 
   t3-resolve-univocity:
+    # secret-egress-ok: exports the KS256 signer address, not the key it derives
+    # The bootstrap key is read here solely to compute that public address.
+    # `system-tests` reads E2E_UNIVOCITY_*_B64 from the environment at point of
+    # use — the canopy#211 pattern. See devdocs plan-2608-04.
     name: T3 resolve Univocity pins (no provision)
     needs: [paths]
     if: |
@@ -250,9 +259,7 @@ jobs:
       ks256_address: ${{ steps.resolve.outputs.ks256_address }}
       es256_log_id: ${{ steps.resolve.outputs.es256_log_id }}
       ks256_log_id: ${{ steps.resolve.outputs.ks256_log_id }}
-      es256_bootstrap_pem_b64: ${{ steps.resolve.outputs.es256_bootstrap_pem_b64 }}
       ks256_bootstrap_signer: ${{ steps.resolve.outputs.ks256_bootstrap_signer }}
-      ks256_bootstrap_key_b64: ${{ steps.resolve.outputs.ks256_bootstrap_key_b64 }}
       es256_fresh: ${{ steps.resolve.outputs.es256_fresh }}
       ks256_fresh: ${{ steps.resolve.outputs.ks256_fresh }}
     env:
@@ -262,7 +269,6 @@ jobs:
       E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP: ${{ vars.E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP }}
       INPUT_ES256_ADDRESS: ${{ inputs.es256_address || '' }}
       INPUT_KS256_ADDRESS: ${{ inputs.ks256_address || '' }}
-      INPUT_ES256_PEM_B64: ${{ inputs.es256_bootstrap_pem_b64 || secrets.E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64 || '' }}
       INPUT_KS256_KEY_B64: ${{ inputs.ks256_bootstrap_key_b64 || secrets.E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_B64 || '' }}
       INPUT_ES256_LOG_ID: ${{ inputs.es256_genesis_log_id || '' }}
       INPUT_KS256_LOG_ID: ${{ inputs.ks256_genesis_log_id || '' }}
