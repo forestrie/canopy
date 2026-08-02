@@ -261,10 +261,26 @@ jobs:
           # resolver will, rather than trusting the create. A Release that is
           # not listed, or is listed without its kit pins, is invisible to
           # qualification in exactly the way FOR-532 describes.
-          got=$(gh api "/repos/${{ github.repository }}/releases?per_page=100" \
-                  --jq "[.[] | select(.tag_name == \"${TAG}\")] | length")
-          if [ "$got" != "1" ]; then
-            echo "::error::Release ${TAG} is not listed by /releases (found ${got}) — the frontier resolver would not see this release" >&2
+          #
+          # POLL, don't check once. The /releases LIST endpoint is eventually
+          # consistent: on the first live run of this job it returned 0 matches
+          # roughly half a second after `gh release create` had printed the
+          # release URL, so a single check failed a release that was in fact
+          # published.
+          found=0
+          for attempt in 1 2 3 4 5 6; do
+            got=$(gh api "/repos/${{ github.repository }}/releases?per_page=100" \
+                    --jq "[.[] | select(.tag_name == \"${TAG}\")] | length")
+            if [ "$got" = "1" ]; then
+              found=1
+              echo "verified on attempt ${attempt}: ${TAG} is listed by /releases"
+              break
+            fi
+            echo "attempt ${attempt}: ${TAG} not yet listed by /releases (found ${got}); retrying"
+            sleep 5
+          done
+          if [ "$found" != "1" ]; then
+            echo "::error::Release ${TAG} never appeared in /releases after ~30s — the frontier resolver would not see this release" >&2
             exit 1
           fi
           if ! gh release view "$TAG" --repo "${{ github.repository }}" \
