@@ -1,0 +1,12 @@
+{
+  "packages": [
+    { "dir": "packages/tests/e2e-kit", "tag_prefix": "canopy-e2e-kit" },
+    { "dir": "packages/libs/chain-rpc", "tag_prefix": "chain-rpc" },
+    { "dir": "packages/libs/delegation-cose", "tag_prefix": "delegation-cose" },
+    { "dir": "packages/shared/encoding", "tag_prefix": "encoding" },
+    { "dir": "packages/libs/grant-builder", "tag_prefix": "grant-builder" },
+    { "dir": "packages/merklelog", "tag_prefix": "merklelog" },
+    { "dir": "packages/libs/receipt-verify", "tag_prefix": "receipt-verify" },
+    { "dir": "packages/libs/scrapi-client", "tag_prefix": "scrapi-client" }
+  ]
+}

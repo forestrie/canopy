@@ -1,0 +1,97 @@
+# Push the release tags this merge implies, so no human has to remember to
+# (devdocs plan-2608-06 Phase 2; action built in Phase 1a, FOR-517/FOR-520).
+#
+# Two tag families, one job, one merge commit:
+#
+#   service   the next canopy `vX.Y.Z`. `release.yaml` already triggers on
+#             `v*`, so it needs no change — it just stops waiting to be
+#             dispatched. Tags are cheap CANDIDATES; qualification is the
+#             quality gate (plan 2608-01 Q4). Suppress with `[no-release]` in
+#             the merge commit message.
+#
+#   packages  `<tag_prefix>-v<version>` for every package in
+#             `.github/auto-tag-packages.json` whose version is not already
+#             tagged. A version bump IS publishing intent — no marker, no
+#             second decision point (plan 2608-05 Q2). The existing
+#             `publish-*.yml` workflows fire unchanged.
+#
+# `@forestrie/canopy-e2e-kit` sat at npm 0.6.1 while this repo reached 0.9.1,
+# across exactly the window the platform contract changed, and every consumer
+# of the published kit — the T3 qualification harness included — silently
+# exercised the old contract. The publish workflows were never the problem.
+# The tag was the step a human had to remember.
+name: Auto tag
+
+on:
+  push:
+    branches: [main]
+
+# The tag refs are created with a GitHub App token, never GITHUB_TOKEN, so
+# nothing in this workflow needs write. See the mint step below.
+permissions:
+  contents: read
+
+# Never cancel in progress: a cancelled run is a release tag that silently
+# never happened, which is the failure mode this workflow exists to remove.
+concurrency:
+  group: auto-tag-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  auto-tag:
+    name: Push the tags this merge implies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # The App credentials are load-bearing and their absence is otherwise a
+      # confusing failure inside a third-party action. Name the cause here.
+      #
+      # NOTE for whoever reads this next: canopy's other workflows guard their
+      # app-token steps with `if: vars.GITAPP_ID != ''` and fall back to
+      # `secrets.GITHUB_TOKEN`. That pattern MUST NOT be copied here — see the
+      # tag step below for why. This workflow fails instead.
+      - name: Assert the GitHub App credentials are configured
+        env:
+          GITAPP_ID: ${{ vars.GITAPP_ID }}
+          GITAPP_PRIVATE_KEY: ${{ secrets.GITAPP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -n "${GITAPP_ID}" ] || missing+=("vars.GITAPP_ID")
+          [ -n "${GITAPP_PRIVATE_KEY}" ] || missing+=("secrets.GITAPP_PRIVATE_KEY")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::auto-tag cannot mint a GitHub App token — missing: ${missing[*]}."
+            echo "::error::Release tags MUST be created by an App token. A ref created with GITHUB_TOKEN triggers no workflow runs, so the tag would appear and nothing would publish, with no error anywhere. Configure the credentials rather than adding a fallback."
+            exit 1
+          fi
+          echo "OK: App credentials present."
+
+      - name: Mint GitHub App token
+        id: app-token
+        uses: tibdex/github-app-token@v1
+        with:
+          app_id: ${{ vars.GITAPP_ID }}
+          private_key: ${{ secrets.GITAPP_PRIVATE_KEY }}
+
+      # ⚠️ `token` MUST be the App token. A ref created with the default
+      # GITHUB_TOKEN triggers NO workflow runs: the tag appears, looks entirely
+      # normal, and nothing publishes or releases. There is no error and no
+      # warning anywhere. Do NOT add a `|| secrets.GITHUB_TOKEN` fallback.
+      #
+      # Service first: the service tag is what the qualification frontier
+      # consumes, so an unrelated packages-config failure must not withhold it.
+      - name: Service release tag
+        uses: forestrie/.github/actions/auto-tag@main
+        with:
+          mode: service
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Published package tags
+        uses: forestrie/.github/actions/auto-tag@main
+        with:
+          mode: packages
+          token: ${{ steps.app-token.outputs.token }}
