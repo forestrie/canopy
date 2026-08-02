@@ -10,12 +10,11 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
-      orchestrator_run_id:
-        description: Correlation id from release-orchestrator release.yml
-        required: true
-        type: string
       skip_cross_repo_tests:
-        description: Skip system-tests when orchestrator already qualified dev
+        description: >-
+          Skip system-tests on a manual re-cut. The orchestrator no longer
+          dispatches this workflow (plan-2608-06 Phase 3) — it reads the
+          releases this repo publishes for itself.
         required: false
         default: true
         type: boolean
@@ -140,9 +139,7 @@ jobs:
         env:
           TAG: ${{ steps.meta.outputs.tag }}
           SHA: ${{ steps.meta.outputs.sha }}
-          ORCH_RUN_ID: >-
-            ${{ github.event_name == 'workflow_dispatch' &&
-            github.event.inputs.orchestrator_run_id || github.run_id }}
+          ORCH_RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
           mkdir -p release-metadata
@@ -232,7 +229,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.capture-release-fragment.outputs.release_tag }}
-          ORCH_RUN_ID: ${{ github.event.inputs.orchestrator_run_id }}
+          ORCH_RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
           : "${TAG:?capture-release-fragment produced no release_tag}"
@@ -245,7 +242,7 @@ jobs:
             > components.jsonc
           cat components.jsonc
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            notes="Orchestrator-driven release (run ${ORCH_RUN_ID})."
+            notes="Manually dispatched release (run ${ORCH_RUN_ID})."
           else
             notes="Released from tag ${TAG}, cut by auto-tag on merge to main."
           fi
