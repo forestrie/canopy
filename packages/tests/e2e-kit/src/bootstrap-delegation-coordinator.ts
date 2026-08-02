@@ -216,6 +216,13 @@ export async function signPendingBootstrapDelegations(opts: {
   signingContext: BootstrapSigningContext;
   signedMaterialKeys: Set<string>;
   stats?: ByokPollStats;
+  /**
+   * Silence the "standing delegate key left unsigned" warning. Set ONLY when
+   * another component already delegates to the standing key for this log
+   * (ADR-0050 §2) — the warning exists because leaving it unsigned stalls
+   * checkpointing, so suppressing it without covering it hides the stall.
+   */
+  suppressStandingKeyWarning?: boolean;
 }): Promise<{ signed: number; pendingCount: number }> {
   const pending = await opts.request.get(
     `${opts.coordinatorUrl}/api/logs/${opts.logId}/pending-delegation`,
@@ -235,11 +242,23 @@ export async function signPendingBootstrapDelegations(opts: {
   // The coordinator appends a window-less standing delegate-key entry (C3,
   // delegation-in-advance) to pending-delegation once a live standing key
   // exists — which membership enablement makes true for any log with a
-  // registered public root (bootstrap flows register one). This helper signs
-  // only windowed on-demand material, and sealer-liveness detection keys on
-  // windowed entries appearing — so filter the standing entry out. It has no
-  // mmrStart/mmrEnd (signing it would CBOR-encode undefined bounds), and being
-  // always-present it would otherwise defeat the liveness timeout.
+  // registered public root (bootstrap flows register one).
+  //
+  // This helper signs only WINDOWED on-demand material. That is a deliberate
+  // scope limit, NOT the whole contract: ADR-0050 §2 requires signers to
+  // handle every entry identically, supplying their own horizon and TTL
+  // (conventionally mmrStart = 0) when no window is stated. The standing
+  // entry is excluded here for one good reason — sealer-liveness detection
+  // keys on windowed entries appearing, and an always-present entry would
+  // defeat the liveness timeout.
+  //
+  // Leaving it merely UNSIGNED, however, stalls the log: the sealer's
+  // coverage-matched lease lookup finds nothing covering its true seal
+  // window and defers forever on "delegation material pending", while this
+  // poll reports an empty queue. That cost two days of intermittent T3
+  // failures. Callers must ALSO delegate to the standing key — use
+  // `signAdvanceDelegation` (ES256) or an equivalent variant-aware signer —
+  // so the warning below fires until they do.
   const windowed = body.entries.filter(
     (
       e,
@@ -248,6 +267,22 @@ export async function signPendingBootstrapDelegations(opts: {
   );
   if (opts.stats && windowed.length > 0) {
     opts.stats.pendingEntriesSeen += windowed.length;
+  }
+
+  // Say it out loud. A silent skip is what let two independent signer
+  // implementations (this kit and the mandate agent) both treat an absent
+  // window as "nothing to do" for weeks.
+  const standingCount = body.entries.length - windowed.length;
+  if (standingCount > 0 && !opts.suppressStandingKeyWarning) {
+    console.warn(
+      `[bootstrap-delegation] log ${opts.logId}: ${standingCount} standing ` +
+        `delegate-key entr${standingCount === 1 ? "y" : "ies"} left UNSIGNED by ` +
+        `this helper. ADR-0050 §2 requires signing them over a signer-chosen ` +
+        `[0, horizon]; until something does, the sealer's coverage lookup has ` +
+        `nothing to match and checkpointing defers on "delegation material ` +
+        `pending". Call signAdvanceDelegation (or a variant-aware equivalent), ` +
+        `or pass suppressStandingKeyWarning if another component already does.`,
+    );
   }
 
   let signed = 0;
