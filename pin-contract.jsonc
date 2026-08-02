@@ -13,10 +13,27 @@
   // (canopy#203) — so ONE instance serves exactly ONE root key.
   //
   // A pin whose BOTH halves are absent is skipped: that tier simply does not
-  // use it (the KS256 lane is unconfigured on dev today, so `ks256-bootstrap`
-  // skips there). A pin with ONE half present is a violation, because
-  // half-configured identity is exactly the state that produced the 2026-07-31
-  // chase — a 422 "bootstrapKey/alg does not match" five layers from its cause.
+  // use it. A pin with ONE half present is a violation, because half-configured
+  // identity is exactly the state that produced the 2026-07-31 chase — a 422
+  // "bootstrapKey/alg does not match" five layers from its cause.
+  //
+  // ── The KS256 pin and the not-configured sentinel ─────────────────────────
+  //
+  // `taskfiles/e2e-univocity-ci-resolve-pins.sh` fills an unconfigured KS256
+  // address with KS256_UNIVOCITY_MANIFEST_PLACEHOLDER — the kit's documented
+  // "placeholder until Lane A pins a real KS256 contract". That is a correct
+  // signal, not misconfiguration.
+  //
+  // Declared without `absentWhen`, the sentinel read as a real instance, the
+  // pin looked half-configured (address set, signer absent), and the gate
+  // blocked canopy v0.1.8. `absentWhen` states what "not configured" looks
+  // like, so the pin SKIPS on dev naming the placeholder — and starts checking
+  // for real the moment a genuine KS256 contract is pinned, including failing
+  // loudly if that address ever appears without its signer.
+  //
+  // Declared, not inferred: the checker never guesses which addresses are
+  // placeholders, because guessing wrong the other way would silently skip a
+  // real pin.
   "schemaVersion": 1,
   "suite": "canopy",
   "pins": [
@@ -39,6 +56,8 @@
       "alg": "ks256",
       "chainVar": "E2E_UNIVOCITY_CHAIN_ID",
       "invariants": ["instanceHasCode", "keyMatchesInstance"],
+      // KS256_UNIVOCITY_MANIFEST_PLACEHOLDER — see the note above.
+      "absentWhen": ["0x0000000000000000000000000000000000000002"],
     },
   ],
 }
