@@ -122,6 +122,18 @@ tasks:
               echo "Run test:e2e:preflight without SKIP_UNIVOCITY_PROVISION." >&2
               exit 1
             fi
+
+            # Presence is not coherence (devdocs plan-2608-03, FOR-516). The
+            # checks above prove these pins are SET. That they AGREE with the
+            # chain — that each instance's on-chain bootstrapConfig() carries
+            # the key half we hold — is checked by the pin-coherence gate in
+            # `packages/tests/canopy-api/global-setup.ts`, against
+            # `pin-contract.jsonc`, before any spec runs.
+            #
+            # It lives there rather than here because the workspace kit's
+            # dependencies resolve to TypeScript source, so a bare `node`
+            # invocation from a taskfile cannot load it; Playwright's global
+            # setup loads the kit exactly the way the specs do.
           fi
         fi
 

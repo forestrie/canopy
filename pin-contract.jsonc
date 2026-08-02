@@ -1,0 +1,44 @@
+{
+  // Pin coherence contract for canopy's own system tiers (devdocs
+  // plan-2608-03, FOR-516).
+  //
+  // OWNERSHIP: this surface declares the pins CANOPY can see — the GitHub
+  // Environment vars/secrets the tests-system job resolves, checked against
+  // the chain. system-testing's contract covers manifest ↔ Doppler ↔ chain;
+  // the qualification resolver covers manifest-internal consistency. No
+  // credential crosses a store boundary (plan-2608-03 Q1).
+  //
+  // Why pins are per-alg: genesis chain-anchors the bootstrap key — the body's
+  // bootstrapKey must equal the instance's on-chain bootstrapConfig()
+  // (canopy#203) — so ONE instance serves exactly ONE root key.
+  //
+  // A pin whose BOTH halves are absent is skipped: that tier simply does not
+  // use it (the KS256 lane is unconfigured on dev today, so `ks256-bootstrap`
+  // skips there). A pin with ONE half present is a violation, because
+  // half-configured identity is exactly the state that produced the 2026-07-31
+  // chase — a 422 "bootstrapKey/alg does not match" five layers from its cause.
+  "schemaVersion": 1,
+  "suite": "canopy",
+  "pins": [
+    {
+      "id": "es256-bootstrap",
+      "description": "ES256 bootstrap instance and the PEM whose public key it carries on chain. The PEM arrives as E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64 (T2 ephemeral output, dispatch input, or the environment secret) and is written to the _PEM_FILE path this pin names.",
+      "instanceVar": "E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP",
+      "keySecret": "E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE",
+      "keyKind": "p256-pem-file",
+      "alg": "es256",
+      "chainVar": "E2E_UNIVOCITY_CHAIN_ID",
+      "invariants": ["instanceHasCode", "keyMatchesInstance"],
+    },
+    {
+      "id": "ks256-bootstrap",
+      "description": "KS256 bootstrap instance and the signer address its on-chain bootstrapConfig() must carry. The address half is used rather than the key: T3 resolves the signer from the pinned key without the key itself crossing a job boundary (canopy#211/#215), and a ks256 bootstrapConfig() carries exactly those 20 address bytes.",
+      "instanceVar": "E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP",
+      "keyVar": "E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER",
+      "keyKind": "eth-address",
+      "alg": "ks256",
+      "chainVar": "E2E_UNIVOCITY_CHAIN_ID",
+      "invariants": ["instanceHasCode", "keyMatchesInstance"],
+    },
+  ],
+}
