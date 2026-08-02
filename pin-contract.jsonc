@@ -13,10 +13,36 @@
   // (canopy#203) — so ONE instance serves exactly ONE root key.
   //
   // A pin whose BOTH halves are absent is skipped: that tier simply does not
-  // use it (the KS256 lane is unconfigured on dev today, so `ks256-bootstrap`
-  // skips there). A pin with ONE half present is a violation, because
-  // half-configured identity is exactly the state that produced the 2026-07-31
-  // chase — a 422 "bootstrapKey/alg does not match" five layers from its cause.
+  // use it. A pin with ONE half present is a violation, because half-configured
+  // identity is exactly the state that produced the 2026-07-31 chase — a 422
+  // "bootstrapKey/alg does not match" five layers from its cause.
+  //
+  // ── Why there is no ks256-bootstrap pin here (2026-08-02) ──────────────────
+  //
+  // It was declared, and it blocked canopy v0.1.8. On the dev tier the KS256
+  // pin is HALF-PRESENT, not absent: the instance half arrives non-empty
+  // through the tier's job-output chain, while the key half is genuinely
+  // missing — `E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP` is not a dev environment
+  // variable and no KS256 key secret is set there. The checker flagged it
+  // exactly as designed.
+  //
+  // That state is long-standing and benign in practice: with no key the specs
+  // do no KS256 work, so nothing binds to a mismatched identity and the suite
+  // has passed with it for months. Declaring the pin turned untidy config into
+  // a release blocker without a corresponding correctness gain.
+  //
+  // It is NOT re-declared until one of two things is settled, both of which
+  // are Robin's call and neither of which belongs in a green-path unblock:
+  //   1. dev's KS256 lane is actually configured (address AND key), or
+  //   2. the leftover instance address is removed at source — it may be
+  //      pre-migration residue of the same family as the stale
+  //      UNIVOCITY_CONTRACT_ADDRESS pin FOR-531 is removing.
+  //
+  // The gap that made this possible is real and worth naming: plan-2608-03 Q2
+  // specifies "tier applicability" on a pin declaration, and the checker built
+  // in canopy#212 has no tier field. Until it does, a contract cannot say
+  // "this pin applies to T2 but not the dev T3 path", which is precisely what
+  // was needed here.
   "schemaVersion": 1,
   "suite": "canopy",
   "pins": [
@@ -27,16 +53,6 @@
       "keySecret": "E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE",
       "keyKind": "p256-pem-file",
       "alg": "es256",
-      "chainVar": "E2E_UNIVOCITY_CHAIN_ID",
-      "invariants": ["instanceHasCode", "keyMatchesInstance"],
-    },
-    {
-      "id": "ks256-bootstrap",
-      "description": "KS256 bootstrap instance and the signer address its on-chain bootstrapConfig() must carry. The address half is used rather than the key: T3 resolves the signer from the pinned key without the key itself crossing a job boundary (canopy#211/#215), and a ks256 bootstrapConfig() carries exactly those 20 address bytes.",
-      "instanceVar": "E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP",
-      "keyVar": "E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER",
-      "keyKind": "eth-address",
-      "alg": "ks256",
       "chainVar": "E2E_UNIVOCITY_CHAIN_ID",
       "invariants": ["instanceHasCode", "keyMatchesInstance"],
     },
