@@ -84,6 +84,9 @@ jobs:
       ignore_deploy_path_overlap: true
 
   capture-release-fragment:
+    # secret-egress-ok: exports only `release_tag`, a public version tag
+    # It is read from the releases API; secrets.GITHUB_TOKEN authenticates that
+    # query and never reaches an output. See devdocs plan-2608-04.
     name: Capture release fragment
     needs: [deploy-dev, system-tests]
     if: >-

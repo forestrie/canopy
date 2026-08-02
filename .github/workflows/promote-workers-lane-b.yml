@@ -53,6 +53,10 @@ on:
 
 jobs:
   resolve:
+    # secret-egress-ok: exports only a run id, ref and sha, none secret-derived
+    # They come from the dispatch payload and the hydrated manifest.
+    # secrets.GITAPP_PRIVATE_KEY only mints an app token, consumed in-job and
+    # never mapped into `outputs:`. See devdocs plan-2608-04.
     name: Resolve canopy ref from manifest
     runs-on: ubuntu-latest
     outputs:

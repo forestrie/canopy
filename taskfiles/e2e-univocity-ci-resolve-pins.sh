@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # T3 CI: resolve pinned Univocity contracts from GitHub Environment (no provision).
 # Writes GitHub Actions outputs when GITHUB_OUTPUT is set.
+#
+# No secret-derived value is ever written to GITHUB_OUTPUT: the KS256 bootstrap
+# key is read only to derive its public signer address. Consumers read the key
+# material itself from the environment at point of use (devdocs plan-2608-04).
 set -euo pipefail
 
 trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
@@ -23,8 +27,7 @@ github_out() {
 if [ "${PLAYWRIGHT_PROJECT:-system}" = "prod" ]; then
   echo "prod project — skipping Univocity pin resolve"
   for key in es256_address ks256_address es256_log_id ks256_log_id \
-    es256_bootstrap_pem_b64 ks256_bootstrap_signer ks256_bootstrap_key_b64 \
-    es256_fresh ks256_fresh; do
+    ks256_bootstrap_signer es256_fresh ks256_fresh; do
     case "$key" in
       es256_fresh|ks256_fresh) github_out "$key" "false" ;;
       *) github_out "$key" "" ;;
@@ -35,7 +38,6 @@ fi
 
 ES256_ADDR="$(trim_ws "${INPUT_ES256_ADDRESS:-}")"
 KS256_ADDR="$(trim_ws "${INPUT_KS256_ADDRESS:-}")"
-ES256_PEM_B64="$(trim_ws "${INPUT_ES256_PEM_B64:-}")"
 KS256_KEY_B64="$(trim_ws "${INPUT_KS256_KEY_B64:-}")"
 ES256_LOG="$(trim_ws "${INPUT_ES256_LOG_ID:-}")"
 KS256_LOG="$(trim_ws "${INPUT_KS256_LOG_ID:-}")"
@@ -78,9 +80,7 @@ github_out es256_address "$ES256_ADDR"
 github_out ks256_address "$KS256_ADDR"
 github_out es256_log_id "$ES256_LOG"
 github_out ks256_log_id "$KS256_LOG"
-github_out es256_bootstrap_pem_b64 "$ES256_PEM_B64"
 github_out ks256_bootstrap_signer "$KS256_SIGNER"
-github_out ks256_bootstrap_key_b64 "$KS256_KEY_B64"
 github_out es256_fresh "false"
 github_out ks256_fresh "false"
 

@@ -31,6 +31,13 @@ jobs:
           bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
           ./actionlint -color
 
+      - name: Run secret-egress-lint
+        # No job may export secret-derived data through `outputs:` — GitHub
+        # drops those silently and the consumer sees an empty string. Triaged
+        # exceptions carry `# secret-egress-ok:` on the job. See devdocs
+        # plan-2608-04 for the estate audit this enforces.
+        uses: forestrie/.github/actions/secret-egress-lint@main
+
       - name: Self-test assert-publish-version.sh
         # The publish workflows gate on this script (FOR-365 C3); prove both
         # the pass and fail paths of its tag mode on every PR.
