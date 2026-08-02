@@ -1,0 +1,6 @@
+{
+  // no pins declared — must not pass vacuously
+  "schemaVersion": 1,
+  "suite": "canopy",
+  "pins": [],
+}
