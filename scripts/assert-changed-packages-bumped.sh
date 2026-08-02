@@ -9,8 +9,12 @@
 # without a version bump, so npm kept serving a stale build under the same
 # version and the deployed stack silently drifted from the pinned kit tree.
 #
-# The (dir, name) list mirrors the publish-*.yml workflows. Keep it in sync when
-# a new publishable package is added.
+# The package list is READ FROM `.github/auto-tag-packages.json`, which the
+# auto-tag workflow uses to decide what to tag on merge (devdocs plan-2608-06
+# Phase 2). It used to be a copy maintained here by hand alongside a "keep it in
+# sync" comment; a third copy of the same list is exactly how a package ends up
+# unguarded and unpublished. `scripts/check-published-packages.sh config` holds
+# that file and the publish-*.yml tag patterns to each other.
 #
 # Usage: assert-changed-packages-bumped.sh <base-ref-or-sha>
 #   <base-ref-or-sha>  the PR base commit to diff against (github.event.pull_request.base.sha)
@@ -19,23 +23,28 @@ set -euo pipefail
 
 base="${1:?usage: assert-changed-packages-bumped.sh <base-ref-or-sha>}"
 
-# package-dir : each publishable package's directory (mirror publish-*.yml).
-packages=(
-  "packages/tests/e2e-kit"
-  "packages/libs/chain-rpc"
-  "packages/libs/delegation-cose"
-  "packages/shared/encoding"
-  "packages/libs/grant-builder"
-  "packages/merklelog"
-  "packages/libs/receipt-verify"
-  "packages/libs/scrapi-client"
-)
+CONFIG="${CONFIG:-.github/auto-tag-packages.json}"
+if [ ! -f "$CONFIG" ]; then
+  echo "::error::${CONFIG} not found — it is the source of truth for which packages this repo publishes" >&2
+  exit 1
+fi
+
+# An empty list would make this guard pass vacuously, which is worse than
+# failing: every changed package would look unguarded-but-fine.
+packages=()
+while IFS= read -r pkg_dir; do
+  [ -n "$pkg_dir" ] && packages+=("$pkg_dir")
+done < <(jq -r '.packages[].dir' "$CONFIG")
+if [ "${#packages[@]}" -eq 0 ]; then
+  echo "::error::${CONFIG} declares no packages — refusing to pass vacuously" >&2
+  exit 1
+fi
 
 fail=0
 checked=0
 for dir in "${packages[@]}"; do
   if [ ! -f "${dir}/package.json" ]; then
-    echo "::error::${dir}/package.json missing — update assert-changed-packages-bumped.sh" >&2
+    echo "::error file=${CONFIG}::declares '${dir}' but ${dir}/package.json is missing" >&2
     fail=1
     continue
   fi

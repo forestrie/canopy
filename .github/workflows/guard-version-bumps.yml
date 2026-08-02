@@ -26,6 +26,14 @@ jobs:
           node-version: 22.14.0
           registry-url: https://registry.npmjs.org
 
+      # `.github/auto-tag-packages.json` drives both the auto-tag workflow and
+      # the bump guard below, so a package missing from it is a package that is
+      # neither guarded nor published — silently. Offline; no npm half here
+      # (plan 2608-05 Q3 keeps the recurring repo-vs-npm check in the frontier
+      # resolver). Run `scripts/check-published-packages.sh npm` by hand.
+      - name: Declared packages match the publish workflows
+        run: bash scripts/check-published-packages.sh config
+
       - name: Assert changed publishable packages are version-bumped
         run: bash scripts/assert-changed-packages-bumped.sh "${{ github.event.pull_request.base.sha }}"
 
