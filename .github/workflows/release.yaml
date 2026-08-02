@@ -51,6 +51,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      # Dogfood consumers (@canopy/api-e2e) import @forestrie/canopy-e2e-kit
+      # from the workspace, so it has to be built before `pnpm -r test` can
+      # resolve its entry point. ci.yml has done this all along; release.yaml
+      # got away without it because the dispatch path defaults
+      # skip_cross_repo_tests=true and filters that package out — and the
+      # tag-push path, which runs the full suite, had NEVER EXECUTED. Every
+      # prior tag was pushed by publish-github-release using GITHUB_TOKEN,
+      # which triggers no workflow runs, so this branch sat as dead code
+      # (29 workflow_dispatch runs, 0 push runs) until auto-tag cut v0.1.5 and
+      # it failed on the first real attempt. FOR-532.
+      - name: Build e2e-kit for dogfood consumers
+        run: pnpm --filter @forestrie/canopy-e2e-kit build
+
       - name: Unit tests
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && \
@@ -162,25 +175,45 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
+  # FOR-532. This job used to be gated to `workflow_dispatch`. The frontier
+  # resolver reads GitHub *Releases*, not git tags: `fetchLatestReleaseTag` and
+  # `fetchSemverReleaseTags` both call `GET /repos/{owner}/{repo}/releases` and
+  # match `tag_name`, and the kit pins come from the `components.jsonc` release
+  # ASSET (release-orchestrator/packages/resolver/src/github-releases.ts). So
+  # once auto-tag started cutting tags on merge (plan 2608-06 Phase 2) the tag
+  # appeared, this workflow ran, and the frontier never advanced — no Release,
+  # no components.jsonc, nothing for qualification to resolve. v0.1.5 was the
+  # first canopy tag to land in that hole.
+  #
+  # It now runs on BOTH paths. The dispatch path is unchanged in behaviour and
+  # goes away with plan 2608-06 Phase 3d.
   publish-github-release:
-    name: Publish GitHub Release (orchestrator dispatch)
+    name: Publish GitHub Release
     needs: capture-release-fragment
     # always() required: system-tests may skip on orchestrator dispatch; skip
     # propagates down the needs chain unless each downstream job opts in.
     if: >-
       always() &&
-      github.event_name == 'workflow_dispatch' &&
       needs.capture-release-fragment.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      # Dispatch cuts a new tag from main. A tag push must describe the TAGGED
+      # tree — main may have moved on, and components.jsonc is read out of this
+      # checkout, so taking main here would pin kit versions that are not the
+      # ones this release contains.
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: >-
+            ${{ github.event_name == 'workflow_dispatch' && 'main'
+            || github.ref_name }}
           fetch-depth: 0
 
-      - name: Create annotated tag and GitHub Release
+      # Only the dispatch path mints a tag. On the tag-push path auto-tag
+      # already did, and two cutters on one namespace is its own defect.
+      - name: Create annotated tag (orchestrator dispatch only)
+        if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.capture-release-fragment.outputs.release_tag }}
@@ -194,6 +227,15 @@ jobs:
             git tag -a "$TAG" -m "Orchestrator release $TAG"
             git push origin "$TAG"
           fi
+
+      - name: Publish GitHub Release with components.jsonc
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.capture-release-fragment.outputs.release_tag }}
+          ORCH_RUN_ID: ${{ github.event.inputs.orchestrator_run_id }}
+        run: |
+          set -euo pipefail
+          : "${TAG:?capture-release-fragment produced no release_tag}"
           KIT_VERSION=$(node -p "require('./packages/tests/e2e-kit/package.json').version")
           jq -n \
             --arg ecosystem "pnpm" \
@@ -202,11 +244,32 @@ jobs:
             '{ ecosystem: $ecosystem, components: { ($pkg): $ver } }' \
             > components.jsonc
           cat components.jsonc
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            notes="Orchestrator-driven release (run ${ORCH_RUN_ID})."
+          else
+            notes="Released from tag ${TAG}, cut by auto-tag on merge to main."
+          fi
           if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             gh release upload "$TAG" --repo "${{ github.repository }}" components.jsonc --clobber
           else
-            gh release create "$TAG" \
+            gh release create "$TAG" --repo "${{ github.repository }}" \
               --title "$TAG" \
-              --notes "Orchestrator-driven release (run ${{ github.event.inputs.orchestrator_run_id }})." \
+              --notes "$notes" \
               components.jsonc
           fi
+          # The assertion that catches the silence: read it back the way the
+          # resolver will, rather than trusting the create. A Release that is
+          # not listed, or is listed without its kit pins, is invisible to
+          # qualification in exactly the way FOR-532 describes.
+          got=$(gh api "/repos/${{ github.repository }}/releases?per_page=100" \
+                  --jq "[.[] | select(.tag_name == \"${TAG}\")] | length")
+          if [ "$got" != "1" ]; then
+            echo "::error::Release ${TAG} is not listed by /releases (found ${got}) — the frontier resolver would not see this release" >&2
+            exit 1
+          fi
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" \
+                 --json assets --jq '.assets[].name' | grep -qx 'components.jsonc'; then
+            echo "::error::Release ${TAG} carries no components.jsonc asset — kit pins would be unresolvable" >&2
+            exit 1
+          fi
+          echo "verified: ${TAG} is listed by /releases and carries components.jsonc"
