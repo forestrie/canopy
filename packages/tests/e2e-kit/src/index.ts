@@ -84,6 +84,7 @@ export * from "./bootstrap-grant-setup.js";
 export * from "./register-grant-through-receipt.js";
 export * from "./bootstrap-delegation-coordinator.js";
 export * from "./coordinator-delegation-helpers.js";
+export * from "./sign-standing-advance-delegation.js";
 export * from "./wallet-challenge-session-e2e.js";
 export * from "./delegation-cbor-contract.js";
 export * from "./byok-wallet-seal-helpers.js";
