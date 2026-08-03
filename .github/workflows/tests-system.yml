@@ -114,6 +114,18 @@ on:
 
   push:
     branches: [main]
+    # Documentation-only pushes cannot change what the bootstrap suite proves,
+    # and since FOR-531 that suite deploys two contracts and runs for ~6 minutes
+    # on every qualifying push. Skip the ones that cannot affect it.
+    #
+    # `paths-ignore` skips only when EVERY changed file matches, so a push that
+    # touches docs AND code still runs — the safe direction. Worker-path pushes
+    # are filtered separately by the `paths` job below, because those chain
+    # through deploy-workers.yml instead of being skipped outright.
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".cursor/**"
 
 jobs:
   paths:
