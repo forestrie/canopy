@@ -3,7 +3,16 @@ version: "3"
 
 vars:
   INSTALL_DIR: '{{.INSTALL_DIR | default ".cache/univocity-tools"}}'
-  UNIVOCITY_TOOLS_VERSION: '{{.UNIVOCITY_TOOLS_VERSION | default "v0.6.0"}}'
+  # Last-good pin, not a hardcoded default: see univocity-last-good.jsonc for
+  # why (a `| default "v0.6.0"` here went four releases stale unnoticed).
+  UNIVOCITY_TOOLS_VERSION:
+    sh: |
+      set -euo pipefail
+      if [ -n "${UNIVOCITY_TOOLS_VERSION:-}" ]; then
+        printf '%s' "$UNIVOCITY_TOOLS_VERSION"
+      else
+        "{{.ROOT_DIR}}/taskfiles/univocity-last-good.sh" tools
+      fi
   UNIVOCITY_TOOLS_TASKFILE:
     sh: |
       set -euo pipefail
@@ -69,7 +78,9 @@ tasks:
     desc: |
       Download deployer + contract-artefacts linux-x64 from a GitHub release
       into INSTALL_DIR (CI parity; no sibling checkout required).
-      Set UNIVOCITY_TOOLS_VERSION=latest or v0.5.0; REFRESH_TOOLS=1 to re-fetch.
+      Defaults to the last-good pin (univocity-last-good.jsonc).
+      Set UNIVOCITY_TOOLS_VERSION=latest or an explicit tag to override;
+      REFRESH_TOOLS=1 to re-fetch.
     vars:
       TOOLS_TAG:
         sh: |

@@ -78,10 +78,12 @@ bootstrap system specs skip; other projects still run.
 
 **Manual provision:** `doppler run -- task e2e-univocity:provision`
 
-Requires **`gh`** auth, Foundry **`cast`**, Doppler **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`**, and **univocity-tools v0.6.0+** (`deploy provision e2e`; sibling `task install:dev` or release binaries pinned in CI).
+Requires **`gh`** auth, Foundry **`cast`**, Doppler **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`**, and **univocity-tools** at the last-good pin in [`univocity-last-good.jsonc`](../univocity-last-good.jsonc) (`deploy provision e2e`; sibling `task install:dev` locally, release binaries in CI).
 
-**CI:** **`task e2e-univocity:ci-prepare`** (T2 ephemeral) or **`task e2e-univocity:ci-resolve-pins`**
-(T3 pinned) in **tests-system.yml** — default **`e2e_tier=t3`** (no re-provision).
+**CI:** **`task e2e-univocity:ci-prepare`** in **tests-system.yml**, unconditionally —
+the bootstrap suite always deploys its own ephemeral instances. There is no
+pinned-contract mode: a pinned address set `*_ALLOW_BOOTSTRAP=false`, which
+skipped every bootstrap spec (FOR-531).
 
 Run ES256 bootstrap specs only:
 
@@ -101,7 +103,7 @@ The **worker** must have **`CUSTODIAN_APP_TOKEN`** (Wrangler secret) for SCITT r
 | -------- | ---- |
 | **`ci.yml`** | Lint, format, unit tests on every push and PR |
 | **`tests-integration.yml`** | Playwright **integration** vs deployed **dev** |
-| **`tests-system.yml`** | T3 pinned Univocity + canopy component Playwright (default); T2 bootstrap via `e2e_tier=t2` |
+| **`tests-system.yml`** | The **bootstrap** suite: ephemeral Univocity provisioned per run + canopy component Playwright |
 | **`deploy-workers.yml`** | Deploy workers; chains **tests-system.yml** on **dev** after health |
 | **`release.yaml`** | Tag → deploy **dev** → **tests-system.yml** → promote **prod** → prod health |
 

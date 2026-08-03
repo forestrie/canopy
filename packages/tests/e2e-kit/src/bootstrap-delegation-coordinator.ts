@@ -207,6 +207,17 @@ export async function setupBootstrapCoordinatorDelegation(opts: {
   return signingContext;
 }
 
+/**
+ * @deprecated LEGACY on-demand signing. Sign the standing key in advance
+ * instead — `signStandingAdvanceDelegation` — which covers `[0, horizon]` before
+ * the first write so the sealer never needs to raise a windowed demand.
+ *
+ * The kit's own bootstrap flow no longer calls this (FOR-531). It remains
+ * exported only because `system-testing/tests/support/delegation-poller.ts`
+ * still does; that repo already pre-delegates, so its windowed signing is very
+ * likely redundant too. Removing the export is a two-repo change and wants its
+ * own lane run to prove — do that, then delete this.
+ */
 export async function signPendingBootstrapDelegations(opts: {
   request: APIRequestContext;
   coordinatorUrl: string;
@@ -255,7 +266,7 @@ export async function signPendingBootstrapDelegations(opts: {
   // Leaving it merely UNSIGNED, however, stalls the log: the sealer's
   // coverage-matched lease lookup finds nothing covering its true seal
   // window and defers forever on "delegation material pending", while this
-  // poll reports an empty queue. That cost two days of intermittent T3
+  // poll reports an empty queue. That cost two days of intermittent lane-suite
   // failures. Callers must ALSO delegate to the standing key — use
   // `signAdvanceDelegation` (ES256) or an equivalent variant-aware signer —
   // so the warning below fires until they do.
@@ -399,33 +410,17 @@ export async function pollBootstrapRegistrationThroughReceipt(opts: {
   let attempt = 0;
   let receiptUrlAbsolute: string | undefined;
   let entryIdHex: string | undefined;
-  const pollStart = Date.now();
-  let lastPendingSeenAt = pollStart;
 
+  // NO per-tick on-demand signing here any more, and no "have any pendings
+  // appeared?" liveness throw (FOR-531).
+  //
+  // Both belonged to the on-demand model: the sealer raised a WINDOWED pending,
+  // the poll signed it, and silence therefore meant the sealer was not issuing.
+  // Under delegation-in-advance the caller has already covered [0, horizon]
+  // before registering, so the sealer needs no demand — and silence is the
+  // HEALTHY state. Keeping the check would have turned a correct run into
+  // "Sealer may not be issuing".
   while (Date.now() < deadlineMs) {
-    const { pendingCount } = await signPendingBootstrapDelegations({
-      request: opts.request,
-      coordinatorUrl: coordinator.baseUrl,
-      coordinatorToken: coordinator.appToken,
-      logId: opts.logId,
-      logIdHex32,
-      signingContext: opts.signingContext,
-      signedMaterialKeys: opts.signedMaterialKeys,
-      stats: opts.stats,
-    });
-    if (pendingCount > 0) lastPendingSeenAt = Date.now();
-    if (
-      !receiptUrlAbsolute &&
-      Date.now() - lastPendingSeenAt >= E2E_POLL_MAX_WAIT_MS &&
-      (opts.stats?.materialSigned ?? 0) === 0
-    ) {
-      throw new Error(
-        `Bootstrap: no coordinator pending entries for ${E2E_POLL_MAX_WAIT_MS}ms ` +
-          "(Sealer may not be issuing, or poison material already stored). " +
-          "Check forestrie-a sealer logs for verify delegation lease errors.",
-      );
-    }
-
     if (receiptUrlAbsolute) {
       const res = await opts.request.get(receiptUrlAbsolute, {
         headers: { Accept: "application/cbor" },

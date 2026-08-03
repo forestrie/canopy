@@ -1,0 +1,28 @@
+{
+  // Last-good univocity pins for the bootstrap suite's ephemeral provision.
+  //
+  // WHY A FILE AND NOT A DEFAULT IN THE TASKFILE. These were `v0.6.0`
+  // hardcoded as a `${VAR:-default}` fallback in two places, and the contract
+  // release was not pinned at all — `cart fetch-release` defaults to whatever
+  // is latest. Both are the failure mode plan-2608-06 kept hitting: a default
+  // that nobody bumps goes stale silently (v0.6.0 was four releases behind
+  // v0.8.3 when this was written), and an unpinned "latest" changes what CI
+  // exercises without a commit saying so.
+  //
+  // LAST-GOOD, NOT LATEST. These are the versions the bootstrap suite has
+  // actually passed against. Bumping one is a PR: change it, let the suite run,
+  // and the diff records that the new version was exercised. That is the whole
+  // mechanism — there is no resolver and no range, because a range would put us
+  // back to "whatever it released last".
+  //
+  // The contract release matters more than it looks. Univocity contracts are
+  // IMMUTABLE, so a forest deployed against a buggy release keeps the bug:
+  // v0.1.7 and earlier reverted on a lone-peak grant leaf (FOR-393), which made
+  // the demo deck fail deterministically on a parity coin flip. v0.1.8 fixed
+  // it. Pinning the release is what stops that reappearing unannounced.
+  "schemaVersion": 1,
+  // forestrie/univocity-tools release supplying `deployer` + `contract-artefacts`.
+  "tools": "v0.8.3",
+  // forestrie/univocity contract release the ephemeral instances are deployed from.
+  "contracts": "v0.1.8",
+}

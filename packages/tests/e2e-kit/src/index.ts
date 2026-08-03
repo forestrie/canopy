@@ -1,4 +1,4 @@
-/** T2 minimum slice (coordinator env + onboard token) */
+/** bootstrap suite minimum slice (coordinator env + onboard token) */
 export {
   delegationCoordinatorBaseUrl,
   coordinatorAppToken,
@@ -62,9 +62,7 @@ export type {
   ResolveReceiptOnceOptions,
 } from "@forestrie/scrapi-client";
 
-export * from "./e2e-testing-tier.js";
-
-/** T2 bootstrap + T3 genesis slice (0.2.0) */
+/** bootstrap suite + lane-suite genesis slice (0.2.0) */
 /** Receipt create/attach — re-exported from @forestrie/receipt-verify (FOR-353). */
 export { attachReceiptAndIdtimestampToTransparentStatement } from "@forestrie/receipt-verify";
 export { genesisBodyEs256 } from "./genesis-body-es256.js";
@@ -86,6 +84,7 @@ export * from "./bootstrap-grant-setup.js";
 export * from "./register-grant-through-receipt.js";
 export * from "./bootstrap-delegation-coordinator.js";
 export * from "./coordinator-delegation-helpers.js";
+export * from "./sign-standing-advance-delegation.js";
 export * from "./wallet-challenge-session-e2e.js";
 export * from "./delegation-cbor-contract.js";
 export * from "./byok-wallet-seal-helpers.js";
@@ -98,7 +97,7 @@ export * from "./forestrie-hex-id.js";
 export * from "./statement-sign-bytes.js";
 export * from "./cbor-int-key.js";
 
-/** T3 Mode C slice (0.3.0) */
+/** lane-suite Mode C slice (0.3.0) */
 export * from "./mode-c-e2e-env.js";
 export * from "./mode-c-webhook-ingress.js";
 export * from "./mode-c-webhook-seal-helpers.js";

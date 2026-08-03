@@ -3,15 +3,21 @@
 Reusable Playwright helpers extracted from `@canopy/api-e2e` for cross-repo
 system tests ([ARC-0024](https://github.com/forestrie/devdocs/blob/main/arc/arc-0024-system-testing-architecture.md)).
 
-## Testing tiers (ARC-0024)
+## Suites this kit serves (ARC-0025)
 
-| Tier   | Scope                                              | Univocity                 | CI entry                                                   |
-| ------ | -------------------------------------------------- | ------------------------- | ---------------------------------------------------------- |
-| **T2** | Component bootstrap (ephemeral Imutable provision) | `deploy provision e2e`    | `tests-system.yml` `e2e_tier=t2`                           |
-| **T3** | Component system + lane integration                | Pinned manifest contracts | Canopy `e2e_tier=t3` (default); `forestrie/system-testing` |
+| Suite         | Scope                                       | Univocity                                               | CI entry                   |
+| ------------- | ------------------------------------------- | ------------------------------------------------------- | -------------------------- |
+| **bootstrap** | canopy's own genesis → grants → first entry | Ephemeral, provisioned per run (`deploy provision e2e`) | canopy `tests-system.yml`  |
+| **lane**      | Cross-repo lane integration                 | Per-run deploy from the lane manifest's release pin     | `forestrie/system-testing` |
 
-Kit exports `parseE2eTestingTier` / `isEphemeralBootstrapTier` from `e2e-testing-tier.ts`.
-Set `E2E_TESTING_TIER=t2` locally to mirror T2 bootstrap preflight.
+Suites are named for what they exercise; the promotion phase that runs them
+(`pr`, `main`, `qualify`, `promote`, `nightly`) is the other axis. The numbered
+T0–T4 tiers are retired — one token could not carry both, so "T3" meant the lane
+suite and the qualification gate interchangeably (FOR-531).
+
+Both suites provision their own instances. There is no pinned-contract mode in
+canopy: a supplied address set `*_ALLOW_BOOTSTRAP=false`, which skipped every
+bootstrap spec.
 
 Cross-repo lane specs (forest genesis, Mode B/C registration, BYOK) run in
 **`forestrie/system-testing`** — not `tests-system.yml`.
@@ -49,7 +55,7 @@ Cross-repo lane specs (forest genesis, Mode B/C registration, BYOK) run in
   ([plan-0030](https://github.com/forestrie/devdocs/blob/main/plans/plan-0030-offline-receipt-verification-gates.md), FOR-286):
   `verifyGrantReceiptOffline`, `parseReceipt`, `decodeTrustRootFromGenesis`,
   plus types `VerifyGrantReceiptOfflineInput`, `ReceiptVerifyResult`, `ReceiptVerifyStage`
-- Lets T3 system-testing specs verify receipts in-process instead of shelling
+- Lets the lane suite's specs verify receipts in-process instead of shelling
   out to a subprocess script
 
 ### 0.5.0 — npmjs release (includes 0.4.0)
