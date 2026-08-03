@@ -1,21 +1,21 @@
 /**
- * Coordinator delegation loop for contract-bootstrap root logs (Option A).
- * Mirrors BYOK `signPendingDelegations` but signs with provision bootstrap keys.
+ * Coordinator delegation setup for contract-bootstrap root logs (Option A):
+ * upload the public root, exchange a control-plane session, register a signing
+ * route, and hand back the signing context.
+ *
+ * It no longer signs anything itself. On-demand WINDOWED signing lived here and
+ * is gone (FOR-531) — coverage is established in advance over [0, horizon] by
+ * `signStandingAdvanceDelegation`, so the sealer never raises a demand.
  */
 
 import type { APIRequestContext } from "@playwright/test";
 import { assertCoordinatorApiE2eEnv } from "./coordinator-api-env.js";
 import {
-  buildByokDelegationMaterial,
-  buildKs256BootstrapDelegationMaterial,
-  bytesToBase64,
-  type ByokDelegationMaterial,
   exportEs256RootXy,
   importEs256PemKeyPair,
   uploadBootstrapKs256PublicRoot,
   uploadByokRootPublicKey,
   verifyByokDelegationCertificate,
-  verifyKs256BootstrapDelegationCertificate,
 } from "./coordinator-delegation-helpers.js";
 import {
   exchangeEs256ControlPlaneSession,
@@ -23,7 +23,6 @@ import {
   postSigningRouteWithSession,
   WALLET_CHALLENGE_ES256_SCOPES,
 } from "./wallet-challenge-session-e2e.js";
-import { assertGoCompatibleDelegatedKeyInCertificate } from "./delegation-cbor-contract.js";
 import {
   E2E_POLL_MAX_WAIT_MS,
   sequencingBackoff,
@@ -40,14 +39,6 @@ import { bootstrapEs256PrivateKeyPem } from "./mint-es256-root-grant-e2e.js";
 
 const RECEIPT_LOCATION_RE =
   /\/logs\/[^/]+\/[^/]+\/\d+\/entries\/[0-9a-f]{32}\/receipt(?:\?|$)/i;
-
-function base64ToBytes(b64: string): Uint8Array {
-  const normalized = b64.replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(normalized);
-  const out = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
-  return out;
-}
 
 function toAbsoluteUrl(baseURL: string, location: string): string {
   if (location.startsWith("http")) return location;
@@ -205,175 +196,6 @@ export async function setupBootstrapCoordinatorDelegation(opts: {
   }
 
   return signingContext;
-}
-
-/**
- * @deprecated LEGACY on-demand signing. Sign the standing key in advance
- * instead — `signStandingAdvanceDelegation` — which covers `[0, horizon]` before
- * the first write so the sealer never needs to raise a windowed demand.
- *
- * The kit's own bootstrap flow no longer calls this (FOR-531). It remains
- * exported only because `system-testing/tests/support/delegation-poller.ts`
- * still does; that repo already pre-delegates, so its windowed signing is very
- * likely redundant too. Removing the export is a two-repo change and wants its
- * own lane run to prove — do that, then delete this.
- */
-export async function signPendingBootstrapDelegations(opts: {
-  request: APIRequestContext;
-  coordinatorUrl: string;
-  coordinatorToken: string;
-  logId: string;
-  logIdHex32: string;
-  signingContext: BootstrapSigningContext;
-  signedMaterialKeys: Set<string>;
-  stats?: ByokPollStats;
-  /**
-   * Silence the "standing delegate key left unsigned" warning. Set ONLY when
-   * another component already delegates to the standing key for this log
-   * (ADR-0050 §2) — the warning exists because leaving it unsigned stalls
-   * checkpointing, so suppressing it without covering it hides the stall.
-   */
-  suppressStandingKeyWarning?: boolean;
-}): Promise<{ signed: number; pendingCount: number }> {
-  const pending = await opts.request.get(
-    `${opts.coordinatorUrl}/api/logs/${opts.logId}/pending-delegation`,
-  );
-  if (!pending.ok()) {
-    throw new Error(
-      `GET pending-delegation: ${pending.status()} ${(await pending.text()).slice(0, 300)}`,
-    );
-  }
-  const body = (await pending.json()) as {
-    entries: Array<{
-      mmrStart?: number;
-      mmrEnd?: number;
-      delegatedPublicKey: string;
-    }>;
-  };
-  // The coordinator appends a window-less standing delegate-key entry (C3,
-  // delegation-in-advance) to pending-delegation once a live standing key
-  // exists — which membership enablement makes true for any log with a
-  // registered public root (bootstrap flows register one).
-  //
-  // This helper signs only WINDOWED on-demand material. That is a deliberate
-  // scope limit, NOT the whole contract: ADR-0050 §2 requires signers to
-  // handle every entry identically, supplying their own horizon and TTL
-  // (conventionally mmrStart = 0) when no window is stated. The standing
-  // entry is excluded here for one good reason — sealer-liveness detection
-  // keys on windowed entries appearing, and an always-present entry would
-  // defeat the liveness timeout.
-  //
-  // Leaving it merely UNSIGNED, however, stalls the log: the sealer's
-  // coverage-matched lease lookup finds nothing covering its true seal
-  // window and defers forever on "delegation material pending", while this
-  // poll reports an empty queue. That cost two days of intermittent lane-suite
-  // failures. Callers must ALSO delegate to the standing key — use
-  // `signAdvanceDelegation` (ES256) or an equivalent variant-aware signer —
-  // so the warning below fires until they do.
-  const windowed = body.entries.filter(
-    (
-      e,
-    ): e is { mmrStart: number; mmrEnd: number; delegatedPublicKey: string } =>
-      typeof e.mmrStart === "number" && typeof e.mmrEnd === "number",
-  );
-  if (opts.stats && windowed.length > 0) {
-    opts.stats.pendingEntriesSeen += windowed.length;
-  }
-
-  // Say it out loud. A silent skip is what let two independent signer
-  // implementations (this kit and the mandate agent) both treat an absent
-  // window as "nothing to do" for weeks.
-  const standingCount = body.entries.length - windowed.length;
-  if (standingCount > 0 && !opts.suppressStandingKeyWarning) {
-    console.warn(
-      `[bootstrap-delegation] log ${opts.logId}: ${standingCount} standing ` +
-        `delegate-key entr${standingCount === 1 ? "y" : "ies"} left UNSIGNED by ` +
-        `this helper. ADR-0050 §2 requires signing them over a signer-chosen ` +
-        `[0, horizon]; until something does, the sealer's coverage lookup has ` +
-        `nothing to match and checkpointing defers on "delegation material ` +
-        `pending". Call signAdvanceDelegation (or a variant-aware equivalent), ` +
-        `or pass suppressStandingKeyWarning if another component already does.`,
-    );
-  }
-
-  let signed = 0;
-  for (const entry of windowed) {
-    const key = `${entry.mmrStart}:${entry.mmrEnd}:${entry.delegatedPublicKey}`;
-    if (opts.signedMaterialKeys.has(key)) continue;
-    const delegatedPublicKey = base64ToBytes(entry.delegatedPublicKey);
-
-    let material: ByokDelegationMaterial;
-    if (opts.signingContext.es256RootKeyPair) {
-      material = await buildByokDelegationMaterial({
-        rootKeyPair: opts.signingContext.es256RootKeyPair,
-        logIdHex32: opts.logIdHex32,
-        mmrStart: entry.mmrStart,
-        mmrEnd: entry.mmrEnd,
-        delegatedPublicKey,
-      });
-      const verified = await verifyByokDelegationCertificate({
-        certificate: material.certificate,
-        rootPublicKey: opts.signingContext.es256RootKeyPair.publicKey,
-      });
-      if (!verified) {
-        throw new Error(
-          "runner-built ES256 bootstrap delegation certificate did not verify",
-        );
-      }
-    } else {
-      const privateKeyHex = opts.signingContext.ks256PrivateKeyHex!;
-      const rootAddress = opts.signingContext.ks256RootAddress!;
-      material = await buildKs256BootstrapDelegationMaterial({
-        rootSignerAddress: rootAddress,
-        privateKeyHex,
-        logIdHex32: opts.logIdHex32,
-        mmrStart: entry.mmrStart,
-        mmrEnd: entry.mmrEnd,
-        delegatedPublicKey,
-      });
-      const verified = await verifyKs256BootstrapDelegationCertificate({
-        certificate: material.certificate,
-        rootSignerAddress: rootAddress,
-      });
-      if (!verified) {
-        throw new Error(
-          "runner-built KS256 bootstrap delegation certificate did not verify",
-        );
-      }
-    }
-
-    assertGoCompatibleDelegatedKeyInCertificate(material.certificate);
-
-    const res = await opts.request.post(
-      `${opts.coordinatorUrl}/api/delegations/certificate`,
-      {
-        headers: {
-          "Content-Type": "application/json",
-        },
-        data: {
-          logId: opts.logId,
-          mmrStart: entry.mmrStart,
-          mmrEnd: entry.mmrEnd,
-          delegatedPublicKey: bytesToBase64(delegatedPublicKey),
-          certificate: bytesToBase64(material.certificate),
-          issuedAt: material.issuedAt,
-          expiresAt: material.expiresAt,
-          ...(material.onchainSignature
-            ? { onchainSignature: bytesToBase64(material.onchainSignature) }
-            : {}),
-        },
-      },
-    );
-    if (!res.ok()) {
-      throw new Error(
-        `POST delegation material: ${res.status()} ${(await res.text()).slice(0, 300)}`,
-      );
-    }
-    opts.signedMaterialKeys.add(key);
-    signed++;
-    if (opts.stats) opts.stats.materialSigned++;
-  }
-  return { signed, pendingCount: windowed.length };
 }
 
 /** Combined status + receipt poll budget (sealer delegation can lag massif commit). */

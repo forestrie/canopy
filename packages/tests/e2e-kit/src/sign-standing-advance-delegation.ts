@@ -9,12 +9,12 @@
  * demanded window if present, "with a horizon and TTL of their choosing
  * (conventionally mmrStart = 0)". There is no `kind` discriminator.
  *
- * WHY THIS EXISTS. The kit only ever signed WINDOWED entries
- * (`signPendingBootstrapDelegations` filters the window-less one out), so the
- * standing key never received a certificate: the sealer's coverage-matched lease
- * lookup found nothing covering its true seal window and deferred forever on
- * "delegation material pending", while the poll reported an empty queue and
- * receipts 404'd at the deadline.
+ * WHY THIS EXISTS. The kit only ever signed WINDOWED on-demand entries and
+ * filtered the window-less one out, so the standing key never received a
+ * certificate: the sealer's coverage-matched lease lookup found nothing covering
+ * its true seal window and deferred forever on "delegation material pending",
+ * while the poll reported an empty queue and receipts 404'd at the deadline.
+ * That on-demand signer is now deleted — this replaces it outright.
  *
  * That was invisible on a LONG-LIVED pinned instance, whose root had standing
  * delegation established once, long ago. Retiring the pins in favour of a
