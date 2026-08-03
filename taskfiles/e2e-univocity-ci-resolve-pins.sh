@@ -45,9 +45,6 @@ KS256_LOG="$(trim_ws "${INPUT_KS256_LOG_ID:-}")"
 if [ -z "$ES256_ADDR" ]; then
   ES256_ADDR="$(trim_ws "${E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP:-}")"
 fi
-if [ -z "$ES256_ADDR" ]; then
-  ES256_ADDR="$(trim_ws "${UNIVOCITY_CONTRACT_ADDRESS:-}")"
-fi
 if [ -z "$KS256_ADDR" ]; then
   KS256_ADDR="$(trim_ws "${E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP:-}")"
 fi
@@ -56,7 +53,7 @@ if [ -z "$KS256_ADDR" ]; then
 fi
 
 if [ -z "$ES256_ADDR" ]; then
-  echo "::error::T3 requires ES256 Univocity pin (E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP or UNIVOCITY_CONTRACT_ADDRESS)."
+  echo "::error::T3 requires ES256 Univocity pin (E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP)."
   exit 1
 fi
 
