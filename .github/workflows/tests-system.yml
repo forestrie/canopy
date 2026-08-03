@@ -227,7 +227,12 @@ jobs:
   system-tests:
     name: System tests (${{ github.event_name == 'push' && 'dev' || inputs.environment }})
     needs: [bootstrap-univocity]
-    if: needs.bootstrap-univocity.result == 'success'
+    # `always()` is load-bearing: `paths` is skipped on workflow_dispatch (it is
+    # gated on the push event), and a skipped TRANSITIVE dependency otherwise
+    # propagates a skip down the graph even though the direct need succeeded.
+    # The pre-FOR-531 condition had it; dropping it silently skipped the suite
+    # on dispatch while push runs still worked.
+    if: always() && needs.bootstrap-univocity.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     environment: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}
