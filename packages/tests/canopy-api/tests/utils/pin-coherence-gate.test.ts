@@ -61,8 +61,10 @@ describe("canopy pin contract", () => {
   it("declares no not-configured sentinel, so a missing address fails loudly", () => {
     const contract = loadCanopyPinContract();
     for (const pin of contract.pins) {
-      expect(pin.absentWhen, `pin ${pin.id} must not skip on a sentinel`)
-        .toBeUndefined();
+      expect(
+        pin.absentWhen,
+        `pin ${pin.id} must not skip on a sentinel`,
+      ).toBeUndefined();
     }
   });
 

@@ -62,7 +62,6 @@ export type {
   ResolveReceiptOnceOptions,
 } from "@forestrie/scrapi-client";
 
-
 /** bootstrap suite + lane-suite genesis slice (0.2.0) */
 /** Receipt create/attach — re-exported from @forestrie/receipt-verify (FOR-353). */
 export { attachReceiptAndIdtimestampToTransparentStatement } from "@forestrie/receipt-verify";

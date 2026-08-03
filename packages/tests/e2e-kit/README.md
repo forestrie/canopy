@@ -5,10 +5,10 @@ system tests ([ARC-0024](https://github.com/forestrie/devdocs/blob/main/arc/arc-
 
 ## Suites this kit serves (ARC-0025)
 
-| Suite | Scope | Univocity | CI entry |
-| ----- | ----- | --------- | -------- |
-| **bootstrap** | canopy's own genesis → grants → first entry | Ephemeral, provisioned per run (`deploy provision e2e`) | canopy `tests-system.yml` |
-| **lane** | Cross-repo lane integration | Per-run deploy from the lane manifest's release pin | `forestrie/system-testing` |
+| Suite         | Scope                                       | Univocity                                               | CI entry                   |
+| ------------- | ------------------------------------------- | ------------------------------------------------------- | -------------------------- |
+| **bootstrap** | canopy's own genesis → grants → first entry | Ephemeral, provisioned per run (`deploy provision e2e`) | canopy `tests-system.yml`  |
+| **lane**      | Cross-repo lane integration                 | Per-run deploy from the lane manifest's release pin     | `forestrie/system-testing` |
 
 Suites are named for what they exercise; the promotion phase that runs them
 (`pr`, `main`, `qualify`, `promote`, `nightly`) is the other axis. The numbered
