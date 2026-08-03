@@ -3,13 +3,14 @@ name: System tests
 permissions:
   contents: read
 
-# Canopy component e2e (T2 bootstrap or T3 system Playwright).
+# Canopy component e2e: the bootstrap suite (Playwright `system` project).
 #
 # The bootstrap suite always provisions its own ephemeral Univocity instances
 # (FOR-531). There is no pinned-contract mode: a pinned address set
 # `*_ALLOW_BOOTSTRAP=false`, which SKIPPED every bootstrap spec, so the pin
 # bought nothing and cost all of the coverage.
-#   Cross-repo lane specs live in forestrie/system-testing (T3), not here.
+#   Cross-repo lane specs live in forestrie/system-testing (the lane suite),
+#   not here.
 #
 # Triggers: manual dispatch, workflow_call (deploy-workers, release), and
 # push to main when deploy-workers did not run (non-overlapping paths).
@@ -215,7 +216,7 @@ jobs:
           app_id: ${{ vars.GITAPP_ID }}
           private_key: ${{ secrets.GITAPP_PRIVATE_KEY }}
 
-      - name: T2 ephemeral bootstrap provision
+      - name: Provision ephemeral bootstrap instances
         id: prepare
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
@@ -285,10 +286,10 @@ jobs:
           X402_SETTLEMENT_URL: ${{ vars.X402_SETTLEMENT_URL }}
           E2E_UNIVOCITY_GENESIS_LOG_ID_KS256: ${{ needs.bootstrap-univocity.outputs.ks256_log_id }}
           E2E_UNIVOCITY_GENESIS_LOG_ID_ES256: ${{ needs.bootstrap-univocity.outputs.es256_log_id }}
-          # T3 cannot hand the pinned PEM through a job output — GitHub REDACTS
+          # A PINNED PEM cannot travel through a job output — GitHub REDACTS
           # outputs containing secret values ("Skip output … since it may
-          # contain secret"), so the secret is read directly here; T2's
-          # ephemeral in-run PEM is not a registered secret and passes through.
+          # contain secret"), so the secret is read directly here. The ephemeral
+          # in-run PEM is not a registered secret and passes through.
           E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64: ${{ needs.bootstrap-univocity.outputs.es256_bootstrap_pem_b64 || inputs.es256_bootstrap_pem_b64 || secrets.E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64 || '' }}
           E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER: ${{ needs.bootstrap-univocity.outputs.ks256_bootstrap_signer }}
           # Same redaction hazard as the ES256 PEM above.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# T2 CI — ephemeral Imutable bootstrap provision (tests-system.yml e2e_tier=t2).
+# Bootstrap suite CI — ephemeral Imutable provision (tests-system.yml).
 # Writes GitHub Actions outputs when GITHUB_OUTPUT is set.
 set -euo pipefail
 

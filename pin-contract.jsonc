@@ -36,7 +36,7 @@
   "pins": [
     {
       "id": "es256-bootstrap",
-      "description": "ES256 bootstrap instance and the PEM whose public key it carries on chain. The PEM arrives as E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64 (T2 ephemeral output, dispatch input, or the environment secret) and is written to the _PEM_FILE path this pin names.",
+      "description": "ES256 bootstrap instance and the PEM whose public key it carries on chain. The PEM arrives as E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64 (ephemeral provision output, dispatch input, or the environment secret) and is written to the _PEM_FILE path this pin names.",
       "instanceVar": "E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP",
       "keySecret": "E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE",
       "keyKind": "p256-pem-file",
@@ -46,7 +46,7 @@
     },
     {
       "id": "ks256-bootstrap",
-      "description": "KS256 bootstrap instance and the signer address its on-chain bootstrapConfig() must carry. The address half is used rather than the key: T3 resolves the signer from the pinned key without the key itself crossing a job boundary (canopy#211/#215), and a ks256 bootstrapConfig() carries exactly those 20 address bytes.",
+      "description": "KS256 bootstrap instance and the signer address its on-chain bootstrapConfig() must carry. The address half is used rather than the key: the signer is resolved without the key itself crossing a job boundary (canopy#211/#215), and a ks256 bootstrapConfig() carries exactly those 20 address bytes.",
       "instanceVar": "E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP",
       "keyVar": "E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER",
       "keyKind": "eth-address",

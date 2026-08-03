@@ -21,7 +21,7 @@
 #
 # `@forestrie/canopy-e2e-kit` sat at npm 0.6.1 while this repo reached 0.9.1,
 # across exactly the window the platform contract changed, and every consumer
-# of the published kit — the T3 qualification harness included — silently
+# of the published kit — the lane qualification harness included — silently
 # exercised the old contract. The publish workflows were never the problem.
 # The tag was the step a human had to remember.
 name: Auto tag

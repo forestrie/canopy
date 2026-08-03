@@ -155,7 +155,7 @@ tasks:
 
   ci-prepare:
     desc: |
-      T2 CI — ephemeral Imutable bootstrap provision (tests-system.yml e2e_tier=t2).
+      Bootstrap suite CI — ephemeral Imutable provision (tests-system.yml).
       Writes GITHUB_OUTPUT when set. Requires DEPLOY_KEY, E2E_UNIVOCITY_RPC_URL,
       INPUT_* env vars, GH_TOKEN for fetch.
     cmds:

@@ -255,7 +255,7 @@ export async function signPendingBootstrapDelegations(opts: {
   // Leaving it merely UNSIGNED, however, stalls the log: the sealer's
   // coverage-matched lease lookup finds nothing covering its true seal
   // window and defers forever on "delegation material pending", while this
-  // poll reports an empty queue. That cost two days of intermittent T3
+  // poll reports an empty queue. That cost two days of intermittent lane-suite
   // failures. Callers must ALSO delegate to the standing key — use
   // `signAdvanceDelegation` (ES256) or an equivalent variant-aware signer —
   // so the warning below fires until they do.

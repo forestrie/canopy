@@ -103,7 +103,7 @@ The **worker** must have **`CUSTODIAN_APP_TOKEN`** (Wrangler secret) for SCITT r
 | -------- | ---- |
 | **`ci.yml`** | Lint, format, unit tests on every push and PR |
 | **`tests-integration.yml`** | Playwright **integration** vs deployed **dev** |
-| **`tests-system.yml`** | T3 pinned Univocity + canopy component Playwright (default); T2 bootstrap via `e2e_tier=t2` |
+| **`tests-system.yml`** | The **bootstrap** suite: ephemeral Univocity provisioned per run + canopy component Playwright |
 | **`deploy-workers.yml`** | Deploy workers; chains **tests-system.yml** on **dev** after health |
 | **`release.yaml`** | Tag → deploy **dev** → **tests-system.yml** → promote **prod** → prod health |
 
