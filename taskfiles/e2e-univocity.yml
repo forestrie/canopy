@@ -1,5 +1,5 @@
 # E2e Univocity provisioning (canopy-native fetch + deploy).
-# CI: T2 → ci-prepare (ephemeral); T3 → ci-resolve-pins (pinned lane contracts).
+# CI: ci-prepare provisions ephemeral instances for the bootstrap suite.
 # Prerequisite: task install:dev  (or install:release on Linux without checkout)
 # Local: doppler run -- task e2e-univocity:provision
 version: "3"
@@ -11,6 +11,17 @@ vars:
   CART_BIN: "{{.TOOLS_CACHE_DIR}}/contract-artefacts"
   WORK_DIR: "{{.ROOT_DIR}}/.work/univocity-e2e"
   RELEASE_ROOT: "{{.ROOT_DIR}}/.work/univocity-release"
+  # Contract release to deploy. Last-good pin, not "latest": univocity
+  # contracts are immutable, so a forest deployed against a buggy release keeps
+  # the bug (FOR-393). See univocity-last-good.jsonc.
+  UNIVOCITY_CONTRACTS_VERSION:
+    sh: |
+      set -euo pipefail
+      if [ -n "${UNIVOCITY_CONTRACTS_VERSION:-}" ]; then
+        printf '%s' "$UNIVOCITY_CONTRACTS_VERSION"
+      else
+        "{{.ROOT_DIR}}/taskfiles/univocity-last-good.sh" contracts
+      fi
   RUN_ID: '{{.RUN_ID | default ""}}'
   ALG: '{{.ALG | default "es256"}}'
   PROPOSAL_DIR: "{{.ROOT_DIR}}/.work/univocity-e2e/proposals"
@@ -20,7 +31,7 @@ vars:
 
 tasks:
   fetch-release:
-    desc: Fetch latest univocity contract build archive (requires gh auth or GH_TOKEN).
+    desc: Fetch the pinned univocity contract build archive (requires gh auth or GH_TOKEN).
     preconditions:
       - sh: test -x "{{.DEPLOYER_BIN}}" && test -x "{{.CART_BIN}}"
         msg: "Run task install:dev (or install:release) first — binaries missing under {{.TOOLS_CACHE_DIR}}"
@@ -32,6 +43,7 @@ tasks:
           --org forestrie \
           --repo univocity \
           --artefact univocity \
+          --release "{{.UNIVOCITY_CONTRACTS_VERSION}}" \
           --auth-kind gh-cli \
           --work-dir "{{.WORK_DIR}}" \
           --source-root "{{.ROOT_DIR}}"
@@ -101,7 +113,7 @@ tasks:
 
   provision:
     desc: |
-      Fetch latest univocity release, extract, deploy es256 + ks256 via EOA.
+      Fetch the pinned univocity release, extract, deploy es256 + ks256 via EOA.
       Prerequisite: task install:dev
       Requires Doppler (DEPLOY_KEY, E2E_UNIVOCITY_RPC_URL).
       Usage: doppler run -- task e2e-univocity:provision
@@ -148,13 +160,6 @@ tasks:
       INPUT_* env vars, GH_TOKEN for fetch.
     cmds:
       - bash taskfiles/e2e-univocity-ci-prepare.sh
-
-  ci-resolve-pins:
-    desc: |
-      T3 CI — resolve pinned Univocity contracts from GitHub Environment (no provision).
-      Writes GITHUB_OUTPUT when set. Requires ES256 pin (+ optional KS256 pin / keys).
-    cmds:
-      - bash taskfiles/e2e-univocity-ci-resolve-pins.sh
 
   env-from-manifest:
     desc: |

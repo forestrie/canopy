@@ -66,11 +66,14 @@ if [ "$NEED_PROVISION" = true ]; then
     echo "::error::DEPLOY_KEY is required to provision Univocity contracts."
     exit 1
   fi
-  if [ -f "${ROOT_DIR}/../univocity-tools/Taskfile.dist.yml" ]; then
-    task install:dev REFRESH_TOOLS=1
-  else
-    task install:release UNIVOCITY_TOOLS_VERSION="${UNIVOCITY_TOOLS_VERSION:-v0.6.0}" REFRESH_TOOLS=1
-  fi
+  # A sibling univocity-tools checkout never exists on a CI runner, so the
+  # `install:dev` branch here only ever fired locally while the release branch
+  # carried a `v0.6.0` fallback that went four releases stale. Always install
+  # the release, at the last-good pin (univocity-last-good.jsonc).
+  #
+  # UNIVOCITY_TOOLS_VERSION in the environment still wins, so a one-off run can
+  # try a candidate version without editing the pin.
+  task install:release REFRESH_TOOLS=1
   if [ ! -x "$DEPLOYER" ]; then
     echo "::error::deployer binary missing at ${DEPLOYER}" >&2
     exit 1

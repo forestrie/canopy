@@ -17,23 +17,20 @@
   // identity is exactly the state that produced the 2026-07-31 chase — a 422
   // "bootstrapKey/alg does not match" five layers from its cause.
   //
-  // ── The KS256 pin and the not-configured sentinel ─────────────────────────
+  // ── Why there is no not-configured sentinel any more ─────────────────────
   //
-  // `taskfiles/e2e-univocity-ci-resolve-pins.sh` fills an unconfigured KS256
-  // address with KS256_UNIVOCITY_MANIFEST_PLACEHOLDER — the kit's documented
-  // "placeholder until Lane A pins a real KS256 contract". That is a correct
-  // signal, not misconfiguration.
+  // The KS256 pin used to declare `absentWhen: ["0x…02"]`, the placeholder
+  // `e2e-univocity-ci-resolve-pins.sh` substituted for an unconfigured KS256
+  // address. That resolver is gone (FOR-531): the bootstrap suite now deploys
+  // BOTH instances fresh every run, with keys it generates, so each pin always
+  // has a real instance and a real key. There is nothing left to signal
+  // "not configured" — a missing address is now a genuine failure and should
+  // fail loudly rather than skip.
   //
-  // Declared without `absentWhen`, the sentinel read as a real instance, the
-  // pin looked half-configured (address set, signer absent), and the gate
-  // blocked canopy v0.1.8. `absentWhen` states what "not configured" looks
-  // like, so the pin SKIPS on dev naming the placeholder — and starts checking
-  // for real the moment a genuine KS256 contract is pinned, including failing
-  // loudly if that address ever appears without its signer.
-  //
-  // Declared, not inferred: the checker never guesses which addresses are
-  // placeholders, because guessing wrong the other way would silently skip a
-  // real pin.
+  // The kit still exports `KS256_UNIVOCITY_MANIFEST_PLACEHOLDER` and honours it
+  // in `absentWhen`: system-testing lane manifests can still carry it, and that
+  // mechanism is what stopped it blocking canopy v0.1.8. Only canopy's own
+  // declaration no longer needs it.
   "schemaVersion": 1,
   "suite": "canopy",
   "pins": [
@@ -56,8 +53,6 @@
       "alg": "ks256",
       "chainVar": "E2E_UNIVOCITY_CHAIN_ID",
       "invariants": ["instanceHasCode", "keyMatchesInstance"],
-      // KS256_UNIVOCITY_MANIFEST_PLACEHOLDER — see the note above.
-      "absentWhen": ["0x0000000000000000000000000000000000000002"],
     },
   ],
 }

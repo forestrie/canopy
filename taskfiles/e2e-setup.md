@@ -78,10 +78,12 @@ bootstrap system specs skip; other projects still run.
 
 **Manual provision:** `doppler run -- task e2e-univocity:provision`
 
-Requires **`gh`** auth, Foundry **`cast`**, Doppler **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`**, and **univocity-tools v0.6.0+** (`deploy provision e2e`; sibling `task install:dev` or release binaries pinned in CI).
+Requires **`gh`** auth, Foundry **`cast`**, Doppler **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`**, and **univocity-tools** at the last-good pin in [`univocity-last-good.jsonc`](../univocity-last-good.jsonc) (`deploy provision e2e`; sibling `task install:dev` locally, release binaries in CI).
 
-**CI:** **`task e2e-univocity:ci-prepare`** (T2 ephemeral) or **`task e2e-univocity:ci-resolve-pins`**
-(T3 pinned) in **tests-system.yml** — default **`e2e_tier=t3`** (no re-provision).
+**CI:** **`task e2e-univocity:ci-prepare`** in **tests-system.yml**, unconditionally —
+the bootstrap suite always deploys its own ephemeral instances. There is no
+pinned-contract mode: a pinned address set `*_ALLOW_BOOTSTRAP=false`, which
+skipped every bootstrap spec (FOR-531).
 
 Run ES256 bootstrap specs only:
 

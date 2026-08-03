@@ -39,18 +39,31 @@ describe("canopy pin contract", () => {
     expect(byId.get("es256-bootstrap")?.keySecret).toBe(
       "E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE",
     );
-    // The address half, not the key: T3 resolves the signer without the key
+    // The address half, not the key: the signer is resolved without the key
     // crossing a job boundary (canopy#211/#215), and a ks256 bootstrapConfig()
     // carries exactly those 20 address bytes.
     expect(byId.get("ks256-bootstrap")?.keyVar).toBe(
       "E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER",
     );
-    // Without this the T3 not-configured sentinel reads as a real instance,
-    // the pin looks half-configured, and the gate blocks the release — which
-    // is exactly what happened to canopy v0.1.8.
-    expect(byId.get("ks256-bootstrap")?.absentWhen).toContain(
-      "0x0000000000000000000000000000000000000002",
-    );
+  });
+
+  /**
+   * Regression guard for FOR-531. The not-configured sentinel existed because
+   * the retired pin resolver substituted a placeholder for an unconfigured
+   * KS256 address. Both instances are now deployed fresh every run with keys
+   * the suite generates, so a missing address is a genuine failure — declaring
+   * `absentWhen` again would turn it back into a silent skip.
+   *
+   * The kit keeps `KS256_UNIVOCITY_MANIFEST_PLACEHOLDER` and still honours
+   * `absentWhen`: system-testing lane manifests can carry it. Only canopy's own
+   * declaration no longer needs it.
+   */
+  it("declares no not-configured sentinel, so a missing address fails loudly", () => {
+    const contract = loadCanopyPinContract();
+    for (const pin of contract.pins) {
+      expect(pin.absentWhen, `pin ${pin.id} must not skip on a sentinel`)
+        .toBeUndefined();
+    }
   });
 
   it("parses comments and trailing commas, which the contract uses", () => {

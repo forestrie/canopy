@@ -5,8 +5,10 @@ permissions:
 
 # Canopy component e2e (T2 bootstrap or T3 system Playwright).
 #
-# - **T2** (`e2e_tier=t2`): ephemeral Imutable provision — bootstrap path only.
-# - **T3** (`e2e_tier=t3`, default): pinned lane contracts; no re-provision.
+# The bootstrap suite always provisions its own ephemeral Univocity instances
+# (FOR-531). There is no pinned-contract mode: a pinned address set
+# `*_ALLOW_BOOTSTRAP=false`, which SKIPPED every bootstrap spec, so the pin
+# bought nothing and cost all of the coverage.
 #   Cross-repo lane specs live in forestrie/system-testing (T3), not here.
 #
 # Triggers: manual dispatch, workflow_call (deploy-workers, release), and
@@ -36,14 +38,6 @@ on:
         options:
           - system
           - prod
-      e2e_tier:
-        description: "t2 = ephemeral bootstrap provision; t3 = pinned contracts (default)"
-        required: false
-        default: t3
-        type: choice
-        options:
-          - t3
-          - t2
       es256_address:
         description: "Optional ImutableUnivocity address (skip es256 provision)"
         required: false
@@ -92,11 +86,6 @@ on:
         required: false
         type: string
         default: system
-      e2e_tier:
-        description: "t2 = ephemeral bootstrap; t3 = pinned contracts (default)"
-        required: false
-        type: string
-        default: t3
       es256_address:
         required: false
         type: string
@@ -151,17 +140,16 @@ jobs:
               - "taskfiles/wrangler.yml"
               - ".github/workflows/deploy-workers.yml"
 
-  t2-bootstrap-univocity:
+  bootstrap-univocity:
     # secret-egress-ok: the exported bootstrap keys are ephemeral, minted in-run
     # ci-prepare.sh generates them and they die with the run, so they are not
     # registered secrets and GitHub does not drop the outputs. No caller passes
     # the optional key inputs; secrets.DEPLOY_KEY never reaches an output.
     # See devdocs plan-2608-04.
-    name: T2 bootstrap Univocity (ephemeral)
+    name: Provision ephemeral Univocity
     needs: [paths]
     if: |
       always() &&
-      inputs.e2e_tier == 't2' &&
       (
         github.event_name == 'workflow_dispatch' ||
         inputs.ignore_deploy_path_overlap == true ||
@@ -233,70 +221,10 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
         run: task e2e-univocity:ci-prepare
 
-  t3-resolve-univocity:
-    # secret-egress-ok: exports the KS256 signer address, not the key it derives
-    # The bootstrap key is read here solely to compute that public address.
-    # `system-tests` reads E2E_UNIVOCITY_*_B64 from the environment at point of
-    # use — the canopy#211 pattern. See devdocs plan-2608-04.
-    name: T3 resolve Univocity pins (no provision)
-    needs: [paths]
-    if: |
-      always() &&
-      inputs.e2e_tier != 't2' &&
-      (
-        github.event_name == 'workflow_dispatch' ||
-        inputs.ignore_deploy_path_overlap == true ||
-        (
-          github.event_name == 'push' &&
-          needs.paths.result == 'success' &&
-          needs.paths.outputs.deploy_workers != 'true'
-        )
-      )
-    runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}
-    outputs:
-      es256_address: ${{ steps.resolve.outputs.es256_address }}
-      ks256_address: ${{ steps.resolve.outputs.ks256_address }}
-      es256_log_id: ${{ steps.resolve.outputs.es256_log_id }}
-      ks256_log_id: ${{ steps.resolve.outputs.ks256_log_id }}
-      ks256_bootstrap_signer: ${{ steps.resolve.outputs.ks256_bootstrap_signer }}
-      es256_fresh: ${{ steps.resolve.outputs.es256_fresh }}
-      ks256_fresh: ${{ steps.resolve.outputs.ks256_fresh }}
-    env:
-      E2E_UNIVOCITY_RPC_URL: ${{ vars.E2E_UNIVOCITY_RPC_URL }}
-      E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP: ${{ vars.E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP }}
-      E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP: ${{ vars.E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP }}
-      INPUT_ES256_ADDRESS: ${{ inputs.es256_address || '' }}
-      INPUT_KS256_ADDRESS: ${{ inputs.ks256_address || '' }}
-      INPUT_KS256_KEY_B64: ${{ inputs.ks256_bootstrap_key_b64 || secrets.E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_B64 || '' }}
-      INPUT_ES256_LOG_ID: ${{ inputs.es256_genesis_log_id || '' }}
-      INPUT_KS256_LOG_ID: ${{ inputs.ks256_genesis_log_id || '' }}
-      PLAYWRIGHT_PROJECT: ${{ github.event_name == 'push' && 'system' || inputs.playwright_project || 'system' }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install go-task
-        uses: arduino/setup-task@v2
-        with:
-          version: 3.x
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: foundry-rs/foundry-toolchain@v1
-
-      - name: T3 resolve pinned Univocity contracts
-        id: resolve
-        run: task e2e-univocity:ci-resolve-pins
-
   system-tests:
     name: System tests (${{ github.event_name == 'push' && 'dev' || inputs.environment }})
-    needs: [t2-bootstrap-univocity, t3-resolve-univocity]
-    if: |
-      always() &&
-      (
-        needs.t2-bootstrap-univocity.result == 'success' ||
-        needs.t3-resolve-univocity.result == 'success'
-      )
+    needs: [bootstrap-univocity]
+    if: needs.bootstrap-univocity.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     environment: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}
@@ -341,8 +269,8 @@ jobs:
           DELEGATION_COORDINATOR_URL: ${{ vars.DELEGATION_COORDINATOR_URL }}
           COORDINATOR_APP_TOKEN: ${{ secrets.COORDINATOR_APP_TOKEN }}
           UNIVOCITY_SERVICE_URL: ${{ vars.UNIVOCITY_SERVICE_URL }}
-          E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP: ${{ needs.t3-resolve-univocity.outputs.ks256_address || needs.t2-bootstrap-univocity.outputs.ks256_address }}
-          E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP: ${{ needs.t3-resolve-univocity.outputs.es256_address || needs.t2-bootstrap-univocity.outputs.es256_address }}
+          E2E_UNIVOCITY_ADDRESS_KS256_BOOTSTRAP: ${{ needs.bootstrap-univocity.outputs.ks256_address }}
+          E2E_UNIVOCITY_ADDRESS_ES256_BOOTSTRAP: ${{ needs.bootstrap-univocity.outputs.es256_address }}
           E2E_UNIVOCITY_RPC_URL: ${{ vars.E2E_UNIVOCITY_RPC_URL }}
           E2E_UNIVOCITY_CHAIN_ID: ${{ vars.E2E_UNIVOCITY_CHAIN_ID }}
           # x402 payer: defaults to the already-funded deployer EOA (DEPLOY_KEY
@@ -355,19 +283,18 @@ jobs:
           # environment, and is retired with that spec (FOR-531).
           CANOPY_X402_DEV_PRIVATE_KEY: ${{ secrets.CANOPY_X402_DEV_PRIVATE_KEY || secrets.DEPLOY_KEY }}
           X402_SETTLEMENT_URL: ${{ vars.X402_SETTLEMENT_URL }}
-          E2E_UNIVOCITY_GENESIS_LOG_ID_KS256: ${{ needs.t3-resolve-univocity.outputs.ks256_log_id || needs.t2-bootstrap-univocity.outputs.ks256_log_id }}
-          E2E_UNIVOCITY_GENESIS_LOG_ID_ES256: ${{ needs.t3-resolve-univocity.outputs.es256_log_id || needs.t2-bootstrap-univocity.outputs.es256_log_id }}
+          E2E_UNIVOCITY_GENESIS_LOG_ID_KS256: ${{ needs.bootstrap-univocity.outputs.ks256_log_id }}
+          E2E_UNIVOCITY_GENESIS_LOG_ID_ES256: ${{ needs.bootstrap-univocity.outputs.es256_log_id }}
           # T3 cannot hand the pinned PEM through a job output — GitHub REDACTS
           # outputs containing secret values ("Skip output … since it may
           # contain secret"), so the secret is read directly here; T2's
           # ephemeral in-run PEM is not a registered secret and passes through.
-          E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64: ${{ needs.t2-bootstrap-univocity.outputs.es256_bootstrap_pem_b64 || inputs.es256_bootstrap_pem_b64 || secrets.E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64 || '' }}
-          E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER: ${{ needs.t3-resolve-univocity.outputs.ks256_bootstrap_signer || needs.t2-bootstrap-univocity.outputs.ks256_bootstrap_signer }}
+          E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64: ${{ needs.bootstrap-univocity.outputs.es256_bootstrap_pem_b64 || inputs.es256_bootstrap_pem_b64 || secrets.E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_B64 || '' }}
+          E2E_UNIVOCITY_KS256_BOOTSTRAP_SIGNER: ${{ needs.bootstrap-univocity.outputs.ks256_bootstrap_signer }}
           # Same redaction hazard as the ES256 PEM above.
-          E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_B64: ${{ needs.t2-bootstrap-univocity.outputs.ks256_bootstrap_key_b64 || inputs.ks256_bootstrap_key_b64 || secrets.E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_B64 || '' }}
-          E2E_UNIVOCITY_ES256_ALLOW_BOOTSTRAP: ${{ needs.t2-bootstrap-univocity.outputs.es256_fresh || needs.t3-resolve-univocity.outputs.es256_fresh }}
-          E2E_UNIVOCITY_KS256_ALLOW_BOOTSTRAP: ${{ needs.t2-bootstrap-univocity.outputs.ks256_fresh || needs.t3-resolve-univocity.outputs.ks256_fresh }}
-          E2E_TESTING_TIER: ${{ inputs.e2e_tier || 't3' }}
+          E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_B64: ${{ needs.bootstrap-univocity.outputs.ks256_bootstrap_key_b64 || inputs.ks256_bootstrap_key_b64 || secrets.E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_B64 || '' }}
+          E2E_UNIVOCITY_ES256_ALLOW_BOOTSTRAP: ${{ needs.bootstrap-univocity.outputs.es256_fresh }}
+          E2E_UNIVOCITY_KS256_ALLOW_BOOTSTRAP: ${{ needs.bootstrap-univocity.outputs.ks256_fresh }}
           # Run the BYOK checkpoint seal stretch on the dev lane: it is the
           # only automated guard on the live entry -> sealer -> v3 checkpoint
           # -> receipt path (~25s; caught two live regressions during the
