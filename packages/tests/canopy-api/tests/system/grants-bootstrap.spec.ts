@@ -209,10 +209,23 @@ describeForEachBootstrapVariant(
         grant: decodedGrant,
         idtimestampBe8: entryIdHexToIdtimestampBe8(entryIdHex),
       });
-      expect(
-        offlineVerify.ok,
-        `offline verify failed: stage=${offlineVerify.stage} reason=${offlineVerify.reason ?? "unknown"}`,
-      ).toBe(true);
+      if (variant.id === "es256") {
+        expect(
+          offlineVerify.ok,
+          `offline verify failed: stage=${offlineVerify.stage} reason=${offlineVerify.reason ?? "unknown"}`,
+        ).toBe(true);
+      } else {
+        // Genesis-derived offline verify is ES256-ONLY: `es256ReceiptVerifyKeys`
+        // yields no verify keys for a KS256 trust root, so the signature stage
+        // reports `no_es256_trust_key` (ADR-0045; the same limitation
+        // system-testing's offline specs document with an explicit skip).
+        //
+        // Asserted rather than skipped so the day KS256 gains genesis-derived
+        // keys, this fails and gets promoted to the real check instead of
+        // quietly staying unverified.
+        expect(offlineVerify.ok, "KS256 genesis-derived verify").toBe(false);
+        expect(offlineVerify.reason).toBe("no_es256_trust_key");
+      }
 
       const completedB64 = buildCompletedGrantBase64(
         grantBase64,
