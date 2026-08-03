@@ -208,18 +208,20 @@ jobs:
 
       - uses: foundry-rs/foundry-toolchain@v1
 
-      - name: Mint GitHub App token
-        id: app-token
-        if: ${{ vars.GITAPP_ID != '' }}
-        uses: tibdex/github-app-token@v1
-        with:
-          app_id: ${{ vars.GITAPP_ID }}
-          private_key: ${{ secrets.GITAPP_PRIVATE_KEY }}
-
+      # No GitHub App token: this job fetches release assets from
+      # forestrie/univocity (contract archive) and forestrie/univocity-tools
+      # (deployer + contract-artefacts binaries), and BOTH REPOS ARE PUBLIC, so
+      # the ambient GITHUB_TOKEN is sufficient.
+      #
+      # The app-token step that used to sit here could not work: `dev` carries
+      # its own GITAPP_PRIVATE_KEY which shadows the repo-level secret and is not
+      # a valid RSA key, so minting failed with "secretOrPrivateKey must be an
+      # asymmetric key when using RS256". It went unnoticed because this job had
+      # never run — it was gated on `e2e_tier == 't2'`, which nothing set.
       - name: Provision ephemeral bootstrap instances
         id: prepare
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: task e2e-univocity:ci-prepare
 
   system-tests:
