@@ -32,6 +32,12 @@
     "SUPPORTED_CHAINS_RPC": "{\"84532\":[\"https://rpc.test\"],\"31337\":[\"https://rpc-wrongserve.test\"]}",
     "WEBHOOK_RETRY_LADDER": "[1,2]",
     "WEBHOOK_RETRY_SCALE_MS": "10",
+    // Seal-hint publication on certificate acceptance (src/seal-hint.ts) —
+    // a test queue endpoint, intercepted by fetchMock in unit tests. Deployed
+    // lanes set SEAL_HINT_QUEUE_URL per environment (empty = disabled) and
+    // the token via `wrangler secret put SEAL_HINT_QUEUE_TOKEN`.
+    "SEAL_HINT_QUEUE_URL": "https://queues.example.test/accounts/test/queues/seal-triggers",
+    "SEAL_HINT_QUEUE_TOKEN": "test-seal-hint-token",
     "WEBHOOK_SIGNING_KEY_PEM": "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgtqphxBbS+VoJfXxw\n4APhrI8JxK4XLq3VmRdDS+8uAmOhRANCAAS0OmAJaG1Vw/Q6LILankbebW96imXI\nEBpPd7YHJNzaTnbqktHURsl1tNwUEDJI9sR0dkYXVCz5vJHYpY2bD0TS\n-----END PRIVATE KEY-----",
   },
   // Top-level durable_objects needed for vitest (@cloudflare/vitest-pool-workers)

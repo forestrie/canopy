@@ -27,6 +27,7 @@ import type { DelegationIssueResponse } from "../types/delegation-issue-response
 import type { DelegationCertificateRecord } from "../types/delegation-certificate-record.js";
 import type { PendingEntry } from "../types/pending-entry.js";
 import type { PendingHintRequest } from "../types/pending-hint-request.js";
+import { publishCertificateSealHints } from "../seal-hint.js";
 import type { RegisterDelegateKeysRequest } from "../types/register-delegate-keys-request.js";
 import type { SigningRoute } from "../types/signing-route.js";
 import type { SubmitDelegationCertificateRequest } from "../types/submit-delegation-certificate-request.js";
@@ -1429,7 +1430,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
     // C5: satisfy every pending demand for this key whose window the accepted
     // certificate now covers (not just the exact window).
-    this.ctx.storage.sql.exec(
+    const satisfied = this.ctx.storage.sql.exec(
       `DELETE FROM pending
        WHERE log_id_hex32 = ? AND delegated_pubkey_hash = ?
          AND mmr_start >= ? AND mmr_end <= ?`,
@@ -1437,7 +1438,16 @@ export class DelegationStoreDO extends DurableObject<Env> {
       pubkeyHash,
       body.mmrStart,
       body.mmrEnd,
-    );
+    ).rowsWritten;
+
+    // A satisfied pending row means a sealer already asked, was told
+    // "pending", and deferred its checkpoint — its own retry is minutes away
+    // (queue redelivery / the resync sweep). Wake it with a seal hint so a
+    // late-submitted certificate (the wallet-signed BYOK ordering) costs
+    // seconds instead of a retry cadence. Fire-and-forget; no-op unless
+    // SEAL_HINT_QUEUE_URL is configured.
+    if (satisfied > 0)
+      this.ctx.waitUntil(publishCertificateSealHints(this.env, logIdHex32));
 
     return Response.json({ ok: true, certificateKey: key });
   }
