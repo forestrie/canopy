@@ -320,6 +320,11 @@ jobs:
           # -> receipt path (~25s; caught two live regressions during the
           # FOR-316 cutover). All env it needs is exported above.
           E2E_BYOK_SEAL_STRETCH: ${{ (inputs.environment || 'dev') == 'dev' && '1' || '' }}
+          # Late-delegation seal-hint latency spec (#224): dev lane only — it
+          # needs a coordinator deployed with SEAL_HINT_QUEUE_URL (lane A).
+          # Parks the sealer unsigned, submits the certificate late, and
+          # requires the receipt within E2E_SEAL_HINT_BUDGET_MS (default 90s).
+          E2E_SEAL_HINT_LATENCY: ${{ (inputs.environment || 'dev') == 'dev' && '1' || '' }}
           PLAYWRIGHT_PROJECT: ${{ github.event_name == 'push' && 'system' || inputs.playwright_project || 'system' }}
           REQUIRE_COORDINATOR_E2E: ${{ github.event_name == 'push' && 'false' || inputs.require_coordinator_e2e || 'false' }}
         run: |

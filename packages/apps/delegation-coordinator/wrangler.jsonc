@@ -88,6 +88,12 @@
         // is read directly (delegation-store: === "true"); the DELEGATE_KEY_EPOCH
         // coupling is convention only, not a code guard.
         "ENFORCE_DELEGATE_KEY_MEMBERSHIP": "true",
+        // Seal-hint publication on certificate acceptance (#224): lane A's
+        // sealer trigger queue (forest-2-sealer-r2, slot a — same queue the
+        // sealer pull-consumes and the ranger publishes hints to). The
+        // publisher normalizes the trailing /messages. Token: wrangler secret
+        // SEAL_HINT_QUEUE_TOKEN (the forest-dev-5 infra QUEUE_TOKEN).
+        "SEAL_HINT_QUEUE_URL": "https://api.cloudflare.com/client/v4/accounts/68f25af297c4235c3f1c47b2f73925b0/queues/fe5e35ad3a3d4421b77dd3a33ce37903/messages",
         // COORDINATOR_APP_TOKEN, CUSTODIAN_APP_TOKEN: wrangler secrets (deploy + local via doppler --var).
         // COORDINATOR_RESET_TOKEN: dev-only DO wipe (content-reset); wrangler secret put.
         // WEBHOOK_SIGNING_KEY: Secrets Store binding (see secrets_store_secrets).
