@@ -99,4 +99,16 @@ export interface Env {
   ENABLE_WALLET_CHALLENGE?: string;
   /** When `true`, UX routes reject COORDINATOR_APP_TOKEN. */
   REQUIRE_WALLET_SESSION_FOR_UX?: string;
+  /**
+   * Cloudflare Queues API base for the sealer's trigger queue (same shape as
+   * the sealer's QUEUE_URL / ranger's SEAL_HINT_QUEUE_URL). When set, a
+   * certificate that satisfies parked pending-delegation rows publishes a
+   * seal hint so the deferring sealer retries immediately instead of on its
+   * redelivery/resync cadence (see src/seal-hint.ts). Empty disables.
+   */
+  SEAL_HINT_QUEUE_URL?: string;
+  /** Bearer for the queue push API. Set via `wrangler secret put`. */
+  SEAL_HINT_QUEUE_TOKEN?: string;
+  /** Massif heights to hint, comma-separated (default "14"). */
+  SEAL_HINT_MASSIF_HEIGHTS?: string;
 }
