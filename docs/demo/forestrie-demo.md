@@ -44,10 +44,10 @@ end-to-end against lane-A, with the first checkpoint landing at every hierarchy
 level in a few seconds. See
 [plan-2607-21](https://github.com/forestrie/devdocs/blob/main/plans/plan-2607-21-cli-authority-commands-demo.md)
 (verbs), the child-onboarding decision
-[ADR-0053](https://github.com/forestrie/devdocs/blob/main/adr/adr-0053-child-log-onboarding-parent-authorized.md)
+[ADR-0053](https://github.com/forestrie/devdocs/blob/main/archive/2607/adr/adr-0053-child-log-onboarding-parent-authorized.md)
 + [plan-2607-23](https://github.com/forestrie/devdocs/blob/main/plans/plan-2607-23-child-log-advance-delegation-onboarding.md),
 and the authority taxonomy
-[ADR-0052](https://github.com/forestrie/devdocs/blob/main/adr/adr-0052-cli-authority-taxonomy.md).
+[ADR-0052](https://github.com/forestrie/devdocs/blob/main/archive/2607/adr/adr-0052-cli-authority-taxonomy.md).
 
 **One non-CLI step**: onboarding a forest's **root genesis** is an
 **operator/self-host** action, not a `forestrie` verb — `POST /api/forest/{root}/genesis`

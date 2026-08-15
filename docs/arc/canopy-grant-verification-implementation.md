@@ -2,9 +2,9 @@
 
 **Status**: DRAFT  
 **Date**: 2026-03-19 (§8–§9 partially corrected 2026-08-09 — see the §9 banner; several P0 gaps are closed and the P4 split is implemented)  
-**Related**: [ARC-0019 grant verification model](https://github.com/forestrie/devdocs/blob/main/arc/arc-0019-grant-verification-model.md), [arc-statement-cose-encoding.md](arc/arc-statement-cose-encoding.md), [arc-grant-statement-signer-binding.md](arc/arc-grant-statement-signer-binding.md)
+**Related**: [ARC-0019 grant verification model](https://github.com/forestrie/devdocs/blob/main/archive/2603/arc/arc-0019-grant-verification-model.md), [arc-statement-cose-encoding.md](arc/arc-statement-cose-encoding.md), [arc-grant-statement-signer-binding.md](arc/arc-grant-statement-signer-binding.md)
 
-Platform logical model (§0–7): [devdocs ARC-0019](https://github.com/forestrie/devdocs/blob/main/arc/arc-0019-grant-verification-model.md).
+Platform logical model (§0–7): [devdocs ARC-0019](https://github.com/forestrie/devdocs/blob/main/archive/2603/arc/arc-0019-grant-verification-model.md).
 
 Implementations live under `packages/apps/canopy-api/src/grant/` and `scrapi/`
 (register-grant, register-signed-statement).
@@ -53,7 +53,7 @@ Implementations live under `packages/apps/canopy-api/src/grant/` and `scrapi/`
 >   envelope in-handler — **by design**, not as a gap (authenticity comes from
 >   inclusion against the authority).
 >
-> Platform reference: **devdocs [ARC-0019 §6.3](https://github.com/forestrie/devdocs/blob/main/arc/arc-0019-grant-verification-model.md)** (revised 2026-08-09) now documents this as the shipped model. **Residual real gap:** test coverage of the parent-authority verify path and the `ownerLogId != logId` guard — tracked as **[FOR-535](https://linear.app/forestrie/issue/FOR-535)** (see §9.5). The per-row notes below mark what is closed vs. still open.
+> Platform reference: **devdocs [ARC-0019 §6.3](https://github.com/forestrie/devdocs/blob/main/archive/2603/arc/arc-0019-grant-verification-model.md)** (revised 2026-08-09) now documents this as the shipped model. **Residual real gap:** test coverage of the parent-authority verify path and the `ownerLogId != logId` guard — tracked as **[FOR-535](https://linear.app/forestrie/issue/FOR-535)** (see §9.5). The per-row notes below mark what is closed vs. still open.
 
 This section is **normative for engineering planning**. **Priority:**
 
