@@ -234,6 +234,21 @@ export default {
               DELEGATION_COORDINATOR_URL: env.DELEGATION_COORDINATOR_URL,
               COORDINATOR_APP_TOKEN: env.COORDINATOR_APP_TOKEN,
             },
+            // x402 payment gate (plan-2608-09 W2). Dark unless
+            // REGISTER_GRANT_ADMISSION is paid|either on the lane.
+            payment: {
+              REGISTER_GRANT_ADMISSION: env.REGISTER_GRANT_ADMISSION,
+              REGISTER_GRANT_PRICE_ATOMIC: env.REGISTER_GRANT_PRICE_ATOMIC,
+              CANOPY_OPS_ADMIN_TOKEN: env.CANOPY_OPS_ADMIN_TOKEN,
+              X402_MODE: env.X402_MODE,
+              X402_FACILITATOR_URL: env.X402_FACILITATOR_URL,
+              X402_NETWORK: env.X402_NETWORK,
+              X402_PAYTO_ADDRESS: env.X402_PAYTO_ADDRESS,
+              CDP_API_KEY_ID: env.CDP_API_KEY_ID,
+              CDP_API_KEY_SECRET: env.CDP_API_KEY_SECRET,
+              X402_SETTLEMENT_QUEUE: env.X402_SETTLEMENT_QUEUE,
+              R2_GRANTS: env.R2_GRANTS,
+            },
             nodeEnv: env.NODE_ENV,
           });
           const headers = new Headers(response.headers);

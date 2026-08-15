@@ -35,6 +35,18 @@ export interface Env {
   X402_ONBOARD_PRICE_ATOMIC?: string;
   /** Atomic USDC per checkpoint credit (slice 04); FOR-438 sets real numbers. */
   X402_CREDIT_PRICE_ATOMIC?: string;
+  /**
+   * Child-grant payment gate admission (plan-2608-09 W2): `open` (default; dark)
+   * | `paid` | `either`. Gate engages only for a parent carrying
+   * `GF_CHILD_PAYMENT_REQUIRED` when admission is paid/either.
+   */
+  REGISTER_GRANT_ADMISSION?: string;
+  /**
+   * Price per unit of a purchased grant's `maxHeight`, in atomic USDC
+   * (plan-2608-09 O1: proportional pricing). Required when the register-grant
+   * admission is paid/either.
+   */
+  REGISTER_GRANT_PRICE_ATOMIC?: string;
   // Massif height for this transparency log (1-based, typically 14)
   MASSIF_HEIGHT: string;
   // Number of DO shards for the sequencing queue (typically 4)
