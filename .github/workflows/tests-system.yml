@@ -325,6 +325,14 @@ jobs:
           # Parks the sealer unsigned, submits the certificate late, and
           # requires the receipt within E2E_SEAL_HINT_BUDGET_MS (default 90s).
           E2E_SEAL_HINT_LATENCY: ${{ (inputs.environment || 'dev') == 'dev' && '1' || '' }}
+          # Paid register-grant spec (plan-2608-09 W5): dev lane only — it needs
+          # canopy-api running REGISTER_GRANT_ADMISSION=paid|either +
+          # REGISTER_GRANT_PRICE_ATOMIC (set on lane A in wrangler.jsonc) and a
+          # funded Base Sepolia payer (CANOPY_X402_DEV_PRIVATE_KEY / DEPLOY_KEY,
+          # already used by the paid onboard/credits specs). Registers a child
+          # under the bit-carrying parent, 402s unpaid, succeeds paid, and
+          # offline-proves the policy bit from the parent's receipt.
+          E2E_GRANT_PAYMENT: ${{ (inputs.environment || 'dev') == 'dev' && '1' || '' }}
           PLAYWRIGHT_PROJECT: ${{ github.event_name == 'push' && 'system' || inputs.playwright_project || 'system' }}
           REQUIRE_COORDINATOR_E2E: ${{ github.event_name == 'push' && 'false' || inputs.require_coordinator_e2e || 'false' }}
         run: |
