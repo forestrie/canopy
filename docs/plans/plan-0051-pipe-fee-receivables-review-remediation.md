@@ -2,7 +2,7 @@
 
 **Status:** DRAFT
 **Date:** 2026-07-25
-**Related:** [ADR-0058](https://github.com/forestrie/devdocs/blob/main/adr/adr-0058-pipe-fee-receivables-root-liability.md),
+**Related:** [ADR-0058](https://github.com/forestrie/devdocs/blob/main/archive/2607/adr/adr-0058-pipe-fee-receivables-root-liability.md),
 FOR-435, FOR-465, FOR-469, canopy#173, branch `pipe-fees-1`
 
 ## Scope

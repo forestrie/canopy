@@ -6,7 +6,7 @@
 **Related:** [plan-0021](plan-0021-delegation-coordinator-apis.md),
 [plan-0037](plan-0037-mode-c-onboarding-coordinator-forward.md),
 [adr-0008](../adr/adr-0008-authority-source-route-boundaries.md),
-[devdocs arc-0023](https://github.com/forestrie/devdocs/blob/main/arc/arc-0023-wallet-challenge-control-plane-auth.md),
+[devdocs arc-0023](https://github.com/forestrie/devdocs/blob/main/archive/2606/arc/arc-0023-wallet-challenge-control-plane-auth.md),
 FOR-129, FOR-137
 
 ## Problem
