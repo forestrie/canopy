@@ -241,6 +241,8 @@ describe("register-grant payment gate", () => {
     expect(job.univocityInstanceId).toBe(
       "eip155:84532:0x1111111111111111111111111111111111111111",
     );
+    // O2: revenue-equivalent instance-pool credits = 50000 / 10000 (credit price).
+    expect(job.credits).toBe(5);
 
     // Replay of the same authorization loses the claim → 402, no second job.
     const replay = await runGate(e, {
@@ -251,6 +253,21 @@ describe("register-grant payment gate", () => {
     });
     expect(replay!.status).toBe(402);
     expect(sent).toHaveLength(1);
+  });
+
+  it("sizes pool credits by the credit price and floors sub-credit grants to 0 (O2)", async () => {
+    stubFacilitatorValid();
+    // credit price above the paid amount → revenue-equivalent floors to 0 credits.
+    const { gateEnv: e, sent } = gateEnv({ X402_CREDIT_PRICE_ATOMIC: "60000" });
+    const res = await runGate(e, {
+      parentFlags: withBit(),
+      maxHeight: 5,
+      targetLogUuid: "55555555-5555-4555-8555-555555555555",
+      headers: { "X-PAYMENT": paymentHeader("50000", `0x${"a9".repeat(16)}`) },
+    });
+    expect(res).toBeNull();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.credits).toBe(0); // 50000 / 60000 = 0
   });
 
   it("rejects an underpaying authorization (local amount assertion)", async () => {

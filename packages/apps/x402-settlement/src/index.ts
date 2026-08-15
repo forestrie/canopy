@@ -107,12 +107,16 @@ export default {
           // Credits land only after on-chain settlement (slice 04). Failure
           // to credit RETRIES the message — processJob is idempotent (cached
           // settled result), so redelivery converges on the credit landing.
-          if (job.kind === "credits") {
+          // A settled `grant` purchase also credits the instance pool with its
+          // revenue-equivalent (plan-2608-09 O2): the API sizes `credits` to the
+          // paid amount so per-user grant revenue reconciles with the instance's
+          // checkpoint economics. Sub-credit grants carry `credits: 0` and skip.
+          if (shouldCreditPool(job)) {
             try {
               await creditSettledPurchase(env, job, result.txHash);
             } catch (err) {
               console.error(
-                "Settled credits purchase failed to credit; retrying",
+                `Settled ${job.kind} purchase failed to credit; retrying`,
                 {
                   jobId: job.jobId,
                   idempotencyKey: job.idempotencyKey,
@@ -308,11 +312,25 @@ export default {
 };
 
 /**
- * Credit a settled `kind="credits"` job to its ReceivablesDO account
- * (plan-2607-43 slice 04). The AccountRef is rebuilt from the reservation
- * registry — the root is not trusted from the job. Throws on any failure so
- * the queue message retries; `recordPayment` is idempotent on the job's
- * idempotencyKey, so redelivery cannot double-credit.
+ * Whether a settled job tops up its instance credits pool. `credits` purchases
+ * always do; `grant` purchases do too (plan-2608-09 O2), sized to the revenue,
+ * but a sub-credit grant carries `credits: 0` and is skipped (crediting 0 would
+ * throw and wedge the message on retry).
+ */
+function shouldCreditPool(job: SettlementJob): boolean {
+  if (job.kind === "credits") return true;
+  if (job.kind === "grant") {
+    return Number.isInteger(job.credits) && (job.credits ?? 0) >= 1;
+  }
+  return false;
+}
+
+/**
+ * Credit a settled `credits`/`grant` job to its ReceivablesDO account
+ * (plan-2607-43 slice 04; plan-2608-09 O2). The AccountRef is rebuilt from the
+ * reservation registry — the root is not trusted from the job. Throws on any
+ * failure so the queue message retries; `recordPayment` is idempotent on the
+ * job's idempotencyKey, so redelivery cannot double-credit.
  */
 async function creditSettledPurchase(
   env: Env,
