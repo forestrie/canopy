@@ -9,4 +9,8 @@ export {
   authLogBootstrapShapedFlags,
   dataLogCreateExtendFlags,
   derivedEndorsementGrantFlags,
+  hasChildPaymentRequiredFlag,
+  hasDerivedFlag,
+  requiresChildPayment,
+  withChildPaymentRequired,
 } from "@forestrie/grant-builder";
