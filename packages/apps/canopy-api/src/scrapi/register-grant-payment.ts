@@ -281,8 +281,11 @@ export async function enforceRegisterGrantPayment(args: {
     ...(univocityInstanceId ? { univocityInstanceId } : {}),
     // O2: mint the revenue-equivalent instance-pool credits on settlement (the
     // worker only credits when the fee account is known and credits >= 1).
+    // Sized from the REQUIRED charge (`totalAtomic`), not the signed amount: an
+    // overpaying authorization must not inflate the instance pool, and the
+    // "exact" scheme means the payer signs exactly this amount anyway (review M3).
     ...(univocityInstanceId
-      ? { credits: poolCreditsForAmount(env, outcome.payment.amount) }
+      ? { credits: poolCreditsForAmount(env, totalAtomic) }
       : {}),
     idempotencyKey: `grant:${targetLogUuid}:${authNonce}`,
     createdAt: Date.now(),
