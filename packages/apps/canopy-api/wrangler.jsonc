@@ -102,6 +102,16 @@
         // 0.01 USDC (6 decimals) per checkpoint credit — nominal checkpoint
         // pricing decision 2026-07-31 (FOR-438); 1 credit = 1 checkpoint.
         "X402_CREDIT_PRICE_ATOMIC": "10000",
+        // plan-2608-09 W5: engage the register-grant x402 gate on lane A (the
+        // scribe/thinker demo lane). `either` gates only children whose PARENT
+        // carries GF_CHILD_PAYMENT_REQUIRED (the thinker user-authority log) —
+        // all other register-grant traffic (bit-free parents) still 303s
+        // byte-identically, so this is not a lane-wide charge. Price is per unit
+        // of the child grant's maxHeight; a 16-turn user grant (maxHeight 16)
+        // costs 16 × 0.01 = $0.16 USDC on Base Sepolia. Testnet gates abuse, it
+        // does not reimburse AI spend (O4).
+        "REGISTER_GRANT_ADMISSION": "either",
+        "REGISTER_GRANT_PRICE_ATOMIC": "10000",
         "X402_PRICE_UPTO_MAX": "$1.00",
         "GRANT_STORAGE_PUBLIC_BASE": "https://grants-dev.forestrie.dev",
         "CUSTODIAN_URL": "https://custodian.a.forest-2.forestrie.dev/v1",
