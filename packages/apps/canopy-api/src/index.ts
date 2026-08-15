@@ -96,11 +96,17 @@ export default {
     // CORS headers for development. X-PAYMENT must be requestable and the
     // challenge/settlement headers readable for the browser x402 payer (the
     // mandate console credits purchase); Authorization carries the D8
-    // account-read attestation.
+    // account-read attestation. X-Ops-Authorization is the ops-bypass header
+    // convention (review L5): the operator's bearer travels here because
+    // Authorization already carries the signed Forestrie-Grant credential on the
+    // register-grant path (see scrapi/register-grant-payment.ts). Listed so a
+    // browser ops tool can present it under preflight; server-to-server ops
+    // callers are unaffected by CORS.
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-PAYMENT",
+      "Access-Control-Allow-Headers":
+        "Content-Type, Authorization, X-PAYMENT, X-Ops-Authorization",
       "Access-Control-Expose-Headers": "X-PAYMENT-REQUIRED, X-PAYMENT-RESPONSE",
     };
 

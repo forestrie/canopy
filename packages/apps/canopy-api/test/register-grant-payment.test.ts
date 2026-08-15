@@ -14,6 +14,7 @@ import {
   type RegisterGrantPaymentEnv,
 } from "../src/scrapi/register-grant-payment.js";
 import { withChildPaymentRequired } from "../src/grant/grant-flags.js";
+import type { ReceiptAuthorityResolver } from "../src/env/receipt-authority-resolver.js";
 import type { Grant, GrantResult } from "../src/grant/types.js";
 import type { ParsedForestGenesis } from "../src/forest/parsed-forest-genesis.js";
 import type { Env } from "../src/index";
@@ -58,13 +59,16 @@ function parentGrant(logId: Uint8Array, flags: Uint8Array): GrantResult {
   } as GrantResult;
 }
 
-/** A child grant under `ownerLogId` bounded to `maxHeight`. */
+/** A child grant under `ownerLogId` bounded to `maxHeight`. `logId` varies the
+ *  grant commitment (M2: the claim context is per-grant, so a distinct child is a
+ *  distinct artifact for the same payment). */
 function childGrant(
   ownerLogId: Uint8Array,
   maxHeight: number | undefined,
+  logId: Uint8Array = new Uint8Array(16).fill(0xcc),
 ): Grant {
   return {
-    logId: new Uint8Array(16).fill(0xcc),
+    logId,
     grant: new Uint8Array([0, 0, 0, 0x03, 0, 0, 0, 0x01]), // create+extend, auth-log
     ownerLogId,
     ...(maxHeight === undefined ? {} : { maxHeight }),
@@ -119,6 +123,8 @@ async function runGate(
     maxHeight?: number;
     headers?: Record<string, string>;
     targetLogUuid?: string;
+    childLogId?: Uint8Array;
+    resolveReceiptAuthority?: ReceiptAuthorityResolver;
   },
 ): Promise<Response | null> {
   const parent =
@@ -129,10 +135,11 @@ async function runGate(
   return enforceRegisterGrantPayment({
     request: req(opts.headers),
     env: gateE,
-    childGrant: childGrant(OWNER, maxHeight),
+    childGrant: childGrant(OWNER, maxHeight, opts.childLogId),
     parentGrant: parent,
     genesis: genesis(),
     targetLogUuid: opts.targetLogUuid ?? "11111111-1111-4111-8111-111111111111",
+    resolveReceiptAuthority: opts.resolveReceiptAuthority,
   });
 }
 
@@ -219,7 +226,7 @@ describe("register-grant payment gate", () => {
     expect(res!.status).toBe(500);
   });
 
-  it("accepts a valid payment, enqueues a kind:grant job, and rejects the replay", async () => {
+  it("accepts a valid payment and enqueues a kind:grant job", async () => {
     stubFacilitatorValid();
     const { gateEnv: e, sent } = gateEnv();
     const nonce = `0x${"a7".repeat(16)}`;
@@ -243,16 +250,68 @@ describe("register-grant payment gate", () => {
     );
     // O2: revenue-equivalent instance-pool credits = 50000 / 10000 (credit price).
     expect(job.credits).toBe(5);
+  });
 
-    // Replay of the same authorization loses the claim → 402, no second job.
-    const replay = await runGate(e, {
+  it("M2: re-presenting the same payment for the SAME grant reclaims and proceeds", async () => {
+    stubFacilitatorValid();
+    const { gateEnv: e, sent } = gateEnv();
+    const nonce = `0x${"b7".repeat(16)}`;
+    const targetLogUuid = "33333333-3333-4333-8333-333333333333";
+    const opts = {
       parentFlags: withBit(),
       maxHeight: 5,
       targetLogUuid,
       headers: { "X-PAYMENT": paymentHeader("50000", nonce) },
+    };
+    // First attempt claims + enqueues the settlement job; imagine the *grant*
+    // enqueue then 503s downstream (settlement already queued). The retry must
+    // re-enter rather than lose the claim.
+    expect(await runGate(e, opts)).toBeNull();
+    const retry = await runGate(e, opts);
+    expect(retry).toBeNull(); // reclaimed → proceed, not 402
+    // Both attempts enqueue the settlement job under the SAME idempotencyKey, so
+    // the settlement worker dedups — the payer is charged exactly once.
+    expect(sent).toHaveLength(2);
+    expect(sent[0]!.idempotencyKey).toBe(sent[1]!.idempotencyKey);
+  });
+
+  it("M2: the same payment aimed at a DIFFERENT grant is rejected as a replay", async () => {
+    stubFacilitatorValid();
+    const { gateEnv: e, sent } = gateEnv();
+    const nonce = `0x${"c7".repeat(16)}`;
+    const headers = { "X-PAYMENT": paymentHeader("50000", nonce) };
+    // First grant claims the authorization.
+    expect(
+      await runGate(e, { parentFlags: withBit(), maxHeight: 5, headers }),
+    ).toBeNull();
+    // A different child (distinct commitment) presenting the same payment loses
+    // the claim → 402. Single-use is preserved per (authorization, grant).
+    const other = await runGate(e, {
+      parentFlags: withBit(),
+      maxHeight: 5,
+      headers,
+      childLogId: new Uint8Array(16).fill(0xdd),
     });
-    expect(replay!.status).toBe(402);
+    expect(other!.status).toBe(402);
     expect(sent).toHaveLength(1);
+  });
+
+  it("L2: a payment-required parent with no inclusion receipt is rejected (not free)", async () => {
+    stubFacilitatorValid();
+    const { gateEnv: e, sent } = gateEnv();
+    // Resolver present ⇒ L2 engages. The test parentGrant carries the policy bit
+    // but no receipt, so grantAuthorize rejects it (forged/unsealed parent). The
+    // gate must return that rejection, NOT fall through to free registration.
+    const resolveReceiptAuthority: ReceiptAuthorityResolver = async () => [];
+    const res = await runGate(e, {
+      parentFlags: withBit(),
+      maxHeight: 5,
+      resolveReceiptAuthority,
+      headers: { "X-PAYMENT": paymentHeader("50000", `0x${"ce".repeat(16)}`) },
+    });
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(403); // forbidden: parent not a sealed transparent statement
+    expect(sent).toHaveLength(0); // no payment claimed, no settlement enqueued
   });
 
   it("sizes pool credits by the credit price and floors sub-credit grants to 0 (O2)", async () => {

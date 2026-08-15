@@ -10,23 +10,27 @@
  * not depend on L3.
  *
  * **Enforcement model — read before enabling on a lane (ARC-0029 §2).** The
- * parent grant is read from the *request body* (client-supplied evidence) and is
- * **not** receipt-verified here: this gate reads the policy bit and a coherence
- * check (`parent.logId == child.ownerLogId`) only. Two consequences follow, and
- * both are inherent to L1, not bugs:
- *   1. **A client that controls the registration can bypass** by simply omitting
+ * parent grant is read from the *request body* (client-supplied evidence). The
+ * gate reads its committed policy bit and a coherence check
+ * (`parent.logId == child.ownerLogId`), and — when a receipt-authority resolver
+ * is supplied (**L2**, always the case on a live lane) — verifies the parent's
+ * **inclusion receipt** before honouring the bit, so a forged or unsealed parent
+ * that merely *claims* the policy is rejected rather than trusted. Two limits
+ * remain, both inherent to a body-carried policy (L1/L2), not bugs:
+ *   1. **A client that controls the registration can still bypass** by omitting
  *      the parent evidence (or sending a parent without the bit) — the gate then
- *      returns `null` and the child registers free. The gate is therefore
- *      enforceable only against a **cooperating/trusted registrar** (e.g. the
- *      demo's thinker DO registering server-side), not against an arbitrary
- *      caller. canopy keeps no server-side grant store, so it cannot independently
- *      resolve `ownerLogId`'s policy at L1.
- *   2. Real enforcement is the rest of the ARC-0029 trajectory: **L2** makes a
- *      free child under a payment-required parent *detectable* from receipts;
- *      **L3** (sender-bound instances) makes it *impossible*. Do not treat this
- *      gate as a hard control. L2 receipt-grounding (verify the parent's receipt)
- *      and the trusted-registrar constraint must be resolved before any lane
- *      flips to `paid`/`either` (plan-2608-09 W5).
+ *      returns `null` and the child registers free. L2 grounds a *present* policy
+ *      in a real receipt but cannot conjure an *absent* one; the gate is
+ *      therefore enforceable only against a **cooperating/trusted registrar**
+ *      (the demo's grant authority / thinker DO registering server-side, never
+ *      the browser). canopy keeps no server-side grant store, so it cannot
+ *      independently resolve `ownerLogId`'s policy without the evidence.
+ *   2. Closing the omit-parent gap is the last step of the ARC-0029 trajectory:
+ *      **L3** (sender-bound instances) makes deviation *impossible*. This plan
+ *      must not depend on L3. L2 (implemented here) makes a wrongly-admitted free
+ *      child *detectable* from receipts; the trusted-registrar posture (the demo
+ *      registers server-side) is what actually holds on the `paid`/`either` lane
+ *      today (plan-2608-09 W5, review H1).
  *
  * **Dark by default.** `REGISTER_GRANT_ADMISSION` defaults to `open` (no gate
  * anywhere, no request-body read — byte-identical to the pre-plan behaviour);
@@ -45,12 +49,18 @@ import { checkBearer } from "@canopy/ops-bearer";
 import { tryUnivocityInstanceIdFromChainBinding } from "@canopy/univocity-instance-id";
 import { X402_HEADERS, buildPaymentRequiredHeader } from "./x402.js";
 import {
-  claimPaymentAuthorization,
+  claimPaymentAuthorizationIdempotent,
   enqueueOnboardSettlement,
   verifyExactPayment,
   type OnboardPaymentEnv,
 } from "../onboarding/onboard-payment.js";
 import { requiresChildPayment } from "../grant/grant-flags.js";
+import {
+  grantCommitmentHashFromGrant,
+  grantCommitmentHashToHex,
+} from "../grant/grant-commitment.js";
+import { grantAuthorize } from "./auth-grant.js";
+import type { ReceiptAuthorityResolver } from "../env/receipt-authority-resolver.js";
 import type { Grant, GrantResult } from "../grant/types.js";
 import type { ParsedForestGenesis } from "../forest/parsed-forest-genesis.js";
 import { bytesEqual } from "../cbor-api/cbor-map-utils.js";
@@ -199,15 +209,33 @@ export async function enforceRegisterGrantPayment(args: {
   parentGrant: GrantResult | null;
   genesis: ParsedForestGenesis;
   targetLogUuid: string;
+  /**
+   * Receipt-authority resolver for L2 parent-receipt grounding (review H1). When
+   * supplied — always the case on a live lane, since the same resolver is
+   * required for steady-state grant inclusion — a present, coherent,
+   * payment-required parent must pass inclusion verification before its policy is
+   * honoured. Omitted only in unit tests / pool-test mode, where the gate stays
+   * L1 (policy read from the body flags without receipt verification).
+   */
+  resolveReceiptAuthority?: ReceiptAuthorityResolver;
+  /** Forest chain-binding chainId for KS256 ERC-1271 receipt verification (L2). */
+  ks256ChainId?: string;
 }): Promise<Response | null> {
-  const { request, env, childGrant, parentGrant, genesis, targetLogUuid } =
-    args;
+  const {
+    request,
+    env,
+    childGrant,
+    parentGrant,
+    genesis,
+    targetLogUuid,
+    resolveReceiptAuthority,
+    ks256ChainId,
+  } = args;
 
   // Policy lives on the parent grant's committed flags. No parent evidence, or a
-  // parent without the bit → no policy → no gate. NB (see module header): the
-  // parent is client-supplied and NOT receipt-verified here — this is L1, so
-  // omitting the parent bypasses the gate. Enforceable only against a trusted
-  // registrar; L2/L3 harden it (ARC-0029).
+  // parent without the bit → no policy → no gate. NB (see module header): an
+  // *omitted* parent bypasses the gate (only a trusted registrar / L3 closes
+  // that). A *present* parent is L2-grounded below before its policy is trusted.
   if (!parentGrant) return null;
   const parentFlags = parentGrant.grant.grant;
   if (!requiresChildPayment(parentFlags)) return null;
@@ -215,8 +243,25 @@ export async function enforceRegisterGrantPayment(args: {
   // unrelated payment-required grant attached to the body.
   if (!bytesEqual(parentGrant.grant.logId, childGrant.ownerLogId)) return null;
 
-  // Ops bearer bypasses the gate entirely.
+  // Ops bearer bypasses the gate entirely (trusted operator registration).
   if (opsBypass(request, env.CANOPY_OPS_ADMIN_TOKEN)) return null;
+
+  // L2 (ARC-0029, review H1): a present, coherent, payment-required parent must
+  // be a genuinely *sealed* leaf before we act on its policy — otherwise a caller
+  // could attach a hand-built COSE Sign1 that merely asserts the bit. Verify the
+  // parent's inclusion receipt against its owner log's trust root (same path
+  // register-grant's intermediate child-data branch uses). Fail closed: an
+  // unverifiable parent is rejected here (a 403/503 from grantAuthorize), NOT
+  // silently downgraded to free registration. Skipped only when no resolver is
+  // wired (unit/pool-test → L1).
+  if (resolveReceiptAuthority) {
+    const parentReceiptError = await grantAuthorize(parentGrant, {
+      enforceInclusion: true,
+      resolveReceiptAuthority,
+      ks256ChainId,
+    });
+    if (parentReceiptError) return parentReceiptError;
+  }
 
   const maxHeight = childGrant.maxHeight ?? 0;
   if (maxHeight < 1) {
@@ -245,15 +290,22 @@ export async function enforceRegisterGrantPayment(args: {
     return paymentRequired(resourceUrl, totalAtomic, env, outcome.reason);
   }
 
-  // Claim the authorization for single use BEFORE the grant is enqueued, so one
-  // payment admits one child grant exactly once (a replayed authorization is
-  // rejected here). Same ordering as the onboard/credits paid paths.
-  const claimed = await claimPaymentAuthorization(
+  // Claim the authorization BEFORE the grant is enqueued, so one payment admits
+  // one child grant. The claim is idempotent per (authorization, grant) (review
+  // M2): the settlement job is enqueued here, so if the *grant* enqueue then
+  // fails downstream the payer is already charged — an identical retry must be
+  // able to re-enter and re-enqueue the grant rather than lose the claim. The
+  // context is the child grant's commitment: the same payment aimed at a
+  // *different* grant is still rejected as a replay.
+  const commitmentHex = grantCommitmentHashToHex(
+    await grantCommitmentHashFromGrant(childGrant),
+  );
+  const claim = await claimPaymentAuthorizationIdempotent(
     env,
     outcome.payment,
-    `grant:${targetLogUuid}`,
+    `grant:${targetLogUuid}:${commitmentHex}`,
   );
-  if (!claimed) {
+  if (claim === "conflict") {
     return paymentRequired(
       resourceUrl,
       totalAtomic,
