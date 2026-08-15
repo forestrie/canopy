@@ -71,9 +71,19 @@ export interface RegisterGrantPaymentEnv extends OnboardPaymentEnv {
   REGISTER_GRANT_ADMISSION?: string;
   /** Price per unit of the child grant's `maxHeight`, atomic USDC (O1: proportional pricing). */
   REGISTER_GRANT_PRICE_ATOMIC?: string;
+  /**
+   * Atomic USDC per checkpoint credit — the divisor that converts grant revenue
+   * into the instance-pool credits minted on settlement (O2). Same value as the
+   * credits-purchase price so a dollar of grant revenue funds a dollar of
+   * checkpoint credits. Defaults to `10000` ($0.01), matching credits-purchase.
+   */
+  X402_CREDIT_PRICE_ATOMIC?: string;
   /** Ops bearer that bypasses the gate (presented via `X-Ops-Authorization`). */
   CANOPY_OPS_ADMIN_TOKEN?: string;
 }
+
+/** $0.01 USDC — the credits-purchase default, mirrored so revenue → credits reconciles. */
+const DEFAULT_CREDIT_PRICE_ATOMIC = 10000n;
 
 /**
  * Parse `REGISTER_GRANT_ADMISSION`. Unset/empty → `open` (dark). Unrecognized
@@ -115,6 +125,30 @@ function unitPriceAtomic(env: RegisterGrantPaymentEnv): bigint | "unset" {
   const raw = env.REGISTER_GRANT_PRICE_ATOMIC?.trim();
   if (raw && /^[0-9]+$/.test(raw)) return BigInt(raw);
   return "unset";
+}
+
+/**
+ * Revenue-equivalent instance-pool credits for a settled grant (O2):
+ * `floor(paidAmount / creditPrice)`. Returns 0 when the price is malformed or
+ * the amount is sub-credit — the settlement worker then skips the top-up.
+ */
+function poolCreditsForAmount(
+  env: RegisterGrantPaymentEnv,
+  amountAtomic: string,
+): number {
+  const raw = env.X402_CREDIT_PRICE_ATOMIC?.trim();
+  const creditPrice =
+    raw && /^[0-9]+$/.test(raw) && BigInt(raw) > 0n
+      ? BigInt(raw)
+      : DEFAULT_CREDIT_PRICE_ATOMIC;
+  let amount: bigint;
+  try {
+    amount = BigInt(amountAtomic);
+  } catch {
+    return 0;
+  }
+  if (amount < 0n) return 0;
+  return Number(amount / creditPrice);
 }
 
 /** 402 problem + `X-PAYMENT-REQUIRED` challenge header for the register-grant resource. */
@@ -245,6 +279,14 @@ export async function enforceRegisterGrantPayment(args: {
     amount: outcome.payment.amount,
     logId: targetLogUuid,
     ...(univocityInstanceId ? { univocityInstanceId } : {}),
+    // O2: mint the revenue-equivalent instance-pool credits on settlement (the
+    // worker only credits when the fee account is known and credits >= 1).
+    // Sized from the REQUIRED charge (`totalAtomic`), not the signed amount: an
+    // overpaying authorization must not inflate the instance pool, and the
+    // "exact" scheme means the payer signs exactly this amount anyway (review M3).
+    ...(univocityInstanceId
+      ? { credits: poolCreditsForAmount(env, totalAtomic) }
+      : {}),
     idempotencyKey: `grant:${targetLogUuid}:${authNonce}`,
     createdAt: Date.now(),
     payload: outcome.payment.payload,
