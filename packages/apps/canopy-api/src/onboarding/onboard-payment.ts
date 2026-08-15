@@ -132,6 +132,76 @@ export async function claimPaymentAuthorization(
   return written !== null;
 }
 
+/**
+ * Outcome of an idempotent claim (see {@link claimPaymentAuthorizationIdempotent}).
+ * - `claimed` — first use of this authorization; the caller owns it.
+ * - `reclaimed` — already claimed, but for the *same* `context` (same payment +
+ *   same intended artifact): a benign retry, the caller may proceed.
+ * - `conflict` — already claimed for a *different* context: a replay/double-spend
+ *   attempt against a different artifact; reject.
+ */
+export type IdempotentClaimOutcome = "claimed" | "reclaimed" | "conflict";
+
+/**
+ * Idempotent variant of {@link claimPaymentAuthorization} (review M2, plan-2608-09).
+ *
+ * The plain claim is strictly single-use: it wins once and rejects every later
+ * presentation of the same authorization. That is correct for mint-on-verify
+ * paths (onboard/credits) where the artifact is produced before any failure can
+ * strand it. The register-grant gate is different — it enqueues the settlement
+ * job *before* the grant is enqueued for sequencing, so a transient failure of
+ * the grant enqueue leaves the payer charged (settlement queued) with no grant,
+ * and a retry of the same authorization would then lose the plain claim
+ * ("already used") — stranding the payer permanently.
+ *
+ * This variant records the intended-artifact `context` (the grant commitment)
+ * alongside the claim and, on collision, permits re-entry **iff** the stored
+ * context matches. So the same payer re-presenting the same payment for the same
+ * grant succeeds (`reclaimed`) and can re-enqueue it, while the same payment
+ * pointed at a *different* grant is still rejected (`conflict`) — single-use is
+ * preserved per (authorization, artifact). Downstream idempotency (settlement
+ * `idempotencyKey`, grant-sequencing dedup on the commitment) makes the re-entry
+ * safe to run in full.
+ *
+ * @param context stable per (payment, intended artifact) — for register-grant,
+ *   the child grant's commitment hash hex.
+ */
+export async function claimPaymentAuthorizationIdempotent(
+  env: OnboardPaymentEnv,
+  payment: VerifiedPayment,
+  context: string,
+): Promise<IdempotentClaimOutcome> {
+  const key = await paymentClaimKey(payment);
+  const auth = payment.payload.payload.authorization;
+  const body = JSON.stringify({
+    context,
+    payer: payment.payerAddress,
+    amount: payment.amount,
+    network: payment.network,
+    nonce: auth.nonce,
+    // Safe prune boundary — see the retention note on claimPaymentAuthorization.
+    validBefore: auth.validBefore,
+    claimedAt: Date.now(),
+  });
+  const written = await env.R2_GRANTS.put(key, body, {
+    httpMetadata: { contentType: "application/json" },
+    onlyIf: { etagDoesNotMatch: "*" },
+  });
+  if (written !== null) return "claimed";
+  // Collision: the authorization is already claimed. Read the winning record and
+  // allow re-entry only when it was claimed for the same context. R2 is strongly
+  // consistent for read-after-write, so the winner's body is visible here.
+  const existing = await env.R2_GRANTS.get(key);
+  if (!existing) return "conflict"; // vanished between put and get: fail closed
+  let claimedContext: unknown;
+  try {
+    claimedContext = ((await existing.json()) as { context?: unknown }).context;
+  } catch {
+    return "conflict";
+  }
+  return claimedContext === context ? "reclaimed" : "conflict";
+}
+
 /** Only the CDP-hosted facilitator needs credentials; x402.org (testnet) does not. */
 function facilitatorRequiresAuth(url: string | undefined): boolean {
   if (!url) return false;

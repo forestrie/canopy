@@ -209,6 +209,10 @@ export async function registerGrant(
       parentGrant: parentGrantEvidence,
       genesis,
       targetLogUuid,
+      // L2 parent-receipt grounding (review H1): the same resolver + chainId the
+      // steady-state receipt path uses. Present on every live lane.
+      resolveReceiptAuthority: env.resolveReceiptAuthority,
+      ks256ChainId: genesis.chainBinding?.chainId,
     });
   };
 
@@ -259,14 +263,22 @@ export async function registerGrant(
         "Creation-grant validation is not configured (univocity required).",
       );
     }
+    // L4 (review): gate BEFORE univocity validate(). validate() atomically
+    // consumes the global logId→R uniqueness claim, so gating after it would let
+    // an unpaid caller squat a namespace and only then get 402'd. Running the
+    // gate first means an unpaid creation is rejected before any uniqueness state
+    // is touched. (An honest registrar only submits grants it just built and
+    // signed, so the payment-then-validate-rejects case is not a live path; a
+    // hostile caller forfeiting a testnet authorization on an invalid grant is
+    // not a concern this gate owes protection to.)
+    const gate = await runPaymentGate();
+    if (gate) return gate;
     const decision = await env.creationGrantValidator.validate(
       genesis.wire,
       grantResult.bytes,
     );
     switch (decision.kind) {
       case "accepted": {
-        const gate = await runPaymentGate();
-        if (gate) return gate;
         try {
           const accepted = await enqueueAndStoreGrant(
             request,

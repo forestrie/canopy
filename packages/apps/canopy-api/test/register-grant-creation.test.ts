@@ -10,8 +10,10 @@
  */
 
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import type { Grant } from "../src/grant/types.js";
 import { uuidToBytes } from "../src/grant/uuid-bytes.js";
+import { withChildPaymentRequired } from "../src/grant/grant-flags.js";
 import {
   registerGrant,
   type RegisterGrantEnv,
@@ -220,5 +222,59 @@ describe("registerGrant creation-grant delegation", () => {
     const res = await register(envWith(validator), creationGrant(noCreate));
     expect(res.status).toBe(403);
     expect(calls).toHaveLength(0);
+  });
+
+  // L4 (review): on a paid lane, an unpaid creation under a payment-required
+  // parent must be gated BEFORE univocity validate() — validate() atomically
+  // consumes the logId→R uniqueness claim, so gating after it would let an
+  // unpaid caller squat a namespace. Assert the 402 comes back with the
+  // validator never invoked. (No receipt resolver is wired here, so L2 is skipped
+  // and the request reaches the payment challenge rather than a 403.)
+  it("L4: unpaid payment-required creation is 402'd before validate() runs", async () => {
+    const { validator, calls } = mockValidator({
+      kind: "accepted",
+      created: true,
+    });
+    const env: RegisterGrantEnv = {
+      ...envWith(validator),
+      payment: {
+        REGISTER_GRANT_ADMISSION: "paid",
+        REGISTER_GRANT_PRICE_ATOMIC: "10000",
+        X402_NETWORK: "eip155:84532",
+        X402_PAYTO_ADDRESS: "0x75be7950F26fe7F15336a10b33A8D8134faDb787",
+        R2_GRANTS: {} as R2Bucket,
+      },
+    };
+    // Parent auth grant carrying GF_DERIVED | GF_CHILD_PAYMENT_REQUIRED, whose
+    // logId == the child's ownerLogId (PARENT) — a coherent payment-required
+    // authority. Carried as register-grant body evidence `{ parentGrant }`.
+    const parent: Grant = {
+      logId: uuidToBytes(PARENT),
+      ownerLogId: uuidToBytes(PARENT),
+      grant: withChildPaymentRequired(authFlags()),
+      maxHeight: 0,
+      minGrowth: 0,
+      grantData: subjectGrantData,
+    };
+    const parentBytes = await encodeCustodianProfileForestrieGrant(
+      parent,
+      subjectPriv,
+      TEST_KID,
+      new Uint8Array(8),
+    );
+    const body = encodeCborDeterministic(
+      new Map<string, Uint8Array>([["parentGrant", parentBytes]]),
+    );
+    // A create+extend child bounded to a positive batch (so the gate reaches the
+    // payment challenge rather than the maxHeight<1 → 400 guard), with no X-PAYMENT.
+    const child: Grant = { ...creationGrant(), maxHeight: 5 };
+    const request = new Request(`http://test/register/${PARENT}/grants`, {
+      method: "POST",
+      headers: { Authorization: await forestrieAuth(child, subjectPriv) },
+      body,
+    });
+    const res = await registerGrant(request, env);
+    expect(res.status).toBe(402);
+    expect(calls).toHaveLength(0); // validate() never ran → no namespace squat
   });
 });
