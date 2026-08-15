@@ -9,6 +9,25 @@
  * and offline-provable (ARC-0029 L1/L2). This gate is L1 (API policy); it does
  * not depend on L3.
  *
+ * **Enforcement model — read before enabling on a lane (ARC-0029 §2).** The
+ * parent grant is read from the *request body* (client-supplied evidence) and is
+ * **not** receipt-verified here: this gate reads the policy bit and a coherence
+ * check (`parent.logId == child.ownerLogId`) only. Two consequences follow, and
+ * both are inherent to L1, not bugs:
+ *   1. **A client that controls the registration can bypass** by simply omitting
+ *      the parent evidence (or sending a parent without the bit) — the gate then
+ *      returns `null` and the child registers free. The gate is therefore
+ *      enforceable only against a **cooperating/trusted registrar** (e.g. the
+ *      demo's thinker DO registering server-side), not against an arbitrary
+ *      caller. canopy keeps no server-side grant store, so it cannot independently
+ *      resolve `ownerLogId`'s policy at L1.
+ *   2. Real enforcement is the rest of the ARC-0029 trajectory: **L2** makes a
+ *      free child under a payment-required parent *detectable* from receipts;
+ *      **L3** (sender-bound instances) makes it *impossible*. Do not treat this
+ *      gate as a hard control. L2 receipt-grounding (verify the parent's receipt)
+ *      and the trusted-registrar constraint must be resolved before any lane
+ *      flips to `paid`/`either` (plan-2608-09 W5).
+ *
  * **Dark by default.** `REGISTER_GRANT_ADMISSION` defaults to `open` (no gate
  * anywhere, no request-body read — byte-identical to the pre-plan behaviour);
  * `paid`/`either` enforce. An ops bearer bypasses (presented via
@@ -151,7 +170,10 @@ export async function enforceRegisterGrantPayment(args: {
     args;
 
   // Policy lives on the parent grant's committed flags. No parent evidence, or a
-  // parent without the bit → no policy → no gate.
+  // parent without the bit → no policy → no gate. NB (see module header): the
+  // parent is client-supplied and NOT receipt-verified here — this is L1, so
+  // omitting the parent bypasses the gate. Enforceable only against a trusted
+  // registrar; L2/L3 harden it (ARC-0029).
   if (!parentGrant) return null;
   const parentFlags = parentGrant.grant.grant;
   if (!requiresChildPayment(parentFlags)) return null;
