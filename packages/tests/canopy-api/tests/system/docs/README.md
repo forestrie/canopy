@@ -8,7 +8,7 @@ Spec files: `tests/system/*.spec.ts`. Shared flows:
 Cross-repo Package D flows (`forest-genesis-registration`, Mode C webhook seal,
 coordinator delegation issuance) live in
 [`forestrie/system-testing`](https://github.com/forestrie/system-testing) —
-see [devdocs plan-0017](https://github.com/forestrie/devdocs/blob/main/plans/plan-0017-system-testing-phase3.md).
+see [devdocs plan-0017](https://github.com/forestrie/devdocs/blob/main/archive/2606/plans/plan-0017-system-testing-phase3.md).
 
 ## Spec map
 
