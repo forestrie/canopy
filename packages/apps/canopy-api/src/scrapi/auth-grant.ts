@@ -168,10 +168,14 @@ export function getGrantFromRequest(request: Request): GrantResult | Response {
  * by copy rather than embedded into the signed child statement) are documented in
  * [grants.md §11 Evidence transport](https://github.com/forestrie/canopy/blob/main/docs/grants.md#11-evidence-transport-parent-grant-post-body).
  *
- * Only register-grant's intermediate child-data branch consumes the body, so reading the
- * stream here does not race any other consumer. The receipt the parent grant carries is
- * verified by the caller via {@link grantAuthorize}, proving the parent is sealed without
- * any SequencingQueue Durable Object read.
+ * register-grant's intermediate child-data branch consumes the body, so reading the
+ * stream here does not race any other consumer. That branch verifies the receipt the
+ * parent grant carries via {@link grantAuthorize}, proving the parent is sealed without
+ * any SequencingQueue Durable Object read. **Not every caller verifies:** the
+ * register-grant payment gate (`register-grant-payment.ts`) reads the parent's committed
+ * *policy flags* without receipt verification — that is deliberate L1 (trust-the-registrar)
+ * behaviour, documented there and in ARC-0029; do not assume a caller of this function has
+ * authenticated the parent.
  *
  * @returns `null` when there is no body / no `parentGrant` field (parent evidence absent);
  * a {@link GrantResult} when present and decodable; otherwise a Response — 413 when the
