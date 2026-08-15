@@ -46,7 +46,16 @@ import {
   isCoordinatorForwardConfigured,
   type CoordinatorForwardEnv,
 } from "../forest/forward-coordinator-registration.js";
-import { getGrantFromRequest, grantAuthorize } from "./auth-grant.js";
+import {
+  getGrantFromRequest,
+  getParentGrantFromRequest,
+  grantAuthorize,
+} from "./auth-grant.js";
+import {
+  enforceRegisterGrantPayment,
+  parseRegisterGrantAdmission,
+  type RegisterGrantPaymentEnv,
+} from "./register-grant-payment.js";
 import { QueueFullError } from "@canopy/forestrie-ingress-types";
 import { seeOtherResponse } from "../cbor-api/cbor-response.js";
 import {
@@ -101,6 +110,13 @@ export interface RegisterGrantEnv {
    * sealer sweep are the safety nets).
    */
   coordinatorForward?: CoordinatorForwardEnv;
+  /**
+   * x402 payment gate for child-grant registration (plan-2608-09 W2). When
+   * absent (pool-test mode / gate unwired) the gate is dark. When present, its
+   * `REGISTER_GRANT_ADMISSION` still defaults to `open` — the gate only engages
+   * under `paid`/`either` on a parent carrying `GF_CHILD_PAYMENT_REQUIRED`.
+   */
+  payment?: RegisterGrantPaymentEnv;
   /** Worker NODE_ENV; reserved for non-prod diagnostics. */
   nodeEnv?: string;
 }
@@ -163,6 +179,39 @@ export async function registerGrant(
     return ClientErrors.badRequest("Invalid ownerLogId in grant");
   }
 
+  // Payment gate setup (plan-2608-09 W2). Dark by default: only under
+  // REGISTER_GRANT_ADMISSION=paid|either do we read the parent-grant evidence
+  // from the body and evaluate the gate, so the unset/open default is
+  // byte-identical to the pre-plan behaviour (no body read, no new failure mode).
+  const paymentEnv = env.payment;
+  const admission = paymentEnv
+    ? parseRegisterGrantAdmission(paymentEnv.REGISTER_GRANT_ADMISSION)
+    : "open";
+  if (admission === "invalid") {
+    return ServerErrors.internal(
+      "REGISTER_GRANT_ADMISSION must be one of open|paid|either.",
+    );
+  }
+  let parentGrantEvidence: GrantResult | null = null;
+  if (admission !== "open") {
+    const pg = await getParentGrantFromRequest(request);
+    if (pg instanceof Response) return pg;
+    parentGrantEvidence = pg;
+  }
+  // Evaluated after grant authorization and immediately before enqueue (both
+  // the creation and steady-state paths); the endorsement path is not gated.
+  const runPaymentGate = async (): Promise<Response | null> => {
+    if (admission === "open" || !paymentEnv) return null;
+    return enforceRegisterGrantPayment({
+      request,
+      env: paymentEnv,
+      childGrant: grant,
+      parentGrant: parentGrantEvidence,
+      genesis,
+      targetLogUuid,
+    });
+  };
+
   // MMRS on T decides the path: an initialized log requires an inclusion receipt
   // (grantAuthorize); an uninitialized log is opened by a creation grant, which
   // univocity validates and stores.
@@ -215,7 +264,9 @@ export async function registerGrant(
       grantResult.bytes,
     );
     switch (decision.kind) {
-      case "accepted":
+      case "accepted": {
+        const gate = await runPaymentGate();
+        if (gate) return gate;
         try {
           const accepted = await enqueueAndStoreGrant(
             request,
@@ -237,6 +288,7 @@ export async function registerGrant(
               : "Grant sequencing failed after univocity validation",
           );
         }
+      }
       case "conflict":
         return ClientErrors.conflict(
           "logId already registered to a different forest (global uniqueness).",
@@ -261,6 +313,8 @@ export async function registerGrant(
     ks256ChainId: genesis.chainBinding?.chainId,
   });
   if (authError) return authError;
+  const steadyStateGate = await runPaymentGate();
+  if (steadyStateGate) return steadyStateGate;
   return await enqueueAndStoreGrant(
     request,
     grant,
