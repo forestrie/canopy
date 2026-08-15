@@ -26,12 +26,15 @@ export {
   dataLogExtendFlags,
   derivedEndorsementGrantFlags,
   hasAuthLogClass,
+  hasChildPaymentRequiredFlag,
   hasCreateAndExtend,
   hasDataLogClass,
   hasDerivedFlag,
   hasExtendCapability,
   isDataLogStatementGrantFlags,
   isDerivedEndorsementGrant,
+  requiresChildPayment,
+  withChildPaymentRequired,
 } from "./grant-flags.js";
 
 /** Grant CBOR encode/decode (Forestrie-Grant v0; re-exported from @forestrie/encoding). */

@@ -5,7 +5,10 @@
  * commitment (grant-commitment.ts `grantFlags32`, go-univocity `padGrant32`) and
  * read as a big-endian uint256 by the contract, they land on bits **32 / 33 / 34**
  * — the univocity constants `GF_CREATE = 1<<32`, `GF_EXTEND = 1<<33`,
- * `GF_DERIVED = 1<<34` (`interfaces/constants.sol`). Byte 3 (not byte 4) is
+ * `GF_DERIVED = 1<<34` (`interfaces/constants.sol`). Canopy additionally
+ * assigns byte-3 mask 0x08 (univocity bit **35**) as `GF_CHILD_PAYMENT_REQUIRED`,
+ * a *derived-protocol* policy bit valid only alongside GF_DERIVED and ignored by
+ * native validation (adr-0062, plan-2608-09). Byte 3 (not byte 4) is
  * load-bearing: byte 4 would land on bits 24/25/26 and the contract's first
  * checkpoint would revert `GrantRequirement` (FOR-328). Low byte (index 7):
  * **GF_AUTH_LOG** = 0x01, **GF_DATA_LOG** = 0x02 (mutually exclusive for
@@ -98,4 +101,42 @@ export function isDerivedEndorsementGrant(grant: Uint8Array): boolean {
     hasExtendCapability(grant) &&
     !hasCreateAndExtend(grant)
   );
+}
+
+/**
+ * GF_CHILD_PAYMENT_REQUIRED — univocity bit 35, canopy wire byte 3 mask 0x08
+ * (byte-3 bit b lands on univocity bit 32+b; see the module header). A
+ * *derived-protocol* policy bit (adr-0062): meaningful only alongside
+ * GF_DERIVED, which tells native validation to ignore bits above its known band
+ * (32/33/34) and hand interpretation to the external protocol. Set on a
+ * *parent* grant it declares that registering a child grant under that parent's
+ * authority requires an x402 payment (plan-2608-09). Committed in the parent's
+ * on-chain leaf, offline-provable from its inclusion receipt, invisible to the
+ * contract.
+ */
+export function hasChildPaymentRequiredFlag(grant: Uint8Array): boolean {
+  if (grant.length < 8) return false;
+  return ((grant[3] ?? 0) & 0x08) !== 0;
+}
+
+/**
+ * Parent-grant policy predicate: does this grant require payment to register a
+ * child? True only when BOTH GF_DERIVED and GF_CHILD_PAYMENT_REQUIRED are set —
+ * a bare GF_CHILD_PAYMENT_REQUIRED without GF_DERIVED is not a derived-protocol
+ * grant and carries no policy (native validation would ignore it).
+ */
+export function requiresChildPayment(grant: Uint8Array): boolean {
+  return hasDerivedFlag(grant) && hasChildPaymentRequiredFlag(grant);
+}
+
+/**
+ * Return an 8-byte copy of `grant` with GF_DERIVED | GF_CHILD_PAYMENT_REQUIRED
+ * (byte 3 masks 0x04 | 0x08) set, marking it a parent whose child registrations
+ * are payment-gated. All other flag bytes are preserved.
+ */
+export function withChildPaymentRequired(grant: Uint8Array): Uint8Array {
+  const out = new Uint8Array(8);
+  out.set(grant.subarray(0, 8));
+  out[3] = (out[3] ?? 0) | 0x04 | 0x08;
+  return out;
 }
