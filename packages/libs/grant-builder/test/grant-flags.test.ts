@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  authLogBootstrapShapedFlags,
   dataLogCreateExtendFlags,
   dataLogExtendFlags,
+  derivedEndorsementGrantFlags,
   hasChildPaymentRequiredFlag,
   hasCreateAndExtend,
   hasDataLogClass,
@@ -113,5 +115,43 @@ describe("GF_CHILD_PAYMENT_REQUIRED — parent-grant payment policy (plan-2608-0
     expect((v >> 33n) & 1n).toBe(0n);
     // exactly bits 34 and 35 → 0xc00000000
     expect(v).toBe(0xc00000000n);
+  });
+});
+
+describe("GF_ALG_MASK band — wire byte 2 is univocity-native (ADR-0008)", () => {
+  // Univocity v0.2.0 reserves bits 40–47 (canopy wire byte 2) as the native
+  // algorithm-policy band (`GF_ALG_MASK`; first flag
+  // GF_REQUIRES_USER_VERIFICATION = 1<<40). Unlike the byte-3 derived band,
+  // canopy must NEVER assign bits here: any set bit the presented delegation
+  // algorithm does not consume reverts UnsupportedDelegationPolicyFlags at
+  // publishCheckpoint. Canopy sets no byte-2 bit today; this pins that.
+  const constructors: Array<[string, () => Uint8Array]> = [
+    ["authLogBootstrapShapedFlags", authLogBootstrapShapedFlags],
+    ["dataLogCreateExtendFlags", dataLogCreateExtendFlags],
+    ["dataLogExtendFlags", dataLogExtendFlags],
+    ["derivedEndorsementGrantFlags", derivedEndorsementGrantFlags],
+    [
+      "withChildPaymentRequired",
+      () => withChildPaymentRequired(new Uint8Array(8)),
+    ],
+  ];
+
+  it.each(constructors)("%s keeps wire byte 2 clear", (_name, build) => {
+    expect(build()[2]).toBe(0);
+  });
+
+  it("no constructed grant lands bits in the univocity alg band (40–47)", () => {
+    for (const [, build] of constructors) {
+      const v = univocityFlagsUint(build());
+      expect((v >> 40n) & 0xffn).toBe(0n);
+    }
+  });
+
+  it("withChildPaymentRequired preserves — not clears — a caller's byte 2, so the guard sits with the constructors", () => {
+    // Documents the trust boundary: constructors never set byte 2, and the
+    // mutator does not silently launder one that arrives set.
+    const tampered = new Uint8Array(8);
+    tampered[2] = 0x01; // GF_REQUIRES_USER_VERIFICATION (univocity 1<<40)
+    expect(withChildPaymentRequired(tampered)[2]).toBe(0x01);
   });
 });
