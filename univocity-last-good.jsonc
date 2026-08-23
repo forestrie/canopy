@@ -24,5 +24,7 @@
   // forestrie/univocity-tools release supplying `deployer` + `contract-artefacts`.
   "tools": "v0.8.3",
   // forestrie/univocity contract release the ephemeral instances are deployed from.
-  "contracts": "v0.1.8",
+  // v0.2.0: ALG_ES256_WEBAUTHN + DelegationProof.algData ABI change (ADR-0008);
+  // publishCheckpoint selector 87ce4c61 -> 295e6ade.
+  "contracts": "v0.2.0",
 }
