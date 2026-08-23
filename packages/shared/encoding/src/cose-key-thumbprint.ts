@@ -7,25 +7,10 @@
  * devdocs ADR-0055).
  */
 
+import { base64UrlEncode } from "./base64url.js";
+
 const CKT_URI_PREFIX = "urn:ietf:params:oauth:ckt:sha-256:";
 const P256_COORD_BYTES = 32;
-
-const BASE64URL =
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-
-function base64Url(bytes: Uint8Array): string {
-  let out = "";
-  for (let i = 0; i < bytes.length; i += 3) {
-    const a = bytes[i]!;
-    const b = i + 1 < bytes.length ? bytes[i + 1]! : undefined;
-    const c = i + 2 < bytes.length ? bytes[i + 2]! : undefined;
-    out += BASE64URL[a >> 2]!;
-    out += BASE64URL[((a & 0x03) << 4) | ((b ?? 0) >> 4)]!;
-    if (b !== undefined) out += BASE64URL[((b & 0x0f) << 2) | ((c ?? 0) >> 6)]!;
-    if (c !== undefined) out += BASE64URL[c & 0x3f]!;
-  }
-  return out;
-}
 
 /**
  * Compute the RFC 9679 COSE Key Thumbprint URI for a P-256 public key.
@@ -70,5 +55,5 @@ export async function coseKeyThumbprintUriP256(
     input.byteOffset + input.byteLength,
   ) as ArrayBuffer;
   const digest = await crypto.subtle.digest("SHA-256", inputBuffer);
-  return CKT_URI_PREFIX + base64Url(new Uint8Array(digest));
+  return CKT_URI_PREFIX + base64UrlEncode(new Uint8Array(digest));
 }

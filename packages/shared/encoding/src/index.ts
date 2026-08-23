@@ -41,11 +41,14 @@ export {
 } from "./encode-cose-protected.js";
 export { encodeCoseSign1Statement } from "./encode-cose-sign1-statement.js";
 export { signCoseSign1Statement } from "./sign-cose-sign1-statement.js";
+export { base64UrlDecode, base64UrlEncode } from "./base64url.js";
 export {
   algToCurve,
   COSE_ALG_ES256,
+  COSE_ALG_ES256_WEBAUTHN,
   COSE_ALG_KS256,
   type CoseAlgorithm,
+  WEBAUTHN_ENVELOPE_LABEL,
   decodeCoseSign1,
   type DecodedCoseSign1,
   extractAlgFromProtected,

@@ -15,21 +15,35 @@
  * - ES256 roots (`{1: -7}` header) sign SHA-256 of the Sig_structure with
  *   P-256 (64-byte IEEE P1363 `r‖s`, low-s normalized: the on-chain verifier
  *   rejects malleable high-s signatures).
+ * - ES256_WEBAUTHN roots (`{1: -65800}` header) sign as a WebAuthn assertion:
+ *   the authenticator signs `authenticatorData ‖ sha256(clientDataJSON)` and
+ *   the Sig_structure is bound via `clientDataJSON.challenge ==
+ *   base64url(sha256(Sig_structure))` (univocity ADR-0008). `signature` stays
+ *   the raw 64-byte low-s `r‖s`; assertion parts ride in `algData`.
  */
 
 import { keccak_256 } from "@noble/hashes/sha3";
 import { secp256k1 } from "@noble/curves/secp256k1";
+import { base64UrlEncode } from "@forestrie/encoding";
 import { bytesEqual, toArrayBuffer } from "./bytes-utils.js";
 import { encodeIntKeyCbor } from "./encode-int-map.js";
 import { encodeSigStructure } from "./encode-sig-structure.js";
 import type { Ks256VerifyHooks } from "./ks256-verify-hooks.js";
 import {
   COSE_ALG_ES256,
+  COSE_ALG_ES256_WEBAUTHN,
   COSE_ALG_KS256,
   COSE_HEADER_ALG,
   ES256_SIG_BYTES,
   KS256_EOA_SIG_BYTES,
 } from "./payload-labels.js";
+import {
+  decodeWebauthnDelegationAlgData,
+  WEBAUTHN_FLAG_BE,
+  WEBAUTHN_FLAG_BS,
+  WEBAUTHN_FLAG_UP,
+  WEBAUTHN_FLAG_UV,
+} from "./webauthn-assertion.js";
 
 /** Domain separator for the contract's delegation Sig_structure payload. */
 export const ONCHAIN_DELEGATION_DOMAIN = "forestrie.univocity.delegation.v1";
@@ -68,6 +82,13 @@ export interface OnchainDelegationProofParts {
   mmrStart: bigint;
   mmrEnd: bigint;
   signature: Uint8Array;
+  /**
+   * Alg-specific data (ADR-0008 option D): element count and meaning are
+   * fixed per algorithm. Empty for ES256/KS256 (a non-empty array under those
+   * algs reverts `UnexpectedDelegationAlgData` on-chain); for ES256_WEBAUTHN
+   * the 3 assertion elements from `assembleWebauthnDelegationAlgData`.
+   */
+  algData: Uint8Array[];
 }
 
 function bigEndianUint64(value: number | bigint): Uint8Array {
@@ -163,6 +184,23 @@ export function buildOnchainDelegationToBeSignedEs256(
 }
 
 /**
+ * Build the ES256_WEBAUTHN on-chain delegation TBS: protected header
+ * `{1: -65800}`, packed delegation key, and the Sig_structure bytes whose
+ * SHA-256 the ceremony must present as `clientDataJSON.challenge`
+ * (base64url-encoded) to `navigator.credentials.get`.
+ *
+ * @param input - Delegation scope and delegated P-256 key coordinates.
+ */
+export function buildOnchainDelegationToBeSignedWebauthn(
+  input: OnchainDelegationInput,
+): OnchainDelegationToBeSigned {
+  return buildOnchainDelegationToBeSignedWithAlg(
+    input,
+    COSE_ALG_ES256_WEBAUTHN,
+  );
+}
+
+/**
  * Sign an on-chain delegation proof with an in-process secp256k1 root key
  * (tests and local tooling; production wallets sign externally over
  * `sigStructureBytes`).
@@ -194,6 +232,7 @@ export function signOnchainDelegationKs256(
     mmrStart: BigInt(input.mmrStart),
     mmrEnd: BigInt(input.mmrEnd),
     signature,
+    algData: [],
   };
 }
 
@@ -263,6 +302,7 @@ export async function signOnchainDelegationEs256(
     mmrStart: BigInt(input.mmrStart),
     mmrEnd: BigInt(input.mmrEnd),
     signature: normalizeEs256SignatureLowS(signature),
+    algData: [],
   };
 }
 
@@ -368,5 +408,148 @@ export async function verifyOnchainDelegationSignatureEs256(
     rootKey,
     toArrayBuffer(signature),
     toArrayBuffer(tbs.sigStructureBytes),
+  );
+}
+
+/** Policy parameters of the WebAuthn delegation verifier (ADR-0008 §4). */
+export interface WebauthnVerifyOptions {
+  /** Require the assertion's UV flag (grant `GF_REQUIRES_USER_VERIFICATION`). */
+  requireUserVerification?: boolean;
+  /**
+   * Pin the assertion's rpIdHash (sha256 of the relying-party id, 32 bytes).
+   * Omit to disable pinning — the contract's dormant zero parameter.
+   */
+  requiredRpIdHash?: Uint8Array;
+}
+
+/**
+ * Verify a root's on-chain delegation WebAuthn assertion against the expected
+ * P-256 root public key coordinates. Full mirror of the contract's
+ * `verifyDelegationProofES256WebAuthn`: slice-compares the type and challenge
+ * at the algData-carried indices (never a JSON parse), checks UP/UV/BE-BS
+ * flags, and verifies P-256 over `authenticatorData ‖ sha256(clientDataJSON)`
+ * — a true result means the bytes are contract-acceptable.
+ *
+ * @param input - Delegation scope the assertion must bind.
+ * @param signature - 64-byte IEEE P1363 `r‖s`, low-s (high-s is rejected as
+ *   the OZ P256 verifier does).
+ * @param algData - 3-element assertion material (ADR-0008 §3).
+ * @param rootX - Root P-256 public key x coordinate (32 bytes).
+ * @param rootY - Root P-256 public key y coordinate (32 bytes).
+ * @param opts - UV requirement and rpIdHash pinning policy.
+ */
+export async function verifyOnchainDelegationSignatureWebauthn(
+  input: OnchainDelegationInput,
+  signature: Uint8Array,
+  algData: readonly Uint8Array[],
+  rootX: Uint8Array,
+  rootY: Uint8Array,
+  opts?: WebauthnVerifyOptions,
+): Promise<boolean> {
+  if (rootX.length !== 32 || rootY.length !== 32) {
+    throw new Error("WebAuthn root coordinates must be 32 bytes each");
+  }
+  if (
+    opts?.requiredRpIdHash !== undefined &&
+    opts.requiredRpIdHash.length !== 32
+  ) {
+    throw new Error("requiredRpIdHash must be 32 bytes");
+  }
+  if (signature.length !== ES256_SIG_BYTES) {
+    return false;
+  }
+  // OZ P256.verify rejects malleable high-s; WebCrypto accepts both. Require
+  // the low-s form so a true result means the bytes are contract-acceptable.
+  if (!bytesEqual(signature, normalizeEs256SignatureLowS(signature))) {
+    return false;
+  }
+
+  let decoded;
+  try {
+    decoded = decodeWebauthnDelegationAlgData(algData);
+  } catch {
+    return false;
+  }
+  const { authenticatorData, clientDataJSON, challengeIndex, typeIndex } =
+    decoded;
+
+  const flags = authenticatorData[32]!;
+  if ((flags & WEBAUTHN_FLAG_UP) === 0) {
+    return false;
+  }
+  if (opts?.requireUserVerification && (flags & WEBAUTHN_FLAG_UV) === 0) {
+    return false;
+  }
+  // Backed up (BS) without backup eligible (BE) is an impossible
+  // authenticator state; treat as malformed.
+  if ((flags & WEBAUTHN_FLAG_BE) === 0 && (flags & WEBAUTHN_FLAG_BS) !== 0) {
+    return false;
+  }
+  if (
+    opts?.requiredRpIdHash !== undefined &&
+    !bytesEqual(authenticatorData.subarray(0, 32), opts.requiredRpIdHash)
+  ) {
+    return false;
+  }
+
+  const sliceEquals = (at: bigint, expected: Uint8Array): boolean => {
+    if (at > BigInt(clientDataJSON.length)) return false;
+    const start = Number(at);
+    if (clientDataJSON.length - start < expected.length) return false;
+    return bytesEqual(
+      clientDataJSON.subarray(start, start + expected.length),
+      expected,
+    );
+  };
+
+  // Assertion ceremony only: registration ("webauthn.create") must not verify.
+  const encoder = new TextEncoder();
+  if (!sliceEquals(typeIndex, encoder.encode('"type":"webauthn.get"'))) {
+    return false;
+  }
+
+  // Challenge binding: the entire security argument. The challenge must be
+  // exactly base64url(sha256(Sig_structure)) for the canonical delegation
+  // payload rebuilt here.
+  const tbs = buildOnchainDelegationToBeSignedWebauthn(input);
+  const canonicalHash = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", toArrayBuffer(tbs.sigStructureBytes)),
+  );
+  const expectedChallenge = encoder.encode(
+    `"challenge":"${base64UrlEncode(canonicalHash)}"`,
+  );
+  if (!sliceEquals(challengeIndex, expectedChallenge)) {
+    return false;
+  }
+
+  // What the authenticator actually signed (WebAuthn L2 §6.3.3 step 19).
+  const clientDataHash = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", toArrayBuffer(clientDataJSON)),
+  );
+  const signedBytes = new Uint8Array(authenticatorData.length + 32);
+  signedBytes.set(authenticatorData, 0);
+  signedBytes.set(clientDataHash, authenticatorData.length);
+
+  const raw = new Uint8Array(65);
+  raw[0] = 0x04;
+  raw.set(rootX, 1);
+  raw.set(rootY, 33);
+  let rootKey: CryptoKey;
+  try {
+    rootKey = await crypto.subtle.importKey(
+      "raw",
+      toArrayBuffer(raw),
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["verify"],
+    );
+  } catch {
+    return false;
+  }
+  return crypto.subtle.verify(
+    { name: "ECDSA", hash: "SHA-256" },
+    rootKey,
+    toArrayBuffer(signature),
+    toArrayBuffer(signedBytes),
   );
 }

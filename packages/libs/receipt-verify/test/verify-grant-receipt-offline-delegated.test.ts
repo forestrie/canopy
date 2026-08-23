@@ -93,4 +93,50 @@ describe("verifyGrantReceiptOffline — delegated (FOR-297)", () => {
     });
     expect(result).toEqual({ ok: true, stage: "binding" });
   });
+
+  // plan-2608-13 1.4 (devdocs ADR-0063): a passkey-rooted log's delegation
+  // cert carries a WebAuthn envelope; the offline chain walks through it.
+  it("verifies a cert signed by a WebAuthn (passkey) root via its envelope", async () => {
+    const fx = await buildDelegatedGrantReceiptFixture({ webauthnRoot: true });
+    const result = await verifyGrantReceiptOffline({
+      genesisCbor: fx.genesisCbor,
+      receiptCbor: fx.receiptCbor,
+      grant: fx.grant,
+      idtimestampBe8: fx.idtimestampBe8,
+    });
+    expect(result).toEqual({ ok: true, stage: "binding" });
+  });
+
+  it("rejects a WebAuthn cert whose challenge binds other bytes", async () => {
+    // Key possession proven, THIS certificate not bound — the delegation
+    // chain is invalid, exactly as a bad plain signature would be.
+    const fx = await buildDelegatedGrantReceiptFixture({
+      webauthnUnbound: true,
+    });
+    const result = await verifyGrantReceiptOffline({
+      genesisCbor: fx.genesisCbor,
+      receiptCbor: fx.receiptCbor,
+      grant: fx.grant,
+      idtimestampBe8: fx.idtimestampBe8,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.stage).toBe("signature");
+    expect(result.reason).toBe("delegation_invalid");
+  });
+
+  it("rejects a WebAuthn cert signed by a non-genesis root", async () => {
+    const fx = await buildDelegatedGrantReceiptFixture({
+      webauthnRoot: true,
+      wrongRoot: true,
+    });
+    const result = await verifyGrantReceiptOffline({
+      genesisCbor: fx.genesisCbor,
+      receiptCbor: fx.receiptCbor,
+      grant: fx.grant,
+      idtimestampBe8: fx.idtimestampBe8,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.stage).toBe("signature");
+    expect(result.reason).toBe("delegation_invalid");
+  });
 });

@@ -10,9 +10,14 @@
  * a *derived-protocol* policy bit valid only alongside GF_DERIVED and ignored by
  * native validation (adr-0062, plan-2608-09). Byte 3 (not byte 4) is
  * load-bearing: byte 4 would land on bits 24/25/26 and the contract's first
- * checkpoint would revert `GrantRequirement` (FOR-328). Low byte (index 7):
- * **GF_AUTH_LOG** = 0x01, **GF_DATA_LOG** = 0x02 (mutually exclusive for
- * statement-registration grants) — bit 0/1, already contract-aligned. Flag
+ * checkpoint would revert `GrantRequirement` (FOR-328). Wire byte 2 (univocity
+ * bits 40–47) is the *native* algorithm-policy band `GF_ALG_MASK` (ADR-0008 §4,
+ * ADR-0062 §2 note): never derived-assignable, clear by default, set only by
+ * explicit opt-in constructors — first assignment
+ * **GF_REQUIRES_USER_VERIFICATION** = mask 0x01 (univocity bit 40). Low byte
+ * (index 7): **GF_AUTH_LOG** = 0x01, **GF_DATA_LOG** = 0x02 (mutually
+ * exclusive for statement-registration grants) — bit 0/1, already
+ * contract-aligned. Flag
  * shapes and how they select register-grant branches are documented in grants.md §5:
  * https://github.com/forestrie/canopy/blob/main/docs/grants.md#5-flag-shapes-statement-registration-vs-other-grants
  */
@@ -138,5 +143,33 @@ export function withChildPaymentRequired(grant: Uint8Array): Uint8Array {
   const out = new Uint8Array(8);
   out.set(grant.subarray(0, 8));
   out[3] = (out[3] ?? 0) | 0x04 | 0x08;
+  return out;
+}
+
+/**
+ * GF_REQUIRES_USER_VERIFICATION — univocity bit 40, canopy wire byte 2 mask
+ * 0x01: the first flag of the *native* algorithm-policy band `GF_ALG_MASK`
+ * (bits 40–47, univocity ADR-0008 §4; distinct from the byte-3 derived band —
+ * see the ADR-0062 §2 note). Set on a grant it declares that a delegation
+ * satisfying it must present user verification (biometric/PIN): the contract
+ * rejects the flag under any delegation algorithm that cannot honour it
+ * (`UnsupportedDelegationPolicyFlags`), so it is only meaningful for logs
+ * whose delegations are ES256_WEBAUTHN. Byte 2 stays clear by default;
+ * setting a band bit is always this explicit opt-in.
+ */
+export function hasRequiresUserVerification(grant: Uint8Array): boolean {
+  if (grant.length < 8) return false;
+  return ((grant[2] ?? 0) & 0x01) !== 0;
+}
+
+/**
+ * Return an 8-byte copy of `grant` with GF_REQUIRES_USER_VERIFICATION (byte 2
+ * mask 0x01) set. Per-log policy, never a constant (PRD passkey-log-custody
+ * R1) — the caller decides per grant. All other flag bytes are preserved.
+ */
+export function withRequiresUserVerification(grant: Uint8Array): Uint8Array {
+  const out = new Uint8Array(8);
+  out.set(grant.subarray(0, 8));
+  out[2] = (out[2] ?? 0) | 0x01;
   return out;
 }
