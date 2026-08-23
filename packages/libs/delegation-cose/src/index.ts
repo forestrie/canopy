@@ -14,6 +14,10 @@ export type { Ks256VerifyHooks } from "./ks256-verify-hooks.js";
 export type { ParsedDelegatedKey } from "./parsed-delegated-key.js";
 export type { SignEs256 } from "./build-delegation-certificate-es256.js";
 export type { SignKs256 } from "./build-delegation-certificate-ks256.js";
+export type {
+  SignWebauthnAssertion,
+  WebauthnAssertionResult,
+} from "./build-delegation-certificate-webauthn.js";
 
 export { DELEGATION_CONTENT_TYPE } from "./delegation-content-type.js";
 export {
@@ -61,7 +65,12 @@ export {
   locateClientDataIndices,
 } from "./webauthn-assertion.js";
 
-export { assembleDelegationCertificate } from "./assemble-certificate.js";
+export {
+  assembleDelegationCertificate,
+  assembleDelegationCertificateWebauthn,
+} from "./assemble-certificate.js";
+export { buildDelegationCertificateWebauthn } from "./build-delegation-certificate-webauthn.js";
+export { buildDelegationToBeSignedWebauthn } from "./build-tbs-webauthn.js";
 export {
   buildDelegationCertificateEs256,
   buildDelegationCertificateEs256WithSigner,

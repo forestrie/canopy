@@ -1,8 +1,17 @@
 import {
+  base64UrlEncode,
   decodeCborDeterministic,
   encodeCborDeterministic,
   encodeSigStructure,
 } from "@forestrie/encoding";
+import {
+  buildDelegationCertificateWebauthn,
+  buildOnchainDelegationToBeSignedWebauthn,
+  decodeDelegatedCoseKeyFromBytes,
+  deriveEs256KidFromPublicKey,
+  normalizeEs256SignatureLowS,
+  parseDelegatedCoseKeyFromPayload,
+} from "@forestrie/delegation-cose";
 
 function cborBytes(value: unknown): Uint8Array {
   return encodeCborDeterministic(value);
@@ -97,6 +106,126 @@ export async function buildTestByokMaterial(opts: {
     expiresAt,
     x,
     y,
+  };
+}
+
+async function sha256Bytes(bytes: Uint8Array): Promise<Uint8Array> {
+  return new Uint8Array(
+    await crypto.subtle.digest("SHA-256", toArrayBuffer(bytes)),
+  );
+}
+
+/**
+ * Synthetic WebAuthn assertion (WebCrypto P-256, forge-style construction):
+ * signs `authenticatorData ‖ sha256(clientDataJSON)` where
+ * `clientDataJSON.challenge = base64url(challenge)` — exactly what a real
+ * authenticator produces for the given challenge.
+ */
+export async function syntheticWebauthnAssertion(opts: {
+  keyPair: CryptoKeyPair;
+  challenge: Uint8Array;
+  /** Set the UV flag (default true). */
+  uv?: boolean;
+}): Promise<{
+  authenticatorData: Uint8Array;
+  clientDataJSON: Uint8Array;
+  signature: Uint8Array;
+}> {
+  const clientDataJSON = new TextEncoder().encode(
+    `{"type":"webauthn.get","challenge":"${base64UrlEncode(opts.challenge)}","origin":"https://thinker.example","crossOrigin":false}`,
+  );
+  const authenticatorData = new Uint8Array(37);
+  authenticatorData.set(
+    await sha256Bytes(new TextEncoder().encode("thinker.example")),
+    0,
+  );
+  authenticatorData[32] = opts.uv === false ? 0x01 : 0x05; // UP (| UV)
+  const signedBytes = new Uint8Array(37 + 32);
+  signedBytes.set(authenticatorData, 0);
+  signedBytes.set(await sha256Bytes(clientDataJSON), 37);
+  const signature = normalizeEs256SignatureLowS(
+    new Uint8Array(
+      await crypto.subtle.sign(
+        { name: "ECDSA", hash: "SHA-256" },
+        opts.keyPair.privateKey,
+        toArrayBuffer(signedBytes),
+      ),
+    ),
+  );
+  return { authenticatorData, clientDataJSON, signature };
+}
+
+/**
+ * Passkey-root BYOK material (plan-2608-13 phase 2): a WebAuthn-enveloped
+ * certificate (ADR-0063) plus the separate on-chain delegation assertion
+ * (ADR-0008) — the two-gesture ceremony, one synthetic gesture each.
+ */
+export async function buildTestByokWebauthnMaterial(opts: {
+  rootKeyPair: CryptoKeyPair;
+  logIdHex32: string;
+  mmrStart: number;
+  mmrEnd: number;
+  delegatedPublicKey: Uint8Array;
+  issuedAt?: number;
+  expiresAt?: number;
+}): Promise<{
+  certificate: Uint8Array;
+  issuedAt: number;
+  expiresAt: number;
+  x: Uint8Array;
+  y: Uint8Array;
+  onchainSignature: Uint8Array;
+  onchainAuthenticatorData: Uint8Array;
+  onchainClientDataJSON: Uint8Array;
+}> {
+  const raw = new Uint8Array(
+    (await crypto.subtle.exportKey(
+      "raw",
+      opts.rootKeyPair.publicKey,
+    )) as ArrayBuffer,
+  );
+  const x = raw.slice(1, 33);
+  const y = raw.slice(33, 65);
+  const issuedAt = opts.issuedAt ?? 1_700_000_000;
+  const expiresAt = opts.expiresAt ?? 4_102_444_800; // 2100-01-01
+  const kid = await deriveEs256KidFromPublicKey(opts.rootKeyPair.publicKey);
+  const certificate = await buildDelegationCertificateWebauthn(
+    {
+      logIdHex32: opts.logIdHex32,
+      mmrStart: opts.mmrStart,
+      mmrEnd: opts.mmrEnd,
+      delegatedPublicKeyCbor: opts.delegatedPublicKey,
+      issuedAt,
+      expiresAt,
+    },
+    kid,
+    (challenge) =>
+      syntheticWebauthnAssertion({ keyPair: opts.rootKeyPair, challenge }),
+  );
+
+  const delegated = parseDelegatedCoseKeyFromPayload(
+    decodeDelegatedCoseKeyFromBytes(opts.delegatedPublicKey),
+  );
+  const tbs = buildOnchainDelegationToBeSignedWebauthn({
+    logIdHex: opts.logIdHex32,
+    mmrStart: opts.mmrStart,
+    mmrEnd: opts.mmrEnd,
+    delegatedKeyX: delegated.x,
+    delegatedKeyY: delegated.y,
+  });
+  const onchain = await syntheticWebauthnAssertion({
+    keyPair: opts.rootKeyPair,
+    challenge: await sha256Bytes(tbs.sigStructureBytes),
+  });
+  return {
+    certificate,
+    issuedAt,
+    expiresAt,
+    x,
+    y,
+    onchainSignature: onchain.signature,
+    onchainAuthenticatorData: onchain.authenticatorData,
+    onchainClientDataJSON: onchain.clientDataJSON,
   };
 }
 

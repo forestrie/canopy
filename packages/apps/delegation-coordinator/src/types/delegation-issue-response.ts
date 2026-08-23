@@ -17,6 +17,15 @@ export interface OnchainDelegationProofWire {
   /** BigInt so the encoder emits uint64, never float64 (Go uint64 decode). */
   mmrEnd: bigint;
   signature: Uint8Array;
+  /**
+   * Alg-specific data (univocity ADR-0008 option D): for ES256_WEBAUTHN the
+   * 3 assertion elements `[authenticatorData, clientDataJSON,
+   * be64(challengeIndex) ‖ be64(typeIndex)]`. Omitted (never an empty array)
+   * for ES256/KS256 so those responses stay byte-identical to the
+   * pre-WebAuthn wire and match arbor's `omitempty` CBOR tag both
+   * directions.
+   */
+  algData?: Uint8Array[];
 }
 
 /** CBOR response from POST /api/delegations. */
