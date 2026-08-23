@@ -7,8 +7,16 @@
  * [univocity docs/arc](https://github.com/forestrie/univocity/blob/main/docs/arc/).
  */
 
-import { decodeCborDeterministic } from "@forestrie/encoding";
 import {
+  WEBAUTHN_ENVELOPE_LABEL,
+  coseUnprotectedToMap,
+  decodeCborDeterministic,
+  decodeCoseSign1,
+  extractAlgFromProtected,
+  verifyCoseSign1WithParsedKey,
+} from "@forestrie/encoding";
+import {
+  COSE_ALG_ES256_WEBAUTHN,
   COSE_ALG_KS256,
   decodeCoseSign1Parts,
   decodeDelegatedCoseKeyFromBytes,
@@ -168,18 +176,56 @@ export async function validateByokDelegationCertificate(opts: {
     );
   }
 
-  const { signature } = decodeCoseSign1Parts(opts.certificate);
+  const { protectedBytes, signature } = decodeCoseSign1Parts(opts.certificate);
+  // The certificate self-describes: alg -65800 means a WebAuthn assertion
+  // signed it and the envelope rides in the unprotected header (ADR-0063).
+  // Only an ES256 (P-256 x/y) root can be a passkey; fail closed otherwise.
+  const certAlg = extractAlgFromProtected(protectedBytes);
+  if (certAlg === COSE_ALG_ES256_WEBAUTHN && opts.publicRoot.alg !== "ES256") {
+    throw new ByokCertificateValidationError(
+      "WebAuthn-enveloped certificate requires an ES256 public root",
+    );
+  }
+  // ADR-0063 §5: under any other alg a present envelope label is rejected —
+  // alg-specific material under an alg that defines none is evidence of
+  // confusion (the plain ES256/KS256 verifiers ignore the unprotected header,
+  // so this must be checked here).
+  if (certAlg !== COSE_ALG_ES256_WEBAUTHN) {
+    const decoded = decodeCoseSign1(opts.certificate);
+    if (
+      decoded &&
+      coseUnprotectedToMap(decoded.unprotected).get(WEBAUTHN_ENVELOPE_LABEL) !==
+        undefined
+    ) {
+      throw new ByokCertificateValidationError(
+        "unexpected WebAuthn envelope under a non-WebAuthn certificate alg",
+      );
+    }
+  }
   if (opts.publicRoot.alg === "ES256" && signature.length !== 64) {
     throw new ByokCertificateValidationError("signature must be 64 bytes");
   }
 
   let ok = false;
   if (opts.publicRoot.alg === "ES256") {
-    const rootKey = await importEs256PublicKey(
-      opts.publicRoot.x,
-      opts.publicRoot.y,
-    );
-    ok = await verifyDelegationCertificateEs256(opts.certificate, rootKey);
+    if (certAlg === COSE_ALG_ES256_WEBAUTHN) {
+      // Envelope branch: challenge binding + UP + flag sanity (ADR-0063 §3,
+      // §5; a missing/malformed envelope fails, never a plain-verify
+      // fallback). UV is not enforced here — the coordinator has no grant in
+      // evidence at submit; the on-chain verifier backstops UV at publish
+      // (ADR-0063 §4).
+      ok = await verifyCoseSign1WithParsedKey(opts.certificate, {
+        x: opts.publicRoot.x,
+        y: opts.publicRoot.y,
+        curve: "P-256",
+      });
+    } else {
+      const rootKey = await importEs256PublicKey(
+        opts.publicRoot.x,
+        opts.publicRoot.y,
+      );
+      ok = await verifyDelegationCertificateEs256(opts.certificate, rootKey);
+    }
   } else {
     ok = await verifyDelegationCertificateKs256(
       opts.certificate,

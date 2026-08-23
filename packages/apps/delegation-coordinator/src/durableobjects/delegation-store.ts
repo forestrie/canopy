@@ -50,13 +50,16 @@ import {
   validateByokDelegationCertificate,
 } from "../validate-byok-certificate.js";
 import {
+  assembleWebauthnDelegationAlgData,
   buildOnchainDelegationToBeSignedEs256,
   buildOnchainDelegationToBeSignedKs256,
+  buildOnchainDelegationToBeSignedWebauthn,
   decodeDelegatedCoseKeyFromBytes,
   normalizeEs256SignatureLowS,
   parseDelegatedCoseKeyFromPayload,
   verifyOnchainDelegationSignatureEs256,
   verifyOnchainDelegationSignatureKs256,
+  verifyOnchainDelegationSignatureWebauthn,
 } from "@forestrie/delegation-cose";
 import { Erc1271UnavailableError } from "@forestrie/chain-rpc";
 import {
@@ -103,13 +106,31 @@ const PENDING_CAP_PER_LOG = 32;
  */
 const STANDING_DELEGATION_TTL_SECONDS = 6 * 60 * 60;
 
+/**
+ * Alg the stored onchain_signature was validated under. ES256_WEBAUTHN is a
+ * WebAuthn assertion by an ES256 (P-256 x/y) root — same root key material,
+ * different proof construction (univocity ADR-0008).
+ */
+type StoredOnchainRootAlg = "KS256" | "ES256" | "ES256_WEBAUTHN";
+
 function parseStoredOnchainRootAlg(
   value: string | null | undefined,
-): "KS256" | "ES256" | null {
-  if (value === "KS256" || value === "ES256") {
+): StoredOnchainRootAlg | null {
+  if (value === "KS256" || value === "ES256" || value === "ES256_WEBAUTHN") {
     return value;
   }
   return null;
+}
+
+/**
+ * Root key-material family for the rotation check: a WebAuthn-validated
+ * signature is still by the ES256 root on record, so it must not read as an
+ * alg rotation when compared against the live root's alg.
+ */
+function rootFamilyOf(
+  alg: StoredOnchainRootAlg | null,
+): "KS256" | "ES256" | null {
+  return alg === "ES256_WEBAUTHN" ? "ES256" : alg;
 }
 
 /** Per-shard SQLite store for routes, certs, pending, webhooks. */
@@ -299,6 +320,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     this.ensureOnchainSignatureColumn();
     this.ensureOnchainRootAlgColumn();
     this.ensureCertificateCoverageColumns();
+    this.ensureOnchainAssertionColumns();
 
     // Standing sealer delegate keys (FOR-390 phase C). Per-sealer, replicated
     // to every shard so a shard's coverage retrieval can LEFT JOIN it against
@@ -506,6 +528,31 @@ export class DelegationStoreDO extends DurableObject<Env> {
       CREATE INDEX IF NOT EXISTS idx_delegation_certificates_coverage
       ON delegation_certificates (log_id_hex32, expires_at, mmr_start, mmr_end)
     `);
+  }
+
+  /**
+   * Add the on-chain WebAuthn assertion columns (plan-2608-13 phase 2). A
+   * WebAuthn root's onchain_signature verifies only together with the
+   * assertion it came from, so the raw parts persist alongside it and the
+   * issue path re-assembles the proof's `algData` from them (the index hints
+   * are derived from the bytes, never stored — they can then never disagree
+   * with the content, univocity ADR-0008 §3).
+   */
+  private ensureOnchainAssertionColumns(): void {
+    try {
+      [
+        ...this.ctx.storage.sql.exec(
+          `SELECT onchain_authenticator_data FROM delegation_certificates LIMIT 0`,
+        ),
+      ];
+    } catch {
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE delegation_certificates ADD COLUMN onchain_authenticator_data BLOB`,
+      );
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE delegation_certificates ADD COLUMN onchain_client_data_json BLOB`,
+      );
+    }
   }
 
   /** Add the custodian voucher column on legacy delegate_keys tables (FOR-390 phase H). */
@@ -1328,20 +1375,53 @@ export class DelegationStoreDO extends DurableObject<Env> {
       );
     }
 
+    // WebAuthn assertion material (plan-2608-13 phase 2): present iff the
+    // root signed the on-chain proof as a WebAuthn assertion. Both parts
+    // travel together and require the compact signature they authenticate.
+    const hasAssertionField =
+      body.onchainAuthenticatorData !== undefined ||
+      body.onchainClientDataJSON !== undefined;
+    if (
+      hasAssertionField &&
+      (!body.onchainAuthenticatorData ||
+        !body.onchainClientDataJSON ||
+        !body.onchainSignature)
+    ) {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Invalid request",
+          status: 400,
+          detail:
+            "WebAuthn submission requires onchainSignature, onchainAuthenticatorData, and onchainClientDataJSON together",
+        },
+        { status: 400 },
+      );
+    }
+
     let onchainSignature: Uint8Array | null = null;
-    let onchainRootAlg: "KS256" | "ES256" | null = null;
+    let onchainRootAlg: StoredOnchainRootAlg | null = null;
+    let onchainAuthenticatorData: Uint8Array | null = null;
+    let onchainClientDataJSON: Uint8Array | null = null;
     if (body.onchainSignature) {
       const root = this.publicRootMaterialFromRow(rootRow);
       let signature: Uint8Array;
+      let authenticatorData: Uint8Array | null = null;
+      let clientDataJSON: Uint8Array | null = null;
       try {
         signature = base64ToBytes(body.onchainSignature);
+        if (hasAssertionField) {
+          authenticatorData = base64ToBytes(body.onchainAuthenticatorData!);
+          clientDataJSON = base64ToBytes(body.onchainClientDataJSON!);
+        }
       } catch {
         return Response.json(
           {
             type: "about:blank",
             title: "Invalid request",
             status: 400,
-            detail: "onchainSignature must be valid base64",
+            detail:
+              "onchainSignature and assertion fields must be valid base64",
           },
           { status: 400 },
         );
@@ -1357,7 +1437,54 @@ export class DelegationStoreDO extends DurableObject<Env> {
         delegatedKeyY: delegated.y,
       };
       let ok: boolean;
-      if (root.alg === "KS256") {
+      if (authenticatorData && clientDataJSON) {
+        // ADR-0008 mirror: only an ES256 (P-256 x/y) root can be a passkey.
+        if (root.alg !== "ES256") {
+          return Response.json(
+            {
+              type: "about:blank",
+              title: "Invalid request",
+              status: 400,
+              detail:
+                "WebAuthn on-chain assertion requires an ES256 public root",
+            },
+            { status: 400 },
+          );
+        }
+        // The contract's P256 verifier rejects malleable high-s signatures;
+        // store the normalized form since signers make no low-s guarantee.
+        signature = normalizeEs256SignatureLowS(signature);
+        let algData: Uint8Array[];
+        try {
+          algData = assembleWebauthnDelegationAlgData(
+            authenticatorData,
+            clientDataJSON,
+          );
+        } catch (error) {
+          return Response.json(
+            {
+              type: "about:blank",
+              title: "Invalid request",
+              status: 400,
+              detail:
+                error instanceof Error
+                  ? error.message
+                  : "malformed WebAuthn assertion material",
+            },
+            { status: 400 },
+          );
+        }
+        // UV/rpIdHash policy stays unset here: no grant in evidence at
+        // submit, and the on-chain verifier backstops both at publish
+        // (ADR-0063 §4, ADR-0008 §4).
+        ok = await verifyOnchainDelegationSignatureWebauthn(
+          scope,
+          signature,
+          algData,
+          root.x,
+          root.y,
+        );
+      } else if (root.alg === "KS256") {
         try {
           ok = await verifyOnchainDelegationSignatureKs256(
             scope,
@@ -1394,7 +1521,13 @@ export class DelegationStoreDO extends DurableObject<Env> {
         );
       }
       onchainSignature = signature;
-      onchainRootAlg = root.alg;
+      if (authenticatorData && clientDataJSON) {
+        onchainRootAlg = "ES256_WEBAUTHN";
+        onchainAuthenticatorData = authenticatorData;
+        onchainClientDataJSON = clientDataJSON;
+      } else {
+        onchainRootAlg = root.alg;
+      }
     }
 
     const key = submitKey;
@@ -1403,14 +1536,17 @@ export class DelegationStoreDO extends DurableObject<Env> {
       `INSERT INTO delegation_certificates
          (log_id_hex32, certificate_key, certificate, issued_at, expires_at,
           onchain_signature, onchain_root_alg,
+          onchain_authenticator_data, onchain_client_data_json,
           delegated_pubkey_hash, delegated_public_key, mmr_start, mmr_end)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(log_id_hex32, certificate_key) DO UPDATE SET
          certificate = excluded.certificate,
          issued_at = excluded.issued_at,
          expires_at = excluded.expires_at,
          onchain_signature = excluded.onchain_signature,
          onchain_root_alg = excluded.onchain_root_alg,
+         onchain_authenticator_data = excluded.onchain_authenticator_data,
+         onchain_client_data_json = excluded.onchain_client_data_json,
          delegated_pubkey_hash = excluded.delegated_pubkey_hash,
          delegated_public_key = excluded.delegated_public_key,
          mmr_start = excluded.mmr_start,
@@ -1422,6 +1558,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
       body.expiresAt,
       onchainSignature,
       onchainRootAlg,
+      onchainAuthenticatorData,
+      onchainClientDataJSON,
       pubkeyHash,
       delegatedPublicKey,
       body.mmrStart,
@@ -1476,7 +1614,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
     const rows = [
       ...this.ctx.storage.sql.exec(
         `SELECT c.certificate, c.issued_at, c.expires_at, c.onchain_signature,
-                c.onchain_root_alg, c.delegated_public_key,
+                c.onchain_root_alg, c.onchain_authenticator_data,
+                c.onchain_client_data_json, c.delegated_public_key,
                 c.mmr_start, c.mmr_end
            FROM delegation_certificates c
            LEFT JOIN delegate_keys k
@@ -1576,6 +1715,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
       expires_at: number;
       onchain_signature: ArrayBuffer | null;
       onchain_root_alg: string | null;
+      onchain_authenticator_data: ArrayBuffer | null;
+      onchain_client_data_json: ArrayBuffer | null;
       delegated_public_key: ArrayBuffer | null;
       mmr_start: number | null;
       mmr_end: number | null;
@@ -1592,10 +1733,12 @@ export class DelegationStoreDO extends DurableObject<Env> {
     if (row.onchain_signature) {
       const storedAlg = parseStoredOnchainRootAlg(row.onchain_root_alg);
       const currentAlg = this.rootAlgForLog(logIdHex32);
+      // Rotation compares key-material families: an ES256_WEBAUTHN signature
+      // is by the ES256 root on record, so it survives while the root does.
       if (
         storedAlg !== null &&
         currentAlg !== null &&
-        storedAlg !== currentAlg
+        rootFamilyOf(storedAlg) !== currentAlg
       ) {
         console.warn(
           "onchainProofFromStored: omitting proof after public-root alg rotation",
@@ -1623,6 +1766,14 @@ export class DelegationStoreDO extends DurableObject<Env> {
           new Uint8Array(row.delegated_public_key),
           new Uint8Array(row.onchain_signature),
           storedAlg ?? currentAlg,
+          row.onchain_authenticator_data && row.onchain_client_data_json
+            ? {
+                authenticatorData: new Uint8Array(
+                  row.onchain_authenticator_data,
+                ),
+                clientDataJSON: new Uint8Array(row.onchain_client_data_json),
+              }
+            : null,
         );
         if (onchainProof) {
           resp.onchainProof = onchainProof;
@@ -1666,9 +1817,12 @@ export class DelegationStoreDO extends DurableObject<Env> {
    * request's scope (the certificate key already binds range and key). The
    * protected header carries the root's algorithm, so the builder is chosen
    * by the alg the signature was validated against (persisted at submit).
-   * Returns null when the delegated key CBOR cannot be parsed or the root
-   * alg is unknown — callers must log; silent omission surfaces later as a
-   * publisher revert.
+   * ES256_WEBAUTHN rows additionally re-assemble the proof's 3-element
+   * `algData` from the stored assertion parts (index hints derived from the
+   * bytes, univocity ADR-0008 §3). Returns null when the delegated key CBOR
+   * cannot be parsed, the root alg is unknown, or a WebAuthn row is missing
+   * its assertion material — callers must log; silent omission surfaces
+   * later as a publisher revert.
    */
   private onchainProofFromStored(
     logIdHex32: string,
@@ -1676,10 +1830,20 @@ export class DelegationStoreDO extends DurableObject<Env> {
     mmrEnd: number,
     delegatedPublicKey: Uint8Array,
     signature: Uint8Array,
-    rootAlg: "KS256" | "ES256" | null,
+    rootAlg: StoredOnchainRootAlg | null,
+    assertion: {
+      authenticatorData: Uint8Array;
+      clientDataJSON: Uint8Array;
+    } | null = null,
   ): OnchainDelegationProofWire | null {
     if (rootAlg === null) {
       console.warn("onchainProofFromStored: unknown root alg", {
+        logIdHex32,
+      });
+      return null;
+    }
+    if (rootAlg === "ES256_WEBAUTHN" && !assertion) {
+      console.warn("onchainProofFromStored: WebAuthn row missing assertion", {
         logIdHex32,
       });
       return null;
@@ -1691,7 +1855,9 @@ export class DelegationStoreDO extends DurableObject<Env> {
       const buildTbs =
         rootAlg === "KS256"
           ? buildOnchainDelegationToBeSignedKs256
-          : buildOnchainDelegationToBeSignedEs256;
+          : rootAlg === "ES256_WEBAUTHN"
+            ? buildOnchainDelegationToBeSignedWebauthn
+            : buildOnchainDelegationToBeSignedEs256;
       const tbs = buildTbs({
         logIdHex: logIdHex32,
         mmrStart,
@@ -1699,15 +1865,24 @@ export class DelegationStoreDO extends DurableObject<Env> {
         delegatedKeyX: delegated.x,
         delegatedKeyY: delegated.y,
       });
-      return {
+      const wire: OnchainDelegationProofWire = {
         protectedHeader: tbs.protectedHeader,
         delegationKey: tbs.delegationKey,
         mmrStart: BigInt(mmrStart),
         mmrEnd: BigInt(mmrEnd),
         signature,
       };
+      if (rootAlg === "ES256_WEBAUTHN" && assertion) {
+        // Emitted only for WebAuthn proofs so ES256/KS256 responses stay
+        // byte-identical (and match arbor's `omitempty` on re-marshal).
+        wire.algData = assembleWebauthnDelegationAlgData(
+          assertion.authenticatorData,
+          assertion.clientDataJSON,
+        );
+      }
+      return wire;
     } catch (error) {
-      console.warn("onchainProofFromStored: delegated-key parse failed", {
+      console.warn("onchainProofFromStored: proof rebuild failed", {
         logIdHex32,
         rootAlg,
         detail: error instanceof Error ? error.message : String(error),
@@ -1765,7 +1940,11 @@ export class DelegationStoreDO extends DurableObject<Env> {
       const storedAlg = parseStoredOnchainRootAlg(row.onchain_root_alg);
       const currentAlg = this.rootAlgForLog(logIdHex32);
       if (
-        !(storedAlg !== null && currentAlg !== null && storedAlg !== currentAlg)
+        !(
+          storedAlg !== null &&
+          currentAlg !== null &&
+          rootFamilyOf(storedAlg) !== currentAlg
+        )
       ) {
         // Exact match ⇒ request range == certificate range, so the request
         // scope is the signed scope — the V1 hazard does not apply here.

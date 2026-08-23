@@ -4,6 +4,7 @@
 
 import { createPrivateKey, createPublicKey } from "node:crypto";
 import {
+  base64UrlEncode,
   decodeCborDeterministic,
   encodeCborDeterministic,
   parseRegistrarKeyXY,
@@ -12,7 +13,11 @@ import {
 import {
   buildDelegationCertificateEs256,
   buildDelegationCertificateKs256,
+  buildDelegationCertificateWebauthn,
+  buildOnchainDelegationToBeSignedWebauthn,
   decodeDelegatedCoseKeyFromBytes,
+  deriveEs256KidFromPublicKey,
+  normalizeEs256SignatureLowS,
   parseDelegatedCoseKeyFromPayload,
   parseDelegationCertificate,
   signOnchainDelegationEs256,
@@ -101,9 +106,19 @@ export interface ByokDelegationMaterial {
    * proof whenever a delegated key signed the checkpoint receipt, regardless
    * of root algorithm, so every BYOK material builder populates it: KS256
    * roots produce 65-byte `r‖s‖v` (keccak256 digest), ES256 roots 64-byte
-   * IEEE P1363 `r‖s` (SHA-256 digest, low-s normalized).
+   * IEEE P1363 `r‖s` (SHA-256 digest, low-s normalized). WebAuthn passkey
+   * roots also submit the raw 64-byte `r‖s` here — never a container
+   * (univocity ADR-0008) — alongside the assertion fields below.
    */
   onchainSignature?: Uint8Array;
+  /**
+   * Raw authenticatorData of the on-chain delegation assertion, present iff
+   * the material was built by {@link buildByokDelegationMaterialWebauthn};
+   * submitted as `onchainAuthenticatorData` (base64).
+   */
+  onchainAuthenticatorData?: Uint8Array;
+  /** Raw clientDataJSON of the on-chain delegation assertion. */
+  onchainClientDataJSON?: Uint8Array;
 }
 
 /** POST /v1/api/delegations — local KMS sign or coordinator proxy. */
@@ -437,6 +452,111 @@ export async function buildByokDelegationMaterial(opts: {
     issuedAt: info.issuedAt,
     expiresAt: info.expiresAt,
     onchainSignature: onchainProof.signature,
+  };
+}
+
+/**
+ * Synthetic WebAuthn assertion for e2e (WebCrypto P-256, forge-style
+ * construction — plan-2608-13 2.4): signs
+ * `authenticatorData ‖ sha256(clientDataJSON)` where
+ * `clientDataJSON.challenge = base64url(challenge)`, exactly what a real
+ * authenticator produces. UP always; UV set by default (demo grants require
+ * it, plan-2608-13 Q3).
+ */
+export async function syntheticWebauthnAssertion(opts: {
+  keyPair: CryptoKeyPair;
+  challenge: Uint8Array;
+  uv?: boolean;
+  origin?: string;
+}): Promise<{
+  authenticatorData: Uint8Array;
+  clientDataJSON: Uint8Array;
+  signature: Uint8Array;
+}> {
+  const origin = opts.origin ?? "https://thinker.example";
+  const clientDataJSON = new TextEncoder().encode(
+    `{"type":"webauthn.get","challenge":"${base64UrlEncode(opts.challenge)}","origin":"${origin}","crossOrigin":false}`,
+  );
+  const rpId = new URL(origin).hostname;
+  const authenticatorData = new Uint8Array(37);
+  authenticatorData.set(
+    new Uint8Array(
+      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rpId)),
+    ),
+    0,
+  );
+  authenticatorData[32] = opts.uv === false ? 0x01 : 0x05; // UP (| UV)
+  const clientDataHash = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", toArrayBuffer(clientDataJSON)),
+  );
+  const signedBytes = new Uint8Array(37 + 32);
+  signedBytes.set(authenticatorData, 0);
+  signedBytes.set(clientDataHash, 37);
+  const signature = normalizeEs256SignatureLowS(
+    new Uint8Array(
+      await crypto.subtle.sign(
+        { name: "ECDSA", hash: "SHA-256" },
+        opts.keyPair.privateKey,
+        toArrayBuffer(signedBytes),
+      ),
+    ),
+  );
+  return { authenticatorData, clientDataJSON, signature };
+}
+
+/**
+ * Passkey-root BYOK delegation material (plan-2608-13 phase 2): the
+ * two-gesture ceremony with one synthetic assertion per artifact — a
+ * WebAuthn-enveloped certificate (devdocs ADR-0063) and a separate on-chain
+ * delegation assertion (univocity ADR-0008) submitted as `onchainSignature` +
+ * `onchainAuthenticatorData` + `onchainClientDataJSON`.
+ */
+export async function buildByokDelegationMaterialWebauthn(opts: {
+  rootKeyPair: CryptoKeyPair;
+  logIdHex32: string;
+  mmrStart: number;
+  mmrEnd: number;
+  delegatedPublicKey: Uint8Array;
+  ttlSeconds?: number;
+}): Promise<ByokDelegationMaterial> {
+  const kid = await deriveEs256KidFromPublicKey(opts.rootKeyPair.publicKey);
+  const certificate = await buildDelegationCertificateWebauthn(
+    {
+      logIdHex32: opts.logIdHex32,
+      mmrStart: opts.mmrStart,
+      mmrEnd: opts.mmrEnd,
+      delegatedPublicKeyCbor: opts.delegatedPublicKey,
+      ttlSeconds: opts.ttlSeconds,
+    },
+    kid,
+    (challenge) =>
+      syntheticWebauthnAssertion({ keyPair: opts.rootKeyPair, challenge }),
+  );
+  const info = parseDelegationCertificate(certificate);
+  const delegated = parseDelegatedCoseKeyFromPayload(
+    decodeDelegatedCoseKeyFromBytes(opts.delegatedPublicKey),
+  );
+  const tbs = buildOnchainDelegationToBeSignedWebauthn({
+    logIdHex: opts.logIdHex32,
+    mmrStart: opts.mmrStart,
+    mmrEnd: opts.mmrEnd,
+    delegatedKeyX: delegated.x,
+    delegatedKeyY: delegated.y,
+  });
+  const challenge = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", toArrayBuffer(tbs.sigStructureBytes)),
+  );
+  const onchain = await syntheticWebauthnAssertion({
+    keyPair: opts.rootKeyPair,
+    challenge,
+  });
+  return {
+    certificate,
+    issuedAt: info.issuedAt,
+    expiresAt: info.expiresAt,
+    onchainSignature: onchain.signature,
+    onchainAuthenticatorData: onchain.authenticatorData,
+    onchainClientDataJSON: onchain.clientDataJSON,
   };
 }
 
