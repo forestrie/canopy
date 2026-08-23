@@ -48,6 +48,12 @@ export const COSE_CRV_P256 = 1;
 export const COSE_ALG_ES256 = -7;
 /** COSE alg KS256 (-65799): keccak256 over Sig_structure, secp256k1 signature. */
 export const COSE_ALG_KS256 = -65799;
+/**
+ * COSE alg ES256_WEBAUTHN (-65800): P-256 root whose signature is a WebAuthn
+ * assertion; the Sig_structure is bound via `clientDataJSON.challenge`
+ * (univocity ADR-0008). Assertion material rides in `algData`.
+ */
+export const COSE_ALG_ES256_WEBAUTHN = -65800;
 
 /** KS256 EOA signature size: 32-byte r + 32-byte s + 1-byte recovery id. */
 export const KS256_EOA_SIG_BYTES = 65;

@@ -9,9 +9,11 @@ import {
   hasDataLogClass,
   hasDerivedFlag,
   hasExtendCapability,
+  hasRequiresUserVerification,
   isDataLogStatementGrantFlags,
   requiresChildPayment,
   withChildPaymentRequired,
+  withRequiresUserVerification,
 } from "../src/index.js";
 
 /**
@@ -122,9 +124,11 @@ describe("GF_ALG_MASK band — wire byte 2 is univocity-native (ADR-0008)", () =
   // Univocity v0.2.0 reserves bits 40–47 (canopy wire byte 2) as the native
   // algorithm-policy band (`GF_ALG_MASK`; first flag
   // GF_REQUIRES_USER_VERIFICATION = 1<<40). Unlike the byte-3 derived band,
-  // canopy must NEVER assign bits here: any set bit the presented delegation
-  // algorithm does not consume reverts UnsupportedDelegationPolicyFlags at
-  // publishCheckpoint. Canopy sets no byte-2 bit today; this pins that.
+  // canopy never *derives* bits here: a band bit is set only by an explicit
+  // opt-in constructor (`withRequiresUserVerification`), because any set bit
+  // the presented delegation algorithm does not consume reverts
+  // UnsupportedDelegationPolicyFlags at publishCheckpoint. Every other
+  // constructor keeps byte 2 clear — this pins the clear-by-default premise.
   const constructors: Array<[string, () => Uint8Array]> = [
     ["authLogBootstrapShapedFlags", authLogBootstrapShapedFlags],
     ["dataLogCreateExtendFlags", dataLogCreateExtendFlags],
@@ -140,7 +144,7 @@ describe("GF_ALG_MASK band — wire byte 2 is univocity-native (ADR-0008)", () =
     expect(build()[2]).toBe(0);
   });
 
-  it("no constructed grant lands bits in the univocity alg band (40–47)", () => {
+  it("no default-constructed grant lands bits in the univocity alg band (40–47)", () => {
     for (const [, build] of constructors) {
       const v = univocityFlagsUint(build());
       expect((v >> 40n) & 0xffn).toBe(0n);
@@ -148,10 +152,49 @@ describe("GF_ALG_MASK band — wire byte 2 is univocity-native (ADR-0008)", () =
   });
 
   it("withChildPaymentRequired preserves — not clears — a caller's byte 2, so the guard sits with the constructors", () => {
-    // Documents the trust boundary: constructors never set byte 2, and the
-    // mutator does not silently launder one that arrives set.
+    // Documents the trust boundary: constructors never set byte 2 uninvited,
+    // and the mutator does not silently launder one that arrives set.
     const tampered = new Uint8Array(8);
     tampered[2] = 0x01; // GF_REQUIRES_USER_VERIFICATION (univocity 1<<40)
     expect(withChildPaymentRequired(tampered)[2]).toBe(0x01);
+  });
+});
+
+describe("GF_REQUIRES_USER_VERIFICATION — explicit byte-2 opt-in (plan-2608-13)", () => {
+  it("withRequiresUserVerification sets byte 2 mask 0x01 and nothing else", () => {
+    const flags = withRequiresUserVerification(new Uint8Array(8));
+    expect(flags.length).toBe(8);
+    expect(flags[2]).toBe(0x01);
+    expect(flags[3]).toBe(0);
+    expect(flags[7]).toBe(0);
+  });
+
+  it("round-trips through the predicate; default grants carry no UV", () => {
+    expect(
+      hasRequiresUserVerification(
+        withRequiresUserVerification(new Uint8Array(8)),
+      ),
+    ).toBe(true);
+    expect(hasRequiresUserVerification(authLogBootstrapShapedFlags())).toBe(
+      false,
+    );
+    expect(hasRequiresUserVerification(new Uint8Array([0, 0, 0x01]))).toBe(
+      false, // short grants reject
+    );
+  });
+
+  it("preserves other flag bytes and does not mutate its input", () => {
+    const parent = authLogBootstrapShapedFlags(); // byte 3 = 0x03, byte 7 = 0x01
+    const flags = withRequiresUserVerification(parent);
+    expect(flags[2]).toBe(0x01);
+    expect(flags[3]).toBe(0x03);
+    expect(flags[7]).toBe(0x01);
+    expect(parent[2]).toBe(0);
+  });
+
+  it("lands on univocity bit 40 exactly (byte 2 → big-endian uint256 bits 40–47)", () => {
+    const flags = withRequiresUserVerification(new Uint8Array(8));
+    const v = univocityFlagsUint(flags);
+    expect(v).toBe(1n << 40n); // GF_REQUIRES_USER_VERIFICATION, nothing else
   });
 });

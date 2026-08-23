@@ -5,8 +5,10 @@
  */
 
 import {
+  base64UrlEncode,
   encodeCborDeterministic,
   encodeSigStructure,
+  WEBAUTHN_ENVELOPE_LABEL,
 } from "@forestrie/encoding";
 import { calculateRoot, type Proof } from "@forestrie/merklelog";
 import type { Grant } from "@forestrie/encoding";
@@ -73,8 +75,14 @@ async function buildDelegationCert(opts: {
   mmrEnd: number;
   issuedAt: number;
   expiresAt: number;
+  /** Sign as a WebAuthn assertion with the ADR-0063 envelope (alg -65800). */
+  webauthn?: boolean;
+  /** WebAuthn only: bind the challenge to other bytes (envelope unbound). */
+  webauthnUnbound?: boolean;
 }): Promise<Uint8Array> {
-  const protectedBytes = cborBytes(new Map<number, unknown>([[1, -7]]));
+  const protectedBytes = cborBytes(
+    new Map<number, unknown>([[1, opts.webauthn ? -65800 : -7]]),
+  );
   const payload = cborBytes(
     new Map<number, unknown>([
       [3, opts.mmrStart],
@@ -85,8 +93,79 @@ async function buildDelegationCert(opts: {
       [10, new Uint8Array(16)],
     ]),
   );
-  const sig = await es256Sign(opts.root.privateKey, protectedBytes, payload);
-  return cborBytes([protectedBytes, new Map<number, unknown>(), payload, sig]);
+  if (!opts.webauthn) {
+    const sig = await es256Sign(opts.root.privateKey, protectedBytes, payload);
+    return cborBytes([
+      protectedBytes,
+      new Map<number, unknown>(),
+      payload,
+      sig,
+    ]);
+  }
+
+  // A passkey root signs `authenticatorData ‖ sha256(clientDataJSON)`, with
+  // the certificate bound only via clientDataJSON.challenge (ADR-0063 §3).
+  const sigStructure = encodeSigStructure(
+    protectedBytes,
+    new Uint8Array(0),
+    payload,
+  );
+  const challengeSource = opts.webauthnUnbound
+    ? new TextEncoder().encode("bytes-of-some-other-artifact")
+    : sigStructure;
+  const challenge = base64UrlEncode(await sha256Bytes(challengeSource));
+  const clientDataJSON = new TextEncoder().encode(
+    `{"type":"webauthn.get","challenge":"${challenge}","origin":"https://thinker.example","crossOrigin":false}`,
+  );
+  const authData = new Uint8Array(37);
+  authData.fill(0xb2, 0, 32); // rpIdHash (unpinned offline)
+  authData[32] = 0x01; // UP
+  const cdjHash = await sha256Bytes(clientDataJSON);
+  const signedBytes = new Uint8Array(authData.length + 32);
+  signedBytes.set(authData, 0);
+  signedBytes.set(cdjHash, authData.length);
+  const sig = p256LowS(
+    new Uint8Array(
+      await crypto.subtle.sign(
+        { name: "ECDSA", hash: "SHA-256" },
+        opts.root.privateKey,
+        toArrayBuffer(signedBytes),
+      ),
+    ),
+  );
+  return cborBytes([
+    protectedBytes,
+    new Map<number, unknown>([
+      [WEBAUTHN_ENVELOPE_LABEL, [authData, clientDataJSON]],
+    ]),
+    payload,
+    sig,
+  ]);
+}
+
+async function sha256Bytes(bytes: Uint8Array): Promise<Uint8Array> {
+  return new Uint8Array(
+    await crypto.subtle.digest("SHA-256", toArrayBuffer(bytes)),
+  );
+}
+
+/** Low-s normalize (the -65800 wire form; the verifier rejects high-s). */
+function p256LowS(signature: Uint8Array): Uint8Array {
+  const n = BigInt(
+    "0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
+  );
+  let s = 0n;
+  for (let i = 32; i < 64; i++) {
+    s = (s << 8n) | BigInt(signature[i]!);
+  }
+  if (s <= n >> 1n) return signature;
+  s = n - s;
+  const out = new Uint8Array(64);
+  out.set(signature.subarray(0, 32), 0);
+  for (let i = 0; i < 32; i++) {
+    out[63 - i] = Number((s >> BigInt(8 * i)) & 0xffn);
+  }
+  return out;
 }
 
 /**
@@ -142,6 +221,10 @@ export async function buildDelegatedGrantReceiptFixture(opts?: {
   expiredAtIssuance?: boolean;
   /** Cert issuedAt follows the leaf's issuance time — valid (FOR-420). */
   leafBeforeIssued?: boolean;
+  /** Root is a passkey: cert carries the ADR-0063 WebAuthn envelope. */
+  webauthnRoot?: boolean;
+  /** WebAuthn cert whose challenge binds other bytes (unbound envelope). */
+  webauthnUnbound?: boolean;
 }): Promise<{
   genesisCbor: Uint8Array;
   receiptCbor: Uint8Array;
@@ -201,6 +284,8 @@ export async function buildDelegatedGrantReceiptFixture(opts?: {
         mmrEnd,
         issuedAt,
         expiresAt,
+        webauthn: opts?.webauthnRoot || opts?.webauthnUnbound,
+        webauthnUnbound: opts?.webauthnUnbound,
       });
 
   const receiptCbor = await buildDelegatedPeakReceipt({

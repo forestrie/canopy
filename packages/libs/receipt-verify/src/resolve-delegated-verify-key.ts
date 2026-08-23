@@ -6,9 +6,12 @@
  * trust root and returns the delegated public key as an additional verify
  * candidate — the offline port of canopy-api's `resolveReceiptVerifyKey`.
  *
- * ES256 (P-256) only: the offline verifier is ES256-only (genesis alg), and
- * sealer delegate keys are always secp256r1. KS256-rooted delegation is a
- * server-only concern.
+ * P-256 roots only: the genesis alg is ES256 and sealer delegate keys are
+ * always secp256r1; KS256-rooted delegation is a server-only concern. A
+ * passkey (WebAuthn) root signs the certificate with alg -65800 and the
+ * ADR-0063 unprotected-header envelope — `verifyCoseSign1WithParsedKey`
+ * verifies that envelope against the same P-256 root keys, so the chain walk
+ * here is alg-agnostic (plan-2608-13 1.4).
  *
  * Trust anchors (FOR-297 trust ladder): `rootKeys` need not be genesis-derived
  * — a caller-known log OWNER key works identically (see

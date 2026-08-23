@@ -18,6 +18,7 @@ export type { SignKs256 } from "./build-delegation-certificate-ks256.js";
 export { DELEGATION_CONTENT_TYPE } from "./delegation-content-type.js";
 export {
   COSE_ALG_ES256,
+  COSE_ALG_ES256_WEBAUTHN,
   COSE_ALG_KS256,
   COSE_CRV,
   COSE_CRV_P256,
@@ -33,16 +34,32 @@ export type {
   OnchainDelegationProofParts,
   OnchainDelegationToBeSigned,
 } from "./build-onchain-delegation.js";
+export type { WebauthnVerifyOptions } from "./build-onchain-delegation.js";
 export {
   ONCHAIN_DELEGATION_DOMAIN,
   buildOnchainDelegationToBeSignedEs256,
   buildOnchainDelegationToBeSignedKs256,
+  buildOnchainDelegationToBeSignedWebauthn,
   normalizeEs256SignatureLowS,
   signOnchainDelegationEs256,
   signOnchainDelegationKs256,
   verifyOnchainDelegationSignatureEs256,
   verifyOnchainDelegationSignatureKs256,
+  verifyOnchainDelegationSignatureWebauthn,
 } from "./build-onchain-delegation.js";
+
+export type { WebauthnDelegationAlgData } from "./webauthn-assertion.js";
+export {
+  WEBAUTHN_AUTH_DATA_MIN_BYTES,
+  WEBAUTHN_FLAG_BE,
+  WEBAUTHN_FLAG_BS,
+  WEBAUTHN_FLAG_UP,
+  WEBAUTHN_FLAG_UV,
+  assembleWebauthnDelegationAlgData,
+  decodeWebauthnDelegationAlgData,
+  derSignatureToP1363,
+  locateClientDataIndices,
+} from "./webauthn-assertion.js";
 
 export { assembleDelegationCertificate } from "./assemble-certificate.js";
 export {
