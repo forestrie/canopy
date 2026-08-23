@@ -58,6 +58,23 @@ export type {
 } from "./resolve-delegated-verify-key.js";
 /** Import a raw 64-byte x||y P-256 public key as an ES256 verify key. */
 export { importEs256PublicKeyFromGrantDataXy64 } from "./decode-trust-root-cbor.js";
+/**
+ * Passkey session-key endorsement (ADR-0064): build, assemble, and verify
+ * the one-gesture artifact chaining a passkey log root to the plain-ES256
+ * per-turn session key — the offline rung root → endorsement → leaves.
+ */
+export {
+  assembleSessionKeyEndorsement,
+  buildSessionKeyEndorsementTbs,
+  SESSION_KEY_ENDORSEMENT_CONTENT_TYPE,
+  SESSION_KEY_PAYLOAD_KEY,
+  verifySessionKeyEndorsement,
+} from "./session-key-endorsement.js";
+export type {
+  SessionKeyEndorsementTbs,
+  SessionKeyEndorsementVerifyResult,
+  VerifySessionKeyEndorsementOptions,
+} from "./session-key-endorsement.js";
 export { decodeForestrieGrantCose } from "./decode-forestrie-grant-cose.js";
 export { decodeGrantPayload, decodeGrantResponse } from "./grant-codec.js";
 
