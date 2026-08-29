@@ -57,6 +57,19 @@ export function isDataLogStatementGrantFlags(grant: Uint8Array): boolean {
   return hasExtendCapability(grant) && hasDataLogClass(grant);
 }
 
+/**
+ * GF_REQUIRES_USER_VERIFICATION — univocity bit 40, canopy wire byte 2 mask
+ * 0x01 (the native algorithm-policy band, univocity ADR-0008 §4; mirrors
+ * `@forestrie/grant-builder` `hasRequiresUserVerification`). At admission it
+ * is the ONE declaration of UV policy for the endorsement that rides an
+ * endorsed leaf (devdocs ADR-0065 §4), read identically by the chain, canopy
+ * and offline verifiers.
+ */
+export function hasRequiresUserVerification(grant: Uint8Array): boolean {
+  if (grant.length < 8) return false;
+  return ((grant[2] ?? 0) & 0x01) !== 0;
+}
+
 /** GF_DERIVED (univocity bit 34) on canopy wire byte 3, mask 0x04. */
 export function hasDerivedFlag(grant: Uint8Array): boolean {
   if (grant.length < 8) return false;

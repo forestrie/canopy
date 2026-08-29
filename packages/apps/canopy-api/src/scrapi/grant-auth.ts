@@ -108,11 +108,46 @@ function grantAuthProblem(
 }
 
 export const GrantAuthErrors = {
+  /** kid ≠ the resolved binding (grantData x, custodian kid, or the endorsed session x). */
   signerMismatch: () =>
     grantAuthProblem(
       403,
       "Forbidden",
-      "Statement signer does not match the grant's signer binding (grantData).",
+      "Statement signer does not match the grant's signer binding (grantData, or the endorsed session key).",
       "signer_mismatch",
+    ),
+  /**
+   * ADR-0065 §4 endorsement rejections — distinct reasons, and admission
+   * never falls back to the grantData binding when one of these fires.
+   */
+  endorsementInvalid: (detail?: string) =>
+    grantAuthProblem(
+      403,
+      "Forbidden",
+      detail ??
+        "Session-key endorsement (-65801) is malformed, wrong alg, wrong content type (v1), or its signature is invalid.",
+      "endorsement_invalid",
+    ),
+  endorsementRootMismatch: (detail?: string) =>
+    grantAuthProblem(
+      403,
+      "Forbidden",
+      detail ??
+        "Session-key endorsement does not verify under this grant's grantData root.",
+      "endorsement_root_mismatch",
+    ),
+  endorsementUvRequired: () =>
+    grantAuthProblem(
+      403,
+      "Forbidden",
+      "Grant requires user verification (GF_REQUIRES_USER_VERIFICATION) but the endorsement's assertion lacks UV.",
+      "endorsement_uv_required",
+    ),
+  endorsementExpired: (detail?: string) =>
+    grantAuthProblem(
+      403,
+      "Forbidden",
+      detail ?? "Session-key endorsement is outside its validity window.",
+      "endorsement_expired",
     ),
 };

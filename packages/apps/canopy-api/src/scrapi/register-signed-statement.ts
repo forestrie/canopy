@@ -13,9 +13,12 @@
  * **Flow:** The client sends the signed statement (COSE Sign1 body) and
  * **`Authorization: Forestrie-Grant`** holding a **transparent statement** (embedded grant,
  * idtimestamp, receipt). The handler resolves and authorizes the grant via receipt inclusion
- * ({@link grantAuthorize}), checks that it **allows statement registration** on **`T`**, checks
- * **`kid`** against **`grantData`**, verifies the **statement** COSE Sign1 (ES256 for **64-byte
- * x‖y** `grantData`, KS256 for **20-byte address** `grantData`), enqueues on **`T`**'s shard,
+ * ({@link grantAuthorize}), checks that it **allows statement registration** on **`T`**, resolves
+ * the **signer source** (ADR-0065 §4: `grantData`, or — when the statement carries a `-65801`
+ * session-key endorsement — the session key that endorsement binds, verified under the
+ * `grantData` root; see {@link resolveEndorsedStatementSigner}), checks **`kid`** against that
+ * binding, verifies the **statement** COSE Sign1 (ES256 for **64-byte x‖y** `grantData` or the
+ * endorsed session key, KS256 for **20-byte address** `grantData`), enqueues on **`T`**'s shard,
  * and returns **303** to the entry status URL.
  *
  * **Note:** The grant itself is NOT verified against `grantData` because delegated grants are
@@ -46,8 +49,10 @@ import { Erc1271UnavailableError } from "@forestrie/chain-rpc";
 import {
   getSignerFromCoseSign1,
   GrantAuthErrors,
+  signerMatchesGrant,
   signerMatchesStatementRegistrationGrant,
 } from "./grant-auth";
+import { resolveEndorsedStatementSigner } from "./endorsed-signer.js";
 import { importEs256PublicKeyFromGrantDataXy64 } from "./custodian-grant.js";
 import { isDataLogStatementGrantFlags } from "../grant/grant-flags.js";
 import {
@@ -213,14 +218,51 @@ export async function registerSignedStatement(
         "Grant grantData must carry the statement signer binding (non-empty).",
       );
     }
-    if (!signerMatchesStatementRegistrationGrant(statementSigner, grant)) {
+
+    // --- Signer source (ADR-0065 §4): exactly one of grantData / endorsed session key ---
+    // A -65801 session-key endorsement on the statement moves BOTH the kid
+    // binding and the verify key to the endorsed session key, after the
+    // endorsement verifies under the grantData root (UV per the grant flag,
+    // window vs canopy's clock). Present-but-invalid is a 403 here; nothing
+    // below is reached, so there is no fallback to grantData.
+    const signerSource = await resolveEndorsedStatementSigner(
+      statementData,
+      grant,
+      { nowMs: Date.now() },
+    );
+    if (signerSource.kind === "rejected") return signerSource.response;
+
+    if (signerSource.kind === "endorsed") {
+      const sessionX = signerSource.sessionPublicKeyXY.subarray(0, 32);
+      // The custodian 16-byte branch is not consulted under an endorsement.
+      if (!signerMatchesGrant(statementSigner, sessionX)) {
+        logSignerMismatch(statementSigner, sessionX);
+        return GrantAuthErrors.signerMismatch();
+      }
+      const statementSigOk = await verifyCoseSign1(
+        statementData,
+        signerSource.sessionKey,
+        { logFailures: true, logPrefix: "register-statement-endorsed-payload" },
+      );
+      if (!statementSigOk) {
+        return ClientErrors.invalidStatement(
+          "Statement COSE signature verification failed under the endorsed session key.",
+        );
+      }
+    } else if (
+      !signerMatchesStatementRegistrationGrant(statementSigner, grant)
+    ) {
       logSignerMismatch(statementSigner, grantSignerBinding);
       return GrantAuthErrors.signerMismatch();
     }
 
-    // Statement signature verification: ES256 (64-byte x‖y) or KS256 (20-byte address).
+    // Statement signature verification under grantData: ES256 (64-byte x‖y)
+    // or KS256 (20-byte address). Skipped when the endorsed session key
+    // already verified the statement above.
     const grantDataBytes = grantDataToBytes(grant.grantData);
-    if (grantDataBytes.length === 64) {
+    if (signerSource.kind === "endorsed") {
+      // verified above
+    } else if (grantDataBytes.length === 64) {
       let statementVerifyKey: CryptoKey;
       try {
         statementVerifyKey =

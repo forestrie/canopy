@@ -31,9 +31,10 @@ const CANOPY_COPY = resolve(
 const BUILDER_ONLY = new Set([
   "dataLogCreateExtendFlags",
   "dataLogExtendFlags",
-  // Byte-2 alg-band opt-in (plan-2608-13): canopy-api does not issue or
-  // inspect UV-flagged grants; mirror these into the fork when it does.
-  "hasRequiresUserVerification",
+  // Byte-2 alg-band opt-in (plan-2608-13). canopy-api now READS the flag at
+  // admission (`hasRequiresUserVerification` is mirrored into the fork —
+  // devdocs ADR-0065 §4, plan-2608-14) but still never issues UV-flagged
+  // grants, so the setter stays grant-builder-only.
   "withRequiresUserVerification",
 ]);
 
