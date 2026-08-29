@@ -170,20 +170,23 @@ After resolving `Authorization: Forestrie-Grant` to a `Grant`:
 
 1. **Inclusion** (the only authenticity check): the grant's embedded **receipt** must verify via `grantAuthorize` — MMR inclusion proof + signature by the owner-log receipt authority.
 2. `isStatementRegistrationGrant(grant)` must be **true** (403 otherwise).
-3. `grantData` non-empty; the statement COSE `kid` must match `statementSignerBindingBytes(grant)` (`signer_mismatch` if not).
+3. `grantData` non-empty; the **signer source** is resolved from exactly one place ([devdocs ADR-0065 §4](https://github.com/forestrie/devdocs/blob/main/adr/adr-0065-endorsed-session-key-admission.md), `scrapi/endorsed-signer.ts`):
+   - **No unprotected `-65801` entry** on the statement: the COSE `kid` must match `statementSignerBindingBytes(grant)` (or the 16-byte custodian kid for a 64-byte `grantData`), and the signature is verified under `grantData` (`signer_mismatch` if the kid does not match).
+   - **`-65801` present** (a passkey **session-key endorsement**, `@forestrie/receipt-verify` v2 payload): it must verify under the **`grantData` root** (kid pinned to root x; UV required iff the grant carries `GF_REQUIRES_USER_VERIFICATION`; window `[notBefore, notAfter]` checked against canopy's clock on every request). The binding then becomes the endorsed **session key's x** and the statement is verified under the session key. Present-but-invalid is a **403** with a distinct reason — `endorsement_invalid`, `endorsement_root_mismatch`, `endorsement_uv_required`, `endorsement_expired` — and admission **never falls back** to `grantData`; the custodian 16-byte branch is not consulted.
+   - `contentHash` is SHA-256 of the full statement bytes, so the endorsement is committed with the leaf; offline, `verifyEndorsedLeaf` walks the same chain from public artifacts.
 
-Full envelope verification on `/entries` against `K(owner)` is a known gap; the `kid` binding is `grantData`-only and must stay tied to the **commitment** (see [§4](#4-signer-commitments-vs-actual-grant-envelope-signer)).
+Full envelope verification on `/entries` against `K(owner)` is a known gap; the `kid` binding is `grantData`-only (or a session key `grantData` has endorsed within its window) and must stay tied to the **commitment** (see [§4](#4-signer-commitments-vs-actual-grant-envelope-signer)).
 
 ---
 
 ## 8. Quick reference: “which document?”
 
-| Topic                                                    | Document                                                                    |
-| -------------------------------------------------------- | --------------------------------------------------------------------------- |
-| Formal model, §4/§5/§6 obligations, circularity, roadmap | [ARC-0001](arc-0001-grant-verification.md)                                  |
+| Topic                                                    | Document                                                                        |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Formal model, §4/§5/§6 obligations, circularity, roadmap | [ARC-0001](arc-0001-grant-verification.md)                                      |
 | Byte flow for `kid` vs `grantData`, pool / k6            | [arc-grant-statement-signer-binding](arc/arc-grant-statement-signer-binding.md) |
-| Parent-grant evidence wire format (POST body)            | [§11](#11-evidence-transport-parent-grant-post-body)                        |
-| Legacy register-grant request shape (out of date)        | [api/register-grant.md](api/register-grant.md)                              |
+| Parent-grant evidence wire format (POST body)            | [§11](#11-evidence-transport-parent-grant-post-body)                            |
+| Legacy register-grant request shape (out of date)        | [api/register-grant.md](api/register-grant.md)                                  |
 | COSE / hashing details                                   | [arc-statement-cose-encoding.md](arc/arc-statement-cose-encoding.md)            |
 
 ---
