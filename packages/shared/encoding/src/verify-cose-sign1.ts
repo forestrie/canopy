@@ -31,6 +31,16 @@ export const COSE_ALG_ES256_WEBAUTHN = -65800;
  * alg id doubles as the label; no on-chain-style index-hint element).
  */
 export const WEBAUTHN_ENVELOPE_LABEL = COSE_ALG_ES256_WEBAUTHN;
+/**
+ * Unprotected header label carrying a passkey session-key endorsement (a COSE
+ * Sign1, embedded as bytes) on every endorsed per-turn leaf (devdocs ADR-0065
+ * §2). Reserved for that artifact only — it is NOT the WebAuthn envelope: a
+ * -65800 entry on a plain-ES256 leaf stays a fail-closed rejection here, and
+ * this label is deliberately ignored by the plain verify path (the endorsed
+ * leaf verifies under the SESSION key; only `@forestrie/receipt-verify`
+ * `verifyEndorsedLeaf` / canopy admission chain root → endorsement → leaf).
+ */
+export const COSE_LABEL_SESSION_KEY_ENDORSEMENT = -65801;
 
 /** WebAuthn authenticatorData flag bits (WebAuthn L2 §6.1). */
 const AUTH_FLAG_UP = 0x01;

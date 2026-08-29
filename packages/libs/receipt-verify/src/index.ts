@@ -49,6 +49,7 @@ export type {
 } from "./verify-grant-receipt-offline.js";
 export {
   checkDelegationConstraints,
+  idtimestampToUnixMs,
   idtimestampToUnixSeconds,
   resolveDelegatedVerifyKey,
 } from "./resolve-delegated-verify-key.js";
@@ -59,22 +60,48 @@ export type {
 /** Import a raw 64-byte x||y P-256 public key as an ES256 verify key. */
 export { importEs256PublicKeyFromGrantDataXy64 } from "./decode-trust-root-cbor.js";
 /**
- * Passkey session-key endorsement (ADR-0064): build, assemble, and verify
- * the one-gesture artifact chaining a passkey log root to the plain-ES256
- * per-turn session key — the offline rung root → endorsement → leaves.
+ * Passkey session-key endorsement v2 (ADR-0064 as amended by ADR-0065):
+ * build, assemble, and verify the artifact chaining a passkey log root to the
+ * plain-ES256 per-turn session key for a validity window. The endorsement
+ * rides inside every endorsed leaf at unprotected label -65801
+ * (`COSE_LABEL_SESSION_KEY_ENDORSEMENT`, @forestrie/encoding).
  */
 export {
   assembleSessionKeyEndorsement,
   buildSessionKeyEndorsementTbs,
+  checkEndorsementWindow,
+  DEFAULT_ENDORSEMENT_WINDOW_MS,
+  NOT_AFTER_PAYLOAD_KEY,
+  NOT_BEFORE_PAYLOAD_KEY,
   SESSION_KEY_ENDORSEMENT_CONTENT_TYPE,
+  SESSION_KEY_ENDORSEMENT_V1_CONTENT_TYPE,
   SESSION_KEY_PAYLOAD_KEY,
   verifySessionKeyEndorsement,
 } from "./session-key-endorsement.js";
 export type {
+  EndorsementWindow,
+  EndorsementWindowCheck,
+  SessionKeyEndorsementFailureReason,
   SessionKeyEndorsementTbs,
   SessionKeyEndorsementVerifyResult,
   VerifySessionKeyEndorsementOptions,
 } from "./session-key-endorsement.js";
+/**
+ * The single offline rung for a passkey-rooted log (ADR-0065 §5): root →
+ * endorsement (inside the leaf) → session key → leaf → receipt + window.
+ */
+export {
+  endorsementAdmissionReason,
+  extractLeafEndorsement,
+  verifyEndorsedLeaf,
+} from "./verify-endorsed-leaf.js";
+export type {
+  EndorsementAdmissionReason,
+  VerifyEndorsedLeafInput,
+  VerifyEndorsedLeafOptions,
+  VerifyEndorsedLeafResult,
+  VerifyEndorsedLeafStage,
+} from "./verify-endorsed-leaf.js";
 export { decodeForestrieGrantCose } from "./decode-forestrie-grant-cose.js";
 export { decodeGrantPayload, decodeGrantResponse } from "./grant-codec.js";
 

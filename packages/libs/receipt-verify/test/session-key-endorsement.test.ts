@@ -1,8 +1,9 @@
 /**
- * Session-key endorsement verify (ADR-0064): the passkey root endorses the
- * plain-ES256 session key once; the offline chain is root → endorsement →
- * per-turn leaves. Synthetic assertions mirror the encoding package's
- * ES256_WEBAUTHN envelope tests (same challenge-binding construction).
+ * Session-key endorsement v2 verify (ADR-0064 as amended by ADR-0065 §3): the
+ * passkey root endorses the plain-ES256 session key for a validity window
+ * `[notBefore, notAfter]` (unix ms, the idtimestamp time domain). Synthetic
+ * assertions mirror the encoding package's ES256_WEBAUTHN envelope tests
+ * (same challenge-binding construction).
  */
 
 import { describe, expect, it } from "vitest";
@@ -18,9 +19,24 @@ import {
   assembleSessionKeyEndorsement,
   buildSessionKeyEndorsementTbs,
   SESSION_KEY_ENDORSEMENT_CONTENT_TYPE,
+  SESSION_KEY_ENDORSEMENT_V1_CONTENT_TYPE,
   verifySessionKeyEndorsement,
   type SessionKeyEndorsementTbs,
 } from "../src/session-key-endorsement.js";
+
+/** A fixed, plausible 7-day window (unix ms). */
+const WINDOW = { notBefore: 1_790_000_000_000, notAfter: 1_790_604_800_000 };
+
+/** Deterministic v2 payload bytes for hand-rolled negative shapes. */
+function v2Payload(sessionXy: Uint8Array): Uint8Array {
+  return encodeCborDeterministic(
+    new Map<string, unknown>([
+      ["sessionKey", sessionXy],
+      ["notBefore", WINDOW.notBefore],
+      ["notAfter", WINDOW.notAfter],
+    ]),
+  );
+}
 
 const FLAG_UP = 0x01;
 const FLAG_UV = 0x04;
@@ -107,6 +123,7 @@ async function buildEndorsement(
     buildSessionKeyEndorsementTbs({
       rootPublicKeyX: rootXy.slice(0, 32),
       sessionPublicKeyXY,
+      ...WINDOW,
     });
   const assertion = await synthesizeAssertion(root, tbs.sigStructureBytes, {
     flags: opts?.flags,
@@ -133,7 +150,7 @@ async function buildVariantEndorsement(
   });
 }
 
-describe("verifySessionKeyEndorsement (ADR-0064)", () => {
+describe("verifySessionKeyEndorsement v2 (ADR-0064 + ADR-0065 §3)", () => {
   it("round-trips: root endorses session key; returned key verifies a leaf signature", async () => {
     const root = await generateKeyPair();
     const session = await generateKeyPair();
@@ -147,6 +164,8 @@ describe("verifySessionKeyEndorsement (ADR-0064)", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.sessionPublicKeyXY).toEqual(sessionXy);
+    expect(result.notBefore).toBe(WINDOW.notBefore);
+    expect(result.notAfter).toBe(WINDOW.notAfter);
 
     // The chain's last rung: a per-turn leaf signed by the session key
     // verifies under the key the endorsement yielded.
@@ -187,6 +206,7 @@ describe("verifySessionKeyEndorsement (ADR-0064)", () => {
     const tbs = buildSessionKeyEndorsementTbs({
       rootPublicKeyX: otherXy.slice(0, 32),
       sessionPublicKeyXY: sessionXy,
+      ...WINDOW,
     });
     const mismatched = await buildEndorsement(root, sessionXy, {
       tbsOverride: tbs,
@@ -226,9 +246,7 @@ describe("verifySessionKeyEndorsement (ADR-0064)", () => {
         [4, rootXy.slice(0, 32)],
       ]),
     );
-    const payloadBstr = encodeCborDeterministic(
-      new Map<string, unknown>([["sessionKey", sessionXy]]),
-    );
+    const payloadBstr = v2Payload(sessionXy);
     const sigStructure = encodeSigStructure(
       protectedBstr,
       new Uint8Array(0),
@@ -256,13 +274,13 @@ describe("verifySessionKeyEndorsement (ADR-0064)", () => {
     const session = await generateKeyPair();
     const sessionXy = await exportXy(session.publicKey);
     const rootXy = await exportXy(root.publicKey);
-    const payloadBstr = encodeCborDeterministic(
-      new Map<string, unknown>([["sessionKey", sessionXy]]),
-    );
+    const payloadBstr = v2Payload(sessionXy);
     for (const cty of [
       undefined,
       "application/cbor",
       "application/vnd.forestrie.delegation+cbor",
+      // v1 is rejected, not grandfathered (ADR-0065 §3) — even over a v2 payload.
+      SESSION_KEY_ENDORSEMENT_V1_CONTENT_TYPE,
     ]) {
       const protectedMap = new Map<number, unknown>([
         [1, -65800],
@@ -282,7 +300,7 @@ describe("verifySessionKeyEndorsement (ADR-0064)", () => {
     }
   });
 
-  it("rejects payloads that are not exactly {sessionKey: 64 bytes}", async () => {
+  it("rejects payloads that are not exactly {sessionKey: 64 bytes, notBefore, notAfter}", async () => {
     const root = await generateKeyPair();
     const session = await generateKeyPair();
     const sessionXy = await exportXy(session.publicKey);
@@ -292,18 +310,30 @@ describe("verifySessionKeyEndorsement (ADR-0064)", () => {
       [3, SESSION_KEY_ENDORSEMENT_CONTENT_TYPE],
       [4, rootXy.slice(0, 32)],
     ]);
+    const v2 = (over: Record<string, unknown>) =>
+      encodeCborDeterministic(
+        new Map<string, unknown>(
+          Object.entries({
+            sessionKey: sessionXy,
+            notBefore: WINDOW.notBefore,
+            notAfter: WINDOW.notAfter,
+            ...over,
+          }).filter(([, v]) => v !== undefined),
+        ),
+      );
     const badPayloads: Uint8Array[] = [
       encodeCborDeterministic(new Map()), // empty map
+      v2({ sessionKey: sessionXy.slice(0, 32) }), // 32 bytes
+      v2({ extra: 1 }), // extra entry
+      v2({ sessionKey: undefined, key: sessionXy }), // wrong label
       encodeCborDeterministic(
-        new Map<string, unknown>([["sessionKey", sessionXy.slice(0, 32)]]),
-      ), // 32 bytes
-      encodeCborDeterministic(
-        new Map<string, unknown>([
-          ["sessionKey", sessionXy],
-          ["extra", 1],
-        ]),
-      ), // extra entry
-      encodeCborDeterministic(new Map<string, unknown>([["key", sessionXy]])), // wrong label
+        new Map<string, unknown>([["sessionKey", sessionXy]]),
+      ), // v1 payload shape (no window) under the v2 content type
+      v2({ notAfter: undefined }), // missing notAfter
+      v2({ notBefore: undefined }), // missing notBefore
+      v2({ notBefore: "soon" }), // wrong type
+      v2({ notBefore: -1 }), // negative (must be an unsigned CBOR int)
+      v2({ notAfter: new Uint8Array(8) }), // bstr where a uint is required
       encodeCborDeterministic(sessionXy), // bare bstr, not a map
     ];
     for (const payloadBstr of badPayloads) {
@@ -320,13 +350,75 @@ describe("verifySessionKeyEndorsement (ADR-0064)", () => {
     }
   });
 
+  it("rejects a malformed window: notAfter <= notBefore", async () => {
+    const root = await generateKeyPair();
+    const session = await generateKeyPair();
+    const sessionXy = await exportXy(session.publicKey);
+    const rootXy = await exportXy(root.publicKey);
+    const protectedMap = new Map<number, unknown>([
+      [1, -65800],
+      [3, SESSION_KEY_ENDORSEMENT_CONTENT_TYPE],
+      [4, rootXy.slice(0, 32)],
+    ]);
+    for (const [notBefore, notAfter] of [
+      [WINDOW.notAfter, WINDOW.notBefore], // inverted
+      [WINDOW.notBefore, WINDOW.notBefore], // empty
+    ]) {
+      const payloadBstr = encodeCborDeterministic(
+        new Map<string, unknown>([
+          ["sessionKey", sessionXy],
+          ["notBefore", notBefore],
+          ["notAfter", notAfter],
+        ]),
+      );
+      const endorsement = await buildVariantEndorsement(
+        root,
+        protectedMap,
+        payloadBstr,
+      );
+      const result = await verifySessionKeyEndorsement(
+        endorsement,
+        root.publicKey,
+      );
+      expect(result).toEqual({ ok: false, reason: "window_invalid" });
+    }
+    // The builder refuses the same shapes up front.
+    expect(() =>
+      buildSessionKeyEndorsementTbs({
+        rootPublicKeyX: rootXy.slice(0, 32),
+        sessionPublicKeyXY: sessionXy,
+        notBefore: WINDOW.notAfter,
+        notAfter: WINDOW.notBefore,
+      }),
+    ).toThrow();
+  });
+
+  it("payload bytes are deterministic regardless of how the caller orders the window fields", () => {
+    const rootX = new Uint8Array(32).fill(1);
+    const sessionPublicKeyXY = new Uint8Array(64).fill(2);
+    const a = buildSessionKeyEndorsementTbs({
+      rootPublicKeyX: rootX,
+      sessionPublicKeyXY,
+      notBefore: WINDOW.notBefore,
+      notAfter: WINDOW.notAfter,
+    });
+    // Same inputs, same bytes — the artifact the browser signs is the
+    // artifact everyone verifies (RFC 8949 §4.2.1 key order).
+    const b = buildSessionKeyEndorsementTbs({
+      notAfter: WINDOW.notAfter,
+      sessionPublicKeyXY,
+      notBefore: WINDOW.notBefore,
+      rootPublicKeyX: rootX,
+    });
+    expect(a.payloadBstr).toEqual(b.payloadBstr);
+    expect(a.sigStructureBytes).toEqual(b.sigStructureBytes);
+  });
+
   it("rejects a missing or malformed kid", async () => {
     const root = await generateKeyPair();
     const session = await generateKeyPair();
     const sessionXy = await exportXy(session.publicKey);
-    const payloadBstr = encodeCborDeterministic(
-      new Map<string, unknown>([["sessionKey", sessionXy]]),
-    );
+    const payloadBstr = v2Payload(sessionXy);
     for (const kid of [undefined, new Uint8Array(20), "not-bytes"]) {
       const protectedMap = new Map<number, unknown>([
         [1, -65800],
@@ -346,7 +438,7 @@ describe("verifySessionKeyEndorsement (ADR-0064)", () => {
     }
   });
 
-  it("enforces UV only when deployment config requires it (ADR-0064 §3)", async () => {
+  it("enforces UV only when the caller requires it — distinct reason (ADR-0065 §4)", async () => {
     const root = await generateKeyPair();
     const session = await generateKeyPair();
     const sessionXy = await exportXy(session.publicKey);
@@ -356,12 +448,10 @@ describe("verifySessionKeyEndorsement (ADR-0064)", () => {
     });
 
     expect(
-      (
-        await verifySessionKeyEndorsement(upOnly, root.publicKey, {
-          requireUserVerification: true,
-        })
-      ).ok,
-    ).toBe(false);
+      await verifySessionKeyEndorsement(upOnly, root.publicKey, {
+        requireUserVerification: true,
+      }),
+    ).toEqual({ ok: false, reason: "uv_required" });
     expect(
       (
         await verifySessionKeyEndorsement(upUv, root.publicKey, {
@@ -386,15 +476,11 @@ describe("verifySessionKeyEndorsement (ADR-0064)", () => {
     const honest = buildSessionKeyEndorsementTbs({
       rootPublicKeyX: rootXy.slice(0, 32),
       sessionPublicKeyXY: sessionXy,
+      ...WINDOW,
     });
     const assertion = await synthesizeAssertion(root, honest.sigStructureBytes);
     const swapped = assembleSessionKeyEndorsement({
-      tbs: {
-        ...honest,
-        payloadBstr: encodeCborDeterministic(
-          new Map<string, unknown>([["sessionKey", attackerXy]]),
-        ),
-      },
+      tbs: { ...honest, payloadBstr: v2Payload(attackerXy) },
       ...assertion,
     });
     const result = await verifySessionKeyEndorsement(swapped, root.publicKey);
@@ -408,13 +494,25 @@ describe("verifySessionKeyEndorsement (ADR-0064)", () => {
       buildSessionKeyEndorsementTbs({
         rootPublicKeyX: new Uint8Array(20),
         sessionPublicKeyXY: sessionXy,
+        ...WINDOW,
       }),
     ).toThrow();
     expect(() =>
       buildSessionKeyEndorsementTbs({
         rootPublicKeyX: new Uint8Array(32),
         sessionPublicKeyXY: sessionXy.slice(0, 32),
+        ...WINDOW,
       }),
     ).toThrow();
+    for (const bad of [-1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 2]) {
+      expect(() =>
+        buildSessionKeyEndorsementTbs({
+          rootPublicKeyX: new Uint8Array(32),
+          sessionPublicKeyXY: sessionXy,
+          notBefore: bad,
+          notAfter: WINDOW.notAfter,
+        }),
+      ).toThrow();
+    }
   });
 });
