@@ -71,10 +71,19 @@ const SNOWFLAKE_TIME_SHIFT = 24n;
 const SNOWFLAKE_EPOCH_SPAN_MS = (1n << 40n) - 1n;
 
 export function idtimestampToUnixSeconds(idtimestamp: bigint): number {
-  const ms =
+  return Math.floor(idtimestampToUnixMs(idtimestamp) / 1000);
+}
+
+/**
+ * Snowflake idtimestamp → Unix milliseconds: the time component an
+ * ADR-0065 §3 endorsement window is expressed in
+ * (`ms = (id >> TimeShift) + EpochMS(epoch)`).
+ */
+export function idtimestampToUnixMs(idtimestamp: bigint): number {
+  return Number(
     COMMITMENT_EPOCH * SNOWFLAKE_EPOCH_SPAN_MS +
-    (idtimestamp >> SNOWFLAKE_TIME_SHIFT);
-  return Number(ms / 1000n);
+      (idtimestamp >> SNOWFLAKE_TIME_SHIFT),
+  );
 }
 
 /**
