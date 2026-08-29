@@ -34,6 +34,7 @@ import type { BootstrapSigningContext } from "./bootstrap-delegation-coordinator
 import { base64ToBytes } from "@forestrie/grant-builder";
 import {
   buildByokDelegationMaterial,
+  buildByokDelegationMaterialWebauthn,
   buildKs256BootstrapDelegationMaterial,
   bytesToBase64,
 } from "./coordinator-delegation-helpers.js";
@@ -99,24 +100,33 @@ export async function signStandingAdvanceDelegation(opts: {
   const mmrEnd = opts.horizonMmrEnd ?? ADVANCE_HORIZON_MMR_END;
   const delegatedPublicKey = base64ToBytes(standing.delegatedPublicKey);
 
-  const material = opts.signingContext.es256RootKeyPair
-    ? await buildByokDelegationMaterial({
-        rootKeyPair: opts.signingContext.es256RootKeyPair,
+  const material = opts.signingContext.passkeyRootKeyPair
+    ? await buildByokDelegationMaterialWebauthn({
+        rootKeyPair: opts.signingContext.passkeyRootKeyPair,
         logIdHex32: opts.logIdHex32,
         mmrStart,
         mmrEnd,
         delegatedPublicKey,
         ttlSeconds: standing.suggestedTtlSeconds,
       })
-    : await buildKs256BootstrapDelegationMaterial({
-        rootSignerAddress: opts.signingContext.ks256RootAddress!,
-        privateKeyHex: opts.signingContext.ks256PrivateKeyHex!,
-        logIdHex32: opts.logIdHex32,
-        mmrStart,
-        mmrEnd,
-        delegatedPublicKey,
-        ttlSeconds: standing.suggestedTtlSeconds,
-      });
+    : opts.signingContext.es256RootKeyPair
+      ? await buildByokDelegationMaterial({
+          rootKeyPair: opts.signingContext.es256RootKeyPair,
+          logIdHex32: opts.logIdHex32,
+          mmrStart,
+          mmrEnd,
+          delegatedPublicKey,
+          ttlSeconds: standing.suggestedTtlSeconds,
+        })
+      : await buildKs256BootstrapDelegationMaterial({
+          rootSignerAddress: opts.signingContext.ks256RootAddress!,
+          privateKeyHex: opts.signingContext.ks256PrivateKeyHex!,
+          logIdHex32: opts.logIdHex32,
+          mmrStart,
+          mmrEnd,
+          delegatedPublicKey,
+          ttlSeconds: standing.suggestedTtlSeconds,
+        });
 
   // REQUIRED for advance, unlike on-demand material where it is optional:
   // without it the sealer's lease carries no OnchainProof and the publisher
@@ -145,6 +155,19 @@ export async function signStandingAdvanceDelegation(opts: {
         issuedAt: material.issuedAt,
         expiresAt: material.expiresAt,
         onchainSignature: bytesToBase64(material.onchainSignature),
+        // WebAuthn roots: the coordinator requires the assertion parts
+        // together with the signature (plan-2608-13 phase 2 intake); they
+        // become the 3-element `algData` the publisher puts on-chain.
+        ...(material.onchainAuthenticatorData && material.onchainClientDataJSON
+          ? {
+              onchainAuthenticatorData: bytesToBase64(
+                material.onchainAuthenticatorData,
+              ),
+              onchainClientDataJSON: bytesToBase64(
+                material.onchainClientDataJSON,
+              ),
+            }
+          : {}),
       },
     },
   );

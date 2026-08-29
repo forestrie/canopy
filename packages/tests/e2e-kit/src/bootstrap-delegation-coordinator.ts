@@ -69,6 +69,14 @@ export interface BootstrapSigningContext {
   es256RootKeyPair?: CryptoKeyPair;
   ks256PrivateKeyHex?: string;
   ks256RootAddress?: Uint8Array;
+  /**
+   * A passkey-rooted log (devdocs ADR-0063/ADR-0064; plan-2608-14 4.1): the
+   * root signs delegations as WebAuthn assertions (synthetic here), so the
+   * material carries the two-gesture ceremony. Takes precedence over the
+   * plain ES256 pair when both are set. Not a bootstrap root — a child data
+   * log whose `grantData` is the passkey x‖y.
+   */
+  passkeyRootKeyPair?: CryptoKeyPair;
 }
 
 async function loadBootstrapSigningContext(

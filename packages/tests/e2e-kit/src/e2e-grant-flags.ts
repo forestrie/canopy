@@ -11,6 +11,8 @@ export {
   derivedEndorsementGrantFlags,
   hasChildPaymentRequiredFlag,
   hasDerivedFlag,
+  hasRequiresUserVerification,
   requiresChildPayment,
   withChildPaymentRequired,
+  withRequiresUserVerification,
 } from "@forestrie/grant-builder";
