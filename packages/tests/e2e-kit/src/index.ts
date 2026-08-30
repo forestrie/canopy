@@ -89,6 +89,14 @@ export * from "./sign-standing-advance-delegation.js";
 export * from "./wallet-challenge-session-e2e.js";
 export * from "./delegation-cbor-contract.js";
 export * from "./byok-wallet-seal-helpers.js";
+/** passkey custody slice (0.15.0) — ADR-0065 endorsed session leaves */
+export * from "./endorsed-session-leaf.js";
+export {
+  extractLeafEndorsement,
+  verifyEndorsedLeaf,
+  verifySessionKeyEndorsement,
+  type VerifyEndorsedLeafResult,
+} from "@forestrie/receipt-verify";
 export {
   decodeEntryIdHex,
   entryIdHexToIdtimestampBe8,

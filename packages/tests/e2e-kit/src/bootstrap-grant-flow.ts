@@ -106,7 +106,7 @@ export interface CompleteBootstrapGrantWithReceiptResult {
  * anywhere — it just makes checkpointing defer forever, which surfaces minutes
  * later as a receipt 404 that reads like a product defect.
  */
-async function establishStandingDelegation(opts: {
+export async function establishStandingDelegation(opts: {
   request: APIRequestContext;
   logId: string;
   signingContext: BootstrapSigningContext;

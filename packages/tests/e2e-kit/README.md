@@ -67,6 +67,17 @@ Cross-repo lane specs (forest genesis, Mode B/C registration, BYOK) run in
 - Picks up `@forestrie/receipt-verify` 0.3.0 (canonical `Grant` from
   `@forestrie/grant-builder`, FOR-353)
 
+### 0.15.0 — Passkey custody slice (plan-2608-14 4.1)
+
+- `endorsed-session-leaf.ts`: `passkeySessionCustody` (synthetic passkey root
+  - endorsed session key + v2 endorsement), `buildSyntheticSessionKeyEndorsement`,
+    `signEndorsedSessionStatement` (leaf signed by the session key carrying the
+    endorsement at `-65801`, ADR-0065 §2)
+- `signStandingAdvanceDelegation` signs the standing entry with the WebAuthn
+  two-gesture material when `BootstrapSigningContext.passkeyRootKeyPair` is set
+  (certificate envelope + `onchainAuthenticatorData` / `onchainClientDataJSON`)
+- `establishStandingDelegation` exported; `verifyEndorsedLeaf` re-exported
+
 ## Install
 
 Published to public [npmjs.org](https://www.npmjs.com/package/@forestrie/canopy-e2e-kit)
