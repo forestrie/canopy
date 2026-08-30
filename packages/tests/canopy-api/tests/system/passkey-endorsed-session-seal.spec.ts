@@ -17,14 +17,15 @@
  * session-signed leaf → `403 signer_mismatch`), then proves the §4 rules
  * fail-closed (wrong root, missing UV) and that the endorsed leaf is admitted.
  *
- * Test 2 (opt-in `E2E_PASSKEY_SEAL_STRETCH=1`): the leaf seals under a
- * WebAuthn two-gesture standing delegation and the receipt verifies offline
- * through `verifyEndorsedLeaf` (ADR-0065 §5) from the root, the leaf bytes
- * and the receipt alone. Opt-in because the deployed sealer verifies
- * delegation certificates as plain ES256 over `Sig_structure`
- * (arbor `delegationcert.VerifyCertificateSignature`) and so refuses the
- * `-65800` envelope — this spec is the standing proof of that gap until the
- * sealer lands the envelope branch; flip it to default-on then.
+ * Test 2 (default-on; opt out with `E2E_PASSKEY_SEAL_STRETCH=0`): the leaf
+ * seals under a WebAuthn two-gesture standing delegation and the receipt
+ * verifies offline through `verifyEndorsedLeaf` (ADR-0065 §5) from the root,
+ * the leaf bytes and the receipt alone. It was opt-in while the deployed
+ * sealer verified delegation certificates as plain ES256 over `Sig_structure`
+ * and refused the `-65800` envelope; arbor#95 (v0.1.35,
+ * `delegationcert.VerifyCertificateSignature` envelope branch) closed that
+ * gap and this test went green on lane A 2026-08-30, so it is now the
+ * standing regression guard for it.
  */
 
 import { randomUUID } from "node:crypto";
@@ -94,11 +95,10 @@ import {
 import { verifyCoseSign1WithParsedKey } from "@forestrie/encoding";
 
 const sealStretchSkip =
-  process.env.E2E_PASSKEY_SEAL_STRETCH?.trim() === "1"
-    ? null
-    : "Passkey seal stretch requires E2E_PASSKEY_SEAL_STRETCH=1 (the deployed " +
-      "sealer verifies delegation certs as plain ES256 and refuses the -65800 " +
-      "WebAuthn envelope; admission coverage runs regardless).";
+  process.env.E2E_PASSKEY_SEAL_STRETCH?.trim() === "0"
+    ? "Passkey seal stretch disabled by E2E_PASSKEY_SEAL_STRETCH=0 (admission " +
+      "coverage runs regardless)."
+    : null;
 
 function e2eTurnPayload(userLogId: string, turn: number): Uint8Array {
   return new TextEncoder().encode(
