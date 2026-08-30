@@ -30,25 +30,26 @@ R (bootstrap root, sealed)
 
 ## Cases
 
-| Test       | Case     | Path                                                          | Expected                                                                                                                |
-| ---------- | -------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| 1 (always) | Negative | bare session-signed leaf, no endorsement (the 5.2 live bytes) | **403** `signer_mismatch`                                                                                               |
-| 1          | Negative | valid endorsement under a **different** passkey               | **403** `endorsement_root_mismatch` (never falls back)                                                                  |
-| 1          | Negative | endorsement gesture without UV on a UV grant                  | **403** `endorsement_uv_required`                                                                                       |
-| 1          | Happy    | session-signed leaf carrying the endorsement                  | **303** content-hash Location on `U`                                                                                    |
-| 2 (opt-in) | Happy    | standing WebAuthn delegation → sealer → receipt               | **200** receipt; cert (label 1000) verifies via the ADR-0063 envelope under the passkey with UV, **not** as plain ES256 |
-| 2          | Happy    | `verifyEndorsedLeaf(root x‖y, leaf, receipt, idtimestamp)`    | `ok`; session key matches; receipted idtimestamp inside the window                                                      |
+| Test        | Case     | Path                                                          | Expected                                                                                                                |
+| ----------- | -------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 1 (always)  | Negative | bare session-signed leaf, no endorsement (the 5.2 live bytes) | **403** `signer_mismatch`                                                                                               |
+| 1           | Negative | valid endorsement under a **different** passkey               | **403** `endorsement_root_mismatch` (never falls back)                                                                  |
+| 1           | Negative | endorsement gesture without UV on a UV grant                  | **403** `endorsement_uv_required`                                                                                       |
+| 1           | Happy    | session-signed leaf carrying the endorsement                  | **303** content-hash Location on `U`                                                                                    |
+| 2 (default) | Happy    | standing WebAuthn delegation → sealer → receipt               | **200** receipt; cert (label 1000) verifies via the ADR-0063 envelope under the passkey with UV, **not** as plain ES256 |
+| 2           | Happy    | `verifyEndorsedLeaf(root x‖y, leaf, receipt, idtimestamp)`    | `ok`; session key matches; receipted idtimestamp inside the window                                                      |
 
 ## Run
 
 ```bash
-# Admission coverage (test 1) — part of the default system tier.
+# Both tests — part of the default system tier.
 doppler run --project canopy --config dev -- \
   pnpm --filter @canopy/api-e2e exec playwright test \
     tests/system/passkey-endorsed-session-seal.spec.ts
 
-# Seal + offline rung (test 2) — opt-in stretch.
-E2E_PASSKEY_SEAL_STRETCH=1 doppler run --project canopy --config dev -- \
+# Admission only (skip the seal + offline rung, e.g. while a lane's sealer
+# is being rolled).
+E2E_PASSKEY_SEAL_STRETCH=0 doppler run --project canopy --config dev -- \
   pnpm --filter @canopy/api-e2e exec playwright test \
     tests/system/passkey-endorsed-session-seal.spec.ts
 ```
@@ -57,17 +58,21 @@ Preflight (`task test:e2e:preflight`) must have provisioned the ephemeral
 Univocity instances; the kit must be built (`pnpm --filter
 @forestrie/canopy-e2e-kit build`) — the e2e package consumes `dist/`.
 
-## Why test 2 is opt-in
+## Why test 2 was opt-in (until arbor v0.1.35)
 
-The deployed sealer verifies delegation certificates as **plain ES256 over
-`Sig_structure`** (arbor `delegationcert.VerifyCertificateSignature`, called
-from `sealer/src/delegation_lease_verify.go`). A passkey root signs its
+The deployed sealer used to verify delegation certificates as **plain ES256
+over `Sig_structure`** (arbor `delegationcert.VerifyCertificateSignature`,
+called from `sealer/src/delegation_lease_verify.go`). A passkey root signs its
 certificate as a WebAuthn assertion (`alg -65800`, signature over
-`authenticatorData ‖ sha256(clientDataJSON)`), so the lease fails
-`delegation cert signature invalid` and the receipt 404s to the deadline. The
-coordinator intake (plan-2608-13 phase 2) and the publisher/publishproof lift
-(phase 3) already handle the envelope; the sealer's lease verify does not.
-Flip test 2 to default-on when it does.
+`authenticatorData ‖ sha256(clientDataJSON)`), so the lease failed
+`delegation cert signature invalid` and the receipt 404'd to the deadline
+(found by this spec, plan-2608-14 4.1, 2026-08-29). The coordinator intake
+(plan-2608-13 phase 2) and the publisher/publishproof lift (phase 3) already
+handled the envelope; the sealer's lease verify did not.
+[arbor#95](https://github.com/forestrie/arbor/pull/95) (v0.1.35) added the
+envelope branch; test 2 went green on lane A 2026-08-30 (both variants) and
+is default-on since. If it regresses, the failure signature is the receipt
+404 to the deadline with `delegation cert signature invalid` in sealer logs.
 
 The on-chain **publish** half (checkpoint anchored with 3-element `algData`)
 is proven by arbor's anvil integration
