@@ -12,14 +12,14 @@ see [devdocs plan-0017](https://github.com/forestrie/devdocs/blob/main/archive/2
 
 ## Spec map
 
-| Spec file                               | Doc                                                                    | Depends on base flow                                          |
-| --------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------- |
-| `grants-bootstrap.spec.ts`              | [grants-bootstrap.md](./grants-bootstrap.md)                           | A, B                                                          |
-| `bootstrap-log-first-entry.spec.ts`     | [bootstrap-log-first-entry.md](./bootstrap-log-first-entry.md)         | A, B, C                                                       |
-| `bootstrap-child-auth-grant.spec.ts`    | [bootstrap-child-auth-grant.md](./bootstrap-child-auth-grant.md)       | A, B                                                          |
-| `auth-data-log-chain.spec.ts`           | [auth-data-log-chain.md](./auth-data-log-chain.md)                     | A, B, C                                                       |
-| `byok-checkpoint-seal.spec.ts`          | [byok-checkpoint-seal.md](./byok-checkpoint-seal.md)                   | opt-in stretch                                                |
-| `passkey-endorsed-session-seal.spec.ts` | [passkey-endorsed-session-seal.md](./passkey-endorsed-session-seal.md) | A, B, C (admission); seal opt-in `E2E_PASSKEY_SEAL_STRETCH=1` |
+| Spec file                               | Doc                                                                    | Depends on base flow                                                                      |
+| --------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `grants-bootstrap.spec.ts`              | [grants-bootstrap.md](./grants-bootstrap.md)                           | A, B                                                                                      |
+| `bootstrap-log-first-entry.spec.ts`     | [bootstrap-log-first-entry.md](./bootstrap-log-first-entry.md)         | A, B, C                                                                                   |
+| `bootstrap-child-auth-grant.spec.ts`    | [bootstrap-child-auth-grant.md](./bootstrap-child-auth-grant.md)       | A, B                                                                                      |
+| `auth-data-log-chain.spec.ts`           | [auth-data-log-chain.md](./auth-data-log-chain.md)                     | A, B, C                                                                                   |
+| `byok-checkpoint-seal.spec.ts`          | [byok-checkpoint-seal.md](./byok-checkpoint-seal.md)                   | opt-in stretch                                                                            |
+| `passkey-endorsed-session-seal.spec.ts` | [passkey-endorsed-session-seal.md](./passkey-endorsed-session-seal.md) | A, B, C (admission) + WebAuthn seal → offline rung (opt out `E2E_PASSKEY_SEAL_STRETCH=0`) |
 
 ---
 
