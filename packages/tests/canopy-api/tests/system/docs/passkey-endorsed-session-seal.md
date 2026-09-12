@@ -3,7 +3,7 @@
 **Spec:** `tests/system/passkey-endorsed-session-seal.spec.ts`
 **Index:** [README.md](./README.md)
 **Plan:** devdocs [plan-2608-14](https://github.com/forestrie/devdocs/blob/main/plans/plan-2608-14-endorsed-session-key-admission.md) 4.1 (Q12 gate 4);
-[ADR-0065](https://github.com/forestrie/devdocs/blob/main/adr/adr-0065-endorsed-session-key-admission.md).
+[ADR-0065](https://github.com/forestrie/protocol/blob/main/decisions/adr-0065-endorsed-session-key-admission.md).
 
 ## Purpose
 
