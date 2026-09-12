@@ -1,6 +1,5 @@
 {
   "name": "canopy",
-  "license": "MIT",
   "version": "0.1.0",
   "private": true,
   "description": "SCITT/SCRAPI transparency log frontend and API",
