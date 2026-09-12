@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Linear MCP identity
 
-Canonical source: [forestrie-agents/workflow/rules/linear-mcp-forestrie.md](https://github.com/forestrie/forestrie-agents/blob/main/workflow/rules/linear-mcp-forestrie.md)
+Canonical source: `forestrie-agents/workflow/rules/linear-mcp-forestrie.md` (private org repo; this file is the public copy).
 (local: `../../forestrie-agents/workflow/rules/linear-mcp-forestrie.md`).
 
 Read that file — do not duplicate its content here.

@@ -6,7 +6,7 @@ alwaysApply: false
 
 # TypeScript comments
 
-Canonical source: [forestrie-agents/workflow/rules/typescript-comments.md](https://github.com/forestrie/forestrie-agents/blob/main/workflow/rules/typescript-comments.md)
+Canonical source: `forestrie-agents/workflow/rules/typescript-comments.md` (private org repo; this file is the public copy).
 (local: `../../forestrie-agents/workflow/rules/typescript-comments.md`).
 
 Read that file — do not duplicate its content here.

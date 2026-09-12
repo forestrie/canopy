@@ -6,13 +6,13 @@ alwaysApply: false
 # Document workflow
 
 Canonical source:
-[forestrie-agents/workflow/rules/plan-docs.md](https://github.com/forestrie/forestrie-agents/blob/main/workflow/rules/plan-docs.md)
+`forestrie-agents/workflow/rules/plan-docs.md` (private org repo; this file is the public copy).
 (local: `../../forestrie-agents/workflow/rules/plan-docs.md`) — layout,
 numbering, header, subplan forking, archival, and the branch/worktree
 independence rule for `docs/adr/`, `docs/arc/`, and `docs/plans/`.
 
 ADR document structure and status lifecycle:
-[forestrie-agents/workflow/rules/adr-format.md](https://github.com/forestrie/forestrie-agents/blob/main/workflow/rules/adr-format.md)
+`forestrie-agents/workflow/rules/adr-format.md` (private org repo; this file is the public copy).
 (local: `../../forestrie-agents/workflow/rules/adr-format.md`) — supersedes
 the vendored `grill-with-docs` ADR-FORMAT.md.
 

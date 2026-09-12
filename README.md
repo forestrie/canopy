@@ -210,4 +210,4 @@ These tasks will:
 
 - [SCITT Architecture](https://www.ietf.org/archive/id/draft-ietf-scitt-architecture-22.txt)
 - [SCRAPI Specification](https://www.ietf.org/archive/id/draft-ietf-scitt-scrapi-05.txt)
-- [COSE Receipts MMR Profile](https://www.ietf.org/archive/id/draft-bryce-cose-receipts-mmr-profile-00.txt)
+- [COSE Receipts MMR Profile](https://datatracker.ietf.org/doc/draft-bryce-cose-receipts-mmr-profile/)
