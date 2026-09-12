@@ -6,7 +6,7 @@
  * Grant and statement shapes align with
  * [grants.md](https://github.com/forestrie/canopy/blob/main/docs/grants.md)
  * and Univocity `PublishGrant` —
- * [ARC-0019](https://github.com/forestrie/protocol/blob/main/decisions/arc-0019-grant-verification-model.md).
+ * [ARC-0019](https://github.com/forestrie/devdocs/blob/main/arc/arc-0019-grant-verification-model.md).
  */
 
 export { encodeCborBstr } from "./encode-cbor-bstr.js";
