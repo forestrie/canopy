@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Branch naming
 
-Canonical source: [forestrie-agents/workflow/rules/branch-naming.md](https://github.com/forestrie/forestrie-agents/blob/main/workflow/rules/branch-naming.md)
+Canonical source: `forestrie-agents/workflow/rules/branch-naming.md` (private org repo; this file is the public copy).
 (local: `../../forestrie-agents/workflow/rules/branch-naming.md`).
 
 Read that file — do not duplicate its content here.
