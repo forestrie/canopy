@@ -22,4 +22,4 @@ Read those files — do not duplicate their content here.
 
 - Canopy API / worker behavior docs → full doc lives in this repo's `docs/`.
 - Domain glossary → [docs/agents/domain.md](../../docs/agents/domain.md)
-  extends [devdocs/glossary.md](https://github.com/forestrie/devdocs/blob/main/glossary.md).
+  extends [devdocs/glossary.md](https://github.com/forestrie/protocol/blob/main/glossary.md).
