@@ -195,9 +195,10 @@ export default {
         request.method === "GET"
       ) {
         const config = getTransparencyConfiguration(env.CANOPY_ID, url.origin, {
-          name: "Canopy Transparency Service",
-          description: "SCITT-compliant transparency log",
-          contact: "admin@example.com",
+          name: "Forestrie transparency service",
+          description:
+            "SCITT transparency log whose receipts verify offline against a public on-chain anchor; spec at https://github.com/forestrie/protocol",
+          contact: "forestrie-admin@proton.me",
         });
         return Response.json(config, {
           status: 200,
