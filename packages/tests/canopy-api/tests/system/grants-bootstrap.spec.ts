@@ -183,8 +183,12 @@ describeForEachBootstrapVariant(
         200,
       );
       const ct = receiptRes.headers["content-type"] ?? "";
+      // pollBootstrapRegistrationThroughReceipt sends `Accept: application/cbor`
+      // for this GET (not the legacy scitt-receipt value), so per FOR-559 /
+      // plan-2609-07 decision L4 the route answers with the draft-registered
+      // type (draft-ietf-scitt-scrapi-05 §6.3), not the one-release alias.
       expect(ct, "SCITT receipt content type").toMatch(
-        /application\/scitt-receipt\+cbor/i,
+        /application\/scitt\.receipt\+cose/i,
       );
 
       const receiptBytes = receiptRes.body;
