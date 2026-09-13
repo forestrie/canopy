@@ -13,6 +13,13 @@
  * - Extract the pre-signed peak receipts from the checkpoint.
  * - Read the inclusion proof path for mmrIndex from the massif blob.
  * - Attach the inclusion proof to the appropriate peak receipt at header label 396.
+ *
+ * Success `Content-Type` (FOR-559, plan-2609-07 decision L4): the receipt
+ * media type draft-ietf-scitt-scrapi-05 §6.3 registers,
+ * `application/scitt.receipt+cose`, via {@link negotiateReceiptContentType} —
+ * except for one release, a request whose `Accept` names the pre-draft
+ * `application/scitt-receipt+cbor` value still gets that value (identical
+ * body either way). The 404/problem path is unaffected.
  */
 
 import {
@@ -51,7 +58,7 @@ type CoseSign1 = [
  * @param entrySegments - [bootstrapLogId, logId, massifHeight, 'entries', entryId, 'receipt']
  */
 export async function resolveReceipt(
-  _request: Request,
+  request: Request,
   entrySegments: string[],
   mmrs: R2Bucket,
   r2Grants: R2Bucket,
@@ -302,7 +309,9 @@ export async function resolveReceipt(
     // is durably addressable). Caching would pin a superseded proof and defeat
     // receipt freshening (FOR-418).
     return cborResponse(assembled, 200, {
-      "content-type": CBOR_CONTENT_TYPES.SCITT_RECEIPT,
+      "content-type": negotiateReceiptContentType(
+        request.headers.get("accept"),
+      ),
       ...NO_STORE_HEADERS,
     });
   } catch (error) {
@@ -312,6 +321,32 @@ export async function resolveReceipt(
       "Entry receipt not found or error retrieving receipt",
     );
   }
+}
+
+/**
+ * Pick the receipt response `Content-Type` for a request's raw `Accept`
+ * header value (FOR-559, plan-2609-07 decision L4). Draft-ietf-scitt-scrapi-05
+ * §6.3 registers `application/scitt.receipt+cose` for a SCITT Receipt; that
+ * is the default. For one release, a request whose `Accept` names the
+ * pre-draft `application/scitt-receipt+cbor` value (matched case-
+ * insensitively against each comma-separated media-range, parameters
+ * ignored) still gets that value instead — same body either way. No other
+ * `Accept` value (missing, the wildcard media range, `application/cose`,
+ * `application/cbor`, or anything else) changes the outcome, and this never
+ * produces a 406.
+ */
+export function negotiateReceiptContentType(accept: string | null): string {
+  if (accept) {
+    const legacyValue = CBOR_CONTENT_TYPES.SCITT_RECEIPT.toLowerCase();
+    const namesLegacyValue = accept.split(",").some((mediaRange) => {
+      const withoutParams = mediaRange.split(";", 1)[0]!.trim().toLowerCase();
+      return withoutParams.includes(legacyValue);
+    });
+    if (namesLegacyValue) {
+      return CBOR_CONTENT_TYPES.SCITT_RECEIPT;
+    }
+  }
+  return CBOR_CONTENT_TYPES.SCITT_RECEIPT_COSE;
 }
 
 interface IndexStoreGetter {

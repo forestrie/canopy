@@ -503,23 +503,55 @@ describe("SCRAPI flow", () => {
     await testEnv.R2_MMRS.put(massifKey, massifBytes);
 
     // --- Request receipt ---
-    const request = new Request(
-      `http://localhost/logs/${flowBootstrapLogId}/${logId}/${massifHeight}/entries/${entryId}/receipt`,
-    );
+    const receiptUrl = `http://localhost/logs/${flowBootstrapLogId}/${logId}/${massifHeight}/entries/${entryId}/receipt`;
     const response = await worker.fetch(
-      request,
+      new Request(receiptUrl),
       testEnv,
       {} as ExecutionContext,
     );
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-type")).toContain(
-      "application/scitt-receipt+cbor",
+    expect(response.headers.get("content-type")).toBe(
+      "application/scitt.receipt+cose",
     );
 
-    const decoded = decodeCborDeterministic(
-      new Uint8Array(await response.arrayBuffer()),
-    ) as any;
+    const responseBytes = new Uint8Array(await response.arrayBuffer());
+
+    // FOR-559 / plan-2609-07 decision L4: for one release, a request whose
+    // Accept names the pre-draft media type still gets that value (identical
+    // body); any other Accept — including application/cose, the draft's own
+    // Accept (§2.1.4) — gets the draft-registered type (§6.3).
+    const legacyAcceptResponse = await worker.fetch(
+      new Request(receiptUrl, {
+        headers: { Accept: "application/scitt-receipt+cbor" },
+      }),
+      testEnv,
+      {} as ExecutionContext,
+    );
+    expect(legacyAcceptResponse.status).toBe(200);
+    expect(legacyAcceptResponse.headers.get("content-type")).toBe(
+      "application/scitt-receipt+cbor",
+    );
+    const legacyAcceptBytes = new Uint8Array(
+      await legacyAcceptResponse.arrayBuffer(),
+    );
+    expect(legacyAcceptBytes).toEqual(responseBytes);
+
+    const coseAcceptResponse = await worker.fetch(
+      new Request(receiptUrl, { headers: { Accept: "application/cose" } }),
+      testEnv,
+      {} as ExecutionContext,
+    );
+    expect(coseAcceptResponse.status).toBe(200);
+    expect(coseAcceptResponse.headers.get("content-type")).toBe(
+      "application/scitt.receipt+cose",
+    );
+    const coseAcceptBytes = new Uint8Array(
+      await coseAcceptResponse.arrayBuffer(),
+    );
+    expect(coseAcceptBytes).toEqual(responseBytes);
+
+    const decoded = decodeCborDeterministic(responseBytes) as any;
     expect(Array.isArray(decoded)).toBe(true);
     expect(decoded).toHaveLength(4);
 
