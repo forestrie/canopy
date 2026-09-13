@@ -9,12 +9,21 @@
  * network call — the raw exchange for EVERY status — and {@link
  * resolveReceiptOnce} is the parsed interpretation built on top of it
  * (plan-2609-07 decision L2).
+ *
+ * Default `Accept` (FOR-559, plan-2609-07 decision L4): {@link
+ * SCITT_RECEIPT_COSE_CONTENT_TYPE}, the media type draft-ietf-scitt-scrapi-05
+ * §6.3 registers for a SCITT Receipt. canopy-api still honours the pre-draft
+ * `application/scitt-receipt+cbor` value for one release when a caller sets
+ * `accept` to it explicitly.
  */
 
 import { decodeProblemDetailsBytes } from "./problem-details.js";
 import type { ProblemDetails } from "./problem-details.js";
 import { toRawResponse } from "./raw-response.js";
 import type { RawResponse } from "./raw-response.js";
+
+/** SCITT Receipt media type (draft-ietf-scitt-scrapi-05 §6.3). */
+export const SCITT_RECEIPT_COSE_CONTENT_TYPE = "application/scitt.receipt+cose";
 
 export type ReceiptResolution =
   /** 404: nothing at this receipt URL. */
@@ -31,7 +40,7 @@ export type ReceiptResolution =
 
 export interface ResolveReceiptRawOptions {
   receiptUrl: string;
-  /** Defaults to `application/cbor`. */
+  /** Defaults to {@link SCITT_RECEIPT_COSE_CONTENT_TYPE}. */
   accept?: string;
   fetchImpl?: typeof fetch;
 }
@@ -48,7 +57,7 @@ export async function resolveReceiptRaw(
 ): Promise<RawResponse> {
   const doFetch = opts.fetchImpl ?? fetch;
   const res = await doFetch(opts.receiptUrl, {
-    headers: { Accept: opts.accept ?? "application/cbor" },
+    headers: { Accept: opts.accept ?? SCITT_RECEIPT_COSE_CONTENT_TYPE },
     redirect: "manual",
   });
   return toRawResponse(opts.receiptUrl, res);

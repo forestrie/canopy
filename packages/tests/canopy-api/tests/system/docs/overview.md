@@ -137,7 +137,7 @@ sequenceDiagram
 
     PT->>API: GET …/entries/{entryId}/receipt
     API->>R2: checkpoint + inclusion path
-    API-->>PT: 200 application/scitt-receipt+cbor
+    API-->>PT: 200 application/scitt.receipt+cose
 ```
 
 **Enqueue vs pull:** Canopy API enqueues through a **Durable Object binding**.

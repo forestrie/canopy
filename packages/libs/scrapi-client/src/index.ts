@@ -40,7 +40,11 @@ export type {
   RegistrationPollStatus,
 } from "./query-registration.js";
 
-export { resolveReceiptOnce, resolveReceiptRaw } from "./resolve-receipt.js";
+export {
+  SCITT_RECEIPT_COSE_CONTENT_TYPE,
+  resolveReceiptOnce,
+  resolveReceiptRaw,
+} from "./resolve-receipt.js";
 export type {
   ReceiptResolution,
   ResolveReceiptOnceOptions,
