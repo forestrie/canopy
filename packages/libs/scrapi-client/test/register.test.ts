@@ -8,7 +8,9 @@ import {
   ScrapiRegistrationError,
   forestrieGrantAuthorization,
   registerGrant,
+  registerGrantRaw,
   registerSignedStatement,
+  registerSignedStatementRaw,
 } from "../src/index.js";
 
 const BASE = "https://logs.example.test";
@@ -105,6 +107,29 @@ describe("registerGrant", () => {
   });
 });
 
+describe("registerGrantRaw", () => {
+  it("returns the raw exchange for every status, using redirect: manual (no throw)", async () => {
+    const captured: Captured[] = [];
+    const problem = { title: "conflict", status: 409, detail: "already open" };
+    const res = new Response(encodeCborDeterministic(problem) as BodyInit, {
+      status: 409,
+      headers: { "content-type": "application/problem+cbor" },
+    });
+    const raw = await registerGrantRaw({
+      baseUrl: BASE,
+      bootstrapLogId: BOOTSTRAP,
+      grantBase64: GRANT_B64,
+      fetchImpl: mockFetch(res, captured),
+    });
+    expect(raw.url).toBe(`${BASE}/register/${BOOTSTRAP}/grants`);
+    expect(raw.status).toBe(409);
+    expect(raw.headers["content-type"]).toBe("application/problem+cbor");
+    expect(raw.body).toEqual(encodeCborDeterministic(problem));
+    expect(raw.at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(captured[0]!.init.redirect).toBe("manual");
+  });
+});
+
 describe("registerSignedStatement", () => {
   it("POSTs the COSE Sign1 body to /entries with the grant header", async () => {
     const captured: Captured[] = [];
@@ -125,5 +150,29 @@ describe("registerSignedStatement", () => {
     const headers = captured[0]!.init.headers as Record<string, string>;
     expect(headers["Content-Type"]).toBe(COSE_SIGN1_CONTENT_TYPE);
     expect(captured[0]!.init.body).toEqual(statement);
+  });
+});
+
+describe("registerSignedStatementRaw", () => {
+  it("returns the raw exchange for a 303, using redirect: manual (no throw)", async () => {
+    const captured: Captured[] = [];
+    const res = new Response(null, {
+      status: 303,
+      headers: { Location: "/status" },
+    });
+    const statement = new Uint8Array([0x84, 1, 2, 3]);
+    const raw = await registerSignedStatementRaw({
+      baseUrl: BASE,
+      bootstrapLogId: BOOTSTRAP,
+      grantBase64: GRANT_B64,
+      statement,
+      fetchImpl: mockFetch(res, captured),
+    });
+    expect(raw.url).toBe(`${BASE}/register/${BOOTSTRAP}/entries`);
+    expect(raw.status).toBe(303);
+    expect(raw.headers["location"]).toBe("/status");
+    expect(raw.body).toEqual(new Uint8Array(0));
+    expect(raw.at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(captured[0]!.init.redirect).toBe("manual");
   });
 });

@@ -1,0 +1,15 @@
+HTTP/2 303 
+date: Sun, 13 Sep 2026 14:23:08 GMT
+content-length: 0
+location: https://api-a.forest-2.forestrie.dev/logs/67876864-3b46-67ae-dcb3-13cc81624aa5/e8345800-a747-4e62-9409-61622b836f1f/entries/0000000000000000000000000000000000000000000000000000000000000000
+access-control-allow-origin: *
+retry-after: 1
+access-control-allow-headers: Content-Type, Authorization, X-PAYMENT, X-Ops-Authorization
+access-control-allow-methods: GET, POST, PUT, OPTIONS
+access-control-expose-headers: X-PAYMENT-REQUIRED, X-PAYMENT-RESPONSE
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=DchZidqlRNHgt3yFXCXh%2BGWwIc4fIezXyn%2Br%2Bb4F%2Bmgt43bUweCiA28PX%2F9ky9HU7uuXFP1vRCBdGjR6KEsRTZk%2FnPXh0e2kDaR%2BL43nqCPbgHgNtAMziJZa%2FO41sHG1AmkzQtC9VNPD7pK1hSBJD7WGxd0puP1f9bmR"}]}
+nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+server: cloudflare
+cf-ray: a3a7ceda9ac549f8-LHR
+alt-svc: h3=":443"; ma=86400
+

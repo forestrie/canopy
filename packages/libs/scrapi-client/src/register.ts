@@ -4,7 +4,11 @@
  * interpret the 303 receipt-redirect contract (grants.md §11, ARC-0024).
  *
  * Fetch-injectable and browser-safe: callers may supply `fetchImpl` (e.g. a
- * Playwright-backed shim); redirects are never followed.
+ * Playwright-backed shim); redirects are never followed. {@link
+ * registerGrantRaw} / {@link registerSignedStatementRaw} are the underlying
+ * network calls — the raw exchange for EVERY status — with {@link
+ * registerGrant} / {@link registerSignedStatement} as the 303-contract
+ * interpretation built on top (plan-2609-07 decision L2).
  */
 
 import { encodeCborDeterministic } from "@forestrie/encoding";
@@ -12,6 +16,8 @@ import {
   decodeProblemDetailsBytes,
   type ProblemDetails,
 } from "./problem-details.js";
+import { toRawResponse } from "./raw-response.js";
+import type { RawResponse } from "./raw-response.js";
 import { toAbsoluteScrapiUrl } from "./scrapi-url.js";
 
 export const COSE_SIGN1_CONTENT_TYPE =
@@ -51,6 +57,8 @@ export interface RegisterResponseView {
   location?: string;
   /** Raw response body (problem details on failure). */
   body?: Uint8Array;
+  /** `Content-Type` response header, if known — gates problem-details decoding. */
+  contentType?: string;
 }
 
 export interface RegisterRedirect {
@@ -68,7 +76,7 @@ export function interpretRegisterRedirect(
   baseUrl: string,
 ): RegisterRedirect {
   if (view.status !== 303) {
-    const problem = decodeProblemDetailsBytes(view.body);
+    const problem = decodeProblemDetailsBytes(view.body, view.contentType);
     const bodyText = view.body?.length
       ? new TextDecoder().decode(view.body)
       : "";
@@ -108,12 +116,13 @@ export interface RegisterGrantOptions {
 }
 
 /**
- * POST /register/{bootstrapLogId}/grants with the Forestrie-Grant header;
- * resolves with the registration status URL from the 303 Location.
+ * POST /register/{bootstrapLogId}/grants with the Forestrie-Grant header,
+ * returning the raw exchange for EVERY status — no throwing, no
+ * interpretation. Uses `redirect: "manual"` so a 303 is never followed.
  */
-export async function registerGrant(
+export async function registerGrantRaw(
   opts: RegisterGrantOptions,
-): Promise<RegisterRedirect> {
+): Promise<RawResponse> {
   const doFetch = opts.fetchImpl ?? fetch;
   const headers: Record<string, string> = {
     Authorization: forestrieGrantAuthorization(opts.grantBase64),
@@ -125,18 +134,27 @@ export async function registerGrant(
       parentGrant: base64ToBytes(opts.parentGrantBase64),
     });
   }
-  const res = await doFetch(
-    `${opts.baseUrl.replace(/\/$/, "")}/register/${opts.bootstrapLogId}/grants`,
-    {
-      method: "POST",
-      headers,
-      // Uint8Array<ArrayBufferLike> is not assignable to BodyInit under
-      // TS >= 5.7 typed-array generics; runtime fetch accepts it.
-      body: body as BodyInit | undefined,
-      redirect: "manual",
-    },
-  );
-  return interpretRegisterRedirect(await toResponseView(res), opts.baseUrl);
+  const url = `${opts.baseUrl.replace(/\/$/, "")}/register/${opts.bootstrapLogId}/grants`;
+  const res = await doFetch(url, {
+    method: "POST",
+    headers,
+    // Uint8Array<ArrayBufferLike> is not assignable to BodyInit under
+    // TS >= 5.7 typed-array generics; runtime fetch accepts it.
+    body: body as BodyInit | undefined,
+    redirect: "manual",
+  });
+  return toRawResponse(url, res);
+}
+
+/**
+ * POST /register/{bootstrapLogId}/grants with the Forestrie-Grant header;
+ * resolves with the registration status URL from the 303 Location.
+ */
+export async function registerGrant(
+  opts: RegisterGrantOptions,
+): Promise<RegisterRedirect> {
+  const raw = await registerGrantRaw(opts);
+  return interpretRegisterRedirect(rawToView(raw), opts.baseUrl);
 }
 
 export interface RegisterSignedStatementOptions {
@@ -154,33 +172,49 @@ export interface RegisterSignedStatementOptions {
 
 /**
  * POST /register/{bootstrapLogId}/entries with a COSE Sign1 signed statement
+ * body and the Forestrie-Grant header, returning the raw exchange for EVERY
+ * status — no throwing, no interpretation. Uses `redirect: "manual"` so a
+ * 303 is never followed.
+ */
+export async function registerSignedStatementRaw(
+  opts: RegisterSignedStatementOptions,
+): Promise<RawResponse> {
+  const doFetch = opts.fetchImpl ?? fetch;
+  const url = `${opts.baseUrl.replace(/\/$/, "")}/register/${opts.bootstrapLogId}/entries`;
+  const res = await doFetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: forestrieGrantAuthorization(opts.grantBase64),
+      "Content-Type": opts.contentType ?? COSE_SIGN1_CONTENT_TYPE,
+    },
+    body: opts.statement as unknown as BodyInit,
+    redirect: "manual",
+  });
+  return toRawResponse(url, res);
+}
+
+/**
+ * POST /register/{bootstrapLogId}/entries with a COSE Sign1 signed statement
  * body and the Forestrie-Grant header; resolves with the registration status
  * URL from the 303 Location.
  */
 export async function registerSignedStatement(
   opts: RegisterSignedStatementOptions,
 ): Promise<RegisterRedirect> {
-  const doFetch = opts.fetchImpl ?? fetch;
-  const res = await doFetch(
-    `${opts.baseUrl.replace(/\/$/, "")}/register/${opts.bootstrapLogId}/entries`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: forestrieGrantAuthorization(opts.grantBase64),
-        "Content-Type": opts.contentType ?? COSE_SIGN1_CONTENT_TYPE,
-      },
-      body: opts.statement as unknown as BodyInit,
-      redirect: "manual",
-    },
-  );
-  return interpretRegisterRedirect(await toResponseView(res), opts.baseUrl);
+  const raw = await registerSignedStatementRaw(opts);
+  return interpretRegisterRedirect(rawToView(raw), opts.baseUrl);
 }
 
-async function toResponseView(res: Response): Promise<RegisterResponseView> {
+/**
+ * Adapt a {@link RawResponse} to the {@link RegisterResponseView} shape
+ * `interpretRegisterRedirect` expects.
+ */
+function rawToView(raw: RawResponse): RegisterResponseView {
   return {
-    status: res.status,
-    location: res.headers.get("location") ?? undefined,
-    body: new Uint8Array(await res.arrayBuffer()),
+    status: raw.status,
+    location: raw.headers["location"],
+    body: raw.body,
+    contentType: raw.headers["content-type"],
   };
 }
 
