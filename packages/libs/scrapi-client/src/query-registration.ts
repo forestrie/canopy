@@ -2,10 +2,17 @@
  * Poll-once primitive for SCRAPI query-registration-status: a single GET of
  * the status URL, interpreted as a discriminated status. NO sleep loops here —
  * callers (e.g. the e2e kit's arithmetic backoff ladder) own retry pacing.
+ *
+ * {@link queryRegistrationRaw} is the underlying network call — the raw
+ * exchange for EVERY status, `redirect: "manual"` so the 303 contract's
+ * Location survives — and {@link queryRegistrationOnce} is the SCRAPI
+ * 303-contract interpretation built on top of it (plan-2609-07 decision L2).
  */
 
 import { decodeProblemDetailsBytes } from "./problem-details.js";
 import type { ProblemDetails } from "./problem-details.js";
+import { toRawResponse } from "./raw-response.js";
+import type { RawResponse } from "./raw-response.js";
 import { toAbsoluteScrapiUrl } from "./scrapi-url.js";
 
 /** Location points at GET resolve-receipt (permanent URL with massif height). */
@@ -36,14 +43,35 @@ export type RegistrationPollStatus =
       detail: string;
     };
 
-export interface QueryRegistrationOnceOptions {
+export interface QueryRegistrationRawOptions {
   /** GET /logs/{bootstrap}/{logId}/entries/{innerHex} (registration status). */
   statusUrl: string;
-  /** Used to absolutize a relative receipt Location. */
-  baseUrl: string;
   /** Defaults to `application/cbor`. */
   accept?: string;
   fetchImpl?: typeof fetch;
+}
+
+export interface QueryRegistrationOnceOptions
+  extends QueryRegistrationRawOptions {
+  /** Used to absolutize a relative receipt Location. */
+  baseUrl: string;
+}
+
+/**
+ * GET query-registration-status once, returning the raw exchange for EVERY
+ * status — no throwing, no interpretation. Uses `redirect: "manual"` so a
+ * 303 comes back as a 303 with its `location` header rather than being
+ * followed.
+ */
+export async function queryRegistrationRaw(
+  opts: QueryRegistrationRawOptions,
+): Promise<RawResponse> {
+  const doFetch = opts.fetchImpl ?? fetch;
+  const res = await doFetch(opts.statusUrl, {
+    headers: { Accept: opts.accept ?? "application/cbor" },
+    redirect: "manual",
+  });
+  return toRawResponse(opts.statusUrl, res);
 }
 
 /**
@@ -54,24 +82,22 @@ export interface QueryRegistrationOnceOptions {
 export async function queryRegistrationOnce(
   opts: QueryRegistrationOnceOptions,
 ): Promise<RegistrationPollStatus> {
-  const doFetch = opts.fetchImpl ?? fetch;
-  const res = await doFetch(opts.statusUrl, {
-    headers: { Accept: opts.accept ?? "application/cbor" },
-    redirect: "manual",
-  });
+  const raw = await queryRegistrationRaw(opts);
 
-  if (res.status !== 303) {
-    const body = new Uint8Array(await res.arrayBuffer());
-    const problem = decodeProblemDetailsBytes(body);
+  if (raw.status !== 303) {
+    const problem = decodeProblemDetailsBytes(
+      raw.body,
+      raw.headers["content-type"],
+    );
     return {
       status: "error",
-      httpStatus: res.status,
+      httpStatus: raw.status,
       problem,
-      detail: problem?.detail ?? `expected 303, got ${res.status}`,
+      detail: problem?.detail ?? `expected 303, got ${raw.status}`,
     };
   }
 
-  const location = res.headers.get("location");
+  const location = raw.headers["location"];
   if (!location) {
     return {
       status: "error",
@@ -88,10 +114,7 @@ export async function queryRegistrationOnce(
     };
   }
 
-  const retryAfterSec = Number.parseInt(
-    res.headers.get("retry-after") ?? "0",
-    10,
-  );
+  const retryAfterSec = Number.parseInt(raw.headers["retry-after"] ?? "0", 10);
   return {
     status: "pending",
     location,

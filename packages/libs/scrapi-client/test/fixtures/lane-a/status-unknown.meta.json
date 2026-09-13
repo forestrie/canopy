@@ -1,0 +1,22 @@
+{
+  "url": "https://api-a.forest-2.forestrie.dev/logs/67876864-3b46-67ae-dcb3-13cc81624aa5/e8345800-a747-4e62-9409-61622b836f1f/entries/0000000000000000000000000000000000000000000000000000000000000000",
+  "method": "GET",
+  "requestedAt": "2026-09-13T14:23:23Z",
+  "status": 303,
+  "headers": {
+    "date": "Sun, 13 Sep 2026 14:23:08 GMT",
+    "content-length": "0",
+    "location": "https://api-a.forest-2.forestrie.dev/logs/67876864-3b46-67ae-dcb3-13cc81624aa5/e8345800-a747-4e62-9409-61622b836f1f/entries/0000000000000000000000000000000000000000000000000000000000000000",
+    "access-control-allow-origin": "*",
+    "retry-after": "1",
+    "access-control-allow-headers": "Content-Type, Authorization, X-PAYMENT, X-Ops-Authorization",
+    "access-control-allow-methods": "GET, POST, PUT, OPTIONS",
+    "access-control-expose-headers": "X-PAYMENT-REQUIRED, X-PAYMENT-RESPONSE",
+    "server": "cloudflare",
+    "cf-ray": "a3a7ceda9ac549f8-LHR",
+    "alt-svc": "h3=\":443\"; ma=86400"
+  },
+  "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "bodyBytes": 0,
+  "contentType": null
+}

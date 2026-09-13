@@ -1,0 +1,15 @@
+HTTP/2 200 
+date: Sun, 13 Sep 2026 14:23:00 GMT
+content-type: application/scitt-receipt+cbor
+content-length: 438
+access-control-allow-origin: *
+cache-control: no-store
+access-control-allow-headers: Content-Type, Authorization, X-PAYMENT, X-Ops-Authorization
+access-control-allow-methods: GET, POST, PUT, OPTIONS
+access-control-expose-headers: X-PAYMENT-REQUIRED, X-PAYMENT-RESPONSE
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=WbKLDzXVjJyA%2Bu8zH1Y6%2FKs9nDX6jwuL8pjcRwcMUnRcAhkQAJZGX301MSRUuYqbRJJ%2BSP1NlcJ%2F2%2FdJtL%2F7EqiuVeGTh70EjjfNUTiDP9JC55e26Q20p9g4VSmCdZ9TsWsLAP3mtVzwvG%2FdvXUdiiuHW0LEvZ0giVNl"}]}
+nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+server: cloudflare
+cf-ray: a3a7cead6910f3d1-LHR
+alt-svc: h3=":443"; ma=86400
+

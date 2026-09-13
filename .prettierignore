@@ -1,0 +1,4 @@
+# Recorded/frozen test fixtures copied byte-for-byte from another package's
+# fixture capture — never reformat (the copy must match the source manifest's
+# sha256; see the PROVENANCE.md alongside each one).
+packages/libs/*/test/fixtures/lane-a/PROVENANCE.md
