@@ -6,10 +6,20 @@
  * Assumes callers pass fully resolved URLs (no `${env:VAR}` at runtime).
  */
 
-/** Per-request timeout for a single JSON-RPC HTTP call. */
+/** Per-request timeout and fetch override for a single JSON-RPC HTTP call. */
 export interface EthRpcOptions {
   /** Maximum wait in ms; defaults to 5000 when omitted or non-positive. */
   timeoutMs?: number;
+  /**
+   * Fetch implementation used for the underlying HTTP request; defaults to
+   * `globalThis.fetch` when omitted. Every RPC helper in this module (and
+   * the ERC-1271 hooks in {@link ./erc1271-verify-hooks.js}, which extend
+   * this options shape) route their single HTTP call through this hook, so
+   * a caller running somewhere without an ambient `fetch` — or one that
+   * wants to observe/replace outbound RPC traffic in tests — can inject one
+   * without any other function here touching the global.
+   */
+  fetchImpl?: typeof fetch;
 }
 
 /**
@@ -31,7 +41,9 @@ function defaultTimeoutMs(options: EthRpcOptions): number {
  * @param rpcUrl - Fully resolved HTTP endpoint.
  * @param method - JSON-RPC method name (e.g. `eth_call`).
  * @param params - JSON-RPC params array.
- * @param options - Request timeout; see {@link EthRpcOptions.timeoutMs}.
+ * @param options.timeoutMs - Request timeout; see {@link EthRpcOptions.timeoutMs}.
+ * @param options.fetchImpl - Fetch override; see {@link EthRpcOptions.fetchImpl}.
+ *   This is the only call site in the package that invokes `fetch`.
  * @returns Parsed `result` from a successful response.
  * @throws When HTTP fails, the node returns a JSON-RPC error, or the request
  *   times out.
@@ -43,6 +55,10 @@ export async function ethRpc(
   options: EthRpcOptions = {},
 ): Promise<unknown> {
   const timeoutMs = defaultTimeoutMs(options);
+  // Shadow the ambient `fetch` with the resolved implementation so this
+  // stays the package's one call site: nothing below can accidentally
+  // reach `globalThis.fetch` once `options.fetchImpl` is set.
+  const fetch = options.fetchImpl ?? globalThis.fetch;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {

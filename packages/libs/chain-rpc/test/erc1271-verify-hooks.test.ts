@@ -5,6 +5,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { bytesToHex } from "../src/eth-rpc.js";
 import {
   createErc1271VerifyHooks,
   encodeIsValidSignatureCall,
@@ -19,6 +20,29 @@ function rpcResponse(result: string): Response {
   return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
     status: 200,
   });
+}
+
+/**
+ * Fetch that always throws. Stood in for `globalThis.fetch` for the
+ * duration of a `fetchImpl` test so the assertion fails loudly if the hooks
+ * fall back to the global instead of the injected function.
+ */
+function forbiddenFetch(): never {
+  throw new Error("global fetch must not be called when fetchImpl is set");
+}
+
+/**
+ * Replace `globalThis.fetch` with {@link forbiddenFetch} for the duration
+ * of `run`, restoring the original afterwards even if `run` throws.
+ */
+async function withGlobalFetchForbidden<T>(run: () => Promise<T>): Promise<T> {
+  const original = globalThis.fetch;
+  globalThis.fetch = forbiddenFetch as unknown as typeof fetch;
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = original;
+  }
 }
 
 describe("encodeIsValidSignatureCall", () => {
@@ -179,5 +203,46 @@ describe("createErc1271VerifyHooks expectedChainId (plan-2607-46 slice 03)", () 
     await expect(
       hooks.isValidSignature(ADDRESS, HASH, new Uint8Array(65)),
     ).resolves.toBe(true);
+  });
+});
+
+describe("createErc1271VerifyHooks fetchImpl (FOR-559)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("isValidSignature calls the injected fetchImpl with the expected url and body, not globalThis.fetch", async () => {
+    await withGlobalFetchForbidden(async () => {
+      const fakeFetch = vi.fn(async (url: string, init?: RequestInit) => {
+        expect(url).toBe("https://rpc.example/erc1271");
+        const body = JSON.parse(String(init?.body)) as {
+          method: string;
+          params: [{ to: string; data: string }, string];
+        };
+        expect(body.method).toBe("eth_call");
+        expect(body.params[0].to).toBe(`0x${bytesToHex(ADDRESS)}`);
+        return rpcResponse(MAGIC_WORD);
+      });
+
+      const hooks = createErc1271VerifyHooks(["https://rpc.example/erc1271"], {
+        fetchImpl: fakeFetch as unknown as typeof fetch,
+      });
+      await expect(
+        hooks.isValidSignature(ADDRESS, HASH, new Uint8Array(65)),
+      ).resolves.toBe(true);
+      expect(fakeFetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("hasContractCode calls the injected fetchImpl, not globalThis.fetch", async () => {
+    await withGlobalFetchForbidden(async () => {
+      const fakeFetch = vi.fn(async () => rpcResponse("0x6001"));
+
+      const hooks = createErc1271VerifyHooks(["https://rpc.example/code"], {
+        fetchImpl: fakeFetch as unknown as typeof fetch,
+      });
+      await expect(hooks.hasContractCode(ADDRESS)).resolves.toBe(true);
+      expect(fakeFetch).toHaveBeenCalledTimes(1);
+    });
   });
 });
