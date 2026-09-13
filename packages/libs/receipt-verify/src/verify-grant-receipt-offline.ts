@@ -248,7 +248,7 @@ async function verifyReceiptOfflineWithLeafInner(input: {
 }): Promise<ReceiptVerifyResult> {
   let trustRoot;
   try {
-    trustRoot = (await decodeTrustRootFromGenesis(input.genesisCbor)).key;
+    trustRoot = await decodeTrustRootFromGenesis(input.genesisCbor);
   } catch {
     return { ok: false, stage: "parse", reason: "genesis_invalid" };
   }

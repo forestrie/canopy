@@ -17,7 +17,7 @@ import {
   FOREST_GENESIS_SCHEMA_V2,
 } from "./forest-genesis-labels.js";
 import { decodeTrustRootCbor } from "./decode-trust-root-cbor.js";
-import { isParsedKs256RootKey } from "./root-verify-key.js";
+import { isParsedKs256RootKey, type RootVerifyKey } from "./root-verify-key.js";
 import {
   asGenesisUint8Array,
   decodeGenesisBodyAsIntKeyMap,
@@ -25,15 +25,18 @@ import {
 import type { DecodedTrustRoot } from "./decoded-trust-root.js";
 
 /**
- * Extract the receipt verify key from a forest genesis document CBOR blob.
- * Offline path: genesis-only trust anchor (ADR-0045). Returns the decoded
- * key alongside `bootstrapKeyXy` (plan-2609-07 L3) — see
- * {@link DecodedTrustRoot}. Throws if the genesis's bootstrap key is not a
- * P-256 public key (a KS256 on-chain address has no `bootstrapKeyXy`); in
- * practice the genesis-time bootstrap key is always ES256, since KS256
- * verification needs the chain to already exist.
+ * Extract the receipt verify key from a forest genesis document CBOR blob,
+ * alongside `bootstrapKeyXy` when the bootstrap key is ES256. Offline path:
+ * genesis-only trust anchor (ADR-0045). See {@link DecodedTrustRoot}.
+ * `bootstrapKeyXy` is read directly from the genesis-encoded bytes (never
+ * exported from the non-extractable `CryptoKey` in `key`), and is
+ * `undefined` for a KS256 v2 bootstrap key (an on-chain address — there is
+ * no P-256 public key to give up in that case).
+ *
+ * This is the single decode path: {@link decodeTrustRootFromGenesis} is
+ * `(await decodeTrustRootDetailsFromGenesis(genesisCbor)).key`.
  */
-export async function decodeTrustRootFromGenesis(
+export async function decodeTrustRootDetailsFromGenesis(
   genesisCbor: Uint8Array,
 ): Promise<DecodedTrustRoot> {
   let raw: unknown;
@@ -55,12 +58,10 @@ export async function decodeTrustRootFromGenesis(
       throw new Error("v2 genesis missing bootstrapKey");
     }
     const key = await decodeTrustRootCbor({ alg, key: bootstrapKey });
-    if (isParsedKs256RootKey(key)) {
-      throw new Error(
-        "v2 genesis bootstrap key is KS256 (on-chain address); no P-256 bootstrapKeyXy",
-      );
-    }
-    return { key, bootstrapKeyXy: bootstrapKey };
+    return {
+      key,
+      bootstrapKeyXy: isParsedKs256RootKey(key) ? undefined : bootstrapKey,
+    };
   }
 
   const kty = m.get(COSE_KEY_KTY);
@@ -84,4 +85,18 @@ export async function decodeTrustRootFromGenesis(
   }
 
   throw new Error("unsupported genesis document");
+}
+
+/**
+ * Extract the receipt verify key from a forest genesis document CBOR blob.
+ * Offline path: genesis-only trust anchor (ADR-0045). The origin/main
+ * signature and behaviour (including a KS256 v2 bootstrap key resolving to
+ * the `ParsedKs256RootKey` on-chain address, not a throw): callers pinned
+ * to `RootVerifyKey` keep working unchanged. For the raw bootstrap public
+ * key bytes as well, use {@link decodeTrustRootDetailsFromGenesis}.
+ */
+export async function decodeTrustRootFromGenesis(
+  genesisCbor: Uint8Array,
+): Promise<RootVerifyKey> {
+  return (await decodeTrustRootDetailsFromGenesis(genesisCbor)).key;
 }

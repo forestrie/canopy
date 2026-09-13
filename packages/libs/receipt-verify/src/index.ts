@@ -31,7 +31,17 @@ export type {
  * re-exported here to preserve the receipt-verify public surface.
  */
 export { peakMMRIndexes } from "@forestrie/merklelog";
-export { decodeTrustRootFromGenesis } from "./decode-trust-root-from-genesis.js";
+/**
+ * `decodeTrustRootFromGenesis` keeps its origin/main signature and
+ * behaviour (`Promise<RootVerifyKey>`, including a KS256 v2 bootstrap key
+ * resolving without a throw) so pinned consumers (mcp-verify 1.0.0) are
+ * unaffected. `decodeTrustRootDetailsFromGenesis` is the additive sibling
+ * (plan-2609-07 L3) carrying `bootstrapKeyXy` alongside `key`.
+ */
+export {
+  decodeTrustRootDetailsFromGenesis,
+  decodeTrustRootFromGenesis,
+} from "./decode-trust-root-from-genesis.js";
 export type { DecodedTrustRoot } from "./decoded-trust-root.js";
 /**
  * Genesis document label constants (plan-2609-07 L3): exported from the
