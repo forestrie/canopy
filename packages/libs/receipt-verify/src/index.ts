@@ -32,6 +32,26 @@ export type {
  */
 export { peakMMRIndexes } from "@forestrie/merklelog";
 export { decodeTrustRootFromGenesis } from "./decode-trust-root-from-genesis.js";
+export type { DecodedTrustRoot } from "./decoded-trust-root.js";
+/**
+ * Genesis document label constants (plan-2609-07 L3): exported from the
+ * package root so consumers stop redefining them locally (mcp-resolve's own
+ * `genesis-binding.ts` did, before this).
+ */
+export {
+  FOREST_GENESIS_LABEL_BOOTSTRAP_KEY,
+  FOREST_GENESIS_LABEL_CHAIN_ID,
+  FOREST_GENESIS_LABEL_GENESIS_ALG,
+  FOREST_GENESIS_LABEL_GENESIS_VERSION,
+  FOREST_GENESIS_LABEL_LOG_ID,
+  FOREST_GENESIS_LABEL_UNIVOCITY_ADDR,
+} from "./forest-genesis-labels.js";
+/**
+ * Genesis-bound chain binding (plan-2609-07 L3): mirrors mcp-resolve's own
+ * `decodeChainBindingFromGenesis` so that consumer can delete its copy.
+ */
+export { decodeChainBindingFromGenesis } from "./decode-chain-binding-from-genesis.js";
+export type { ChainBinding } from "./chain-binding.js";
 export { verifyGrantReceiptOffline } from "./verify-grant-receipt-offline.js";
 export { verifyReceiptOffline } from "./verify-grant-receipt-offline.js";
 /**

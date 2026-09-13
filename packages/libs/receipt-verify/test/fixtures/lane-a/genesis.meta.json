@@ -1,0 +1,20 @@
+{
+  "url": "https://api-a.forest-2.forestrie.dev/api/forest/67876864-3b46-67ae-dcb3-13cc81624aa5/genesis",
+  "method": "GET",
+  "requestedAt": "2026-09-13T14:22:52Z",
+  "status": 200,
+  "headers": {
+    "date": "Sun, 13 Sep 2026 14:23:08 GMT",
+    "content-type": "application/cbor",
+    "content-length": "160",
+    "access-control-allow-origin": "*",
+    "access-control-allow-headers": "Content-Type, Authorization, X-PAYMENT, X-Ops-Authorization",
+    "access-control-allow-methods": "GET, POST, PUT, OPTIONS",
+    "access-control-expose-headers": "X-PAYMENT-REQUIRED, X-PAYMENT-RESPONSE",
+    "server": "cloudflare",
+    "alt-svc": "h3=\":443\"; ma=86400"
+  },
+  "bodySha256": "c6183184d805bf23652a265d7f533101eec5c97e1939dd90c7f142e6d502da68",
+  "bodyBytes": 160,
+  "contentType": "application/cbor"
+}

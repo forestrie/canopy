@@ -1,0 +1,19 @@
+{
+  "capturedAt": "2026-09-13T14:23:08Z",
+  "files": {
+    "PROVENANCE.md": "4c47787e619ecb5f15a7395213e93af17de10949f73671f4d178a558b424c67b",
+    "genesis.cbor": "c6183184d805bf23652a265d7f533101eec5c97e1939dd90c7f142e6d502da68",
+    "genesis.headers.txt": "a3128925b32fc6709d4273b56ded818bc56b9e5668da3a5179fabd665249124f",
+    "genesis.meta.json": "d312d90ff80d96ae8b062b09878ac38eb06ca1e1b49950a4c34a382bba090383",
+    "receipt-self.cbor": "55e7edf2a65c39681cb01fc1d6b5b6bf9273b82bd741954be63c8d6f2ef85fbe",
+    "receipt-self.headers.txt": "8f6cd41b36ae86c3874a7d25778fcd6f7db86ff0666fd15d3a91c1e150a6dff3",
+    "receipt-self.meta.json": "ab7c07651b560fd303bd11de1219cb7d0823d7229e25f4c4d13fd09408dac97b",
+    "status-self.headers.txt": "0520a73497a74469f5904f411c5e3ff53e00ba6a76ae0e7fcb7d4cef8ba9f999",
+    "status-self.meta.json": "4bba7a2452d151c7d72484e4364f5e646dd09a8a84b2f78484bf42e8d982c411",
+    "status-unknown.headers.txt": "30c05fb3a7a203b2f3a0b9b24051ea2b9c15ad3b70bfc2444bcc2369044df671",
+    "status-unknown.meta.json": "67ba602d5128b7c3cfc5b305daf8084236480bc86821ad6a0e1c1698d1c8f374",
+    "well-known.headers.txt": "e9f26c369d56ba542a6155fbeaba1ebf3e754e3966f00ee3193dc322e69b877d",
+    "well-known.json": "10ad04ae5bc8bbac551fe871987d7f80bc22a4fcb9ce4fe18256eef1dfed08a8",
+    "well-known.meta.json": "01f8d3ba1354638d775f0b04530b47536dd3875b28feb0531d65c398be746cc4"
+  }
+}

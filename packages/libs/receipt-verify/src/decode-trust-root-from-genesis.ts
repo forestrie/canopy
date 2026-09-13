@@ -17,39 +17,32 @@ import {
   FOREST_GENESIS_SCHEMA_V2,
 } from "./forest-genesis-labels.js";
 import { decodeTrustRootCbor } from "./decode-trust-root-cbor.js";
-import type { RootVerifyKey } from "./root-verify-key.js";
-
-function decodeBodyAsIntKeyMap(raw: unknown): Map<number, unknown> | null {
-  if (raw instanceof Map) return raw as Map<number, unknown>;
-  if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
-    const out = new Map<number, unknown>();
-    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-      const n = Number(k);
-      if (Number.isFinite(n)) out.set(n, v);
-    }
-    return out;
-  }
-  return null;
-}
-
-function asGenesisUint8Array(v: unknown): Uint8Array | null {
-  return v instanceof Uint8Array ? v : null;
-}
+import { isParsedKs256RootKey } from "./root-verify-key.js";
+import {
+  asGenesisUint8Array,
+  decodeGenesisBodyAsIntKeyMap,
+} from "./decode-genesis-cbor-map.js";
+import type { DecodedTrustRoot } from "./decoded-trust-root.js";
 
 /**
- * Extract receipt verify key from a forest genesis document CBOR blob.
- * Offline path: genesis-only trust anchor (ADR-0045).
+ * Extract the receipt verify key from a forest genesis document CBOR blob.
+ * Offline path: genesis-only trust anchor (ADR-0045). Returns the decoded
+ * key alongside `bootstrapKeyXy` (plan-2609-07 L3) — see
+ * {@link DecodedTrustRoot}. Throws if the genesis's bootstrap key is not a
+ * P-256 public key (a KS256 on-chain address has no `bootstrapKeyXy`); in
+ * practice the genesis-time bootstrap key is always ES256, since KS256
+ * verification needs the chain to already exist.
  */
 export async function decodeTrustRootFromGenesis(
   genesisCbor: Uint8Array,
-): Promise<RootVerifyKey> {
+): Promise<DecodedTrustRoot> {
   let raw: unknown;
   try {
     raw = decodeCborDeterministic(genesisCbor);
   } catch {
     throw new Error("genesis CBOR decode failed");
   }
-  const m = decodeBodyAsIntKeyMap(raw);
+  const m = decodeGenesisBodyAsIntKeyMap(raw);
   if (!m) throw new Error("genesis document must be a CBOR map");
 
   const versionRaw = m.get(FOREST_GENESIS_LABEL_GENESIS_VERSION);
@@ -61,7 +54,13 @@ export async function decodeTrustRootFromGenesis(
     if (bootstrapKey === null) {
       throw new Error("v2 genesis missing bootstrapKey");
     }
-    return decodeTrustRootCbor({ alg, key: bootstrapKey });
+    const key = await decodeTrustRootCbor({ alg, key: bootstrapKey });
+    if (isParsedKs256RootKey(key)) {
+      throw new Error(
+        "v2 genesis bootstrap key is KS256 (on-chain address); no P-256 bootstrapKeyXy",
+      );
+    }
+    return { key, bootstrapKeyXy: bootstrapKey };
   }
 
   const kty = m.get(COSE_KEY_KTY);
@@ -76,7 +75,8 @@ export async function decodeTrustRootFromGenesis(
     const xy = new Uint8Array(64);
     xy.set(x, 0);
     xy.set(y, 32);
-    return decodeTrustRootCbor({ alg: COSE_ALG_ES256, key: xy });
+    const key = await decodeTrustRootCbor({ alg: COSE_ALG_ES256, key: xy });
+    return { key, bootstrapKeyXy: xy };
   }
 
   if (versionRaw === FOREST_GENESIS_SCHEMA_V1 || versionRaw === undefined) {
