@@ -47,7 +47,7 @@ const DEFAULT_CONFIG = {
     "RS384",
     "RS512",
   ],
-  maxStatementSize: 4 * 1024 * 1024, // 10MB
+  maxStatementSize: 4 * 1024 * 1024, // 4 MiB
   maxEntriesPerPage: 100,
 } as const;
 
