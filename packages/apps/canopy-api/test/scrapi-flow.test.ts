@@ -517,10 +517,10 @@ describe("SCRAPI flow", () => {
 
     const responseBytes = new Uint8Array(await response.arrayBuffer());
 
-    // FOR-559 / plan-2609-07 decision L4: for one release, a request whose
-    // Accept names the pre-draft media type still gets that value (identical
-    // body); any other Accept — including application/cose, the draft's own
-    // Accept (§2.1.4) — gets the draft-registered type (§6.3).
+    // FOR-559: the pre-draft media type alias was removed after one release
+    // (plan-2609-07 decision L4); every Accept — including the pre-draft
+    // value and application/cose, the draft's own Accept (§2.1.4) — gets the
+    // draft-registered type (§6.3).
     const legacyAcceptResponse = await worker.fetch(
       new Request(receiptUrl, {
         headers: { Accept: "application/scitt-receipt+cbor" },
@@ -530,7 +530,7 @@ describe("SCRAPI flow", () => {
     );
     expect(legacyAcceptResponse.status).toBe(200);
     expect(legacyAcceptResponse.headers.get("content-type")).toBe(
-      "application/scitt-receipt+cbor",
+      "application/scitt.receipt+cose",
     );
     const legacyAcceptBytes = new Uint8Array(
       await legacyAcceptResponse.arrayBuffer(),
