@@ -12,9 +12,8 @@
  *
  * Default `Accept` (FOR-559, plan-2609-07 decision L4): {@link
  * SCITT_RECEIPT_COSE_CONTENT_TYPE}, the media type draft-ietf-scitt-scrapi-05
- * §6.3 registers for a SCITT Receipt. canopy-api still honours the pre-draft
- * `application/scitt-receipt+cbor` value for one release when a caller sets
- * `accept` to it explicitly.
+ * §6.3 registers for a SCITT Receipt. canopy-api serves that type for every
+ * request regardless of `Accept`.
  */
 
 import { decodeProblemDetailsBytes } from "./problem-details.js";
