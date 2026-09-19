@@ -288,32 +288,26 @@ export default {
             headers,
           });
         }
-        return problemResponse(
-          404,
-          "Not Found",
-          `The requested resource ${pathname} was not found`,
-          corsHeaders,
-        );
+        return problemResponse(404, "Not Found", "about:blank", {
+          detail: `The requested resource ${pathname} was not found`,
+          headers: corsHeaders,
+        });
       }
 
       if (segments[0] !== "logs") {
-        return problemResponse(
-          404,
-          "Not Found",
-          `The requested resource ${pathname} was not found`,
-          corsHeaders,
-        );
+        return problemResponse(404, "Not Found", "about:blank", {
+          detail: `The requested resource ${pathname} was not found`,
+          headers: corsHeaders,
+        });
       }
 
       // Route group 1: /logs/{bootstrap}/{logId}/entries/{contentHash} (GET)
       if (segments.length === 5 && segments[3] === "entries") {
         if (request.method !== "GET") {
-          return problemResponse(
-            405,
-            "Method Not Allowed",
-            `The requested resource ${pathname} does not support method ${request.method}`,
-            corsHeaders,
-          );
+          return problemResponse(405, "Method Not Allowed", "about:blank", {
+            detail: `The requested resource ${pathname} does not support method ${request.method}`,
+            headers: corsHeaders,
+          });
         }
 
         const univocityServiceUrl = env.UNIVOCITY_SERVICE_URL?.trim();
@@ -352,12 +346,10 @@ export default {
         segments[6] === "receipt"
       ) {
         if (request.method !== "GET") {
-          return problemResponse(
-            405,
-            "Method Not Allowed",
-            `The requested resource ${pathname} does not support method ${request.method}`,
-            corsHeaders,
-          );
+          return problemResponse(405, "Method Not Allowed", "about:blank", {
+            detail: `The requested resource ${pathname} does not support method ${request.method}`,
+            headers: corsHeaders,
+          });
         }
 
         const response = await resolveReceipt(
@@ -377,20 +369,19 @@ export default {
         });
       }
 
-      return problemResponse(
-        404,
-        "Not Found",
-        `The requested resource ${pathname} was not found`,
-        corsHeaders,
-      );
+      return problemResponse(404, "Not Found", "about:blank", {
+        detail: `The requested resource ${pathname} was not found`,
+        headers: corsHeaders,
+      });
     } catch (error) {
       console.error("Unhandled error:", error);
-      return problemResponse(
-        500,
-        "Internal Server Error",
-        error instanceof Error ? error.message : "An unexpected error occurred",
-        { headers: corsHeaders },
-      );
+      return problemResponse(500, "Internal Server Error", "about:blank", {
+        detail:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred",
+        headers: corsHeaders,
+      });
     }
   },
 };
