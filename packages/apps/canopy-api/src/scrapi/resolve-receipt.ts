@@ -26,6 +26,7 @@ import {
   VDP_CONSISTENCY_PROOF_KEY,
   decodeCborDeterministic,
   encodeCborDeterministic,
+  readProtectedTreeSizes,
 } from "@forestrie/encoding";
 
 import { CBOR_CONTENT_TYPES } from "../cbor-api/cbor-content-types.js";
@@ -183,9 +184,14 @@ export async function resolveReceipt(
     const peakReceipts = peakReceiptsRaw as unknown[];
 
     // Checkpoint format v3 (ADR-0046): the payload is detached (null); the
-    // sealed size is tree-size-2 of the consistency proof carried in the
-    // verifiable-proofs unprotected header (draft-bryce label 396, key -2).
-    const mmrSize = sealedSizeFromCheckpoint(checkpointUnprotected);
+    // sealed size is the SIGNED tree-size-2 (ADR-0066 D2/D3, FOR-568) from
+    // the checkpoint's protected header, cross-checked against the
+    // verifiable-proofs unprotected header (draft-bryce label 396, key -2)
+    // only for presence of the consistency proof it must accompany.
+    const mmrSize = sealedSizeFromCheckpoint(
+      checkpointSign1[0],
+      checkpointUnprotected,
+    );
     if (mmrSize === null || mmrSize <= 0n) {
       return ClientErrors.notFound(
         "Entry receipt not found (checkpoint carries no consistency proof)",
@@ -366,11 +372,19 @@ function requireCoseSign1(value: unknown, label: string): CoseSign1 {
 }
 
 /**
- * Sealed mmr size from a format-v3 checkpoint: tree-size-2 of the consistency
- * proof (`bstr .cbor [tree-size-1, tree-size-2, paths, right-peaks]`) under
- * the verifiable-proofs unprotected header.
+ * Sealed mmr size from a format-v3 checkpoint: the SIGNED `tree-size-2`
+ * (ADR-0066 D2/D3, FOR-568) from the checkpoint's PROTECTED header — not the
+ * unprotected consistency proof's declared value, which an unsigned
+ * checkpoint could restate freely. `protectedHeaderBytes` is the checkpoint
+ * COSE Sign1's element-0 bstr contents (`checkpointSign1[0]`). A consistency
+ * proof must still be present under the verifiable-proofs unprotected
+ * header (label 396, key -2) — an unsealed checkpoint has no size to read at
+ * all; its declared sizes are not otherwise used here (this reader does not
+ * cross-check them against the signed sizes; see
+ * `checkpointConsistencyProof` in `@forestrie/receipt-verify` for that).
  */
 function sealedSizeFromCheckpoint(
+  protectedHeaderBytes: Uint8Array,
   unprotected: Map<number, unknown>,
 ): bigint | null {
   const vdpRaw = unprotected.get(COSE_LABEL_VDP);
@@ -382,18 +396,13 @@ function sealedSizeFromCheckpoint(
   if (!(proofBstr instanceof Uint8Array)) {
     return null;
   }
-  const proof = decodeCborDeterministic(proofBstr) as unknown;
-  if (!Array.isArray(proof) || proof.length < 2) {
+  let signed: { treeSize1: bigint; treeSize2: bigint } | null;
+  try {
+    signed = readProtectedTreeSizes(protectedHeaderBytes);
+  } catch {
     return null;
   }
-  const treeSize2 = proof[1];
-  if (typeof treeSize2 === "bigint") {
-    return treeSize2;
-  }
-  if (typeof treeSize2 === "number" && Number.isSafeInteger(treeSize2)) {
-    return BigInt(treeSize2);
-  }
-  return null;
+  return signed?.treeSize2 ?? null;
 }
 
 function toHeaderMap(
@@ -807,8 +816,11 @@ export async function buildReceiptForEntry(
     if (!Array.isArray(peakReceiptsRaw)) return null;
     const peakReceipts = peakReceiptsRaw as unknown[];
 
-    // Format v3: sealed size from the consistency proof (detached payload).
-    const mmrSize = sealedSizeFromCheckpoint(checkpointUnprotected);
+    // Format v3: sealed size is the SIGNED tree-size-2 (ADR-0066, FOR-568).
+    const mmrSize = sealedSizeFromCheckpoint(
+      checkpointSign1[0],
+      checkpointUnprotected,
+    );
     if (mmrSize === null || mmrSize <= 0n) return null;
     const mmrLastIndex = mmrSize - 1n;
     if (mmrIndex > mmrLastIndex) return null;

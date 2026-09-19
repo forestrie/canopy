@@ -3,7 +3,11 @@
  * Layout mirrors scrapi-flow.test.ts / resolve-receipt.ts (massif height 3).
  */
 
-import { encodeCborDeterministic } from "@forestrie/encoding";
+import {
+  COSE_LABEL_TREE_SIZE_1,
+  COSE_LABEL_TREE_SIZE_2,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import { DELEGATION_CERT_LABEL } from "../../src/grant/delegation-verify.js";
 
 export const SEAL_PEAK_RECEIPTS_LABEL = -65931;
@@ -104,7 +108,12 @@ export function buildV2CheckpointBytes(opts: {
   // Checkpoint format v3 (ADR-0046): detached (null) payload; the sealed
   // size travels as tree-size-2 of the consistency proof under the
   // verifiable-proofs unprotected header (draft-bryce: label 396, key -2,
-  // `bstr .cbor [tree-size-1, tree-size-2, paths, right-peaks]`).
+  // `bstr .cbor [tree-size-1, tree-size-2, paths, right-peaks]`). ADR-0066
+  // (FOR-568): resolve-receipt reads the SIGNED tree-size-2 from the
+  // protected header, so the protected map must carry matching
+  // tree-size-1/tree-size-2 labels — this fixture's checkpoint is never
+  // signature-checked (the signature bstr is empty), so the labels alone
+  // are sufficient for the sealed size to resolve.
   const consistencyProof = cborBytes([0n, opts.mmrSize, [], []]);
   const verifiableProofs = new Map<number, unknown>([[-2, consistencyProof]]);
   const checkpointUnprotected = new Map<number, unknown>([
@@ -114,9 +123,20 @@ export function buildV2CheckpointBytes(opts: {
   if (opts.delegationCert?.length) {
     checkpointUnprotected.set(DELEGATION_CERT_LABEL, opts.delegationCert);
   }
-  const emptyProtected = new Uint8Array();
+  const checkpointProtected = cborBytes(
+    new Map<number, unknown>([
+      [1, -7],
+      [COSE_LABEL_TREE_SIZE_1, 0n],
+      [COSE_LABEL_TREE_SIZE_2, opts.mmrSize],
+    ]),
+  );
   const emptySig = new Uint8Array();
-  return cborBytes([emptyProtected, checkpointUnprotected, null, emptySig]);
+  return cborBytes([
+    checkpointProtected,
+    checkpointUnprotected,
+    null,
+    emptySig,
+  ]);
 }
 
 export async function putMmrsFixture(

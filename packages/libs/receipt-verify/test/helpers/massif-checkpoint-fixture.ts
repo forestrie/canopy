@@ -6,6 +6,8 @@
 
 import {
   COSE_LABEL_PEAK_RECEIPTS,
+  COSE_LABEL_TREE_SIZE_1,
+  COSE_LABEL_TREE_SIZE_2,
   COSE_LABEL_VDP,
   VDP_CONSISTENCY_PROOF_KEY,
   encodeCborDeterministic,
@@ -105,7 +107,12 @@ export function buildV2CheckpointBytes(opts: {
 }): Uint8Array {
   // Checkpoint format v3 (ADR-0046): detached (null) payload; the sealed
   // size travels as tree-size-2 of the consistency proof under the
-  // verifiable-proofs unprotected header (label 396, key -2).
+  // verifiable-proofs unprotected header (label 396, key -2). ADR-0066
+  // (FOR-568): the sealed size `parseCheckpoint` reads is the SIGNED
+  // tree-size-2 from the protected header, so the protected map must carry
+  // matching tree-size-1/tree-size-2 labels — these fixtures never verify a
+  // signature (the outer signature bstr is empty), so the labels alone are
+  // sufficient for `mmrSize` to resolve.
   const consistencyProof = cborBytes([0n, opts.mmrSize, [], []]);
   const verifiableProofs = new Map<number, unknown>([
     [VDP_CONSISTENCY_PROOF_KEY, consistencyProof],
@@ -117,8 +124,15 @@ export function buildV2CheckpointBytes(opts: {
   if (opts.delegationCert?.length) {
     checkpointUnprotected.set(1000, opts.delegationCert);
   }
+  const checkpointProtected = cborBytes(
+    new Map<number, unknown>([
+      [1, -7],
+      [COSE_LABEL_TREE_SIZE_1, 0n],
+      [COSE_LABEL_TREE_SIZE_2, opts.mmrSize],
+    ]),
+  );
   return cborBytes([
-    new Uint8Array(),
+    checkpointProtected,
     checkpointUnprotected,
     null,
     new Uint8Array(),

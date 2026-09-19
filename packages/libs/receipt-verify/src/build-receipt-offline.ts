@@ -18,9 +18,9 @@
 import {
   COSE_LABEL_PEAK_RECEIPTS,
   COSE_LABEL_VDP,
-  VDP_CONSISTENCY_PROOF_KEY,
   decodeCborDeterministic,
   encodeCborDeterministic,
+  readProtectedTreeSizes,
 } from "@forestrie/encoding";
 import {
   calculateRoot,
@@ -37,6 +37,7 @@ import {
   unwrapCoseSign1Tag,
   type CoseSign1,
 } from "./parse-receipt.js";
+import { decodeConsistencyProofFromUnprotected } from "./decode-checkpoint-consistency-proof.js";
 import { SubtleHasher } from "./subtle-hasher.js";
 
 /** Not in scope for the shared cose-labels module (FOR-568 §4.1). */
@@ -55,7 +56,14 @@ export type ParsedCheckpoint = {
   unprotected: Map<number, unknown>;
   /** Pre-signed peak receipts (label -65931), or null when absent. */
   peakReceipts: unknown[] | null;
-  /** Sealed tree size (tree-size-2 of the embedded consistency proof). */
+  /**
+   * Sealed tree size: the SIGNED `tree-size-2` from the checkpoint's
+   * PROTECTED header (ADR-0066 D2/D3), not the unprotected consistency
+   * proof's declared value. `null` when the checkpoint carries no embedded
+   * consistency proof or no signed tree sizes — such a checkpoint is not
+   * verifiable (ADR-0066 D6: no compatibility mode) and callers must treat
+   * it exactly as they would a checkpoint with no proof at all.
+   */
   mmrSize: bigint | null;
   delegationCert: Uint8Array | null;
 };
@@ -79,7 +87,7 @@ export function parseCheckpoint(checkpointBytes: Uint8Array): ParsedCheckpoint {
     coseSign1,
     unprotected,
     peakReceipts,
-    mmrSize: sealedSizeFromCheckpoint(unprotected),
+    mmrSize: sealedSizeFromCheckpoint(coseSign1, unprotected),
     delegationCert,
   };
 }
@@ -253,24 +261,36 @@ function cborBytes(value: unknown): Uint8Array {
 }
 
 /**
- * Sealed mmr size from a format-v3 checkpoint: tree-size-2 of the consistency
- * proof (`bstr .cbor [tree-size-1, tree-size-2, paths, right-peaks]`) under
- * the verifiable-proofs unprotected header (label 396, key -2).
+ * Sealed mmr size from a format-v3 checkpoint: the SIGNED `tree-size-2`
+ * (ADR-0066 D2/D3) from the PROTECTED header — not the unprotected
+ * consistency proof's declared value, which a checkpoint without a
+ * signing key could freely restate (ADR-0066's "keyless first checkpoint"
+ * case). A consistency proof must still be present (an unsigned checkpoint
+ * with no proof is not sealed at all); its declared sizes are not otherwise
+ * used here — {@link checkpointConsistencyProof} in `checkpoint-chain.ts`
+ * is the validating decode that requires the two to agree.
+ *
+ * Lenient by design: an absent proof, a malformed proof, or absent/malformed
+ * signed sizes all yield `null` rather than a throw, so a caller of
+ * {@link parseCheckpoint} sees exactly the same "not verifiable" outcome
+ * either way.
  */
 function sealedSizeFromCheckpoint(
+  coseSign1: CoseSign1,
   unprotected: Map<number, unknown>,
 ): bigint | null {
-  const vdpRaw = unprotected.get(COSE_LABEL_VDP);
-  if (vdpRaw === undefined || vdpRaw === null) return null;
-  const vdp = toHeaderMap(vdpRaw as Map<number, unknown>);
-  const proofBstr = vdp.get(VDP_CONSISTENCY_PROOF_KEY);
-  if (!(proofBstr instanceof Uint8Array)) return null;
-  const proof = decodeCborDeterministic(proofBstr);
-  if (!Array.isArray(proof) || proof.length < 2) return null;
-  const treeSize2 = proof[1];
-  if (typeof treeSize2 === "bigint") return treeSize2;
-  if (typeof treeSize2 === "number" && Number.isSafeInteger(treeSize2)) {
-    return BigInt(treeSize2);
+  let declared;
+  try {
+    declared = decodeConsistencyProofFromUnprotected(unprotected);
+  } catch {
+    return null;
   }
-  return null;
+  if (declared === null) return null;
+  let signed;
+  try {
+    signed = readProtectedTreeSizes(coseSign1[0]);
+  } catch {
+    return null;
+  }
+  return signed?.treeSize2 ?? null;
 }

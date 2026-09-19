@@ -10,6 +10,8 @@
  * frozen in the golden manifest).
  */
 import {
+  COSE_LABEL_TREE_SIZE_1,
+  COSE_LABEL_TREE_SIZE_2,
   COSE_LABEL_VDP,
   VDP_CONSISTENCY_PROOF_KEY,
   VDP_INCLUSION_PROOF_KEY,
@@ -17,7 +19,7 @@ import {
   encodeSigStructure,
 } from "@forestrie/encoding";
 import {
-  consistentRoots,
+  consistentRootsForSizes,
   indexConsistencyProof,
   indexHeight,
   mmrIndex,
@@ -112,6 +114,11 @@ export async function buildBurialBundleFixture(): Promise<BurialBundleFixture> {
   const peaksAt = (lastIndex: bigint) => peakMMRIndexes(lastIndex).map(getHash);
 
   const hasher = new SubtleHasher();
+  // The old-era RECEIPT (built below) is signed with a plain protected
+  // header — receipts do not carry the tree-size labels (ADR-0066 D3
+  // reserves those for checkpoints). Each CHECKPOINT gets its own protected
+  // header carrying the SIGNED tree-size-1/tree-size-2 for that link
+  // (ADR-0066 D2), built per-call in `buildCheckpoint` below.
   const protectedBstr = encodeCborDeterministic(new Map([[1, -7]]));
 
   const buildCheckpoint = async (
@@ -124,13 +131,14 @@ export async function buildBurialBundleFixture(): Promise<BurialBundleFixture> {
     if (sizeFrom > 0n) {
       const cp = indexConsistencyProof(getHash, sizeFrom - 1n, sizeTo - 1n);
       paths = cp.paths;
-      const proven = await consistentRoots(
+      const { roots } = await consistentRootsForSizes(
         hasher,
-        sizeFrom - 1n,
+        sizeFrom,
+        sizeTo,
         peaksAt(sizeFrom - 1n),
         paths,
       );
-      rightPeaks = accumulatorTo.slice(proven.length);
+      rightPeaks = accumulatorTo.slice(roots.length);
     }
     const proofBstr = encodeCborDeterministic([
       sizeFrom,
@@ -138,13 +146,20 @@ export async function buildBurialBundleFixture(): Promise<BurialBundleFixture> {
       paths,
       rightPeaks,
     ]);
+    const checkpointProtectedBstr = encodeCborDeterministic(
+      new Map<number, unknown>([
+        [1, -7],
+        [COSE_LABEL_TREE_SIZE_1, sizeFrom],
+        [COSE_LABEL_TREE_SIZE_2, sizeTo],
+      ]),
+    );
     const sig = await sign(
       keyPair,
-      protectedBstr,
+      checkpointProtectedBstr,
       accumulatorPayload(accumulatorTo),
     );
     return encodeCborDeterministic([
-      protectedBstr,
+      checkpointProtectedBstr,
       new Map<number, unknown>([
         [
           COSE_LABEL_VDP,

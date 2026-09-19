@@ -1,6 +1,6 @@
 {
-  "comment": "FOR-368 burial-bundle golden vectors — FROZEN bytes; see scripts/export-burial-bundle.ts",
-  "publicKeyXyHex": "24d58857465ed3c37e0b14a2bf9253564ec1ded6d1f224d441958fd59319a9854d89197e6948275a75889214892ab5dddcf07b8a8f18bb848d8bd02e7d28cd5d",
+  "comment": "Regenerated 2026-09-19 for ADR-0066 (FOR-568): protected header now carries tree-size-1 (-65932) and tree-size-2 (-65933); every signature over a protected header changed.",
+  "publicKeyXyHex": "bf6187ef6013277f4153600e452578c0ca79c73d8682719b5afdc49b8b265f6427eb41b27dd83730a6eeea5c58ec4e8f04d6c6803f9dd9e8a034cb14723a7f05",
   "leafMmrIndex": "1",
   "leafHashHex": "cd2662154e6d76b2b2b92e70c0cac3ccf534f9b74eb5b89819ec509083d00a50",
   "buriedPeakHex": "ad104051c516812ea5874ca3ff06d0258303623d04307c41ec80a7a18b332ef8",
@@ -14,10 +14,10 @@
     "sth-0003.cbor"
   ],
   "checkpointSha256": [
-    "5ca4b7a6c73481a66d61f4191411c9df81e6b3128f4b51b670afbe46f1b85319",
-    "29f865f6371faec2d43198d13606f62dbab6cb97e75634b33211ab02acb46949",
-    "856f153e0728901744ca2ce9fe7a2d69e93d7644410145570d2add86a6602852",
-    "6f4f9382eb55e59d5875fff65ad2c7222eae7bac1b26922c95582c7eda7eaaae"
+    "3bc8a503526185a1f2f894c1ac572083cd615b25dd71166c77d40be6645a69e9",
+    "fcb7329bce5e578c5dfdf0be784c42ba71f96b9bd20e254001731e0557c18491",
+    "cb7fe29e0f54e5be9e1c9511c35c3345d737a95891a778b93edecafdce389fc3",
+    "a511d5418061c8ae6e81fe07ea3cd933a4f3c122453ed8c2b9f2cfe140a5ed5b"
   ],
-  "receiptSha256": "93c4b3de12b5464acb2d0b09cbba2ad8bf40c16aa41f4a2e4df900d0f0e65e41"
+  "receiptSha256": "55158aa87b1d1510242d9651f19877b80ba27f08bbffb2da30cd338eb18027bb"
 }

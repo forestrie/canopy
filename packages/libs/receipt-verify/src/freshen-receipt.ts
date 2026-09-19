@@ -170,7 +170,16 @@ export async function freshenReceipt(
   // Fold the chain to the latest accumulator (self-check target).
   let accumulator = input.accumulatorFrom ?? [];
   for (const p of links) {
-    accumulator = await computeCheckpointAccumulator(p, accumulator);
+    // The chain-shape validation above already establishes trust in each
+    // link's declared base (contiguous with the previous link's sealed
+    // size, or the caller's `accumulatorFrom` base for the first link), so
+    // that declared base IS the trusted `sizeFrom` this fold step runs
+    // against.
+    accumulator = await computeCheckpointAccumulator(
+      p,
+      accumulator,
+      p.treeSize1,
+    );
   }
   const aLatest = accumulator;
 

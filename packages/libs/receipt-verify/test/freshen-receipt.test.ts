@@ -176,6 +176,8 @@ describe("freshenReceipt (FOR-418)", () => {
     const link = {
       treeSize1: 3n,
       treeSize2: 7n,
+      signedTreeSize1: 3n,
+      signedTreeSize2: 7n,
       paths: cp.paths,
       rightPeaks,
     };
@@ -234,6 +236,8 @@ describe("freshenReceipt (FOR-418)", () => {
     const link = {
       treeSize1: 4n,
       treeSize2: 7n,
+      signedTreeSize1: 4n,
+      signedTreeSize2: 7n,
       paths: cp.paths,
       rightPeaks: aLatest.slice(proven.length),
     };
@@ -284,6 +288,8 @@ describe("freshenReceipt (FOR-418)", () => {
     const link1 = {
       treeSize1: 3n,
       treeSize2: 7n,
+      signedTreeSize1: 3n,
+      signedTreeSize2: 7n,
       paths: cp1.paths,
       rightPeaks: a7.slice(proven1.length),
     };
@@ -294,6 +300,8 @@ describe("freshenReceipt (FOR-418)", () => {
     const link2 = {
       treeSize1: 7n,
       treeSize2: 15n,
+      signedTreeSize1: 7n,
+      signedTreeSize2: 15n,
       paths: cp2.paths,
       rightPeaks: a15.slice(proven2.length),
     };
@@ -346,6 +354,8 @@ describe("freshenReceipt (FOR-418)", () => {
     const link0 = {
       treeSize1: 0n,
       treeSize2: 3n,
+      signedTreeSize1: 0n,
+      signedTreeSize2: 3n,
       paths: [] as Uint8Array[][],
       rightPeaks: peakMMRIndexes(2n).map(get), // [n2]
     };
@@ -357,6 +367,8 @@ describe("freshenReceipt (FOR-418)", () => {
     const link1 = {
       treeSize1: 3n,
       treeSize2: 7n,
+      signedTreeSize1: 3n,
+      signedTreeSize2: 7n,
       paths: cp.paths,
       rightPeaks: a7.slice(proven.length),
     };
@@ -409,6 +421,8 @@ describe("freshenReceipt (FOR-418)", () => {
     const link = {
       treeSize1: 3n,
       treeSize2: 7n,
+      signedTreeSize1: 3n,
+      signedTreeSize2: 7n,
       paths: cp.paths,
       rightPeaks: aLatest.slice(proven.length),
     };
@@ -451,6 +465,8 @@ describe("freshenReceipt (FOR-418)", () => {
     const link = {
       treeSize1: 3n,
       treeSize2: 7n,
+      signedTreeSize1: 3n,
+      signedTreeSize2: 7n,
       paths: cp.paths,
       rightPeaks: aLatest.slice(proven.length),
     };
