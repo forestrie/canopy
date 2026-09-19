@@ -14,7 +14,7 @@
 export type NodeGetter = (i: bigint) => Uint8Array;
 
 /** Number of bits needed to represent `num` (0 for 0). */
-function bitLength(num: bigint): number {
+export function bitLength(num: bigint): number {
   if (num <= 0n) return 0;
   return num.toString(2).length;
 }
@@ -230,8 +230,25 @@ export function peaksBitmap(mmrSize: bigint): bigint {
   return peakMap;
 }
 
+/**
+ * Node count of the complete MMR with `leaves` leaves (reference
+ * `mmr_size_for_leaf_count`, Solidity `mmrSizeForLeafCount`).
+ *
+ * Every leaf adds itself plus one interior node per binary carry, and each
+ * peak is a carry that has not happened, so the count is
+ * `2 * leaves - popcount(leaves)`.
+ *
+ * Because {@link peaksBitmap} rounds an incomplete size down to the largest
+ * complete MMR below it, `mmrSizeForLeafCount(peaksBitmap(size)) === size`
+ * holds exactly for complete sizes; that identity is the completeness test
+ * used by `consistentRootsForSizes`.
+ */
+export function mmrSizeForLeafCount(leaves: bigint): bigint {
+  return 2n * leaves - BigInt(popcount(leaves));
+}
+
 /** Population count of a non-negative BigInt. */
-function popcount(x: bigint): number {
+export function popcount(x: bigint): number {
   let count = 0;
   let v = x;
   while (v > 0n) {

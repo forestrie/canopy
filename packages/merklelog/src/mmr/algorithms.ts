@@ -12,7 +12,22 @@
  */
 
 import type { Proof, Hasher } from "./types.js";
-import { inclusionProof, peakMMRIndexes, type NodeGetter } from "./proof.js";
+import {
+  inclusionProof,
+  peakMMRIndexes,
+  bitLength,
+  popcount,
+  peaksBitmap,
+  mmrSizeForLeafCount,
+  type NodeGetter,
+} from "./proof.js";
+import {
+  ConsistencyPathLengthMismatch,
+  ConsistencyPeakCountMismatch,
+  ConsistencyRootMismatch,
+  IncompleteTreeSize,
+  SizeMustIncrease,
+} from "./errors.js";
 import { Uint64 } from "../uint64/index.js";
 import { heightIndex } from "./math.js";
 import { arraysEqual } from "../utils/arrays.js";
@@ -185,6 +200,12 @@ export interface ConsistencyProof {
  * duplicate roots collapse (many old peaks share one new peak). Requires
  * one path per MMR(A) peak (draft: `len(peaks(ifrom)) == len(accumulatorfrom)`).
  *
+ * This fold does not enforce the proof shape the two sizes imply: it reads
+ * whatever path lengths it is given and collapses whatever roots coincide.
+ * Use {@link consistentRootsForSizes} for verification — it checks each path
+ * against the length MMR(A) -> MMR(B) fixes and requires the paths under one
+ * target peak to agree.
+ *
  * @param ifrom - last node index of the complete MMR(A) (`mmrSizeA - 1`)
  * @param accumulatorFrom - MMR(A) peak values, descending height order
  * @param paths - inclusion path per peak, proven in MMR(B)
@@ -223,9 +244,152 @@ export async function consistentRoots(
 }
 
 /**
+ * Produce the peaks of MMR(sizeTo) that `paths` prove from the peaks of
+ * MMR(sizeFrom), requiring the paths to have exactly the shape the two sizes
+ * imply (draft-bryce-cose-receipts-mmr-profile, "Verifying the Receipt of
+ * consistency", with the draft's SHOULD on path lengths enforced in the same
+ * pass). Line-for-line port of the reference `consistent_roots_for_sizes`
+ * (algorithms.py) and of Solidity `consistentRootsForSizes`
+ * (univocity `src/algorithms/consistentRoots.sol`).
+ *
+ * Sizes are node counts (the MMR ending at index `i` has `i + 1` nodes).
+ * `sizeFrom` MUST be the size of the state the verifier already trusts; taken
+ * from the proof instead, the check is void. Only `sizeTo` is required to be
+ * a complete MMR size: every trusted size was itself a checked target.
+ *
+ * For a complete MMR the set bits of `peaksBitmap(size)` are the peak heights,
+ * high to low, which is accumulator order. Let `split` be the highest bit on
+ * which the two bitmaps differ; as `sizeTo > sizeFrom` the target has it and
+ * the origin does not. An origin peak above `split` is also a peak of the
+ * target: its path is empty and it is returned unchanged. Every origin peak
+ * below `split` is committed by the target peak of height `split`: its path
+ * has length `split - h`, and every such path must prove the same root. The
+ * target's remaining peaks lie below every origin peak, so no path reaches
+ * them; the prover supplies them separately and their count is returned.
+ *
+ * Because the shape is fixed by the sizes alone, no peak index list and no
+ * per-hop bookkeeping beyond the hash itself is needed: the bitmaps are
+ * iterated directly.
+ *
+ * @param hasher - cryptographic hasher instance
+ * @param sizeFrom - node count of the trusted origin state (0 for an empty log)
+ * @param sizeTo - node count of the target state; must exceed `sizeFrom` and
+ *   must be a complete MMR size
+ * @param accumulatorFrom - peaks of MMR(sizeFrom), descending height order
+ * @param paths - one path per origin peak, in the same order
+ * @returns `roots`, the peaks of MMR(sizeTo) proven from the origin peaks in
+ *   descending height order (the unchanged peaks, then the one proven root if
+ *   any), and `expectedRight`, the number of MMR(sizeTo) peaks the prover must
+ *   supply as right peaks. `roots` followed by those right peaks is the
+ *   accumulator of MMR(sizeTo).
+ * @throws {SizeMustIncrease} if `sizeTo <= sizeFrom`
+ * @throws {IncompleteTreeSize} if `sizeTo` is not a complete MMR size
+ * @throws {ConsistencyPeakCountMismatch} if `accumulatorFrom` or `paths` does
+ *   not have one entry per origin peak
+ * @throws {ConsistencyPathLengthMismatch} if a path length differs from the
+ *   length the two sizes imply
+ * @throws {ConsistencyRootMismatch} if two paths under one target peak produce
+ *   different roots
+ */
+export async function consistentRootsForSizes(
+  hasher: Hasher,
+  sizeFrom: bigint,
+  sizeTo: bigint,
+  accumulatorFrom: Uint8Array[],
+  paths: Uint8Array[][],
+): Promise<{ roots: Uint8Array[]; expectedRight: number }> {
+  if (sizeTo <= sizeFrom) {
+    throw new SizeMustIncrease(sizeFrom, sizeTo);
+  }
+  const to = peaksBitmap(sizeTo);
+  // peaksBitmap rounds an incomplete size down to the largest MMR below it,
+  // so `to` describes MMR(sizeTo) only if sizeTo is complete. Without this a
+  // target such as 6 anchors an accumulator that is no MMR's, and a verifier
+  // later reads its entries at the wrong heights.
+  if (mmrSizeForLeafCount(to) !== sizeTo) {
+    throw new IncompleteTreeSize(sizeTo);
+  }
+  const from = peaksBitmap(sizeFrom);
+  const n = popcount(from);
+  if (accumulatorFrom.length !== n) {
+    throw new ConsistencyPeakCountMismatch(n, accumulatorFrom.length);
+  }
+  if (paths.length !== n) {
+    throw new ConsistencyPeakCountMismatch(n, paths.length);
+  }
+  const nto = popcount(to);
+  if (n === 0) {
+    return { roots: [], expectedRight: nto };
+  }
+
+  const split = bitLength(from ^ to) - 1;
+  const roots: Uint8Array[] = [];
+  // Nodes preceding the current origin peak's subtree; a peak of height h
+  // sits at offset + 2^(h+1) - 2 and its subtree has 2^(h+1) - 1 nodes.
+  let offset = 0n;
+  let i = 0;
+
+  // Origin peaks above the split are also peaks of the target. The path is
+  // not read; requiring it to be empty rejects unused material (a shape
+  // check: the result does not depend on it).
+  for (let h = bitLength(from) - 1; h > split; h--) {
+    if (((from >> BigInt(h)) & 1n) === 0n) continue;
+    if (paths[i].length !== 0) {
+      throw new ConsistencyPathLengthMismatch(i, 0, paths[i].length);
+    }
+    roots.push(accumulatorFrom[i]);
+    offset += (1n << BigInt(h + 1)) - 1n;
+    i += 1;
+  }
+
+  // Origin peaks below the split are all committed by the target peak of
+  // height `split` (bit `split` itself is clear in `from`), so each path must
+  // have length split - h and every path must prove the same root. The first
+  // `above` peaks were returned unchanged, so i === above at the first peak
+  // below the split.
+  const above = roots.length;
+  let root: Uint8Array | undefined;
+  for (let h = split - 1; h >= 0; h--) {
+    if (((from >> BigInt(h)) & 1n) === 0n) continue;
+    const expected = split - h;
+    if (paths[i].length !== expected) {
+      throw new ConsistencyPathLengthMismatch(i, expected, paths[i].length);
+    }
+    const subtree = (1n << BigInt(h + 1)) - 1n;
+    const peakMMRIndex = offset + subtree - 1n;
+    const proven = await calculateRoot(
+      hasher,
+      accumulatorFrom[i],
+      { path: paths[i], mmrIndex: peakMMRIndex },
+      peakMMRIndex,
+    );
+    if (i === above) {
+      root = proven;
+    } else if (!arraysEqual(proven, root as Uint8Array)) {
+      throw new ConsistencyRootMismatch(i);
+    }
+    offset += subtree;
+    i += 1;
+  }
+  if (n > above) {
+    roots.push(root as Uint8Array);
+  }
+
+  return { roots, expectedRight: nto - roots.length };
+}
+
+/**
  * Verify MMR(A) is a committed prefix of MMR(B)
  * (draft-bryce "Verifying the Receipt of consistency";
  * go-merklelog `VerifyConsistency`).
+ *
+ * Routed through {@link consistentRootsForSizes}, so the proof must have the
+ * shape `proof.mmrSizeA -> proof.mmrSizeB` implies: one path per MMR(A) peak,
+ * empty above the split and of length `split - h` below it, with every path
+ * below the split proving the same root. The proven roots must then be the
+ * leading entries of `peaksTo`, and `peaksTo` must hold exactly those plus the
+ * `expectedRight` right peaks no path reaches — so a truncated or padded
+ * target accumulator is rejected on its length alone.
  *
  * Replaces the plan-0027 always-true stub (FOR-368 Phase 1,
  * plan-2607-29): the previous signature took two inclusion proofs and
@@ -236,7 +400,11 @@ export async function consistentRoots(
  *   payload), descending height order
  * @param peaksTo - MMR(B) accumulator to prove against (e.g. an anchored
  *   on-chain state), descending height order
- * @returns ok, with the MMR(B) accumulator on success
+ * @returns ok, with the MMR(B) accumulator on success. A value that does not
+ *   match `peaksTo` returns `{ok: false, accumulator: []}`; a proof that does
+ *   not have the shape the sizes imply throws one of the typed errors in
+ *   `./errors.js` (all `ConsistencyShapeError` subclasses), which callers
+ *   report as a malformed proof rather than a failed comparison.
  */
 export async function verifyConsistency(
   hasher: Hasher,
@@ -244,28 +412,25 @@ export async function verifyConsistency(
   peaksFrom: Uint8Array[],
   peaksTo: Uint8Array[],
 ): Promise<{ ok: boolean; accumulator: Uint8Array[] }> {
-  const proven = await consistentRoots(
+  const { roots, expectedRight } = await consistentRootsForSizes(
     hasher,
-    proof.mmrSizeA - 1n,
+    proof.mmrSizeA,
+    proof.mmrSizeB,
     peaksFrom,
     proof.paths,
   );
-  // Both lists are in descending height order, so every proven root must
-  // appear in order within peaksTo (a linear scan; go-merklelog semantics:
-  // a proven root matches the current peak or exactly the next one down).
-  let ito = 0;
-  for (const root of proven) {
-    if (ito < peaksTo.length && arraysEqual(peaksTo[ito], root)) {
-      continue;
-    }
-    ito += 1;
-    if (ito >= peaksTo.length || !arraysEqual(peaksTo[ito], root)) {
+  // roots is the leading run of the MMR(B) accumulator and expectedRight
+  // counts the peaks below every MMR(A) peak, which no path reaches. Together
+  // they fix the length of MMR(B)'s accumulator, so the supplied peaksTo must
+  // have that length and must start with the proven roots.
+  if (peaksTo.length !== roots.length + expectedRight) {
+    return { ok: false, accumulator: [] };
+  }
+  for (let i = 0; i < roots.length; i++) {
+    if (!arraysEqual(peaksTo[i], roots[i])) {
       return { ok: false, accumulator: [] };
     }
   }
-  // The full MMR(B) accumulator is the proven prefix plus any right-peaks;
-  // returning peaksTo is safe because consistentRoots enforced one proof
-  // per MMR(A) peak (see go-merklelog VerifyConsistency).
   return { ok: true, accumulator: peaksTo };
 }
 
