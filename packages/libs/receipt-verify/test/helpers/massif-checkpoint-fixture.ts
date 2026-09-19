@@ -5,11 +5,15 @@
  */
 
 import {
+  COSE_LABEL_PEAK_RECEIPTS,
+  COSE_LABEL_VDP,
+  VDP_CONSISTENCY_PROOF_KEY,
   encodeCborDeterministic,
   encodeSigStructure,
 } from "@forestrie/encoding";
 
-export const SEAL_PEAK_RECEIPTS_LABEL = -65931;
+/** Alias of {@link COSE_LABEL_PEAK_RECEIPTS} kept exported under this name for existing callers. */
+export const SEAL_PEAK_RECEIPTS_LABEL = COSE_LABEL_PEAK_RECEIPTS;
 
 const VALUE_BYTES = 32;
 const RESERVED_HEADER_SLOTS = 7;
@@ -103,9 +107,11 @@ export function buildV2CheckpointBytes(opts: {
   // size travels as tree-size-2 of the consistency proof under the
   // verifiable-proofs unprotected header (label 396, key -2).
   const consistencyProof = cborBytes([0n, opts.mmrSize, [], []]);
-  const verifiableProofs = new Map<number, unknown>([[-2, consistencyProof]]);
+  const verifiableProofs = new Map<number, unknown>([
+    [VDP_CONSISTENCY_PROOF_KEY, consistencyProof],
+  ]);
   const checkpointUnprotected = new Map<number, unknown>([
-    [396, verifiableProofs],
+    [COSE_LABEL_VDP, verifiableProofs],
     [SEAL_PEAK_RECEIPTS_LABEL, opts.peakReceipts],
   ]);
   if (opts.delegationCert?.length) {

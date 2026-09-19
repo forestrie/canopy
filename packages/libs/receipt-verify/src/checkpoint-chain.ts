@@ -19,13 +19,14 @@
  * (`legacy_chain_break`): a permanent per-log condition — fall back to the
  * event scan, tile extension, or a holder cache.
  */
-import { decodeCborDeterministic } from "@forestrie/encoding";
+import {
+  COSE_LABEL_VDP,
+  VDP_CONSISTENCY_PROOF_KEY,
+  decodeCborDeterministic,
+} from "@forestrie/encoding";
 import { consistentRoots, peakMMRIndexes } from "@forestrie/merklelog";
 import { SubtleHasher } from "./subtle-hasher.js";
 import { parseCheckpoint } from "./build-receipt-offline.js";
-
-const VDS_COSE_RECEIPT_PROOFS_TAG = 396;
-const VDP_CONSISTENCY_PROOF_KEY = -2;
 
 /** Draft-bryce consistency proof embedded in a v3 checkpoint. */
 export type CheckpointConsistencyProof = {
@@ -67,7 +68,7 @@ export function checkpointConsistencyProof(
   checkpointBytes: Uint8Array,
 ): CheckpointConsistencyProof {
   const { unprotected } = parseCheckpoint(checkpointBytes);
-  const vdpRaw = unprotected.get(VDS_COSE_RECEIPT_PROOFS_TAG);
+  const vdpRaw = unprotected.get(COSE_LABEL_VDP);
   if (!(vdpRaw instanceof Map)) {
     throw new Error("checkpoint carries no verifiable-proofs header (396)");
   }

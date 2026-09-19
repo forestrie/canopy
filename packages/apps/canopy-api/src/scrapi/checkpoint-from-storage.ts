@@ -4,7 +4,7 @@
  * Used for inclusion verification when chain config is absent or as fallback (prefer chain when both).
  */
 
-import { decodeCborDeterministic } from "@forestrie/encoding";
+import { COSE_LABEL_VDP, decodeCborDeterministic } from "@forestrie/encoding";
 import type { Hex } from "viem";
 import type { CheckpointFromStorage } from "./checkpoint-from-storage-result.js";
 import type {
@@ -66,9 +66,9 @@ function decodeCheckpointPayload(bytes: Uint8Array): unknown {
   const unprotected = (unwrapped as [unknown, unknown, unknown, unknown])[1];
   let vdp: unknown;
   if (unprotected instanceof Map) {
-    vdp = unprotected.get(396);
+    vdp = unprotected.get(COSE_LABEL_VDP);
   } else if (unprotected && typeof unprotected === "object") {
-    vdp = (unprotected as Record<string, unknown>)["396"];
+    vdp = (unprotected as Record<string, unknown>)[String(COSE_LABEL_VDP)];
   }
   if (vdp === undefined || vdp === null) {
     return null;

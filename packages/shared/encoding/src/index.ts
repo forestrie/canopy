@@ -39,6 +39,18 @@ export {
   encodeCoseProtectedMapBytes,
   encodeCoseProtectedWithKid,
 } from "./encode-cose-protected.js";
+export {
+  COSE_LABEL_ALG,
+  COSE_LABEL_DELEGATION_PROOF,
+  COSE_LABEL_PEAK_RECEIPTS,
+  COSE_LABEL_TREE_SIZE_1,
+  COSE_LABEL_TREE_SIZE_2,
+  COSE_LABEL_VDP,
+  COSE_LABEL_VDS,
+  VDP_CONSISTENCY_PROOF_KEY,
+  VDP_INCLUSION_PROOF_KEY,
+} from "./cose-labels.js";
+export { readProtectedTreeSizes } from "./cose-protected-tree-sizes.js";
 export { encodeCoseSign1Statement } from "./encode-cose-sign1-statement.js";
 export { signCoseSign1Statement } from "./sign-cose-sign1-statement.js";
 export { base64UrlDecode, base64UrlEncode } from "./base64url.js";

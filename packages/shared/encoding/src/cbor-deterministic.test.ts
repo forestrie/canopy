@@ -196,4 +196,19 @@ describe("@forestrie/encoding CBOR codec vs reference `cbor`", () => {
       /trailing/,
     );
   });
+
+  it("round-trips a map with a 5-byte negative key (tree-size label range) and an 8-byte uint value", () => {
+    // -65932 is COSE_LABEL_TREE_SIZE_1 (ADR-0066 D3): encodes as a 5-byte
+    // negative int (`3a 00 01 01 8b`). Pair it with a uint value above
+    // Number.MAX_SAFE_INTEGER so the decoder must return a bigint (ai=27,
+    // 8-byte argument, `1b ...`).
+    const bigValue = 2n ** 60n; // > 2^53, forces bigint on decode
+    const bytes = encodeCborDeterministic(new Map([[-65932, bigValue]]));
+    expect(hex(bytes)).toBe(
+      `a13a0001018b1b${bigValue.toString(16).padStart(16, "0")}`,
+    );
+    const decoded = decodeCborDeterministic(bytes) as Map<number, bigint>;
+    expect(decoded).toBeInstanceOf(Map);
+    expect(decoded.get(-65932)).toBe(bigValue);
+  });
 });

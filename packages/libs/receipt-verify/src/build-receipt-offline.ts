@@ -16,6 +16,9 @@
  */
 
 import {
+  COSE_LABEL_PEAK_RECEIPTS,
+  COSE_LABEL_VDP,
+  VDP_CONSISTENCY_PROOF_KEY,
   decodeCborDeterministic,
   encodeCborDeterministic,
 } from "@forestrie/encoding";
@@ -36,10 +39,8 @@ import {
 } from "./parse-receipt.js";
 import { SubtleHasher } from "./subtle-hasher.js";
 
-const VDS_COSE_RECEIPT_PROOFS_TAG = 396;
-const SEAL_PEAK_RECEIPTS_LABEL = -65931;
+/** Not in scope for the shared cose-labels module (FOR-568 §4.1). */
 const DELEGATION_CERT_LABEL = 1000;
-const VDP_CONSISTENCY_PROOF_KEY = -2;
 
 /**
  * Re-exported for compatibility. The MMR proof math and massif node store now
@@ -65,7 +66,7 @@ export function parseCheckpoint(checkpointBytes: Uint8Array): ParsedCheckpoint {
   const coseSign1 = requireCoseSign1(unwrapCoseSign1Tag(decoded));
   const unprotected = toHeaderMap(coseSign1[1]);
 
-  const peakReceiptsRaw = unprotected.get(SEAL_PEAK_RECEIPTS_LABEL);
+  const peakReceiptsRaw = unprotected.get(COSE_LABEL_PEAK_RECEIPTS);
   const peakReceipts = Array.isArray(peakReceiptsRaw) ? peakReceiptsRaw : null;
 
   const delegationCertRaw = unprotected.get(DELEGATION_CERT_LABEL);
@@ -186,7 +187,7 @@ export function assembleReceiptFromProof(
   const verifiableProofs = new Map<number, unknown>([
     [-1, [inclusionProofEntry]],
   ]);
-  receiptUnprotected.set(VDS_COSE_RECEIPT_PROOFS_TAG, verifiableProofs);
+  receiptUnprotected.set(COSE_LABEL_VDP, verifiableProofs);
 
   // Peak receipts are signed with detached payload; emit nil so verify uses
   // the peak derived from the inclusion proof.
@@ -259,7 +260,7 @@ function cborBytes(value: unknown): Uint8Array {
 function sealedSizeFromCheckpoint(
   unprotected: Map<number, unknown>,
 ): bigint | null {
-  const vdpRaw = unprotected.get(VDS_COSE_RECEIPT_PROOFS_TAG);
+  const vdpRaw = unprotected.get(COSE_LABEL_VDP);
   if (vdpRaw === undefined || vdpRaw === null) return null;
   const vdp = toHeaderMap(vdpRaw as Map<number, unknown>);
   const proofBstr = vdp.get(VDP_CONSISTENCY_PROOF_KEY);

@@ -21,6 +21,9 @@
  */
 
 import {
+  COSE_LABEL_PEAK_RECEIPTS,
+  COSE_LABEL_VDP,
+  VDP_CONSISTENCY_PROOF_KEY,
   decodeCborDeterministic,
   encodeCborDeterministic,
 } from "@forestrie/encoding";
@@ -34,8 +37,6 @@ import { logIdSegmentToCanonicalUuid } from "../grant/log-id-wire.js";
 import { getParsedGenesis } from "../forest/genesis-cache.js";
 
 // COSE / MMRIVER constants (mirrors go-merklelog/massifs/rootsigner.go)
-const VDS_COSE_RECEIPT_PROOFS_TAG = 396;
-const SEAL_PEAK_RECEIPTS_LABEL = -65931;
 /** Delegation certificate unprotected header label (sealer embeds via Custodian per-log delegation). */
 const DELEGATION_CERT_LABEL = 1000;
 
@@ -172,7 +173,7 @@ export async function resolveReceipt(
         DELEGATION_CERT_LABEL,
       ),
     });
-    const peakReceiptsRaw = checkpointUnprotected.get(SEAL_PEAK_RECEIPTS_LABEL);
+    const peakReceiptsRaw = checkpointUnprotected.get(COSE_LABEL_PEAK_RECEIPTS);
     if (!Array.isArray(peakReceiptsRaw)) {
       return ClientErrors.notFound(
         "Entry receipt not found (checkpoint missing peak receipts)",
@@ -288,7 +289,7 @@ export async function resolveReceipt(
     const verifiableProofs = new Map<number, unknown>([
       [-1, [inclusionProofEntry]],
     ]);
-    receiptUnprotected.set(VDS_COSE_RECEIPT_PROOFS_TAG, verifiableProofs);
+    receiptUnprotected.set(COSE_LABEL_VDP, verifiableProofs);
 
     // Peak receipts are signed with detached payload (nil in storage). Always
     // emit nil so verify uses the peak hash derived from the inclusion proof.
@@ -364,11 +365,6 @@ function requireCoseSign1(value: unknown, label: string): CoseSign1 {
   return [p, u, payload, sig];
 }
 
-/** Verifiable-proofs unprotected header label (draft-bryce vdp). */
-const VDP_LABEL = 396;
-/** Verifiable-proofs map key for the checkpoint's single consistency proof. */
-const VDP_CONSISTENCY_PROOF_KEY = -2;
-
 /**
  * Sealed mmr size from a format-v3 checkpoint: tree-size-2 of the consistency
  * proof (`bstr .cbor [tree-size-1, tree-size-2, paths, right-peaks]`) under
@@ -377,7 +373,7 @@ const VDP_CONSISTENCY_PROOF_KEY = -2;
 function sealedSizeFromCheckpoint(
   unprotected: Map<number, unknown>,
 ): bigint | null {
-  const vdpRaw = unprotected.get(VDP_LABEL);
+  const vdpRaw = unprotected.get(COSE_LABEL_VDP);
   if (vdpRaw === undefined || vdpRaw === null) {
     return null;
   }
@@ -807,7 +803,7 @@ export async function buildReceiptForEntry(
     const checkpointSign1 = requireCoseSign1(checkpoint, "checkpoint");
 
     const checkpointUnprotected = toHeaderMap(checkpointSign1[1]);
-    const peakReceiptsRaw = checkpointUnprotected.get(SEAL_PEAK_RECEIPTS_LABEL);
+    const peakReceiptsRaw = checkpointUnprotected.get(COSE_LABEL_PEAK_RECEIPTS);
     if (!Array.isArray(peakReceiptsRaw)) return null;
     const peakReceipts = peakReceiptsRaw as unknown[];
 
@@ -871,7 +867,7 @@ export async function buildReceiptForEntry(
     const verifiableProofs = new Map<number, unknown>([
       [-1, [inclusionProofEntry]],
     ]);
-    receiptUnprotected.set(VDS_COSE_RECEIPT_PROOFS_TAG, verifiableProofs);
+    receiptUnprotected.set(COSE_LABEL_VDP, verifiableProofs);
     const assembled: CoseSign1 = [
       receiptSign1[0],
       receiptUnprotected,

@@ -1,7 +1,5 @@
-import { decodeCborDeterministic } from "@forestrie/encoding";
+import { COSE_LABEL_VDP, decodeCborDeterministic } from "@forestrie/encoding";
 import type { Proof } from "@forestrie/merklelog";
-
-const VDS_COSE_RECEIPT_PROOFS_TAG = 396;
 
 export type CoseSign1 = [
   protectedHeader: Uint8Array,
@@ -81,7 +79,7 @@ export function parseReceipt(receiptBytes: Uint8Array): {
   }
 
   const unprotected = toHeaderMap(coseSign1[1]);
-  const proofsRaw = unprotected.get(VDS_COSE_RECEIPT_PROOFS_TAG);
+  const proofsRaw = unprotected.get(COSE_LABEL_VDP);
   if (!proofsRaw || typeof proofsRaw !== "object") {
     throw new Error("Receipt missing header 396 (inclusion proof)");
   }
