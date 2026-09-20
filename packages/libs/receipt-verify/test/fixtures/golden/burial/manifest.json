@@ -1,6 +1,6 @@
 {
-  "comment": "Regenerated 2026-09-20 for ADR-0066 as amended (FOR-568): protected header is the sealer's canonical `{1: alg, 395: 3, -65933: tree-size-2}`; only tree-size-2 is signed; every signature over a protected header changed. Synthetic (canopy test key); sealer-produced vectors are slice 06.",
-  "publicKeyXyHex": "f5233ee64e220e78ea65bc7e6266946e84b19e196c41b9e5ffcb2238cab57c270a1724cdf97750b676eb5d68f40e263a7996471144f2096171b4ddc2fa9af067",
+  "comment": "FOR-368 burial-bundle golden vectors — FROZEN bytes; see scripts/export-burial-bundle.ts",
+  "publicKeyXyHex": "307c4bb04ba64ead1d55496e5719a81cb5f49f997b414db5f6f6aa7ecf55a0e05bf5a1405c2ce666c9b27677ffe7d75b2b8a5572469b5c7fad98d5147a9ad580",
   "leafMmrIndex": "1",
   "leafHashHex": "cd2662154e6d76b2b2b92e70c0cac3ccf534f9b74eb5b89819ec509083d00a50",
   "buriedPeakHex": "ad104051c516812ea5874ca3ff06d0258303623d04307c41ec80a7a18b332ef8",
@@ -14,10 +14,10 @@
     "sth-0003.cbor"
   ],
   "checkpointSha256": [
-    "120b6fee01df3fc5e156e810ed5abe46094e7706b170b0cef86e018a0411ebc7",
-    "07e515a491c40cfe5fa849b8916488c983c0725a69e6c331060fcb2dcbb59d8d",
-    "05f2a0b5b5d3e5d5b87fa004502cc2566d9d7dffdc820f52f735e0566a642c2c",
-    "e6c00df5acd2b635b0cc4b378fde865167a76f3c2038f695742f458ea6f558ed"
+    "d939fd0cdfa2aa9586dd336b0d0eadccf9938a1a818878777658effa6451ea8f",
+    "76a7c5a650a779bcfd241b76943906caed18877473a657d673810b5c4f2cef46",
+    "c43f879eba1b196c43eb8bf19fd65d54c9cde469d895e3480be37b1e106c4f80",
+    "8bdabf1164c9000924ce1570b7ea2c17c8ee501f112691a7f5a3c04f16e98c60"
   ],
-  "receiptSha256": "2f402e77d4a0610c4afbe032a7ba96648c1abbadd72c67afb78edabb89c0484e"
+  "receiptSha256": "d08c5f26195754975e56bfc81bdaa04e1b03aff7ad62b69ae9ec014ec64f0bef"
 }

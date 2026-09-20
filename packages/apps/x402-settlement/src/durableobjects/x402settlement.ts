@@ -395,4 +395,15 @@ export class X402SettlementDO extends DurableObject<Env> {
       previous: previous?.state ?? null,
     };
   }
+
+  /**
+   * Dev/ops: wipe durable SQLite and re-run schema init.
+   * The HTTP worker must only call this after checking NODE_ENV/opt-in and
+   * the reset token.
+   */
+  async devResetStorage(): Promise<void> {
+    await this.ctx.storage.deleteAll();
+    this.initialized = false;
+    this.ensureSchema();
+  }
 }

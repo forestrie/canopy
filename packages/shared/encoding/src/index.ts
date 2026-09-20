@@ -70,6 +70,7 @@ export {
   decodeCoseSign1,
   type DecodedCoseSign1,
   extractAlgFromProtected,
+  isLowS,
   type ParsedEcPublicKey,
   type ParsedVerifyKey,
   type VerifyCoseSign1Options,

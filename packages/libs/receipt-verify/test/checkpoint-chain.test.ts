@@ -23,10 +23,12 @@ import {
 } from "@forestrie/merklelog";
 import {
   accumulatorPayload,
+  CheckpointHighSSignatureError,
   checkpointConsistencyProof,
   verifyCheckpointChain,
 } from "../src/checkpoint-chain.js";
 import { SubtleHasher } from "../src/subtle-hasher.js";
+import { toHighS, toLowS } from "./helpers/to-low-s.js";
 
 let keyPair: CryptoKeyPair;
 let nodes: Uint8Array[];
@@ -73,7 +75,7 @@ async function signOverProtected(
     new Uint8Array(0),
     payload,
   );
-  return new Uint8Array(
+  const raw = new Uint8Array(
     await crypto.subtle.sign(
       { name: "ECDSA", hash: "SHA-256" },
       keyPair.privateKey,
@@ -83,6 +85,7 @@ async function signOverProtected(
       ) as ArrayBuffer,
     ),
   );
+  return toLowS(raw);
 }
 
 /** The real (structurally valid) declared proof from `sizeFrom` -> `sizeTo`
@@ -767,5 +770,83 @@ describe("the reason a declared tree-size-1 produces cannot outrank the signatur
     expect(result.links.length).toBe(1);
     expect(result.links.every((l) => l.signatureOk)).toBe(true);
     expect(result.links[0]!.treeSize2).toBe(3n);
+  });
+});
+
+/** Re-sign nothing — swap `s` for `n - s` on an already-valid checkpoint's
+ * signature, its malleable (high-s) twin over the exact same message. */
+function withHighSSignature(checkpointBytes: Uint8Array): Uint8Array {
+  const arr = decodeCborDeterministic(checkpointBytes) as [
+    Uint8Array,
+    unknown,
+    unknown,
+    Uint8Array,
+  ];
+  const [protectedBstr, unprotected, payload, sig] = arr;
+  expect(sig.length).toBe(64);
+  return encodeCborDeterministic([
+    protectedBstr,
+    unprotected,
+    payload,
+    toHighS(sig),
+  ]);
+}
+
+describe("high-s ES256 checkpoint signatures are rejected (FOR-568 rollout item 4)", () => {
+  // go-merklelog now rejects s > n/2 for ES256 checkpoint signatures because
+  // the univocity contract's P-256 verifier rejects them; a canopy verifier
+  // that accepted the high-s twin could pass a receipt the chain refuses.
+  // Scoped to the checkpoint receipt path only (checkpointConsistencyProof):
+  // the WebAuthn (-65800) and session-key-endorsement (-65801) paths are
+  // untouched by this change.
+
+  it("checkpointConsistencyProof throws CheckpointHighSSignatureError", async () => {
+    const valid = await buildCheckpoint(0n, 3n);
+    // Confidence check: the fixture signer normalizes to low-s (toLowS in
+    // signOverProtected), so the unmutated checkpoint must not itself throw.
+    expect(() => checkpointConsistencyProof(valid)).not.toThrow();
+
+    const highS = withHighSSignature(valid);
+    expect(() => checkpointConsistencyProof(highS)).toThrow(
+      CheckpointHighSSignatureError,
+    );
+  });
+
+  it("verifyCheckpointChain reports signature_malleable, before any WebCrypto verify", async () => {
+    const valid = await buildCheckpoint(0n, 3n);
+    const highS = withHighSSignature(valid);
+
+    // A verifySignature spy proves the high-s signature is rejected before
+    // this callback — which wraps the exact WebCrypto verify path — is ever
+    // invoked, not merely that the end result happens to be `ok: false`.
+    let verifySignatureCalled = false;
+    const result = await verifyCheckpointChain({
+      checkpoints: [highS],
+      verifySignature: async (bytes, detachedPayload) => {
+        verifySignatureCalled = true;
+        return verifySig(bytes, detachedPayload);
+      },
+      trustedBase: { size: 0n, accumulator: [] },
+    });
+
+    expect(verifySignatureCalled).toBe(false);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("signature_malleable");
+    expect(result.at).toBe(0);
+    expect(result.detail).toMatch(/low-s/);
+    expect(result.links.length).toBe(0);
+  });
+
+  it("the same checkpoint with its original low-s signature verifies", async () => {
+    // Round-trip confidence: withHighSSignature's mutation, not some other
+    // defect in the fixture, is what flips the outcome.
+    const valid = await buildCheckpoint(0n, 3n);
+    const result = await verifyCheckpointChain({
+      checkpoints: [valid],
+      verifySignature: verifySig,
+      trustedBase: { size: 0n, accumulator: [] },
+    });
+    expect(result.ok).toBe(true);
   });
 });

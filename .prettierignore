@@ -2,3 +2,4 @@
 # fixture capture — never reformat (the copy must match the source manifest's
 # sha256; see the PROVENANCE.md alongside each one).
 packages/libs/*/test/fixtures/lane-a/PROVENANCE.md
+packages/shared/encoding/src/testdata/checkpoint-receipt-kat39.json

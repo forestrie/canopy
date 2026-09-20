@@ -27,6 +27,7 @@ import {
   peakMMRIndexes,
 } from "@forestrie/merklelog";
 import { accumulatorPayload } from "../../src/checkpoint-chain.js";
+import { toLowS } from "./to-low-s.js";
 import { SubtleHasher } from "../../src/subtle-hasher.js";
 
 async function sha256(...parts: Uint8Array[]): Promise<Uint8Array> {
@@ -67,7 +68,7 @@ async function sign(
     new Uint8Array(0),
     detachedPayload,
   );
-  return new Uint8Array(
+  const raw = new Uint8Array(
     await crypto.subtle.sign(
       { name: "ECDSA", hash: "SHA-256" },
       keyPair.privateKey,
@@ -77,6 +78,7 @@ async function sign(
       ) as ArrayBuffer,
     ),
   );
+  return toLowS(raw);
 }
 
 export type BurialBundleFixture = {

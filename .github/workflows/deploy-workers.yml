@@ -10,6 +10,7 @@ on:
       - "packages/apps/x402-settlement/**"
       - "packages/shared/**"
       - "packages/merklelog/**"
+      - "packages/libs/**"
       - "Taskfile.dist.yml"
       - "taskfiles/wrangler.yml"
       - "taskfiles/cloudflare.yml"
@@ -110,6 +111,7 @@ jobs:
               - 'packages/apps/canopy-api/**'
               - 'packages/shared/**'
               - 'packages/merklelog/**'
+              - 'packages/libs/**'
             forestrie_ingress:
               - 'packages/apps/forestrie-ingress/**'
               - 'packages/shared/**'
@@ -488,6 +490,7 @@ jobs:
           CDP_API_KEY_ID: ${{ secrets.CDP_API_KEY_ID }}
           CDP_API_KEY_SECRET: ${{ secrets.CDP_API_KEY_SECRET }}
           CANOPY_OPS_ADMIN_TOKEN: ${{ secrets.CANOPY_OPS_ADMIN_TOKEN }}
+          SETTLEMENT_RESET_TOKEN: ${{ secrets.SETTLEMENT_RESET_TOKEN }}
         run: |
           set -euo pipefail
           trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
@@ -546,6 +549,15 @@ jobs:
             put_wrangler_secret CANOPY_OPS_ADMIN_TOKEN "$OPS"
           else
             echo "CANOPY_OPS_ADMIN_TOKEN not set; /admin/** stays fail-closed (401)."
+          fi
+          # Dev-lane content-reset (forestrie/forest-1#37) — mirrors how
+          # COORDINATOR_RESET_TOKEN is pushed for delegation-coordinator above.
+          RESET=$(trim_ws "${SETTLEMENT_RESET_TOKEN:-}")
+          if [ "${ENV}" = "dev" ] && [ -n "$RESET" ]; then
+            put_wrangler_secret SETTLEMENT_RESET_TOKEN "$RESET"
+            echo "Configured SETTLEMENT_RESET_TOKEN (dev lane content-reset)."
+          elif [ "${ENV}" = "dev" ]; then
+            echo "SETTLEMENT_RESET_TOKEN not set; skipping (content-reset settlement wipe unavailable)."
           fi
           wrangler deploy "${CONFIG_FLAG[@]}" --env "$ENV"
 

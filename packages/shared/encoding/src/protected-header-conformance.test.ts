@@ -110,10 +110,18 @@ const HEADER_VECTORS: readonly HeaderVector[] = [
     expect: accept(8n),
   },
   {
-    name: "skip/mt7-simple-40",
+    // Narrowed by forestrie/protocol#10 (2026-09-20): D9 as originally
+    // quoted at the top of this file let an unread label carry any
+    // well-formed major-type-7 value, simple(40) included. The
+    // cross-language KAT (checkpoint-receipt-kat39.test.ts,
+    // row reject/mt7-simple-40) pins go-merklelog's narrowed behaviour —
+    // only false, true and null survive among major-type-7 values — so this
+    // row moved from accept to reject to match. See
+    // isAllowedHeaderValue in cose-protected-tree-size.ts.
+    name: "reject/mt7-simple-40",
     hex: "a4012607f82819018b033a0001018c08",
-    note: "`07 f8 28`: two-byte simple value 40, well formed (32–255)",
-    expect: accept(8n),
+    note: "`07 f8 28`: two-byte simple value 40; only false, true and null are allowed under an unread label",
+    expect: reject(/excluded value type/),
   },
   {
     name: "skip/mt7-half-float-1.0",
@@ -412,13 +420,24 @@ describe("ADR-0066 D9 protected-header conformance vectors", () => {
     // size from must yield the same size here, or the chain can anchor a
     // checkpoint one of the two verifiers refuses.
     //
-    // Go's outcome for each row was recorded by running
+    // Go's outcome for each row was originally recorded by running
     // `ProtectedHeaderTreeSize` from a go-merklelog clone against these exact
     // bytes, under the adversarial review's PoC harness
     // (`review-canopy255/poc/d3-header/gml-clone/massifs`, local to the
-    // review tree, not committed here). Slice 06 lifts these rows, and the
-    // rejection table above, into the committed cross-language KAT so the Go
-    // side runs in CI rather than from a recorded result.
+    // review tree, not committed here) — a one-off snapshot, not something
+    // this suite could keep in sync with go-merklelog itself. Slice 06 (the
+    // FOR-568 rollout) replaced that recorded snapshot with the committed
+    // cross-language KAT (checkpoint-receipt-kat39.test.ts), which runs the
+    // same bytes through go-merklelog in CI on the vector's own side
+    // (`gen_checkpoint_receipt_kat39.py` asserts against go-merklelog's KAT
+    // tables before emitting). That KAT is now authoritative: forestrie/
+    // protocol#10 narrowed D9 after this table was recorded, so
+    // simple(40)/array/map under an unread label moved from accept to
+    // reject on the Go side too (see checkpoint-receipt-kat39.json rows
+    // reject/mt7-simple-40, reject/array-under-unread-label,
+    // reject/map-under-unread-label) — GO_ACCEPTS below reflects that, and
+    // GO_REJECTS_NARROWED names the three rows this table used to carry as
+    // accepted before the narrowing.
     const GO_ACCEPTS: readonly (readonly [string, string, bigint])[] = [
       // the two canonical sealer headers
       ["canonical/size-8", "a3012619018b033a0001018c08", 8n],
@@ -426,15 +445,23 @@ describe("ADR-0066 D9 protected-header conformance vectors", () => {
       // major type 7 under the unread label 7, in the forms Go round-trips
       ["skip/mt7-half-float-1.0", "a4012607f93c0019018b033a0001018c08", 8n],
       ["skip/mt7-false", "a4012607f419018b033a0001018c08", 8n],
-      ["skip/mt7-simple-40", "a4012607f82819018b033a0001018c08", 8n],
-      // non-mt7 values under the unread label: no vector covered these before
+      // non-mt7 values under the unread label
       ["skip/bstr-empty", "a40126074019018b033a0001018c08", 8n],
-      ["skip/array-empty", "a40126078019018b033a0001018c08", 8n],
-      ["skip/map-empty", "a4012607a019018b033a0001018c08", 8n],
       ["skip/tstr-x", "a4012607617819018b033a0001018c08", 8n],
     ];
     for (const [name, h, size] of GO_ACCEPTS) {
       expect(readProtectedTreeSize2(fromHex(h)), name).toBe(size);
+    }
+
+    const GO_REJECTS_NARROWED: readonly (readonly [string, string])[] = [
+      ["skip/mt7-simple-40", "a4012607f82819018b033a0001018c08"],
+      ["skip/array-empty", "a40126078019018b033a0001018c08"],
+      ["skip/map-empty", "a4012607a019018b033a0001018c08"],
+    ];
+    for (const [name, h] of GO_REJECTS_NARROWED) {
+      expect(() => readProtectedTreeSize2(fromHex(h)), name).toThrow(
+        /excluded value type/,
+      );
     }
   });
 
@@ -444,7 +471,7 @@ describe("ADR-0066 D9 protected-header conformance vectors", () => {
     expect(HEADER_VECTORS).toHaveLength(40);
     expect(
       HEADER_VECTORS.filter((v) => v.expect.result === "reject"),
-    ).toHaveLength(30);
+    ).toHaveLength(31);
     expect(new Set(HEADER_VECTORS.map((v) => v.name)).size).toBe(
       HEADER_VECTORS.length,
     );
