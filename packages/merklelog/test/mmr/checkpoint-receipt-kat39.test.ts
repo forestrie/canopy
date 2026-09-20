@@ -135,7 +135,10 @@ describe("consistentRootsForSizes vs KAT39 consistency_pairs", () => {
       expect(combined).toEqual(row.accumulator_to_hex);
       const tabulated =
         data.tree.accumulators[String(row.tree_size_2)]?.peaks_hex;
-      expect(tabulated, `no tree.accumulators entry for size ${row.tree_size_2}`).toBeDefined();
+      expect(
+        tabulated,
+        `no tree.accumulators entry for size ${row.tree_size_2}`,
+      ).toBeDefined();
       expect(combined).toEqual(tabulated);
     });
   }

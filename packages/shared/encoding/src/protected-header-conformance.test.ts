@@ -459,10 +459,9 @@ describe("ADR-0066 D9 protected-header conformance vectors", () => {
       ["skip/map-empty", "a4012607a019018b033a0001018c08"],
     ];
     for (const [name, h] of GO_REJECTS_NARROWED) {
-      expect(
-        () => readProtectedTreeSize2(fromHex(h)),
-        name,
-      ).toThrow(/excluded value type/);
+      expect(() => readProtectedTreeSize2(fromHex(h)), name).toThrow(
+        /excluded value type/,
+      );
     }
   });
 

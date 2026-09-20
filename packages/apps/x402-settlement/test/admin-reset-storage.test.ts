@@ -43,8 +43,7 @@ async function callFetch(req: Request, e: Env): Promise<Response> {
   return worker.fetch(req, e, createExecutionContext());
 }
 
-const INSTANCE_ID =
-  "eip155:84532:0xabababababababababababababababababababab";
+const INSTANCE_ID = "eip155:84532:0xabababababababababababababababababababab";
 
 describe("handleAdminResetStorage environment gating", () => {
   it("hides the endpoint on non-dev workers by default", async () => {
@@ -217,10 +216,7 @@ describe("handleAdminResetStorage — shard target (X402SettlementDO)", () => {
   it("400s an out-of-range shard index", async () => {
     const e = resetEnv();
     const shardCount = parseInt(typedEnv.DO_SHARD_COUNT, 10) || 4;
-    const res = await callFetch(
-      resetRequest(`?shard=${shardCount + 5}`),
-      e,
-    );
+    const res = await callFetch(resetRequest(`?shard=${shardCount + 5}`), e);
     expect(res.status).toBe(400);
   });
 });
@@ -412,10 +408,7 @@ describe("handleAdminResetStorage — shard=all&instance=all (single-call conten
       7,
     );
 
-    const res = await callFetch(
-      resetRequest("?shard=all&instance=all"),
-      e,
-    );
+    const res = await callFetch(resetRequest("?shard=all&instance=all"), e);
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       ok: boolean;

@@ -235,7 +235,11 @@ async function handleAdminResetStorage(
     }
 
     if (shardResult && instanceResult) {
-      return jsonResponse({ ok: true, shard: shardResult, instance: instanceResult });
+      return jsonResponse({
+        ok: true,
+        shard: shardResult,
+        instance: instanceResult,
+      });
     }
     if (shardResult) {
       return jsonResponse({ ok: true, ...shardResult });

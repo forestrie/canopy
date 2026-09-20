@@ -103,7 +103,10 @@ const verifyEs256 = (bytes: Uint8Array, detachedPayload: Uint8Array) =>
 
 /** Trusted origin at `size`: the tree's tabulated accumulator, or the empty
  * accumulator for size 0 (no `tree.accumulators` entry exists for size 0). */
-function trustedOrigin(size: number): { size: bigint; accumulator: Uint8Array[] } {
+function trustedOrigin(size: number): {
+  size: bigint;
+  accumulator: Uint8Array[];
+} {
   if (size === 0) return { size: 0n, accumulator: [] };
   const entry = data.tree.accumulators[String(size)];
   expect(entry, `no tree.accumulators entry for size ${size}`).toBeDefined();
@@ -198,7 +201,10 @@ describe("verifyCheckpointChain vs KAT39 receipt_negatives", () => {
       expect(result.ok, row.note ?? row.name).toBe(false);
       if (result.ok) return;
       const expectedReason = REASON_MAP[row.expect.reason];
-      expect(expectedReason, `no reason mapping for ${row.expect.reason}`).toBeDefined();
+      expect(
+        expectedReason,
+        `no reason mapping for ${row.expect.reason}`,
+      ).toBeDefined();
       expect(result.reason, row.note ?? row.name).toBe(expectedReason);
     });
   }
