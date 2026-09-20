@@ -77,6 +77,9 @@
         "ENFORCEMENT_ARMED": "false",
         "CANOPY_API_ORIGIN": "",
         "STARTER_CREDITS": "0",
+        // SETTLEMENT_RESET_TOKEN: dev-only DO wipe (content-reset); wrangler secret put.
+        // SETTLEMENT_RESET_ALLOWED: opt-in for /admin/reset-storage on non-dev
+        // workers ("1" to allow); wrangler secret put on dev-forest prod lanes only.
       },
       // Accrual indexer sweep (slice 03); resumable, so cadence is a
       // freshness knob, not a correctness one.

@@ -65,6 +65,113 @@ function adminBearerOrUnauthorized(
   );
 }
 
+/**
+ * POST /admin/reset-storage — dev lane only; wipes DO storage.
+ *
+ * Two independent targets, since this worker's two DO classes are keyed
+ * differently (see receivables.ts): `shard=<index>|all` wipes
+ * {@link X402SettlementDO} shard(s), and `instance=<univocityInstanceId>`
+ * wipes one {@link ReceivablesDO} (it is one instance per account, not
+ * sharded by count — there is no `shard=all` equivalent for it). A full
+ * content-reset therefore needs `shard=all` plus one `instance=<id>` call
+ * per known univocity instance id (e.g. from the reservation registry via
+ * `listRegisteredAccounts`), not a single call.
+ *
+ * Query: `shard=0|1|…|all`, or `instance=<univocityInstanceId>`.
+ * Header: X-Forestrie-Settlement-Reset must equal SETTLEMENT_RESET_TOKEN.
+ * Gated exactly like delegation-coordinator's `/admin/reset-storage`:
+ * 404 unless NODE_ENV=dev or SETTLEMENT_RESET_ALLOWED=1; always token-gated.
+ */
+async function handleAdminResetStorage(
+  request: Request,
+  url: URL,
+  env: Env,
+): Promise<Response> {
+  if (env.NODE_ENV !== "dev" && env.SETTLEMENT_RESET_ALLOWED !== "1") {
+    return new Response("Not Found", { status: 404 });
+  }
+
+  const configured = env.SETTLEMENT_RESET_TOKEN;
+  if (!configured || configured.length < 16) {
+    return jsonResponse(
+      { error: "SETTLEMENT_RESET_TOKEN is not configured for this worker" },
+      503,
+    );
+  }
+
+  const presented = request.headers.get("X-Forestrie-Settlement-Reset") ?? "";
+  if (presented !== configured) {
+    return jsonResponse(
+      { error: "Invalid or missing X-Forestrie-Settlement-Reset header" },
+      401,
+    );
+  }
+
+  const instanceParam = url.searchParams.get("instance");
+  const shardParam = url.searchParams.get("shard");
+
+  if (instanceParam === null && shardParam === null) {
+    return jsonResponse(
+      {
+        error:
+          "shard query parameter (integer or 'all') or instance query parameter is required",
+      },
+      400,
+    );
+  }
+
+  try {
+    if (instanceParam !== null) {
+      if (!isUnivocityInstanceId(instanceParam)) {
+        return jsonResponse(
+          { error: "instance must be a canonical univocity instance id" },
+          400,
+        );
+      }
+      const stub = env.RECEIVABLES_DO.get(
+        env.RECEIVABLES_DO.idFromName(instanceParam),
+      );
+      await stub.devResetStorage();
+      return jsonResponse({ ok: true, reset: "instance", instance: instanceParam });
+    }
+
+    const shardCount = parseInt(env.DO_SHARD_COUNT, 10) || 4;
+
+    /** Reset one X402SettlementDO shard's SQLite via devResetStorage. */
+    const resetOne = async (shardIndex: number) => {
+      const stub = env.X402_SETTLEMENT_DO.get(
+        env.X402_SETTLEMENT_DO.idFromName(`shard-${shardIndex}`),
+      );
+      await stub.devResetStorage();
+    };
+
+    if (shardParam === "all") {
+      for (let i = 0; i < shardCount; i++) {
+        await resetOne(i);
+      }
+      return jsonResponse({ ok: true, reset: "all", shardCount });
+    }
+
+    const shardIndex = parseInt(shardParam!, 10);
+    if (isNaN(shardIndex) || shardIndex < 0 || shardIndex >= shardCount) {
+      return jsonResponse(
+        {
+          error: `shard must be an integer in [0, ${shardCount - 1}] or 'all'`,
+        },
+        400,
+      );
+    }
+
+    await resetOne(shardIndex);
+    return jsonResponse({ ok: true, reset: shardIndex });
+  } catch (err) {
+    return jsonResponse(
+      { error: err instanceof Error ? err.message : String(err) },
+      500,
+    );
+  }
+}
+
 export default {
   /**
    * Queue consumer handler.
@@ -195,6 +302,13 @@ export default {
       const authErr = adminBearerOrUnauthorized(request, env);
       if (authErr) return authErr;
       return handleResetAuth(request, env);
+    }
+
+    // Admin: wipe DO storage (dev lane content-reset). Own gate — dev-only
+    // or SETTLEMENT_RESET_ALLOWED, plus X-Forestrie-Settlement-Reset — not
+    // the CANOPY_OPS_ADMIN_TOKEN bearer used by the routes above.
+    if (url.pathname === "/admin/reset-storage" && request.method === "POST") {
+      return handleAdminResetStorage(request, url, env);
     }
 
     // Admin: on-demand indexer sweep (plan-2607-06) — the metering canary's
