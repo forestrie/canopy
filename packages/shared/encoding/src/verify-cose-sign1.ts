@@ -56,7 +56,20 @@ const P256_N = BigInt(
 );
 const P256_HALF_N = P256_N >> 1n;
 
-function isLowS(signature: Uint8Array): boolean {
+/**
+ * Whether a 64-byte IEEE P1363 `r‖s` P-256 signature carries the canonical
+ * low-s value (`s <= n/2`, `n` the P-256 group order). WebCrypto/ECDSA
+ * accepts both `s` and `n - s` for the same message (ECDSA signature
+ * malleability); the univocity contract's P-256 verifier and go-merklelog
+ * (checkpoint COSE_Sign1, ES256) both reject the high-s twin, so any
+ * verifier that must agree with the chain has to reject it too. Exported so
+ * callers that need to enforce this ahead of a WebCrypto verify (e.g. the
+ * checkpoint chain fold in `@forestrie/receipt-verify`) do not duplicate the
+ * P-256 order constant.
+ *
+ * @param signature - 64-byte `r‖s`; callers must check the length first
+ */
+export function isLowS(signature: Uint8Array): boolean {
   let s = 0n;
   for (let i = 32; i < 64; i++) {
     s = (s << 8n) | BigInt(signature[i]!);

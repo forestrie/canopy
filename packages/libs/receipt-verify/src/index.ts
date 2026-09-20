@@ -155,6 +155,7 @@ export {
   checkpointConsistencyProof,
   computeCheckpointAccumulator,
   verifyCheckpointChain,
+  CheckpointHighSSignatureError,
   CheckpointSignedSizeMismatchError,
   type CheckpointChainLink,
   type CheckpointChainResult,

@@ -38,7 +38,12 @@
  * the key, so no reason string chosen from it may mean anything more than
  * "these two sizes differ".
  */
-import { readProtectedTreeSize2 } from "@forestrie/encoding";
+import {
+  COSE_ALG_ES256,
+  extractAlgFromProtected,
+  isLowS,
+  readProtectedTreeSize2,
+} from "@forestrie/encoding";
 import {
   consistentRootsForSizes,
   mmrSizeForLeafCount,
@@ -81,6 +86,25 @@ export class CheckpointSignedSizeMismatchError extends Error {
 }
 
 /**
+ * The checkpoint's ES256 signature is the malleable high-s twin (`s > n/2`,
+ * `n` the P-256 group order): go-merklelog rejects these for checkpoint
+ * COSE_Sign1 signatures because the univocity contract's P-256 verifier
+ * does, so a receipt that verified here while carrying a high-s signature
+ * could be one the chain refuses (FOR-568 rollout item 4). Checked here,
+ * before any WebCrypto verify is attempted, so a rejected signature never
+ * reaches {@link verifyCheckpointChain}'s `verifySignature` callback. Scoped
+ * to the checkpoint receipt path only — this module never touches the WebAuthn
+ * (-65800) or session-key-endorsement (-65801) signature paths, which stay
+ * governed by their own canonical-form rules.
+ */
+export class CheckpointHighSSignatureError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CheckpointHighSSignatureError";
+  }
+}
+
+/**
  * Decode the embedded consistency proof (`vdp` 396 key -2) and require its
  * declared `tree-size-2` to equal the checkpoint's SIGNED `tree-size-2` from
  * the protected header (ADR-0066 D1 as amended, D5.5, label -65933).
@@ -88,17 +112,33 @@ export class CheckpointSignedSizeMismatchError extends Error {
  * {@link verifyCheckpointChain} for its comparison against the trusted
  * origin.
  *
+ * Also rejects a malleable high-s ES256 signature (see
+ * {@link CheckpointHighSSignatureError}) before any fold or WebCrypto verify
+ * work — a checkpoint signed with any other algorithm (e.g. KS256) is not
+ * subject to this check, since it does not go through the P-256 WebCrypto
+ * path this guards.
+ *
  * @throws {Error} when the protected header carries no consistency proof,
  *   the proof is structurally malformed (see
  *   {@link decodeConsistencyProofFromUnprotected}), or the protected header
  *   carries no signed tree-size-2 label
  * @throws {CheckpointSignedSizeMismatchError} when the signed tree-size-2
  *   differs from the declared proof's tree-size-2
+ * @throws {CheckpointHighSSignatureError} when the checkpoint is ES256-signed
+ *   with a high-s (malleable) signature
  */
 export function checkpointConsistencyProof(
   checkpointBytes: Uint8Array,
 ): CheckpointConsistencyProof {
   const { coseSign1, unprotected } = parseCheckpoint(checkpointBytes);
+  const alg = extractAlgFromProtected(coseSign1[0]);
+  const signature = coseSign1[3];
+  if (alg === COSE_ALG_ES256 && signature.length === 64 && !isLowS(signature)) {
+    throw new CheckpointHighSSignatureError(
+      "checkpoint ES256 signature is not low-s canonical (s > n/2); rejected " +
+        "to match the univocity contract's P-256 verifier and go-merklelog",
+    );
+  }
   const declared = decodeConsistencyProofFromUnprotected(unprotected);
   if (declared === null) {
     throw new Error("checkpoint carries no consistency proof (vdp key -2)");
@@ -200,6 +240,13 @@ export type CheckpointChainResult =
       reason:
         | "empty_chain"
         | "signature"
+        /**
+         * The checkpoint's ES256 signature is the malleable high-s twin (see
+         * {@link CheckpointHighSSignatureError}) — rejected before any
+         * WebCrypto verify, so it is distinct from `"signature"` (a
+         * canonical-form low-s signature that did not verify).
+         */
+        | "signature_malleable"
         | "proof_malformed"
         /**
          * Two sizes that must be equal are not. Either a checkpoint's SIGNED
@@ -311,12 +358,15 @@ export async function verifyCheckpointChain(opts: {
     try {
       proof = checkpointConsistencyProof(bytes);
     } catch (err) {
+      const reason =
+        err instanceof CheckpointSignedSizeMismatchError
+          ? "size_mismatch"
+          : err instanceof CheckpointHighSSignatureError
+            ? "signature_malleable"
+            : "proof_malformed";
       return {
         ok: false,
-        reason:
-          err instanceof CheckpointSignedSizeMismatchError
-            ? "size_mismatch"
-            : "proof_malformed",
+        reason,
         at: i,
         detail: err instanceof Error ? err.message : String(err),
         links,
