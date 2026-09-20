@@ -10,20 +10,25 @@
  * frozen in the golden manifest).
  */
 import {
+  COSE_LABEL_TREE_SIZE_2,
+  COSE_LABEL_VDP,
+  COSE_LABEL_VDS,
+  VDP_CONSISTENCY_PROOF_KEY,
+  VDP_INCLUSION_PROOF_KEY,
+  VDS_MMR_CONSISTENCY,
   encodeCborDeterministic,
   encodeSigStructure,
 } from "@forestrie/encoding";
 import {
-  consistentRoots,
+  consistentRootsForSizes,
   indexConsistencyProof,
   indexHeight,
   mmrIndex,
   peakMMRIndexes,
 } from "@forestrie/merklelog";
 import { accumulatorPayload } from "../../src/checkpoint-chain.js";
+import { toLowS } from "./to-low-s.js";
 import { SubtleHasher } from "../../src/subtle-hasher.js";
-
-const VDS_COSE_RECEIPT_PROOFS_TAG = 396;
 
 async function sha256(...parts: Uint8Array[]): Promise<Uint8Array> {
   const total = parts.reduce((s, p) => s + p.length, 0);
@@ -63,7 +68,7 @@ async function sign(
     new Uint8Array(0),
     detachedPayload,
   );
-  return new Uint8Array(
+  const raw = new Uint8Array(
     await crypto.subtle.sign(
       { name: "ECDSA", hash: "SHA-256" },
       keyPair.privateKey,
@@ -73,6 +78,7 @@ async function sign(
       ) as ArrayBuffer,
     ),
   );
+  return toLowS(raw);
 }
 
 export type BurialBundleFixture = {
@@ -111,6 +117,12 @@ export async function buildBurialBundleFixture(): Promise<BurialBundleFixture> {
   const peaksAt = (lastIndex: bigint) => peakMMRIndexes(lastIndex).map(getHash);
 
   const hasher = new SubtleHasher();
+  // The old-era RECEIPT (built below) is signed with a plain protected
+  // header — receipts do not carry the tree-size label (ADR-0066 D3
+  // reserves it for checkpoints). Each CHECKPOINT gets its own protected
+  // header carrying the SIGNED tree-size-2 for that link (ADR-0066 D1 as
+  // amended), built per-call in `buildCheckpoint` below; tree-size-1 is not
+  // signed.
   const protectedBstr = encodeCborDeterministic(new Map([[1, -7]]));
 
   const buildCheckpoint = async (
@@ -123,13 +135,14 @@ export async function buildBurialBundleFixture(): Promise<BurialBundleFixture> {
     if (sizeFrom > 0n) {
       const cp = indexConsistencyProof(getHash, sizeFrom - 1n, sizeTo - 1n);
       paths = cp.paths;
-      const proven = await consistentRoots(
+      const { roots } = await consistentRootsForSizes(
         hasher,
-        sizeFrom - 1n,
+        sizeFrom,
+        sizeTo,
         peaksAt(sizeFrom - 1n),
         paths,
       );
-      rightPeaks = accumulatorTo.slice(proven.length);
+      rightPeaks = accumulatorTo.slice(roots.length);
     }
     const proofBstr = encodeCborDeterministic([
       sizeFrom,
@@ -137,17 +150,24 @@ export async function buildBurialBundleFixture(): Promise<BurialBundleFixture> {
       paths,
       rightPeaks,
     ]);
+    const checkpointProtectedBstr = encodeCborDeterministic(
+      new Map<number, unknown>([
+        [1, -7],
+        [COSE_LABEL_VDS, VDS_MMR_CONSISTENCY],
+        [COSE_LABEL_TREE_SIZE_2, sizeTo],
+      ]),
+    );
     const sig = await sign(
       keyPair,
-      protectedBstr,
+      checkpointProtectedBstr,
       accumulatorPayload(accumulatorTo),
     );
     return encodeCborDeterministic([
-      protectedBstr,
+      checkpointProtectedBstr,
       new Map<number, unknown>([
         [
-          VDS_COSE_RECEIPT_PROOFS_TAG,
-          new Map<number, unknown>([[-2, proofBstr]]),
+          COSE_LABEL_VDP,
+          new Map<number, unknown>([[VDP_CONSISTENCY_PROOF_KEY, proofBstr]]),
         ],
       ]),
       null,
@@ -172,10 +192,10 @@ export async function buildBurialBundleFixture(): Promise<BurialBundleFixture> {
     protectedBstr,
     new Map<number, unknown>([
       [
-        VDS_COSE_RECEIPT_PROOFS_TAG,
+        COSE_LABEL_VDP,
         new Map<number, unknown>([
           [
-            -1,
+            VDP_INCLUSION_PROOF_KEY,
             [
               new Map<number, unknown>([
                 [1, leafMmrIndex],

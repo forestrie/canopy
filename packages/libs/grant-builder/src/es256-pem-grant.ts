@@ -70,10 +70,12 @@ export function signGrantPayloadWithEs256Pem(
   const out: number[] = [0x84]; // Sign1 array(4)
   appendCborBstr(out, ES256_PROTECTED_HEADER);
   out.push(0xa2); // unprotected map(2)
-  out.push(...CBOR_KEY_FORESTRIE_GRANT_V0);
-  appendCborBstr(out, grantPayloadBytes);
+  // Canonical key order (RFC 8949 §4.2.1; ADR-0066 D9 decoders reject any
+  // other): -65537 (`3a 00010000`) sorts before -65538 (`3a 00010001`).
   out.push(...CBOR_KEY_IDTIMESTAMP);
   appendCborBstr(out, new Uint8Array(IDTIMESTAMP_BYTES));
+  out.push(...CBOR_KEY_FORESTRIE_GRANT_V0);
+  appendCborBstr(out, grantPayloadBytes);
   appendCborBstr(out, payload);
   appendCborBstr(out, signature);
   return new Uint8Array(out);

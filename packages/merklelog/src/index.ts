@@ -71,9 +71,20 @@ export {
   verifyInclusion,
   verifyConsistency,
   consistentRoots,
+  consistentRootsForSizes,
   indexConsistencyProof,
   type ConsistencyProof,
 } from "./mmr/algorithms.js";
+// Typed proof-shape rejections raised by consistentRootsForSizes (names
+// mirror the Solidity IUnivocityErrors members) — plan-2609-10 s4.3, FOR-568.
+export {
+  ConsistencyShapeError,
+  IncompleteTreeSize,
+  ConsistencyPeakCountMismatch,
+  ConsistencyPathLengthMismatch,
+  ConsistencyRootMismatch,
+  SizeMustIncrease,
+} from "./mmr/errors.js";
 export { createSyncHasher } from "./mmr/algorithms-sync.js";
 export type { Proof, Peak } from "./mmr/types.js";
 export type { Hasher } from "./mmr/types.js";
@@ -86,6 +97,7 @@ export {
   peakMMRIndexes,
   peaksBitmap,
   peakIndexForLeafProof,
+  mmrSizeForLeafCount,
   indexHeight,
   firstMMRSize,
   massifIndexFromMMRIndex,

@@ -6,11 +6,18 @@
  * Golden vectors for receipt construction/verification are tracked by
  * FOR-289.
  */
-import { mergeUnprotectedIntoCoseSign1 } from "@forestrie/encoding";
+import {
+  COSE_LABEL_VDP,
+  mergeUnprotectedIntoCoseSign1,
+} from "@forestrie/encoding";
 import { HEADER_IDTIMESTAMP } from "./forest-genesis-labels.js";
 
-/** SCITT transparent statement unprotected receipt label (grants.md §3.2). */
-export const HEADER_RECEIPT = 396;
+/**
+ * SCITT transparent statement unprotected receipt label (grants.md §3.2).
+ * Alias of {@link COSE_LABEL_VDP} — kept exported under this name for
+ * existing callers.
+ */
+export const HEADER_RECEIPT = COSE_LABEL_VDP;
 
 export function attachReceiptAndIdtimestampToTransparentStatement(
   statementBytes: Uint8Array,

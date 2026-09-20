@@ -9,11 +9,16 @@
  * [ARC-0019](https://github.com/forestrie/devdocs/blob/main/arc/arc-0019-grant-verification-model.md).
  */
 
+export { compareCanonicalKeys } from "./canonical-key-order.js";
 export { encodeCborBstr } from "./encode-cbor-bstr.js";
 export { encodeCborDeterministic } from "./encode-cbor-deterministic.js";
 export {
+  CborFloat,
+  CborSimple,
   CborTag,
   decodeCborDeterministic,
+  type DecodeCborDeterministicOptions,
+  decodeCborDeterministicStrict,
   decodeCborUnwrapCose,
 } from "./decode-cbor-deterministic.js";
 export { encodeSigStructure } from "./encode-sig-structure.js";
@@ -39,6 +44,18 @@ export {
   encodeCoseProtectedMapBytes,
   encodeCoseProtectedWithKid,
 } from "./encode-cose-protected.js";
+export {
+  COSE_LABEL_ALG,
+  COSE_LABEL_DELEGATION_PROOF,
+  COSE_LABEL_PEAK_RECEIPTS,
+  COSE_LABEL_TREE_SIZE_2,
+  VDS_MMR_CONSISTENCY,
+  COSE_LABEL_VDP,
+  COSE_LABEL_VDS,
+  VDP_CONSISTENCY_PROOF_KEY,
+  VDP_INCLUSION_PROOF_KEY,
+} from "./cose-labels.js";
+export { readProtectedTreeSize2 } from "./cose-protected-tree-size.js";
 export { encodeCoseSign1Statement } from "./encode-cose-sign1-statement.js";
 export { signCoseSign1Statement } from "./sign-cose-sign1-statement.js";
 export { base64UrlDecode, base64UrlEncode } from "./base64url.js";
@@ -53,6 +70,7 @@ export {
   decodeCoseSign1,
   type DecodedCoseSign1,
   extractAlgFromProtected,
+  isLowS,
   type ParsedEcPublicKey,
   type ParsedVerifyKey,
   type VerifyCoseSign1Options,

@@ -1,14 +1,23 @@
 /**
- * General-purpose deterministic CBOR writer (RFC 8949 §4.2 core deterministic).
+ * General-purpose deterministic CBOR writer for the Forestrie wire profile.
  *
  * The single canonical encoder for `@forestrie/encoding`: definite lengths,
- * shortest-form heads, bytewise-sorted map keys, **no tags**. Replaces `cbor-x`
- * everywhere on the wire — cbor-x tags every `Uint8Array` (tag 64) and `Map`
- * (tag 259), emits non-shortest lengths and 8-byte bignums, and its output
- * differs by runtime (Workers vs node). Strict COSE/SCITT decoders and Go
- * fxamacker reject all of that. Output is byte-identical to Go
- * `SortCoreDeterministic`. See
+ * shortest-form heads, canonically ordered map keys, **no tags**. Replaces
+ * `cbor-x` everywhere on the wire — cbor-x tags every `Uint8Array` (tag 64)
+ * and `Map` (tag 259), emits non-shortest lengths and 8-byte bignums, and its
+ * output differs by runtime (Workers vs node). Strict COSE/SCITT decoders and
+ * Go fxamacker reject all of that. See
  * status-2607-03-remove-cbor-x-for-scitt-cose-canonicity.
+ *
+ * Canonical order here is length-first, then bytewise (RFC 7049 §3.9), which
+ * is what ADR-0066 D9, the univocity parser and go-merklelog's
+ * checkpoint-header re-encode (fxamacker `CanonicalEncOptions`) implement.
+ * RFC 8949 §4.2.1 core-deterministic order is pure bytewise and differs only
+ * when a map mixes a negative label encoded strictly shorter than a positive
+ * one. The comparator is {@link compareCanonicalKeys}, shared with
+ * {@link ./decode-cbor-deterministic.ts}: before it was shared this writer
+ * sorted bytewise and so emitted maps its own decoder rejected, for example
+ * `Map{-1: 0, 395: 0}`.
  *
  * The specialised {@link ./grant-payload-canonical.ts} fast-path emits the same
  * bytes for grant v0 payloads; this writer is the general form used for
@@ -23,6 +32,8 @@
  * level, duplicate map keys, and any other type throw rather than emitting
  * silently-wrong bytes.
  */
+
+import { compareCanonicalKeys } from "./canonical-key-order.js";
 
 /** CBOR major types (RFC 8949 §3). */
 const MAJOR_UINT = 0;
@@ -98,7 +109,8 @@ function encodeInteger(v: number | bigint): Uint8Array {
  *
  * @param value - Integer, boolean, null, byte string, text string, array, Map,
  *   or plain object (see module doc for the full supported set)
- * @returns Deterministic CBOR bytes (definite lengths, sorted map keys, no tags)
+ * @returns Deterministic CBOR bytes (definite lengths, canonically
+ *   ordered map keys, no tags)
  * @throws On non-integer numbers, `undefined`, functions, symbols, non-string
  *   map keys, duplicate map keys, or nesting deeper than {@link MAX_DEPTH}
  */
@@ -150,9 +162,11 @@ function encodeValue(value: unknown, depth: number): Uint8Array {
 }
 
 /**
- * Encode map entries with keys sorted by the bytewise lexicographic order of
- * their encoded key bytes (RFC 8949 §4.2.1). Rejects duplicate encoded keys
- * (§4.2: a map must not have duplicate keys) — e.g. a `Map` mixing `1` and `1n`.
+ * Encode map entries with keys in canonical order — {@link
+ * compareCanonicalKeys}: shorter encoded key first, then bytewise (RFC 7049
+ * §3.9), the order this package's decoder enforces on read. Rejects duplicate
+ * encoded keys (RFC 8949 §4.2: a map must not have duplicate keys) — e.g. a
+ * `Map` mixing `1` and `1n`.
  */
 function encodeMap(
   entries: Iterable<[unknown, unknown]>,
@@ -173,22 +187,15 @@ function encodeMap(
       valueBytes: encodeValue(v, depth + 1),
     };
   });
-  encoded.sort((a, b) => compareBytes(a.keyBytes, b.keyBytes));
+  encoded.sort((a, b) => compareCanonicalKeys(a.keyBytes, b.keyBytes));
   for (let i = 1; i < encoded.length; i++) {
-    if (compareBytes(encoded[i - 1]!.keyBytes, encoded[i]!.keyBytes) === 0) {
+    if (
+      compareCanonicalKeys(encoded[i - 1]!.keyBytes, encoded[i]!.keyBytes) === 0
+    ) {
       throw new Error("encodeCborDeterministic: duplicate map key");
     }
   }
   const chunks: Uint8Array[] = [encodeHead(MAJOR_MAP, encoded.length)];
   for (const e of encoded) chunks.push(e.keyBytes, e.valueBytes);
   return concat(chunks);
-}
-
-/** Bytewise lexicographic comparison (shorter-and-equal-prefix sorts first). */
-function compareBytes(a: Uint8Array, b: Uint8Array): number {
-  const n = Math.min(a.length, b.length);
-  for (let i = 0; i < n; i++) {
-    if (a[i] !== b[i]) return a[i]! - b[i]!;
-  }
-  return a.length - b.length;
 }

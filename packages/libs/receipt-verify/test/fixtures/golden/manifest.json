@@ -1,8 +1,8 @@
 {
-  "comment": "FOR-289 golden vectors — FROZEN bytes; see scripts/export-golden-vectors.ts",
+  "comment": "FOR-289 golden vectors \u2014 FROZEN bytes; see scripts/export-golden-vectors.ts. Regenerated 2026-09-19 (fresh signing key) during the ADR-0066 (FOR-568) fixture migration; this fixture is a peak receipt with a {1: -7} protected header and carries no checkpoint and no tree-size label.",
   "logId": "660e8400-e29b-41d4-a716-446655440001",
-  "grantDataHex": "c784fed5582240a1313ffa39405a57a3c1ae7445eadfbdda6fef27986cde0987180f7ac05c32bac8bb3074fca498b5671b99fa6a59c313c066fbb651e374679e",
+  "grantDataHex": "9334541754a177e2fb1a1a0e112509791932bdf6349835dfa7342514cb0bba5ec6a70a13b562945b173f721a023a2d7b95def2a508773ce09eebdd1d964cf901",
   "idtimestampBe8Hex": "0202020202020202",
-  "genesisSha256": "008382cc541cba950795d47f3dad435179ba04c7d360daee81fe037b841afc5c",
-  "receiptSha256": "dd9df1853e268fbc52aa9f36902fd96d389cb4ae9ea63833639a0191de4889e9"
+  "genesisSha256": "01545e358d2e66bdc5f563a994faab84770763e7302eae30b185e9982bd480e2",
+  "receiptSha256": "f19a5e47ca388b20a5dfe032856c778501172752d1dda66d9ad02ce998ba4900"
 }

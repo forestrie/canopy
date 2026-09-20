@@ -48,8 +48,10 @@
 import {
   calculateRoot,
   inclusionProofPath,
+  mmrSizeForLeafCount,
   peakIndexForLeafProof,
   peakMMRIndexes,
+  peaksBitmap,
 } from "@forestrie/merklelog";
 import {
   assembleReceiptFromProof,
@@ -62,19 +64,33 @@ import {
 import { parseReceipt } from "./parse-receipt.js";
 import { SubtleHasher } from "./subtle-hasher.js";
 
+/**
+ * BREAKING (within the 2.0.0 major already in flight): the sizeless
+ * `accumulatorFrom?: Uint8Array[]` seed is replaced by `trustedBase`, which
+ * carries the seed's SIZE alongside its peaks. Without a size the fold ran
+ * each link against the size read off that link's own proof, which is what
+ * {@link computeCheckpointAccumulator} exists to prevent (ADR-0066 D5.4) —
+ * a seed could only ever be checked against the peak count the proof's own
+ * declared base implies, and many sizes share a peak count.
+ */
 export type FreshenReceiptInput = {
   /** The stale receipt (COSE Sign1 with a 396 inclusion proof). */
   oldReceiptBytes: Uint8Array;
   /** The leaf's committed value: `SHA-256(idtimestamp ‖ inner)` — the same
    * value `verify` recomputes from the entry (caller derives it). */
   leafValue: Uint8Array;
-  /** Consistency-proof chain covering [0 or a trusted seed] → the latest sealed
-   * size, in ascending contiguous order (the raw per-checkpoint proofs, with
-   * `paths`). The chain's last link must end at the checkpoint's sealed size. */
+  /** Consistency-proof chain covering [0 or the trusted base] → the latest
+   * sealed size, in ascending contiguous order (the raw per-checkpoint
+   * proofs, with `paths`). The chain's last link must end at the
+   * checkpoint's sealed size. */
   consistencyProofs: readonly CheckpointConsistencyProof[];
-  /** Trusted accumulator seed for a suffix chain; omit for a chain from base 0.
-   * Its peak count must match the first link's tree-size-1. */
-  accumulatorFrom?: Uint8Array[];
+  /** Trusted base for a suffix chain — the size the caller already trusts
+   * and that size's accumulator; omit for a chain from base 0 (size 0, an
+   * empty accumulator). The size must be a complete MMR size, the
+   * accumulator must hold one peak per peak of that size, and the first
+   * link's declared `tree-size-1` must equal the size. Same shape as
+   * `verifyCheckpointChain`'s `trustedBase`. */
+  trustedBase?: { size: bigint; accumulator: Uint8Array[] };
   /** The latest checkpoint (`.sth`): its pre-signed peak receipts + delegation
    * cert become the freshened receipt's signature. */
   latestCheckpointBytes: Uint8Array;
@@ -134,22 +150,32 @@ export async function freshenReceipt(
     );
   }
   const firstLink = links[0]!;
-  // Base: a base-0 chain starts from an empty accumulator; a suffix chain's
-  // trusted seed must have the peak count of its tree-size-1.
-  const baseCount = input.accumulatorFrom?.length ?? 0;
-  if (firstLink.treeSize1 === 0n) {
-    if (baseCount !== 0) {
-      throw new Error(
-        "base-0 consistency chain must start from an empty accumulator seed",
-      );
-    }
-  } else {
-    const wanted = peakMMRIndexes(firstLink.treeSize1 - 1n).length;
-    if (baseCount !== wanted) {
-      throw new Error(
-        `base accumulator has ${baseCount} peaks; first link size ${firstLink.treeSize1} requires ${wanted}`,
-      );
-    }
+  // Base: the CALLER's trusted size and its accumulator (size 0 and an empty
+  // accumulator for a whole-log chain). The size has to be a size an MMR can
+  // have — `peaksBitmap` rounds an incomplete one DOWN, so a size of 5 would
+  // fold the 4 -> N shape — and the accumulator has to hold that size's
+  // peaks, which is the check the proof's own declared base used to stand in
+  // for.
+  const baseSize = input.trustedBase?.size ?? 0n;
+  const baseAccumulator = input.trustedBase?.accumulator ?? [];
+  if (
+    baseSize < 0n ||
+    mmrSizeForLeafCount(peaksBitmap(baseSize)) !== baseSize
+  ) {
+    throw new Error(`trusted base size ${baseSize} is not a complete MMR size`);
+  }
+  const basePeaks = baseSize === 0n ? 0 : peakMMRIndexes(baseSize - 1n).length;
+  if (baseAccumulator.length !== basePeaks) {
+    throw new Error(
+      `base accumulator has ${baseAccumulator.length} peaks; trusted base size ${baseSize} has ${basePeaks}`,
+    );
+  }
+  // The first link must continue from that size, not from a size it names
+  // itself (ADR-0066 D5.4).
+  if (firstLink.treeSize1 !== baseSize) {
+    throw new Error(
+      `first consistency proof declares tree-size-1 ${firstLink.treeSize1}; the trusted base size is ${baseSize}`,
+    );
   }
   // Contiguity: each link continues where the previous one sealed.
   for (let i = 1; i < links.length; i++) {
@@ -167,10 +193,15 @@ export async function freshenReceipt(
     );
   }
 
-  // Fold the chain to the latest accumulator (self-check target).
-  let accumulator = input.accumulatorFrom ?? [];
+  // Fold the chain to the latest accumulator (self-check target). Each step
+  // runs against a size the caller trusts, never one read off the link being
+  // folded: the trusted base for the first link, and the size the previous
+  // link was just folded TO for every link after it.
+  let accumulator = baseAccumulator;
+  let sizeFrom = baseSize;
   for (const p of links) {
-    accumulator = await computeCheckpointAccumulator(p, accumulator);
+    accumulator = await computeCheckpointAccumulator(p, accumulator, sizeFrom);
+    sizeFrom = p.treeSize2;
   }
   const aLatest = accumulator;
 

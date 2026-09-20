@@ -5,7 +5,10 @@
  */
 import cbor from "cbor";
 import { describe, expect, it } from "vitest";
-import { decodeCborDeterministic } from "./decode-cbor-deterministic.js";
+import {
+  decodeCborDeterministic,
+  decodeCborDeterministicStrict,
+} from "./decode-cbor-deterministic.js";
 import {
   COSE_ALG,
   COSE_CTY,
@@ -77,10 +80,15 @@ describe("encodeCoseProtectedMapBytes with cwtClaims", () => {
     expect(Array.from(mapGet(claims, 7) as Uint8Array)).toEqual([0xaa, 0xbb]);
   });
 
-  it("orders keys across the 1-byte / multi-byte / negative boundary (RFC 8949 §4.2.1)", () => {
+  it("orders keys across the 1-byte / multi-byte / negative boundary (RFC 7049 §3.9)", () => {
     // Encoded keys: 25 = 0x18 0x19, 256 = 0x19 0x01 0x00, -1 = 0x20,
-    // -257 = 0x39 0x01 0x00. Bytewise-lexicographic order on the encoded
-    // key puts every uint before every negint: [25, 256, -1, -257].
+    // -257 = 0x39 0x01 0x00. Canonical order here is length-first then
+    // bytewise (`compareCanonicalKeys`), so the 1-byte -1 leads, then the
+    // 2-byte 25, then the two 3-byte keys bytewise: [-1, 25, 256, -257].
+    // This claim set is in the divergence band: RFC 8949 §4.2.1's pure
+    // bytewise order would instead give [25, 256, -1, -257], which this
+    // package's own decoder rejects as out of canonical order. `extra` takes
+    // arbitrary integer claim keys, so this emitter can reach the band.
     const got = encodeCoseProtectedMapBytes(testKid(), {
       cwtClaims: {
         extra: new Map<number, number>([
@@ -94,9 +102,15 @@ describe("encodeCoseProtectedMapBytes with cwtClaims", () => {
     const claimsOffset = 36 + 1; // a2 04 5820 <kid> 0f, claims map follows
     expect(got[claimsOffset - 1]).toBe(0x0f);
     expect(Array.from(got.subarray(claimsOffset))).toEqual([
-      0xa4, 0x18, 0x19, 0x01, 0x19, 0x01, 0x00, 0x02, 0x20, 0x03, 0x39, 0x01,
+      0xa4, 0x20, 0x03, 0x18, 0x19, 0x01, 0x19, 0x01, 0x00, 0x02, 0x39, 0x01,
       0x00, 0x04,
     ]);
+    // ...and the emitted header round-trips through this package's decoder,
+    // which is the property the old bytewise order broke.
+    const claims = (
+      decodeCborDeterministicStrict(got) as Map<number, Map<number, number>>
+    ).get(15)!;
+    expect([...claims.keys()]).toEqual([-1, 25, 256, -257]);
   });
 
   it("rejects integer claim keys and values outside the 4-byte CBOR range", () => {

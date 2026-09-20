@@ -5,11 +5,18 @@
  */
 
 import {
+  COSE_LABEL_PEAK_RECEIPTS,
+  COSE_LABEL_TREE_SIZE_2,
+  COSE_LABEL_VDP,
+  COSE_LABEL_VDS,
+  VDP_CONSISTENCY_PROOF_KEY,
+  VDS_MMR_CONSISTENCY,
   encodeCborDeterministic,
   encodeSigStructure,
 } from "@forestrie/encoding";
 
-export const SEAL_PEAK_RECEIPTS_LABEL = -65931;
+/** Alias of {@link COSE_LABEL_PEAK_RECEIPTS} kept exported under this name for existing callers. */
+export const SEAL_PEAK_RECEIPTS_LABEL = COSE_LABEL_PEAK_RECEIPTS;
 
 const VALUE_BYTES = 32;
 const RESERVED_HEADER_SLOTS = 7;
@@ -101,18 +108,32 @@ export function buildV2CheckpointBytes(opts: {
 }): Uint8Array {
   // Checkpoint format v3 (ADR-0046): detached (null) payload; the sealed
   // size travels as tree-size-2 of the consistency proof under the
-  // verifiable-proofs unprotected header (label 396, key -2).
+  // verifiable-proofs unprotected header (label 396, key -2). ADR-0066 D1
+  // as amended (FOR-568): the sealed size `parseCheckpoint` reads is the
+  // SIGNED tree-size-2 from the protected header, so the protected map must
+  // carry the canonical sealer shape `{1: alg, 395: 3, -65933: tree-size-2}`
+  // — these fixtures never verify a signature (the outer signature bstr is
+  // empty), so the labels alone are sufficient for `mmrSize` to resolve.
   const consistencyProof = cborBytes([0n, opts.mmrSize, [], []]);
-  const verifiableProofs = new Map<number, unknown>([[-2, consistencyProof]]);
+  const verifiableProofs = new Map<number, unknown>([
+    [VDP_CONSISTENCY_PROOF_KEY, consistencyProof],
+  ]);
   const checkpointUnprotected = new Map<number, unknown>([
-    [396, verifiableProofs],
+    [COSE_LABEL_VDP, verifiableProofs],
     [SEAL_PEAK_RECEIPTS_LABEL, opts.peakReceipts],
   ]);
   if (opts.delegationCert?.length) {
     checkpointUnprotected.set(1000, opts.delegationCert);
   }
+  const checkpointProtected = cborBytes(
+    new Map<number, unknown>([
+      [1, -7],
+      [COSE_LABEL_VDS, VDS_MMR_CONSISTENCY],
+      [COSE_LABEL_TREE_SIZE_2, opts.mmrSize],
+    ]),
+  );
   return cborBytes([
-    new Uint8Array(),
+    checkpointProtected,
     checkpointUnprotected,
     null,
     new Uint8Array(),

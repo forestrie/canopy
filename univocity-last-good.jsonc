@@ -26,5 +26,9 @@
   // forestrie/univocity contract release the ephemeral instances are deployed from.
   // v0.2.0: ALG_ES256_WEBAUTHN + DelegationProof.algData ABI change (ADR-0008);
   // publishCheckpoint selector 87ce4c61 -> 295e6ade.
-  "contracts": "v0.2.0",
+  // v0.3.0: signed checkpoint tree size (ADR-0066, FOR-568): the receipt's
+  // protected header must carry tree-size-2 (-65933) as deterministic CBOR
+  // and match the stored size; size-driven consistency fold (FOR-567). No
+  // ABI change. Receipts from a sealer older than arbor #102 are rejected.
+  "contracts": "v0.3.0",
 }

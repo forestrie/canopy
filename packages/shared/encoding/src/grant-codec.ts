@@ -67,6 +67,10 @@ export function encodeGrantForResponse(
   const grantData = grantDataToBytes(grant.grantData ?? new Uint8Array(0));
 
   const b: number[] = [];
+  // Keys 0–6, each a single byte, emitted in a fixed ascending sequence:
+  // canonical under both the length-first order this package applies
+  // (canonical-key-order.ts) and RFC 8949 §4.2.1's pure bytewise one, which
+  // differ only across unequal key lengths.
   b.push(0xa7); // map(7) — keys 0–6
   b.push(CBOR_KEY_IDTIMESTAMP, CBOR_BSTR_LEN_8);
   for (let i = 0; i < IDTIMESTAMP_BYTES; i++) b.push(idts[i]!);

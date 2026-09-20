@@ -758,4 +758,17 @@ export class ReceivablesDO extends DurableObject<Env> {
     );
     return { lastBlock };
   }
+
+  /**
+   * Dev/ops: wipe durable SQLite and re-run schema init.
+   * The HTTP worker must only call this after checking NODE_ENV/opt-in and
+   * the reset token. Clears exactly this instance's account — content-reset
+   * of every ReceivablesDO needs one call per known univocityInstanceId (see
+   * `POST /admin/reset-storage?instance=<id>` in src/index.ts).
+   */
+  async devResetStorage(): Promise<void> {
+    await this.ctx.storage.deleteAll();
+    this.initialized = false;
+    this.ensureSchema();
+  }
 }

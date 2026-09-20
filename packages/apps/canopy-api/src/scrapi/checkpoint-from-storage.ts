@@ -4,7 +4,12 @@
  * Used for inclusion verification when chain config is absent or as fallback (prefer chain when both).
  */
 
-import { decodeCborDeterministic } from "@forestrie/encoding";
+import {
+  COSE_LABEL_VDP,
+  VDP_CONSISTENCY_PROOF_KEY,
+  decodeCborDeterministic,
+  readProtectedTreeSize2,
+} from "@forestrie/encoding";
 import type { Hex } from "viem";
 import type { CheckpointFromStorage } from "./checkpoint-from-storage-result.js";
 import type {
@@ -51,30 +56,49 @@ function unwrapCoseSign1Tag(value: unknown): unknown {
   return value;
 }
 
+type DecodedCheckpointPayload = {
+  proof: unknown[];
+  /** Signed `tree-size-2` (protected header label -65933; ADR-0066 D1 as
+   * amended). */
+  signedTreeSize2: bigint;
+};
+
 /**
  * Decode checkpoint .sth (format v3, ADR-0046): a COSE Sign1 with a detached
  * (null) payload carrying its consistency proof under the verifiable-proofs
- * unprotected header (draft-bryce label 396, key -2). We require that the
- * object decodes and carries the proof; the sealed size is tree-size-2.
+ * unprotected header (draft-bryce label 396, key `VDP_CONSISTENCY_PROOF_KEY`
+ * = -2). Requires the object to decode, carry the proof, AND carry the
+ * SIGNED tree-size-2 protected-header label (ADR-0066 D1 as amended, FOR-568)
+ * — a checkpoint without it is not verifiable and is treated the same as
+ * one with no proof at all.
  */
-function decodeCheckpointPayload(bytes: Uint8Array): unknown {
+function decodeCheckpointPayload(
+  bytes: Uint8Array,
+): DecodedCheckpointPayload | null {
   const decoded = decodeCborDeterministic(bytes) as unknown;
   const unwrapped = unwrapCoseSign1Tag(decoded);
   if (!Array.isArray(unwrapped) || unwrapped.length < 4) {
     return null;
   }
-  const unprotected = (unwrapped as [unknown, unknown, unknown, unknown])[1];
+  const [protectedHeader, unprotected] = unwrapped as [
+    unknown,
+    unknown,
+    unknown,
+    unknown,
+  ];
   let vdp: unknown;
   if (unprotected instanceof Map) {
-    vdp = unprotected.get(396);
+    vdp = unprotected.get(COSE_LABEL_VDP);
   } else if (unprotected && typeof unprotected === "object") {
-    vdp = (unprotected as Record<string, unknown>)["396"];
+    vdp = (unprotected as Record<string, unknown>)[String(COSE_LABEL_VDP)];
   }
   if (vdp === undefined || vdp === null) {
     return null;
   }
   const proofBstr =
-    vdp instanceof Map ? vdp.get(-2) : (vdp as Record<string, unknown>)["-2"];
+    vdp instanceof Map
+      ? vdp.get(VDP_CONSISTENCY_PROOF_KEY)
+      : (vdp as Record<string, unknown>)[String(VDP_CONSISTENCY_PROOF_KEY)];
   if (!(proofBstr instanceof Uint8Array)) {
     return null;
   }
@@ -82,7 +106,19 @@ function decodeCheckpointPayload(bytes: Uint8Array): unknown {
   if (!Array.isArray(proof) || proof.length < 2) {
     return null;
   }
-  return proof;
+  if (!(protectedHeader instanceof Uint8Array)) {
+    return null;
+  }
+  let signedTreeSize2: bigint | null;
+  try {
+    signedTreeSize2 = readProtectedTreeSize2(protectedHeader);
+  } catch {
+    return null;
+  }
+  if (signedTreeSize2 === null) {
+    return null;
+  }
+  return { proof, signedTreeSize2 };
 }
 
 /**
@@ -100,7 +136,7 @@ async function getCheckpointFromR2(
   const state = decodeCheckpointPayload(bytes);
   if (state === null) return null;
   // Minimal success: we read and decoded the checkpoint. MMR root extraction can be added when state schema is fixed.
-  return {};
+  return { signedTreeSize2: state.signedTreeSize2 };
 }
 
 /**
@@ -120,7 +156,7 @@ async function getCheckpointFromUrl(
     const bytes = new Uint8Array(await res.arrayBuffer());
     const state = decodeCheckpointPayload(bytes);
     if (state === null) return null;
-    return {};
+    return { signedTreeSize2: state.signedTreeSize2 };
   } catch {
     return null;
   }

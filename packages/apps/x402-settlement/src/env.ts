@@ -49,4 +49,17 @@ export interface Env {
   INDEXER_CONFIRMATIONS?: string;
   INDEXER_MAX_BLOCK_RANGE?: string;
   INDEXER_MAX_RANGES_PER_RUN?: string;
+  /**
+   * Dev only: set via Doppler ref
+   * `${forest-platform.dev.SETTLEMENT_RESET_TOKEN}` (synced by deploy-workers
+   * on dev lane).
+   */
+  SETTLEMENT_RESET_TOKEN?: string;
+  /**
+   * Opt-in for /admin/reset-storage on non-dev workers ("1" to allow). Set as
+   * a wrangler secret on prod-lane workers of DEV forests only (content-reset
+   * needs to wipe both lanes); never set on true production forests. The
+   * endpoint remains token-gated by SETTLEMENT_RESET_TOKEN either way.
+   */
+  SETTLEMENT_RESET_ALLOWED?: string;
 }

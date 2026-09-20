@@ -76,8 +76,14 @@ const CORPUS: unknown[] = [
     [3, "ct"],
     [4, new Uint8Array([0xaa])],
   ]),
+  // Key 2 (`02`) beside the 3-byte uint key 396: the encoder and the decoder
+  // now share one comparator (length-first, then bytewise — see
+  // canonical-key-order.ts), so either key class round-trips. This row keeps
+  // the mixed-length shape; the divergence band itself (a negative key
+  // encoded shorter than a positive one) is pinned on its own below and in
+  // protected-header-conformance.test.ts.
   new Map<number, unknown>([
-    [-2, new Uint8Array([1, 2])],
+    [2, new Uint8Array([1, 2])],
     [
       396,
       new Map<number, unknown>([
@@ -156,17 +162,53 @@ describe("@forestrie/encoding CBOR codec vs reference `cbor`", () => {
     expect(hex(encodeCborDeterministic(1000000))).toBe("1a000f4240");
   });
 
-  it("§4.2 map key ordering is bytewise (canonical)", () => {
+  it("§4.2 map key ordering round-trips where the two canonical rules agree", () => {
+    // `02`, `0a`, `20`: all one byte, so length-first-then-bytewise (RFC 7049
+    // §3.9 — what this package encodes and decodes, and what ADR-0066 D9, the
+    // univocity parser and go-merklelog's checkpoint-header re-encode apply)
+    // and RFC 8949 §4.2.1's pure bytewise order give the same order.
     const bytes = encodeCborDeterministic(
       new Map([
         [10, 1],
         [2, 2],
         [-1, 3],
-        [100, 4],
       ]),
     );
     const m = decodeCborDeterministic(bytes) as Map<number, number>;
-    expect([...m.keys()]).toEqual([2, 10, 100, -1]);
+    expect([...m.keys()]).toEqual([2, 10, -1]);
+  });
+
+  it("encoder and decoder agree in the divergence band {100, -1}", () => {
+    // The one class where the two canonical key orders disagree: a map mixing
+    // a negative label encoded strictly shorter than a positive one. -1 is
+    // `20` (1 byte), 100 is `1864` (2 bytes). Length-first (RFC 7049 §3.9 —
+    // ADR-0066 D9, the univocity parser, and go-merklelog's checkpoint-header
+    // re-encode under fxamacker `CanonicalEncOptions`) puts -1 first; RFC
+    // 8949 §4.2.1's pure bytewise order puts 100 first.
+    //
+    // Both ends of this package now use `compareCanonicalKeys`, so the
+    // encoder emits the length-first order its own decoder accepts. Before
+    // the comparator was shared the encoder emitted `a21864012002`, which the
+    // decoder rejected as out of canonical order.
+    const bytes = encodeCborDeterministic(
+      new Map([
+        [100, 1],
+        [-1, 2],
+      ]),
+    );
+    expect(hex(bytes)).toBe("a22002186401");
+    expect([
+      ...(decodeCborDeterministic(bytes) as Map<number, number>).entries(),
+    ]).toEqual([
+      [-1, 2],
+      [100, 1],
+    ]);
+    // The bytewise order is what the decoder now rejects, from either end.
+    expect(() =>
+      decodeCborDeterministic(
+        new Uint8Array(Buffer.from("a21864012002", "hex")),
+      ),
+    ).toThrow(/out of canonical order/);
   });
 
   it("rejects duplicate map keys (§4.2 unique-keys)", () => {
@@ -195,5 +237,20 @@ describe("@forestrie/encoding CBOR codec vs reference `cbor`", () => {
     expect(() => decodeCborDeterministic(new Uint8Array([0x00, 0x00]))).toThrow(
       /trailing/,
     );
+  });
+
+  it("round-trips a map with a 5-byte negative key (tree-size label range) and an 8-byte uint value", () => {
+    // -65933 is COSE_LABEL_TREE_SIZE_2 (ADR-0066 D3 as amended 2026-09-20):
+    // encodes as a 5-byte negative int (`3a 00 01 01 8c`). Pair it with a uint
+    // value above Number.MAX_SAFE_INTEGER so the decoder must return a bigint
+    // (ai=27, 8-byte argument, `1b ...`).
+    const bigValue = 2n ** 60n; // > 2^53, forces bigint on decode
+    const bytes = encodeCborDeterministic(new Map([[-65933, bigValue]]));
+    expect(hex(bytes)).toBe(
+      `a13a0001018c1b${bigValue.toString(16).padStart(16, "0")}`,
+    );
+    const decoded = decodeCborDeterministic(bytes) as Map<number, bigint>;
+    expect(decoded).toBeInstanceOf(Map);
+    expect(decoded.get(-65933)).toBe(bigValue);
   });
 });

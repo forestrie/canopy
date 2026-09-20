@@ -10,6 +10,7 @@ import cbor from "cbor";
 import { describe, expect, it } from "vitest";
 import { encodeCoseSign1Raw } from "./encode-cose-sign1-raw.js";
 import { encodeCborDeterministic } from "./encode-cbor-deterministic.js";
+import { decodeCborDeterministic } from "./decode-cbor-deterministic.js";
 
 function toHex(u8: Uint8Array): string {
   return Buffer.from(u8).toString("hex");
@@ -93,8 +94,12 @@ describe("encodeCoseSign1Raw — strict tag-free COSE (reference `cbor` decoder)
     expect(toHex(bytes)).toBe("8443a10126a042dead5840" + "11".repeat(64));
   });
 
-  it("sorts map keys in RFC 8949 §4.2 canonical (bytewise) order", () => {
-    // Insertion order 10,2,-1,100 → canonical 2,10,100,-1
+  it("sorts map keys in canonical (length-first, then bytewise) order", () => {
+    // Insertion order 10,2,-1,100 → canonical 2,10,-1,100: the 1-byte keys
+    // `02`, `0a`, `20` lead in bytewise order, then the 2-byte `1864`.
+    // -1 beside 100 is the divergence band — RFC 8949 §4.2.1's pure bytewise
+    // order would put 100 (`1864`) before -1 (`20`), which this package's own
+    // decoder rejects. See canonical-key-order.ts.
     const bytes = encodeCborDeterministic(
       new Map<number, number>([
         [10, 1],
@@ -103,11 +108,15 @@ describe("encodeCoseSign1Raw — strict tag-free COSE (reference `cbor` decoder)
         [100, 4],
       ]),
     );
-    expect(toHex(bytes)).toBe("a402020a01186404" + "2003");
+    expect(toHex(bytes)).toBe("a402020a012003" + "186404");
     const decoded = cbor.decodeFirstSync(Buffer.from(bytes)) as Map<
       number,
       number
     >;
-    expect([...decoded.keys()]).toEqual([2, 10, 100, -1]);
+    expect([...decoded.keys()]).toEqual([2, 10, -1, 100]);
+    // The bytes round-trip through this package's own decoder.
+    expect([
+      ...(decodeCborDeterministic(bytes) as Map<number, number>).keys(),
+    ]).toEqual([2, 10, -1, 100]);
   });
 });

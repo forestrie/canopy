@@ -89,6 +89,12 @@ export interface GrantRequestInput {
  * Encode grant content as CBOR map keys 1–6. Left-pads log ids to 32 bytes and
  * grant flags to 8 bytes before encoding.
  *
+ * Keys are emitted in a fixed ascending sequence rather than sorted. Every key
+ * here is a single byte, so that sequence is canonical under both the
+ * length-first order this package applies ({@link ./canonical-key-order.ts})
+ * and RFC 8949 §4.2.1's pure bytewise one; the two differ only across unequal
+ * key lengths.
+ *
  * @param input - Grant content fields (idtimestamp is not included)
  * @returns CBOR map bytes suitable for register-grant request bodies
  */
