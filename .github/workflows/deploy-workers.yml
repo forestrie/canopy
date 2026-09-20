@@ -10,6 +10,7 @@ on:
       - "packages/apps/x402-settlement/**"
       - "packages/shared/**"
       - "packages/merklelog/**"
+      - "packages/libs/**"
       - "Taskfile.dist.yml"
       - "taskfiles/wrangler.yml"
       - "taskfiles/cloudflare.yml"
@@ -110,6 +111,7 @@ jobs:
               - 'packages/apps/canopy-api/**'
               - 'packages/shared/**'
               - 'packages/merklelog/**'
+              - 'packages/libs/**'
             forestrie_ingress:
               - 'packages/apps/forestrie-ingress/**'
               - 'packages/shared/**'
