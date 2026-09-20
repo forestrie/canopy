@@ -8,7 +8,7 @@ import {
   COSE_LABEL_VDP,
   VDP_CONSISTENCY_PROOF_KEY,
   decodeCborDeterministic,
-  readProtectedTreeSizes,
+  readProtectedTreeSize2,
 } from "@forestrie/encoding";
 import type { Hex } from "viem";
 import type { CheckpointFromStorage } from "./checkpoint-from-storage-result.js";
@@ -58,7 +58,8 @@ function unwrapCoseSign1Tag(value: unknown): unknown {
 
 type DecodedCheckpointPayload = {
   proof: unknown[];
-  /** Signed `tree-size-2` (protected header label -65933; ADR-0066 D2). */
+  /** Signed `tree-size-2` (protected header label -65933; ADR-0066 D1 as
+   * amended). */
   signedTreeSize2: bigint;
 };
 
@@ -66,10 +67,10 @@ type DecodedCheckpointPayload = {
  * Decode checkpoint .sth (format v3, ADR-0046): a COSE Sign1 with a detached
  * (null) payload carrying its consistency proof under the verifiable-proofs
  * unprotected header (draft-bryce label 396, key `VDP_CONSISTENCY_PROOF_KEY`
- * = -2). Requires the object to decode, carry the proof, AND carry both
- * SIGNED tree-size protected-header labels (ADR-0066 D2/D3, FOR-568; no
- * compatibility mode, ADR-0066 D6) — a checkpoint without them is not
- * verifiable and is treated the same as one with no proof at all.
+ * = -2). Requires the object to decode, carry the proof, AND carry the
+ * SIGNED tree-size-2 protected-header label (ADR-0066 D1 as amended, FOR-568)
+ * — a checkpoint without it is not verifiable and is treated the same as
+ * one with no proof at all.
  */
 function decodeCheckpointPayload(
   bytes: Uint8Array,
@@ -108,16 +109,16 @@ function decodeCheckpointPayload(
   if (!(protectedHeader instanceof Uint8Array)) {
     return null;
   }
-  let signed: { treeSize1: bigint; treeSize2: bigint } | null;
+  let signedTreeSize2: bigint | null;
   try {
-    signed = readProtectedTreeSizes(protectedHeader);
+    signedTreeSize2 = readProtectedTreeSize2(protectedHeader);
   } catch {
     return null;
   }
-  if (signed === null) {
+  if (signedTreeSize2 === null) {
     return null;
   }
-  return { proof, signedTreeSize2: signed.treeSize2 };
+  return { proof, signedTreeSize2 };
 }
 
 /**

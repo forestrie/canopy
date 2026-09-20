@@ -12,11 +12,7 @@
  */
 
 import { encodeCborBstr } from "./encode-cbor-bstr.js";
-import {
-  COSE_LABEL_ALG,
-  COSE_LABEL_TREE_SIZE_1,
-  COSE_LABEL_TREE_SIZE_2,
-} from "./cose-labels.js";
+import { COSE_LABEL_ALG, COSE_LABEL_TREE_SIZE_2 } from "./cose-labels.js";
 import {
   appendCborBstr,
   appendCborText,
@@ -85,17 +81,9 @@ export interface CoseProtectedHeaderOptions {
    */
   cwtClaims?: CwtClaims;
   /**
-   * `tree-size-1` for header label {@link COSE_LABEL_TREE_SIZE_1} (ADR-0066
-   * D3): the pre-consistency-proof MMR size, emitted as a CBOR unsigned
-   * integer. Must be supplied together with {@link treeSize2} — one without
-   * the other throws.
-   */
-  treeSize1?: bigint | number;
-  /**
    * `tree-size-2` for header label {@link COSE_LABEL_TREE_SIZE_2} (ADR-0066
-   * D3): the post-consistency-proof (sealed) MMR size, emitted as a CBOR
-   * unsigned integer. Must be supplied together with {@link treeSize1} — one
-   * without the other throws.
+   * D3 as amended): the sealed MMR size a checkpoint signs, emitted as a
+   * CBOR unsigned integer (major type 0). tree-size-1 is not signed.
    */
   treeSize2?: bigint | number;
 }
@@ -254,19 +242,18 @@ function appendCwtClaimsMap(out: number[], claims: CwtClaims): void {
  *
  * Without `options` the output is byte-identical to the historical kid-only
  * map `{ 4: kid }`. With `options` the map carries
- * `{ 1: alg?, 3: cty?, 4: kid, 15: cwtClaims?, -65932: treeSize1?, -65933: treeSize2? }`.
- * Key order is canonical per RFC 8949 §4.2.1 (shorter key encodings first,
- * then bytewise): the existing labels (1, 3, 4, 15) are each single-byte
- * keys and stay ascending; {@link COSE_LABEL_TREE_SIZE_1} / {@link
- * COSE_LABEL_TREE_SIZE_2} encode as 5-byte negative ints (`3a 00 01 01 8b` /
- * `3a 00 01 01 8c`) so they always sort last, tree-size-1 before tree-size-2.
+ * `{ 1: alg?, 3: cty?, 4: kid, 15: cwtClaims?, -65933: treeSize2? }`.
+ * Key order is canonical (shorter key encodings first, then bytewise; the
+ * same order as bytewise for these keys): the existing labels (1, 3, 4, 15)
+ * are each single-byte keys and stay ascending; {@link
+ * COSE_LABEL_TREE_SIZE_2} encodes as the 5-byte negative int
+ * `3a 00 01 01 8c` so it always sorts last.
  *
  * @param kid - Key id bytes for COSE header label {@link COSE_KID}
  * @param options - Optional protected `alg` / `cty` / `cwtClaims` /
- *   `treeSize1` + `treeSize2` labels
+ *   `treeSize2` labels
  * @returns CBOR map as raw bytes (canonical, tag-free)
- * @throws When only one of `treeSize1` / `treeSize2` is supplied, or either
- *   is not a non-negative uint64-range integer
+ * @throws When `treeSize2` is not a non-negative uint64-range integer
  */
 export function encodeCoseProtectedMapBytes(
   kid: Uint8Array,
@@ -275,20 +262,13 @@ export function encodeCoseProtectedMapBytes(
   const hasAlg = options?.alg !== undefined;
   const hasCty = options?.cty !== undefined;
   const hasClaims = options?.cwtClaims !== undefined;
-  const hasTreeSize1 = options?.treeSize1 !== undefined;
   const hasTreeSize2 = options?.treeSize2 !== undefined;
-  if (hasTreeSize1 !== hasTreeSize2) {
-    throw new Error(
-      "encodeCoseProtectedMapBytes: treeSize1 and treeSize2 must both be present or both be absent",
-    );
-  }
-  const hasTreeSizes = hasTreeSize1 && hasTreeSize2;
   const size =
     1 +
     (hasAlg ? 1 : 0) +
     (hasCty ? 1 : 0) +
     (hasClaims ? 1 : 0) +
-    (hasTreeSizes ? 2 : 0);
+    (hasTreeSize2 ? 1 : 0);
   // Canonical map: integer keys ascending (1 < 3 < 4 < 15), size < 24 so 0xa0|size.
   const out: number[] = [0xa0 | size];
   if (hasAlg) {
@@ -307,9 +287,7 @@ export function encodeCoseProtectedMapBytes(
     appendCborUint(out, COSE_CWT_CLAIMS);
     appendCwtClaimsMap(out, options.cwtClaims as CwtClaims);
   }
-  if (hasTreeSizes) {
-    appendCborInt(out, COSE_LABEL_TREE_SIZE_1);
-    appendCborUint64(out, options!.treeSize1 as bigint | number);
+  if (hasTreeSize2) {
     appendCborInt(out, COSE_LABEL_TREE_SIZE_2);
     appendCborUint64(out, options!.treeSize2 as bigint | number);
   }
@@ -319,12 +297,12 @@ export function encodeCoseProtectedMapBytes(
 /**
  * Encode protected header as CBOR bstr containing the protected map
  * (`{@link COSE_KID}: kid`, plus optional protected `alg` / `cty` /
- * `cwtClaims` / `treeSize1` + `treeSize2`).
+ * `cwtClaims` / `treeSize2`).
  * Used as COSE Sign1 `[0]` in statement receipts.
  *
  * @param kid - Signer key id bound in the protected header
  * @param options - Optional protected `alg` / `cty` / `cwtClaims` /
- *   `treeSize1` + `treeSize2` labels
+ *   `treeSize2` labels
  * @returns CBOR bstr wrapping the protected map bytes
  */
 export function encodeCoseProtectedWithKid(

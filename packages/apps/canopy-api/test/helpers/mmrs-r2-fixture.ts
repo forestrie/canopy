@@ -4,8 +4,9 @@
  */
 
 import {
-  COSE_LABEL_TREE_SIZE_1,
   COSE_LABEL_TREE_SIZE_2,
+  COSE_LABEL_VDS,
+  VDS_MMR_CONSISTENCY,
   encodeCborDeterministic,
 } from "@forestrie/encoding";
 import { DELEGATION_CERT_LABEL } from "../../src/grant/delegation-verify.js";
@@ -109,11 +110,12 @@ export function buildV2CheckpointBytes(opts: {
   // size travels as tree-size-2 of the consistency proof under the
   // verifiable-proofs unprotected header (draft-bryce: label 396, key -2,
   // `bstr .cbor [tree-size-1, tree-size-2, paths, right-peaks]`). ADR-0066
-  // (FOR-568): resolve-receipt reads the SIGNED tree-size-2 from the
-  // protected header, so the protected map must carry matching
-  // tree-size-1/tree-size-2 labels — this fixture's checkpoint is never
-  // signature-checked (the signature bstr is empty), so the labels alone
-  // are sufficient for the sealed size to resolve.
+  // D1 as amended (FOR-568): resolve-receipt reads the SIGNED tree-size-2
+  // from the protected header, so the protected map must carry the
+  // canonical sealer shape `{1: alg, 395: 3, -65933: tree-size-2}` — this
+  // fixture's checkpoint is never signature-checked (the signature bstr is
+  // empty), so the labels alone are sufficient for the sealed size to
+  // resolve.
   const consistencyProof = cborBytes([0n, opts.mmrSize, [], []]);
   const verifiableProofs = new Map<number, unknown>([[-2, consistencyProof]]);
   const checkpointUnprotected = new Map<number, unknown>([
@@ -126,7 +128,7 @@ export function buildV2CheckpointBytes(opts: {
   const checkpointProtected = cborBytes(
     new Map<number, unknown>([
       [1, -7],
-      [COSE_LABEL_TREE_SIZE_1, 0n],
+      [COSE_LABEL_VDS, VDS_MMR_CONSISTENCY],
       [COSE_LABEL_TREE_SIZE_2, opts.mmrSize],
     ]),
   );

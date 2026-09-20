@@ -26,7 +26,7 @@ import {
   VDP_CONSISTENCY_PROOF_KEY,
   decodeCborDeterministic,
   encodeCborDeterministic,
-  readProtectedTreeSizes,
+  readProtectedTreeSize2,
 } from "@forestrie/encoding";
 
 import { CBOR_CONTENT_TYPES } from "../cbor-api/cbor-content-types.js";
@@ -373,15 +373,16 @@ function requireCoseSign1(value: unknown, label: string): CoseSign1 {
 
 /**
  * Sealed mmr size from a format-v3 checkpoint: the SIGNED `tree-size-2`
- * (ADR-0066 D2/D3, FOR-568) from the checkpoint's PROTECTED header — not the
- * unprotected consistency proof's declared value, which an unsigned
- * checkpoint could restate freely. `protectedHeaderBytes` is the checkpoint
- * COSE Sign1's element-0 bstr contents (`checkpointSign1[0]`). A consistency
- * proof must still be present under the verifiable-proofs unprotected
- * header (label 396, key -2) — an unsealed checkpoint has no size to read at
- * all; its declared sizes are not otherwise used here (this reader does not
- * cross-check them against the signed sizes; see
- * `checkpointConsistencyProof` in `@forestrie/receipt-verify` for that).
+ * (ADR-0066 D1 as amended, label -65933, FOR-568) from the checkpoint's
+ * PROTECTED header — not the unprotected consistency proof's declared
+ * value, which an unsigned checkpoint could restate freely.
+ * `protectedHeaderBytes` is the checkpoint COSE Sign1's element-0 bstr
+ * contents (`checkpointSign1[0]`). A consistency proof must still be
+ * present under the verifiable-proofs unprotected header (label 396, key
+ * -2) — an unsealed checkpoint has no size to read at all; its declared
+ * sizes are not otherwise used here (this reader does not cross-check them
+ * against the signed size; see `checkpointConsistencyProof` in
+ * `@forestrie/receipt-verify` for that).
  */
 function sealedSizeFromCheckpoint(
   protectedHeaderBytes: Uint8Array,
@@ -396,13 +397,11 @@ function sealedSizeFromCheckpoint(
   if (!(proofBstr instanceof Uint8Array)) {
     return null;
   }
-  let signed: { treeSize1: bigint; treeSize2: bigint } | null;
   try {
-    signed = readProtectedTreeSizes(protectedHeaderBytes);
+    return readProtectedTreeSize2(protectedHeaderBytes);
   } catch {
     return null;
   }
-  return signed?.treeSize2 ?? null;
 }
 
 function toHeaderMap(

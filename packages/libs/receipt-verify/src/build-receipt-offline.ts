@@ -20,7 +20,7 @@ import {
   COSE_LABEL_VDP,
   decodeCborDeterministic,
   encodeCborDeterministic,
-  readProtectedTreeSizes,
+  readProtectedTreeSize2,
 } from "@forestrie/encoding";
 import {
   calculateRoot,
@@ -58,11 +58,11 @@ export type ParsedCheckpoint = {
   peakReceipts: unknown[] | null;
   /**
    * Sealed tree size: the SIGNED `tree-size-2` from the checkpoint's
-   * PROTECTED header (ADR-0066 D2/D3), not the unprotected consistency
-   * proof's declared value. `null` when the checkpoint carries no embedded
-   * consistency proof or no signed tree sizes — such a checkpoint is not
-   * verifiable (ADR-0066 D6: no compatibility mode) and callers must treat
-   * it exactly as they would a checkpoint with no proof at all.
+   * PROTECTED header (ADR-0066 D1 as amended, label -65933), not the
+   * unprotected consistency proof's declared value. `null` when the
+   * checkpoint carries no embedded consistency proof or no signed
+   * tree-size-2 — such a checkpoint is not verifiable and callers must
+   * treat it exactly as they would a checkpoint with no proof at all.
    */
   mmrSize: bigint | null;
   delegationCert: Uint8Array | null;
@@ -262,18 +262,18 @@ function cborBytes(value: unknown): Uint8Array {
 
 /**
  * Sealed mmr size from a format-v3 checkpoint: the SIGNED `tree-size-2`
- * (ADR-0066 D2/D3) from the PROTECTED header — not the unprotected
- * consistency proof's declared value, which a checkpoint without a
- * signing key could freely restate (ADR-0066's "keyless first checkpoint"
+ * (ADR-0066 D1 as amended, label -65933) from the PROTECTED header — not the
+ * unprotected consistency proof's declared value, which a checkpoint without
+ * a signing key could freely restate (ADR-0066's "keyless first checkpoint"
  * case). A consistency proof must still be present (an unsigned checkpoint
  * with no proof is not sealed at all); its declared sizes are not otherwise
  * used here — {@link checkpointConsistencyProof} in `checkpoint-chain.ts`
  * is the validating decode that requires the two to agree.
  *
- * Lenient by design: an absent proof, a malformed proof, or absent/malformed
- * signed sizes all yield `null` rather than a throw, so a caller of
- * {@link parseCheckpoint} sees exactly the same "not verifiable" outcome
- * either way.
+ * Lenient by design: an absent proof, a malformed proof, or an absent or
+ * malformed signed tree-size-2 all yield `null` rather than a throw, so a
+ * caller of {@link parseCheckpoint} sees exactly the same "not verifiable"
+ * outcome either way.
  */
 function sealedSizeFromCheckpoint(
   coseSign1: CoseSign1,
@@ -286,11 +286,9 @@ function sealedSizeFromCheckpoint(
     return null;
   }
   if (declared === null) return null;
-  let signed;
   try {
-    signed = readProtectedTreeSizes(coseSign1[0]);
+    return readProtectedTreeSize2(coseSign1[0]);
   } catch {
     return null;
   }
-  return signed?.treeSize2 ?? null;
 }

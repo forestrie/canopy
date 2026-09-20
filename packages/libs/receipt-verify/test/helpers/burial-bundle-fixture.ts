@@ -10,11 +10,12 @@
  * frozen in the golden manifest).
  */
 import {
-  COSE_LABEL_TREE_SIZE_1,
   COSE_LABEL_TREE_SIZE_2,
   COSE_LABEL_VDP,
+  COSE_LABEL_VDS,
   VDP_CONSISTENCY_PROOF_KEY,
   VDP_INCLUSION_PROOF_KEY,
+  VDS_MMR_CONSISTENCY,
   encodeCborDeterministic,
   encodeSigStructure,
 } from "@forestrie/encoding";
@@ -115,10 +116,11 @@ export async function buildBurialBundleFixture(): Promise<BurialBundleFixture> {
 
   const hasher = new SubtleHasher();
   // The old-era RECEIPT (built below) is signed with a plain protected
-  // header — receipts do not carry the tree-size labels (ADR-0066 D3
-  // reserves those for checkpoints). Each CHECKPOINT gets its own protected
-  // header carrying the SIGNED tree-size-1/tree-size-2 for that link
-  // (ADR-0066 D2), built per-call in `buildCheckpoint` below.
+  // header — receipts do not carry the tree-size label (ADR-0066 D3
+  // reserves it for checkpoints). Each CHECKPOINT gets its own protected
+  // header carrying the SIGNED tree-size-2 for that link (ADR-0066 D1 as
+  // amended), built per-call in `buildCheckpoint` below; tree-size-1 is not
+  // signed.
   const protectedBstr = encodeCborDeterministic(new Map([[1, -7]]));
 
   const buildCheckpoint = async (
@@ -149,7 +151,7 @@ export async function buildBurialBundleFixture(): Promise<BurialBundleFixture> {
     const checkpointProtectedBstr = encodeCborDeterministic(
       new Map<number, unknown>([
         [1, -7],
-        [COSE_LABEL_TREE_SIZE_1, sizeFrom],
+        [COSE_LABEL_VDS, VDS_MMR_CONSISTENCY],
         [COSE_LABEL_TREE_SIZE_2, sizeTo],
       ]),
     );

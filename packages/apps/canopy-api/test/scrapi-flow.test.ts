@@ -1,7 +1,8 @@
 import { signCoseSign1Statement } from "@forestrie/encoding";
 import {
-  COSE_LABEL_TREE_SIZE_1,
   COSE_LABEL_TREE_SIZE_2,
+  COSE_LABEL_VDS,
+  VDS_MMR_CONSISTENCY,
   decodeCborDeterministic,
   encodeCborDeterministic,
 } from "@forestrie/encoding";
@@ -424,11 +425,12 @@ describe("SCRAPI flow", () => {
 
     // Checkpoint format v3 (ADR-0046): detached (null) payload; sealed size
     // is tree-size-2 of the consistency proof under the verifiable-proofs
-    // unprotected header (label 396, key -2). ADR-0066 (FOR-568):
-    // resolve-receipt reads the SIGNED tree-size-2 from the protected
-    // header, so the checkpoint's protected map must carry matching
-    // tree-size-1/tree-size-2 labels (this fixture's checkpoint is never
-    // signature-checked, so the labels alone are sufficient).
+    // unprotected header (label 396, key -2). ADR-0066 D1 as amended
+    // (FOR-568): resolve-receipt reads the SIGNED tree-size-2 from the
+    // protected header, so the checkpoint's protected map must carry the
+    // canonical sealer shape `{1: alg, 395: 3, -65933: tree-size-2}` (this
+    // fixture's checkpoint is never signature-checked, so the labels alone
+    // are sufficient).
     const mmrSize = 3n;
     const consistencyProof = encodeCborDeterministic([0n, mmrSize, [], []]);
     const verifiableProofs = new Map<number, unknown>([[-2, consistencyProof]]);
@@ -441,7 +443,7 @@ describe("SCRAPI flow", () => {
     const checkpointProtected = encodeCborDeterministic(
       new Map<number, unknown>([
         [1, -7],
-        [COSE_LABEL_TREE_SIZE_1, 0n],
+        [COSE_LABEL_VDS, VDS_MMR_CONSISTENCY],
         [COSE_LABEL_TREE_SIZE_2, mmrSize],
       ]),
     );

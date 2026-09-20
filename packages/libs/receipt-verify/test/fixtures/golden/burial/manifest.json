@@ -1,6 +1,6 @@
 {
-  "comment": "Regenerated 2026-09-19 for ADR-0066 (FOR-568): protected header now carries tree-size-1 (-65932) and tree-size-2 (-65933); every signature over a protected header changed.",
-  "publicKeyXyHex": "bf6187ef6013277f4153600e452578c0ca79c73d8682719b5afdc49b8b265f6427eb41b27dd83730a6eeea5c58ec4e8f04d6c6803f9dd9e8a034cb14723a7f05",
+  "comment": "Regenerated 2026-09-20 for ADR-0066 as amended (FOR-568): protected header is the sealer's canonical `{1: alg, 395: 3, -65933: tree-size-2}`; only tree-size-2 is signed; every signature over a protected header changed. Synthetic (canopy test key); sealer-produced vectors are slice 06.",
+  "publicKeyXyHex": "f5233ee64e220e78ea65bc7e6266946e84b19e196c41b9e5ffcb2238cab57c270a1724cdf97750b676eb5d68f40e263a7996471144f2096171b4ddc2fa9af067",
   "leafMmrIndex": "1",
   "leafHashHex": "cd2662154e6d76b2b2b92e70c0cac3ccf534f9b74eb5b89819ec509083d00a50",
   "buriedPeakHex": "ad104051c516812ea5874ca3ff06d0258303623d04307c41ec80a7a18b332ef8",
@@ -14,10 +14,10 @@
     "sth-0003.cbor"
   ],
   "checkpointSha256": [
-    "3bc8a503526185a1f2f894c1ac572083cd615b25dd71166c77d40be6645a69e9",
-    "fcb7329bce5e578c5dfdf0be784c42ba71f96b9bd20e254001731e0557c18491",
-    "cb7fe29e0f54e5be9e1c9511c35c3345d737a95891a778b93edecafdce389fc3",
-    "a511d5418061c8ae6e81fe07ea3cd933a4f3c122453ed8c2b9f2cfe140a5ed5b"
+    "120b6fee01df3fc5e156e810ed5abe46094e7706b170b0cef86e018a0411ebc7",
+    "07e515a491c40cfe5fa849b8916488c983c0725a69e6c331060fcb2dcbb59d8d",
+    "05f2a0b5b5d3e5d5b87fa004502cc2566d9d7dffdc820f52f735e0566a642c2c",
+    "e6c00df5acd2b635b0cc4b378fde865167a76f3c2038f695742f458ea6f558ed"
   ],
-  "receiptSha256": "55158aa87b1d1510242d9651f19877b80ba27f08bbffb2da30cd338eb18027bb"
+  "receiptSha256": "2f402e77d4a0610c4afbe032a7ba96648c1abbadd72c67afb78edabb89c0484e"
 }

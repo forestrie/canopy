@@ -7,9 +7,10 @@
  * (build-receipt-offline.ts, lenient: an absent or malformed proof yields a
  * `null` sealed size rather than a throw) and `checkpointConsistencyProof`
  * (checkpoint-chain.ts, full validation: an absent proof or a malformed
- * shape throws, and the SIGNED tree sizes from the protected header — read
- * separately via `readProtectedTreeSizes`, ADR-0066 — must match the values
- * decoded here).
+ * shape throws, and the SIGNED `tree-size-2` from the protected header —
+ * read separately via `readProtectedTreeSize2`, ADR-0066 D1 as amended —
+ * must match the `tree-size-2` decoded here; `tree-size-1` is unsigned
+ * prover context and is not cross-checked against a signed value).
  */
 
 import {

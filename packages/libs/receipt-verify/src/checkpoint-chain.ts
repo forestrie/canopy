@@ -1,6 +1,6 @@
 /**
  * Retained-checkpoint chain verification (FOR-368 Phase 3, plan-2607-29;
- * FOR-568/ADR-0066 signed sizes, plan-2609-10 §4.4).
+ * FOR-568/ADR-0066 signed size-2, plan-2609-10 §4.4, amended 2026-09-20).
  *
  * Post-FOR-410 (ADR-0056) every checkpoint's embedded consistency proof
  * spans its massif's ENTRY BOUNDARY to its seal, so the store's retained
@@ -13,14 +13,18 @@
  * every retained seal, and the final state to check a receipt's recomputed
  * peak against.
  *
- * Every checkpoint's `tree-size-1` / `tree-size-2` are SIGNED (ADR-0066 D2,
- * D3: protected header labels -65932 / -65933) — the values folded here are
- * the ones the checkpoint's own signature covers, not merely the unprotected
- * consistency proof's declared values, which an unsigned checkpoint could
- * otherwise restate freely (the "keyless first checkpoint" case). There is
- * no compatibility mode (ADR-0066 D6): a checkpoint without both protected
- * labels, or whose signed sizes disagree with its declared proof, is
- * rejected before any fold is attempted.
+ * Only `tree-size-2` is SIGNED (ADR-0066 D1 as amended: protected header
+ * label -65933) — the value folded here is the one the checkpoint's own
+ * signature covers, not merely the unprotected consistency proof's declared
+ * value, which an unsigned checkpoint could otherwise restate freely (the
+ * "keyless first checkpoint" case). `tree-size-1` stays unsigned prover
+ * context: the publisher relays several sealed steps and may re-base a step
+ * under the head checkpoint's signature, so the declared base of a
+ * checkpoint can differ from what the sealer had (D2 chain semantics is
+ * withdrawn) — a signed size-1 comparison would reject every re-based
+ * publish and every multi-link catch-up. A checkpoint without the signed
+ * size-2 label, or whose signed size-2 disagrees with its declared proof,
+ * is rejected before any fold is attempted.
  *
  * This rung depends only on the public log store — the complement of the
  * `CheckpointPublished` event scan (public chain data only); see the
@@ -30,20 +34,20 @@
  * (`legacy_chain_break`): a permanent per-log condition — fall back to the
  * event scan, tile extension, or a holder cache.
  */
-import { readProtectedTreeSizes } from "@forestrie/encoding";
+import { readProtectedTreeSize2 } from "@forestrie/encoding";
 import { consistentRootsForSizes } from "@forestrie/merklelog";
 import { SubtleHasher } from "./subtle-hasher.js";
 import { parseCheckpoint } from "./build-receipt-offline.js";
 import { decodeConsistencyProofFromUnprotected } from "./decode-checkpoint-consistency-proof.js";
 
-/** Draft-bryce consistency proof embedded in a v3 checkpoint, cross-checked
- * against the checkpoint's SIGNED tree sizes (ADR-0066 D2). */
+/** Draft-bryce consistency proof embedded in a v3 checkpoint. `treeSize2` is
+ * cross-checked against the checkpoint's SIGNED tree-size-2 (ADR-0066 D1 as
+ * amended); `treeSize1` is unsigned prover context, not cross-checked here —
+ * see {@link verifyCheckpointChain}, which compares it with the trusted
+ * origin instead. */
 export type CheckpointConsistencyProof = {
   treeSize1: bigint;
   treeSize2: bigint;
-  /** Signed `tree-size-1` (protected header label -65932); equal to
-   * {@link treeSize1} — {@link checkpointConsistencyProof} enforces this. */
-  signedTreeSize1: bigint;
   /** Signed `tree-size-2` (protected header label -65933); equal to
    * {@link treeSize2} — {@link checkpointConsistencyProof} enforces this. */
   signedTreeSize2: bigint;
@@ -54,11 +58,11 @@ export type CheckpointConsistencyProof = {
 };
 
 /**
- * The checkpoint's SIGNED tree sizes (protected header, ADR-0066 D2) differ
- * from the declared tree sizes of its embedded (unprotected) consistency
- * proof. Distinct from a structurally malformed proof: {@link
- * verifyCheckpointChain} reports this as `"size_mismatch"`, not
- * `"proof_malformed"`.
+ * The checkpoint's SIGNED `tree-size-2` (protected header, ADR-0066 D1 as
+ * amended) differs from the declared `tree-size-2` of its embedded
+ * (unprotected) consistency proof. Distinct from a structurally malformed
+ * proof: {@link verifyCheckpointChain} reports this as `"size_mismatch"`,
+ * not `"proof_malformed"`.
  */
 export class CheckpointSignedSizeMismatchError extends Error {
   constructor(message: string) {
@@ -69,15 +73,18 @@ export class CheckpointSignedSizeMismatchError extends Error {
 
 /**
  * Decode the embedded consistency proof (`vdp` 396 key -2) and require its
- * declared `tree-size-1` / `tree-size-2` to equal the checkpoint's SIGNED
- * sizes from the protected header (ADR-0066 D2, labels -65932 / -65933).
+ * declared `tree-size-2` to equal the checkpoint's SIGNED `tree-size-2` from
+ * the protected header (ADR-0066 D1 as amended, D5.5, label -65933).
+ * `tree-size-1` is not signed and is not checked here (D2 is withdrawn); see
+ * {@link verifyCheckpointChain} for its comparison against the trusted
+ * origin.
  *
  * @throws {Error} when the protected header carries no consistency proof,
  *   the proof is structurally malformed (see
  *   {@link decodeConsistencyProofFromUnprotected}), or the protected header
- *   carries neither signed size label
- * @throws {CheckpointSignedSizeMismatchError} when a signed size differs
- *   from the declared proof's size for that label
+ *   carries no signed tree-size-2 label
+ * @throws {CheckpointSignedSizeMismatchError} when the signed tree-size-2
+ *   differs from the declared proof's tree-size-2
  */
 export function checkpointConsistencyProof(
   checkpointBytes: Uint8Array,
@@ -87,27 +94,21 @@ export function checkpointConsistencyProof(
   if (declared === null) {
     throw new Error("checkpoint carries no consistency proof (vdp key -2)");
   }
-  const signed = readProtectedTreeSizes(coseSign1[0]);
-  if (signed === null) {
+  const signedTreeSize2 = readProtectedTreeSize2(coseSign1[0]);
+  if (signedTreeSize2 === null) {
     throw new Error(
-      "checkpoint protected header carries no tree-size-1/tree-size-2 (-65932/-65933)",
+      "checkpoint protected header carries no signed tree-size-2 (-65933)",
     );
   }
-  if (signed.treeSize1 !== declared.treeSize1) {
+  if (signedTreeSize2 !== declared.treeSize2) {
     throw new CheckpointSignedSizeMismatchError(
-      `signed tree-size-1 (-65932) ${signed.treeSize1} != declared consistency-proof tree-size-1 ${declared.treeSize1}`,
-    );
-  }
-  if (signed.treeSize2 !== declared.treeSize2) {
-    throw new CheckpointSignedSizeMismatchError(
-      `signed tree-size-2 (-65933) ${signed.treeSize2} != declared consistency-proof tree-size-2 ${declared.treeSize2}`,
+      `signed tree-size-2 (-65933) ${signedTreeSize2} != declared consistency-proof tree-size-2 ${declared.treeSize2}`,
     );
   }
   return {
     treeSize1: declared.treeSize1,
     treeSize2: declared.treeSize2,
-    signedTreeSize1: signed.treeSize1,
-    signedTreeSize2: signed.treeSize2,
+    signedTreeSize2,
     paths: declared.paths,
     rightPeaks: declared.rightPeaks,
   };
@@ -175,9 +176,8 @@ export function accumulatorPayload(accumulator: Uint8Array[]): Uint8Array {
 export type CheckpointChainLink = {
   treeSize1: bigint;
   treeSize2: bigint;
-  /** Signed `tree-size-1` (protected header label -65932; ADR-0066 D2). */
-  signedTreeSize1: bigint;
-  /** Signed `tree-size-2` (protected header label -65933; ADR-0066 D2). */
+  /** Signed `tree-size-2` (protected header label -65933; ADR-0066 D1 as
+   * amended). */
   signedTreeSize2: bigint;
   accumulator: Uint8Array[];
   signatureOk: boolean;
@@ -193,12 +193,13 @@ export type CheckpointChainResult =
         | "signature"
         | "proof_malformed"
         /**
-         * A checkpoint's SIGNED tree sizes disagree with its declared
-         * consistency-proof sizes (ADR-0066 D2), or the first link's
-         * declared `tree-size-1` disagrees with a caller-supplied
-         * `trustedBase.size`. Distinct from `legacy_chain_break`, which is
-         * reserved for the specific pre-FOR-410 drift signature (a link
-         * i>0 whose declared base != the previous link's sealed size).
+         * A checkpoint's SIGNED `tree-size-2` disagrees with its declared
+         * consistency-proof `tree-size-2` (ADR-0066 D1 as amended, D5.5), or
+         * the first link's declared `tree-size-1` disagrees with a
+         * caller-supplied `trustedBase.size`. Distinct from
+         * `legacy_chain_break`, which is reserved for the specific
+         * pre-FOR-410 drift signature (a link i>0 whose declared base !=
+         * the previous link's sealed size).
          */
         | "size_mismatch";
       /** Index of the offending checkpoint. */
@@ -222,10 +223,13 @@ export type CheckpointChainResult =
  *   base is `size_mismatch`.
  * - Every subsequent link's declared `tree-size-1` must equal the previous
  *   link's sealed `tree-size-2` — a mismatch is the same legacy drift
- *   signature (`legacy_chain_break`).
- * - Each checkpoint's SIGNED tree sizes (ADR-0066 D2) must equal its
- *   declared consistency-proof sizes ({@link checkpointConsistencyProof});
- *   a disagreement is `size_mismatch`.
+ *   signature (`legacy_chain_break`). `tree-size-1` itself is never compared
+ *   with a signed value (D2 is withdrawn): only this trusted-origin
+ *   comparison applies.
+ * - Each checkpoint's SIGNED `tree-size-2` (ADR-0066 D1 as amended) must
+ *   equal its declared consistency-proof `tree-size-2`
+ *   ({@link checkpointConsistencyProof}); a disagreement is
+ *   `size_mismatch`.
  * - Each link's signature is checked over its computed accumulator via
  *   the injected verifier (the caller owns trust resolution — genesis
  *   roots, caller-known keys, or the label-1000 delegation path).
@@ -321,7 +325,6 @@ export async function verifyCheckpointChain(opts: {
     links.push({
       treeSize1: proof.treeSize1,
       treeSize2: proof.treeSize2,
-      signedTreeSize1: proof.signedTreeSize1,
       signedTreeSize2: proof.signedTreeSize2,
       accumulator: computed,
       signatureOk,

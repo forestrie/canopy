@@ -30,7 +30,7 @@ writeFileSync(join(outDir, "grant-receipt.cbor"), fx.receiptCbor);
 
 const manifest = {
   comment:
-    "FOR-289 golden vectors — FROZEN bytes; see scripts/export-golden-vectors.ts",
+    "FOR-289 golden vectors — FROZEN bytes; see scripts/export-golden-vectors.ts. Regenerated 2026-09-19 (fresh signing key) during the ADR-0066 (FOR-568) fixture migration; this fixture is a peak receipt with a {1: -7} protected header and carries no checkpoint and no tree-size label.",
   logId: "660e8400-e29b-41d4-a716-446655440001",
   grantDataHex: hex(fx.grant.grantData),
   idtimestampBe8Hex: hex(fx.idtimestampBe8),

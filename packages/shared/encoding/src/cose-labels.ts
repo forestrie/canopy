@@ -51,11 +51,18 @@ export const COSE_LABEL_PEAK_RECEIPTS = -65931;
 export const COSE_LABEL_DELEGATION_PROOF = -66535;
 
 /**
- * `tree-size-1` protected header label, uint (= -65535 - 397; ADR-0066 D3).
- */
-export const COSE_LABEL_TREE_SIZE_1 = -65932;
-
-/**
- * `tree-size-2` protected header label, uint (= -65535 - 398; ADR-0066 D3).
+ * `tree-size-2` protected header label, uint, major type 0 (= -65535 - 398;
+ * ADR-0066 D3 as amended 2026-09-20). The signed sealed size of a checkpoint.
+ * Only tree-size-2 is signed: tree-size-1 stays in the unprotected
+ * consistency proof as prover context and is compared with the verifier's
+ * trusted origin, never with a signed value. Label -65932 (tree-size-1) was
+ * withdrawn before use and must not be emitted or read.
  */
 export const COSE_LABEL_TREE_SIZE_2 = -65933;
+
+/**
+ * `vds` value the sealer emits under {@link COSE_LABEL_VDS} on a checkpoint
+ * (go-merklelog `CheckpointVDSConsistency`). The canonical sealer protected
+ * header is `{1: alg, 395: 3, -65933: tree-size-2}`.
+ */
+export const VDS_MMR_CONSISTENCY = 3;

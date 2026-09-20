@@ -7,8 +7,10 @@
  */
 import { describe, expect, it, beforeAll } from "vitest";
 import {
-  COSE_LABEL_TREE_SIZE_1,
   COSE_LABEL_TREE_SIZE_2,
+  COSE_LABEL_VDS,
+  VDS_MMR_CONSISTENCY,
+  decodeCborDeterministic,
   encodeCborDeterministic,
   encodeSigStructure,
   verifyCoseSign1WithParsedKey,
@@ -113,9 +115,21 @@ async function realProof(
   };
 }
 
-/** Build a signed v3-shaped checkpoint for sizeFrom -> sizeTo: the SIGNED
- * protected-header tree sizes (ADR-0066) and the declared (unprotected)
- * consistency-proof tree sizes both equal sizeFrom/sizeTo. */
+/** The canonical sealer protected header `{1: alg, 395: vds, -65933:
+ * tree-size-2}` (ADR-0066 D1 as amended) — tree-size-1 is never a member. */
+function checkpointProtectedHeader(sizeTo: bigint): Uint8Array {
+  return encodeCborDeterministic(
+    new Map<number, unknown>([
+      [1, -7],
+      [COSE_LABEL_VDS, VDS_MMR_CONSISTENCY],
+      [COSE_LABEL_TREE_SIZE_2, sizeTo],
+    ]),
+  );
+}
+
+/** Build a signed v3-shaped checkpoint for sizeFrom -> sizeTo: only
+ * tree-size-2 is SIGNED (ADR-0066 D1 as amended); the declared (unprotected)
+ * consistency-proof tree-size-1/tree-size-2 are sizeFrom/sizeTo. */
 async function buildCheckpoint(
   sizeFrom: bigint,
   sizeTo: bigint,
@@ -134,13 +148,7 @@ async function buildCheckpoint(
     shaped.paths,
     shaped.rightPeaks,
   ]);
-  const protectedBstr = encodeCborDeterministic(
-    new Map<number, unknown>([
-      [1, -7],
-      [COSE_LABEL_TREE_SIZE_1, sizeFrom],
-      [COSE_LABEL_TREE_SIZE_2, sizeTo],
-    ]),
-  );
+  const protectedBstr = checkpointProtectedHeader(sizeTo);
   const payload = accumulatorPayload(accumulatorTo);
   const sig = await signOverProtected(protectedBstr, payload);
   const unprotected = new Map<number, unknown>([
@@ -151,14 +159,13 @@ async function buildCheckpoint(
 
 /**
  * Build a checkpoint with full, independent control over the SIGNED
- * protected-header tree sizes and the DECLARED (unprotected) consistency
- * proof — for the ADR-0066 signed-vs-declared and shape-negative fixtures,
- * where the two must diverge on purpose. The signature covers whatever
- * `signedPayload` is supplied (arbitrary bytes are fine for a fixture whose
- * fold is expected to fail before any signature check is reached).
+ * tree-size-2 and the DECLARED (unprotected) consistency proof — for the
+ * ADR-0066 signed-vs-declared and shape-negative fixtures, where the two
+ * must diverge on purpose. The signature covers whatever `signatureBytes`
+ * is supplied (arbitrary bytes are fine for a fixture whose fold is
+ * expected to fail before any signature check is reached).
  */
 function buildShapedCheckpoint(opts: {
-  signedFrom?: bigint;
   signedTo?: bigint;
   omitSignedSizes?: boolean;
   declaredFrom: bigint;
@@ -169,10 +176,7 @@ function buildShapedCheckpoint(opts: {
 }): Uint8Array {
   const protectedMap = new Map<number, unknown>([[1, -7]]);
   if (!opts.omitSignedSizes) {
-    protectedMap.set(
-      COSE_LABEL_TREE_SIZE_1,
-      opts.signedFrom ?? opts.declaredFrom,
-    );
+    protectedMap.set(COSE_LABEL_VDS, VDS_MMR_CONSISTENCY);
     protectedMap.set(COSE_LABEL_TREE_SIZE_2, opts.signedTo ?? opts.declaredTo);
   }
   const protectedBstr = encodeCborDeterministic(protectedMap);
@@ -230,17 +234,11 @@ describe("verifyCheckpointChain (FOR-368 Phase 3)", () => {
     expect(
       result.accumulator.map((p) => Buffer.from(p).toString("hex")),
     ).toEqual(peaksAt(14n).map((p) => Buffer.from(p).toString("hex")));
-    // Every link's signed tree sizes (ADR-0066 D2) equal its declared ones.
-    const expectedSizes = [
-      [0n, 3n],
-      [3n, 7n],
-      [7n, 10n],
-      [10n, 15n],
-    ];
+    // Every link's signed tree-size-2 (ADR-0066 D1 as amended) equals its
+    // declared tree-size-2; tree-size-1 is never signed.
+    const expectedSizeTo = [3n, 7n, 10n, 15n];
     result.links.forEach((l, i) => {
-      expect(l.signedTreeSize1).toBe(expectedSizes[i]![0]);
-      expect(l.signedTreeSize2).toBe(expectedSizes[i]![1]);
-      expect(l.signedTreeSize1).toBe(l.treeSize1);
+      expect(l.signedTreeSize2).toBe(expectedSizeTo[i]);
       expect(l.signedTreeSize2).toBe(l.treeSize2);
     });
   });
@@ -408,16 +406,15 @@ describe("checkpointConsistencyProof — malformed size rejection (FOR-414)", ()
   });
 });
 
-describe("signed vs declared tree sizes (ADR-0066, FOR-568)", () => {
+describe("signed vs declared tree-size-2 (ADR-0066 D1 as amended, FOR-568)", () => {
   it("rejects a checkpoint re-declared at a different size than it was signed for (size substitution)", async () => {
-    // Signed for (0 -> 3); the unprotected proof instead declares (0 -> 7)
-    // with a structurally plausible (real) right-peak count for that size —
-    // the keyless "first checkpoint" substitution ADR-0066 describes: a
-    // party without the signing key can rewrite the unprotected proof, but
-    // not the protected header the signature covers.
+    // Signed for tree-size-2 = 3; the unprotected proof instead declares
+    // tree-size-2 = 7 with a structurally plausible (real) right-peak count
+    // for that size — the keyless "first checkpoint" substitution ADR-0066
+    // describes: a party without the signing key can rewrite the
+    // unprotected proof, but not the protected header the signature covers.
     const declared = await realProof(0n, 7n);
     const cp = buildShapedCheckpoint({
-      signedFrom: 0n,
       signedTo: 3n,
       declaredFrom: declared.treeSize1,
       declaredTo: 7n,
@@ -437,11 +434,10 @@ describe("signed vs declared tree sizes (ADR-0066, FOR-568)", () => {
   });
 
   it("rejects a checkpoint whose signed tree-size-2 differs from an otherwise-real declared extension", async () => {
-    // Signed for (7 -> 8); the unprotected proof declares the genuine
-    // (7 -> 10) extension instead.
+    // Signed for tree-size-2 = 8; the unprotected proof declares the
+    // genuine (7 -> 10) extension instead.
     const declared = await realProof(7n, 10n);
     const cp = buildShapedCheckpoint({
-      signedFrom: 7n,
       signedTo: 8n,
       declaredFrom: declared.treeSize1,
       declaredTo: 10n,
@@ -459,7 +455,7 @@ describe("signed vs declared tree sizes (ADR-0066, FOR-568)", () => {
     expect(result.detail).toContain("10");
   });
 
-  it("rejects a checkpoint with no signed tree sizes as proof_malformed", async () => {
+  it("rejects a checkpoint with no signed tree-size-2 as proof_malformed", async () => {
     const declared = await realProof(3n, 7n);
     const cp = buildShapedCheckpoint({
       omitSignedSizes: true,
@@ -475,7 +471,92 @@ describe("signed vs declared tree sizes (ADR-0066, FOR-568)", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toBe("proof_malformed");
-    expect(result.detail).toContain("tree-size-1/tree-size-2");
+    expect(result.detail).toContain("-65933");
+  });
+
+  it("rejects a keyless size-freeze: signed for size 1, declared at 2^64-1", async () => {
+    // The extreme form of the size-substitution case above (this is the
+    // "keyless first checkpoint" case ADR-0066's Context describes): a
+    // party without the signing key restates the unprotected proof at the
+    // largest representable size while the protected header — and hence
+    // the signature — still names size 1. Caught by the signed-vs-declared
+    // tree-size-2 comparison alone; no fold is attempted.
+    const cp = buildShapedCheckpoint({
+      signedTo: 1n,
+      declaredFrom: 0n,
+      declaredTo: 0xffffffffffffffffn,
+      paths: [],
+      rightPeaks: [peak(1)],
+    });
+    const result = await verifyCheckpointChain({
+      checkpoints: [cp],
+      verifySignature: verifySig,
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("size_mismatch");
+    expect(result.detail).toContain("1");
+    expect(result.detail).toContain("18446744073709551615");
+  });
+});
+
+describe("tree-size-1 is unsigned prover context, not part of the signature (ADR-0066 D2 withdrawn)", () => {
+  it("accepts a 3-link chain whose middle link's base is re-based (no signed value names it)", async () => {
+    // Every link signs only tree-size-2 (ADR-0066 D1 as amended). The
+    // middle checkpoint's declared tree-size-1 (3, contiguity's
+    // requirement) is not itself signed by anything — the publisher could
+    // have re-based this relayed step and the signature would be
+    // unaffected, which is exactly the point of the second half of this
+    // test group below.
+    const chain = [
+      await buildCheckpoint(0n, 3n),
+      await buildCheckpoint(3n, 7n),
+      await buildCheckpoint(7n, 10n),
+    ];
+    const result = await verifyCheckpointChain({
+      checkpoints: chain,
+      verifySignature: verifySig,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts a checkpoint carrying a proof re-based from a different origin under the same size-7 signature", async () => {
+    // The real relayed step is 3 -> 7. Take that checkpoint's protected
+    // header and signature UNCHANGED (both are a function only of
+    // tree-size-2 = 7 and the size-7 accumulator, never of tree-size-1) and
+    // attach a DIFFERENT declared consistency proof rooted at 0 instead of
+    // 3. The result still verifies as the first link of a chain anchored at
+    // trustedBase.size 0 — a signed tree-size-1 would have rejected this
+    // re-based publish, which is exactly why D2 is withdrawn.
+    const trueLink = await buildCheckpoint(3n, 7n);
+    const [protectedBstr, , , sig] = decodeCborDeterministic(trueLink) as [
+      Uint8Array,
+      unknown,
+      unknown,
+      Uint8Array,
+    ];
+    const rebased = await realProof(0n, 7n);
+    const proofBstr = encodeCborDeterministic([
+      rebased.treeSize1,
+      7n,
+      rebased.paths,
+      rebased.rightPeaks,
+    ]);
+    const unprotected = new Map<number, unknown>([
+      [396, new Map<number, unknown>([[-2, proofBstr]])],
+    ]);
+    const rebasedCheckpoint = encodeCborDeterministic([
+      protectedBstr,
+      unprotected,
+      null,
+      sig,
+    ]);
+    const result = await verifyCheckpointChain({
+      checkpoints: [rebasedCheckpoint],
+      verifySignature: verifySig,
+      trustedBase: { size: 0n, accumulator: [] },
+    });
+    expect(result.ok).toBe(true);
   });
 });
 

@@ -156,10 +156,12 @@ export function signGrantPayloadWithKs256Wallet(
   const out: number[] = [0x84];
   appendCborBstr(out, KS256_PROTECTED_HEADER);
   out.push(0xa2);
-  out.push(...CBOR_KEY_FORESTRIE_GRANT_V0);
-  appendCborBstr(out, grantPayloadBytes);
+  // Canonical key order (RFC 8949 §4.2.1; ADR-0066 D9 decoders reject any
+  // other): -65537 (`3a 00010000`) sorts before -65538 (`3a 00010001`).
   out.push(...CBOR_KEY_IDTIMESTAMP);
   appendCborBstr(out, new Uint8Array(IDTIMESTAMP_BYTES));
+  out.push(...CBOR_KEY_FORESTRIE_GRANT_V0);
+  appendCborBstr(out, grantPayloadBytes);
   appendCborBstr(out, payloadDigest);
   appendCborBstr(out, signature);
   return new Uint8Array(out);

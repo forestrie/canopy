@@ -1,5 +1,5 @@
 {
-  "comment": "Regenerated 2026-09-19 for ADR-0066 (FOR-568): protected header now carries tree-size-1 (-65932) and tree-size-2 (-65933); every signature over a protected header changed.",
+  "comment": "FOR-289 golden vectors \u2014 FROZEN bytes; see scripts/export-golden-vectors.ts. Regenerated 2026-09-19 (fresh signing key) during the ADR-0066 (FOR-568) fixture migration; this fixture is a peak receipt with a {1: -7} protected header and carries no checkpoint and no tree-size label.",
   "logId": "660e8400-e29b-41d4-a716-446655440001",
   "grantDataHex": "9334541754a177e2fb1a1a0e112509791932bdf6349835dfa7342514cb0bba5ec6a70a13b562945b173f721a023a2d7b95def2a508773ce09eebdd1d964cf901",
   "idtimestampBe8Hex": "0202020202020202",

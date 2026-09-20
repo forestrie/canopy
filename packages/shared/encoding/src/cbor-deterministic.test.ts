@@ -76,8 +76,14 @@ const CORPUS: unknown[] = [
     [3, "ct"],
     [4, new Uint8Array([0xaa])],
   ]),
+  // Key 2 (`02`), not -2 (`21`): the encoder sorts keys bytewise (byte-identical
+  // to Go fxamacker `SortCoreDeterministic`) while the decoder enforces
+  // ADR-0066 D9's length-first order, and a 1-byte negative key beside the
+  // 3-byte uint key 396 is the one class where those two rules disagree. The
+  // divergence is pinned on its own below and in
+  // protected-header-conformance.test.ts.
   new Map<number, unknown>([
-    [-2, new Uint8Array([1, 2])],
+    [2, new Uint8Array([1, 2])],
     [
       396,
       new Map<number, unknown>([
@@ -156,17 +162,40 @@ describe("@forestrie/encoding CBOR codec vs reference `cbor`", () => {
     expect(hex(encodeCborDeterministic(1000000))).toBe("1a000f4240");
   });
 
-  it("§4.2 map key ordering is bytewise (canonical)", () => {
+  it("§4.2 map key ordering round-trips where the two canonical rules agree", () => {
+    // `02`, `0a`, `20`: same length, so bytewise (the encoder, matching Go
+    // fxamacker) and length-first-then-bytewise (the decoder, matching
+    // ADR-0066 D9 and univocity `compareEncodedKeys`) give the same order.
     const bytes = encodeCborDeterministic(
       new Map([
         [10, 1],
         [2, 2],
         [-1, 3],
-        [100, 4],
       ]),
     );
     const m = decodeCborDeterministic(bytes) as Map<number, number>;
-    expect([...m.keys()]).toEqual([2, 10, 100, -1]);
+    expect([...m.keys()]).toEqual([2, 10, -1]);
+  });
+
+  it("DIVERGENCE: encoder bytewise vs decoder length-first on {100, -1}", () => {
+    // The one class where RFC 8949 4.2.1's two canonical key orders disagree:
+    // a 1-byte key whose initial byte is greater than a longer key's. The
+    // encoder emits 100 (`1864`) before -1 (`20`) because `18 < 20` bytewise —
+    // what Go's `SortCoreDeterministic` produces — while ADR-0066 D9 and the
+    // univocity contract sort the shorter encoding first, so the decoder
+    // rejects those same bytes. No header the estate emits mixes such keys
+    // ({1, 395, -65933} are 1, 3 and 5 bytes, ascending under both rules), so
+    // this is a rule mismatch to raise, not a live interop failure.
+    const bytes = encodeCborDeterministic(
+      new Map([
+        [100, 1],
+        [-1, 2],
+      ]),
+    );
+    expect(hex(bytes)).toBe("a21864012002");
+    expect(() => decodeCborDeterministic(bytes)).toThrow(
+      /out of canonical order/,
+    );
   });
 
   it("rejects duplicate map keys (§4.2 unique-keys)", () => {
@@ -198,17 +227,17 @@ describe("@forestrie/encoding CBOR codec vs reference `cbor`", () => {
   });
 
   it("round-trips a map with a 5-byte negative key (tree-size label range) and an 8-byte uint value", () => {
-    // -65932 is COSE_LABEL_TREE_SIZE_1 (ADR-0066 D3): encodes as a 5-byte
-    // negative int (`3a 00 01 01 8b`). Pair it with a uint value above
-    // Number.MAX_SAFE_INTEGER so the decoder must return a bigint (ai=27,
-    // 8-byte argument, `1b ...`).
+    // -65933 is COSE_LABEL_TREE_SIZE_2 (ADR-0066 D3 as amended 2026-09-20):
+    // encodes as a 5-byte negative int (`3a 00 01 01 8c`). Pair it with a uint
+    // value above Number.MAX_SAFE_INTEGER so the decoder must return a bigint
+    // (ai=27, 8-byte argument, `1b ...`).
     const bigValue = 2n ** 60n; // > 2^53, forces bigint on decode
-    const bytes = encodeCborDeterministic(new Map([[-65932, bigValue]]));
+    const bytes = encodeCborDeterministic(new Map([[-65933, bigValue]]));
     expect(hex(bytes)).toBe(
-      `a13a0001018b1b${bigValue.toString(16).padStart(16, "0")}`,
+      `a13a0001018c1b${bigValue.toString(16).padStart(16, "0")}`,
     );
     const decoded = decodeCborDeterministic(bytes) as Map<number, bigint>;
     expect(decoded).toBeInstanceOf(Map);
-    expect(decoded.get(-65932)).toBe(bigValue);
+    expect(decoded.get(-65933)).toBe(bigValue);
   });
 });
