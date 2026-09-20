@@ -16,7 +16,10 @@ import { X402SettlementDO } from "./durableobjects/x402settlement.js";
 import { ReceivablesDO } from "./durableobjects/receivables.js";
 import { generateCdpJwt, facilitatorRequiresAuth } from "./cdp-jwt.js";
 import { runCheckpointIndexer } from "./indexer/run-indexer.js";
-import { readRegisteredAccount } from "./indexer/instance-accounts.js";
+import {
+  listRegisteredAccounts,
+  readRegisteredAccount,
+} from "./indexer/instance-accounts.js";
 import type { Env } from "./env.js";
 
 export { X402SettlementDO };
@@ -70,14 +73,28 @@ function adminBearerOrUnauthorized(
  *
  * Two independent targets, since this worker's two DO classes are keyed
  * differently (see receivables.ts): `shard=<index>|all` wipes
- * {@link X402SettlementDO} shard(s), and `instance=<univocityInstanceId>`
- * wipes one {@link ReceivablesDO} (it is one instance per account, not
- * sharded by count — there is no `shard=all` equivalent for it). A full
- * content-reset therefore needs `shard=all` plus one `instance=<id>` call
- * per known univocity instance id (e.g. from the reservation registry via
- * `listRegisteredAccounts`), not a single call.
+ * {@link X402SettlementDO} shard(s), and `instance=<univocityInstanceId>|all`
+ * wipes {@link ReceivablesDO} (it is one instance per account, not sharded by
+ * count, so `instance=all` — not `shard=all` — is its every-instance form).
+ * `instance=all` enumerates {@link listRegisteredAccounts} against
+ * `env.R2_GRANTS` (the same reservation registry the indexer reads) and
+ * calls `devResetStorage()` on each. `?shard=all&instance=all` in one
+ * request resets both DO classes — the single call the forest-1
+ * content-reset runbook (forestrie/forest-1#37) needs, since it cannot know
+ * instance ids up front.
  *
- * Query: `shard=0|1|…|all`, or `instance=<univocityInstanceId>`.
+ * CAVEAT: `instance=all` can only reset instances the reservation registry
+ * still names. A ReceivablesDO can in principle exist (has been written to
+ * by the indexer) for an instance whose `forests/index/chain-binding/{id}`
+ * record was later deleted or expired, or that predates the registry, or
+ * whose record's `state` is `reserved` rather than `registered`
+ * ({@link listRegisteredAccounts} skips those, per its own doc) — such an
+ * instance's ReceivablesDO is invisible to enumeration and `instance=all`
+ * will not reset it. Only an explicit `instance=<id>` call resets a
+ * ReceivablesDO with certainty.
+ *
+ * Query: `shard=0|1|…|all`, `instance=<univocityInstanceId>|all`, or both
+ * together in one request.
  * Header: X-Forestrie-Settlement-Reset must equal SETTLEMENT_RESET_TOKEN.
  * Gated exactly like delegation-coordinator's `/admin/reset-storage`:
  * 404 unless NODE_ENV=dev or SETTLEMENT_RESET_ALLOWED=1; always token-gated.
@@ -114,56 +131,118 @@ async function handleAdminResetStorage(
     return jsonResponse(
       {
         error:
-          "shard query parameter (integer or 'all') or instance query parameter is required",
+          "shard query parameter (integer or 'all') or instance query parameter ('all' or a univocity instance id) is required",
       },
       400,
     );
   }
 
-  try {
-    if (instanceParam !== null) {
-      if (!isUnivocityInstanceId(instanceParam)) {
+  // Validate both targets up front (no I/O side effects yet) so a request
+  // combining shard and instance either resets both or neither — never a
+  // partial reset because the second target turned out to be invalid.
+  const shardCount = parseInt(env.DO_SHARD_COUNT, 10) || 4;
+  let shardIndex: number | "all" | null = null;
+  if (shardParam !== null) {
+    if (shardParam === "all") {
+      shardIndex = "all";
+    } else {
+      const idx = parseInt(shardParam, 10);
+      if (isNaN(idx) || idx < 0 || idx >= shardCount) {
         return jsonResponse(
-          { error: "instance must be a canonical univocity instance id" },
+          {
+            error: `shard must be an integer in [0, ${shardCount - 1}] or 'all'`,
+          },
           400,
         );
       }
-      const stub = env.RECEIVABLES_DO.get(
-        env.RECEIVABLES_DO.idFromName(instanceParam),
-      );
-      await stub.devResetStorage();
-      return jsonResponse({ ok: true, reset: "instance", instance: instanceParam });
+      shardIndex = idx;
     }
+  }
 
-    const shardCount = parseInt(env.DO_SHARD_COUNT, 10) || 4;
-
-    /** Reset one X402SettlementDO shard's SQLite via devResetStorage. */
-    const resetOne = async (shardIndex: number) => {
-      const stub = env.X402_SETTLEMENT_DO.get(
-        env.X402_SETTLEMENT_DO.idFromName(`shard-${shardIndex}`),
-      );
-      await stub.devResetStorage();
-    };
-
-    if (shardParam === "all") {
-      for (let i = 0; i < shardCount; i++) {
-        await resetOne(i);
+  let instanceMode: "single" | "all" | null = null;
+  if (instanceParam !== null) {
+    if (instanceParam === "all") {
+      if (!env.R2_GRANTS) {
+        return jsonResponse(
+          {
+            error:
+              "R2_GRANTS binding absent; cannot enumerate instances for instance=all",
+          },
+          503,
+        );
       }
-      return jsonResponse({ ok: true, reset: "all", shardCount });
+      instanceMode = "all";
+    } else {
+      if (!isUnivocityInstanceId(instanceParam)) {
+        return jsonResponse(
+          {
+            error:
+              "instance must be a canonical univocity instance id or 'all'",
+          },
+          400,
+        );
+      }
+      instanceMode = "single";
+    }
+  }
+
+  try {
+    let shardResult:
+      | { reset: "all"; shardCount: number }
+      | { reset: number }
+      | null = null;
+    if (shardIndex !== null) {
+      /** Reset one X402SettlementDO shard's SQLite via devResetStorage. */
+      const resetOneShard = async (i: number) => {
+        const stub = env.X402_SETTLEMENT_DO.get(
+          env.X402_SETTLEMENT_DO.idFromName(`shard-${i}`),
+        );
+        await stub.devResetStorage();
+      };
+      if (shardIndex === "all") {
+        for (let i = 0; i < shardCount; i++) {
+          await resetOneShard(i);
+        }
+        shardResult = { reset: "all", shardCount };
+      } else {
+        await resetOneShard(shardIndex);
+        shardResult = { reset: shardIndex };
+      }
     }
 
-    const shardIndex = parseInt(shardParam!, 10);
-    if (isNaN(shardIndex) || shardIndex < 0 || shardIndex >= shardCount) {
-      return jsonResponse(
-        {
-          error: `shard must be an integer in [0, ${shardCount - 1}] or 'all'`,
-        },
-        400,
+    let instanceResult:
+      | { reset: "instance"; instance: string }
+      | { reset: "all-instances"; count: number; instances: string[] }
+      | null = null;
+    if (instanceMode === "all") {
+      const accounts = await listRegisteredAccounts(env.R2_GRANTS!);
+      const instanceIds = accounts.map((a) => a.univocityInstanceId);
+      for (const id of instanceIds) {
+        const stub = env.RECEIVABLES_DO.get(env.RECEIVABLES_DO.idFromName(id));
+        await stub.devResetStorage();
+      }
+      instanceResult = {
+        reset: "all-instances",
+        count: instanceIds.length,
+        instances: instanceIds,
+      };
+    } else if (instanceMode === "single") {
+      const stub = env.RECEIVABLES_DO.get(
+        env.RECEIVABLES_DO.idFromName(instanceParam!),
       );
+      await stub.devResetStorage();
+      instanceResult = { reset: "instance", instance: instanceParam! };
     }
 
-    await resetOne(shardIndex);
-    return jsonResponse({ ok: true, reset: shardIndex });
+    if (shardResult && instanceResult) {
+      return jsonResponse({ ok: true, shard: shardResult, instance: instanceResult });
+    }
+    if (shardResult) {
+      return jsonResponse({ ok: true, ...shardResult });
+    }
+    // instanceMode was non-null (the 400 above covers "neither given"), so
+    // instanceResult is set here.
+    return jsonResponse({ ok: true, ...instanceResult });
   } catch (err) {
     return jsonResponse(
       { error: err instanceof Error ? err.message : String(err) },

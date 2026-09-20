@@ -269,3 +269,169 @@ describe("handleAdminResetStorage — instance target (ReceivablesDO)", () => {
     expect(res.status).toBe(400);
   });
 });
+
+/** Register an instance in the reservation registry the way canopy-api's
+ * instance-registry does (see indexer/instance-accounts.ts), so
+ * listRegisteredAccounts / instance=all finds it. */
+async function registerInstance(
+  id: string,
+  addr: string,
+  root: string,
+): Promise<void> {
+  await typedEnv.R2_GRANTS!.put(
+    `forests/index/chain-binding/${id}`,
+    JSON.stringify({
+      state: "registered",
+      holder: "genesis",
+      reservedAt: 1719000000,
+      r: root,
+    }),
+  );
+}
+
+/** A "reserved" (not yet "registered") record — listRegisteredAccounts skips
+ * these (see instance-accounts.ts), the enumeration gap the handler's doc
+ * comment names. */
+async function reserveOnlyInstance(id: string): Promise<void> {
+  await typedEnv.R2_GRANTS!.put(
+    `forests/index/chain-binding/${id}`,
+    JSON.stringify({ state: "reserved", holder: "genesis", reservedAt: 1 }),
+  );
+}
+
+describe("handleAdminResetStorage — instance=all (every registered ReceivablesDO)", () => {
+  it("resets every registered instance and returns their count and ids", async () => {
+    const e = resetEnv();
+    const ids = [
+      `eip155:84532:0x${"a1".repeat(20)}`,
+      `eip155:84532:0x${"a2".repeat(20)}`,
+      `eip155:84532:0x${"a3".repeat(20)}`,
+    ];
+    const stubs = ids.map((id) =>
+      typedEnv.RECEIVABLES_DO.get(typedEnv.RECEIVABLES_DO.idFromName(id)),
+    );
+    for (const [i, id] of ids.entries()) {
+      await registerInstance(
+        id,
+        id.slice("eip155:84532:0x".length),
+        `33333333-3333-4333-8333-33333333333${i}`,
+      );
+      await stubs[i]!.applyCheckpointEvents(
+        {
+          univocityInstanceId: id,
+          chainId: "84532",
+          univocityAddr: id.slice("eip155:84532:0x".length),
+          root: `33333333-3333-4333-8333-33333333333${i}`,
+        },
+        [{ idempotencyKey: `0xreset-all-instances:${i}`, logKind: 1, size: 2 }],
+        7,
+      );
+      expect(await stubs[i]!.getEntitlement(id)).not.toBeNull();
+    }
+    // Also register one instance whose state is "reserved", not
+    // "registered" — must not appear in the reset count or id list
+    // (listRegisteredAccounts skips it; the handler doc names this gap).
+    const reservedOnly = `eip155:84532:0x${"a4".repeat(20)}`;
+    await reserveOnlyInstance(reservedOnly);
+
+    const res = await callFetch(resetRequest("?instance=all"), e);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      reset: string;
+      count: number;
+      instances: string[];
+    };
+    expect(body.ok).toBe(true);
+    expect(body.reset).toBe("all-instances");
+    expect(body.count).toBe(ids.length);
+    expect(new Set(body.instances)).toEqual(new Set(ids));
+    expect(body.instances).not.toContain(reservedOnly);
+
+    for (const [i, id] of ids.entries()) {
+      expect(await stubs[i]!.getEntitlement(id)).toBeNull();
+    }
+  });
+
+  it("200s with count 0 when nothing is registered", async () => {
+    const e = resetEnv();
+    const res = await callFetch(resetRequest("?instance=all"), e);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      reset: string;
+      count: number;
+      instances: string[];
+    };
+    expect(body.ok).toBe(true);
+    expect(body.reset).toBe("all-instances");
+    expect(body.count).toBe(0);
+    expect(body.instances).toEqual([]);
+  });
+
+  it("503s when R2_GRANTS is unbound", async () => {
+    const e = resetEnv({ R2_GRANTS: undefined });
+    const res = await callFetch(resetRequest("?instance=all"), e);
+    expect(res.status).toBe(503);
+  });
+});
+
+describe("handleAdminResetStorage — shard=all&instance=all (single-call content-reset)", () => {
+  it("resets every settlement shard and every registered ReceivablesDO in one request", async () => {
+    const e = resetEnv();
+    const shardCount = parseInt(typedEnv.DO_SHARD_COUNT, 10) || 4;
+    const shardStubs = Array.from({ length: shardCount }, (_, i) =>
+      typedEnv.X402_SETTLEMENT_DO.get(
+        typedEnv.X402_SETTLEMENT_DO.idFromName(`shard-${i}`),
+      ),
+    );
+    stubSettleNetworkError();
+    for (const [i, stub] of shardStubs.entries()) {
+      await stub.processJob(
+        failingJob(`local:0xcombined-${i}`, `credits:combined-${i}:0xn1`),
+      );
+    }
+
+    const instanceId = `eip155:84532:0x${"b1".repeat(20)}`;
+    const receivablesStub = typedEnv.RECEIVABLES_DO.get(
+      typedEnv.RECEIVABLES_DO.idFromName(instanceId),
+    );
+    await registerInstance(
+      instanceId,
+      instanceId.slice("eip155:84532:0x".length),
+      "44444444-4444-4444-8444-444444444444",
+    );
+    await receivablesStub.applyCheckpointEvents(
+      {
+        univocityInstanceId: instanceId,
+        chainId: "84532",
+        univocityAddr: instanceId.slice("eip155:84532:0x".length),
+        root: "44444444-4444-4444-8444-444444444444",
+      },
+      [{ idempotencyKey: "0xcombined-instance:0", logKind: 1, size: 2 }],
+      7,
+    );
+
+    const res = await callFetch(
+      resetRequest("?shard=all&instance=all"),
+      e,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      ok: boolean;
+      shard: { reset: string; shardCount: number };
+      instance: { reset: string; count: number; instances: string[] };
+    };
+    expect(body.ok).toBe(true);
+    expect(body.shard.reset).toBe("all");
+    expect(body.shard.shardCount).toBe(shardCount);
+    expect(body.instance.reset).toBe("all-instances");
+    expect(body.instance.count).toBe(1);
+    expect(body.instance.instances).toEqual([instanceId]);
+
+    for (const [i, stub] of shardStubs.entries()) {
+      expect(await stub.getAuthInfo(`local:0xcombined-${i}`)).toBeNull();
+    }
+    expect(await receivablesStub.getEntitlement(instanceId)).toBeNull();
+  });
+});
