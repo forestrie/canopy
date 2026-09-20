@@ -11,6 +11,7 @@
  * [grant-payload-canonical.ts](./grant-payload-canonical.ts).
  */
 
+import { compareCanonicalKeys } from "./canonical-key-order.js";
 import { encodeCborBstr } from "./encode-cbor-bstr.js";
 import { COSE_LABEL_ALG, COSE_LABEL_TREE_SIZE_2 } from "./cose-labels.js";
 import {
@@ -195,8 +196,13 @@ function appendCwtClaimValue(
 
 /**
  * Append the CWT claims map for label {@link COSE_CWT_CLAIMS}, keys in
- * canonical order (RFC 8949 §4.2.1: bytewise lexicographic on the encoded
- * key — ascending unsigned ints first, then negatives).
+ * canonical order — {@link compareCanonicalKeys}: shorter encoded key first,
+ * then bytewise (RFC 7049 §3.9), the same comparator {@link
+ * encodeCborDeterministic} and this package's decoder use. `extra` may carry
+ * any integer claim key, so this map is the one place in this module that can
+ * reach the band where that order differs from RFC 8949 §4.2.1's pure
+ * bytewise one (a negative key encoded strictly shorter than a positive one,
+ * e.g. `-1` beside `1000`).
  */
 function appendCwtClaimsMap(out: number[], claims: CwtClaims): void {
   const entries = new Map<number, number | string | Uint8Array>();
@@ -220,14 +226,9 @@ function appendCwtClaimsMap(out: number[], claims: CwtClaims): void {
     appendCborInt(bytes, k);
     return { k, bytes };
   });
-  encodedKeys.sort((a, b) => {
-    const n = Math.min(a.bytes.length, b.bytes.length);
-    for (let i = 0; i < n; i++) {
-      const d = a.bytes[i]! - b.bytes[i]!;
-      if (d !== 0) return d;
-    }
-    return a.bytes.length - b.bytes.length;
-  });
+  encodedKeys.sort((a, b) =>
+    compareCanonicalKeys(new Uint8Array(a.bytes), new Uint8Array(b.bytes)),
+  );
   out.push(0xa0 | entries.size);
   for (const { k, bytes } of encodedKeys) {
     out.push(...bytes);
@@ -243,11 +244,12 @@ function appendCwtClaimsMap(out: number[], claims: CwtClaims): void {
  * Without `options` the output is byte-identical to the historical kid-only
  * map `{ 4: kid }`. With `options` the map carries
  * `{ 1: alg?, 3: cty?, 4: kid, 15: cwtClaims?, -65933: treeSize2? }`.
- * Key order is canonical (shorter key encodings first, then bytewise; the
- * same order as bytewise for these keys): the existing labels (1, 3, 4, 15)
- * are each single-byte keys and stay ascending; {@link
+ * Key order is canonical (shorter key encodings first, then bytewise —
+ * {@link compareCanonicalKeys}) and is emitted in a fixed sequence rather
+ * than sorted, which is provably that order for this label set: the existing
+ * labels (1, 3, 4, 15) are each single-byte keys and stay ascending; {@link
  * COSE_LABEL_TREE_SIZE_2} encodes as the 5-byte negative int
- * `3a 00 01 01 8c` so it always sorts last.
+ * `3a 00 01 01 8c`, the only multi-byte key here, so it always sorts last.
  *
  * @param kid - Key id bytes for COSE header label {@link COSE_KID}
  * @param options - Optional protected `alg` / `cty` / `cwtClaims` /

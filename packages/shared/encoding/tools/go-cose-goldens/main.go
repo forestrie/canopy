@@ -24,6 +24,17 @@ var encMode cbor.EncMode
 var decModeTagsForbidden cbor.DecMode
 
 func init() {
+	// SortCoreDeterministic is RFC 8949 §4.2.1 pure bytewise order, which is
+	// what veraison/go-cose uses and is therefore correct for these goldens.
+	// It is NOT the order @forestrie/encoding emits or reads: that is
+	// length-first, then bytewise (RFC 7049 §3.9 — see
+	// src/canonical-key-order.ts), the rule go-merklelog's checkpoint-header
+	// re-encode applies via cbor.CanonicalEncOptions(). The two differ only
+	// when a map mixes a negative label encoded strictly shorter than a
+	// positive one; no vector emitted here contains a sorted map (the
+	// Sig_structure is an array and the bstr vectors carry no map), so the
+	// difference is unreachable from these goldens. A future vector with such
+	// a map would need CanonicalEncOptions here instead.
 	encOpts := cbor.EncOptions{
 		Sort:        cbor.SortCoreDeterministic,
 		IndefLength: cbor.IndefLengthForbidden,

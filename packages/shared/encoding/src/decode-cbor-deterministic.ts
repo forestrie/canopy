@@ -23,6 +23,12 @@
  * > simple value below 32, a float cut off by the end of the header. Tags are
  * > the one exception and stay rejected.
  *
+ * Where D9 as quoted is broader than go-merklelog's canonical re-encode, this
+ * decoder follows go-merklelog: CBOR `undefined` is rejected everywhere, and a
+ * float is accepted only in its shortest exactly-representable width (NaN only
+ * as `f9 7e00`) — the ADR amendment that narrows D9 to match is tracked in
+ * plan-2609-10 slice 01.
+ *
  * The strictness applies to every decode, not only to protected headers: every
  * caller in the estate reads bytes a deterministic encoder produced. The one
  * exception found when this landed is `@forestrie/grant-builder`'s two
@@ -48,17 +54,19 @@
  * `{ tags: "reject" }`) rejects a tag anywhere in the item and is what the
  * protected-header readers use.
  *
- * Key ordering here is the ADR's **length-first, then bytewise** rule, the
- * same comparator the univocity contract applies (`compareEncodedKeys` in
- * `src/cosecbor/cosecbor.sol`), compared on the raw encoded key bytes. Go's
- * fxamacker `SortCoreDeterministic` sorts purely bytewise; the two agree for
- * every header shape the estate emits and differ only for a map mixing a
- * 1-byte key with a longer key of a lower initial byte (e.g. -1 `20` with 395
- * `19018b`) — see the divergence vector in
- * `protected-header-conformance.test.ts`.
+ * Canonical order here is length-first, then bytewise (RFC 7049 §3.9), which
+ * is what ADR-0066 D9, the univocity parser and go-merklelog's
+ * checkpoint-header re-encode (fxamacker `CanonicalEncOptions`) implement.
+ * RFC 8949 §4.2.1 core-deterministic order is pure bytewise and differs only
+ * when a map mixes a negative label encoded strictly shorter than a positive
+ * one. The comparator is {@link compareCanonicalKeys}, shared with
+ * {@link ./encode-cbor-deterministic.ts} so encode → decode round-trips for
+ * every key class.
  *
  * See status-2607-03-remove-cbor-x-for-scitt-cose-canonicity.
  */
+
+import { compareCanonicalKeys } from "./canonical-key-order.js";
 
 /** A decoded CBOR tag (major type 6): `tag(number)` wrapping `value`. */
 export class CborTag {
@@ -83,6 +91,10 @@ export class CborSimple {
  * single, double). Wrapped in a class rather than returned as a `number` so a
  * reader can never mistake a float for a major-type-0 unsigned integer — the
  * distinction a signed tree size turns on.
+ *
+ * Only the shortest width that represents the value exactly decodes: a `fa`
+ * or `fb` whose value fits a shorter width is rejected, as is any NaN other
+ * than `f9 7e00`. See {@link isFloat16Exact}.
  */
 export class CborFloat {
   constructor(readonly value: number) {}
@@ -197,16 +209,53 @@ class Reader {
     return Number(declared);
   }
 
-  /** Half-precision (RFC 8949 §3.3, ai=25) to the nearest JS number. */
+  /**
+   * Half-precision (RFC 8949 §3.3, ai=25). A half is already the shortest
+   * float width, so the only non-preferred half is a NaN whose payload is not
+   * `7e00`: go-merklelog's re-encode maps every NaN onto `f9 7e00`
+   * (`NaNConvert7e00`), so any other NaN payload or width re-encodes to
+   * different bytes and the header is rejected there.
+   */
   private float16(): number {
     const b = this.bytes(2);
     const half = (b[0]! << 8) | b[1]!;
-    const sign = half & 0x8000 ? -1 : 1;
     const exponent = (half >> 10) & 0x1f;
     const fraction = half & 0x3ff;
+    if (exponent === 0x1f && fraction !== 0 && half !== 0x7e00) {
+      throw notPreferredFloat(
+        `NaN payload f9${half.toString(16).padStart(4, "0")}`,
+        "f97e00",
+      );
+    }
+    const sign = half & 0x8000 ? -1 : 1;
     if (exponent === 0) return sign * fraction * 2 ** -24;
     if (exponent === 0x1f) return fraction ? NaN : sign * Infinity;
     return sign * (fraction + 1024) * 2 ** (exponent - 25);
+  }
+
+  /**
+   * Single-precision (ai=26). Accepted only when the value is not exactly
+   * representable as a half and is not NaN.
+   */
+  private float32(): number {
+    const v = new DataView(this.bytes(4).buffer).getFloat32(0);
+    if (Number.isNaN(v)) throw notPreferredFloat("NaN as fa", "f97e00");
+    if (isFloat16Exact(v)) throw notPreferredFloat(`single ${v}`, "half (f9)");
+    return v;
+  }
+
+  /**
+   * Double-precision (ai=27). Accepted only when the value is exactly
+   * representable in neither half nor single, and is not NaN.
+   */
+  private float64(): number {
+    const v = new DataView(this.bytes(8).buffer).getFloat64(0);
+    if (Number.isNaN(v)) throw notPreferredFloat("NaN as fb", "f97e00");
+    if (isFloat16Exact(v)) throw notPreferredFloat(`double ${v}`, "half (f9)");
+    if (Math.fround(v) === v) {
+      throw notPreferredFloat(`double ${v}`, "single (fa)");
+    }
+    return v;
   }
 
   value(depth: number): unknown {
@@ -270,7 +319,14 @@ class Reader {
           case 22:
             return null;
           case 23:
-            return undefined;
+            // CBOR `undefined`. go-merklelog decodes a header into `any`,
+            // where `undefined` becomes Go `nil` and re-encodes as `f6`
+            // (null); the re-encode then differs from the input and the
+            // header is rejected as not canonical. Reject it here so a header
+            // canopy accepts is one go-merklelog can re-verify.
+            throw new Error(
+              "decodeCbor: undefined (0xf7) is not allowed; it re-encodes as null",
+            );
           case 24: {
             // Two-byte simple value: 32–255 only; 0–31 in this form are not
             // well formed (RFC 8949 §3.3).
@@ -284,14 +340,10 @@ class Reader {
           }
           case 25:
             return new CborFloat(this.float16());
-          case 26: {
-            const b = this.bytes(4);
-            return new CborFloat(new DataView(b.buffer).getFloat32(0));
-          }
-          case 27: {
-            const b = this.bytes(8);
-            return new CborFloat(new DataView(b.buffer).getFloat64(0));
-          }
+          case 26:
+            return new CborFloat(this.float32());
+          case 27:
+            return new CborFloat(this.float64());
           default:
             // 28–30 are reserved and not well formed.
             throw new Error(
@@ -320,7 +372,7 @@ class Reader {
       const keyBytes = this.buf.subarray(keyStart, this.pos);
       checkKeyMagnitude(key);
       if (previousKey !== null) {
-        const order = compareEncodedKeys(previousKey, keyBytes);
+        const order = compareCanonicalKeys(previousKey, keyBytes);
         if (order === 0) {
           throw new Error(`decodeCbor: duplicate map key ${describeKey(key)}`);
         }
@@ -338,20 +390,6 @@ class Reader {
 }
 
 /**
- * Canonical key order (RFC 8949 §4.2.1 length-first variant, the rule
- * ADR-0066 D9 states and `compareEncodedKeys` in univocity's
- * `src/cosecbor/cosecbor.sol` implements): the shorter encoding sorts first,
- * equal lengths compare bytewise.
- */
-function compareEncodedKeys(a: Uint8Array, b: Uint8Array): number {
-  if (a.length !== b.length) return a.length - b.length;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return a[i]! - b[i]!;
-  }
-  return 0;
-}
-
-/**
  * Integer keys of either sign whose magnitude exceeds int64 are rejected: a
  * 2^63 key would otherwise read as a negative label in a decoder that wraps,
  * which is a disagreement about which label a value sits under.
@@ -363,6 +401,48 @@ function checkKeyMagnitude(key: unknown): void {
       `decodeCbor: integer map key ${key} exceeds int64 magnitude`,
     );
   }
+}
+
+/**
+ * A float is well formed in any width, but only one width is *preferred*
+ * (RFC 8949 §4.2.2): the shortest one that represents the value exactly.
+ * go-merklelog's `decodeProtectedHeader` re-encodes the header with
+ * `cbor.CanonicalEncOptions()` (`ShortestFloat: ShortestFloat16`) and requires
+ * byte equality, so a single or double that has a shorter exact form is a
+ * header the chain may anchor and no Go replica can re-verify. This decoder
+ * rejects it instead.
+ */
+function notPreferredFloat(got: string, want: string): Error {
+  return new Error(
+    `decodeCbor: float ${got} is not in shortest form; it re-encodes as ${want} (RFC 8949 4.2.2)`,
+  );
+}
+
+/**
+ * Is `v` exactly representable as an IEEE 754 binary16 (half)?
+ *
+ * ±0 and ±Inf are. A finite non-zero magnitude is iff it is a whole multiple
+ * of the half's mantissa step at its exponent and within the half's range:
+ * normals have exponents -14..15 with a 10-bit mantissa (step 2^(e-10)),
+ * subnormals step by 2^-24 down to the smallest half subnormal 2^-24, and the
+ * largest finite half is 65504. `%` on doubles is exact and the step is a
+ * power of two, so the multiple test is exact — no rounding round-trip.
+ *
+ * NaN is handled by the callers (every NaN re-encodes as `f9 7e00`).
+ */
+function isFloat16Exact(v: number): boolean {
+  if (v === 0) return true; // +0 and -0 both encode as a half
+  if (!Number.isFinite(v)) return true; // ±Inf encode as f97c00 / f9fc00
+  const a = Math.abs(v);
+  if (a > 65504) return false; // beyond the largest finite half
+  if (a < 2 ** -24) return false; // below the smallest half subnormal
+  const view = new DataView(new ArrayBuffer(8));
+  view.setFloat64(0, a);
+  // Unbiased binary64 exponent. `a >= 2^-24` above, so `a` is never a
+  // binary64 subnormal and the biased field is never 0 here.
+  const exponent = ((view.getUint32(0) >>> 20) & 0x7ff) - 1023;
+  const step = exponent >= -14 ? 2 ** (exponent - 10) : 2 ** -24;
+  return a % step === 0;
 }
 
 function describeKey(key: unknown): string {
@@ -377,9 +457,10 @@ function describeKey(key: unknown): string {
  * @param bytes - Deterministically encoded CBOR
  * @param options - `{ tags: "reject" }` to reject a tag anywhere in the item
  * @returns Decoded value (Map for maps, Uint8Array for bstr, CborTag for tags,
- *   CborSimple / CborFloat for the major-type-7 forms that are not
- *   false/true/null/undefined)
- * @throws On any non-canonical or malformed encoding, or trailing data
+ *   CborSimple for the simple values 0–19 / 32–255, CborFloat for a float in
+ *   its shortest exact width)
+ * @throws On any non-canonical or malformed encoding, trailing data, CBOR
+ *   `undefined`, or a float that has a shorter exact encoding
  */
 export function decodeCborDeterministic(
   bytes: Uint8Array,

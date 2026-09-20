@@ -22,6 +22,12 @@
  * > simple value below 32, a float cut off by the end of the header. Tags are
  * > the one exception and stay rejected.
  *
+ * Where D9 as quoted is broader than go-merklelog's canonical re-encode, the
+ * decoder follows go-merklelog: CBOR `undefined` is rejected everywhere, and a
+ * float is accepted only in its shortest exactly-representable width (NaN only
+ * as `f9 7e00`) — the ADR amendment that narrows D9 to match is tracked in
+ * plan-2609-10 slice 01.
+ *
  * {@link HEADER_VECTORS} mirrors the Go table in go-merklelog
  * `massifs/checkpointsign_test.go`
  * (`TestProtectedHeaderTreeSizeRejectsNonCanonicalHeaders`) and is written as a
@@ -37,7 +43,7 @@
  *     3a 0001018c 08   -65933: 8   (tree-size-2)
  * Key encodings are 1, 3 and 5 bytes and ascend under both canonical key
  * orders, which is why the estate's headers are unaffected by the divergence
- * pinned at the end of this file.
+ * band pinned at the end of this file.
  */
 import { describe, expect, it } from "vitest";
 import { readProtectedTreeSize2 } from "./cose-protected-tree-size.js";
@@ -116,10 +122,68 @@ const HEADER_VECTORS: readonly HeaderVector[] = [
     expect: accept(8n),
   },
   {
-    name: "skip/mt7-double-float-1.0",
-    hex: "a4012607fb3ff000000000000019018b033a0001018c08",
-    note: "`07 fb 3ff0000000000000`: double 1.0",
+    name: "skip/mt7-half-nan",
+    hex: "a4012607f97e0019018b033a0001018c08",
+    note: "`07 f9 7e00`: the one NaN encoding that survives NaNConvert7e00",
     expect: accept(8n),
+  },
+  {
+    name: "skip/mt7-half-inf",
+    hex: "a4012607f97c0019018b033a0001018c08",
+    note: "`07 f9 7c00`: +Inf; the half is its shortest exact width",
+    expect: accept(8n),
+  },
+  {
+    name: "skip/mt7-double-float-1e300",
+    hex: "a4012607fb7e37e43c880759db19018b033a0001018c08",
+    note: "`07 fb 7e37e43c880759db`: 1.0000000000671607e300 (the review's `1e300` row; 1e300 exactly is `...759c`), exact in neither half nor single, so the double IS its shortest form",
+    expect: accept(8n),
+  },
+
+  // ---- floats: only the shortest exact width -----------------------------
+  // go-merklelog's decodeProtectedHeader re-encodes the header with
+  // canonicalReceiptCBOR = cbor.CanonicalEncOptions() (ShortestFloat16,
+  // NaNConvert7e00) and requires byte equality, so a single or double that
+  // has a shorter exact form, and any NaN that is not `f9 7e00`, re-encode
+  // to different bytes and are rejected there. Accepting them here would put
+  // a checkpoint on-chain that no Go replica can re-verify (review H1).
+  {
+    name: "reject/mt7-single-float-1.0",
+    hex: "a4012607fa3f80000019018b033a0001018c08",
+    note: "`07 fa 3f800000`: single 1.0; exact as the half `f9 3c00`",
+    expect: reject(/not in shortest form/),
+  },
+  {
+    name: "reject/mt7-double-float-1.0",
+    hex: "a4012607fb3ff000000000000019018b033a0001018c08",
+    note: "`07 fb 3ff0000000000000`: double 1.0; exact as the half `f9 3c00`",
+    expect: reject(/not in shortest form/),
+  },
+  {
+    name: "reject/mt7-double-nan",
+    hex: "a4012607fb7ff800000000000019018b033a0001018c08",
+    note: "`07 fb 7ff8000000000000`: double NaN; every NaN re-encodes as `f9 7e00`",
+    expect: reject(/not in shortest form/),
+  },
+  {
+    name: "reject/mt7-single-inf",
+    hex: "a4012607fa7f80000019018b033a0001018c08",
+    note: "`07 fa 7f800000`: +Inf as a single; exact as the half `f9 7c00`",
+    expect: reject(/not in shortest form/),
+  },
+  {
+    name: "reject/mt7-double-inf",
+    hex: "a4012607fb7ff000000000000019018b033a0001018c08",
+    note: "`07 fb 7ff0000000000000`: +Inf as a double; exact as the half `f9 7c00`",
+    expect: reject(/not in shortest form/),
+  },
+
+  // ---- undefined ----------------------------------------------------------
+  {
+    name: "reject/mt7-undefined",
+    hex: "a4012607f719018b033a0001018c08",
+    note: "`07 f7`: CBOR undefined; go-merklelog decodes it to Go nil and re-encodes it as `f6` (null), so no header carrying it is canonical there",
+    expect: reject(/undefined \(0xf7\) is not allowed/),
   },
 
   // ---- shortest-form arguments -------------------------------------------
@@ -194,6 +258,32 @@ const HEADER_VECTORS: readonly HeaderVector[] = [
     hex: "a4012619018b033a0001018c083b800000000000000000",
     note: "key `3b 8000000000000000` = -2^63 - 1, value 0",
     expect: reject(/exceeds int64 magnitude/),
+  },
+
+  // ---- labels must be integers -------------------------------------------
+  // D9 bounds integer key magnitude but never says labels must be integers.
+  // go-merklelog unmarshals the header into map[int64]any and the univocity
+  // parser reads every label with readInteger, so both reject these; before
+  // review H4 this reader read a size from all three. The generic decoder
+  // still accepts a text-keyed map — plain-object encoding produces one —
+  // so the check lives in readProtectedTreeSize2, not in the decoder.
+  {
+    name: "reject/key-tstr",
+    hex: "a4012619018b03627879003a0001018c08",
+    note: '{1: -7, 395: 3, "xy": 0, -65933: 8}; `627879` is a 3-byte text key, canonically ordered, so the order check does not catch it',
+    expect: reject(/label is not an integer/),
+  },
+  {
+    name: "reject/key-empty-tstr",
+    hex: "a40126600019018b033a0001018c08",
+    note: '{1: -7, "": 0, 395: 3, -65933: 8}; `60` is the empty text string as a label',
+    expect: reject(/label is not an integer/),
+  },
+  {
+    name: "reject/key-empty-array",
+    hex: "a40126800019018b033a0001018c08",
+    note: "{1: -7, []: 0, 395: 3, -65933: 8}; `80` is an empty array as a label",
+    expect: reject(/label is not an integer/),
   },
 
   // ---- the label itself ---------------------------------------------------
@@ -314,13 +404,47 @@ describe("ADR-0066 D9 protected-header conformance vectors", () => {
     );
   });
 
+  it("accepts every header go-merklelog is known to accept (the converse direction)", () => {
+    // The rejection table above is one-directional: it only checks that this
+    // reader rejects what Go rejects. Review finding H1 lived entirely in
+    // that gap — canopy accepted three header classes Go rejects, and nothing
+    // asserted the other direction. GO_ACCEPTS closes it: a header Go reads a
+    // size from must yield the same size here, or the chain can anchor a
+    // checkpoint one of the two verifiers refuses.
+    //
+    // Go's outcome for each row was recorded by running
+    // `ProtectedHeaderTreeSize` from a go-merklelog clone against these exact
+    // bytes, under the adversarial review's PoC harness
+    // (`review-canopy255/poc/d3-header/gml-clone/massifs`, local to the
+    // review tree, not committed here). Slice 06 lifts these rows, and the
+    // rejection table above, into the committed cross-language KAT so the Go
+    // side runs in CI rather than from a recorded result.
+    const GO_ACCEPTS: readonly (readonly [string, string, bigint])[] = [
+      // the two canonical sealer headers
+      ["canonical/size-8", "a3012619018b033a0001018c08", 8n],
+      ["canonical/size-1", "a3012619018b033a0001018c01", 1n],
+      // major type 7 under the unread label 7, in the forms Go round-trips
+      ["skip/mt7-half-float-1.0", "a4012607f93c0019018b033a0001018c08", 8n],
+      ["skip/mt7-false", "a4012607f419018b033a0001018c08", 8n],
+      ["skip/mt7-simple-40", "a4012607f82819018b033a0001018c08", 8n],
+      // non-mt7 values under the unread label: no vector covered these before
+      ["skip/bstr-empty", "a40126074019018b033a0001018c08", 8n],
+      ["skip/array-empty", "a40126078019018b033a0001018c08", 8n],
+      ["skip/map-empty", "a4012607a019018b033a0001018c08", 8n],
+      ["skip/tstr-x", "a4012607617819018b033a0001018c08", 8n],
+    ];
+    for (const [name, h, size] of GO_ACCEPTS) {
+      expect(readProtectedTreeSize2(fromHex(h)), name).toBe(size);
+    }
+  });
+
   it("covers every class the amendment names", () => {
     // A guard on the table itself: a future edit that drops a class should
     // fail here rather than silently narrow the conformance surface.
-    expect(HEADER_VECTORS).toHaveLength(29);
+    expect(HEADER_VECTORS).toHaveLength(40);
     expect(
       HEADER_VECTORS.filter((v) => v.expect.result === "reject"),
-    ).toHaveLength(21);
+    ).toHaveLength(30);
     expect(new Set(HEADER_VECTORS.map((v) => v.name)).size).toBe(
       HEADER_VECTORS.length,
     );
@@ -344,20 +468,102 @@ describe("major type 7 decoding", () => {
     expect((simple as CborSimple).value).toBe(40);
 
     // Immediate simple values 0–19 (20–23 are false/true/null/undefined).
+    // Go round-trips the simple values byte-identically (verified: `f0` and
+    // `f8 28` under an unread label are both accepted there), so they stay.
     expect((decodeCborDeterministic(fromHex("f0")) as CborSimple).value).toBe(
       16,
     );
     expect(decodeCborDeterministic(fromHex("f4"))).toBe(false);
     expect(decodeCborDeterministic(fromHex("f5"))).toBe(true);
     expect(decodeCborDeterministic(fromHex("f6"))).toBeNull();
-    expect(decodeCborDeterministic(fromHex("f7"))).toBeUndefined();
 
-    // Half, single and double all decode; the value is the same 1.0.
-    for (const h of ["f93c00", "fa3f800000", "fb3ff0000000000000"]) {
-      const f = decodeCborDeterministic(fromHex(h));
-      expect(f).toBeInstanceOf(CborFloat);
-      expect((f as CborFloat).value).toBe(1);
+    // `f7` (undefined) is the one major-type-7 form that is not round-tripped:
+    // go-merklelog decodes it to Go nil and re-encodes it as `f6`, so a header
+    // carrying it is never canonical there. Rejected here too.
+    expect(() => decodeCborDeterministic(fromHex("f7"))).toThrow(
+      /undefined \(0xf7\) is not allowed/,
+    );
+
+    // 1.0 is exact as a half, so only `f9 3c00` decodes; the single and the
+    // double forms re-encode shorter under fxamacker's ShortestFloat16 and
+    // are rejected.
+    const one = decodeCborDeterministic(fromHex("f93c00"));
+    expect(one).toBeInstanceOf(CborFloat);
+    expect((one as CborFloat).value).toBe(1);
+    for (const h of ["fa3f800000", "fb3ff0000000000000"]) {
+      expect(() => decodeCborDeterministic(fromHex(h))).toThrow(
+        /not in shortest form/,
+      );
     }
+  });
+
+  it("accepts a float only in its shortest exactly-representable width", () => {
+    // RFC 8949 §4.2.2 preferred serialization as fxamacker implements it
+    // (ShortestFloat16 + NaNConvert7e00), which is the rule go-merklelog's
+    // canonical re-encode of a protected header enforces. Every row below was
+    // checked against go-merklelog with the review's PoC harness
+    // (`review-canopy255/poc/d3-header/gml-clone/massifs`), each value placed
+    // under the unread label 7 of the canonical sealer header.
+    const SHORTEST: readonly (readonly [string, string, number])[] = [
+      // half is enough: normals, subnormals, ±0, ±Inf, the canonical NaN
+      ["half 1.0", "f93c00", 1],
+      ["half 1.5", "f93e00", 1.5],
+      ["half 3.5", "f94300", 3.5],
+      ["half -2.0", "f9c000", -2],
+      ["half 65504 (largest finite half)", "f97bff", 65504],
+      ["half 2^-24 (smallest half subnormal)", "f90001", 2 ** -24],
+      ["half +0.0", "f90000", 0],
+      ["half -0.0", "f98000", -0],
+      ["half +Inf", "f97c00", Infinity],
+      ["half -Inf", "f9fc00", -Infinity],
+      // single is the shortest exact width
+      ["single 2^-25 (below the half subnormal floor)", "fa33000000", 2 ** -25],
+      ["single 65536 (beyond the half range)", "fa47800000", 65536],
+      ["single 3.4028234663852886e38", "fa7f7fffff", 3.4028234663852886e38],
+      // double is the shortest exact width
+      ["double 0.1", "fb3fb999999999999a", 0.1],
+      ["double 1/3", "fb3fd5555555555555", 1 / 3],
+      // The review's "1e300" row: these bytes are 1.0000000000671607e300, not
+      // 1e300 exactly (1e300 is `fb 7e37e43c8800759c`). Same class either
+      // way — exact in neither half nor single — and kept verbatim so the row
+      // matches the review's H1 table and the recorded Go run.
+      [
+        "double 1.0000000000671607e300",
+        "fb7e37e43c880759db",
+        1.0000000000671607e300,
+      ],
+      ["double 16777217 (not exact in single)", "fb4170000010000000", 16777217],
+    ];
+    for (const [name, h, value] of SHORTEST) {
+      const f = decodeCborDeterministic(fromHex(h));
+      expect(f, name).toBeInstanceOf(CborFloat);
+      expect((f as CborFloat).value, name).toBe(value);
+    }
+
+    const NOT_SHORTEST: readonly (readonly [string, string])[] = [
+      ["single 1.0 → half", "fa3f800000"],
+      ["double 1.0 → half", "fb3ff0000000000000"],
+      ["single 0.125 → half", "fa3e000000"],
+      ["single +0.0 → half", "fa00000000"],
+      ["single +Inf → half", "fa7f800000"],
+      ["double +Inf → half", "fb7ff0000000000000"],
+      ["double 2^-25 → single", "fb3e60000000000000"],
+      ["double 3.4028234663852886e38 → single", "fb47efffffe0000000"],
+      // every NaN re-encodes as f9 7e00, so only f9 7e00 itself survives
+      ["single NaN → f97e00", "fa7fc00000"],
+      ["double NaN → f97e00", "fb7ff8000000000000"],
+      ["half NaN payload 7e01 → f97e00", "f97e01"],
+    ];
+    for (const [name, h] of NOT_SHORTEST) {
+      expect(() => decodeCborDeterministic(fromHex(h)), name).toThrow(
+        /not in shortest form/,
+      );
+    }
+
+    // ...and the one NaN that is preferred decodes.
+    expect(
+      (decodeCborDeterministic(fromHex("f97e00")) as CborFloat).value,
+    ).toBeNaN();
   });
 
   it("rejects the malformed major-type-7 forms as bare items too", () => {
@@ -393,40 +599,45 @@ describe("tags: rejected in a header, decoded on an envelope", () => {
   });
 });
 
-describe("DIVERGENCE: length-first (ADR/contract) vs bytewise (Go) key order", () => {
-  it("documents the one header class where the two canonical orders disagree", () => {
-    // ADR-0066 D9 and univocity's `compareEncodedKeys`
-    // (src/cosecbor/cosecbor.sol) sort the SHORTER key encoding first, then
-    // bytewise. Go's fxamacker `SortCoreDeterministic` sorts purely bytewise.
-    // They agree for every key pair in the estate's headers, and disagree
-    // only when a 1-byte key's initial byte is greater than a longer key's:
-    // -1 (`20`) beside 395 (`19 018b`) is the smallest such pair.
+describe("canonical key order: length-first, then bytewise", () => {
+  it("encoder and decoder agree on the divergence band, and it is the order every verifier applies", () => {
+    // Canonical order for a Forestrie header is length-first, then bytewise
+    // (RFC 7049 §3.9). ADR-0066 D9 states it; go-merklelog's
+    // decodeProtectedHeader re-encodes with canonicalReceiptCBOR =
+    // cbor.CanonicalEncOptions() (Sort: SortCanonical), which is that rule;
+    // and the univocity parser's `compareEncodedKeys`
+    // (src/cosecbor/cosecbor.sol, on the unmerged branch of univocity PR #43,
+    // not on main) is the same comparator. fxamacker's SortCoreDeterministic
+    // — RFC 8949 §4.2.1, pure bytewise — lives in massifs/cbor/config.go and
+    // is a different encoder that never touches a checkpoint header.
     //
-    // {1: -7, -1: 0, 395: 3, -65933: 8}
+    // The two orders differ only when a map mixes a negative label encoded
+    // strictly shorter than a positive one. {1: -7, -1: 0, 395: 3, -65933: 8}
+    // is the smallest such header: -1 is `20` (1 byte), 395 is `19 018b`
+    // (3 bytes).
     const lengthFirst = "a40126200019018b033a0001018c08"; // 01, 20, 19018b, 3a…
     const bytewise = "a4012619018b0320003a0001018c08"; // 01, 19018b, 20, 3a…
 
-    // This package's decoder implements the ADR/contract rule.
+    // Recorded from the review's PoC harness against go-merklelog: the
+    // length-first bytes are ACCEPT 8 there and the bytewise bytes are
+    // rejected as "not canonical cbor". This reader agrees with both.
     expect(readProtectedTreeSize2(fromHex(lengthFirst))).toBe(8n);
     expect(() => readProtectedTreeSize2(fromHex(bytewise))).toThrow(
       /out of canonical order/,
     );
 
-    // This package's ENCODER sorts bytewise, byte-identical to Go — so for
-    // this key class it emits a header its own decoder rejects. No sealer
-    // header carries such a pair today; slice 06 has to settle which rule the
-    // estate states, and whichever wins, both must state the same one.
-    expect(
-      hex(
-        encodeCborDeterministic(
-          new Map<number, number>([
-            [1, -7],
-            [-1, 0],
-            [395, 3],
-            [-65933, 8],
-          ]),
-        ),
-      ),
-    ).toBe(bytewise);
+    // The encoder emits the same order it reads: before `compareCanonicalKeys`
+    // was shared it sorted bytewise and emitted `bytewise` here, bytes its own
+    // decoder rejected (review E1).
+    const encoded = encodeCborDeterministic(
+      new Map<number, number>([
+        [1, -7],
+        [-1, 0],
+        [395, 3],
+        [-65933, 8],
+      ]),
+    );
+    expect(hex(encoded)).toBe(lengthFirst);
+    expect(readProtectedTreeSize2(encoded)).toBe(8n);
   });
 });

@@ -43,7 +43,10 @@ export async function coseKeyThumbprintUriP256(
   }
 
   // Deterministic CBOR of the required EC2 members (RFC 9679 §3.2):
-  // {1: 2, -1: 1, -2: x, -3: y} with bytewise-ordered keys.
+  // {1: 2, -1: 1, -2: x, -3: y}. Every key is a single byte (`01`, `20`,
+  // `21`, `22`), so this fixed order is canonical under both the
+  // length-first rule this package applies and RFC 8949 §4.2.1's bytewise
+  // one; the two differ only across unequal key lengths.
   const input = new Uint8Array(11 + 2 * P256_COORD_BYTES);
   input.set([0xa4, 0x01, 0x02, 0x20, 0x01, 0x21, 0x58, 0x20], 0);
   input.set(xc, 8);

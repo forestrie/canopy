@@ -65,10 +65,9 @@ function asBytesArray(v: unknown, what: string): Uint8Array[] {
  * @throws When a consistency-proof bstr IS present but its contents are not
  *   the shape `[tree-size-1, tree-size-2, paths, right-peaks]`, either size
  *   is not an unsigned integer, the proof does not grow the tree
- *   (`tree-size-2 <= tree-size-1`), the paths are not arrays of byte
- *   strings, or a right-peak is not 32 bytes — or when header 396 is
- *   present but is not map-valued, or its `-2` entry is present but not a
- *   byte string.
+ *   (`tree-size-2 <= tree-size-1`), a path element or a right-peak is not a
+ *   32-byte string — or when header 396 is present but is not map-valued,
+ *   or its `-2` entry is present but not a byte string.
  */
 export function decodeConsistencyProofFromUnprotected(
   unprotected: Map<number, unknown>,
@@ -90,13 +89,31 @@ export function decodeConsistencyProofFromUnprotected(
     );
   }
   const pathsRaw = proof[2];
-  if (
-    !Array.isArray(pathsRaw) ||
-    pathsRaw.some(
-      (p) => !Array.isArray(p) || p.some((n) => !(n instanceof Uint8Array)),
-    )
-  ) {
-    throw new Error("consistency paths must be arrays of byte strings");
+  if (!Array.isArray(pathsRaw)) {
+    throw new Error("consistency paths must be arrays of 32-byte strings");
+  }
+  // Every path element is an MMR node, so it is 32 bytes — the same rule
+  // `asBytesArray` applies to right-peaks. Both reach the same places: the
+  // fold hashes them, and the peaks that come out are concatenated by
+  // `accumulatorPayload` with no length delimiter, so a node of any other
+  // length makes that payload ambiguous. Checking it here also bounds the
+  // work an unauthenticated `.sth` can ask for before its signature is
+  // consulted.
+  for (let i = 0; i < pathsRaw.length; i++) {
+    const path = pathsRaw[i] as unknown;
+    if (!Array.isArray(path)) {
+      throw new Error(
+        `consistency path ${i}: expected an array of 32-byte strings`,
+      );
+    }
+    for (let j = 0; j < path.length; j++) {
+      const node = path[j] as unknown;
+      if (!(node instanceof Uint8Array) || node.length !== 32) {
+        throw new Error(
+          `consistency path ${i} element ${j}: expected a 32-byte string`,
+        );
+      }
+    }
   }
   const treeSize1 = asBigint(proof[0], "tree-size-1");
   const treeSize2 = asBigint(proof[1], "tree-size-2");

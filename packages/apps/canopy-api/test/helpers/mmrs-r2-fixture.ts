@@ -102,7 +102,17 @@ export function encodePeakReceiptCoseSign1(
 }
 
 export function buildV2CheckpointBytes(opts: {
+  /** SIGNED `tree-size-2` (protected header label -65933, ADR-0066 D1 as
+   * amended) — the sealed size every reader must use. */
   mmrSize: bigint;
+  /** Declared `tree-size-2` of the UNPROTECTED consistency proof, when it is
+   * to differ from the signed one. The unprotected header carries no
+   * signature, so a relaying party can set this freely; a fixture that
+   * leaves it equal to `mmrSize` cannot tell the two reads apart. */
+  declaredTreeSize2?: bigint;
+  /** Omit the signed tree-size-2 label from the protected header entirely:
+   * a checkpoint with no size to read. */
+  omitSignedTreeSize2?: boolean;
   peakReceipts: Uint8Array[];
   delegationCert?: Uint8Array;
 }): Uint8Array {
@@ -116,7 +126,12 @@ export function buildV2CheckpointBytes(opts: {
   // fixture's checkpoint is never signature-checked (the signature bstr is
   // empty), so the labels alone are sufficient for the sealed size to
   // resolve.
-  const consistencyProof = cborBytes([0n, opts.mmrSize, [], []]);
+  const consistencyProof = cborBytes([
+    0n,
+    opts.declaredTreeSize2 ?? opts.mmrSize,
+    [],
+    [],
+  ]);
   const verifiableProofs = new Map<number, unknown>([[-2, consistencyProof]]);
   const checkpointUnprotected = new Map<number, unknown>([
     [396, verifiableProofs],
@@ -125,13 +140,14 @@ export function buildV2CheckpointBytes(opts: {
   if (opts.delegationCert?.length) {
     checkpointUnprotected.set(DELEGATION_CERT_LABEL, opts.delegationCert);
   }
-  const checkpointProtected = cborBytes(
-    new Map<number, unknown>([
-      [1, -7],
-      [COSE_LABEL_VDS, VDS_MMR_CONSISTENCY],
-      [COSE_LABEL_TREE_SIZE_2, opts.mmrSize],
-    ]),
-  );
+  const protectedMap = new Map<number, unknown>([
+    [1, -7],
+    [COSE_LABEL_VDS, VDS_MMR_CONSISTENCY],
+  ]);
+  if (!opts.omitSignedTreeSize2) {
+    protectedMap.set(COSE_LABEL_TREE_SIZE_2, opts.mmrSize);
+  }
+  const checkpointProtected = cborBytes(protectedMap);
   const emptySig = new Uint8Array();
   return cborBytes([
     checkpointProtected,
@@ -147,7 +163,10 @@ export async function putMmrsFixture(
     logId: string;
     massifHeight: number;
     massifIndex?: bigint;
+    /** SIGNED tree-size-2 (see {@link buildV2CheckpointBytes}). */
     mmrSize: bigint;
+    declaredTreeSize2?: bigint;
+    omitSignedTreeSize2?: boolean;
     logHashes: Uint8Array[];
     peakReceipts: Uint8Array[];
     delegationCert?: Uint8Array;
@@ -165,6 +184,8 @@ export async function putMmrsFixture(
     checkpointKey,
     buildV2CheckpointBytes({
       mmrSize: opts.mmrSize,
+      declaredTreeSize2: opts.declaredTreeSize2,
+      omitSignedTreeSize2: opts.omitSignedTreeSize2,
       peakReceipts: opts.peakReceipts,
       delegationCert: opts.delegationCert,
     }),

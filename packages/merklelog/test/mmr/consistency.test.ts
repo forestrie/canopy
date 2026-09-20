@@ -70,8 +70,10 @@ describe("verifyConsistency (draft-bryce / KAT-39)", () => {
         const proof = indexConsistencyProof(getHash, BigInt(a), BigInt(b));
         const result = await verifyConsistency(
           hasher,
-          proof,
+          BigInt(a) + 1n,
+          BigInt(b) + 1n,
           katPeaks(a),
+          proof.paths,
           katPeaks(b),
         );
         expect(result.ok, `MMR(${a + 1}) -> MMR(${b + 1})`).toBe(true);
@@ -88,7 +90,14 @@ describe("verifyConsistency (draft-bryce / KAT-39)", () => {
     // before any hashing.
     const proof = indexConsistencyProof(getHash, 38n, 38n);
     await expect(
-      verifyConsistency(hasher, proof, katPeaks(38), katPeaks(38)),
+      verifyConsistency(
+        hasher,
+        39n,
+        39n,
+        katPeaks(38),
+        proof.paths,
+        katPeaks(38),
+      ),
     ).rejects.toBeInstanceOf(SizeMustIncrease);
   });
 
@@ -111,12 +120,7 @@ describe("verifyConsistency (draft-bryce / KAT-39)", () => {
     const target = modified.find((p) => p.length > 0)!;
     target[0][0] ^= 0xff;
     await expect(
-      verifyConsistency(
-        hasher,
-        { ...proof, paths: modified },
-        katPeaks(7),
-        katPeaks(38),
-      ),
+      verifyConsistency(hasher, 8n, 39n, katPeaks(7), modified, katPeaks(38)),
     ).rejects.toBeInstanceOf(ConsistencyRootMismatch);
   });
 
@@ -130,8 +134,10 @@ describe("verifyConsistency (draft-bryce / KAT-39)", () => {
     altered[0][0] ^= 0xff;
     const result = await verifyConsistency(
       hasher,
-      proof,
+      15n,
+      39n,
       altered,
+      proof.paths,
       katPeaks(38),
     );
     expect(result.ok).toBe(false);
@@ -146,7 +152,7 @@ describe("verifyConsistency (draft-bryce / KAT-39)", () => {
     altered[0] = altered[0].slice();
     altered[0][0] ^= 0xff;
     await expect(
-      verifyConsistency(hasher, proof, altered, katPeaks(38)),
+      verifyConsistency(hasher, 8n, 39n, altered, proof.paths, katPeaks(38)),
     ).rejects.toBeInstanceOf(ConsistencyRootMismatch);
   });
 
@@ -159,8 +165,10 @@ describe("verifyConsistency (draft-bryce / KAT-39)", () => {
     const proof = indexConsistencyProof(getHash, 7n, 10n);
     const truncated = await verifyConsistency(
       hasher,
-      proof,
+      8n,
+      11n,
       katPeaks(7),
+      proof.paths,
       katPeaks(10).slice(0, 1),
     );
     expect(truncated.ok).toBe(false);
@@ -170,8 +178,10 @@ describe("verifyConsistency (draft-bryce / KAT-39)", () => {
     changed[1][0] ^= 0xff;
     const mismatched = await verifyConsistency(
       hasher,
-      proof,
+      8n,
+      11n,
       katPeaks(7),
+      proof.paths,
       changed,
     );
     expect(mismatched.ok).toBe(false);
@@ -185,17 +195,77 @@ describe("verifyConsistency (draft-bryce / KAT-39)", () => {
     ).rejects.toThrow(/a proof for each accumulator peak is required/);
   });
 
+  it("rejects the draft 8 -> 11 material at size pairs other than its own (ADR-0066 D5.4)", async () => {
+    // The draft worked example, MMR(8) -> MMR(11): paths [[], [node 9]].
+    const proof = indexConsistencyProof(getHash, 7n, 10n);
+    const trueResult = await verifyConsistency(
+      hasher,
+      8n,
+      11n,
+      katPeaks(7),
+      proof.paths,
+      katPeaks(10),
+    );
+    expect(trueResult.ok).toBe(true);
+    expect(trueResult.accumulator.map(toHex)).toEqual(KAT39_PEAK_HASHES[10]);
+
+    // The SAME paths, origin peaks and target accumulator, presented at other
+    // size pairs. Each pair implies a different path shape, so each is
+    // rejected on the shape the CALLER's sizes imply. This call cannot be
+    // written against the previous signature: both sizes came from the proof,
+    // so the material named its own pair and the caller's trusted sizes had
+    // nowhere to go — one set of paths and peaks then satisfied every pair
+    // whose two bitmaps imply the same shape (24 of them for the draft's
+    // MMR(11) -> MMR(39) material).
+    await expect(
+      verifyConsistency(
+        hasher,
+        4n,
+        11n,
+        katPeaks(7),
+        proof.paths,
+        katPeaks(10),
+      ),
+    ).rejects.toBeInstanceOf(ConsistencyPathLengthMismatch);
+    await expect(
+      verifyConsistency(
+        hasher,
+        8n,
+        15n,
+        katPeaks(7),
+        proof.paths,
+        katPeaks(10),
+      ),
+    ).rejects.toBeInstanceOf(ConsistencyPathLengthMismatch);
+    // A third pair whose implied path shape the material does happen to
+    // satisfy: MMR(10) has two peaks, so the three-peak target accumulator is
+    // rejected on its length.
+    const wrongTarget = await verifyConsistency(
+      hasher,
+      8n,
+      10n,
+      katPeaks(7),
+      proof.paths,
+      katPeaks(10),
+    );
+    expect(wrongTarget.ok).toBe(false);
+    expect(wrongTarget.accumulator).toEqual([]);
+  });
+
   it("the always-true stub behaviour is gone: inconsistent states FAIL", async () => {
     // MMR(4)'s accumulator against MMR(8)'s state with placeholder paths must
     // not verify — the plan-0027 stub returned true for everything. MMR(4)
     // -> MMR(8) implies path lengths [1, 2]; both paths here are length 1.
-    const placeholder: ConsistencyProof = {
-      mmrSizeA: 4n,
-      mmrSizeB: 8n,
-      paths: [[new Uint8Array(32)], [new Uint8Array(32)]],
-    };
+    const placeholderPaths = [[new Uint8Array(32)], [new Uint8Array(32)]];
     await expect(
-      verifyConsistency(hasher, placeholder, katPeaks(3), katPeaks(7)),
+      verifyConsistency(
+        hasher,
+        4n,
+        8n,
+        katPeaks(3),
+        placeholderPaths,
+        katPeaks(7),
+      ),
     ).rejects.toBeInstanceOf(ConsistencyPathLengthMismatch);
   });
 });

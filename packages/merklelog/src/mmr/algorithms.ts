@@ -383,11 +383,25 @@ export async function consistentRootsForSizes(
  * (draft-bryce "Verifying the Receipt of consistency";
  * go-merklelog `VerifyConsistency`).
  *
+ * BOTH sizes are CALLER-SUPPLIED trusted state (ADR-0066 D5.4), never read
+ * off the proof: `sizeFrom` is the size of the state `peaksFrom` is the
+ * accumulator of, and `sizeTo` the size `peaksTo` is claimed to be the
+ * accumulator of. The proof contributes only `paths`. Taking either size
+ * from the proof makes the check void: the fold constrains a declared
+ * `sizeFrom` by the origin peak COUNT alone, which a whole family of sizes
+ * share, so one set of paths and peaks verified at many size pairs — with
+ * the draft's own MMR(11) -> MMR(39) material, 24 distinct pairs, of which
+ * one is the true relation. `indexConsistencyProof` still returns the
+ * {@link ConsistencyProof} wire type with its declared sizes; a caller that
+ * relays that type passes `proof.paths` here and supplies the sizes it
+ * trusts, comparing the declared sizes with them separately if it wants to
+ * report a disagreement.
+ *
  * Routed through {@link consistentRootsForSizes}, so the proof must have the
- * shape `proof.mmrSizeA -> proof.mmrSizeB` implies: one path per MMR(A) peak,
- * empty above the split and of length `split - h` below it, with every path
- * below the split proving the same root. The proven roots must then be the
- * leading entries of `peaksTo`, and `peaksTo` must hold exactly those plus the
+ * shape `sizeFrom -> sizeTo` implies: one path per MMR(A) peak, empty above
+ * the split and of length `split - h` below it, with every path below the
+ * split proving the same root. The proven roots must then be the leading
+ * entries of `peaksTo`, and `peaksTo` must hold exactly those plus the
  * `expectedRight` right peaks no path reaches — so a truncated or padded
  * target accumulator is rejected on its length alone.
  *
@@ -395,9 +409,11 @@ export async function consistentRootsForSizes(
  * plan-2607-29): the previous signature took two inclusion proofs and
  * returned true unconditionally; no caller existed.
  *
- * @param proof - consistency proof `mmrSizeA -> mmrSizeB`
+ * @param sizeFrom - TRUSTED node count of MMR(A)
+ * @param sizeTo - TRUSTED node count of MMR(B)
  * @param peaksFrom - TRUSTED MMR(A) accumulator (e.g. a signed checkpoint
  *   payload), descending height order
+ * @param paths - one inclusion path per MMR(A) peak, in the same order
  * @param peaksTo - MMR(B) accumulator to prove against (e.g. an anchored
  *   on-chain state), descending height order
  * @returns ok, with the MMR(B) accumulator on success. A value that does not
@@ -408,16 +424,18 @@ export async function consistentRootsForSizes(
  */
 export async function verifyConsistency(
   hasher: Hasher,
-  proof: ConsistencyProof,
+  sizeFrom: bigint,
+  sizeTo: bigint,
   peaksFrom: Uint8Array[],
+  paths: Uint8Array[][],
   peaksTo: Uint8Array[],
 ): Promise<{ ok: boolean; accumulator: Uint8Array[] }> {
   const { roots, expectedRight } = await consistentRootsForSizes(
     hasher,
-    proof.mmrSizeA,
-    proof.mmrSizeB,
+    sizeFrom,
+    sizeTo,
     peaksFrom,
-    proof.paths,
+    paths,
   );
   // roots is the leading run of the MMR(B) accumulator and expectedRight
   // counts the peaks below every MMR(A) peak, which no path reaches. Together

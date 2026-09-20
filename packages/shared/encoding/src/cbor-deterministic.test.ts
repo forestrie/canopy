@@ -76,11 +76,11 @@ const CORPUS: unknown[] = [
     [3, "ct"],
     [4, new Uint8Array([0xaa])],
   ]),
-  // Key 2 (`02`), not -2 (`21`): the encoder sorts keys bytewise (byte-identical
-  // to Go fxamacker `SortCoreDeterministic`) while the decoder enforces
-  // ADR-0066 D9's length-first order, and a 1-byte negative key beside the
-  // 3-byte uint key 396 is the one class where those two rules disagree. The
-  // divergence is pinned on its own below and in
+  // Key 2 (`02`) beside the 3-byte uint key 396: the encoder and the decoder
+  // now share one comparator (length-first, then bytewise — see
+  // canonical-key-order.ts), so either key class round-trips. This row keeps
+  // the mixed-length shape; the divergence band itself (a negative key
+  // encoded shorter than a positive one) is pinned on its own below and in
   // protected-header-conformance.test.ts.
   new Map<number, unknown>([
     [2, new Uint8Array([1, 2])],
@@ -163,9 +163,10 @@ describe("@forestrie/encoding CBOR codec vs reference `cbor`", () => {
   });
 
   it("§4.2 map key ordering round-trips where the two canonical rules agree", () => {
-    // `02`, `0a`, `20`: same length, so bytewise (the encoder, matching Go
-    // fxamacker) and length-first-then-bytewise (the decoder, matching
-    // ADR-0066 D9 and univocity `compareEncodedKeys`) give the same order.
+    // `02`, `0a`, `20`: all one byte, so length-first-then-bytewise (RFC 7049
+    // §3.9 — what this package encodes and decodes, and what ADR-0066 D9, the
+    // univocity parser and go-merklelog's checkpoint-header re-encode apply)
+    // and RFC 8949 §4.2.1's pure bytewise order give the same order.
     const bytes = encodeCborDeterministic(
       new Map([
         [10, 1],
@@ -177,25 +178,37 @@ describe("@forestrie/encoding CBOR codec vs reference `cbor`", () => {
     expect([...m.keys()]).toEqual([2, 10, -1]);
   });
 
-  it("DIVERGENCE: encoder bytewise vs decoder length-first on {100, -1}", () => {
-    // The one class where RFC 8949 4.2.1's two canonical key orders disagree:
-    // a 1-byte key whose initial byte is greater than a longer key's. The
-    // encoder emits 100 (`1864`) before -1 (`20`) because `18 < 20` bytewise —
-    // what Go's `SortCoreDeterministic` produces — while ADR-0066 D9 and the
-    // univocity contract sort the shorter encoding first, so the decoder
-    // rejects those same bytes. No header the estate emits mixes such keys
-    // ({1, 395, -65933} are 1, 3 and 5 bytes, ascending under both rules), so
-    // this is a rule mismatch to raise, not a live interop failure.
+  it("encoder and decoder agree in the divergence band {100, -1}", () => {
+    // The one class where the two canonical key orders disagree: a map mixing
+    // a negative label encoded strictly shorter than a positive one. -1 is
+    // `20` (1 byte), 100 is `1864` (2 bytes). Length-first (RFC 7049 §3.9 —
+    // ADR-0066 D9, the univocity parser, and go-merklelog's checkpoint-header
+    // re-encode under fxamacker `CanonicalEncOptions`) puts -1 first; RFC
+    // 8949 §4.2.1's pure bytewise order puts 100 first.
+    //
+    // Both ends of this package now use `compareCanonicalKeys`, so the
+    // encoder emits the length-first order its own decoder accepts. Before
+    // the comparator was shared the encoder emitted `a21864012002`, which the
+    // decoder rejected as out of canonical order.
     const bytes = encodeCborDeterministic(
       new Map([
         [100, 1],
         [-1, 2],
       ]),
     );
-    expect(hex(bytes)).toBe("a21864012002");
-    expect(() => decodeCborDeterministic(bytes)).toThrow(
-      /out of canonical order/,
-    );
+    expect(hex(bytes)).toBe("a22002186401");
+    expect([
+      ...(decodeCborDeterministic(bytes) as Map<number, number>).entries(),
+    ]).toEqual([
+      [-1, 2],
+      [100, 1],
+    ]);
+    // The bytewise order is what the decoder now rejects, from either end.
+    expect(() =>
+      decodeCborDeterministic(
+        new Uint8Array(Buffer.from("a21864012002", "hex")),
+      ),
+    ).toThrow(/out of canonical order/);
   });
 
   it("rejects duplicate map keys (§4.2 unique-keys)", () => {

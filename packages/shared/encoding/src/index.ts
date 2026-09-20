@@ -9,6 +9,7 @@
  * [ARC-0019](https://github.com/forestrie/devdocs/blob/main/arc/arc-0019-grant-verification-model.md).
  */
 
+export { compareCanonicalKeys } from "./canonical-key-order.js";
 export { encodeCborBstr } from "./encode-cbor-bstr.js";
 export { encodeCborDeterministic } from "./encode-cbor-deterministic.js";
 export {

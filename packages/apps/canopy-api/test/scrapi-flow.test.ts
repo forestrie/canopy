@@ -22,6 +22,10 @@ import {
   validGenesisV2Es256CborMap,
 } from "./helpers/genesis-v2-body.js";
 import { mintTestOnboardToken } from "./helpers/onboard-token.js";
+import {
+  encodePeakReceiptCoseSign1,
+  putMmrsFixture,
+} from "./helpers/mmrs-r2-fixture.js";
 
 const testEnv = env as unknown as Env;
 
@@ -585,6 +589,70 @@ describe("SCRAPI flow", () => {
     expect(Array.isArray(path)).toBe(true);
     expect(path).toHaveLength(1);
     expect(path[0]).toEqual(node1);
+  });
+
+  it("resolve-receipt takes the sealed size from the SIGNED header, not the declared proof (ADR-0066 D1 as amended, FOR-568)", async () => {
+    // Only `tree-size-2` in the PROTECTED header is signed. The consistency
+    // proof under the unprotected header declares a `tree-size-2` too, and a
+    // relaying party can set that one without the key. Both fixtures below
+    // declare 3; they differ only in what the protected header says.
+    const massifHeight = 3;
+    const entryId = encodeEntryId({
+      idtimestamp: 0x0102030405060708n,
+      mmrIndex: 1n,
+    });
+    const logHashes = [0xaa, 0xbb, 0xcc].map((b) => new Uint8Array(32).fill(b));
+    const placeholderPeak = encodePeakReceiptCoseSign1(
+      new Uint8Array(),
+      new Map(),
+      new Uint8Array(),
+    );
+    await proveEnvHasMMRSBucket(testEnv);
+
+    // Control: signed == declared == 3, so MMR index 1 is covered.
+    const agreeingLog = crypto.randomUUID();
+    await putMmrsFixture(testEnv.R2_MMRS, {
+      logId: agreeingLog,
+      massifHeight,
+      mmrSize: 3n,
+      logHashes,
+      peakReceipts: [placeholderPeak],
+    });
+    const agreeing = await worker.fetch(
+      new Request(
+        `http://localhost/logs/${flowBootstrapLogId}/${agreeingLog}/${massifHeight}/entries/${entryId}/receipt`,
+      ),
+      testEnv,
+      {} as ExecutionContext,
+    );
+    expect(agreeing.status).toBe(200);
+
+    // Same declared proof, signed tree-size-2 of 1: the sealed size is 1, so
+    // the entry at MMR index 1 is past the end of the sealed log. Reading
+    // the declared 3 instead would serve a receipt for it.
+    const splitLog = crypto.randomUUID();
+    await putMmrsFixture(testEnv.R2_MMRS, {
+      logId: splitLog,
+      massifHeight,
+      mmrSize: 1n,
+      declaredTreeSize2: 3n,
+      logHashes,
+      peakReceipts: [placeholderPeak],
+    });
+    const split = await worker.fetch(
+      new Request(
+        `http://localhost/logs/${flowBootstrapLogId}/${splitLog}/${massifHeight}/entries/${entryId}/receipt`,
+      ),
+      testEnv,
+      {} as ExecutionContext,
+    );
+    expect(split.status).toBe(404);
+    const problem = decodeCborAsObject(
+      new Uint8Array(await split.arrayBuffer()),
+    ) as { title?: string };
+    expect(String(problem.title ?? "")).toContain(
+      "checkpoint does not cover entry",
+    );
   });
 });
 

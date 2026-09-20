@@ -10,8 +10,21 @@
  * then bytewise) with no duplicates, no tags, integer keys within int64, a
  * string length within the remaining bytes, and the map consuming the whole
  * header. A label this reader does not read is skipped when its value is any
- * well-formed definite-length item, major type 7 included. So two conformant
- * verifiers either read the same size from a header or both reject it.
+ * well-formed definite-length item, major type 7 included — except CBOR
+ * `undefined` and a float in other than its shortest exact width, which the
+ * decoder rejects because go-merklelog's canonical re-encode of the header
+ * rewrites them. So two conformant verifiers either read the same size from a
+ * header or both reject it.
+ *
+ * This reader additionally requires every LABEL in the header to be an
+ * integer. ADR-0066 D9 bounds integer key magnitude but never says keys must
+ * be integers, so the generic decoder still accepts a text- or
+ * container-keyed map (plain-object encoding produces text-keyed maps that
+ * other callers rely on). A protected header is not such a map: go-merklelog
+ * unmarshals one into `map[int64]any` and the univocity parser reads every
+ * label with `readInteger`, so both reject a non-integer label and this
+ * reader would otherwise be the one verifier reading a size from a header the
+ * chain will not anchor (review H4).
  */
 import { COSE_LABEL_TREE_SIZE_2 } from "./cose-labels.js";
 import {
@@ -27,9 +40,10 @@ import {
  *
  * @returns the signed size as a bigint, or `null` when the label is absent
  * @throws when the header is not a CBOR map, is not deterministically
- *   encoded (ADR-0066 D9), or the label's value is not a CBOR unsigned
- *   integer (major type 0): a negative integer, byte string, float, simple
- *   value or tagged value under the label is rejected, never reinterpreted
+ *   encoded (ADR-0066 D9), carries a label that is not an integer, or the
+ *   label's value is not a CBOR unsigned integer (major type 0): a negative
+ *   integer, byte string, float, simple value or tagged value under the label
+ *   is rejected, never reinterpreted
  */
 export function readProtectedTreeSize2(
   protectedMapBytes: Uint8Array,
@@ -41,6 +55,15 @@ export function readProtectedTreeSize2(
     throw new Error(
       "readProtectedTreeSize2: protected header is not a CBOR map",
     );
+  }
+  for (const label of decoded.keys()) {
+    if (typeof label !== "number" && typeof label !== "bigint") {
+      throw new Error(
+        `readProtectedTreeSize2: protected header label is not an integer (got ${describeValue(
+          label,
+        )})`,
+      );
+    }
   }
   if (!decoded.has(COSE_LABEL_TREE_SIZE_2)) return null;
   const raw = decoded.get(COSE_LABEL_TREE_SIZE_2);
@@ -68,6 +91,7 @@ function describeValue(raw: unknown): string {
   if (raw instanceof CborFloat) return `float ${raw.value}`;
   if (raw instanceof CborSimple) return `simple value ${raw.value}`;
   if (raw instanceof CborTag) return `tag ${raw.tag}`;
+  if (typeof raw === "string") return `text string ${JSON.stringify(raw)}`;
   if (raw instanceof Uint8Array) return "byte string";
   if (raw instanceof Map) return "map";
   if (Array.isArray(raw)) return "array";

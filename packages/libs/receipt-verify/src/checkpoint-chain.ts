@@ -30,12 +30,21 @@
  * `CheckpointPublished` event scan (public chain data only); see the
  * recorded both-paths decision in plan-2607-29.
  *
- * Legacy (pre-FOR-410) chains surface as a contiguity break
- * (`legacy_chain_break`): a permanent per-log condition — fall back to the
- * event scan, tile extension, or a holder cache.
+ * No pre-FOR-410 state is supported (ADR-0066 D6): the affected logs are
+ * re-anchored, so there is no drift condition to signal and no fallback to
+ * select. A declared `tree-size-1` that does not continue the state being
+ * folded is `size_mismatch` like any other size disagreement — and it has to
+ * be, because that value is unsigned: a relaying party can set it without
+ * the key, so no reason string chosen from it may mean anything more than
+ * "these two sizes differ".
  */
 import { readProtectedTreeSize2 } from "@forestrie/encoding";
-import { consistentRootsForSizes } from "@forestrie/merklelog";
+import {
+  consistentRootsForSizes,
+  mmrSizeForLeafCount,
+  peakMMRIndexes,
+  peaksBitmap,
+} from "@forestrie/merklelog";
 import { SubtleHasher } from "./subtle-hasher.js";
 import { parseCheckpoint } from "./build-receipt-offline.js";
 import { decodeConsistencyProofFromUnprotected } from "./decode-checkpoint-consistency-proof.js";
@@ -180,6 +189,7 @@ export type CheckpointChainLink = {
    * amended). */
   signedTreeSize2: bigint;
   accumulator: Uint8Array[];
+  /** Always `true`: a link is recorded only after its signature verified. */
   signatureOk: boolean;
 };
 
@@ -189,17 +199,16 @@ export type CheckpointChainResult =
       ok: false;
       reason:
         | "empty_chain"
-        | "legacy_chain_break"
         | "signature"
         | "proof_malformed"
         /**
-         * A checkpoint's SIGNED `tree-size-2` disagrees with its declared
-         * consistency-proof `tree-size-2` (ADR-0066 D1 as amended, D5.5), or
-         * the first link's declared `tree-size-1` disagrees with a
-         * caller-supplied `trustedBase.size`. Distinct from
-         * `legacy_chain_break`, which is reserved for the specific
-         * pre-FOR-410 drift signature (a link i>0 whose declared base !=
-         * the previous link's sealed size).
+         * Two sizes that must be equal are not. Either a checkpoint's SIGNED
+         * `tree-size-2` disagrees with its declared consistency-proof
+         * `tree-size-2` (ADR-0066 D1 as amended, D5.5), or a link's declared
+         * `tree-size-1` disagrees with the size the fold starts from — the
+         * caller's `trustedBase.size` (0 with no `trustedBase`) for the
+         * first link, the previous link's `tree-size-2` after that.
+         * `detail` names both sizes.
          */
         | "size_mismatch";
       /** Index of the offending checkpoint. */
@@ -216,23 +225,30 @@ export type CheckpointChainResult =
  *   (base 0 for a whole-log chain) with `trustedBase?.accumulator ?? []`
  *   as the fold's starting accumulator (a suffix chain rooted in an
  *   already-trusted accumulator supplies both).
+ * - A supplied `trustedBase` must describe a state an MMR can be in: its
+ *   `size` a complete MMR size, and its `accumulator` holding one peak per
+ *   peak of that size. `peaksBitmap` rounds an incomplete size DOWN to the
+ *   largest MMR below it, so without the completeness check a size of 5
+ *   folds the 4 -> N shape while every link reports a base of 5 — a node
+ *   count no MMR has. Both are `proof_malformed`.
  * - The first link's declared `tree-size-1` must equal that trusted
- *   starting size: with no `trustedBase` supplied, a non-zero base is the
- *   legacy (pre-FOR-410) drift signature, permanent for that log
- *   (`legacy_chain_break`); with a `trustedBase` supplied, a disagreeing
- *   base is `size_mismatch`.
- * - Every subsequent link's declared `tree-size-1` must equal the previous
- *   link's sealed `tree-size-2` — a mismatch is the same legacy drift
- *   signature (`legacy_chain_break`). `tree-size-1` itself is never compared
- *   with a signed value (D2 is withdrawn): only this trusted-origin
- *   comparison applies.
+ *   starting size, and every subsequent link's must equal the previous
+ *   link's sealed `tree-size-2`; either disagreement is `size_mismatch`.
+ *   `tree-size-1` itself is never compared with a signed value (D2 is
+ *   withdrawn): only this trusted-origin comparison applies. Because it is
+ *   unsigned, the reason it produces carries no more meaning than the size
+ *   disagreement itself (ADR-0066 D6: no pre-FOR-410 state is supported, so
+ *   there is no drift condition to fall back from).
  * - Each checkpoint's SIGNED `tree-size-2` (ADR-0066 D1 as amended) must
  *   equal its declared consistency-proof `tree-size-2`
  *   ({@link checkpointConsistencyProof}); a disagreement is
  *   `size_mismatch`.
  * - Each link's signature is checked over its computed accumulator via
  *   the injected verifier (the caller owns trust resolution — genesis
- *   roots, caller-known keys, or the label-1000 delegation path).
+ *   roots, caller-known keys, or the label-1000 delegation path). A link
+ *   joins `links` only once its signature has verified, so on any failure
+ *   `links` is the verified prefix and never holds an accumulator nothing
+ *   attested.
  */
 export async function verifyCheckpointChain(opts: {
   checkpoints: Uint8Array[];
@@ -254,8 +270,41 @@ export async function verifyCheckpointChain(opts: {
       links,
     };
   }
-  let accumulator = opts.trustedBase?.accumulator ?? [];
-  let expectedBase = opts.trustedBase?.size ?? 0n;
+  const trustedBase = opts.trustedBase;
+  if (trustedBase !== undefined) {
+    // A size that is not a complete MMR size describes no state: the fold
+    // would silently use the largest MMR below it (`peaksBitmap` rounds
+    // down) while every link reported the supplied value as its base.
+    if (
+      trustedBase.size < 0n ||
+      mmrSizeForLeafCount(peaksBitmap(trustedBase.size)) !== trustedBase.size
+    ) {
+      return {
+        ok: false,
+        reason: "proof_malformed",
+        at: 0,
+        detail: `trusted base size ${trustedBase.size} is not a complete MMR size`,
+        links,
+      };
+    }
+    // …and the accumulator must hold exactly the peaks that size has, which
+    // the fold otherwise only compares against the rounded-down count.
+    const basePeaks =
+      trustedBase.size === 0n
+        ? 0
+        : peakMMRIndexes(trustedBase.size - 1n).length;
+    if (trustedBase.accumulator.length !== basePeaks) {
+      return {
+        ok: false,
+        reason: "proof_malformed",
+        at: 0,
+        detail: `trusted base accumulator has ${trustedBase.accumulator.length} peaks; size ${trustedBase.size} has ${basePeaks}`,
+        links,
+      };
+    }
+  }
+  let accumulator = trustedBase?.accumulator ?? [];
+  let expectedBase = trustedBase?.size ?? 0n;
   for (let i = 0; i < opts.checkpoints.length; i++) {
     const bytes = opts.checkpoints[i]!;
     let proof: CheckpointConsistencyProof;
@@ -274,31 +323,25 @@ export async function verifyCheckpointChain(opts: {
       };
     }
     if (proof.treeSize1 !== expectedBase) {
-      if (i === 0 && opts.trustedBase === undefined) {
-        return {
-          ok: false,
-          reason: "legacy_chain_break",
-          at: i,
-          detail: `first checkpoint base ${proof.treeSize1} != 0 and no trusted base was supplied`,
-          links,
-        };
-      }
       if (i === 0) {
         return {
           ok: false,
           reason: "size_mismatch",
           at: i,
-          detail: `first checkpoint base ${proof.treeSize1} != trusted base size ${expectedBase}`,
+          detail:
+            trustedBase === undefined
+              ? `first checkpoint declared tree-size-1 ${proof.treeSize1} != whole-log base size ${expectedBase} and no trusted base was supplied`
+              : `first checkpoint declared tree-size-1 ${proof.treeSize1} != trusted base size ${expectedBase}`,
           links,
         };
       }
       return {
         ok: false,
-        reason: "legacy_chain_break",
+        reason: "size_mismatch",
         at: i,
         detail:
-          `checkpoint ${i} base ${proof.treeSize1} != previous sealed size ${expectedBase} — ` +
-          "pre-FOR-410 drifted chain (permanent for this log); fall back to the event scan, tile extension, or a holder cache",
+          `checkpoint ${i} declared tree-size-1 ${proof.treeSize1} != the previous link's tree-size-2 ${expectedBase} — ` +
+          "the declared origin is unsigned, so the chain is treated as not continuous",
         links,
       };
     }
@@ -322,14 +365,10 @@ export async function verifyCheckpointChain(opts: {
       bytes,
       accumulatorPayload(computed),
     );
-    links.push({
-      treeSize1: proof.treeSize1,
-      treeSize2: proof.treeSize2,
-      signedTreeSize2: proof.signedTreeSize2,
-      accumulator: computed,
-      signatureOk,
-    });
     if (!signatureOk) {
+      // `links` stays the verified prefix: the computed accumulator of a
+      // link whose signature did not verify is attested by nothing, so it
+      // is not handed back.
       return {
         ok: false,
         reason: "signature",
@@ -338,6 +377,13 @@ export async function verifyCheckpointChain(opts: {
         links,
       };
     }
+    links.push({
+      treeSize1: proof.treeSize1,
+      treeSize2: proof.treeSize2,
+      signedTreeSize2: proof.signedTreeSize2,
+      accumulator: computed,
+      signatureOk,
+    });
     accumulator = computed;
     expectedBase = proof.treeSize2;
   }

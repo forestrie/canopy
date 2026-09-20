@@ -6,6 +6,15 @@
  * (tag 259) and `Uint8Array` (tag 64), which diverges from arbor's canonical
  * encoding and breaks verification — so the grant payload, `Sig_structure`, and
  * Sign1 are emitted byte-by-byte here.
+ *
+ * Key order: the grant v0 payload carries only the labels 1–6, every one a
+ * single-byte key, so the fixed emission sequence below is ascending under
+ * both canonical orders — length-first-then-bytewise ({@link
+ * ./canonical-key-order.ts}, what this package's encoder and decoder apply)
+ * and RFC 8949 §4.2.1's pure bytewise one, which differ only when a map mixes
+ * keys of unequal encoded length. Adding a multi-byte label here would need
+ * the general {@link ./encode-cbor-deterministic.ts} writer or an explicit
+ * {@link compareCanonicalKeys} sort.
  */
 
 import type { Grant } from "./grant.js";
