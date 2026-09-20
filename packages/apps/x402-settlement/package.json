@@ -14,11 +14,12 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
+    "@canopy/forestrie-sharding": "workspace:*",
     "@canopy/ops-bearer": "workspace:*",
+    "@canopy/problem-log": "workspace:*",
     "@canopy/univocity-instance-id": "workspace:*",
-    "@forestrie/chain-rpc": "workspace:*",
     "@canopy/x402-settlement-types": "workspace:*",
-    "@canopy/forestrie-sharding": "workspace:*"
+    "@forestrie/chain-rpc": "workspace:*"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.9.13",

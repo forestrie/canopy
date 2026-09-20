@@ -18,6 +18,7 @@
     "@canopy/forestrie-ingress-types": "workspace:*",
     "@canopy/forestrie-sharding": "workspace:*",
     "@canopy/ops-bearer": "workspace:*",
+    "@canopy/problem-log": "workspace:*",
     "@canopy/univocity-instance-id": "workspace:*",
     "@canopy/webhook-url": "workspace:*",
     "@canopy/x402-settlement-types": "workspace:*",

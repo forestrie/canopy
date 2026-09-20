@@ -20,6 +20,7 @@ import {
   listRegisteredAccounts,
   readRegisteredAccount,
 } from "./indexer/instance-accounts.js";
+import { logProblemResponse } from "@canopy/problem-log";
 import type { Env } from "./env.js";
 
 export { X402SettlementDO };
@@ -255,7 +256,7 @@ async function handleAdminResetStorage(
   }
 }
 
-export default {
+const handler = {
   /**
    * Queue consumer handler.
    *
@@ -505,6 +506,25 @@ export default {
     ctx: ExecutionContext,
   ): Promise<void> {
     ctx.waitUntil(runCheckpointIndexer(env));
+  },
+};
+
+/**
+ * Every problem response leaves one structured log line (FOR-579): method,
+ * route pattern, status, title, detail and `cf-ray`. The response is not
+ * changed; the queue and cron handlers are exported as they are.
+ */
+export default {
+  ...handler,
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
+    const response = await handler.fetch(request, env, ctx);
+    return logProblemResponse(request, response, {
+      service: "x402-settlement",
+    });
   },
 };
 

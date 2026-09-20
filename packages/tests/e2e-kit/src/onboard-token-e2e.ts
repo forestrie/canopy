@@ -15,6 +15,7 @@ import {
 } from "@forestrie/encoding";
 import type { APIRequestContext } from "@playwright/test";
 
+import { problemDetailFromResponse } from "./problem-detail.js";
 const BOOTSTRAP_MINT_E2E_HELP =
   "Run via Doppler (project canopy, config dev or prod), e.g. task test:e2e. " +
   "See packages/tests/canopy-api/README.md.";
@@ -94,7 +95,7 @@ export async function mintOnboardTokenE2e(
   });
   if (res.status() !== 201) {
     throw new Error(
-      `mint onboard token: expected 201, got ${res.status()}: ${(await res.text()).slice(0, 300)}`,
+      `mint onboard token: expected 201, got ${res.status()}: ${await problemDetailFromResponse(res)}`,
     );
   }
   const body = decodeCborDeterministic(new Uint8Array(await res.body()));

@@ -170,3 +170,4 @@ export {
   type PinKeyKind,
   type PinViolation,
 } from "./pin-coherence.js";
+export * from "./problem-detail.js";
