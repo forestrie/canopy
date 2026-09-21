@@ -21,6 +21,7 @@ import { queryRegistrationStatus } from "./scrapi/query-registration-status";
 import { resolveReceipt } from "./scrapi/resolve-receipt";
 import { getTransparencyConfiguration } from "./scrapi/transparency-configuration";
 import type { SettlementJob } from "@canopy/x402-settlement-types";
+import { logProblemResponse } from "@canopy/problem-log";
 import type { Env } from "./env/worker-env.js";
 import type { X402Mode } from "./env/x402-mode.js";
 
@@ -83,7 +84,7 @@ function receiptAuthorityResolverForEnv(env: Env): ReceiptAuthorityResolver {
   return receiptAuthorityResolverCache.resolver;
 }
 
-export default {
+const handler = {
   async fetch(
     request: Request,
     env: Env,
@@ -392,5 +393,23 @@ export default {
         { headers: corsHeaders },
       );
     }
+  },
+};
+
+/**
+ * Every problem response leaves one structured log line (FOR-579): method,
+ * route pattern, status, title, detail and `cf-ray`. The response is not
+ * changed. Applied at the edge so the shared `problemResponse` /
+ * `ClientErrors` helpers, problem bodies relayed from Durable Objects and
+ * the unhandled-error 500 above are all covered.
+ */
+export default {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
+    const response = await handler.fetch(request, env, ctx);
+    return logProblemResponse(request, response, { service: "canopy-api" });
   },
 };

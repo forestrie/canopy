@@ -10,6 +10,7 @@
  * [ARC-0017](https://github.com/forestrie/devdocs/blob/main/arc/arc-0017-hierarchical-authority-logs-and-fee-distribution.md).
  */
 
+import { logProblemResponse } from "@canopy/problem-log";
 import type { Env } from "./env.js";
 import {
   handleGetPendingDelegation,
@@ -67,8 +68,8 @@ function matchAdminLogRoute(pathname: string, suffix: string): string | null {
   return match ? decodeURIComponent(match[1]!) : null;
 }
 
-/** Cloudflare Worker default export — HTTP fetch router. */
-export default {
+/** HTTP fetch router; exported below behind the problem-response log. */
+const handler = {
   /**
    * Route incoming requests to handlers or Durable Object exports.
    *
@@ -222,5 +223,25 @@ export default {
     }
 
     return new Response("delegation-coordinator worker", { status: 200 });
+  },
+};
+
+/**
+ * Every problem response leaves one structured log line (FOR-579): method,
+ * route pattern, status, title, detail and `cf-ray`. The response is not
+ * changed. Applied at the edge so `problemResponse`, `encodeCborError`, the
+ * problem bodies built inside the Durable Object and relayed by
+ * `forwardToStore`, and `internalError` are all covered.
+ */
+export default {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
+    const response = await handler.fetch(request, env, ctx);
+    return logProblemResponse(request, response, {
+      service: "delegation-coordinator",
+    });
   },
 };
