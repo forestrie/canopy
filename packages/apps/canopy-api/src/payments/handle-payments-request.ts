@@ -199,7 +199,9 @@ async function handleRegistrationEnabled(
         }
       } catch {
         return attachCors(
-          ClientErrors.badRequest("Invalid CBOR body"),
+          ClientErrors.badRequest(
+            "Invalid CBOR body: request body must be deterministic CBOR (RFC 8949 §4.2); non-canonical key order rejected",
+          ),
           corsHeaders,
         );
       }
@@ -309,7 +311,9 @@ export async function handlePaymentsRequest(
         }
       } catch {
         return attachCors(
-          ClientErrors.badRequest("Invalid CBOR body"),
+          ClientErrors.badRequest(
+            "Invalid CBOR body: request body must be deterministic CBOR (RFC 8949 §4.2); non-canonical key order rejected",
+          ),
           corsHeaders,
         );
       }
@@ -480,7 +484,9 @@ export async function handlePaymentsRequest(
         registrationBlock = m?.get(1);
       } catch {
         return attachCors(
-          ClientErrors.badRequest("Invalid CBOR body"),
+          ClientErrors.badRequest(
+            "Invalid CBOR body: request body must be deterministic CBOR (RFC 8949 §4.2); non-canonical key order rejected",
+          ),
           corsHeaders,
         );
       }

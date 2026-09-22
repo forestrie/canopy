@@ -276,7 +276,9 @@ export async function postForestGenesis(
   try {
     raw = await parseCborBody(request);
   } catch {
-    return ClientErrors.badRequest("Invalid CBOR body");
+    return ClientErrors.badRequest(
+      "Invalid CBOR body: request body must be deterministic CBOR (RFC 8949 §4.2); non-canonical key order rejected",
+    );
   }
 
   const m = decodeBodyAsIntKeyMap(raw);
