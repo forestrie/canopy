@@ -15,11 +15,11 @@ The API is **CBOR end-to-end**: request and response bodies use CBOR where appli
 
 ## Endpoints
 
-| Endpoint                     | Purpose                                                                      |
-| ---------------------------- | ---------------------------------------------------------------------------- |
-| `POST /register/grants`    | Create a grant; returns grant location (URL path). |
-| `POST /register/entries`   | Register a signed statement; grant in `Authorization: Forestrie-Grant`. |
-| (existing)                   | Query registration status, resolve receipt, transparency configuration, etc. |
+| Endpoint                 | Purpose                                                                      |
+| ------------------------ | ---------------------------------------------------------------------------- |
+| `POST /register/grants`  | Create a grant; returns grant location (URL path).                           |
+| `POST /register/entries` | Register a signed statement; grant in `Authorization: Forestrie-Grant`.      |
+| (existing)               | Query registration status, resolve receipt, transparency configuration, etc. |
 
 ## Grant storage and location
 
@@ -29,7 +29,7 @@ The API is **CBOR end-to-end**: request and response bodies use CBOR where appli
 
 ## Errors
 
-- All error responses use **Concise Problem Details** in CBOR (`Content-Type: application/problem+cbor` or same as existing CBOR problem responses). Body includes at least `type`, `title`, `status`, and optionally `detail`, `instance`, and extension members (e.g. `reason` for `grant_location_invalid`, `signer_mismatch`) so agents can branch on error type.
+- All error responses use **Concise Problem Details** in CBOR, served as `Content-Type: application/problem+cbor` (the media type clients gate their decoders on; plain `application/cbor` is never used for a problem body). `type` is a problem-type URI (`about:blank` when there is none); the human-readable message is in `detail`, never in `type`. Body includes at least `type`, `title`, `status`, and optionally `detail`, `instance`, and extension members (e.g. `reason` for `grant_location_invalid`, `signer_mismatch`) so agents can branch on error type.
 - Consistent with existing `problemResponse` / `ClientErrors` / `ServerErrors` in the codebase.
 
 ## Rate limiting (this phase)
