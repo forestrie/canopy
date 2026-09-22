@@ -156,6 +156,7 @@ export {
   computeCheckpointAccumulator,
   verifyCheckpointChain,
   CheckpointHighSSignatureError,
+  CheckpointProtectedHeaderAlgError,
   CheckpointSignedSizeMismatchError,
   type CheckpointChainLink,
   type CheckpointChainResult,
