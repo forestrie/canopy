@@ -366,12 +366,13 @@ describe("verifyCheckpointChain (FOR-368 Phase 3)", () => {
     expect(["signature", "proof_malformed"]).toContain(result.reason);
   });
 
-  it("decodes the embedded proof shape", async () => {
+  it("decodes the embedded proof shape as the relay of one", async () => {
     const cp = await buildCheckpoint(3n, 7n);
     const proof = checkpointConsistencyProof(cp);
+    expect(proof.proofs.length).toBe(1);
     expect(proof.treeSize1).toBe(3n);
     expect(proof.treeSize2).toBe(7n);
-    expect(proof.paths.length).toBe(peakMMRIndexes(2n).length);
+    expect(proof.proofs[0]!.paths.length).toBe(peakMMRIndexes(2n).length);
   });
 });
 
