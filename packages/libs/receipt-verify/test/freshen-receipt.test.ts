@@ -7,6 +7,7 @@ import {
   type NodeGetter,
 } from "@forestrie/merklelog";
 import { freshenReceipt } from "../src/freshen-receipt.js";
+import { CheckpointSignedSizeMismatchError } from "../src/checkpoint-chain.js";
 import { buildReceiptOffline } from "../src/build-receipt-offline.js";
 import { parseReceipt } from "../src/parse-receipt.js";
 import { verifyGrantReceiptOffline } from "../src/verify-grant-receipt-offline.js";
@@ -569,5 +570,99 @@ describe("freshenReceipt folds from the CALLER's trusted base (ADR-0066 D5.4)", 
     ).rejects.toThrow(
       /first consistency proof declares tree-size-1 3; the trusted base size is 7/,
     );
+  });
+});
+
+describe("a link's signed tree-size-2 must equal its declared one (review I5)", () => {
+  /** The size-3 receipt for leaf1 and the size-7 checkpoint to freshen to. */
+  async function staleAtThree(fx: Awaited<ReturnType<typeof buildFixture>>) {
+    const oldCheckpoint = buildV2CheckpointBytes({
+      mmrSize: 3n,
+      peakReceipts: [
+        await signDetachedPeakReceipt(fx.rootKeyPair, fx.nodes[2]!),
+      ],
+    });
+    return {
+      oldReceipt: buildReceiptOffline({
+        massifBytes: fx.massif7,
+        checkpointBytes: oldCheckpoint,
+        mmrIndex: 1n,
+      }),
+      latestCheckpoint: buildV2CheckpointBytes({
+        mmrSize: 7n,
+        peakReceipts: [
+          await signDetachedPeakReceipt(fx.rootKeyPair, fx.nodes[6]!),
+        ],
+      }),
+    };
+  }
+
+  /** The genuine 3 -> 7 link, with `signedTreeSize2` under the caller's
+   * control so the two sizes can be made to disagree. */
+  async function link(signedTreeSize2: bigint) {
+    const fx = await buildFixture();
+    const get: NodeGetter = (i) => fx.nodes[Number(i)]!;
+    const hasher = await createSyncHasher();
+    const { oldReceipt, latestCheckpoint } = await staleAtThree(fx);
+    const cp = indexConsistencyProof(get, 2n, 6n);
+    const a3 = peakMMRIndexes(2n).map(get);
+    const a7 = peakMMRIndexes(6n).map(get);
+    const proven = await consistentRoots(hasher, 2n, a3, cp.paths);
+    return {
+      fx,
+      oldReceipt,
+      latestCheckpoint,
+      trustedBase: { size: 3n, accumulator: a3 },
+      link: {
+        treeSize1: 3n,
+        treeSize2: 7n,
+        signedTreeSize2,
+        paths: cp.paths,
+        rightPeaks: a7.slice(proven.length),
+      },
+    };
+  }
+
+  it("rejects a link signed for 999 and declared at 7", async () => {
+    // The links arrive already decoded, so nothing re-read the field the
+    // type says `checkpointConsistencyProof` pinned to the signature: a link
+    // carrying a signed size of 999 beside a declared 7 still freshened.
+    const f = await link(999n);
+    await expect(
+      freshenReceipt({
+        oldReceiptBytes: f.oldReceipt,
+        leafValue: f.fx.leaf1.leafHash,
+        consistencyProofs: [f.link],
+        trustedBase: f.trustedBase,
+        latestCheckpointBytes: f.latestCheckpoint,
+      }),
+    ).rejects.toThrow(CheckpointSignedSizeMismatchError);
+  });
+
+  it("names the link and both sizes", async () => {
+    const f = await link(999n);
+    await expect(
+      freshenReceipt({
+        oldReceiptBytes: f.oldReceipt,
+        leafValue: f.fx.leaf1.leafHash,
+        consistencyProofs: [f.link],
+        trustedBase: f.trustedBase,
+        latestCheckpointBytes: f.latestCheckpoint,
+      }),
+    ).rejects.toThrow(/consistency proof 0: signed tree-size-2 .* 999 != .* 7/);
+  });
+
+  it("the same link with the signed size restored freshens", async () => {
+    // Round-trip confidence: the disagreement, not some other defect in the
+    // fixture, is what flips the outcome.
+    const f = await link(7n);
+    const result = await freshenReceipt({
+      oldReceiptBytes: f.oldReceipt,
+      leafValue: f.fx.leaf1.leafHash,
+      consistencyProofs: [f.link],
+      trustedBase: f.trustedBase,
+      latestCheckpointBytes: f.latestCheckpoint,
+    });
+    expect(result.sealedSize).toBe(7n);
   });
 });

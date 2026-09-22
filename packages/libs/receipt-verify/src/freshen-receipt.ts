@@ -58,6 +58,7 @@ import {
   parseCheckpoint,
 } from "./build-receipt-offline.js";
 import {
+  CheckpointSignedSizeMismatchError,
   computeCheckpointAccumulator,
   type CheckpointConsistencyProof,
 } from "./checkpoint-chain.js";
@@ -81,7 +82,9 @@ export type FreshenReceiptInput = {
   leafValue: Uint8Array;
   /** Consistency-proof chain covering [0 or the trusted base] → the latest
    * sealed size, in ascending contiguous order (the raw per-checkpoint
-   * proofs, with `paths`). The chain's last link must end at the
+   * proofs, with `paths`). Every link's `signedTreeSize2` must equal its
+   * `treeSize2`, as `checkpointConsistencyProof` requires of the checkpoint
+   * it decoded each link from. The chain's last link must end at the
    * checkpoint's sealed size. */
   consistencyProofs: readonly CheckpointConsistencyProof[];
   /** Trusted base for a suffix chain — the size the caller already trusts
@@ -111,9 +114,11 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 /**
- * Freshen a stale receipt to the latest sealed state. Throws if the chain is
- * not a contiguous cover from the trusted base to the checkpoint's sealed size,
- * if a climb node is missing from the supplied proofs, or if the recomputed
+ * Freshen a stale receipt to the latest sealed state. Throws if a link's
+ * signed `tree-size-2` disagrees with its declared one
+ * ({@link CheckpointSignedSizeMismatchError}), if the chain is not a
+ * contiguous cover from the trusted base to the checkpoint's sealed size, if
+ * a climb node is missing from the supplied proofs, or if the recomputed
  * peak does not match the folded latest accumulator.
  */
 export async function freshenReceipt(
@@ -169,6 +174,20 @@ export async function freshenReceipt(
     throw new Error(
       `base accumulator has ${baseAccumulator.length} peaks; trusted base size ${baseSize} has ${basePeaks}`,
     );
+  }
+  // Every link's SIGNED tree-size-2 must equal its declared one — the same
+  // equality `checkpointConsistencyProof` enforces when it decodes a
+  // checkpoint (ADR-0066 D1 as amended, D5.5). These links arrive already
+  // decoded, so nothing here had re-read the field the type says was pinned
+  // to the signature, and a link carrying `signedTreeSize2: 999n` beside
+  // `treeSize2: 7n` freshened (review finding I5).
+  for (let i = 0; i < links.length; i++) {
+    const link = links[i]!;
+    if (link.signedTreeSize2 !== link.treeSize2) {
+      throw new CheckpointSignedSizeMismatchError(
+        `consistency proof ${i}: signed tree-size-2 (-65933) ${link.signedTreeSize2} != declared consistency-proof tree-size-2 ${link.treeSize2}`,
+      );
+    }
   }
   // The first link must continue from that size, not from a size it names
   // itself (ADR-0066 D5.4).

@@ -91,3 +91,46 @@ export class SizeMustIncrease extends ConsistencyShapeError {
     this.name = "SizeMustIncrease";
   }
 }
+
+/**
+ * A size is outside the uint64 domain the MMR profile's sizes live in.
+ *
+ * Solidity and Go take these sizes as `uint64`, so the domain is part of
+ * their signatures; TypeScript's `bigint` has no bound of its own. Without
+ * this check a size at or above 2^64 folds here and nowhere else: the
+ * position prefix `hash_pospair64` writes is truncated to eight bytes, so
+ * the hashes computed above the bound are not the ones the other two
+ * implementations would compute, and a size that large is not one a CBOR
+ * unsigned integer can carry or the contract can store either.
+ */
+export class SizeNotUint64 extends ConsistencyShapeError {
+  constructor(
+    readonly which: "sizeFrom" | "sizeTo",
+    readonly size: bigint,
+  ) {
+    super(`${which} (${size}) is outside the uint64 range [0, 2^64 - 1]`);
+    this.name = "SizeNotUint64";
+  }
+}
+
+/**
+ * `paths` is not a dense array of `Uint8Array[]`.
+ *
+ * A hole (a sparse array), a `null`/`undefined` entry, a path that is not an
+ * array, or a path element that is not a `Uint8Array` all survive the peak
+ * COUNT check and then surface as a bare `TypeError` out of the fold, which
+ * escapes the {@link ConsistencyShapeError} family callers are told to
+ * switch on. The shape of the proof material is a proof-shape condition like
+ * any other, so it is reported as one.
+ */
+export class ConsistencyPathMalformed extends ConsistencyShapeError {
+  constructor(
+    readonly detail: string,
+    readonly index?: number,
+  ) {
+    super(
+      index === undefined ? `paths: ${detail}` : `path ${index}: ${detail}`,
+    );
+    this.name = "ConsistencyPathMalformed";
+  }
+}

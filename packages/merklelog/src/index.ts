@@ -82,8 +82,10 @@ export {
   IncompleteTreeSize,
   ConsistencyPeakCountMismatch,
   ConsistencyPathLengthMismatch,
+  ConsistencyPathMalformed,
   ConsistencyRootMismatch,
   SizeMustIncrease,
+  SizeNotUint64,
 } from "./mmr/errors.js";
 export { createSyncHasher } from "./mmr/algorithms-sync.js";
 export type { Proof, Peak } from "./mmr/types.js";

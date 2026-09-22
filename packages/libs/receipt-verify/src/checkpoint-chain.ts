@@ -40,8 +40,9 @@
  */
 import {
   COSE_ALG_ES256,
-  extractAlgFromProtected,
+  ProtectedHeaderAlgError,
   isLowS,
+  readProtectedAlg,
   readProtectedTreeSize2,
 } from "@forestrie/encoding";
 import {
@@ -105,6 +106,25 @@ export class CheckpointHighSSignatureError extends Error {
 }
 
 /**
+ * The checkpoint's protected header carries no integer `alg` (label 1).
+ *
+ * The univocity contract rejects such a header outright — the structural
+ * walk finds the size, and the `alg` requirement in the same call raises
+ * `ClaimNotFound(1)` or `UnexpectedMajorType`. Off-chain the header used to
+ * read as "no algorithm stated", which both turned OFF the high-s rejection
+ * below (gated on the algorithm being ES256) and still yielded a signed size
+ * to fold from — so a checkpoint the chain will never anchor verified here
+ * under weaker rules than a well-formed one (review finding S-1). Reported
+ * as `"proof_malformed"` by {@link verifyCheckpointChain}.
+ */
+export class CheckpointProtectedHeaderAlgError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CheckpointProtectedHeaderAlgError";
+  }
+}
+
+/**
  * Decode the embedded consistency proof (`vdp` 396 key -2) and require its
  * declared `tree-size-2` to equal the checkpoint's SIGNED `tree-size-2` from
  * the protected header (ADR-0066 D1 as amended, D5.5, label -65933).
@@ -126,12 +146,27 @@ export class CheckpointHighSSignatureError extends Error {
  *   differs from the declared proof's tree-size-2
  * @throws {CheckpointHighSSignatureError} when the checkpoint is ES256-signed
  *   with a high-s (malleable) signature
+ * @throws {CheckpointProtectedHeaderAlgError} when the protected header
+ *   carries no integer `alg` (label 1)
  */
 export function checkpointConsistencyProof(
   checkpointBytes: Uint8Array,
 ): CheckpointConsistencyProof {
   const { coseSign1, unprotected } = parseCheckpoint(checkpointBytes);
-  const alg = extractAlgFromProtected(coseSign1[0]);
+  // Strict: a header with no integer alg is one the contract rejects, and
+  // reading it leniently would switch the high-s rejection below off while
+  // the signed size was still taken from it (S-1).
+  let alg: number;
+  try {
+    alg = readProtectedAlg(coseSign1[0]);
+  } catch (err) {
+    if (err instanceof ProtectedHeaderAlgError) {
+      throw new CheckpointProtectedHeaderAlgError(
+        `checkpoint protected header carries no integer alg (label 1): ${err.message}`,
+      );
+    }
+    throw err;
+  }
   const signature = coseSign1[3];
   if (alg === COSE_ALG_ES256 && signature.length === 64 && !isLowS(signature)) {
     throw new CheckpointHighSSignatureError(
@@ -273,11 +308,14 @@ export type CheckpointChainResult =
  *   as the fold's starting accumulator (a suffix chain rooted in an
  *   already-trusted accumulator supplies both).
  * - A supplied `trustedBase` must describe a state an MMR can be in: its
- *   `size` a complete MMR size, and its `accumulator` holding one peak per
- *   peak of that size. `peaksBitmap` rounds an incomplete size DOWN to the
- *   largest MMR below it, so without the completeness check a size of 5
- *   folds the 4 -> N shape while every link reports a base of 5 — a node
- *   count no MMR has. Both are `proof_malformed`.
+ *   `size` a complete MMR size, its `accumulator` holding one peak per peak
+ *   of that size, and every one of those peaks a 32-byte node value.
+ *   `peaksBitmap` rounds an incomplete size DOWN to the largest MMR below
+ *   it, so without the completeness check a size of 5 folds the 4 -> N shape
+ *   while every link reports a base of 5 — a node count no MMR has; and
+ *   without the byte-length check an origin peak of any length is copied
+ *   through the empty-path branch into the detached payload. All three are
+ *   `proof_malformed`.
  * - The first link's declared `tree-size-1` must equal that trusted
  *   starting size, and every subsequent link's must equal the previous
  *   link's sealed `tree-size-2`; either disagreement is `size_mismatch`.
@@ -348,6 +386,25 @@ export async function verifyCheckpointChain(opts: {
         detail: `trusted base accumulator has ${trustedBase.accumulator.length} peaks; size ${trustedBase.size} has ${basePeaks}`,
         links,
       };
+    }
+    // …and every peak must be a 32-byte node value, the check arbor's
+    // producer applies to both path elements and right-peaks (`toNode32`).
+    // The count alone does not reach it: on the empty-path branch an origin
+    // peak is copied into the result verbatim, so a 0/31/33/64-byte peak
+    // reaches `accumulatorPayload` and shortens or lengthens the detached
+    // payload, with only the signature left to reject it (review finding
+    // I2, canopy C6).
+    for (let i = 0; i < trustedBase.accumulator.length; i++) {
+      const peak = trustedBase.accumulator[i] as unknown;
+      if (!(peak instanceof Uint8Array) || peak.length !== 32) {
+        return {
+          ok: false,
+          reason: "proof_malformed",
+          at: 0,
+          detail: `trusted base accumulator peak ${i} is not a 32-byte node value (${describePeak(peak)})`,
+          links,
+        };
+      }
     }
   }
   let accumulator = trustedBase?.accumulator ?? [];
@@ -438,4 +495,12 @@ export async function verifyCheckpointChain(opts: {
     expectedBase = proof.treeSize2;
   }
   return { ok: true, links, accumulator };
+}
+
+/** Name what was found where a 32-byte accumulator peak was required. */
+function describePeak(peak: unknown): string {
+  if (peak instanceof Uint8Array) return `${peak.length} bytes`;
+  if (peak === null) return "null";
+  if (Array.isArray(peak)) return "an array";
+  return typeof peak;
 }
