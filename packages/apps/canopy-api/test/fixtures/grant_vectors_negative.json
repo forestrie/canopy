@@ -1,0 +1,42 @@
+[
+  {
+    "description": "keys 7 (signer) and 8 (kind) present: golden grant (all fields, fixed-length left-padded)",
+    "cbor_hex": "a90048000000000000000101582000000000000000000000000000000000000102030405060708090a0b0c0d0e0f02582000000000000000000000000000000000101112131415161718191a1b1c1d1e1f03480000000000000001041903e805010642abcd074201020801",
+    "must_reject": true,
+    "reason": "obsolete_key",
+    "obsolete_keys": [
+      7,
+      8
+    ]
+  },
+  {
+    "description": "keys 7 (signer) and 8 (kind) present: minimal grant (zero bounds, empty grantData)",
+    "cbor_hex": "a900480000000000000000015820000000000000000000000000000000000405060708090a0b0c0d0e0f101112130258200000000000000000000000000000000005060708090a0b0c0d0e0f1011121314034800000000000000010400050006400741000800",
+    "must_reject": true,
+    "reason": "obsolete_key",
+    "obsolete_keys": [
+      7,
+      8
+    ]
+  },
+  {
+    "description": "keys 7 (signer) and 8 (kind) present: fixed-length padding (16-byte logId/ownerLogId -> 32, 1-byte flags -> 8)",
+    "cbor_hex": "a90048000000000000000201582000000000000000000000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa02582000000000000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb034800000000000000ff04000500064101074202030801",
+    "must_reject": true,
+    "reason": "obsolete_key",
+    "obsolete_keys": [
+      7,
+      8
+    ]
+  },
+  {
+    "description": "keys 7 (signer) and 8 (kind) present: variable-length (empty grantData)",
+    "cbor_hex": "a90048000000000000000301582000000000000000000000000000000000000102030405060708090a0b0c0d0e0f02582000000000000000000000000000000000101112131415161718191a1b1c1d1e1f03480000000000000001041863050a06400741ee0800",
+    "must_reject": true,
+    "reason": "obsolete_key",
+    "obsolete_keys": [
+      7,
+      8
+    ]
+  }
+]

@@ -3,3 +3,5 @@
 # sha256; see the PROVENANCE.md alongside each one).
 packages/libs/*/test/fixtures/lane-a/PROVENANCE.md
 packages/shared/encoding/src/testdata/checkpoint-receipt-kat39.json
+packages/apps/canopy-api/test/fixtures/grant_vectors.json
+packages/apps/canopy-api/test/fixtures/grant_vectors_negative.json
