@@ -12,6 +12,7 @@ import {
 import { grantDataToBytes, type Grant } from "../src/grant/types.js";
 import { uuidToBytes } from "../src/grant/uuid-bytes.js";
 import grantVectors from "./fixtures/grant_vectors.json";
+import grantVectorsNegative from "./fixtures/grant_vectors_negative.json";
 
 const DEFAULT_IDTIMESTAMP = new Uint8Array(8).fill(1);
 
@@ -128,6 +129,30 @@ describe("Grant format (known-answer from grant_vectors.json)", () => {
       const { grant, idtimestamp } = decodeGrantResponse(cborBytes);
       const reencoded = encodeGrantForResponse(grant, idtimestamp);
       expect(Array.from(reencoded)).toEqual(Array.from(cborBytes));
+    });
+  }
+});
+
+describe("Grant format (known-answer from grant_vectors_negative.json, protocol#4, FOR-580)", () => {
+  for (const v of grantVectorsNegative as Array<{
+    description: string;
+    cbor_hex: string;
+    must_reject: true;
+    reason: string;
+    obsolete_keys: number[];
+  }>) {
+    it(`${v.description} — decodeGrantResponse rejects`, () => {
+      const cborBytes = hexToBytes(v.cbor_hex);
+      expect(() => decodeGrantResponse(cborBytes)).toThrow(
+        "obsolete CBOR keys 7 (signer) and 8 (kind)",
+      );
+    });
+
+    it(`${v.description} — decodeGrantPayload rejects`, () => {
+      const cborBytes = hexToBytes(v.cbor_hex);
+      expect(() => decodeGrantPayload(cborBytes)).toThrow(
+        "obsolete CBOR keys 7 (signer) and 8 (kind)",
+      );
     });
   }
 });

@@ -25,6 +25,32 @@ function leftPad(b: Uint8Array, length: number): Uint8Array {
   return out;
 }
 
+/**
+ * Grant wire v0 map keys are 0–6; keys 7 (`signer`) and 8 (`kind`) were
+ * retired before this package existed (FOR-580 owner ruling) and must be
+ * rejected here the same way the encoding and canopy-api codecs already do
+ * on the admission path (`packages/shared/encoding/src/grant-codec.ts`,
+ * `packages/apps/canopy-api/src/grant/codec.ts`) — this codec previously
+ * decoded by key number and silently ignored them.
+ */
+function assertNoObsoleteWireKeys(
+  m: Map<number, unknown> | Record<number, unknown>,
+): void {
+  const keys =
+    m instanceof Map
+      ? [...m.keys()]
+      : Object.keys(m as Record<string, unknown>)
+          .map(Number)
+          .filter((n) => Number.isFinite(n));
+  for (const k of keys) {
+    if (k === 7 || k === 8) {
+      throw new Error(
+        "Grant wire v0: obsolete CBOR keys 7 (signer) and 8 (kind) must not be present; use grantData in the commitment only.",
+      );
+    }
+  }
+}
+
 function mapToGrant(m: Map<number, unknown> | Record<number, unknown>): Grant {
   const get = (k: number): unknown =>
     m instanceof Map ? m.get(k) : (m as Record<number, unknown>)[k];
@@ -63,7 +89,9 @@ export function decodeGrantPayload(bytes: Uint8Array): Grant {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new Error("Grant payload must be a CBOR map");
   }
-  return mapToGrant(raw as Map<number, unknown> | Record<number, unknown>);
+  const m = raw as Map<number, unknown> | Record<number, unknown>;
+  assertNoObsoleteWireKeys(m);
+  return mapToGrant(m);
 }
 
 export function decodeGrantResponse(bytes: Uint8Array): {
@@ -75,6 +103,7 @@ export function decodeGrantResponse(bytes: Uint8Array): {
     throw new Error("Grant response must be a CBOR map");
   }
   const m = raw as Map<number, unknown> | Record<number, unknown>;
+  assertNoObsoleteWireKeys(m);
   const get = (k: number): unknown =>
     m instanceof Map ? m.get(k) : (m as Record<number, unknown>)[k];
   const idtimestampVal = get(CBOR_KEY_IDTIMESTAMP);
