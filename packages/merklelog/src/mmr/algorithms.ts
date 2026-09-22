@@ -23,14 +23,24 @@ import {
 } from "./proof.js";
 import {
   ConsistencyPathLengthMismatch,
+  ConsistencyPathMalformed,
   ConsistencyPeakCountMismatch,
   ConsistencyRootMismatch,
   IncompleteTreeSize,
   SizeMustIncrease,
+  SizeNotUint64,
 } from "./errors.js";
 import { Uint64 } from "../uint64/index.js";
 import { heightIndex } from "./math.js";
 import { arraysEqual } from "../utils/arrays.js";
+
+/**
+ * Upper bound of the uint64 domain the MMR profile's sizes live in: Solidity
+ * and Go take every size as `uint64`, and a CBOR unsigned integer caps here
+ * too. `bigint` carries no such bound, so {@link consistentRootsForSizes}
+ * states it.
+ */
+const MAX_UINT64 = (1n << 64n) - 1n;
 
 /**
  * Encodes a Uint64 as 8 bytes big-endian.
@@ -282,10 +292,13 @@ export async function consistentRoots(
  *   any), and `expectedRight`, the number of MMR(sizeTo) peaks the prover must
  *   supply as right peaks. `roots` followed by those right peaks is the
  *   accumulator of MMR(sizeTo).
+ * @throws {SizeNotUint64} if either size is outside `[0, 2^64 - 1]`
  * @throws {SizeMustIncrease} if `sizeTo <= sizeFrom`
  * @throws {IncompleteTreeSize} if `sizeTo` is not a complete MMR size
  * @throws {ConsistencyPeakCountMismatch} if `accumulatorFrom` or `paths` does
  *   not have one entry per origin peak
+ * @throws {ConsistencyPathMalformed} if `paths` is not a dense array of
+ *   `Uint8Array[]`
  * @throws {ConsistencyPathLengthMismatch} if a path length differs from the
  *   length the two sizes imply
  * @throws {ConsistencyRootMismatch} if two paths under one target peak produce
@@ -298,6 +311,14 @@ export async function consistentRootsForSizes(
   accumulatorFrom: Uint8Array[],
   paths: Uint8Array[][],
 ): Promise<{ roots: Uint8Array[]; expectedRight: number }> {
+  // The sizes are uint64 in Solidity and Go; `bigint` carries no such bound,
+  // so it is stated here before any arithmetic reads them.
+  if (sizeFrom < 0n || sizeFrom > MAX_UINT64) {
+    throw new SizeNotUint64("sizeFrom", sizeFrom);
+  }
+  if (sizeTo < 0n || sizeTo > MAX_UINT64) {
+    throw new SizeNotUint64("sizeTo", sizeTo);
+  }
   if (sizeTo <= sizeFrom) {
     throw new SizeMustIncrease(sizeFrom, sizeTo);
   }
@@ -314,9 +335,13 @@ export async function consistentRootsForSizes(
   if (accumulatorFrom.length !== n) {
     throw new ConsistencyPeakCountMismatch(n, accumulatorFrom.length);
   }
+  if (!Array.isArray(paths)) {
+    throw new ConsistencyPathMalformed(`not an array (got ${typeName(paths)})`);
+  }
   if (paths.length !== n) {
     throw new ConsistencyPeakCountMismatch(n, paths.length);
   }
+  assertDensePaths(paths);
   const nto = popcount(to);
   if (n === 0) {
     return { roots: [], expectedRight: nto };
@@ -468,4 +493,41 @@ export function indexConsistencyProof(
     paths.push(inclusionProof(get, mmrIndexB, peak));
   }
   return { mmrSizeA: mmrIndexA + 1n, mmrSizeB: mmrIndexB + 1n, paths };
+}
+
+/** Name the value found where a path or a path element was required. */
+function typeName(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "an array";
+  return typeof value;
+}
+
+/**
+ * Require `paths` to be a DENSE array of `Uint8Array[]`: no holes, and every
+ * element an array of `Uint8Array`. A hole and an out-of-type entry both
+ * survive the peak COUNT check and would otherwise reach the hashing loop,
+ * where they surface as a bare `TypeError` outside the
+ * `ConsistencyShapeError` family (review finding C6).
+ */
+function assertDensePaths(paths: Uint8Array[][]): void {
+  for (let i = 0; i < paths.length; i++) {
+    if (!(i in paths)) {
+      throw new ConsistencyPathMalformed("missing (the array is sparse)", i);
+    }
+    const path = paths[i] as unknown;
+    if (!Array.isArray(path)) {
+      throw new ConsistencyPathMalformed(
+        `not an array (got ${typeName(path)})`,
+        i,
+      );
+    }
+    for (let j = 0; j < path.length; j++) {
+      if (!(j in path) || !((path[j] as unknown) instanceof Uint8Array)) {
+        throw new ConsistencyPathMalformed(
+          `element ${j} is not a Uint8Array (got ${typeName(path[j])})`,
+          i,
+        );
+      }
+    }
+  }
 }

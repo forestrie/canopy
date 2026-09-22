@@ -22,10 +22,12 @@ import {
   peaksBitmap,
   ConsistencyPathLengthMismatch,
   ConsistencyPeakCountMismatch,
+  ConsistencyPathMalformed,
   ConsistencyRootMismatch,
   ConsistencyShapeError,
   IncompleteTreeSize,
   SizeMustIncrease,
+  SizeNotUint64,
 } from "../../src/index.js";
 import { createSyncHasher } from "../../src/mmr/algorithms-sync.js";
 import type { NodeGetter } from "../../src/mmr/proof.js";
@@ -277,5 +279,145 @@ describe("consistentRootsForSizes (KAT-39)", () => {
         complete.has(size),
       );
     }
+  });
+});
+
+/**
+ * The sizes are `uint64` in Solidity and Go; `bigint` carries no bound, so
+ * the fold states the domain itself (review finding C5). Above the bound the
+ * position prefix `hash_pospair64` commits is truncated to eight bytes, so
+ * the roots computed there are not the ones the other two implementations
+ * would compute — and no CBOR unsigned integer can carry such a size anyway.
+ */
+describe("consistentRootsForSizes uint64 domain", () => {
+  const MAX = (1n << 64n) - 1n;
+
+  it("accepts the largest uint64 size", async () => {
+    // 2^64 - 1 is a complete (perfect) MMR size; with no origin peaks there
+    // is nothing to fold, so this reaches the early return.
+    const { roots, expectedRight } = await consistentRootsForSizes(
+      hasher,
+      0n,
+      MAX,
+      [],
+      [],
+    );
+    expect(roots).toEqual([]);
+    expect(expectedRight).toBe(1);
+  });
+
+  it("rejects a target size one above the largest uint64", async () => {
+    await expect(
+      consistentRootsForSizes(hasher, 0n, 1n << 64n, [], []),
+    ).rejects.toBeInstanceOf(SizeNotUint64);
+  });
+
+  it("rejects a target size of 2^65 - 1", async () => {
+    // A complete MMR size with 2^64 leaves: complete, and still out of
+    // domain. Accepted before the bound was stated.
+    await expect(
+      consistentRootsForSizes(hasher, 0n, (1n << 65n) - 1n, [], []),
+    ).rejects.toBeInstanceOf(SizeNotUint64);
+    await expect(
+      consistentRootsForSizes(
+        hasher,
+        1n,
+        (1n << 65n) - 1n,
+        [nodes[0]],
+        [Array.from({ length: 64 }, () => new Uint8Array(32).fill(1))],
+      ),
+    ).rejects.toBeInstanceOf(SizeNotUint64);
+  });
+
+  it("rejects an origin size above the largest uint64", async () => {
+    await expect(
+      consistentRootsForSizes(hasher, 1n << 64n, (1n << 64n) + 2n, [], []),
+    ).rejects.toBeInstanceOf(SizeNotUint64);
+  });
+
+  it("rejects a negative size", async () => {
+    await expect(
+      consistentRootsForSizes(hasher, -1n, 3n, [], []),
+    ).rejects.toBeInstanceOf(SizeNotUint64);
+  });
+
+  it("an out-of-domain size is a ConsistencyShapeError", async () => {
+    await expect(
+      consistentRootsForSizes(hasher, 0n, 1n << 64n, [], []),
+    ).rejects.toBeInstanceOf(ConsistencyShapeError);
+  });
+});
+
+/**
+ * `paths` material that is not a dense `Uint8Array[][]` survives the peak
+ * COUNT check and used to surface as a bare `TypeError`, outside the
+ * `ConsistencyShapeError` family callers switch on (review finding C6).
+ */
+describe("consistentRootsForSizes paths shape", () => {
+  /** MMR(11) -> MMR(39): three origin peaks, so three paths. */
+  const ELEVEN_TO_39 = () => pair(10, 38);
+
+  it("rejects null in place of the paths array", async () => {
+    const { accumulatorFrom } = ELEVEN_TO_39();
+    await expect(
+      consistentRootsForSizes(
+        hasher,
+        11n,
+        39n,
+        accumulatorFrom,
+        null as unknown as Uint8Array[][],
+      ),
+    ).rejects.toBeInstanceOf(ConsistencyPathMalformed);
+  });
+
+  it("rejects a sparse paths array of the right length", async () => {
+    const { accumulatorFrom } = ELEVEN_TO_39();
+    const sparse = new Array<Uint8Array[]>(3);
+    expect(sparse.length).toBe(3);
+    await expect(
+      consistentRootsForSizes(hasher, 11n, 39n, accumulatorFrom, sparse),
+    ).rejects.toBeInstanceOf(ConsistencyPathMalformed);
+  });
+
+  it("rejects a null path", async () => {
+    const { accumulatorFrom } = ELEVEN_TO_39();
+    await expect(
+      consistentRootsForSizes(hasher, 11n, 39n, accumulatorFrom, [
+        null,
+        null,
+        null,
+      ] as unknown as Uint8Array[][]),
+    ).rejects.toBeInstanceOf(ConsistencyPathMalformed);
+  });
+
+  it("rejects a path that is not an array", async () => {
+    const { paths, accumulatorFrom } = ELEVEN_TO_39();
+    const mangled = [...paths];
+    mangled[0] = "not-an-array" as unknown as Uint8Array[];
+    await expect(
+      consistentRootsForSizes(hasher, 11n, 39n, accumulatorFrom, mangled),
+    ).rejects.toBeInstanceOf(ConsistencyPathMalformed);
+  });
+
+  it("rejects a path element that is not a Uint8Array", async () => {
+    const { paths, accumulatorFrom } = ELEVEN_TO_39();
+    const mangled = paths.map((p) => [...p]);
+    mangled[0][0] = "not-bytes" as unknown as Uint8Array;
+    await expect(
+      consistentRootsForSizes(hasher, 11n, 39n, accumulatorFrom, mangled),
+    ).rejects.toBeInstanceOf(ConsistencyPathMalformed);
+  });
+
+  it("a malformed paths array is a ConsistencyShapeError", async () => {
+    const { accumulatorFrom } = ELEVEN_TO_39();
+    await expect(
+      consistentRootsForSizes(
+        hasher,
+        11n,
+        39n,
+        accumulatorFrom,
+        new Array<Uint8Array[]>(3),
+      ),
+    ).rejects.toBeInstanceOf(ConsistencyShapeError);
   });
 });
