@@ -88,9 +88,15 @@ function asBytesArray(v: unknown, what: string): Uint8Array[] {
 /** Decode one `bstr .cbor [tree-size-1, tree-size-2, paths, right-peaks]`. */
 function decodeOneProof(proofBstr: Uint8Array): DecodedConsistencyProof {
   const proof = decodeCborDeterministic(proofBstr);
-  if (!Array.isArray(proof) || proof.length < 4) {
+  // Exactly 4 — the draft's CDDL names a fixed-arity array, and
+  // go-merklelog's decoder rejects any other length (F2). A 5th element
+  // (e.g. another proof tuple, mistaken for a chain of two) is as malformed
+  // as a 3rd missing.
+  if (!Array.isArray(proof) || proof.length !== 4) {
     throw new Error(
-      "consistency proof must be [tree-size-1, tree-size-2, paths, right-peaks]",
+      `consistency proof must be [tree-size-1, tree-size-2, paths, right-peaks] (4 elements), got ${
+        Array.isArray(proof) ? proof.length : typeof proof
+      }`,
     );
   }
   const pathsRaw = proof[2];

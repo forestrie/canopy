@@ -406,3 +406,51 @@ describe("a receipt carrying one consistency proof", () => {
     );
   });
 });
+
+describe("a consistency proof tuple must have exactly 4 elements (F2)", () => {
+  it("rejects a 5-element tuple, even when the 5th is another proof tuple", async () => {
+    // As if two proofs had been concatenated into one array instead of
+    // relayed as two entries under -2 — still an arity violation, not a
+    // nested chain.
+    const only = step(1, 7);
+    const nestedProofTuple = encodeCborDeterministic([
+      only.treeSize1,
+      only.treeSize2,
+      only.paths,
+      only.rightPeaks,
+    ]);
+    const bad = encodeCborDeterministic([
+      only.treeSize1,
+      only.treeSize2,
+      only.paths,
+      only.rightPeaks,
+      nestedProofTuple,
+    ]);
+    const bytes = await receipt({ entry: [bad], signedSize: 7 });
+    expect(() => checkpointConsistencyProof(bytes)).toThrow(
+      /\(4 elements\), got 5/,
+    );
+  });
+
+  it("rejects a 3-element tuple", async () => {
+    const only = step(1, 7);
+    const bad = encodeCborDeterministic([
+      only.treeSize1,
+      only.treeSize2,
+      only.paths,
+    ]);
+    const bytes = await receipt({ entry: [bad], signedSize: 7 });
+    expect(() => checkpointConsistencyProof(bytes)).toThrow(
+      /\(4 elements\), got 3/,
+    );
+  });
+
+  it("leaves the 4-element form unchanged", async () => {
+    const only = step(1, 7);
+    const bytes = await receipt({ entry: [proofBstr(only)], signedSize: 7 });
+    const decoded = checkpointConsistencyProof(bytes);
+    expect(decoded.proofs.length).toBe(1);
+    expect(decoded.treeSize1).toBe(1n);
+    expect(decoded.treeSize2).toBe(7n);
+  });
+});

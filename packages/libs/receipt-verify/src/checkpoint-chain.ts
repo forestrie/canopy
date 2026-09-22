@@ -92,11 +92,19 @@ export type CheckpointConsistencyProof = {
 /**
  * A relayed consistency-proof chain does not join up: a proof's declared
  * `tree-size-1` is not the size the fold has reached — the caller's trusted
- * size for the first proof, the previous proof's `tree-size-2` after that.
- * Reported as `"size_mismatch"` by {@link verifyCheckpointChain}, the same
- * as any other size disagreement, because the sizes it names are unsigned
- * (ADR-0066 D2): nothing distinguishes a relay assembled in the wrong order
- * from one assembled over a different log.
+ * size for the first proof, the previous proof's `tree-size-2` after that —
+ * or, having applied every proof, the fold reaches a size other than the
+ * chain link's own declared `tree-size-2` (F3: a caller-assembled link —
+ * `freshenReceipt` callers build these from on-chain calldata, never
+ * through {@link checkpointConsistencyProof} — can set `proofs` and
+ * `treeSize2` independently, which `checkpointConsistencyProof` itself
+ * never allows to disagree). go-merklelog reuses its equivalent
+ * `ErrProofChainNotContiguous` for this same end-of-chain comparison
+ * (`checkpointverify.go:245-251`, folded size vs. signed size). Reported as
+ * `"size_mismatch"` by {@link verifyCheckpointChain}, the same as any other
+ * size disagreement, because the sizes it names are unsigned (ADR-0066 D2):
+ * nothing distinguishes a relay assembled in the wrong order from one
+ * assembled over a different log.
  */
 export class ConsistencyChainNotContiguousError extends Error {
   constructor(message: string) {
@@ -260,9 +268,22 @@ export function checkpointConsistencyProof(
  * only the last step's size is signed, so the intermediate sizes are worth
  * no more than their agreement with each other.
  *
+ * `proof.proofs` must hold at least one step and, once every step has been
+ * applied, the fold must have reached exactly `proof.treeSize2` (F3).
+ * `checkpointConsistencyProof` already guarantees both — the decode rejects
+ * an empty `consistency-proofs` array (`EmptyConsistencyProofsError`) and
+ * sets `treeSize2` from the last decoded proof — but a caller-assembled
+ * link (`freshenReceipt` callers building from on-chain calldata) is not
+ * decoded through it, so both are re-checked here rather than trusted from
+ * the type.
+ *
+ * @throws {EmptyConsistencyProofsError} when `proof.proofs` is empty — an
+ *   already-decoded link the caller assembled themselves rather than one
+ *   `checkpointConsistencyProof` produced, which never returns one
  * @throws {ConsistencyChainNotContiguousError} when the first proof's
- *   `treeSize1` is not `sizeFrom`, or a later proof's `treeSize1` is not the
- *   previous proof's `treeSize2`
+ *   `treeSize1` is not `sizeFrom`, a later proof's `treeSize1` is not the
+ *   previous proof's `treeSize2`, or the size the fold reaches after every
+ *   proof is not `proof.treeSize2`
  * @throws {Error} when a proof supplies a right-peaks count other than
  *   {@link consistentRootsForSizes}'s `expectedRight`
  * @throws {ConsistencyShapeError} (`@forestrie/merklelog`) when a proof does
@@ -273,6 +294,12 @@ export async function computeCheckpointAccumulator(
   accumulatorFrom: Uint8Array[],
   sizeFrom: bigint,
 ): Promise<Uint8Array[]> {
+  if (proof.proofs.length === 0) {
+    throw new EmptyConsistencyProofsError(
+      "consistency proof relays no proofs (empty proofs array); at least " +
+        "one is required to fold",
+    );
+  }
   const hasher = new SubtleHasher();
   let accumulator = accumulatorFrom;
   let size = sizeFrom;
@@ -299,6 +326,18 @@ export async function computeCheckpointAccumulator(
     }
     accumulator = [...roots, ...step.rightPeaks];
     size = step.treeSize2;
+  }
+  // The fold must land exactly on the size the LINK itself declares —
+  // `proof.treeSize2` — not merely on whatever size its last proof happened
+  // to reach: a caller-assembled link can set the two independently (e.g.
+  // proofs folding 1 -> 3 alongside a declared treeSize2 of 7), which would
+  // otherwise fold to 3 and be reported as size 7 to every downstream
+  // caller reading the declared field instead of the fold. Mirrors
+  // go-merklelog's own end-of-chain check (checkpointverify.go:245-251).
+  if (size !== proof.treeSize2) {
+    throw new ConsistencyChainNotContiguousError(
+      `consistency proof folds to tree-size-2 ${size}; the chain's declared tree-size-2 is ${proof.treeSize2}`,
+    );
   }
   return accumulator;
 }

@@ -8,6 +8,7 @@ import {
 } from "@forestrie/merklelog";
 import { freshenReceipt } from "../src/freshen-receipt.js";
 import { CheckpointSignedSizeMismatchError } from "../src/checkpoint-chain.js";
+import { EmptyConsistencyProofsError } from "../src/decode-checkpoint-consistency-proof.js";
 import { buildReceiptOffline } from "../src/build-receipt-offline.js";
 import { parseReceipt } from "../src/parse-receipt.js";
 import { verifyGrantReceiptOffline } from "../src/verify-grant-receipt-offline.js";
@@ -548,6 +549,47 @@ describe("freshenReceipt (FOR-418)", () => {
     ).rejects.toThrow(
       /entry 1 declares tree-size-1 4; the previous proof reached 3/,
     );
+  });
+
+  it("rejects a link with an empty proofs array rather than freshening it unchanged (F3)", async () => {
+    // A link a caller assembled directly from on-chain calldata (as
+    // forestrie-cli does) rather than decoded via checkpointConsistencyProof
+    // — which never returns an empty proofs array. Declaring a link from 0
+    // to 3 with nothing to fold must not freshen the receipt against an
+    // accumulator that never actually advanced.
+    const fx = await buildFixture();
+    const oldCheckpoint = buildV2CheckpointBytes({
+      mmrSize: 3n,
+      peakReceipts: [
+        await signDetachedPeakReceipt(fx.rootKeyPair, fx.nodes[2]!),
+      ],
+    });
+    const oldReceipt = buildReceiptOffline({
+      massifBytes: fx.massif7,
+      checkpointBytes: oldCheckpoint,
+      mmrIndex: 1n,
+    });
+    const latestCheckpoint = buildV2CheckpointBytes({
+      mmrSize: 3n,
+      peakReceipts: [
+        await signDetachedPeakReceipt(fx.rootKeyPair, fx.nodes[2]!),
+      ],
+    });
+    const emptyLink = {
+      proofs: [] as never[],
+      treeSize1: 0n,
+      treeSize2: 3n,
+      signedTreeSize2: 3n,
+    };
+
+    await expect(
+      freshenReceipt({
+        oldReceiptBytes: oldReceipt,
+        leafValue: fx.leaf1.leafHash,
+        consistencyProofs: [emptyLink],
+        latestCheckpointBytes: latestCheckpoint,
+      }),
+    ).rejects.toThrow(EmptyConsistencyProofsError);
   });
 
   it("rejects a chain whose endpoint does not match the checkpoint's sealed size", async () => {

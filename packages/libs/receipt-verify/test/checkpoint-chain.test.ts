@@ -26,8 +26,12 @@ import {
   CheckpointHighSSignatureError,
   CheckpointProtectedHeaderAlgError,
   checkpointConsistencyProof,
+  computeCheckpointAccumulator,
+  ConsistencyChainNotContiguousError,
   verifyCheckpointChain,
+  type CheckpointConsistencyProof,
 } from "../src/checkpoint-chain.js";
+import { EmptyConsistencyProofsError } from "../src/decode-checkpoint-consistency-proof.js";
 import { SubtleHasher } from "../src/subtle-hasher.js";
 import { toHighS, toLowS } from "./helpers/to-low-s.js";
 
@@ -1018,5 +1022,79 @@ describe("every trusted base peak is a 32-byte node value (review I2, canopy C6)
       trustedBase: { size: 3n, accumulator: peaksAt(2n) },
     });
     expect(result.ok).toBe(true);
+  });
+});
+
+describe("computeCheckpointAccumulator on a caller-assembled link (F3)", () => {
+  // `checkpointConsistencyProof` always sets `treeSize2` from the last
+  // decoded proof and never returns an empty `proofs` array, so these two
+  // shapes only arise from a link a caller assembled directly — the
+  // `freshenReceipt` path, whose links are built from on-chain calldata
+  // rather than decoded from a checkpoint.
+
+  it("rejects an empty proofs array instead of returning the input accumulator unchanged", async () => {
+    const link: CheckpointConsistencyProof = {
+      proofs: [],
+      treeSize1: 3n,
+      treeSize2: 3n,
+      signedTreeSize2: 3n,
+    };
+    const accumulatorFrom = peaksAt(2n);
+    await expect(
+      computeCheckpointAccumulator(link, accumulatorFrom, 3n),
+    ).rejects.toThrow(EmptyConsistencyProofsError);
+  });
+
+  it("rejects a link whose folded size does not match its declared tree-size-2", async () => {
+    // The one relayed proof genuinely folds 3 -> 7, but the link's own
+    // treeSize2 claims 15 — a disagreement checkpointConsistencyProof can
+    // never produce, since it always reads treeSize2 off this same proof.
+    const real = await realProof(3n, 7n);
+    const link: CheckpointConsistencyProof = {
+      proofs: [
+        {
+          treeSize1: real.treeSize1,
+          treeSize2: 7n,
+          paths: real.paths,
+          rightPeaks: real.rightPeaks,
+        },
+      ],
+      treeSize1: 3n,
+      treeSize2: 15n,
+      signedTreeSize2: 15n,
+    };
+    await expect(
+      computeCheckpointAccumulator(link, peaksAt(2n), 3n),
+    ).rejects.toThrow(ConsistencyChainNotContiguousError);
+    await expect(
+      computeCheckpointAccumulator(link, peaksAt(2n), 3n),
+    ).rejects.toThrow(
+      /folds to tree-size-2 7; the chain's declared tree-size-2 is 15/,
+    );
+  });
+
+  it("the genuine shape still folds to the matching accumulator", async () => {
+    const real = await realProof(3n, 7n);
+    const link: CheckpointConsistencyProof = {
+      proofs: [
+        {
+          treeSize1: real.treeSize1,
+          treeSize2: 7n,
+          paths: real.paths,
+          rightPeaks: real.rightPeaks,
+        },
+      ],
+      treeSize1: 3n,
+      treeSize2: 7n,
+      signedTreeSize2: 7n,
+    };
+    const accumulator = await computeCheckpointAccumulator(
+      link,
+      peaksAt(2n),
+      3n,
+    );
+    expect(accumulator.map((p) => Buffer.from(p).toString("hex"))).toEqual(
+      peaksAt(6n).map((p) => Buffer.from(p).toString("hex")),
+    );
   });
 });
