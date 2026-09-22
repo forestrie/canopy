@@ -59,10 +59,14 @@ export type ParsedCheckpoint = {
   /**
    * Sealed tree size: the SIGNED `tree-size-2` from the checkpoint's
    * PROTECTED header (ADR-0066 D1 as amended, label -65933), not the
-   * unprotected consistency proof's declared value. `null` when the
-   * checkpoint carries no embedded consistency proof or no signed
-   * tree-size-2 — such a checkpoint is not verifiable and callers must
-   * treat it exactly as they would a checkpoint with no proof at all.
+   * unprotected consistency proof's declared value. `null` ONLY when the
+   * checkpoint is genuinely unsealed — no embedded consistency proof, or a
+   * well-formed protected header with no signed tree-size-2 label — and
+   * callers must treat that the same as a checkpoint with no proof at all.
+   * A structurally malformed consistency proof, or a protected header that
+   * is not deterministically encoded (ADR-0066 D9), is a DIFFERENT
+   * condition — {@link parseCheckpoint} throws for those rather than
+   * folding them into this `null` (review finding O3).
    */
   mmrSize: bigint | null;
   delegationCert: Uint8Array | null;
@@ -270,25 +274,22 @@ function cborBytes(value: unknown): Uint8Array {
  * used here — {@link checkpointConsistencyProof} in `checkpoint-chain.ts`
  * is the validating decode that requires the two to agree.
  *
- * Lenient by design: an absent proof, a malformed proof, or an absent or
- * malformed signed tree-size-2 all yield `null` rather than a throw, so a
- * caller of {@link parseCheckpoint} sees exactly the same "not verifiable"
- * outcome either way.
+ * Lenient only for an ABSENT proof or an absent signed tree-size-2: both
+ * yield `null`, so a caller of {@link parseCheckpoint} sees the same "not
+ * verifiable" outcome for either. A proof or protected header that IS
+ * present but malformed is a different condition and is not swallowed here
+ * — {@link decodeConsistencyProofFromUnprotected} throws for a structurally
+ * malformed proof, and {@link readProtectedTreeSize2} throws for a
+ * protected header that is not deterministically encoded (ADR-0066 D9);
+ * both propagate rather than folding into `null` (review finding O3: a D9
+ * conformance failure is a sealer-side defect worth attributing, not the
+ * ordinary "no proof yet" case).
  */
 function sealedSizeFromCheckpoint(
   coseSign1: CoseSign1,
   unprotected: Map<number, unknown>,
 ): bigint | null {
-  let declared;
-  try {
-    declared = decodeConsistencyProofFromUnprotected(unprotected);
-  } catch {
-    return null;
-  }
+  const declared = decodeConsistencyProofFromUnprotected(unprotected);
   if (declared === null) return null;
-  try {
-    return readProtectedTreeSize2(coseSign1[0]);
-  } catch {
-    return null;
-  }
+  return readProtectedTreeSize2(coseSign1[0]);
 }
