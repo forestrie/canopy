@@ -149,6 +149,12 @@ function logVerifyFailure(
 /**
  * Extract the `alg` value from COSE protected header bytes.
  *
+ * LENIENT: a header with no label 1, or a non-integer under it, reads as
+ * `null`. Only callers that have a defined behaviour for "no algorithm
+ * stated" (a documented default) may use it; a caller whose later checks are
+ * conditioned on the algorithm must use {@link readProtectedAlg}, which
+ * rejects those headers as the univocity contract's reader does.
+ *
  * @param protectedBstr - Decoded COSE Sign1 `[0]` protected header contents
  * @returns Numeric COSE algorithm id, or null when missing or unparseable
  */
@@ -172,6 +178,94 @@ export function extractAlgFromProtected(
     // Invalid CBOR
   }
   return null;
+}
+
+/**
+ * A protected header carries no integer `alg` (label 1): the label is
+ * absent, or its value is not a CBOR integer.
+ *
+ * The univocity contract's protected-header reader rejects both — the
+ * structural walk locates whatever else the header holds, and the rejection
+ * comes from the `alg` requirement in the same call (`ClaimNotFound(1)`, and
+ * `UnexpectedMajorType` for a value of the wrong major type). Off-chain,
+ * such a header used to read as "no alg", which switched OFF every check
+ * gated on knowing the algorithm — the checkpoint high-s rejection among
+ * them — while the size the header declares was still read out of it
+ * (review finding S-1).
+ */
+export class ProtectedHeaderAlgError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProtectedHeaderAlgError";
+  }
+}
+
+/**
+ * Read the `alg` value (label 1) from COSE protected header bytes, requiring
+ * it to be present and an integer — the strict sibling of
+ * {@link extractAlgFromProtected}, for callers that must be no more
+ * permissive than the univocity contract's reader.
+ *
+ * Use this wherever a later check is CONDITIONED on the algorithm: with the
+ * lenient reader a header the contract rejects reads as `null` and turns
+ * that check off, so the strictest verifier on the wire would be the chain
+ * and not the off-chain reader that claims parity with it.
+ *
+ * @param protectedBstr - Decoded COSE Sign1 `[0]` protected header contents
+ * @returns the numeric COSE algorithm id
+ * @throws {ProtectedHeaderAlgError} when the header is empty, is not
+ *   decodable CBOR, carries no label 1, or carries a non-integer under it
+ */
+export function readProtectedAlg(protectedBstr: Uint8Array): number {
+  if (protectedBstr.length === 0) {
+    throw new ProtectedHeaderAlgError(
+      "protected header is empty, so it carries no alg (label 1)",
+    );
+  }
+  let decoded: unknown;
+  try {
+    decoded = decodeCborDeterministic(protectedBstr) as unknown;
+  } catch (err) {
+    throw new ProtectedHeaderAlgError(
+      `protected header is not decodable CBOR: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  let alg: unknown;
+  if (decoded instanceof Map) {
+    alg = decoded.get(1);
+  } else if (
+    typeof decoded === "object" &&
+    decoded !== null &&
+    !Array.isArray(decoded) &&
+    !ArrayBuffer.isView(decoded)
+  ) {
+    // The generic decoder produces a plain object for a text-keyed map.
+    const obj = decoded as Record<string | number, unknown>;
+    alg = obj[1] ?? obj["1"];
+  } else {
+    throw new ProtectedHeaderAlgError(
+      "protected header is not a CBOR map, so it carries no alg (label 1)",
+    );
+  }
+  if (typeof alg === "number") {
+    if (!Number.isInteger(alg)) {
+      throw new ProtectedHeaderAlgError(
+        `protected header alg (label 1) is not an integer (got ${alg})`,
+      );
+    }
+    return alg;
+  }
+  if (typeof alg === "bigint") return Number(alg);
+  if (alg === undefined) {
+    throw new ProtectedHeaderAlgError(
+      "protected header carries no alg (label 1)",
+    );
+  }
+  throw new ProtectedHeaderAlgError(
+    "protected header alg (label 1) is not an integer",
+  );
 }
 
 /**

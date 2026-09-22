@@ -71,6 +71,8 @@ export {
   type DecodedCoseSign1,
   extractAlgFromProtected,
   isLowS,
+  ProtectedHeaderAlgError,
+  readProtectedAlg,
   type ParsedEcPublicKey,
   type ParsedVerifyKey,
   type VerifyCoseSign1Options,
