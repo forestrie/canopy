@@ -37,7 +37,7 @@ import {
   unwrapCoseSign1Tag,
   type CoseSign1,
 } from "./parse-receipt.js";
-import { decodeConsistencyProofFromUnprotected } from "./decode-checkpoint-consistency-proof.js";
+import { decodeConsistencyProofsFromUnprotected } from "./decode-checkpoint-consistency-proof.js";
 import { SubtleHasher } from "./subtle-hasher.js";
 
 /** Not in scope for the shared cose-labels module (FOR-568 §4.1). */
@@ -265,15 +265,19 @@ function cborBytes(value: unknown): Uint8Array {
  * (ADR-0066 D1 as amended, label -65933) from the PROTECTED header — not the
  * unprotected consistency proof's declared value, which a checkpoint without
  * a signing key could freely restate (ADR-0066's "keyless first checkpoint"
- * case). A consistency proof must still be present (an unsigned checkpoint
- * with no proof is not sealed at all); its declared sizes are not otherwise
- * used here — {@link checkpointConsistencyProof} in `checkpoint-chain.ts`
- * is the validating decode that requires the two to agree.
+ * case). At least one consistency proof must still be present (an unsigned
+ * checkpoint with no proof is not sealed at all) — one or more, since a
+ * checkpoint may relay a chain of sealed steps under one signature
+ * (ADR-0066 D2). Their declared sizes are not otherwise used here;
+ * {@link checkpointConsistencyProof} in `checkpoint-chain.ts` is the
+ * validating decode that requires the signed size and the last relayed
+ * proof's to agree.
  *
- * Lenient by design: an absent proof, a malformed proof, or an absent or
- * malformed signed tree-size-2 all yield `null` rather than a throw, so a
- * caller of {@link parseCheckpoint} sees exactly the same "not verifiable"
- * outcome either way.
+ * Lenient by design: an absent proof, an empty or malformed
+ * consistency-proofs array, or an absent or malformed signed tree-size-2
+ * all yield `null` rather than a throw, so a caller of
+ * {@link parseCheckpoint} sees exactly the same "not verifiable" outcome
+ * either way.
  */
 function sealedSizeFromCheckpoint(
   coseSign1: CoseSign1,
@@ -281,7 +285,7 @@ function sealedSizeFromCheckpoint(
 ): bigint | null {
   let declared;
   try {
-    declared = decodeConsistencyProofFromUnprotected(unprotected);
+    declared = decodeConsistencyProofsFromUnprotected(unprotected);
   } catch {
     return null;
   }

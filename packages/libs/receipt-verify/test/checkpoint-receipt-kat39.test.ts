@@ -2,7 +2,12 @@
  * Cross-language checkpoint-receipt KAT (protocol#10, ADR-0066 D9 as
  * narrowed): `receipts` rows are decoded (tagged COSE_Sign1) and run end to
  * end through {@link verifyCheckpointChain} from the vector's trusted
- * origin; `receipt_negatives` rows must be rejected.
+ * origin; `receipt_negatives` rows must be rejected; `receipt_chains` rows
+ * (relayed multi-proof checkpoints, ADR-0066 D2) are run through
+ * {@link checkpointConsistencyProof} and {@link computeCheckpointAccumulator}
+ * directly — the decode-and-fold pair {@link verifyCheckpointChain} itself
+ * calls per checkpoint — so a reject row's typed error is checked, not just
+ * the reason string {@link verifyCheckpointChain} maps it to.
  *
  * Vector file: read via a relative path from encoding's vendored copy
  * (packages/shared/encoding/src/testdata/checkpoint-receipt-kat39.json) —
@@ -32,13 +37,19 @@ import {
   verifyCoseSign1WithParsedKey,
   type ParsedEcPublicKey,
 } from "@forestrie/encoding";
-import { verifyCheckpointChain } from "../src/checkpoint-chain.js";
+import {
+  checkpointConsistencyProof,
+  computeCheckpointAccumulator,
+  verifyCheckpointChain,
+  CheckpointSignedSizeMismatchError,
+  ConsistencyChainNotContiguousError,
+} from "../src/checkpoint-chain.js";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 
 /** Pinned per checkpoint-receipt-format.md / protocol SHA256SUMS. */
 const EXPECTED_SHA256 =
-  "391d203b99b8dc41226694edee4eab3da3f1aa9bc651d13408d1a21b0986a8b8";
+  "fb6bbde735537cfc97f83c52cfc4c609b4d1ed1474157910d7be0814456102c8";
 
 interface ReceiptRow {
   name: string;
@@ -57,6 +68,18 @@ interface ReceiptNegativeRow {
   note?: string;
 }
 
+interface ReceiptChainRow {
+  name: string;
+  alg: number;
+  alg_name: string;
+  trusted_tree_size_1: number;
+  receipt_cbor_hex: string;
+  expect:
+    | { result: "accept"; tree_size_2: number }
+    | { result: "reject"; reason: string };
+  note?: string;
+}
+
 interface Kat39File {
   tree: {
     accumulators: Record<string, { peaks_hex: string[] }>;
@@ -66,6 +89,7 @@ interface Kat39File {
   };
   receipts: ReceiptRow[];
   receipt_negatives: ReceiptNegativeRow[];
+  receipt_chains: ReceiptChainRow[];
 }
 
 function loadVector(): { raw: string; data: Kat39File } {
@@ -206,6 +230,53 @@ describe("verifyCheckpointChain vs KAT39 receipt_negatives", () => {
         `no reason mapping for ${row.expect.reason}`,
       ).toBeDefined();
       expect(result.reason, row.note ?? row.name).toBe(expectedReason);
+    });
+  }
+});
+
+describe("checkpointConsistencyProof + computeCheckpointAccumulator vs KAT39 receipt_chains", () => {
+  // Vector reason -> the typed error thrown by the decode
+  // (checkpointConsistencyProof) or the fold (computeCheckpointAccumulator)
+  // that produces it. "signed_size_mismatch" is the checkpoint's signed
+  // tree-size-2 disagreeing with its last relayed proof (caught decoding
+  // the checkpoint); "chain_not_contiguous" is a relayed proof whose
+  // declared tree-size-1 does not match the size the fold has reached
+  // (caught folding the already-decoded proofs).
+  const CHAIN_REASON_ERROR: Record<string, new (message: string) => Error> = {
+    signed_size_mismatch: CheckpointSignedSizeMismatchError,
+    chain_not_contiguous: ConsistencyChainNotContiguousError,
+  };
+
+  for (const row of data.receipt_chains) {
+    it(`${row.name}: ${row.expect.result}s (${
+      row.expect.result === "accept" ? "tree_size_2" : row.expect.reason
+    })`, async () => {
+      const receiptBytes = fromHex(row.receipt_cbor_hex);
+      const base = trustedOrigin(row.trusted_tree_size_1);
+
+      if (row.expect.result === "accept") {
+        const proof = checkpointConsistencyProof(receiptBytes);
+        const accumulator = await computeCheckpointAccumulator(
+          proof,
+          base.accumulator,
+          base.size,
+        );
+        expect(proof.treeSize2).toBe(BigInt(row.expect.tree_size_2));
+        const expectedAccumulator =
+          data.tree.accumulators[String(row.expect.tree_size_2)]!.peaks_hex;
+        expect(accumulator.map(toHex)).toEqual(expectedAccumulator);
+        return;
+      }
+
+      const ErrorClass = CHAIN_REASON_ERROR[row.expect.reason];
+      expect(
+        ErrorClass,
+        `no error mapping for ${row.expect.reason}`,
+      ).toBeDefined();
+      await expect(async () => {
+        const proof = checkpointConsistencyProof(receiptBytes);
+        await computeCheckpointAccumulator(proof, base.accumulator, base.size);
+      }).rejects.toThrow(ErrorClass!);
     });
   }
 });

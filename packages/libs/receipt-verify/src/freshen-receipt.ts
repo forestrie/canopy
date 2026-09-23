@@ -81,11 +81,13 @@ export type FreshenReceiptInput = {
    * value `verify` recomputes from the entry (caller derives it). */
   leafValue: Uint8Array;
   /** Consistency-proof chain covering [0 or the trusted base] → the latest
-   * sealed size, in ascending contiguous order (the raw per-checkpoint
-   * proofs, with `paths`). Every link's `signedTreeSize2` must equal its
-   * `treeSize2`, as `checkpointConsistencyProof` requires of the checkpoint
-   * it decoded each link from. The chain's last link must end at the
-   * checkpoint's sealed size. */
+   * sealed size, in ascending contiguous order: one entry per checkpoint,
+   * each holding the proofs that checkpoint relays (`proofs`, one or more —
+   * ADR-0066 D2). Every link's `signedTreeSize2` must equal its
+   * `treeSize2` — the size its LAST relayed proof reaches — as
+   * `checkpointConsistencyProof` requires of the checkpoint it decoded each
+   * link from. The chain's last link must end at the checkpoint's sealed
+   * size. */
   consistencyProofs: readonly CheckpointConsistencyProof[];
   /** Trusted base for a suffix chain — the size the caller already trusts
    * and that size's accumulator; omit for a chain from base 0 (size 0, an
@@ -196,7 +198,9 @@ export async function freshenReceipt(
       `first consistency proof declares tree-size-1 ${firstLink.treeSize1}; the trusted base size is ${baseSize}`,
     );
   }
-  // Contiguity: each link continues where the previous one sealed.
+  // Contiguity BETWEEN checkpoints: each link continues where the previous
+  // one sealed. Contiguity WITHIN a link — between the proofs one
+  // checkpoint relays — is `computeCheckpointAccumulator`'s, below.
   for (let i = 1; i < links.length; i++) {
     if (links[i]!.treeSize1 !== links[i - 1]!.treeSize2) {
       throw new Error(
@@ -212,10 +216,11 @@ export async function freshenReceipt(
     );
   }
 
-  // Fold the chain to the latest accumulator (self-check target). Each step
+  // Fold the chain to the latest accumulator (self-check target). Each link
   // runs against a size the caller trusts, never one read off the link being
   // folded: the trusted base for the first link, and the size the previous
-  // link was just folded TO for every link after it.
+  // link was just folded TO for every link after it. A link relaying several
+  // proofs folds them all, in order, and ends at its last one.
   let accumulator = baseAccumulator;
   let sizeFrom = baseSize;
   for (const p of links) {
@@ -259,18 +264,21 @@ export async function freshenReceipt(
   for (let k = 0; k < oldPath.length; k++) {
     store.set(fullIndices[k]!, oldPath[k]!);
   }
-  for (const link of links) {
-    // A base-0 link (treeSize1 === 0) has no from-peaks to climb — a 0→N
+  // Every relayed proof contributes, not just one per checkpoint: a link
+  // that relays several sealed steps (ADR-0066 D2) carries one set of paths
+  // per step, each addressed by that step's own two sizes.
+  for (const step of links.flatMap((link) => link.proofs)) {
+    // A base-0 step (treeSize1 === 0) has no from-peaks to climb — a 0→N
     // consistency proof carries `paths: []` (the whole accumulator is its
     // right-peaks). Skip it: it contributes no store nodes, and calling
     // `peakMMRIndexes(-1n)` would throw (`posHeight(0)`, FOR-414). A genesis-
-    // rooted `.sth` chain always starts with such a link.
-    if (link.treeSize1 === 0n) continue;
-    const fromPeaks = peakMMRIndexes(link.treeSize1 - 1n);
+    // rooted `.sth` chain always starts with such a step.
+    if (step.treeSize1 === 0n) continue;
+    const fromPeaks = peakMMRIndexes(step.treeSize1 - 1n);
     fromPeaks.forEach((peakIndex, j) => {
-      const climb = link.paths[j];
+      const climb = step.paths[j];
       if (climb === undefined) return;
-      const climbIndices = inclusionProofPath(link.treeSize2 - 1n, peakIndex);
+      const climbIndices = inclusionProofPath(step.treeSize2 - 1n, peakIndex);
       climbIndices.forEach((ix, e) => {
         const v = climb[e];
         if (v !== undefined) store.set(ix, v);

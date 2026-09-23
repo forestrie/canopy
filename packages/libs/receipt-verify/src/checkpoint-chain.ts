@@ -20,11 +20,15 @@
  * "keyless first checkpoint" case). `tree-size-1` stays unsigned prover
  * context: the publisher relays several sealed steps and may re-base a step
  * under the head checkpoint's signature, so the declared base of a
- * checkpoint can differ from what the sealer had (D2 chain semantics is
- * withdrawn) — a signed size-1 comparison would reject every re-based
- * publish and every multi-link catch-up. A checkpoint without the signed
- * size-2 label, or whose signed size-2 disagrees with its declared proof,
- * is rejected before any fold is attempted.
+ * checkpoint can differ from what the sealer had (the signed origin
+ * ADR-0066 D2 first proposed was withdrawn) — a signed size-1 comparison
+ * would reject every re-based publish and every multi-link catch-up. One
+ * checkpoint may itself relay SEVERAL sealed steps (ADR-0066 D2): the
+ * draft carries them under vdp key -2 as
+ * `consistency-proofs = [ + consistency-proof ]`, folded here in order,
+ * with only the last step's size signed. A checkpoint without the signed
+ * size-2 label, or whose signed size-2 disagrees with the last proof it
+ * relays, is rejected before any fold is attempted.
  *
  * This rung depends only on the public log store — the complement of the
  * `CheckpointPublished` event scan (public chain data only); see the
@@ -53,24 +57,63 @@ import {
 } from "@forestrie/merklelog";
 import { SubtleHasher } from "./subtle-hasher.js";
 import { parseCheckpoint } from "./build-receipt-offline.js";
-import { decodeConsistencyProofFromUnprotected } from "./decode-checkpoint-consistency-proof.js";
+import {
+  decodeConsistencyProofsFromUnprotected,
+  EmptyConsistencyProofsError,
+  type DecodedConsistencyProof,
+} from "./decode-checkpoint-consistency-proof.js";
 
-/** Draft-bryce consistency proof embedded in a v3 checkpoint. `treeSize2` is
- * cross-checked against the checkpoint's SIGNED tree-size-2 (ADR-0066 D1 as
- * amended); `treeSize1` is unsigned prover context, not cross-checked here —
- * see {@link verifyCheckpointChain}, which compares it with the trusted
- * origin instead. */
+/**
+ * The draft-bryce consistency proofs embedded in a v3 checkpoint: one or
+ * more, in relay order (`consistency-proofs = [ + consistency-proof ]`,
+ * ADR-0066 D2). A checkpoint sealing a single step carries the chain of
+ * one; there is no separate single-proof shape.
+ *
+ * {@link treeSize2} — the LAST proof's — is cross-checked against the
+ * checkpoint's SIGNED tree-size-2 (ADR-0066 D1 as amended, D5.5).
+ * {@link treeSize1} — the FIRST proof's — is unsigned prover context, not
+ * cross-checked here; see {@link verifyCheckpointChain}, which compares it
+ * with the trusted origin instead. The sizes between the two are named by
+ * no signature: {@link computeCheckpointAccumulator} holds the chain
+ * together by requiring each proof to continue the one before it.
+ */
 export type CheckpointConsistencyProof = {
+  /** The relayed proofs, in chain order; never empty. */
+  proofs: DecodedConsistencyProof[];
+  /** `tree-size-1` of the FIRST proof: the size the chain continues from. */
   treeSize1: bigint;
+  /** `tree-size-2` of the LAST proof: the size the chain reaches. */
   treeSize2: bigint;
   /** Signed `tree-size-2` (protected header label -65933); equal to
    * {@link treeSize2} — {@link checkpointConsistencyProof} enforces this. */
   signedTreeSize2: bigint;
-  /** One inclusion path per tree-size-1 peak, proven at tree-size-2. */
-  paths: Uint8Array[][];
-  /** New peaks not covered by the proven roots (draft `right-peaks`). */
-  rightPeaks: Uint8Array[];
 };
+
+/**
+ * A relayed consistency-proof chain does not join up: a proof's declared
+ * `tree-size-1` is not the size the fold has reached — the caller's trusted
+ * size for the first proof, the previous proof's `tree-size-2` after that —
+ * or, having applied every proof, the fold reaches a size other than the
+ * chain link's own declared `tree-size-2` (F3: a caller-assembled link —
+ * `freshenReceipt` callers build these from on-chain calldata, never
+ * through {@link checkpointConsistencyProof} — can set `proofs` and
+ * `treeSize2` independently, which `checkpointConsistencyProof` itself
+ * never allows to disagree). go-merklelog reuses its equivalent
+ * `ErrProofChainNotContiguous` for this same end-of-chain comparison
+ * (`checkpointverify.go:245-251`, folded size vs. signed size). Reported as
+ * `"size_mismatch"` by {@link verifyCheckpointChain}, the same as any other
+ * size disagreement, because the sizes it names are unsigned (ADR-0066 D2):
+ * nothing distinguishes a relay assembled in the wrong order from one
+ * assembled over a different log.
+ */
+export class ConsistencyChainNotContiguousError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConsistencyChainNotContiguousError";
+  }
+}
+
+export { EmptyConsistencyProofsError };
 
 /**
  * The checkpoint's SIGNED `tree-size-2` (protected header, ADR-0066 D1 as
@@ -125,12 +168,14 @@ export class CheckpointProtectedHeaderAlgError extends Error {
 }
 
 /**
- * Decode the embedded consistency proof (`vdp` 396 key -2) and require its
- * declared `tree-size-2` to equal the checkpoint's SIGNED `tree-size-2` from
- * the protected header (ADR-0066 D1 as amended, D5.5, label -65933).
- * `tree-size-1` is not signed and is not checked here (D2 is withdrawn); see
- * {@link verifyCheckpointChain} for its comparison against the trusted
- * origin.
+ * Decode the embedded consistency proofs (`vdp` 396 key -2, one or more in
+ * relay order) and require the LAST proof's declared `tree-size-2` to equal
+ * the checkpoint's SIGNED `tree-size-2` from the protected header (ADR-0066
+ * D1 as amended, D2, D5.5, label -65933). The earlier proofs' sizes are not
+ * signed: the fold checks them against each other
+ * ({@link computeCheckpointAccumulator}). `tree-size-1` is not signed
+ * either; see {@link verifyCheckpointChain} for its comparison against the
+ * trusted origin.
  *
  * Also rejects a malleable high-s ES256 signature (see
  * {@link CheckpointHighSSignatureError}) before any fold or WebCrypto verify
@@ -138,12 +183,14 @@ export class CheckpointProtectedHeaderAlgError extends Error {
  * subject to this check, since it does not go through the P-256 WebCrypto
  * path this guards.
  *
- * @throws {Error} when the protected header carries no consistency proof,
- *   the proof is structurally malformed (see
- *   {@link decodeConsistencyProofFromUnprotected}), or the protected header
+ * @throws {Error} when the unprotected header carries no consistency proof,
+ *   a proof is structurally malformed (see
+ *   {@link decodeConsistencyProofsFromUnprotected}), or the protected header
  *   carries no signed tree-size-2 label
+ * @throws {EmptyConsistencyProofsError} when the consistency-proofs array is
+ *   present but empty
  * @throws {CheckpointSignedSizeMismatchError} when the signed tree-size-2
- *   differs from the declared proof's tree-size-2
+ *   differs from the LAST declared proof's tree-size-2
  * @throws {CheckpointHighSSignatureError} when the checkpoint is ES256-signed
  *   with a high-s (malleable) signature
  * @throws {CheckpointProtectedHeaderAlgError} when the protected header
@@ -174,75 +221,125 @@ export function checkpointConsistencyProof(
         "to match the univocity contract's P-256 verifier and go-merklelog",
     );
   }
-  const declared = decodeConsistencyProofFromUnprotected(unprotected);
-  if (declared === null) {
+  const proofs = decodeConsistencyProofsFromUnprotected(unprotected);
+  if (proofs === null) {
     throw new Error("checkpoint carries no consistency proof (vdp key -2)");
   }
+  const last = proofs[proofs.length - 1]!;
   const signedTreeSize2 = readProtectedTreeSize2(coseSign1[0]);
   if (signedTreeSize2 === null) {
     throw new Error(
       "checkpoint protected header carries no signed tree-size-2 (-65933)",
     );
   }
-  if (signedTreeSize2 !== declared.treeSize2) {
+  // The signature covers the size the LAST proof reaches, and only that
+  // size: a relay may hold any number of steps before it, none of them
+  // signed (ADR-0066 D2).
+  if (signedTreeSize2 !== last.treeSize2) {
     throw new CheckpointSignedSizeMismatchError(
-      `signed tree-size-2 (-65933) ${signedTreeSize2} != declared consistency-proof tree-size-2 ${declared.treeSize2}`,
+      `signed tree-size-2 (-65933) ${signedTreeSize2} != declared consistency-proof tree-size-2 ${last.treeSize2}`,
     );
   }
   return {
-    treeSize1: declared.treeSize1,
-    treeSize2: declared.treeSize2,
+    proofs,
+    treeSize1: proofs[0]!.treeSize1,
+    treeSize2: last.treeSize2,
     signedTreeSize2,
-    paths: declared.paths,
-    rightPeaks: declared.rightPeaks,
   };
 }
 
 /**
- * One fold step: from the CALLER-TRUSTED accumulator at `sizeFrom`, produce
- * the `proof.treeSize2` accumulator via the size-driven
- * {@link consistentRootsForSizes} (ADR-0066 D5) — `roots` (the proven
- * prefix) followed by the proof's supplied right-peaks (the target peaks no
- * path reaches).
+ * Fold a checkpoint's relayed consistency proofs, in order, from the
+ * CALLER-TRUSTED accumulator at `sizeFrom` to the accumulator at the last
+ * proof's `tree-size-2` — the value the checkpoint's signature covers.
  *
- * `sizeFrom` is a parameter, not read off `proof`, because the fold must run
- * against a size the CALLER already trusts (the previous link's verified
- * `treeSize2`, or the caller's anchor for a first link) — reading it from
- * the proof instead would let an unsigned or substituted proof dictate its
- * own starting point. `proof.treeSize1` must equal it regardless: the two
- * disagreeing means this proof does not continue from the state being
- * folded, not a mere shape defect, so it is checked before any fold work.
+ * Each proof is applied by the size-driven {@link consistentRootsForSizes}
+ * (ADR-0066 D5), which yields `roots` (the proven prefix); the proof's own
+ * right-peaks (the target peaks no path reaches) complete that step's
+ * accumulator, and it becomes the next step's input. A checkpoint sealing
+ * one step carries the chain of one and runs the same loop once.
  *
- * @throws {Error} when `proof.treeSize1 !== sizeFrom`, or when the proof
- *   supplies a right-peaks count other than
+ * `sizeFrom` is a parameter, not read off the proofs, because the fold must
+ * start from a size the CALLER already trusts (the previous checkpoint's
+ * verified `treeSize2`, or the caller's anchor for a first link) — reading
+ * it from the relay instead would let an unsigned or substituted proof
+ * dictate its own starting point (ADR-0066 D5.4). Every proof after the
+ * first is held to the size the previous one reached for the same reason:
+ * only the last step's size is signed, so the intermediate sizes are worth
+ * no more than their agreement with each other.
+ *
+ * `proof.proofs` must hold at least one step and, once every step has been
+ * applied, the fold must have reached exactly `proof.treeSize2` (F3).
+ * `checkpointConsistencyProof` already guarantees both — the decode rejects
+ * an empty `consistency-proofs` array (`EmptyConsistencyProofsError`) and
+ * sets `treeSize2` from the last decoded proof — but a caller-assembled
+ * link (`freshenReceipt` callers building from on-chain calldata) is not
+ * decoded through it, so both are re-checked here rather than trusted from
+ * the type.
+ *
+ * @throws {EmptyConsistencyProofsError} when `proof.proofs` is empty — an
+ *   already-decoded link the caller assembled themselves rather than one
+ *   `checkpointConsistencyProof` produced, which never returns one
+ * @throws {ConsistencyChainNotContiguousError} when the first proof's
+ *   `treeSize1` is not `sizeFrom`, a later proof's `treeSize1` is not the
+ *   previous proof's `treeSize2`, or the size the fold reaches after every
+ *   proof is not `proof.treeSize2`
+ * @throws {Error} when a proof supplies a right-peaks count other than
  *   {@link consistentRootsForSizes}'s `expectedRight`
- * @throws {ConsistencyShapeError} (`@forestrie/merklelog`) when the proof
- *   does not have the shape MMR(sizeFrom) -> MMR(proof.treeSize2) implies
+ * @throws {ConsistencyShapeError} (`@forestrie/merklelog`) when a proof does
+ *   not have the shape its two sizes imply
  */
 export async function computeCheckpointAccumulator(
   proof: CheckpointConsistencyProof,
   accumulatorFrom: Uint8Array[],
   sizeFrom: bigint,
 ): Promise<Uint8Array[]> {
-  if (proof.treeSize1 !== sizeFrom) {
-    throw new Error(
-      `consistency proof base tree-size-1 ${proof.treeSize1} does not match the trusted size ${sizeFrom}`,
+  if (proof.proofs.length === 0) {
+    throw new EmptyConsistencyProofsError(
+      "consistency proof relays no proofs (empty proofs array); at least " +
+        "one is required to fold",
     );
   }
   const hasher = new SubtleHasher();
-  const { roots, expectedRight } = await consistentRootsForSizes(
-    hasher,
-    sizeFrom,
-    proof.treeSize2,
-    accumulatorFrom,
-    proof.paths,
-  );
-  if (proof.rightPeaks.length !== expectedRight) {
-    throw new Error(
-      `checkpoint supplies ${proof.rightPeaks.length} right-peaks; size ${proof.treeSize2} requires ${expectedRight}`,
+  let accumulator = accumulatorFrom;
+  let size = sizeFrom;
+  for (let i = 0; i < proof.proofs.length; i++) {
+    const step = proof.proofs[i]!;
+    if (step.treeSize1 !== size) {
+      throw new ConsistencyChainNotContiguousError(
+        i === 0
+          ? `consistency proof base tree-size-1 ${step.treeSize1} does not match the trusted size ${size}`
+          : `consistency-proofs entry ${i} declares tree-size-1 ${step.treeSize1}; the previous proof reached ${size}`,
+      );
+    }
+    const { roots, expectedRight } = await consistentRootsForSizes(
+      hasher,
+      size,
+      step.treeSize2,
+      accumulator,
+      step.paths,
+    );
+    if (step.rightPeaks.length !== expectedRight) {
+      throw new Error(
+        `checkpoint supplies ${step.rightPeaks.length} right-peaks; size ${step.treeSize2} requires ${expectedRight}`,
+      );
+    }
+    accumulator = [...roots, ...step.rightPeaks];
+    size = step.treeSize2;
+  }
+  // The fold must land exactly on the size the LINK itself declares —
+  // `proof.treeSize2` — not merely on whatever size its last proof happened
+  // to reach: a caller-assembled link can set the two independently (e.g.
+  // proofs folding 1 -> 3 alongside a declared treeSize2 of 7), which would
+  // otherwise fold to 3 and be reported as size 7 to every downstream
+  // caller reading the declared field instead of the fold. Mirrors
+  // go-merklelog's own end-of-chain check (checkpointverify.go:245-251).
+  if (size !== proof.treeSize2) {
+    throw new ConsistencyChainNotContiguousError(
+      `consistency proof folds to tree-size-2 ${size}; the chain's declared tree-size-2 is ${proof.treeSize2}`,
     );
   }
-  return [...roots, ...proof.rightPeaks];
+  return accumulator;
 }
 
 /** Detached payload the checkpoint signature covers (ADR-0046): the raw
@@ -289,8 +386,10 @@ export type CheckpointChainResult =
          * `tree-size-2` (ADR-0066 D1 as amended, D5.5), or a link's declared
          * `tree-size-1` disagrees with the size the fold starts from — the
          * caller's `trustedBase.size` (0 with no `trustedBase`) for the
-         * first link, the previous link's `tree-size-2` after that.
-         * `detail` names both sizes.
+         * first link, the previous link's `tree-size-2` after that — or a
+         * relayed proof WITHIN a checkpoint disagrees with the size the
+         * proof before it reached ({@link
+         * ConsistencyChainNotContiguousError}). `detail` names both sizes.
          */
         | "size_mismatch";
       /** Index of the offending checkpoint. */
@@ -319,15 +418,20 @@ export type CheckpointChainResult =
  * - The first link's declared `tree-size-1` must equal that trusted
  *   starting size, and every subsequent link's must equal the previous
  *   link's sealed `tree-size-2`; either disagreement is `size_mismatch`.
- *   `tree-size-1` itself is never compared with a signed value (D2 is
- *   withdrawn): only this trusted-origin comparison applies. Because it is
+ *   `tree-size-1` itself is never compared with a signed value (the signed
+ *   origin ADR-0066 D2 first proposed was withdrawn): only this
+ *   trusted-origin comparison applies. Because it is
  *   unsigned, the reason it produces carries no more meaning than the size
  *   disagreement itself (ADR-0066 D6: no pre-FOR-410 state is supported, so
  *   there is no drift condition to fall back from).
- * - Each checkpoint's SIGNED `tree-size-2` (ADR-0066 D1 as amended) must
- *   equal its declared consistency-proof `tree-size-2`
- *   ({@link checkpointConsistencyProof}); a disagreement is
- *   `size_mismatch`.
+ * - A checkpoint may relay SEVERAL consistency proofs under one signature
+ *   (ADR-0066 D2; draft `consistency-proofs = [ + consistency-proof ]`).
+ *   Its SIGNED `tree-size-2` (ADR-0066 D1 as amended) must equal the LAST
+ *   proof's declared `tree-size-2` ({@link checkpointConsistencyProof}),
+ *   and each relayed proof must continue the one before it
+ *   ({@link computeCheckpointAccumulator}); either disagreement is
+ *   `size_mismatch`. A checkpoint sealing one step is the relay of one and
+ *   takes the same path.
  * - Each link's signature is checked over its computed accumulator via
  *   the injected verifier (the caller owns trust resolution — genesis
  *   roots, caller-known keys, or the label-1000 delegation path). A link
@@ -460,9 +564,15 @@ export async function verifyCheckpointChain(opts: {
         expectedBase,
       );
     } catch (err) {
+      // A relay that does not join up is a size disagreement like any
+      // other: every size it names but the last is unsigned, so the reason
+      // can say no more than that two sizes differ.
       return {
         ok: false,
-        reason: "proof_malformed",
+        reason:
+          err instanceof ConsistencyChainNotContiguousError
+            ? "size_mismatch"
+            : "proof_malformed",
         at: i,
         detail: err instanceof Error ? err.message : String(err),
         links,

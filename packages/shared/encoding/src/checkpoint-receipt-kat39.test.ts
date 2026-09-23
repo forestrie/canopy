@@ -25,7 +25,7 @@ const dir = dirname(fileURLToPath(import.meta.url));
 
 /** Pinned per checkpoint-receipt-format.md / protocol SHA256SUMS. */
 const EXPECTED_SHA256 =
-  "391d203b99b8dc41226694edee4eab3da3f1aa9bc651d13408d1a21b0986a8b8";
+  "fb6bbde735537cfc97f83c52cfc4c609b4d1ed1474157910d7be0814456102c8";
 
 interface ProtectedHeaderRow {
   name: string;
