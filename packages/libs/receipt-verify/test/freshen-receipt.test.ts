@@ -7,6 +7,8 @@ import {
   type NodeGetter,
 } from "@forestrie/merklelog";
 import { freshenReceipt } from "../src/freshen-receipt.js";
+import { CheckpointSignedSizeMismatchError } from "../src/checkpoint-chain.js";
+import { EmptyConsistencyProofsError } from "../src/decode-checkpoint-consistency-proof.js";
 import { buildReceiptOffline } from "../src/build-receipt-offline.js";
 import { parseReceipt } from "../src/parse-receipt.js";
 import { verifyGrantReceiptOffline } from "../src/verify-grant-receipt-offline.js";
@@ -174,11 +176,17 @@ describe("freshenReceipt (FOR-418)", () => {
     const proven = await consistentRoots(hasher, 2n, aOld, cp.paths);
     const rightPeaks = aLatest.slice(proven.length);
     const link = {
+      proofs: [
+        {
+          treeSize1: 3n,
+          treeSize2: 7n,
+          paths: cp.paths,
+          rightPeaks: rightPeaks,
+        },
+      ],
       treeSize1: 3n,
       treeSize2: 7n,
       signedTreeSize2: 7n,
-      paths: cp.paths,
-      rightPeaks,
     };
 
     const result = await freshenReceipt({
@@ -233,11 +241,17 @@ describe("freshenReceipt (FOR-418)", () => {
     const aLatest = peakMMRIndexes(6n).map(get); // [n6]
     const proven = await consistentRoots(hasher, 3n, aOld, cp.paths);
     const link = {
+      proofs: [
+        {
+          treeSize1: 4n,
+          treeSize2: 7n,
+          paths: cp.paths,
+          rightPeaks: aLatest.slice(proven.length),
+        },
+      ],
       treeSize1: 4n,
       treeSize2: 7n,
       signedTreeSize2: 7n,
-      paths: cp.paths,
-      rightPeaks: aLatest.slice(proven.length),
     };
 
     const result = await freshenReceipt({
@@ -284,22 +298,34 @@ describe("freshenReceipt (FOR-418)", () => {
     const a7 = peakMMRIndexes(6n).map(get); // [n6]
     const proven1 = await consistentRoots(hasher, 2n, a3, cp1.paths);
     const link1 = {
+      proofs: [
+        {
+          treeSize1: 3n,
+          treeSize2: 7n,
+          paths: cp1.paths,
+          rightPeaks: a7.slice(proven1.length),
+        },
+      ],
       treeSize1: 3n,
       treeSize2: 7n,
       signedTreeSize2: 7n,
-      paths: cp1.paths,
-      rightPeaks: a7.slice(proven1.length),
     };
     // link 7 -> 15
     const cp2 = indexConsistencyProof(get, 6n, 14n);
     const a15 = peakMMRIndexes(14n).map(get); // [n14]
     const proven2 = await consistentRoots(hasher, 6n, a7, cp2.paths);
     const link2 = {
+      proofs: [
+        {
+          treeSize1: 7n,
+          treeSize2: 15n,
+          paths: cp2.paths,
+          rightPeaks: a15.slice(proven2.length),
+        },
+      ],
       treeSize1: 7n,
       treeSize2: 15n,
       signedTreeSize2: 15n,
-      paths: cp2.paths,
-      rightPeaks: a15.slice(proven2.length),
     };
 
     const result = await freshenReceipt({
@@ -348,11 +374,17 @@ describe("freshenReceipt (FOR-418)", () => {
 
     // base-0 link: no from-peaks, the size-3 accumulator IS its right-peaks.
     const link0 = {
+      proofs: [
+        {
+          treeSize1: 0n,
+          treeSize2: 3n,
+          paths: [] as Uint8Array[][],
+          rightPeaks: peakMMRIndexes(2n).map(get), // [n2]
+        },
+      ],
       treeSize1: 0n,
       treeSize2: 3n,
       signedTreeSize2: 3n,
-      paths: [] as Uint8Array[][],
-      rightPeaks: peakMMRIndexes(2n).map(get), // [n2]
     };
     // link 3 -> 7
     const cp = indexConsistencyProof(get, 2n, 6n);
@@ -360,11 +392,17 @@ describe("freshenReceipt (FOR-418)", () => {
     const a7 = peakMMRIndexes(6n).map(get);
     const proven = await consistentRoots(hasher, 2n, a3, cp.paths);
     const link1 = {
+      proofs: [
+        {
+          treeSize1: 3n,
+          treeSize2: 7n,
+          paths: cp.paths,
+          rightPeaks: a7.slice(proven.length),
+        },
+      ],
       treeSize1: 3n,
       treeSize2: 7n,
       signedTreeSize2: 7n,
-      paths: cp.paths,
-      rightPeaks: a7.slice(proven.length),
     };
 
     const result = await freshenReceipt({
@@ -383,6 +421,175 @@ describe("freshenReceipt (FOR-418)", () => {
       idtimestampBe8: fx.leaf1.idtimestampBe8,
     });
     expect(verified).toEqual({ ok: true, stage: "binding" });
+  });
+
+  it("freshens across ONE checkpoint relaying both steps of 0 -> 3 -> 7 (ADR-0066 D2)", async () => {
+    // The same two sealed steps as the chain above, relayed under a single
+    // head checkpoint's signature instead of one checkpoint each. The climb
+    // nodes come from EVERY relayed proof, not one per checkpoint, so the
+    // freshened receipt is the same one either way.
+    const fx = await buildFixture();
+    const get: NodeGetter = (i) => fx.nodes[Number(i)]!;
+    const hasher = await createSyncHasher();
+
+    const oldCheckpoint = buildV2CheckpointBytes({
+      mmrSize: 3n,
+      peakReceipts: [
+        await signDetachedPeakReceipt(fx.rootKeyPair, fx.nodes[2]!),
+      ],
+    });
+    const oldReceipt = buildReceiptOffline({
+      massifBytes: fx.massif7,
+      checkpointBytes: oldCheckpoint,
+      mmrIndex: 1n,
+    });
+    const latestCheckpoint = buildV2CheckpointBytes({
+      mmrSize: 7n,
+      peakReceipts: [
+        await signDetachedPeakReceipt(fx.rootKeyPair, fx.nodes[6]!),
+      ],
+    });
+
+    const cp = indexConsistencyProof(get, 2n, 6n);
+    const a3 = peakMMRIndexes(2n).map(get);
+    const a7 = peakMMRIndexes(6n).map(get);
+    const proven = await consistentRoots(hasher, 2n, a3, cp.paths);
+    const relay = {
+      proofs: [
+        {
+          treeSize1: 0n,
+          treeSize2: 3n,
+          paths: [] as Uint8Array[][],
+          rightPeaks: a3,
+        },
+        {
+          treeSize1: 3n,
+          treeSize2: 7n,
+          paths: cp.paths,
+          rightPeaks: a7.slice(proven.length),
+        },
+      ],
+      treeSize1: 0n,
+      treeSize2: 7n,
+      signedTreeSize2: 7n,
+    };
+
+    const result = await freshenReceipt({
+      oldReceiptBytes: oldReceipt,
+      leafValue: fx.leaf1.leafHash,
+      consistencyProofs: [relay],
+      latestCheckpointBytes: latestCheckpoint,
+    });
+
+    expect(result.sealedSize).toBe(7n);
+    const verified = await verifyGrantReceiptOffline({
+      genesisCbor: fx.genesisCbor,
+      receiptCbor: result.receipt,
+      grant: fx.leaf1.grant,
+      idtimestampBe8: fx.leaf1.idtimestampBe8,
+    });
+    expect(verified).toEqual({ ok: true, stage: "binding" });
+  });
+
+  it("rejects a relay whose second proof does not continue its first", async () => {
+    const fx = await buildFixture();
+    const get: NodeGetter = (i) => fx.nodes[Number(i)]!;
+    const hasher = await createSyncHasher();
+    const oldCheckpoint = buildV2CheckpointBytes({
+      mmrSize: 3n,
+      peakReceipts: [
+        await signDetachedPeakReceipt(fx.rootKeyPair, fx.nodes[2]!),
+      ],
+    });
+    const oldReceipt = buildReceiptOffline({
+      massifBytes: fx.massif7,
+      checkpointBytes: oldCheckpoint,
+      mmrIndex: 1n,
+    });
+    const latestCheckpoint = buildV2CheckpointBytes({
+      mmrSize: 7n,
+      peakReceipts: [
+        await signDetachedPeakReceipt(fx.rootKeyPair, fx.nodes[6]!),
+      ],
+    });
+    const cp = indexConsistencyProof(get, 2n, 6n);
+    const a3 = peakMMRIndexes(2n).map(get);
+    const a7 = peakMMRIndexes(6n).map(get);
+    const proven = await consistentRoots(hasher, 2n, a3, cp.paths);
+    // The first proof reaches 3; the second claims to start at 4. Only the
+    // relay's last size is signed, so nothing but this comparison holds the
+    // two together.
+    const relay = {
+      proofs: [
+        {
+          treeSize1: 0n,
+          treeSize2: 3n,
+          paths: [] as Uint8Array[][],
+          rightPeaks: a3,
+        },
+        {
+          treeSize1: 4n,
+          treeSize2: 7n,
+          paths: cp.paths,
+          rightPeaks: a7.slice(proven.length),
+        },
+      ],
+      treeSize1: 0n,
+      treeSize2: 7n,
+      signedTreeSize2: 7n,
+    };
+
+    await expect(
+      freshenReceipt({
+        oldReceiptBytes: oldReceipt,
+        leafValue: fx.leaf1.leafHash,
+        consistencyProofs: [relay],
+        latestCheckpointBytes: latestCheckpoint,
+      }),
+    ).rejects.toThrow(
+      /entry 1 declares tree-size-1 4; the previous proof reached 3/,
+    );
+  });
+
+  it("rejects a link with an empty proofs array rather than freshening it unchanged (F3)", async () => {
+    // A link a caller assembled directly from on-chain calldata (as
+    // forestrie-cli does) rather than decoded via checkpointConsistencyProof
+    // — which never returns an empty proofs array. Declaring a link from 0
+    // to 3 with nothing to fold must not freshen the receipt against an
+    // accumulator that never actually advanced.
+    const fx = await buildFixture();
+    const oldCheckpoint = buildV2CheckpointBytes({
+      mmrSize: 3n,
+      peakReceipts: [
+        await signDetachedPeakReceipt(fx.rootKeyPair, fx.nodes[2]!),
+      ],
+    });
+    const oldReceipt = buildReceiptOffline({
+      massifBytes: fx.massif7,
+      checkpointBytes: oldCheckpoint,
+      mmrIndex: 1n,
+    });
+    const latestCheckpoint = buildV2CheckpointBytes({
+      mmrSize: 3n,
+      peakReceipts: [
+        await signDetachedPeakReceipt(fx.rootKeyPair, fx.nodes[2]!),
+      ],
+    });
+    const emptyLink = {
+      proofs: [] as never[],
+      treeSize1: 0n,
+      treeSize2: 3n,
+      signedTreeSize2: 3n,
+    };
+
+    await expect(
+      freshenReceipt({
+        oldReceiptBytes: oldReceipt,
+        leafValue: fx.leaf1.leafHash,
+        consistencyProofs: [emptyLink],
+        latestCheckpointBytes: latestCheckpoint,
+      }),
+    ).rejects.toThrow(EmptyConsistencyProofsError);
   });
 
   it("rejects a chain whose endpoint does not match the checkpoint's sealed size", async () => {
@@ -413,11 +620,17 @@ describe("freshenReceipt (FOR-418)", () => {
     const aLatest = peakMMRIndexes(6n).map(get);
     const proven = await consistentRoots(hasher, 2n, aOld, cp.paths);
     const link = {
+      proofs: [
+        {
+          treeSize1: 3n,
+          treeSize2: 7n,
+          paths: cp.paths,
+          rightPeaks: aLatest.slice(proven.length),
+        },
+      ],
       treeSize1: 3n,
       treeSize2: 7n,
       signedTreeSize2: 7n,
-      paths: cp.paths,
-      rightPeaks: aLatest.slice(proven.length),
     };
     await expect(
       freshenReceipt({
@@ -456,11 +669,17 @@ describe("freshenReceipt (FOR-418)", () => {
     const aLatest = peakMMRIndexes(6n).map(get);
     const proven = await consistentRoots(hasher, 2n, aOld, cp.paths);
     const link = {
+      proofs: [
+        {
+          treeSize1: 3n,
+          treeSize2: 7n,
+          paths: cp.paths,
+          rightPeaks: aLatest.slice(proven.length),
+        },
+      ],
       treeSize1: 3n,
       treeSize2: 7n,
       signedTreeSize2: 7n,
-      paths: cp.paths,
-      rightPeaks: aLatest.slice(proven.length),
     };
     await expect(
       freshenReceipt({
@@ -516,11 +735,17 @@ describe("freshenReceipt folds from the CALLER's trusted base (ADR-0066 D5.4)", 
     const a7 = peakMMRIndexes(6n).map(get);
     const proven = await consistentRoots(hasher, 3n, a4, cp.paths);
     const link = {
+      proofs: [
+        {
+          treeSize1: 5n,
+          treeSize2: 7n,
+          paths: cp.paths,
+          rightPeaks: a7.slice(proven.length),
+        },
+      ],
       treeSize1: 5n,
       treeSize2: 7n,
       signedTreeSize2: 7n,
-      paths: cp.paths,
-      rightPeaks: a7.slice(proven.length),
     };
 
     await expect(
@@ -551,11 +776,17 @@ describe("freshenReceipt folds from the CALLER's trusted base (ADR-0066 D5.4)", 
     expect(a7.length).toBe(a3.length);
     const proven = await consistentRoots(hasher, 2n, a3, cp.paths);
     const link = {
+      proofs: [
+        {
+          treeSize1: 3n,
+          treeSize2: 7n,
+          paths: cp.paths,
+          rightPeaks: a7.slice(proven.length),
+        },
+      ],
       treeSize1: 3n,
       treeSize2: 7n,
       signedTreeSize2: 7n,
-      paths: cp.paths,
-      rightPeaks: a7.slice(proven.length),
     };
 
     await expect(
@@ -569,5 +800,105 @@ describe("freshenReceipt folds from the CALLER's trusted base (ADR-0066 D5.4)", 
     ).rejects.toThrow(
       /first consistency proof declares tree-size-1 3; the trusted base size is 7/,
     );
+  });
+});
+
+describe("a link's signed tree-size-2 must equal its declared one (review I5)", () => {
+  /** The size-3 receipt for leaf1 and the size-7 checkpoint to freshen to. */
+  async function staleAtThree(fx: Awaited<ReturnType<typeof buildFixture>>) {
+    const oldCheckpoint = buildV2CheckpointBytes({
+      mmrSize: 3n,
+      peakReceipts: [
+        await signDetachedPeakReceipt(fx.rootKeyPair, fx.nodes[2]!),
+      ],
+    });
+    return {
+      oldReceipt: buildReceiptOffline({
+        massifBytes: fx.massif7,
+        checkpointBytes: oldCheckpoint,
+        mmrIndex: 1n,
+      }),
+      latestCheckpoint: buildV2CheckpointBytes({
+        mmrSize: 7n,
+        peakReceipts: [
+          await signDetachedPeakReceipt(fx.rootKeyPair, fx.nodes[6]!),
+        ],
+      }),
+    };
+  }
+
+  /** The genuine 3 -> 7 link, with `signedTreeSize2` under the caller's
+   * control so the two sizes can be made to disagree. */
+  async function link(signedTreeSize2: bigint) {
+    const fx = await buildFixture();
+    const get: NodeGetter = (i) => fx.nodes[Number(i)]!;
+    const hasher = await createSyncHasher();
+    const { oldReceipt, latestCheckpoint } = await staleAtThree(fx);
+    const cp = indexConsistencyProof(get, 2n, 6n);
+    const a3 = peakMMRIndexes(2n).map(get);
+    const a7 = peakMMRIndexes(6n).map(get);
+    const proven = await consistentRoots(hasher, 2n, a3, cp.paths);
+    return {
+      fx,
+      oldReceipt,
+      latestCheckpoint,
+      trustedBase: { size: 3n, accumulator: a3 },
+      link: {
+        proofs: [
+          {
+            treeSize1: 3n,
+            treeSize2: 7n,
+            paths: cp.paths,
+            rightPeaks: a7.slice(proven.length),
+          },
+        ],
+        treeSize1: 3n,
+        treeSize2: 7n,
+        signedTreeSize2,
+      },
+    };
+  }
+
+  it("rejects a link signed for 999 and declared at 7", async () => {
+    // The links arrive already decoded, so nothing re-read the field the
+    // type says `checkpointConsistencyProof` pinned to the signature: a link
+    // carrying a signed size of 999 beside a declared 7 still freshened.
+    const f = await link(999n);
+    await expect(
+      freshenReceipt({
+        oldReceiptBytes: f.oldReceipt,
+        leafValue: f.fx.leaf1.leafHash,
+        consistencyProofs: [f.link],
+        trustedBase: f.trustedBase,
+        latestCheckpointBytes: f.latestCheckpoint,
+      }),
+    ).rejects.toThrow(CheckpointSignedSizeMismatchError);
+  });
+
+  it("names the link and both sizes", async () => {
+    const f = await link(999n);
+    await expect(
+      freshenReceipt({
+        oldReceiptBytes: f.oldReceipt,
+        leafValue: f.fx.leaf1.leafHash,
+        consistencyProofs: [f.link],
+        trustedBase: f.trustedBase,
+        latestCheckpointBytes: f.latestCheckpoint,
+      }),
+    ).rejects.toThrow(/consistency proof 0: signed tree-size-2 .* 999 != .* 7/);
+  });
+
+  it("the same link with the signed size restored freshens", async () => {
+    // Round-trip confidence: the disagreement, not some other defect in the
+    // fixture, is what flips the outcome.
+    const f = await link(7n);
+    const result = await freshenReceipt({
+      oldReceiptBytes: f.oldReceipt,
+      leafValue: f.fx.leaf1.leafHash,
+      consistencyProofs: [f.link],
+      trustedBase: f.trustedBase,
+      latestCheckpointBytes: f.latestCheckpoint,
+    });
+    expect(result.sealedSize).toBe(7n);
   });
 });

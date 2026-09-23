@@ -24,9 +24,14 @@ import {
 import {
   accumulatorPayload,
   CheckpointHighSSignatureError,
+  CheckpointProtectedHeaderAlgError,
   checkpointConsistencyProof,
+  computeCheckpointAccumulator,
+  ConsistencyChainNotContiguousError,
   verifyCheckpointChain,
+  type CheckpointConsistencyProof,
 } from "../src/checkpoint-chain.js";
+import { EmptyConsistencyProofsError } from "../src/decode-checkpoint-consistency-proof.js";
 import { SubtleHasher } from "../src/subtle-hasher.js";
 import { toHighS, toLowS } from "./helpers/to-low-s.js";
 
@@ -365,12 +370,13 @@ describe("verifyCheckpointChain (FOR-368 Phase 3)", () => {
     expect(["signature", "proof_malformed"]).toContain(result.reason);
   });
 
-  it("decodes the embedded proof shape", async () => {
+  it("decodes the embedded proof shape as the relay of one", async () => {
     const cp = await buildCheckpoint(3n, 7n);
     const proof = checkpointConsistencyProof(cp);
+    expect(proof.proofs.length).toBe(1);
     expect(proof.treeSize1).toBe(3n);
     expect(proof.treeSize2).toBe(7n);
-    expect(proof.paths.length).toBe(peakMMRIndexes(2n).length);
+    expect(proof.proofs[0]!.paths.length).toBe(peakMMRIndexes(2n).length);
   });
 });
 
@@ -848,5 +854,247 @@ describe("high-s ES256 checkpoint signatures are rejected (FOR-568 rollout item 
       trustedBase: { size: 0n, accumulator: [] },
     });
     expect(result.ok).toBe(true);
+  });
+});
+
+describe("a protected header with no integer alg is rejected (review S-1)", () => {
+  // The univocity contract's reader rejects both of these headers — its
+  // structural walk finds the size, and the `alg` requirement in the same
+  // call raises `ClaimNotFound(1)` / `UnexpectedMajorType`. Off-chain the
+  // lenient read answered `null`, which switched the high-s rejection off
+  // (it is conditioned on the algorithm being ES256) while the signed size
+  // was still read out of the same header. The three headers below are the
+  // ones the finding's probe fed to both sides.
+  const fromHex = (h: string) =>
+    new Uint8Array(h.match(/../g)!.map((b) => parseInt(b, 16)));
+
+  /** `{1: -7, 395: 3, -65933: 8}` — a canonical sealer header. */
+  const CANONICAL = fromHex("a3012619018b033a0001018c08");
+  /** The same header with label 1 absent: `{395: 3, -65933: 8}`. */
+  const NO_ALG = fromHex("a219018b033a0001018c08");
+  /** The same header with a byte string under label 1: `{1: h'26', …}`. */
+  const BSTR_ALG = fromHex("a301412619018b033a0001018c08");
+
+  /** P-256 group order; `s = n - 1` is the malleable high-s twin. */
+  const P256_N = BigInt(
+    "0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
+  );
+
+  function be32(v: bigint): Uint8Array {
+    const out = new Uint8Array(32);
+    for (let i = 31; i >= 0; i--) {
+      out[i] = Number(v & 0xffn);
+      v >>= 8n;
+    }
+    return out;
+  }
+
+  const HIGH_S = new Uint8Array(64);
+  HIGH_S.set(be32(1n), 0);
+  HIGH_S.set(be32(P256_N - 1n), 32);
+
+  const node = (b: number) => new Uint8Array(32).fill(b);
+  /** A 7 -> 8 consistency proof: one origin peak path, no right peaks. */
+  const PROOF = encodeCborDeterministic([
+    7n,
+    8n,
+    [[node(1), node(2), node(3)]],
+    [],
+  ]);
+
+  /** A checkpoint carrying that proof, the high-s signature, and `header`. */
+  function checkpointWithHeader(header: Uint8Array): Uint8Array {
+    return encodeCborDeterministic([
+      header,
+      new Map<number, unknown>([
+        [396, new Map<number, unknown>([[-2, PROOF]])],
+      ]),
+      null,
+      HIGH_S,
+    ]);
+  }
+
+  it("rejects a header with no label 1", () => {
+    expect(() =>
+      checkpointConsistencyProof(checkpointWithHeader(NO_ALG)),
+    ).toThrow(CheckpointProtectedHeaderAlgError);
+  });
+
+  it("rejects a byte string under label 1", () => {
+    expect(() =>
+      checkpointConsistencyProof(checkpointWithHeader(BSTR_ALG)),
+    ).toThrow(CheckpointProtectedHeaderAlgError);
+  });
+
+  it("the canonical header reaches the high-s rejection", () => {
+    // The contrast the finding turns on: with the algorithm stated, the same
+    // signature is rejected as malleable. Both rejections must happen, and
+    // neither header may yield a signed size to fold from.
+    expect(() =>
+      checkpointConsistencyProof(checkpointWithHeader(CANONICAL)),
+    ).toThrow(CheckpointHighSSignatureError);
+  });
+
+  it("verifyCheckpointChain reports proof_malformed for both headers", async () => {
+    for (const header of [NO_ALG, BSTR_ALG]) {
+      const result = await verifyCheckpointChain({
+        checkpoints: [checkpointWithHeader(header)],
+        verifySignature: verifySig,
+        trustedBase: { size: 7n, accumulator: peaksAt(6n) },
+      });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.reason).toBe("proof_malformed");
+      expect(result.at).toBe(0);
+      expect(result.detail).toMatch(/no integer alg/);
+      expect(result.links.length).toBe(0);
+    }
+  });
+});
+
+describe("every trusted base peak is a 32-byte node value (review I2, canopy C6)", () => {
+  // The peak COUNT was checked, the byte lengths were not. On the empty-path
+  // branch an origin peak is copied into the result verbatim, so a peak of
+  // any length reaches `accumulatorPayload` and changes the detached payload
+  // the signature is checked over, with only that signature rejecting it.
+  it("rejects a 31-byte trusted base peak", async () => {
+    const result = await verifyCheckpointChain({
+      checkpoints: [await buildCheckpoint(3n, 7n)],
+      verifySignature: verifySig,
+      trustedBase: { size: 3n, accumulator: [new Uint8Array(31).fill(7)] },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("proof_malformed");
+    expect(result.at).toBe(0);
+    expect(result.detail).toMatch(/peak 0 is not a 32-byte node value/);
+    expect(result.detail).toMatch(/31 bytes/);
+    expect(result.links.length).toBe(0);
+  });
+
+  it("rejects a 33-byte trusted base peak", async () => {
+    const result = await verifyCheckpointChain({
+      checkpoints: [await buildCheckpoint(3n, 7n)],
+      verifySignature: verifySig,
+      trustedBase: { size: 3n, accumulator: [new Uint8Array(33).fill(7)] },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("proof_malformed");
+    expect(result.detail).toMatch(/33 bytes/);
+  });
+
+  it("rejects an empty and an over-long trusted base peak", async () => {
+    for (const length of [0, 64]) {
+      const result = await verifyCheckpointChain({
+        checkpoints: [await buildCheckpoint(3n, 7n)],
+        verifySignature: verifySig,
+        trustedBase: {
+          size: 3n,
+          accumulator: [new Uint8Array(length).fill(7)],
+        },
+      });
+      expect(result.ok, `peak of ${length} bytes`).toBe(false);
+      if (result.ok) return;
+      expect(result.reason).toBe("proof_malformed");
+    }
+  });
+
+  it("rejects a trusted base peak that is not bytes at all", async () => {
+    const result = await verifyCheckpointChain({
+      checkpoints: [await buildCheckpoint(3n, 7n)],
+      verifySignature: verifySig,
+      trustedBase: {
+        size: 3n,
+        accumulator: [null as unknown as Uint8Array],
+      },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe("proof_malformed");
+    expect(result.detail).toMatch(/null/);
+  });
+
+  it("the genuine 32-byte base peaks still verify", async () => {
+    const result = await verifyCheckpointChain({
+      checkpoints: [await buildCheckpoint(3n, 7n)],
+      verifySignature: verifySig,
+      trustedBase: { size: 3n, accumulator: peaksAt(2n) },
+    });
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe("computeCheckpointAccumulator on a caller-assembled link (F3)", () => {
+  // `checkpointConsistencyProof` always sets `treeSize2` from the last
+  // decoded proof and never returns an empty `proofs` array, so these two
+  // shapes only arise from a link a caller assembled directly — the
+  // `freshenReceipt` path, whose links are built from on-chain calldata
+  // rather than decoded from a checkpoint.
+
+  it("rejects an empty proofs array instead of returning the input accumulator unchanged", async () => {
+    const link: CheckpointConsistencyProof = {
+      proofs: [],
+      treeSize1: 3n,
+      treeSize2: 3n,
+      signedTreeSize2: 3n,
+    };
+    const accumulatorFrom = peaksAt(2n);
+    await expect(
+      computeCheckpointAccumulator(link, accumulatorFrom, 3n),
+    ).rejects.toThrow(EmptyConsistencyProofsError);
+  });
+
+  it("rejects a link whose folded size does not match its declared tree-size-2", async () => {
+    // The one relayed proof genuinely folds 3 -> 7, but the link's own
+    // treeSize2 claims 15 — a disagreement checkpointConsistencyProof can
+    // never produce, since it always reads treeSize2 off this same proof.
+    const real = await realProof(3n, 7n);
+    const link: CheckpointConsistencyProof = {
+      proofs: [
+        {
+          treeSize1: real.treeSize1,
+          treeSize2: 7n,
+          paths: real.paths,
+          rightPeaks: real.rightPeaks,
+        },
+      ],
+      treeSize1: 3n,
+      treeSize2: 15n,
+      signedTreeSize2: 15n,
+    };
+    await expect(
+      computeCheckpointAccumulator(link, peaksAt(2n), 3n),
+    ).rejects.toThrow(ConsistencyChainNotContiguousError);
+    await expect(
+      computeCheckpointAccumulator(link, peaksAt(2n), 3n),
+    ).rejects.toThrow(
+      /folds to tree-size-2 7; the chain's declared tree-size-2 is 15/,
+    );
+  });
+
+  it("the genuine shape still folds to the matching accumulator", async () => {
+    const real = await realProof(3n, 7n);
+    const link: CheckpointConsistencyProof = {
+      proofs: [
+        {
+          treeSize1: real.treeSize1,
+          treeSize2: 7n,
+          paths: real.paths,
+          rightPeaks: real.rightPeaks,
+        },
+      ],
+      treeSize1: 3n,
+      treeSize2: 7n,
+      signedTreeSize2: 7n,
+    };
+    const accumulator = await computeCheckpointAccumulator(
+      link,
+      peaksAt(2n),
+      3n,
+    );
+    expect(accumulator.map((p) => Buffer.from(p).toString("hex"))).toEqual(
+      peaksAt(6n).map((p) => Buffer.from(p).toString("hex")),
+    );
   });
 });

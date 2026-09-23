@@ -156,11 +156,17 @@ export {
   computeCheckpointAccumulator,
   verifyCheckpointChain,
   CheckpointHighSSignatureError,
+  CheckpointProtectedHeaderAlgError,
   CheckpointSignedSizeMismatchError,
+  ConsistencyChainNotContiguousError,
+  EmptyConsistencyProofsError,
   type CheckpointChainLink,
   type CheckpointChainResult,
   type CheckpointConsistencyProof,
 } from "./checkpoint-chain.js";
+/** One relayed consistency proof; `CheckpointConsistencyProof.proofs` holds
+ * the chain of them a checkpoint carries (ADR-0066 D2). */
+export type { DecodedConsistencyProof } from "./decode-checkpoint-consistency-proof.js";
 /**
  * Univocity leaf commitment hash. Was CLI-private (forestrie-cli's own
  * mirror, "hoist to the library when the FOR-297 multi-hop resolver lands");

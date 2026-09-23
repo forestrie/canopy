@@ -103,10 +103,18 @@ function decodeCheckpointPayload(
   if (vdp === undefined || vdp === null) {
     return null;
   }
-  const proofBstr =
+  const proofEntry =
     vdp instanceof Map
       ? vdp.get(VDP_CONSISTENCY_PROOF_KEY)
       : (vdp as Record<string, unknown>)[String(VDP_CONSISTENCY_PROOF_KEY)];
+  // -2 carries `consistency-proofs = [ + consistency-proof ]` (ADR-0066 D2:
+  // a checkpoint may relay several sealed steps under one signature), and,
+  // on checkpoints sealed before that array form, the single proof bstr on
+  // its own. The last relayed proof is the one whose size the signature
+  // covers, so it is the one reported here.
+  const proofBstr = Array.isArray(proofEntry)
+    ? proofEntry[proofEntry.length - 1]
+    : proofEntry;
   if (!(proofBstr instanceof Uint8Array)) {
     return null;
   }

@@ -403,7 +403,14 @@ function sealedSizeFromCheckpoint(
     return null;
   }
   const vdp = toHeaderMap(vdpRaw as Map<number, unknown>);
-  const proofBstr = vdp.get(VDP_CONSISTENCY_PROOF_KEY);
+  const proofEntry = vdp.get(VDP_CONSISTENCY_PROOF_KEY);
+  // -2 carries `consistency-proofs = [ + consistency-proof ]` (ADR-0066 D2),
+  // and, on checkpoints sealed before that array form, the single proof
+  // bstr on its own. Only the presence of a proof matters here — the size
+  // returned is the SIGNED one.
+  const proofBstr = Array.isArray(proofEntry)
+    ? proofEntry[proofEntry.length - 1]
+    : proofEntry;
   if (!(proofBstr instanceof Uint8Array)) {
     return null;
   }

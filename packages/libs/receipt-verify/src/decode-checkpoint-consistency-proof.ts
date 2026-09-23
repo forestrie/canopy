@@ -1,7 +1,20 @@
 /**
- * Decode the draft-bryce consistency proof `[tree-size-1, tree-size-2, paths,
- * right-peaks]` carried under a checkpoint's verifiable-proofs UNPROTECTED
- * header (draft-bryce label 396, key -2 = `VDP_CONSISTENCY_PROOF_KEY`).
+ * Decode the draft-bryce consistency proofs carried under a checkpoint's
+ * verifiable-proofs UNPROTECTED header (draft-bryce label 396, key -2 =
+ * `VDP_CONSISTENCY_PROOF_KEY`).
+ *
+ * The draft's CDDL is
+ * `consistency-proofs = [ + consistency-proof ]`, with each
+ * `consistency-proof = bstr .cbor [tree-size-1, tree-size-2, paths,
+ * right-peaks]` — one or more proofs, relayed in chain order under a single
+ * signature (ADR-0066 D2). Both shapes are accepted under the -2 key:
+ *
+ * - an ARRAY of one or more proof bstrs — the draft's wire form, and the
+ *   only form that can carry a relayed chain;
+ * - a BARE proof bstr — the shape every checkpoint sealed before the array
+ *   form carries, and the shape the pinned `checkpoint-receipt-kat39.json`
+ *   vector's `conventions.receipt` still states. It decodes to the array of
+ *   one, so nothing downstream distinguishes it.
  *
  * Single source of truth for this decode, shared by `parseCheckpoint`
  * (build-receipt-offline.ts, lenient: an absent or malformed proof yields a
@@ -9,8 +22,9 @@
  * (checkpoint-chain.ts, full validation: an absent proof or a malformed
  * shape throws, and the SIGNED `tree-size-2` from the protected header —
  * read separately via `readProtectedTreeSize2`, ADR-0066 D1 as amended —
- * must match the `tree-size-2` decoded here; `tree-size-1` is unsigned
- * prover context and is not cross-checked against a signed value).
+ * must match the `tree-size-2` of the LAST proof decoded here;
+ * `tree-size-1` is unsigned prover context and is not cross-checked against
+ * a signed value).
  */
 
 import {
@@ -19,7 +33,7 @@ import {
   decodeCborDeterministic,
 } from "@forestrie/encoding";
 
-/** The declared (unprotected, unsigned) consistency proof of a checkpoint. */
+/** One declared (unprotected, unsigned) consistency proof of a checkpoint. */
 export type DecodedConsistencyProof = {
   treeSize1: bigint;
   treeSize2: bigint;
@@ -28,6 +42,21 @@ export type DecodedConsistencyProof = {
   /** New peaks not covered by the proven roots (draft `right-peaks`). */
   rightPeaks: Uint8Array[];
 };
+
+/**
+ * The verifiable-proofs header carries the consistency-proof key with an
+ * EMPTY array. Distinct from an absent proof (no -2 key at all, which
+ * decodes to `null`): the key is present and claims to relay a chain, but
+ * the chain has no links, so there is nothing to fold and no last proof for
+ * the signed `tree-size-2` to equal. `consistency-proofs = [ + ... ]`
+ * requires at least one.
+ */
+export class EmptyConsistencyProofsError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EmptyConsistencyProofsError";
+  }
+}
 
 function asBigint(v: unknown, what: string): bigint {
   // Unsigned only: a negative size flows into peakMMRIndexes /
@@ -56,36 +85,18 @@ function asBytesArray(v: unknown, what: string): Uint8Array[] {
   return v as Uint8Array[];
 }
 
-/**
- * Decode the embedded consistency proof from a checkpoint's UNPROTECTED
- * header map. Returns `null` when the checkpoint carries no verifiable-proofs
- * header (396) or no consistency-proof bstr there (key -2) — an ABSENT
- * proof, not a malformed one.
- *
- * @throws When a consistency-proof bstr IS present but its contents are not
- *   the shape `[tree-size-1, tree-size-2, paths, right-peaks]`, either size
- *   is not an unsigned integer, the proof does not grow the tree
- *   (`tree-size-2 <= tree-size-1`), a path element or a right-peak is not a
- *   32-byte string — or when header 396 is present but is not map-valued,
- *   or its `-2` entry is present but not a byte string.
- */
-export function decodeConsistencyProofFromUnprotected(
-  unprotected: Map<number, unknown>,
-): DecodedConsistencyProof | null {
-  const vdpRaw = unprotected.get(COSE_LABEL_VDP);
-  if (vdpRaw === undefined || vdpRaw === null) return null;
-  if (!(vdpRaw instanceof Map)) {
-    throw new Error("checkpoint carries no verifiable-proofs header (396)");
-  }
-  const proofBstr = vdpRaw.get(VDP_CONSISTENCY_PROOF_KEY);
-  if (proofBstr === undefined || proofBstr === null) return null;
-  if (!(proofBstr instanceof Uint8Array)) {
-    throw new Error("checkpoint carries no consistency proof (vdp key -2)");
-  }
+/** Decode one `bstr .cbor [tree-size-1, tree-size-2, paths, right-peaks]`. */
+function decodeOneProof(proofBstr: Uint8Array): DecodedConsistencyProof {
   const proof = decodeCborDeterministic(proofBstr);
-  if (!Array.isArray(proof) || proof.length < 4) {
+  // Exactly 4 — the draft's CDDL names a fixed-arity array, and
+  // go-merklelog's decoder rejects any other length (F2). A 5th element
+  // (e.g. another proof tuple, mistaken for a chain of two) is as malformed
+  // as a 3rd missing.
+  if (!Array.isArray(proof) || proof.length !== 4) {
     throw new Error(
-      "consistency proof must be [tree-size-1, tree-size-2, paths, right-peaks]",
+      `consistency proof must be [tree-size-1, tree-size-2, paths, right-peaks] (4 elements), got ${
+        Array.isArray(proof) ? proof.length : typeof proof
+      }`,
     );
   }
   const pathsRaw = proof[2];
@@ -133,4 +144,77 @@ export function decodeConsistencyProofFromUnprotected(
     paths: pathsRaw as Uint8Array[][],
     rightPeaks: asBytesArray(proof[3], "right-peaks"),
   };
+}
+
+/**
+ * Decode proof `at` of a relayed chain, naming its position in the message
+ * so a chain of several says which link is malformed. A header carrying a
+ * single proof names no position: its message is the one a single-proof
+ * checkpoint has always produced.
+ */
+function decodeProofAt(
+  proofBstr: Uint8Array,
+  at: number | null,
+): DecodedConsistencyProof {
+  if (at === null) return decodeOneProof(proofBstr);
+  try {
+    return decodeOneProof(proofBstr);
+  } catch (err) {
+    throw new Error(
+      `consistency-proofs entry ${at}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+/**
+ * Decode the embedded consistency proofs from a checkpoint's UNPROTECTED
+ * header map, in the order they are relayed. Returns `null` when the
+ * checkpoint carries no verifiable-proofs header (396) or no
+ * consistency-proof entry there (key -2) — an ABSENT proof, not a malformed
+ * one. A returned array always holds at least one proof.
+ *
+ * This decode establishes each proof's shape only. Nothing here relates one
+ * proof to the next, or to a signed size: the chain has to be checked
+ * against state the CALLER trusts, which is `computeCheckpointAccumulator`
+ * and `checkpointConsistencyProof` (ADR-0066 D5.4).
+ *
+ * @throws {EmptyConsistencyProofsError} when the -2 entry is an empty array
+ * @throws When a consistency proof IS present but its contents are not the
+ *   shape `[tree-size-1, tree-size-2, paths, right-peaks]`, either size is
+ *   not an unsigned integer, a proof does not grow the tree
+ *   (`tree-size-2 <= tree-size-1`), a path element or a right-peak is not a
+ *   32-byte string — or when header 396 is present but is not map-valued,
+ *   or its `-2` entry is neither a byte string nor an array of byte strings.
+ */
+export function decodeConsistencyProofsFromUnprotected(
+  unprotected: Map<number, unknown>,
+): DecodedConsistencyProof[] | null {
+  const vdpRaw = unprotected.get(COSE_LABEL_VDP);
+  if (vdpRaw === undefined || vdpRaw === null) return null;
+  if (!(vdpRaw instanceof Map)) {
+    throw new Error("checkpoint carries no verifiable-proofs header (396)");
+  }
+  const entry = vdpRaw.get(VDP_CONSISTENCY_PROOF_KEY);
+  if (entry === undefined || entry === null) return null;
+  if (entry instanceof Uint8Array) {
+    // The pre-array shape: a single proof written straight under -2. It is
+    // the array of one, and is reported as such.
+    return [decodeOneProof(entry)];
+  }
+  if (!Array.isArray(entry)) {
+    throw new Error("checkpoint carries no consistency proof (vdp key -2)");
+  }
+  if (entry.length === 0) {
+    throw new EmptyConsistencyProofsError(
+      "consistency-proofs (vdp key -2) is empty; at least one proof is required",
+    );
+  }
+  return entry.map((proofBstr, i) => {
+    if (!(proofBstr instanceof Uint8Array)) {
+      throw new Error(
+        `consistency-proofs entry ${i} is not a byte string (vdp key -2)`,
+      );
+    }
+    return decodeProofAt(proofBstr, entry.length === 1 ? null : i);
+  });
 }

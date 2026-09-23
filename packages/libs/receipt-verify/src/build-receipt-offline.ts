@@ -37,7 +37,7 @@ import {
   unwrapCoseSign1Tag,
   type CoseSign1,
 } from "./parse-receipt.js";
-import { decodeConsistencyProofFromUnprotected } from "./decode-checkpoint-consistency-proof.js";
+import { decodeConsistencyProofsFromUnprotected } from "./decode-checkpoint-consistency-proof.js";
 import { SubtleHasher } from "./subtle-hasher.js";
 
 /** Not in scope for the shared cose-labels module (FOR-568 §4.1). */
@@ -269,27 +269,31 @@ function cborBytes(value: unknown): Uint8Array {
  * (ADR-0066 D1 as amended, label -65933) from the PROTECTED header — not the
  * unprotected consistency proof's declared value, which a checkpoint without
  * a signing key could freely restate (ADR-0066's "keyless first checkpoint"
- * case). A consistency proof must still be present (an unsigned checkpoint
- * with no proof is not sealed at all); its declared sizes are not otherwise
- * used here — {@link checkpointConsistencyProof} in `checkpoint-chain.ts`
- * is the validating decode that requires the two to agree.
+ * case). At least one consistency proof must still be present (an unsigned
+ * checkpoint with no proof is not sealed at all) — one or more, since a
+ * checkpoint may relay a chain of sealed steps under one signature
+ * (ADR-0066 D2). Their declared sizes are not otherwise used here;
+ * {@link checkpointConsistencyProof} in `checkpoint-chain.ts` is the
+ * validating decode that requires the signed size and the last relayed
+ * proof's to agree.
  *
  * Lenient only for an ABSENT proof or an absent signed tree-size-2: both
  * yield `null`, so a caller of {@link parseCheckpoint} sees the same "not
  * verifiable" outcome for either. A proof or protected header that IS
  * present but malformed is a different condition and is not swallowed here
- * — {@link decodeConsistencyProofFromUnprotected} throws for a structurally
- * malformed proof, and {@link readProtectedTreeSize2} throws for a
- * protected header that is not deterministically encoded (ADR-0066 D9);
- * both propagate rather than folding into `null` (review finding O3: a D9
- * conformance failure is a sealer-side defect worth attributing, not the
- * ordinary "no proof yet" case).
+ * — {@link decodeConsistencyProofsFromUnprotected} throws for a structurally
+ * malformed proof (including an empty consistency-proofs array), and
+ * {@link readProtectedTreeSize2} throws for a protected header that is not
+ * deterministically encoded (ADR-0066 D9); both propagate rather than
+ * folding into `null` (review finding O3: a D9 conformance failure is a
+ * sealer-side defect worth attributing, not the ordinary "no proof yet"
+ * case).
  */
 function sealedSizeFromCheckpoint(
   coseSign1: CoseSign1,
   unprotected: Map<number, unknown>,
 ): bigint | null {
-  const declared = decodeConsistencyProofFromUnprotected(unprotected);
+  const declared = decodeConsistencyProofsFromUnprotected(unprotected);
   if (declared === null) return null;
   return readProtectedTreeSize2(coseSign1[0]);
 }
