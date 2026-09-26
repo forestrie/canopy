@@ -133,7 +133,6 @@ function rootFamilyOf(
   return alg === "ES256_WEBAUTHN" ? "ES256" : alg;
 }
 
-/** Per-shard SQLite store for routes, certs, pending, webhooks. */
 /** Upper bound on held keys a sealer may advertise (it holds at most N and N-1). */
 const MAX_HELD_PUBLIC_KEY_HASHES = 16;
 const PUBKEY_HASH_HEX = /^[0-9a-f]{64}$/;
@@ -159,6 +158,7 @@ export function heldPublicKeyHashesOf(req: {
   return [...out];
 }
 
+/** Per-shard SQLite store for routes, certs, pending, webhooks. */
 export class DelegationStoreDO extends DurableObject<Env> {
   private initialized = false;
 
