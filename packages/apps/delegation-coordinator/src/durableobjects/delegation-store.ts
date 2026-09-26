@@ -133,6 +133,31 @@ function rootFamilyOf(
   return alg === "ES256_WEBAUTHN" ? "ES256" : alg;
 }
 
+/** Upper bound on held keys a sealer may advertise (it holds at most N and N-1). */
+const MAX_HELD_PUBLIC_KEY_HASHES = 16;
+const PUBKEY_HASH_HEX = /^[0-9a-f]{64}$/;
+
+/**
+ * Validates and normalises `heldPublicKeyHashes` (FOR-586). Returns [] when the
+ * field is absent (older sealers), the de-duplicated hashes when well-formed,
+ * and null when present but malformed.
+ */
+export function heldPublicKeyHashesOf(req: {
+  heldPublicKeyHashes?: unknown;
+}): string[] | null {
+  const raw = req.heldPublicKeyHashes;
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw) || raw.length > MAX_HELD_PUBLIC_KEY_HASHES) {
+    return null;
+  }
+  const out = new Set<string>();
+  for (const h of raw) {
+    if (typeof h !== "string" || !PUBKEY_HASH_HEX.test(h)) return null;
+    out.add(h);
+  }
+  return [...out];
+}
+
 /** Per-shard SQLite store for routes, certs, pending, webhooks. */
 export class DelegationStoreDO extends DurableObject<Env> {
   private initialized = false;
@@ -1604,13 +1629,38 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
     // Coverage retrieval (FOR-390 phase C): the newest unexpired certificate
     // that COVERS the true seal window [mmrStart, mmrEnd], bound to either the
-    // request's own delegated key or any registered standing delegate key
+    // request's own delegated key or a registered standing delegate key
     // (rotation overlap — a still-valid wide cert bound to the epoch N-1 key
     // is usable while the request advertises epoch N). Replaces the exact
     // certificate_key match, so one wide advance cert serves every subsequent
     // narrow seal without a signer round-trip.
+    //
+    // FOR-586: when the sealer says which keys it holds, only those registered
+    // keys qualify. A certificate bound to a registered key the sealer no
+    // longer holds (its epoch retired) would be rejected by the sealer, and
+    // having been served here it would also suppress the pending demand and
+    // webhook for the key the sealer does hold — a seal stall until that stale
+    // certificate expires. Older sealers omit the field and keep the wider
+    // match.
     const reqKeyHash = await sha256Hex(req.delegatedPublicKey);
+    const heldHashes = heldPublicKeyHashesOf(req);
+    if (heldHashes === null) {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Invalid request",
+          status: 400,
+          detail:
+            "heldPublicKeyHashes must be up to 16 lowercase hex sha256 strings",
+        },
+        { status: 400 },
+      );
+    }
     const nowSeconds = Math.floor(Date.now() / 1000);
+    const heldFilter =
+      heldHashes.length > 0
+        ? `AND k.pubkey_hash IN (${heldHashes.map(() => "?").join(", ")})`
+        : "";
     const rows = [
       ...this.ctx.storage.sql.exec(
         `SELECT c.certificate, c.issued_at, c.expires_at, c.onchain_signature,
@@ -1620,6 +1670,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
            FROM delegation_certificates c
            LEFT JOIN delegate_keys k
              ON k.pubkey_hash = c.delegated_pubkey_hash AND k.not_after > ?
+             ${heldFilter}
           WHERE c.log_id_hex32 = ?
             AND c.expires_at > ?
             AND c.mmr_start <= ?
@@ -1628,6 +1679,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
           ORDER BY c.expires_at DESC, c.mmr_end DESC
           LIMIT 1`,
         nowSeconds,
+        ...heldHashes,
         logIdHex32,
         nowSeconds,
         req.mmrStart,
