@@ -19,4 +19,15 @@ export interface DelegationIssueRequest {
   delegatedPublicKey: Uint8Array;
   requestedTtlSeconds?: number;
   requestId?: Uint8Array;
+  /**
+   * Hex sha256 of each canonical COSE_Key the sealer currently holds the
+   * private key for (its standing delegate keys, epochs N and N-1), the same
+   * value the coordinator stores as `delegate_keys.pubkey_hash`. When present,
+   * coverage retrieval serves only certificates bound to one of these keys
+   * (or to `delegatedPublicKey`): a certificate bound to a key the sealer no
+   * longer holds would be rejected by the sealer and, having been served,
+   * would suppress the pending demand for the key it does hold (FOR-586).
+   * Absent on older sealers, which get the pre-FOR-586 behaviour.
+   */
+  heldPublicKeyHashes?: string[];
 }

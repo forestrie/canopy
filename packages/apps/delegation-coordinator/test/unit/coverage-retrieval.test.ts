@@ -23,6 +23,7 @@ import {
   verifyReceiptOfflineWithKeys,
 } from "@forestrie/receipt-verify";
 import { bytesToBase64 } from "../../src/encoding.js";
+import { sha256Hex } from "../../src/certificate-key.js";
 import {
   hex32ToWireLogIdBytes,
   normalizeLogIdToHex32,
@@ -122,6 +123,7 @@ async function issue(opts: {
   mmrStart: number;
   mmrEnd: number;
   delegatedPublicKey: Uint8Array;
+  heldPublicKeyHashes?: unknown;
 }): Promise<Response> {
   return fetchWithDoRetry("http://localhost/api/delegations", {
     method: "POST",
@@ -137,6 +139,9 @@ async function issue(opts: {
       algorithm: "ES256",
       delegatedPublicKey: opts.delegatedPublicKey,
       requestedTtlSeconds: 3600,
+      ...(opts.heldPublicKeyHashes !== undefined
+        ? { heldPublicKeyHashes: opts.heldPublicKeyHashes }
+        : {}),
     }),
   });
 }
@@ -387,6 +392,100 @@ describe("standing delegate-key registration (POST /api/sealer/delegate-keys)", 
       new Uint8Array(await hitRes.arrayBuffer()),
     );
     expect(resp.certificate).toBeInstanceOf(Uint8Array);
+  });
+
+  // FOR-586: a registered key the sealer no longer holds (its epoch retired
+  // after a KMS key-version rotation) must not serve its stale certificate to
+  // a sealer that says which keys it holds — the sealer would reject it, and
+  // the served hit would suppress the pending demand for the key it does hold.
+  it("does not serve a cert bound to a registered key the sealer says it no longer holds", async () => {
+    const logUuid = randomUUID();
+    // Stale wide cert bound to key B (epoch N-1, later expiring).
+    const keyB = testDelegatedCoseKey(72);
+    const { logHex32 } = await seedWideCert({
+      logUuid,
+      seed: 72,
+      mmrStart: 0,
+      mmrEnd: 16383,
+    });
+    const keyA = testDelegatedCoseKey(82); // epoch N, the only key held now
+    const regRes = await fetchWithDoRetry(
+      "http://localhost/api/sealer/delegate-keys",
+      {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sealerId: "sealer-a",
+          keys: [
+            await delegateKeyEntryWithVoucher({
+              sealerId: "sealer-a",
+              publicKey: keyB,
+              epoch: 1,
+              notAfter: futureNotAfter(),
+            }),
+            await delegateKeyEntryWithVoucher({
+              sealerId: "sealer-a",
+              publicKey: keyA,
+              epoch: 2,
+              notAfter: futureNotAfter(),
+            }),
+          ],
+        }),
+      },
+    );
+    expect(regRes.status).toBe(200);
+
+    // Pre-FOR-586 sealer (no held list): the registered-key overlap still
+    // serves cert-B, so nothing changes for older sealers.
+    const legacyRes = await issue({
+      logHex32,
+      mmrStart: 5,
+      mmrEnd: 7,
+      delegatedPublicKey: keyA,
+    });
+    expect(legacyRes.status).toBe(200);
+
+    // Sealer holds only A: cert-B must not be served; a pending demand for A
+    // is recorded instead (202).
+    const heldOnlyA = [await sha256Hex(keyA)];
+    const missRes = await issue({
+      logHex32,
+      mmrStart: 5,
+      mmrEnd: 7,
+      delegatedPublicKey: keyA,
+      heldPublicKeyHashes: heldOnlyA,
+    });
+    expect(missRes.status).toBe(202);
+    const pendingRes = await fetchWithDoRetry(
+      `http://localhost/api/logs/${logHex32}/pending-delegation`,
+      { headers: authHeaders() },
+    );
+    expect(pendingRes.status).toBe(200);
+    const pendingBody = (await pendingRes.json()) as {
+      entries: Array<{ delegatedPublicKeyHash?: string }>;
+    };
+    expect(pendingBody.entries.length).toBeGreaterThan(0);
+    expect(pendingBody.entries[0]?.delegatedPublicKeyHash).toBe(heldOnlyA[0]);
+
+    // Sealer still holds B (overlap in force): cert-B is served as before.
+    const overlapRes = await issue({
+      logHex32,
+      mmrStart: 5,
+      mmrEnd: 7,
+      delegatedPublicKey: keyA,
+      heldPublicKeyHashes: [await sha256Hex(keyA), await sha256Hex(keyB)],
+    });
+    expect(overlapRes.status).toBe(200);
+
+    // Malformed held list is a client error, never a silent widening.
+    const badRes = await issue({
+      logHex32,
+      mmrStart: 5,
+      mmrEnd: 7,
+      delegatedPublicKey: keyA,
+      heldPublicKeyHashes: ["not-a-hash"],
+    });
+    expect(badRes.status).toBe(400);
   });
 });
 
