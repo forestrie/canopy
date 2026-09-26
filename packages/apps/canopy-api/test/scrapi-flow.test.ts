@@ -8,7 +8,7 @@ import {
 } from "@forestrie/encoding";
 import { decodeCborAsObject } from "./helpers/cbor-decode-object.js";
 import { env } from "cloudflare:test";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { encodeEntryId } from "../src/scrapi/entry-id";
 import worker from "../src/index";
@@ -654,6 +654,81 @@ describe("SCRAPI flow", () => {
       "checkpoint does not cover entry",
     );
   });
+
+  // Review finding O3: `sealedSizeFromCheckpoint` used to wrap the D9
+  // protected-header conformance read in a bare `catch` and return `null` —
+  // the same value returned for a checkpoint that simply has no consistency
+  // proof yet, so a sealer emitting a header canopy rejects produced a
+  // silent, misattributed 404. It now lets that throw propagate into this
+  // handler's own outer `catch`, which already logs via `console.error`
+  // before answering — so the failure is now attributable, while the
+  // client-facing response is unchanged (still a generic 404; this endpoint
+  // deliberately does not expose internal decode detail to callers).
+  it("resolve-receipt logs the specific reason (not silent) for a checkpoint with a non-canonical protected header (ADR-0066 D9, FOR-568 O3)", async () => {
+    const massifHeight = 3;
+    const entryId = encodeEntryId({
+      idtimestamp: 0x0102030405060708n,
+      mmrIndex: 0n,
+    });
+    const logId = crypto.randomUUID();
+    await proveEnvHasMMRSBucket(testEnv);
+
+    const placeholderPeak = encodePeakReceiptCoseSign1(
+      new Uint8Array(),
+      new Map(),
+      new Uint8Array(),
+    );
+    // The sealer's canonical header is `{1: -7, 395: 3, -65933: 8}`
+    // (`a3012619018b033a0001018c08`). This vector carries the identical
+    // three pairs in REVERSE key order — out of canonical order, which
+    // RFC 8949 §4.2 / ADR-0066 D9 reject. Shared with the
+    // "reject/keys-reversed" row in
+    // packages/shared/encoding/src/protected-header-conformance.test.ts.
+    const malformedProtected = Uint8Array.from(
+      Buffer.from("a33a0001018c0819018b030126", "hex"),
+    );
+    const consistencyProof = encodeCborDeterministic([0n, 8n, [], []]);
+    const checkpointUnprotected = new Map<number, unknown>([
+      [396, new Map<number, unknown>([[-2, consistencyProof]])],
+      [-65931, [placeholderPeak]],
+    ]);
+    const checkpointBytes = encodeCborDeterministic([
+      malformedProtected,
+      checkpointUnprotected,
+      null,
+      new Uint8Array(),
+    ]) as Uint8Array;
+
+    const objectIndex = "0000000000000000";
+    await testEnv.R2_MMRS.put(
+      `v2/merklelog/checkpoints/${massifHeight}/${logId}/${objectIndex}.sth`,
+      checkpointBytes,
+    );
+    // No massif object: resolveReceipt reads and decodes the checkpoint
+    // before it looks at the massif, so the malformed header is reached
+    // (and throws) first.
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await worker.fetch(
+      new Request(
+        `http://localhost/logs/${flowBootstrapLogId}/${logId}/${massifHeight}/entries/${entryId}/receipt`,
+      ),
+      testEnv,
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(404);
+    expect(errorSpy).toHaveBeenCalled();
+    const logged = errorSpy.mock.calls
+      .map((call) => call.map((arg) => String(arg)).join(" "))
+      .join("\n");
+    expect(logged).toMatch(/out of canonical order/);
+  });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 function headerGet(objOrMap: any, key: number): any {

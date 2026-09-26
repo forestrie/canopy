@@ -70,7 +70,15 @@ type DecodedCheckpointPayload = {
  * = -2). Requires the object to decode, carry the proof, AND carry the
  * SIGNED tree-size-2 protected-header label (ADR-0066 D1 as amended, FOR-568)
  * — a checkpoint without it is not verifiable and is treated the same as
- * one with no proof at all.
+ * one with no proof at all (returns `null`).
+ *
+ * That equivalence holds only for an ABSENT signed tree-size-2. A PRESENT
+ * protected header that is not deterministically encoded (ADR-0066 D9) is a
+ * different condition — a sealer-side defect, not an ordinary unsealed
+ * checkpoint — and {@link readProtectedTreeSize2} throws for it; this
+ * function no longer catches that throw into the same `null` (review
+ * finding O3: folding a D9 conformance failure into "no proof" made it
+ * indistinguishable from the routine case and cost attribution).
  */
 function decodeCheckpointPayload(
   bytes: Uint8Array,
@@ -117,12 +125,7 @@ function decodeCheckpointPayload(
   if (!(protectedHeader instanceof Uint8Array)) {
     return null;
   }
-  let signedTreeSize2: bigint | null;
-  try {
-    signedTreeSize2 = readProtectedTreeSize2(protectedHeader);
-  } catch {
-    return null;
-  }
+  const signedTreeSize2 = readProtectedTreeSize2(protectedHeader);
   if (signedTreeSize2 === null) {
     return null;
   }
@@ -158,16 +161,22 @@ async function getCheckpointFromUrl(
   const path = checkpointPath(logId, env.massifHeight, massifIndex);
   const base = env.objectStorageRootUrl.replace(/\/$/, "");
   const url = `${base}/${path}`;
+  // The fetch/network failure is caught here and folded into `null` — a
+  // storage-reachability problem, not a decode outcome. `decodeCheckpointPayload`
+  // is called OUTSIDE this try so a D9 protected-header conformance failure
+  // (review finding O3) propagates as a throw instead of joining the same
+  // `null` a network error produces.
+  let bytes: Uint8Array;
   try {
     const res = await fetch(url);
     if (!res.ok) return null;
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    const state = decodeCheckpointPayload(bytes);
-    if (state === null) return null;
-    return { signedTreeSize2: state.signedTreeSize2 };
+    bytes = new Uint8Array(await res.arrayBuffer());
   } catch {
     return null;
   }
+  const state = decodeCheckpointPayload(bytes);
+  if (state === null) return null;
+  return { signedTreeSize2: state.signedTreeSize2 };
 }
 
 /**

@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { encodeCborDeterministic } from "@forestrie/encoding";
+import {
+  COSE_LABEL_TREE_SIZE_2,
+  COSE_LABEL_VDS,
+  VDS_MMR_CONSISTENCY,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import {
   buildReceiptOffline,
   computeAccumulatorPeak,
+  parseCheckpoint,
 } from "../src/build-receipt-offline.js";
 import { parseReceipt } from "../src/parse-receipt.js";
 import { verifyGrantReceiptOffline } from "../src/verify-grant-receipt-offline.js";
@@ -243,8 +249,18 @@ describe("buildReceiptOffline", () => {
   it("throws when the checkpoint has no peak receipts", async () => {
     const fx = await buildFixture();
     const consistencyProof = encodeCborDeterministic([0n, 3n, [], []]);
+    // A well-formed protected header (D9-conformant, carrying the signed
+    // tree-size-2) — this fixture isolates the missing-peak-receipts case,
+    // so the header itself must not be the thing that trips first.
+    const wellFormedProtected = encodeCborDeterministic(
+      new Map<number, unknown>([
+        [1, -7],
+        [COSE_LABEL_VDS, VDS_MMR_CONSISTENCY],
+        [COSE_LABEL_TREE_SIZE_2, 3n],
+      ]),
+    );
     const noReceipts = encodeCborDeterministic([
-      new Uint8Array(),
+      wellFormedProtected,
       new Map<number, unknown>([
         [396, new Map<number, unknown>([[-2, consistencyProof]])],
       ]),
@@ -341,5 +357,95 @@ describe("computeAccumulatorPeak (chain-anchored)", () => {
         mmrSize: 12n,
       }),
     ).rejects.toThrow(/does not cover the requested tree size/);
+  });
+});
+
+// Review finding O3: a D9 protected-header conformance failure used to be
+// caught and folded into the same `null` `parseCheckpoint().mmrSize` gives an
+// otherwise-unremarkable checkpoint with no consistency proof at all — a
+// sealer-side defect made indistinguishable from the routine "not sealed
+// yet" case. These two cases must stay distinguishable: absent stays `null`,
+// malformed now throws.
+describe("parseCheckpoint — absent vs. malformed sealed size (review finding O3)", () => {
+  function wellFormedProtected(treeSize2: bigint): Uint8Array {
+    return encodeCborDeterministic(
+      new Map<number, unknown>([
+        [1, -7],
+        [COSE_LABEL_VDS, VDS_MMR_CONSISTENCY],
+        [COSE_LABEL_TREE_SIZE_2, treeSize2],
+      ]),
+    ) as Uint8Array;
+  }
+
+  function checkpointBytes(
+    protectedHeader: Uint8Array,
+    unprotected: Map<number, unknown>,
+  ): Uint8Array {
+    return encodeCborDeterministic([
+      protectedHeader,
+      unprotected,
+      null,
+      new Uint8Array(),
+    ]) as Uint8Array;
+  }
+
+  it("mmrSize is null when the checkpoint carries no consistency proof (absent)", () => {
+    const bytes = checkpointBytes(
+      wellFormedProtected(8n),
+      new Map<number, unknown>(),
+    );
+    expect(parseCheckpoint(bytes).mmrSize).toBeNull();
+  });
+
+  it("mmrSize is null when the protected header is well-formed but carries no signed tree-size-2 (absent)", () => {
+    const noTreeSize2 = encodeCborDeterministic(
+      new Map<number, unknown>([
+        [1, -7],
+        [COSE_LABEL_VDS, VDS_MMR_CONSISTENCY],
+      ]),
+    ) as Uint8Array;
+    const consistencyProof = encodeCborDeterministic([0n, 8n, [], []]);
+    const bytes = checkpointBytes(
+      noTreeSize2,
+      new Map<number, unknown>([
+        [396, new Map<number, unknown>([[-2, consistencyProof]])],
+      ]),
+    );
+    expect(parseCheckpoint(bytes).mmrSize).toBeNull();
+  });
+
+  it("throws — does not silently return null — when the protected header is not deterministically encoded (ADR-0066 D9)", () => {
+    // The sealer's canonical header is `{1: -7, 395: 3, -65933: 8}`
+    // (`a3012619018b033a0001018c08`). This vector carries the identical
+    // three pairs in REVERSE key order — `{-65933: 8, 395: 3, 1: -7}`
+    // (`a33a0001018c0819018b030126`) — which RFC 8949 §4.2 / ADR-0066 D9
+    // reject as out of canonical order. Shared with the "reject/keys-reversed"
+    // row in packages/shared/encoding/src/protected-header-conformance.test.ts.
+    const malformedProtected = Uint8Array.from(
+      Buffer.from("a33a0001018c0819018b030126", "hex"),
+    );
+    const consistencyProof = encodeCborDeterministic([0n, 8n, [], []]);
+    const bytes = checkpointBytes(
+      malformedProtected,
+      new Map<number, unknown>([
+        [396, new Map<number, unknown>([[-2, consistencyProof]])],
+      ]),
+    );
+    expect(() => parseCheckpoint(bytes)).toThrow(/out of canonical order/);
+  });
+
+  it("throws — does not silently return null — when the consistency proof itself is structurally malformed", () => {
+    // A proof bstr that decodes but is not the required
+    // [tree-size-1, tree-size-2, paths, right-peaks] shape.
+    const malformedProof = encodeCborDeterministic([0n, 8n]);
+    const bytes = checkpointBytes(
+      wellFormedProtected(8n),
+      new Map<number, unknown>([
+        [396, new Map<number, unknown>([[-2, malformedProof]])],
+      ]),
+    );
+    expect(() => parseCheckpoint(bytes)).toThrow(
+      /tree-size-1, tree-size-2, paths, right-peaks/,
+    );
   });
 });

@@ -383,6 +383,16 @@ function requireCoseSign1(value: unknown, label: string): CoseSign1 {
  * sizes are not otherwise used here (this reader does not cross-check them
  * against the signed size; see `checkpointConsistencyProof` in
  * `@forestrie/receipt-verify` for that).
+ *
+ * Returns `null` only when the proof (and so the size) is genuinely ABSENT.
+ * When the protected header IS present but is not deterministically encoded
+ * (ADR-0066 D9), {@link readProtectedTreeSize2} throws, and that throw is
+ * left to propagate rather than folded into the same `null` an absent proof
+ * produces — both callers below already catch and log an unhandled error
+ * (see the outer `catch` in {@link resolveReceipt} and in
+ * {@link buildReceiptForEntry}), so letting it through makes a sealer-side
+ * D9 conformance failure attributable instead of silently indistinguishable
+ * from "no proof yet" (review finding O3).
  */
 function sealedSizeFromCheckpoint(
   protectedHeaderBytes: Uint8Array,
@@ -404,11 +414,7 @@ function sealedSizeFromCheckpoint(
   if (!(proofBstr instanceof Uint8Array)) {
     return null;
   }
-  try {
-    return readProtectedTreeSize2(protectedHeaderBytes);
-  } catch {
-    return null;
-  }
+  return readProtectedTreeSize2(protectedHeaderBytes);
 }
 
 function toHeaderMap(
@@ -791,7 +797,10 @@ function popcount64(x: bigint): number {
 /**
  * Build a grant/entry receipt for the given log and MMR index (for grant receipt verification).
  * Fetches checkpoint and massif from R2, builds inclusion proof, attaches to peak receipt.
- * Returns CBOR-encoded receipt bytes or null if checkpoint/massif missing or on error.
+ * Returns CBOR-encoded receipt bytes or null if checkpoint/massif missing or on error — this
+ * function's contract stays fail-closed-to-null for every failure, including a checkpoint whose
+ * protected header is not D9-conformant (review finding O3); the outer `catch` below logs the
+ * specific reason before returning `null`, so that case is diagnosable rather than silent.
  */
 export async function buildReceiptForEntry(
   logId: string,
@@ -893,7 +902,8 @@ export async function buildReceiptForEntry(
       receiptSign1[3],
     ];
     return encodeCborDeterministic(assembled);
-  } catch {
+  } catch (error) {
+    console.error("Error building receipt for entry:", error);
     return null;
   }
 }
