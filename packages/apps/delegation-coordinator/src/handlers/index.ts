@@ -9,6 +9,9 @@ export { handleGetSigningRoute } from "./get-signing-route.js";
 export { handlePostSigningRoute } from "./post-signing-route.js";
 export { handlePostCertificate } from "./post-certificate.js";
 export { handlePostDelegateKeys } from "./post-delegate-keys.js";
+export { handleGetDelegateKey } from "./get-delegate-key.js";
+export { handleListDelegateKeys } from "./list-delegate-keys.js";
+export { handleAdminDeleteDelegateKeys } from "./admin-delete-delegate-keys.js";
 export { handleGetPending } from "./get-pending.js";
 export { handleGetActive } from "./get-active.js";
 export {

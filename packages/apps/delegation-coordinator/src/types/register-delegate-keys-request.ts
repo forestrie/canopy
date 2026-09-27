@@ -8,7 +8,9 @@
  * The hash the coordinator stores (`pubkey_hash`) is
  * `sha256(publicKey CBOR bytes)` — identical to how
  * {@link SubmitDelegationCertificateRequest.delegatedPublicKey} is hashed into
- * `delegation_certificates.delegated_pubkey_hash`. For the coverage JOIN to
+ * `delegation_certificates.delegated_pubkey_hash`. One key per (sealerId,
+ * epoch) among unexpired rows: a different hash for a pair already registered
+ * is refused with 409 (plan-2609-12 ruling 4). For the coverage JOIN to
  * match, {@link RegisterDelegateKey.publicKey} MUST therefore be the same
  * COSE_Key CBOR encoding the sealer binds into its certificates — NOT a raw
  * `x||y` point. (Reconciling the sealer-side encoding with this contract is a

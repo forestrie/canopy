@@ -270,6 +270,9 @@ describe("coverage retrieval (POST /api/delegations)", () => {
   });
 });
 
+// Each registration below uses its own sealer id: the coordinator enforces one
+// key per (sealerId, epoch) (plan-2609-12 ruling 4) and the shared test store
+// keeps every registration, so distinct keys must not share a sealer and epoch.
 describe("standing delegate-key registration (POST /api/sealer/delegate-keys)", () => {
   function futureNotAfter(): number {
     return 4_102_444_800; // 2100-01-01 — must be > real now, else retired at once
@@ -316,10 +319,10 @@ describe("standing delegate-key registration (POST /api/sealer/delegate-keys)", 
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
-          sealerId: "sealer-a",
+          sealerId: "sealer-cov-61",
           keys: [
             await delegateKeyEntryWithVoucher({
-              sealerId: "sealer-a",
+              sealerId: "sealer-cov-61",
               publicKey: testDelegatedCoseKey(61),
               epoch: 2,
               notAfter: futureNotAfter(),
@@ -367,10 +370,10 @@ describe("standing delegate-key registration (POST /api/sealer/delegate-keys)", 
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
-          sealerId: "sealer-a",
+          sealerId: "sealer-cov-71",
           keys: [
             await delegateKeyEntryWithVoucher({
-              sealerId: "sealer-a",
+              sealerId: "sealer-cov-71",
               publicKey: testDelegatedCoseKey(71),
               epoch: 2,
               notAfter: futureNotAfter(),
@@ -415,16 +418,16 @@ describe("standing delegate-key registration (POST /api/sealer/delegate-keys)", 
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({
-          sealerId: "sealer-a",
+          sealerId: "sealer-cov-586",
           keys: [
             await delegateKeyEntryWithVoucher({
-              sealerId: "sealer-a",
+              sealerId: "sealer-cov-586",
               publicKey: keyB,
               epoch: 1,
               notAfter: futureNotAfter(),
             }),
             await delegateKeyEntryWithVoucher({
-              sealerId: "sealer-a",
+              sealerId: "sealer-cov-586",
               publicKey: keyA,
               epoch: 2,
               notAfter: futureNotAfter(),
@@ -585,10 +588,10 @@ describe("FOR-421 hermetic positive advance-delegation", () => {
         method: "POST",
         headers: { ...localAuth(), "Content-Type": "application/json" },
         body: JSON.stringify({
-          sealerId: "sealer-a",
+          sealerId: "sealer-cov-421",
           keys: [
             await delegateKeyEntryWithVoucher({
-              sealerId: "sealer-a",
+              sealerId: "sealer-cov-421",
               publicKey: delegatedCoseKey,
               epoch: 2,
               notAfter: localFutureNotAfter(),

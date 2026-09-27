@@ -28,7 +28,11 @@ import type { DelegationCertificateRecord } from "../types/delegation-certificat
 import type { PendingEntry } from "../types/pending-entry.js";
 import type { PendingHintRequest } from "../types/pending-hint-request.js";
 import { publishCertificateSealHints } from "../seal-hint.js";
-import type { RegisterDelegateKeysRequest } from "../types/register-delegate-keys-request.js";
+import type {
+  RegisterDelegateKey,
+  RegisterDelegateKeysRequest,
+} from "../types/register-delegate-keys-request.js";
+import type { DelegateKeyRecord } from "../types/delegate-key-record.js";
 import type { SigningRoute } from "../types/signing-route.js";
 import type { SubmitDelegationCertificateRequest } from "../types/submit-delegation-certificate-request.js";
 import type { PutWebhookRequest } from "../types/put-webhook-request.js";
@@ -158,6 +162,34 @@ export function heldPublicKeyHashesOf(req: {
   return [...out];
 }
 
+/** A validated registration entry, hashed and decoded, ready to write. */
+interface ParsedDelegateKey {
+  pubkeyHash: string;
+  alg: string;
+  publicKey: Uint8Array;
+  epoch: number;
+  notAfter: number;
+  voucher: Uint8Array;
+}
+
+/** The pair that broke one-key-per-(sealer, epoch); both hashes go in the 409. */
+interface DelegateKeyConflict {
+  epoch: number;
+  /** Hash of the refused key. */
+  pubkeyHash: string;
+  /** Hash of the unexpired key already registered for the epoch. */
+  existingPubkeyHash: string;
+}
+
+/** `delegate_keys` columns the read routes project. */
+interface DelegateKeyRow {
+  pubkey_hash: string;
+  sealer_id: string;
+  epoch: number;
+  not_after: number;
+  registered_at: number | null;
+}
+
 /** Per-shard SQLite store for routes, certs, pending, webhooks. */
 export class DelegationStoreDO extends DurableObject<Env> {
   private initialized = false;
@@ -228,8 +260,23 @@ export class DelegationStoreDO extends DurableObject<Env> {
         return this.handlePendingHint(request);
       }
 
-      if (pathname === "/sealer/delegate-keys" && method === "PUT") {
-        return this.handlePutDelegateKeys(request);
+      if (pathname === "/sealer/delegate-keys") {
+        if (method === "PUT") {
+          return this.handlePutDelegateKeys(request);
+        }
+        if (method === "GET") {
+          return this.handleListDelegateKeys(url);
+        }
+        if (method === "DELETE") {
+          return this.handleDeleteDelegateKeys(url);
+        }
+      }
+
+      const delegateKeyMatch = /^\/sealer\/delegate-keys\/([0-9a-f]{64})$/.exec(
+        pathname,
+      );
+      if (delegateKeyMatch && method === "GET") {
+        return this.handleGetDelegateKey(delegateKeyMatch[1]!);
       }
 
       const webhookMatch = /^\/webhook\/([0-9a-f]{32})$/.exec(pathname);
@@ -359,10 +406,12 @@ export class DelegationStoreDO extends DurableObject<Env> {
         public_key BLOB NOT NULL,
         epoch INTEGER NOT NULL,
         not_after INTEGER NOT NULL,
-        voucher BLOB
+        voucher BLOB,
+        registered_at INTEGER
       )
     `);
     this.ensureDelegateKeyVoucherColumn();
+    this.ensureDelegateKeyRegisteredAtColumn();
 
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS materials (
@@ -591,6 +640,24 @@ export class DelegationStoreDO extends DurableObject<Env> {
     } catch {
       this.ctx.storage.sql.exec(
         `ALTER TABLE delegate_keys ADD COLUMN voucher BLOB`,
+      );
+    }
+  }
+
+  /**
+   * Add registered_at on legacy delegate_keys tables (plan-2609-12 slice 04).
+   * Rows predating the column keep NULL; the read routes report it as null.
+   */
+  private ensureDelegateKeyRegisteredAtColumn(): void {
+    try {
+      [
+        ...this.ctx.storage.sql.exec(
+          `SELECT registered_at FROM delegate_keys LIMIT 0`,
+        ),
+      ];
+    } catch {
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE delegate_keys ADD COLUMN registered_at INTEGER`,
       );
     }
   }
@@ -2409,6 +2476,15 @@ export class DelegationStoreDO extends DurableObject<Env> {
    * sealer's keys whose not_after has passed. pubkey_hash is
    * sha256(publicKey CBOR) so it equals the certificate's
    * delegated_pubkey_hash.
+   *
+   * Invariant (plan-2609-12 ruling 4): one key per (sealer_id, epoch) among
+   * unexpired rows. Derivation is deterministic (ADR-0050: the seed is an HMAC
+   * of sealerId and epoch under the custodian's MAC key), so a different hash
+   * for the same pair is always a fault — a wrong MAC key or the wrong
+   * custodian — and is refused with 409 carrying both hashes. The legitimate
+   * case, replacing the MAC key, is preceded by the admin delete route.
+   * Validation and hashing complete before any write, and the writes are
+   * synchronous, so a shard applies a batch atomically.
    */
   private async handlePutDelegateKeys(request: Request): Promise<Response> {
     const body = (await request.json()) as RegisterDelegateKeysRequest;
@@ -2425,119 +2501,10 @@ export class DelegationStoreDO extends DurableObject<Env> {
     }
 
     const now = Math.floor(Date.now() / 1000);
-    let registered = 0;
-    for (const key of body.keys) {
-      if (key.alg !== "ES256") {
-        return Response.json(
-          {
-            type: "about:blank",
-            title: "Invalid request",
-            status: 400,
-            detail: `unsupported delegate key alg ${key.alg}`,
-          },
-          { status: 400 },
-        );
-      }
-      let publicKey: Uint8Array;
-      try {
-        publicKey = base64ToBytes(key.publicKey);
-      } catch {
-        return Response.json(
-          {
-            type: "about:blank",
-            title: "Invalid request",
-            status: 400,
-            detail: "publicKey must be valid base64",
-          },
-          { status: 400 },
-        );
-      }
-      if (publicKey.length === 0) {
-        return Response.json(
-          {
-            type: "about:blank",
-            title: "Invalid request",
-            status: 400,
-            detail: "publicKey must be non-empty",
-          },
-          { status: 400 },
-        );
-      }
-      if (!Number.isFinite(key.epoch) || key.epoch < 1) {
-        return Response.json(
-          {
-            type: "about:blank",
-            title: "Invalid request",
-            status: 400,
-            detail: "epoch must be >= 1",
-          },
-          { status: 400 },
-        );
-      }
-      // Reject an already-expired notAfter rather than silently storing then
-      // retiring it in the same request (review F6).
-      if (!Number.isFinite(key.notAfter) || key.notAfter <= now) {
-        return Response.json(
-          {
-            type: "about:blank",
-            title: "Invalid request",
-            status: 400,
-            detail: "notAfter must be in the future",
-          },
-          { status: 400 },
-        );
-      }
-      // The voucher was verified against the pinned registrar key at the worker
-      // ingress (handlePostDelegateKeys); it is required and persisted so C3 can
-      // advertise it for the kit to re-verify before binding (FOR-390 phase H).
-      let voucher: Uint8Array;
-      try {
-        voucher = base64ToBytes(key.voucher);
-      } catch {
-        return Response.json(
-          {
-            type: "about:blank",
-            title: "Invalid request",
-            status: 400,
-            detail: "voucher must be valid base64",
-          },
-          { status: 400 },
-        );
-      }
-      if (voucher.length === 0) {
-        return Response.json(
-          {
-            type: "about:blank",
-            title: "Invalid request",
-            status: 400,
-            detail: "voucher is required",
-          },
-          { status: 400 },
-        );
-      }
-      const pubkeyHash = await sha256Hex(publicKey);
-      this.ctx.storage.sql.exec(
-        `INSERT INTO delegate_keys
-           (pubkey_hash, sealer_id, alg, public_key, epoch, not_after, voucher)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(pubkey_hash) DO UPDATE SET
-           sealer_id = excluded.sealer_id,
-           alg = excluded.alg,
-           public_key = excluded.public_key,
-           epoch = excluded.epoch,
-           not_after = excluded.not_after,
-           voucher = excluded.voucher`,
-        pubkeyHash,
-        body.sealerId,
-        key.alg,
-        publicKey,
-        key.epoch,
-        key.notAfter,
-        voucher,
-      );
-      registered += 1;
-    }
+    const parsed = await this.parseDelegateKeyBatch(body.keys, now);
+    if (parsed instanceof Response) return parsed;
 
+    // Retire first so an expired predecessor never blocks its successor.
     const retiredRows = [
       ...this.ctx.storage.sql.exec(
         `SELECT COUNT(*) AS n FROM delegate_keys
@@ -2553,7 +2520,254 @@ export class DelegationStoreDO extends DurableObject<Env> {
       now,
     );
 
-    return Response.json({ registered, retired });
+    const conflict = this.findDelegateKeyConflict(body.sealerId, parsed, now);
+    if (conflict) {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Conflict",
+          status: 409,
+          detail: `sealer ${body.sealerId} epoch ${conflict.epoch} already has delegate key ${conflict.existingPubkeyHash}; refusing ${conflict.pubkeyHash}`,
+          sealerId: body.sealerId,
+          ...conflict,
+        },
+        { status: 409 },
+      );
+    }
+
+    for (const key of parsed) {
+      this.ctx.storage.sql.exec(
+        `INSERT INTO delegate_keys
+           (pubkey_hash, sealer_id, alg, public_key, epoch, not_after, voucher,
+            registered_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(pubkey_hash) DO UPDATE SET
+           sealer_id = excluded.sealer_id,
+           alg = excluded.alg,
+           public_key = excluded.public_key,
+           epoch = excluded.epoch,
+           not_after = excluded.not_after,
+           voucher = excluded.voucher,
+           registered_at = excluded.registered_at`,
+        key.pubkeyHash,
+        body.sealerId,
+        key.alg,
+        key.publicKey,
+        key.epoch,
+        key.notAfter,
+        key.voucher,
+        now,
+      );
+    }
+
+    return Response.json({ registered: parsed.length, retired });
+  }
+
+  /**
+   * Validate and hash a registration batch before any write.
+   *
+   * @param keys - Request entries.
+   * @param now - Unix seconds; notAfter must be later.
+   * @returns Parsed keys, or the 400 problem for the first invalid entry.
+   */
+  private async parseDelegateKeyBatch(
+    keys: RegisterDelegateKey[],
+    now: number,
+  ): Promise<ParsedDelegateKey[] | Response> {
+    const invalid = (detail: string) =>
+      Response.json(
+        { type: "about:blank", title: "Invalid request", status: 400, detail },
+        { status: 400 },
+      );
+    const parsed: ParsedDelegateKey[] = [];
+    for (const key of keys) {
+      if (key.alg !== "ES256") {
+        return invalid(`unsupported delegate key alg ${key.alg}`);
+      }
+      let publicKey: Uint8Array;
+      try {
+        publicKey = base64ToBytes(key.publicKey);
+      } catch {
+        return invalid("publicKey must be valid base64");
+      }
+      if (publicKey.length === 0) {
+        return invalid("publicKey must be non-empty");
+      }
+      if (!Number.isFinite(key.epoch) || key.epoch < 1) {
+        return invalid("epoch must be >= 1");
+      }
+      // Reject an already-expired notAfter rather than silently storing then
+      // retiring it in the same request (review F6).
+      if (!Number.isFinite(key.notAfter) || key.notAfter <= now) {
+        return invalid("notAfter must be in the future");
+      }
+      // The voucher was verified against the pinned registrar key at the worker
+      // ingress (handlePostDelegateKeys); it is required and persisted so C3 can
+      // advertise it for the kit to re-verify before binding (FOR-390 phase H).
+      let voucher: Uint8Array;
+      try {
+        voucher = base64ToBytes(key.voucher);
+      } catch {
+        return invalid("voucher must be valid base64");
+      }
+      if (voucher.length === 0) {
+        return invalid("voucher is required");
+      }
+      parsed.push({
+        pubkeyHash: await sha256Hex(publicKey),
+        alg: key.alg,
+        publicKey,
+        epoch: key.epoch,
+        notAfter: key.notAfter,
+        voucher,
+      });
+    }
+    return parsed;
+  }
+
+  /**
+   * Find the first (epoch, hash) pair that would break one-key-per-epoch:
+   * within the batch itself, or against this sealer's unexpired rows.
+   *
+   * @returns The conflicting pair, or null when the batch may be written.
+   */
+  private findDelegateKeyConflict(
+    sealerId: string,
+    parsed: ParsedDelegateKey[],
+    now: number,
+  ): DelegateKeyConflict | null {
+    const seen = new Map<number, string>();
+    for (const key of parsed) {
+      const inBatch = seen.get(key.epoch);
+      if (inBatch !== undefined && inBatch !== key.pubkeyHash) {
+        return {
+          epoch: key.epoch,
+          pubkeyHash: key.pubkeyHash,
+          existingPubkeyHash: inBatch,
+        };
+      }
+      seen.set(key.epoch, key.pubkeyHash);
+
+      const rows = [
+        ...this.ctx.storage.sql.exec(
+          `SELECT pubkey_hash FROM delegate_keys
+            WHERE sealer_id = ? AND epoch = ? AND not_after > ?
+              AND pubkey_hash <> ?
+            LIMIT 1`,
+          sealerId,
+          key.epoch,
+          now,
+          key.pubkeyHash,
+        ),
+      ];
+      if (rows.length > 0) {
+        return {
+          epoch: key.epoch,
+          pubkeyHash: key.pubkeyHash,
+          existingPubkeyHash: String(
+            (rows[0] as { pubkey_hash: string }).pubkey_hash,
+          ),
+        };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * GET /sealer/delegate-keys/{pubkeyHash} — this shard's replica of one
+   * registered key (plan-2609-12 ruling 1). The worker consults every shard.
+   */
+  private handleGetDelegateKey(pubkeyHash: string): Response {
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT pubkey_hash, sealer_id, epoch, not_after, registered_at
+           FROM delegate_keys WHERE pubkey_hash = ?`,
+        pubkeyHash,
+      ),
+    ];
+    if (rows.length === 0) {
+      return Response.json(
+        { type: "about:blank", title: "Not Found", status: 404 },
+        { status: 404 },
+      );
+    }
+    return Response.json(
+      delegateKeyRecordFromRow(rows[0] as unknown as DelegateKeyRow),
+    );
+  }
+
+  /**
+   * GET /sealer/delegate-keys?sealerId= — this shard's replica rows for one
+   * sealer, each with the count of THIS shard's unexpired certificates bound
+   * to it (plan-2609-12 ruling 4). Certificates are sharded per log, so the
+   * worker sums the counts across shards. Expired keys not yet retired are
+   * included so an operator sees them.
+   */
+  private handleListDelegateKeys(url: URL): Response {
+    const sealerId = url.searchParams.get("sealerId") ?? "";
+    if (!sealerId) {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Invalid request",
+          status: 400,
+          detail: "sealerId is required",
+        },
+        { status: 400 },
+      );
+    }
+    const now = Math.floor(Date.now() / 1000);
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT k.pubkey_hash, k.sealer_id, k.epoch, k.not_after, k.registered_at,
+                (SELECT COUNT(*) FROM delegation_certificates c
+                  WHERE c.delegated_pubkey_hash = k.pubkey_hash
+                    AND c.expires_at > ?) AS unexpired_certificates
+           FROM delegate_keys k
+          WHERE k.sealer_id = ?
+          ORDER BY k.epoch DESC, k.pubkey_hash`,
+        now,
+        sealerId,
+      ),
+    ] as unknown as Array<DelegateKeyRow & { unexpired_certificates: number }>;
+    return Response.json({
+      keys: rows.map((row) => ({
+        ...delegateKeyRecordFromRow(row),
+        unexpiredCertificates: Number(row.unexpired_certificates),
+      })),
+    });
+  }
+
+  /**
+   * DELETE /sealer/delegate-keys?sealerId= — drop this shard's replica rows
+   * for one sealer (plan-2609-12 ruling 4, the admin action before a MAC-key
+   * replacement). Never unscoped: a missing sealerId is a 400.
+   */
+  private handleDeleteDelegateKeys(url: URL): Response {
+    const sealerId = url.searchParams.get("sealerId") ?? "";
+    if (!sealerId) {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Invalid request",
+          status: 400,
+          detail: "sealerId is required",
+        },
+        { status: 400 },
+      );
+    }
+    const counted = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT COUNT(*) AS n FROM delegate_keys WHERE sealer_id = ?`,
+        sealerId,
+      ),
+    ];
+    const deleted = Number((counted[0] as { n: number }).n);
+    this.ctx.storage.sql.exec(
+      `DELETE FROM delegate_keys WHERE sealer_id = ?`,
+      sealerId,
+    );
+    return Response.json({ deleted });
   }
 
   /** Default true when no config row exists (same as webhook CRUD defaults). */
@@ -3233,4 +3447,18 @@ export class DelegationStoreDO extends DurableObject<Env> {
     this.initialized = false;
     this.ensureSchema();
   }
+}
+
+/** Map a `delegate_keys` row to its wire {@link DelegateKeyRecord}. */
+function delegateKeyRecordFromRow(row: DelegateKeyRow): DelegateKeyRecord {
+  return {
+    pubkeyHash: String(row.pubkey_hash),
+    sealerId: String(row.sealer_id),
+    epoch: Number(row.epoch),
+    notAfter: Number(row.not_after),
+    registeredAt:
+      row.registered_at === null || row.registered_at === undefined
+        ? null
+        : Number(row.registered_at),
+  };
 }
