@@ -11,5 +11,18 @@
   "enabledPlugins": {
     "forestrie-core@forestrie-agents": true,
     "mattpocock-skills@forestrie-agents": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/probe-plugin-install.sh",
+            "timeout": 180
+          }
+        ]
+      }
+    ]
   }
 }
