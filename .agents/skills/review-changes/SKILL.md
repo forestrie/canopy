@@ -87,7 +87,7 @@ devdocs.
 | x402 settlement | [devdocs ARC-0015](https://github.com/forestrie/devdocs/blob/main/archive/2601/arc/arc-0015-x402-settlement-architecture.md) (SUPERSEDED; current model: [payments theme index](https://github.com/forestrie/devdocs/blob/main/archive/INDEX-payments-fees.md)) |
 | Authority / fee hierarchy | [devdocs ARC-0017](https://github.com/forestrie/devdocs/blob/main/arc/arc-0017-hierarchical-authority-logs-and-fee-distribution.md) |
 | Checkpoint auth (on-chain) | [univocity ARC-0017](https://github.com/forestrie/univocity/blob/main/docs/arc/arc-0017-auth-overview.md) |
-| MMR / COSE receipts | [draft-bryce-cose-receipts-mmr-profile](https://github.com/robinbryce/draft-bryce-cose-receipts-mmr-profile), [arbor go-merklelog](https://github.com/forestrie/arbor/tree/main/services/_deps/go-merklelog) |
+| MMR / COSE receipts | [draft-bryce-cose-receipts-mmr-profile](https://github.com/robinbryce/draft-bryce-cose-receipts-mmr-profile), [go-merklelog](https://github.com/forestrie/go-merklelog) |
 | Ingress / sequencing | [canopy docs/agents/gotchas.md](https://github.com/forestrie/canopy/blob/main/docs/agents/gotchas.md) |
 | Custodian / KMS | [devdocs plan-0013](https://github.com/forestrie/devdocs/blob/main/plans/plan-0013-custodian-implementation.md) |
 | System testing | [devdocs ARC-0024](https://github.com/forestrie/devdocs/blob/main/arc/arc-0024-system-testing-architecture.md) |
