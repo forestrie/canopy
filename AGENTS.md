@@ -2,10 +2,10 @@
 
 Canopy: SCITT/SCRAPI transparency log (pnpm monorepo, Cloudflare Workers).
 Human setup: [README.md](README.md). Platform glossary:
-[devdocs/glossary.md](../devdocs/glossary.md).
+[protocol/glossary.md](https://github.com/forestrie/protocol/blob/main/glossary.md).
 
 **Plans:** After a Cursor-built plan exists, persist under `docs/plans/`.
-Full rules: `.cursor/rules/docs-workflow.mdc`.
+Layout and numbering: `.claude/rules/plan-docs.md`.
 
 ## Git worktrees
 
@@ -59,7 +59,8 @@ When work merges to `main`, remove the worktree:
 
 - **Agent index**: [docs/agents/README.md](docs/agents/README.md)
 - **Active plans**: [docs/plans/README.md](docs/plans/README.md) (skip `archived/` unless cited)
-- **Platform design**: [../devdocs/](../devdocs/) — architecture, glossary, arc/, adr/
-- **Grant verification**: [devdocs ARC-0019](../devdocs/arc/arc-0019-grant-verification-model.md) + [canopy implementation](docs/arc/canopy-grant-verification-implementation.md)
+- **Platform design**: [devdocs](https://github.com/forestrie/devdocs) — architecture, arc/, adr/ (private)
+- **Grant verification**: [devdocs ARC-0019](https://github.com/forestrie/devdocs/blob/main/archive/2603/arc/arc-0019-grant-verification-model.md) + [canopy implementation](docs/arc/canopy-grant-verification-implementation.md)
 - **Extended commands / conventions**: [docs/agents/commands.md](docs/agents/commands.md), [conventions.md](docs/agents/conventions.md)
-- **Cursor rules**: [branch-naming](.cursor/rules/branch-naming.mdc), [typescript-comments](.cursor/rules/typescript-comments.mdc), [types-single-responsibility](.cursor/rules/types-single-responsibility.mdc)
+- **Team rules and skills**: synced from [forestrie-agents](https://github.com/forestrie/forestrie-agents) (private) by `agentfiles sync` with `sync/canopy.manifest`. Rules in [.claude/rules/](.claude/rules/), skills in [.agents/skills/](.agents/skills/). Do not edit the copies; change forestrie-agents and re-sync.
+- **Cursor rules**: [.cursor/rules/](.cursor/rules/) (Cursor only; some are older hand-written copies of the team rules)
