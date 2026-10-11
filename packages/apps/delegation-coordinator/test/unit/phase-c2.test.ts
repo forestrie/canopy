@@ -54,21 +54,27 @@ async function registerEs256Root(
   expect(res.status).toBe(200);
 }
 
+/**
+ * One sealer id per seed: the coordinator enforces one key per (sealerId,
+ * epoch) (plan-2609-12 ruling 4), and the shared test store keeps every
+ * registration, so distinct keys must not share a sealer and epoch.
+ */
 async function registerDelegateKey(
   seed: number,
   epoch = 2,
   notAfter = FAR_FUTURE,
 ) {
+  const sealerId = `sealer-c2-${seed}`;
   const res = await fetchWithDoRetry(
     "http://localhost/api/sealer/delegate-keys",
     {
       method: "POST",
       headers: { ...authHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify({
-        sealerId: "sealer-a",
+        sealerId,
         keys: [
           await delegateKeyEntryWithVoucher({
-            sealerId: "sealer-a",
+            sealerId,
             publicKey: testDelegatedCoseKey(seed),
             epoch,
             notAfter,

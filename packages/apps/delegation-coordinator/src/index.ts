@@ -38,6 +38,9 @@ import {
   handleAdminGetEnabled,
   handleAdminPutEnabled,
   handleGetWebhookJwks,
+  handleGetDelegateKey,
+  handleListDelegateKeys,
+  handleAdminDeleteDelegateKeys,
   handlePostAuthChallenge,
   handlePostAuthSession,
   WEBHOOK_JWKS_PATH,
@@ -57,6 +60,12 @@ function matchLogRoute(pathname: string, suffix: string): string | null {
 /** Extract instance id from /api/instances/{univocityInstanceId}/{suffix}. */
 function matchInstanceRoute(pathname: string, suffix: string): string | null {
   const match = new RegExp(`^/api/instances/([^/]+)/${suffix}$`).exec(pathname);
+  return match ? decodeURIComponent(match[1]!) : null;
+}
+
+/** Extract the hash segment from /api/sealer/delegate-keys/{pubkeyHash}. */
+function matchDelegateKeyRoute(pathname: string): string | null {
+  const match = /^\/api\/sealer\/delegate-keys\/([^/]+)$/.exec(pathname);
   return match ? decodeURIComponent(match[1]!) : null;
 }
 
@@ -117,8 +126,22 @@ const handler = {
       return handlePostCertificate(request, env);
     }
 
-    if (pathname === "/api/sealer/delegate-keys" && method === "POST") {
-      return handlePostDelegateKeys(request, env);
+    if (pathname === "/api/sealer/delegate-keys") {
+      if (method === "POST") {
+        return handlePostDelegateKeys(request, env);
+      }
+      if (method === "GET") {
+        return handleListDelegateKeys(request, url, env);
+      }
+    }
+
+    const delegateKeyHash = matchDelegateKeyRoute(pathname);
+    if (delegateKeyHash && method === "GET") {
+      return handleGetDelegateKey(delegateKeyHash, request, env);
+    }
+
+    if (pathname === "/admin/api/sealer/delegate-keys" && method === "DELETE") {
+      return handleAdminDeleteDelegateKeys(request, url, env);
     }
 
     if (pathname === "/api/delegations/pending" && method === "GET") {

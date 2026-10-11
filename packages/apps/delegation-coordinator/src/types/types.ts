@@ -11,3 +11,8 @@ export type { SubmitDelegationCertificateRequest } from "./submit-delegation-cer
 export type { MaterialRecord } from "./material-record.js";
 /** @deprecated use SubmitDelegationCertificateRequest */
 export type { SubmitMaterialRequest } from "./submit-material-request.js";
+export type { DelegateKeyRecord } from "./delegate-key-record.js";
+export type {
+  DelegateKeysListing,
+  DelegateKeysListingEntry,
+} from "./delegate-keys-listing.js";

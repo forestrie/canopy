@@ -11,12 +11,23 @@
  * fan-out. The app-token gates access; the voucher is the real gate on
  * legitimacy — a compromised COORDINATOR_APP_TOKEN cannot introduce a key the
  * custodian did not vouch for, so it can never be advertised or delegated to.
+ *
+ * Each shard enforces one key per (sealerId, epoch) among unexpired rows and
+ * answers 409 with both hashes for a conflicting registration (plan-2609-12
+ * ruling 4); the 409 is propagated verbatim. Sibling routes: lookup by hash
+ * ({@link handleGetDelegateKey}), by-sealer listing
+ * ({@link handleListDelegateKeys}) and the operator-plane delete
+ * ({@link handleAdminDeleteDelegateKeys}) that precedes a MAC-key replacement.
  */
 
 import type { Env } from "../env.js";
 import { checkBearerToken } from "../auth/check-bearer-token.js";
 import { base64ToBytes } from "../encoding.js";
 import type { RegisterDelegateKeysRequest } from "../types/register-delegate-keys-request.js";
+// Doc links only; the sibling handlers are routed from index.ts.
+import type { handleGetDelegateKey } from "./get-delegate-key.js";
+import type { handleListDelegateKeys } from "./list-delegate-keys.js";
+import type { handleAdminDeleteDelegateKeys } from "./admin-delete-delegate-keys.js";
 import {
   parseRegistrarKeyXY,
   verifyDelegateKeyVoucher,
