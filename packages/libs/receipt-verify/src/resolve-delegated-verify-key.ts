@@ -6,12 +6,13 @@
  * trust root and returns the delegated public key as an additional verify
  * candidate — the offline port of canopy-api's `resolveReceiptVerifyKey`.
  *
- * P-256 roots only: the genesis alg is ES256 and sealer delegate keys are
- * always secp256r1; KS256-rooted delegation is a server-only concern. A
- * passkey (WebAuthn) root signs the certificate with alg -65800 and the
- * ADR-0063 unprotected-header envelope — `verifyCoseSign1WithParsedKey`
- * verifies that envelope against the same P-256 root keys, so the chain walk
- * here is alg-agnostic (plan-2608-13 1.4).
+ * Sealer delegate keys are always secp256r1. A P-256 root's certificate is
+ * checked here; a passkey (WebAuthn) root signs the certificate with alg
+ * -65800 and the ADR-0063 unprotected-header envelope, which
+ * `verifyCoseSign1WithParsedKey` verifies against the same P-256 root keys
+ * (plan-2608-13 1.4). A KS256 root's certificate is checked by
+ * {@link verifyKs256DelegationCert}: ecrecover for an EOA, or a caller-supplied
+ * ERC-1271 attestation for a contract (plan-2610-03 D4).
  *
  * Trust anchors (FOR-297 trust ladder): `rootKeys` need not be genesis-derived
  * — a caller-known log OWNER key works identically (see
@@ -41,6 +42,11 @@ import {
   decodeCoseSign1,
   verifyCoseSign1WithParsedKey,
 } from "@forestrie/encoding";
+import { isParsedKs256RootKey, type RootVerifyKey } from "./root-verify-key.js";
+import {
+  verifyKs256DelegationCert,
+  type Ks256DelegationEvidence,
+} from "./verify-ks256-delegation.js";
 
 /** Unprotected header label carrying the delegation certificate. */
 const DELEGATION_CERT_LABEL = 1000;
@@ -104,7 +110,8 @@ export type DelegationConstraints = {
  *   `constraints` carries the cert's coverage/validity window when the payload
  *   declares it (null for legacy certs that predate labels 3/4/8/9).
  * broken: a cert is present but did not verify under the root, or its delegated
- *   key could not be parsed — the delegation chain is invalid.
+ *   key could not be parsed — the delegation chain is invalid. `reason` is set
+ *   when a KS256 root gives a more specific one than `delegation_invalid`.
  */
 export type DelegatedResolution =
   | { kind: "root-only" }
@@ -113,7 +120,7 @@ export type DelegatedResolution =
       delegatedKey: CryptoKey;
       constraints: DelegationConstraints | null;
     }
-  | { kind: "broken" };
+  | { kind: "broken"; reason?: string };
 
 function extractDelegationCertBytes(unprotected: unknown): Uint8Array | null {
   const umap = coseUnprotectedToMap(unprotected);
@@ -262,11 +269,16 @@ export function checkDelegationConstraints(
  * Resolve the delegated verify key from a receipt's delegation certificate.
  *
  * @param receiptCbor - the COSE_Sign1 receipt bytes.
- * @param rootKeys - genesis-derived ES256 root verify keys.
+ * @param rootKeys - trust roots: ES256 keys and KS256 addresses, from genesis
+ *   or caller-known log keys. A KS256 root never comes from the coordinator
+ *   (its public roots are last-write-wins, FOR-601/FOR-603).
+ * @param ks256Evidence - optional ERC-1271 attestation for a KS256 contract
+ *   root, with the forest's genesis chain id it must match.
  */
 export async function resolveDelegatedVerifyKey(
   receiptCbor: Uint8Array,
-  rootKeys: CryptoKey[],
+  rootKeys: RootVerifyKey[],
+  ks256Evidence: Ks256DelegationEvidence = {},
 ): Promise<DelegatedResolution> {
   const decoded = decodeCoseSign1(receiptCbor);
   if (!decoded) return { kind: "root-only" };
@@ -275,7 +287,21 @@ export async function resolveDelegatedVerifyKey(
   if (!certBytes) return { kind: "root-only" };
 
   let verified = false;
+  let ks256Reason: string | undefined;
   for (const rootKey of rootKeys) {
+    if (isParsedKs256RootKey(rootKey)) {
+      const check = await verifyKs256DelegationCert(
+        certBytes,
+        rootKey.address,
+        ks256Evidence,
+      );
+      if (check.ok) {
+        verified = true;
+        break;
+      }
+      ks256Reason ??= check.reason;
+      continue;
+    }
     if (
       await verifyCoseSign1WithParsedKey(certBytes, rootKey, {
         logPrefix: "delegation-cert-offline",
@@ -285,7 +311,7 @@ export async function resolveDelegatedVerifyKey(
       break;
     }
   }
-  if (!verified) return { kind: "broken" };
+  if (!verified) return { kind: "broken", reason: ks256Reason };
 
   const certDecoded = decodeCoseSign1(certBytes);
   if (!certDecoded) return { kind: "broken" };

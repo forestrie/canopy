@@ -90,6 +90,29 @@ export type {
 /** Import a raw 64-byte x||y P-256 public key as an ES256 verify key. */
 export { importEs256PublicKeyFromGrantDataXy64 } from "./decode-trust-root-cbor.js";
 /**
+ * KS256 roots in offline verification (plan-2610-03 D4–D6, protocol ADR-0045
+ * amendment 2026-10-18). A KS256 root comes only from genesis, a caller-known
+ * log key ({@link knownLogKeyFromBytes}: asserts, does not prove) or, for a
+ * contract root, a caller-supplied ERC-1271 attestation; never from the
+ * delegation coordinator. EOA roots verify by ecrecover; anything else needs
+ * an attestation or fails with `ks256_root_not_recovered`.
+ */
+export { knownLogKeyFromBytes } from "./known-log-key.js";
+export { ks256RootFromAddress } from "./decode-trust-root-cbor.js";
+export type { ParsedKs256RootKey, RootVerifyKey } from "./root-verify-key.js";
+export {
+  ERC1271_MAGIC_VALUE,
+  decodeKs256Attestation,
+  encodeKs256Attestation,
+  type Ks256Attestation,
+} from "./ks256-attestation.js";
+export {
+  extractKs256DelegationDigest,
+  verifyKs256DelegationCert,
+} from "./verify-ks256-delegation.js";
+export type { Ks256DelegationEvidence } from "./verify-ks256-delegation.js";
+export type { Ks256CertificateDigest } from "@forestrie/delegation-cose";
+/**
  * Passkey session-key endorsement v2 (ADR-0064 as amended by ADR-0065):
  * build, assemble, and verify the artifact chaining a passkey log root to the
  * plain-ES256 per-turn session key for a validity window. The endorsement

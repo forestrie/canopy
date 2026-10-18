@@ -36,7 +36,9 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   ) as ArrayBuffer;
 }
 
-async function coseKeyMapFor(pub: CryptoKey): Promise<Map<number, unknown>> {
+export async function coseKeyMapFor(
+  pub: CryptoKey,
+): Promise<Map<number, unknown>> {
   const raw = new Uint8Array(
     (await crypto.subtle.exportKey("raw", pub)) as ArrayBuffer,
   );
@@ -173,7 +175,7 @@ function p256LowS(signature: Uint8Array): Uint8Array {
  * `snowflakeid` scheme the SUT ports; kept separate so tests do not derive the
  * expected value from the implementation under test).
  */
-function idtimestampBe8ToUnixSeconds(be8: Uint8Array): number {
+export function idtimestampBe8ToUnixSeconds(be8: Uint8Array): number {
   const view = new DataView(be8.buffer, be8.byteOffset, 8);
   const id = view.getBigUint64(0, false);
   const ms = 1n * ((1n << 40n) - 1n) + (id >> 24n);
@@ -181,7 +183,7 @@ function idtimestampBe8ToUnixSeconds(be8: Uint8Array): number {
 }
 
 /** Detached-peak receipt signed by `signer`, with delegation cert at label 1000. */
-async function buildDelegatedPeakReceipt(opts: {
+export async function buildDelegatedPeakReceipt(opts: {
   signer: CryptoKeyPair;
   peak: Uint8Array;
   proof: Proof;

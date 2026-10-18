@@ -296,6 +296,9 @@ importers:
       '@forestrie/chain-rpc':
         specifier: workspace:*
         version: link:../chain-rpc
+      '@forestrie/delegation-cose':
+        specifier: workspace:*
+        version: link:../delegation-cose
       '@forestrie/encoding':
         specifier: workspace:*
         version: link:../../shared/encoding
@@ -306,6 +309,9 @@ importers:
         specifier: ^1.7.1
         version: 1.8.0
     devDependencies:
+      '@noble/curves':
+        specifier: ^1.9.7
+        version: 1.9.7
       esbuild:
         specifier: ^0.24.0
         version: 0.24.2

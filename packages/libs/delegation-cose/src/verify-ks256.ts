@@ -5,12 +5,11 @@
  * [plan-0031 KS256 forest roots](https://github.com/forestrie/canopy/blob/main/docs/plans/plan-0031-ks256-forest-roots.md).
  */
 
-import { encodeSigStructure } from "./encode-sig-structure.js";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { bytesEqual } from "./bytes-utils.js";
 import type { Ks256VerifyHooks } from "./ks256-verify-hooks.js";
-import { decodeCoseSign1Parts } from "./parse-delegated-cose-key.js";
+import { decodeKs256Certificate } from "./decode-ks256-certificate.js";
 import { KS256_EOA_SIG_BYTES } from "./payload-labels.js";
 
 /**
@@ -62,7 +61,9 @@ function recoverSignerAddress(
  * @param hooks - When supplied and the root has contract code, verification
  *   uses {@link Ks256VerifyHooks.isValidSignature} (ERC-1271) instead of EOA
  *   recovery.
- * @returns `true` when the root authorized the Sig_structure digest.
+ * @returns `true` when the root authorized the Sig_structure digest; `false`
+ *   when it did not, or when the certificate's protected `alg` is not KS256 or
+ *   it carries a WebAuthn envelope (alg confusion, as arbor rejects it).
  */
 export async function verifyDelegationCertificateKs256(
   certificate: Uint8Array,
@@ -72,14 +73,9 @@ export async function verifyDelegationCertificateKs256(
   if (rootSignerAddress.length !== 20) {
     throw new Error("KS256 root signer address must be 20 bytes");
   }
-  const { protectedBytes, payloadBytes, signature } =
-    decodeCoseSign1Parts(certificate);
-  const sigStructureBytes = encodeSigStructure(
-    protectedBytes,
-    new Uint8Array(),
-    payloadBytes,
-  );
-  const hash = keccak_256(sigStructureBytes);
+  const decoded = decodeKs256Certificate(certificate);
+  if (!decoded.ok) return false;
+  const { digest: hash, signature } = decoded;
 
   if (hooks) {
     const isContract = await hooks.hasContractCode(rootSignerAddress);
