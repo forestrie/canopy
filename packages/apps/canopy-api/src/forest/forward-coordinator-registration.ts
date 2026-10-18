@@ -5,6 +5,7 @@
 
 import { COSE_ALG_ES256, COSE_ALG_KS256 } from "../cose/cose-key.js";
 import { logIdToStorageSegment } from "../grant/log-id-wire.js";
+import type { ForwardChainBinding } from "./child-root-forward.js";
 import type { CoordinatorRegistrationStatus } from "./coordinator-registration-status.js";
 
 export interface CoordinatorForwardEnv {
@@ -62,7 +63,7 @@ export interface ForwardCoordinatorRegistrationInput {
    * slice 03) so coordinator ERC-1271 RPC selection never depends on the
    * best-effort instance-binding write.
    */
-  chainBinding?: { chainId: string; univocityAddr: string };
+  chainBinding?: ForwardChainBinding;
   fetchImpl?: typeof fetch;
 }
 

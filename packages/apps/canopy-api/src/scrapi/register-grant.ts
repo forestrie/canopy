@@ -40,7 +40,10 @@ import type { Grant, GrantResult } from "../grant/types.js";
 import { grantDataToBytes } from "../grant/grant-data.js";
 import { bytesToUuid } from "../grant/uuid-bytes.js";
 import { bytesEqual } from "../cbor-api/cbor-map-utils.js";
-import { COSE_ALG_ES256 } from "../cose/cose-key.js";
+import {
+  childRootForwardFromGrantData,
+  forwardChainBindingFromGenesis,
+} from "../forest/child-root-forward.js";
 import {
   forwardCoordinatorRegistration,
   isCoordinatorForwardConfigured,
@@ -290,7 +293,7 @@ export async function registerGrant(
           // ADR-0053 Part A: auto-forward the child's public root to the
           // coordinator. This branch is a verified create-log grant (create+extend,
           // uninitialized T). Best-effort — never fails the registration.
-          await forwardChildPublicRootOnCreate(grant, env);
+          await forwardChildPublicRootOnCreate(grant, env, genesis);
           return accepted;
         } catch (e) {
           console.warn("Creation grant (univocity ok, enqueue failed)", e);
@@ -452,37 +455,45 @@ async function registerDerivedEndorsementGrant(
  * grants forward (`logId !== ownerLogId`); the self-referential root goes through
  * genesis. Any failure is logged and swallowed: the prepare endpoint and the sealer
  * sweep are the safety nets, so onboarding is never coupled to this call.
+ *
+ * The child's key type comes from grantData's length (ES256 or KS256, see
+ * {@link childRootForwardFromGrantData}); either way the forward carries this
+ * forest's genesis chain binding (ADR-0053 amendment 2026-10-18).
  */
 async function forwardChildPublicRootOnCreate(
   grant: Grant,
   env: RegisterGrantEnv,
+  genesis: ParsedForestGenesis,
 ): Promise<void> {
   const coordinator = env.coordinatorForward;
   if (!coordinator || !isCoordinatorForwardConfigured(coordinator)) return;
   // Child grants only: skip the self-referential root grant (genesis path).
   if (bytesEqual(grant.logId, grant.ownerLogId)) return;
 
-  let childOwnerKey: Uint8Array;
+  let grantData: Uint8Array;
   try {
-    childOwnerKey = grantDataToBytes(grant.grantData);
+    grantData = grantDataToBytes(grant.grantData);
   } catch {
     return;
   }
-  if (childOwnerKey.length !== 64) {
+  const childRoot = childRootForwardFromGrantData(grantData);
+  if (!childRoot) {
     console.warn(
-      "Child public-root forward skipped: grantData is not a 64-byte ES256 x||y key",
-      { grantDataLen: childOwnerKey.length },
+      "Child public-root forward skipped: grantData is neither a 64-byte ES256 x||y key nor a 20-byte KS256 address",
+      { grantDataLen: grantData.length },
     );
     return;
   }
+  // The child is in this forest, so it is anchored on the forest's chain.
+  const chainBinding = forwardChainBindingFromGenesis(genesis.chainBinding);
 
   try {
     const status = await forwardCoordinatorRegistration({
       coordinatorBaseUrl: coordinator.DELEGATION_COORDINATOR_URL!.trim(),
       coordinatorAppToken: coordinator.COORDINATOR_APP_TOKEN!.trim(),
       logIdWire: grant.logId,
-      genesisAlg: COSE_ALG_ES256,
-      bootstrapKey: childOwnerKey,
+      ...childRoot,
+      ...(chainBinding ? { chainBinding } : {}),
       // No per-log webhook to inherit; public root is the coordinator gate.
     });
     if (status.publicRoot !== "ok") {

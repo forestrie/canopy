@@ -29,7 +29,19 @@
  * The envelope crypto mirrors register-grant's creation path (which delegates to
  * univocity's "verify COSE envelope against the owner authority key" step) and the
  * local `verifyDerivedEndorsementEnvelope` helper: COSE_Sign1 over the 32-byte grant
- * digest, ES256.
+ * digest, ES256 or KS256 by the parent root's alg.
+ *
+ * ## KS256 (ADR-0053 amendment 2026-10-18, plan-2610-03 D2, D3, D6)
+ *
+ * The child root may be a 64-byte ES256 key or a 20-byte KS256 address
+ * (grantData length decides, {@link childRootForwardFromGrantData}). A KS256
+ * parent, EOA or contract, verifies by `keccak256(Sig_structure)`: ecrecover,
+ * or ERC-1271 `isValidSignature` over the RPC `SUPPORTED_CHAINS_RPC` gives for
+ * the forest's chain. The chain is the genesis chain binding on the root path
+ * and the `chainId` the coordinator holds for the parent's root otherwise, and
+ * the child's forward carries it on so its own children can do the same. An RPC
+ * failure is 503; without RPC for the chain only ecrecover runs, so a contract
+ * parent gets a 403 that says so.
  */
 
 import {
@@ -44,8 +56,13 @@ import { COSE_ALG_ES256, COSE_ALG_KS256 } from "../cose/cose-key.js";
 import {
   createCoordinatorPublicTrustRootClient,
   isTrustRootNotFound,
-  type RootVerifyKey,
+  type RegisteredPublicRoot,
 } from "../env/trust-root-client.js";
+import {
+  rpcUrlsForEnvChainId,
+  type SupportedChainsEnv,
+} from "../env/supported-chains-for-env.js";
+import { Erc1271UnavailableError } from "@forestrie/chain-rpc";
 import { getGrantFromRequest } from "../scrapi/auth-grant.js";
 import { verifyKs256CoseSign1 } from "../grant/ks256-verify.js";
 import { isParsedKs256RootKey } from "../grant/parsed-ks256-root-key.js";
@@ -60,6 +77,11 @@ import {
 import type { Grant, GrantResult } from "../grant/types.js";
 import { getParsedGenesis, type ParsedForestGenesis } from "./genesis-cache.js";
 import {
+  childRootForwardFromGrantData,
+  forwardChainBindingFromGenesis,
+  type ForwardChainBinding,
+} from "./child-root-forward.js";
+import {
   forwardCoordinatorRegistration,
   isCoordinatorForwardConfigured,
   type CoordinatorForwardEnv,
@@ -71,7 +93,9 @@ import {
 import { tryUnivocityInstanceIdFromChainBinding } from "@canopy/univocity-instance-id";
 import { readRegistration } from "../payments/registration-store.js";
 
-export interface PrepareChildLogEnv extends CoordinatorForwardEnv {
+export interface PrepareChildLogEnv
+  extends CoordinatorForwardEnv,
+    SupportedChainsEnv {
   /** Genesis lookup bucket (resolves whether the parent is the forest root). */
   R2_GRANTS: R2Bucket;
   /** Gates insecure-local webhook URLs when `"dev"`. */
@@ -81,52 +105,117 @@ export interface PrepareChildLogEnv extends CoordinatorForwardEnv {
 /**
  * Verify the create grant's COSE envelope against the genesis bootstrap authority
  * key (parent == forest root). Mirrors {@link verifyDerivedEndorsementEnvelope}.
+ * The genesis `bootstrapAlg` decides the key type and the key length must agree
+ * with it (D6); a KS256 root verifies on the genesis chain binding's chain.
  */
 async function verifyGrantAgainstGenesisKey(
   grantBytes: Uint8Array,
   genesis: ParsedForestGenesis,
-): Promise<boolean> {
+  env: SupportedChainsEnv,
+): Promise<true | Response> {
+  const authority = "the forest root genesis authority key";
   if (genesis.bootstrapAlg != null && genesis.bootstrapKey) {
     if (
       genesis.bootstrapAlg === COSE_ALG_ES256 &&
       genesis.bootstrapKey.length === 64
     ) {
-      return verifyGrantCoseSign1WithGrantDataXy(
+      const ok = await verifyGrantCoseSign1WithGrantDataXy(
         grantBytes,
         genesis.bootstrapKey,
       );
+      return ok || forbiddenDidNotVerify(authority);
     }
     if (
       genesis.bootstrapAlg === COSE_ALG_KS256 &&
       genesis.bootstrapKey.length === 20
     ) {
-      return verifyKs256CoseSign1(grantBytes, {
-        kind: "KS256",
-        alg: COSE_ALG_KS256,
-        address: genesis.bootstrapKey,
-      });
+      return verifyGrantAgainstKs256Parent(
+        grantBytes,
+        genesis.bootstrapKey,
+        genesis.chainBinding?.chainId,
+        env,
+        authority,
+      );
     }
-    return false;
+    return forbiddenDidNotVerify(authority);
   }
   if (genesis.x && genesis.y) {
     const xy = new Uint8Array(64);
     xy.set(genesis.x, 0);
     xy.set(genesis.y, 32);
-    return verifyGrantCoseSign1WithGrantDataXy(grantBytes, xy);
+    const ok = await verifyGrantCoseSign1WithGrantDataXy(grantBytes, xy);
+    return ok || forbiddenDidNotVerify(authority);
   }
-  return false;
+  return forbiddenDidNotVerify(authority);
+}
+
+/**
+ * Verify a create grant signed by a KS256 parent root (D3), with the existing
+ * {@link verifyKs256CoseSign1}: ERC-1271 when the address has code on `chainId`
+ * and RPC is configured for it, else ecrecover.
+ *
+ * @param chainId — the forest's EIP-155 chain; undefined when unknown, which
+ *   leaves only ecrecover.
+ * @returns `true`, 503 when the chain RPC fails (retryable, never a verdict),
+ *   or 403. With no RPC the 403 says a contract parent cannot be verified.
+ */
+async function verifyGrantAgainstKs256Parent(
+  grantBytes: Uint8Array,
+  address: Uint8Array,
+  chainId: string | undefined,
+  env: SupportedChainsEnv,
+  authority: string,
+): Promise<true | Response> {
+  const rpcUrls = chainId ? (rpcUrlsForEnvChainId(env, chainId) ?? []) : [];
+  let ok: boolean;
+  try {
+    ok = await verifyKs256CoseSign1(
+      grantBytes,
+      { kind: "KS256", alg: COSE_ALG_KS256, address },
+      {
+        rpcUrls,
+        throwOnUnavailable: true,
+        logFailures: true,
+        logPrefix: "prepare-ks256-parent",
+      },
+    );
+  } catch (e) {
+    if (e instanceof Erc1271UnavailableError) {
+      return ServerErrors.serviceUnavailable(
+        "ERC-1271 verification of the KS256 parent root is unavailable; retry.",
+      );
+    }
+    throw e;
+  }
+  if (ok) return true;
+  if (rpcUrls.length === 0) {
+    const chain = chainId
+      ? `chain ${chainId}`
+      : "the parent's chain (none is registered for its root)";
+    return ClientErrors.forbidden(
+      `Create grant signature did not verify against ${authority} by ecrecover. No RPC is configured for ${chain}, so a contract (ERC-1271) parent cannot be verified.`,
+    );
+  }
+  return forbiddenDidNotVerify(authority);
+}
+
+function forbiddenDidNotVerify(authority: string): Response {
+  return ClientErrors.forbidden(
+    `Create grant signature did not verify against ${authority}.`,
+  );
 }
 
 /**
  * Resolve the parent authority key for `grant.ownerLogId` and verify the create
- * grant's envelope against it. Returns `true` on a valid signature; otherwise a
+ * grant's envelope against it. On a valid signature, returns the forest's chain
+ * binding as far as it is known here, for the child's forward; otherwise a
  * `Response` describing the failure (400/403/409/503).
  */
 async function verifyCreateGrantAgainstParent(
   grantResult: GrantResult,
   grant: Grant,
   env: PrepareChildLogEnv,
-): Promise<true | Response> {
+): Promise<{ chainBinding?: ForwardChainBinding } | Response> {
   const grantBytes = grantResult.bytes;
   if (!grantBytes?.length) {
     return ClientErrors.badRequest("Create grant is missing raw bytes.");
@@ -139,13 +228,15 @@ async function verifyCreateGrantAgainstParent(
     R2_GRANTS: env.R2_GRANTS,
   });
   if (!("kind" in genesisLookup)) {
-    const ok = await verifyGrantAgainstGenesisKey(grantBytes, genesisLookup);
-    if (!ok) {
-      return ClientErrors.forbidden(
-        "Create grant signature did not verify against the forest root genesis authority key.",
-      );
-    }
-    return true;
+    const verified = await verifyGrantAgainstGenesisKey(
+      grantBytes,
+      genesisLookup,
+      env,
+    );
+    if (verified !== true) return verified;
+    return {
+      chainBinding: forwardChainBindingFromGenesis(genesisLookup.chainBinding),
+    };
   }
   if (genesisLookup.kind === "corrupt") {
     return ServerErrors.internal(
@@ -153,17 +244,18 @@ async function verifyCreateGrantAgainstParent(
     );
   }
 
-  // Parent is an intermediate child log: resolve its registered root key from the
-  // coordinator public-root. A missing public root means the parent was never
-  // onboarded — start higher up the hierarchy.
+  // Parent is an intermediate child log: resolve its registered root key, and
+  // the chain the coordinator holds for it, from the coordinator public-root. A
+  // missing public root means the parent was never onboarded — start higher up
+  // the hierarchy.
   const parentHex32 = logIdBytesToCustodianLowerHex(grant.ownerLogId);
-  let parentKey: RootVerifyKey;
+  let parentRoot: RegisteredPublicRoot;
   try {
     const client = createCoordinatorPublicTrustRootClient({
       coordinatorBaseUrl: env.DELEGATION_COORDINATOR_URL!.trim(),
       token: env.COORDINATOR_APP_TOKEN!.trim(),
     });
-    parentKey = await client.logSigningKey(parentHex32);
+    parentRoot = await client.logPublicRoot(parentHex32);
   } catch (e) {
     if (isTrustRootNotFound(e)) {
       return ClientErrors.conflict(
@@ -177,21 +269,26 @@ async function verifyCreateGrantAgainstParent(
     );
   }
 
+  const { key: parentKey, chainId } = parentRoot;
+  const chainBinding = chainId ? { chainId } : undefined;
+  const authority = "the parent log's registered root key";
   if (isParsedKs256RootKey(parentKey)) {
-    return ClientErrors.forbidden(
-      "Parent authority key is KS256; child create grants require an ES256 parent root.",
+    const verified = await verifyGrantAgainstKs256Parent(
+      grantBytes,
+      parentKey.address,
+      chainId,
+      env,
+      authority,
     );
+    if (verified !== true) return verified;
+    return { chainBinding };
   }
   const ok = await verifyCoseSign1WithParsedKey(
     grantBytes,
     parentKey satisfies ParsedVerifyKey,
   );
-  if (!ok) {
-    return ClientErrors.forbidden(
-      "Create grant signature did not verify against the parent log's registered root key.",
-    );
-  }
-  return true;
+  if (!ok) return forbiddenDidNotVerify(authority);
+  return { chainBinding };
 }
 
 function parsePrepareWebhookUrl(
@@ -261,15 +358,16 @@ export async function handlePrepareChildLog(
     );
   }
 
-  let childOwnerKey: Uint8Array;
+  let grantData: Uint8Array;
   try {
-    childOwnerKey = grantDataToBytes(grant.grantData);
+    grantData = grantDataToBytes(grant.grantData);
   } catch {
     return ClientErrors.badRequest("Create grant grantData is unreadable.");
   }
-  if (childOwnerKey.length !== 64) {
+  const childRoot = childRootForwardFromGrantData(grantData);
+  if (!childRoot) {
     return ClientErrors.badRequest(
-      "Create grant grantData must be a 64-byte ES256 x||y child owner key.",
+      "Create grant grantData must be a 64-byte ES256 x||y key or a 20-byte KS256 address.",
     );
   }
 
@@ -280,6 +378,7 @@ export async function handlePrepareChildLog(
     env,
   );
   if (verified instanceof Response) return verified;
+  const { chainBinding } = verified;
 
   const webhookParsed = parsePrepareWebhookUrl(request, env);
   if (webhookParsed instanceof Response) return webhookParsed;
@@ -300,8 +399,8 @@ export async function handlePrepareChildLog(
     coordinatorBaseUrl: env.DELEGATION_COORDINATOR_URL!.trim(),
     coordinatorAppToken: env.COORDINATOR_APP_TOKEN!.trim(),
     logIdWire: grant.logId,
-    genesisAlg: COSE_ALG_ES256,
-    bootstrapKey: childOwnerKey,
+    ...childRoot,
+    ...(chainBinding ? { chainBinding } : {}),
     ...(webhookParsed.webhookUrl
       ? { webhookUrl: webhookParsed.webhookUrl }
       : {}),

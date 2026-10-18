@@ -93,6 +93,17 @@ export async function decodeTrustRootCbor(
   throw new Error(`unsupported trust-root alg ${String(algRaw)}`);
 }
 
+/**
+ * The decimal EIP-155 `chainId` a trust-root body carries, if any. The
+ * coordinator's GET public-root adds it from the root's stored chain binding
+ * (or the log's instance binding); see delegation-coordinator
+ * `DelegationStoreDO` public-root read.
+ */
+export function decodeTrustRootChainId(decoded: unknown): string | undefined {
+  const raw = recordToTrustRootFields(decoded).chainId;
+  return typeof raw === "string" && /^\d+$/.test(raw) ? raw : undefined;
+}
+
 /** ES256 keys only — KS256 roots are for delegation cert verify, not receipt Sign1. */
 export function es256ReceiptVerifyKeys(
   keys: RootVerifyKey[],
