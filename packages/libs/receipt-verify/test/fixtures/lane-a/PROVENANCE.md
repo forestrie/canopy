@@ -11,13 +11,13 @@ example lane, not a default (N8). The publications log
 `67876864-3b46-67ae-dcb3-13cc81624aa5` is where `@forestrie/mcp-verify`
 0.4.0 registered its own release provenance.
 
-| Name | URL | Date header | Status | Content-Type | Body | sha256 |
-|---|---|---|---|---|---|---|
-| well-known | `/.well-known/scitt-configuration` | 2026-09-13T14:22:38Z | 200 | `application/json` | `well-known.json` (552 B) | `10ad04ae5bc8bbac551fe871987d7f80bc22a4fcb9ce4fe18256eef1dfed08a8` |
-| genesis | `/api/forest/67876864-3b46-67ae-dcb3-13cc81624aa5/genesis` | 2026-09-13T14:22:52Z | 200 | `application/cbor` | `genesis.cbor` (160 B) | `c6183184d805bf23652a265d7f533101eec5c97e1939dd90c7f142e6d502da68` |
-| status-self | `/logs/67876864-…/e8345800-…/entries/7c29bb57bae35044f722f4842c91a38b6fae51a5405a95caf9b27c9b894e2166` | 2026-09-13T14:22:52Z | 303 | — (empty) | none | — |
-| receipt-self | `/logs/67876864-…/e8345800-…/14/entries/a09a6337ee0009000000000000000008/receipt` | 2026-09-13T14:23:08Z | 200 | `application/scitt-receipt+cbor` | `receipt-self.cbor` (438 B) | `55e7edf2a65c39681cb01fc1d6b5b6bf9273b82bd741954be63c8d6f2ef85fbe` |
-| status-unknown | `/logs/67876864-…/e8345800-…/entries/0000…0000` (64 zero hex) | 2026-09-13T14:23:08Z | 303 | — (empty) | none | — |
+| Name           | URL                                                                                                    | Date header          | Status | Content-Type                     | Body                        | sha256                                                             |
+| -------------- | ------------------------------------------------------------------------------------------------------ | -------------------- | ------ | -------------------------------- | --------------------------- | ------------------------------------------------------------------ |
+| well-known     | `/.well-known/scitt-configuration`                                                                     | 2026-09-13T14:22:38Z | 200    | `application/json`               | `well-known.json` (552 B)   | `10ad04ae5bc8bbac551fe871987d7f80bc22a4fcb9ce4fe18256eef1dfed08a8` |
+| genesis        | `/api/forest/67876864-3b46-67ae-dcb3-13cc81624aa5/genesis`                                             | 2026-09-13T14:22:52Z | 200    | `application/cbor`               | `genesis.cbor` (160 B)      | `c6183184d805bf23652a265d7f533101eec5c97e1939dd90c7f142e6d502da68` |
+| status-self    | `/logs/67876864-…/e8345800-…/entries/7c29bb57bae35044f722f4842c91a38b6fae51a5405a95caf9b27c9b894e2166` | 2026-09-13T14:22:52Z | 303    | — (empty)                        | none                        | —                                                                  |
+| receipt-self   | `/logs/67876864-…/e8345800-…/14/entries/a09a6337ee0009000000000000000008/receipt`                      | 2026-09-13T14:23:08Z | 200    | `application/scitt-receipt+cbor` | `receipt-self.cbor` (438 B) | `55e7edf2a65c39681cb01fc1d6b5b6bf9273b82bd741954be63c8d6f2ef85fbe` |
+| status-unknown | `/logs/67876864-…/e8345800-…/entries/0000…0000` (64 zero hex)                                          | 2026-09-13T14:23:08Z | 303    | — (empty)                        | none                        | —                                                                  |
 
 (`67876864-…` = `67876864-3b46-67ae-dcb3-13cc81624aa5`; `e8345800-…` =
 `e8345800-a747-4e62-9409-61622b836f1f`.)
@@ -59,7 +59,7 @@ example lane, not a default (N8). The publications log
   The chain binding it carries (label `-68011` contract address, `-68013`
   chain id) is the forest's; see `../chain/PROVENANCE.md`.
 - **well-known.** `serviceId: canopy-dev-1`, `scrapiVersion:
-  draft-ietf-scitt-scrapi-05`, `baseUrl` = the lane.
+draft-ietf-scitt-scrapi-05`, `baseUrl` = the lane.
 
 No `ratelimit-*` headers were present; every response carried `cf-ray`. No
 request returned 429.

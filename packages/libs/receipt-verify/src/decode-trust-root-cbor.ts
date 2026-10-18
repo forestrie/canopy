@@ -44,7 +44,8 @@ function parseAlgInt(raw: unknown): number | null {
   return null;
 }
 
-function ks256RootFromAddress(address: Uint8Array): ParsedKs256RootKey {
+/** Wrap a 20-byte KS256 root address as a {@link ParsedKs256RootKey}. */
+export function ks256RootFromAddress(address: Uint8Array): ParsedKs256RootKey {
   return { kind: "KS256", alg: COSE_ALG_KS256, address };
 }
 

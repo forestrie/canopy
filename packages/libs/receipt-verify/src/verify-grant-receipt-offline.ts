@@ -7,7 +7,10 @@ import {
 import type { Grant } from "@forestrie/encoding";
 import { grantCommitmentHashFromGrant } from "./grant-commitment.js";
 import { decodeTrustRootFromGenesis } from "./decode-trust-root-from-genesis.js";
-import { es256ReceiptVerifyKeys } from "./decode-trust-root-cbor.js";
+import { decodeChainBindingFromGenesis } from "./decode-chain-binding-from-genesis.js";
+import type { Ks256Attestation } from "./ks256-attestation.js";
+import type { Ks256DelegationEvidence } from "./verify-ks256-delegation.js";
+import { isParsedKs256RootKey, type RootVerifyKey } from "./root-verify-key.js";
 import {
   checkDelegationConstraints,
   resolveDelegatedVerifyKey,
@@ -22,6 +25,8 @@ export type VerifyGrantReceiptOfflineInput = {
   receiptCbor: Uint8Array;
   grant: Grant;
   idtimestampBe8: Uint8Array;
+  /** See {@link VerifyReceiptOfflineInput.ks256Attestation}. */
+  ks256Attestation?: Ks256Attestation;
 };
 
 function readIdtimestampBe8(bytes: Uint8Array): bigint {
@@ -116,16 +121,15 @@ export async function verifyGrantReceiptOffline(
     receiptCbor: input.receiptCbor,
     idtimestampBe8: input.idtimestampBe8,
     inner,
+    ks256Attestation: input.ks256Attestation,
   });
 }
 
 export type VerifyGrantReceiptOfflineWithKeysInput = Omit<
   VerifyGrantReceiptOfflineInput,
   "genesisCbor"
-> & {
-  /** Caller-known ES256 trust keys — see {@link VerifyReceiptOfflineWithKeysInput}. */
-  trustKeys: CryptoKey[];
-};
+> &
+  Pick<VerifyReceiptOfflineWithKeysInput, "trustKeys" | "forestGenesisCbor">;
 
 /**
  * {@link verifyGrantReceiptOffline} under caller-supplied trust keys instead of
@@ -146,6 +150,7 @@ export async function verifyGrantReceiptOfflineWithKeys(
     idtimestampBe8: input.idtimestampBe8,
     inner,
     trustKeys: input.trustKeys,
+    ks256Evidence: withKeysKs256Evidence(input),
   });
 }
 
@@ -160,6 +165,12 @@ export type VerifyReceiptOfflineInput = {
    */
   payload: Uint8Array;
   idtimestampBe8: Uint8Array;
+  /**
+   * ERC-1271 attestation for a KS256 contract root (plan-2610-03 D4). Used
+   * only when ecrecover doesn't match the root, and accepted only when it
+   * binds the root address, the certificate digest and the genesis chain id.
+   */
+  ks256Attestation?: Ks256Attestation;
 };
 
 /**
@@ -183,6 +194,7 @@ export async function verifyReceiptOffline(
     receiptCbor: input.receiptCbor,
     idtimestampBe8: input.idtimestampBe8,
     inner,
+    ks256Attestation: input.ks256Attestation,
   });
 }
 
@@ -191,12 +203,19 @@ export type VerifyReceiptOfflineWithKeysInput = Omit<
   "genesisCbor"
 > & {
   /**
-   * Caller-known ES256 trust keys, tried in order. For a child-log receipt
+   * Caller-known trust keys, tried in order: ES256 `CryptoKey`s or KS256
+   * 20-byte addresses ({@link knownLogKeyFromBytes}). For a child-log receipt
    * this is the log OWNER's key (the delegation-cert issuer), NOT the sealer
    * key — the label-1000 cert is verified under these keys and the delegated
    * sealer key is extracted from it, so the anchor survives sealer rotation.
    */
-  trustKeys: CryptoKey[];
+  trustKeys: RootVerifyKey[];
+  /**
+   * The forest's genesis, read only for the chain id a `ks256Attestation`
+   * must match (D6); it supplies no trust keys. Without it an attestation is
+   * refused with `ks256_attestation_chain_unbound`.
+   */
+  forestGenesisCbor?: Uint8Array;
 };
 
 /**
@@ -230,7 +249,39 @@ export async function verifyReceiptOfflineWithKeys(
     idtimestampBe8: input.idtimestampBe8,
     inner,
     trustKeys: input.trustKeys,
+    ks256Evidence: withKeysKs256Evidence(input),
   });
+}
+
+/**
+ * KS256 chain evidence for the caller-known-key entries: the attestation, and
+ * the chain id from the forest genesis the caller supplied, if any.
+ */
+function withKeysKs256Evidence(input: {
+  ks256Attestation?: Ks256Attestation | undefined;
+  forestGenesisCbor?: Uint8Array | undefined;
+}): Ks256DelegationEvidence {
+  if (!input.ks256Attestation) return {};
+  return {
+    attestation: input.ks256Attestation,
+    forestChainId: input.forestGenesisCbor
+      ? genesisChainIdOrUndefined(input.forestGenesisCbor)
+      : undefined,
+  };
+}
+
+/**
+ * The forest's chain id from its genesis chain binding, or `undefined` when
+ * the genesis carries none (an attestation then can't be bound, D6).
+ */
+function genesisChainIdOrUndefined(
+  genesisCbor: Uint8Array,
+): bigint | undefined {
+  try {
+    return BigInt(decodeChainBindingFromGenesis(genesisCbor).chainId);
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -245,37 +296,42 @@ async function verifyReceiptOfflineWithLeafInner(input: {
   receiptCbor: Uint8Array;
   idtimestampBe8: Uint8Array;
   inner: Uint8Array;
+  ks256Attestation?: Ks256Attestation | undefined;
 }): Promise<ReceiptVerifyResult> {
-  let trustRoot;
+  let trustRoot: RootVerifyKey;
   try {
     trustRoot = await decodeTrustRootFromGenesis(input.genesisCbor);
   } catch {
     return { ok: false, stage: "parse", reason: "genesis_invalid" };
   }
 
-  const verifyKeys = es256ReceiptVerifyKeys([trustRoot]) as CryptoKey[];
-  if (!verifyKeys.length) {
-    return { ok: false, stage: "signature", reason: "no_es256_trust_key" };
-  }
-
   return verifyReceiptOfflineWithLeafInnerKeys({
     receiptCbor: input.receiptCbor,
     idtimestampBe8: input.idtimestampBe8,
     inner: input.inner,
-    trustKeys: verifyKeys,
+    trustKeys: [trustRoot],
+    ks256Evidence: input.ks256Attestation
+      ? {
+          attestation: input.ks256Attestation,
+          forestChainId: genesisChainIdOrUndefined(input.genesisCbor),
+        }
+      : {},
   });
 }
 
 /**
  * Trust-key-parameterised offline-verify core. Identical to the genesis path
  * once the trust keys are in hand: resolve the (possibly delegated, FOR-297)
- * verify key against `trustKeys`, then check signature + inclusion.
+ * verify key against `trustKeys`, then check signature + inclusion. Receipts
+ * are always ES256, so a KS256 trust key only ever verifies the delegation
+ * certificate; only ES256 trust keys are tried on the receipt itself.
  */
 async function verifyReceiptOfflineWithLeafInnerKeys(input: {
   receiptCbor: Uint8Array;
   idtimestampBe8: Uint8Array;
   inner: Uint8Array;
-  trustKeys: CryptoKey[];
+  trustKeys: RootVerifyKey[];
+  ks256Evidence: Ks256DelegationEvidence;
 }): Promise<ReceiptVerifyResult> {
   let parsed: ReturnType<typeof parseReceipt>;
   try {
@@ -296,14 +352,31 @@ async function verifyReceiptOfflineWithLeafInnerKeys(input: {
   const delegation = await resolveDelegatedVerifyKey(
     input.receiptCbor,
     input.trustKeys,
+    input.ks256Evidence,
   );
   if (delegation.kind === "broken") {
-    return { ok: false, stage: "signature", reason: "delegation_invalid" };
+    return {
+      ok: false,
+      stage: "signature",
+      reason: delegation.reason ?? "delegation_invalid",
+    };
+  }
+  const es256TrustKeys = input.trustKeys.filter(
+    (k): k is CryptoKey => !isParsedKs256RootKey(k),
+  );
+  if (delegation.kind === "root-only" && !es256TrustKeys.length) {
+    // A KS256 root never signs a receipt; without a certificate there is no
+    // ES256 key to check it with.
+    return {
+      ok: false,
+      stage: "signature",
+      reason: "ks256_root_requires_delegation",
+    };
   }
   const allVerifyKeys =
     delegation.kind === "resolved"
-      ? [delegation.delegatedKey, ...input.trustKeys]
-      : input.trustKeys;
+      ? [delegation.delegatedKey, ...es256TrustKeys]
+      : es256TrustKeys;
 
   let idtimestamp: bigint;
   try {
