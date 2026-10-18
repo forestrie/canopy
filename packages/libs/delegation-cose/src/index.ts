@@ -10,6 +10,7 @@
 export type { CertificateInfo } from "./certificate-info.js";
 export type { DelegationInput } from "./delegation-input.js";
 export type { DelegationToBeSigned } from "./delegation-tbs.js";
+export type { Ks256CertificateDigest } from "./ks256-certificate-digest.js";
 export type { Ks256VerifyHooks } from "./ks256-verify-hooks.js";
 export type { ParsedDelegatedKey } from "./parsed-delegated-key.js";
 export type { SignEs256 } from "./build-delegation-certificate-es256.js";
@@ -94,4 +95,5 @@ export {
 } from "./parse-delegated-cose-key.js";
 export { verifyDelegationCertificateEs256 } from "./verify-es256.js";
 export { verifyDelegationCertificateKs256 } from "./verify-ks256.js";
+export { extractKs256CertificateDigest } from "./decode-ks256-certificate.js";
 export { encodeIntKeyCbor } from "./encode-int-map.js";
