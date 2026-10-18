@@ -48,7 +48,7 @@ function newRoot(): { sk: Uint8Array; address: Uint8Array } {
  * (keccak256 over Sig_structure, 65-byte `r‖s‖v`) by `sk`.
  */
 function signedCertificate(
-  alg: number,
+  alg: number | string,
   sk: Uint8Array,
   address: Uint8Array,
 ): Uint8Array {
@@ -121,6 +121,26 @@ describe("KS256 alg binding", () => {
     );
     expect(await verifyDelegationCertificateKs256(cert, address)).toBe(false);
     expect(() => extractKs256CertificateDigest(cert)).toThrow(/WebAuthn/);
+  });
+
+  it("refuses a text alg that only coerces to KS256", async () => {
+    const { sk, address } = newRoot();
+    const cert = signedCertificate(String(COSE_ALG_KS256), sk, address);
+    expect(await verifyDelegationCertificateKs256(cert, address)).toBe(false);
+  });
+
+  it("refuses, rather than throws on, a text-keyed unprotected header", async () => {
+    const { sk, address } = newRoot();
+    const { protectedBytes, payloadBytes, signature } = decodeCoseSign1Parts(
+      signedCertificate(COSE_ALG_KS256, sk, address),
+    );
+    const cert = encodeIntKeyCbor([
+      protectedBytes,
+      new Map<string, unknown>([["x", 1]]),
+      payloadBytes,
+      signature,
+    ]);
+    expect(await verifyDelegationCertificateKs256(cert, address)).toBe(false);
   });
 
   it("refuses before consulting ERC-1271 hooks", async () => {

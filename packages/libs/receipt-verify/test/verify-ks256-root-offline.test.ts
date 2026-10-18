@@ -16,6 +16,7 @@ import {
   encodeKs256Attestation,
   extractKs256DelegationDigest,
   knownLogKeyFromBytes,
+  ks256RootFromAddress,
   verifyGrantReceiptOffline,
   verifyGrantReceiptOfflineWithKeys,
   type Ks256Attestation,
@@ -24,6 +25,7 @@ import {
   KS256_FIXTURE_CHAIN_ID,
   buildKs256DelegatedReceiptFixture,
 } from "./helpers/ks256-delegated-receipt-fixture.js";
+import { generateP256KeyPair } from "./helpers/grant-receipt-fixture.js";
 
 function attestationFor(
   address: Uint8Array,
@@ -174,3 +176,96 @@ describe("KS256 known log key", () => {
     );
   });
 });
+
+describe("KS256 roots: constraints, mixed keys and strictness", () => {
+  it("enforces FOR-420 expiry on a KS256-rooted certificate", async () => {
+    const fx = await buildKs256DelegatedReceiptFixture({
+      expiredAtIssuance: true,
+    });
+    const result = await verifyGrantReceiptOffline(fx);
+    expect(result).toEqual({
+      ok: false,
+      stage: "signature",
+      reason: "delegation_expired",
+    });
+  });
+
+  it("refuses an attestation when the genesis carries no chain id", async () => {
+    const fx = await buildKs256DelegatedReceiptFixture({
+      contractRoot: true,
+      omitGenesisChainId: true,
+    });
+    const result = await verifyGrantReceiptOffline({
+      ...fx,
+      ks256Attestation: attestationFor(fx.rootAddress, fx.certDigest),
+    });
+    expect(result.reason).toBe("ks256_attestation_chain_unbound");
+  });
+
+  it("refuses a KS256 certificate under an ES256 trust key", async () => {
+    const fx = await buildKs256DelegatedReceiptFixture();
+    const result = await verifyGrantReceiptOfflineWithKeys({
+      ...fx,
+      trustKeys: [await randomEs256Key()],
+    });
+    expect(result.reason).toBe("delegation_invalid");
+  });
+
+  it("accepts a KS256 root among mixed ES256 and KS256 trust keys", async () => {
+    const fx = await buildKs256DelegatedReceiptFixture();
+    const result = await verifyGrantReceiptOfflineWithKeys({
+      ...fx,
+      trustKeys: [
+        await randomEs256Key(),
+        await knownLogKeyFromBytes(new Uint8Array(20).fill(0x55)),
+        await knownLogKeyFromBytes(fx.rootAddress),
+      ],
+    });
+    expect(result).toEqual({ ok: true, stage: "binding" });
+  });
+
+  it("refuses a KS256 root address that is not 20 bytes", () => {
+    expect(() => ks256RootFromAddress(new Uint8Array(32))).toThrow(/20 bytes/);
+  });
+
+  it("decodes attestations strictly", () => {
+    const good = attestationFor(
+      new Uint8Array(20).fill(1),
+      new Uint8Array(32).fill(2),
+    );
+    const encoded = encodeKs256Attestation(good);
+    expect(decodeKs256Attestation(encoded)).toEqual(good);
+    const asMap = decodeCborDeterministic(encoded) as Map<number, unknown>;
+    const variant = (edit: (m: Map<number, unknown>) => void) => {
+      const m = new Map(asMap);
+      edit(m);
+      return encodeCborDeterministic(m);
+    };
+    expect(() => decodeKs256Attestation(variant((m) => m.set(8, 1)))).toThrow(
+      /unknown label/,
+    );
+    expect(() => decodeKs256Attestation(variant((m) => m.set(1, 2)))).toThrow(
+      /version/,
+    );
+    expect(() =>
+      decodeKs256Attestation(variant((m) => m.set(3, new Uint8Array(19)))),
+    ).toThrow(/address/);
+    expect(() =>
+      decodeKs256Attestation(variant((m) => m.set(7, new Uint8Array(5)))),
+    ).toThrow(/magic/);
+    expect(() =>
+      decodeKs256Attestation(variant((m) => m.set(2, "84532"))),
+    ).toThrow(/chainId/);
+    expect(() => decodeKs256Attestation(variant((m) => m.delete(4)))).toThrow(
+      /digest/,
+    );
+  });
+});
+
+async function randomEs256Key(): Promise<CryptoKey> {
+  const pair = await generateP256KeyPair();
+  const raw = new Uint8Array(
+    (await crypto.subtle.exportKey("raw", pair.publicKey)) as ArrayBuffer,
+  );
+  return (await knownLogKeyFromBytes(raw.slice(1))) as CryptoKey;
+}

@@ -69,16 +69,29 @@ export function decodeKs256Certificate(certificate: Uint8Array): Ks256Decoded {
   const protectedMap = normalizeIntKeyedMap(
     decodeCborDeterministic(protectedBytes),
   );
-  const alg = Number(protectedMap.get(COSE_HEADER_ALG));
-  if (alg !== COSE_ALG_KS256) {
+  // The alg must be the CBOR integer itself, as arbor's strict decode
+  // requires: no coercion of a text or other-typed value.
+  const alg = protectedMap.get(COSE_HEADER_ALG);
+  if (alg !== COSE_ALG_KS256 && alg !== BigInt(COSE_ALG_KS256)) {
     return {
       ok: false,
-      reason: `delegation cert alg ${String(protectedMap.get(COSE_HEADER_ALG))} is not KS256`,
+      reason: `delegation cert alg ${String(alg)} is not KS256`,
+    };
+  }
+  // A malformed unprotected header is a refusal, not a throw, so callers
+  // that map `false` to a 400 keep doing so.
+  let unprotected: Map<number, unknown>;
+  try {
+    unprotected = normalizeIntKeyedMap(cert[1]);
+  } catch {
+    return {
+      ok: false,
+      reason: "unprotected header is not an integer-keyed map",
     };
   }
   // KS256 defines no alg-specific material, so a WebAuthn envelope here is
   // confusion; arbor rejects it before any signature work.
-  if (normalizeIntKeyedMap(cert[1]).has(COSE_ALG_ES256_WEBAUTHN)) {
+  if (unprotected.has(COSE_ALG_ES256_WEBAUTHN)) {
     return {
       ok: false,
       reason: `unexpected WebAuthn envelope at unprotected label ${COSE_ALG_ES256_WEBAUTHN} on a KS256 certificate`,

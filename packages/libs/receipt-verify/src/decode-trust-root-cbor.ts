@@ -44,8 +44,16 @@ function parseAlgInt(raw: unknown): number | null {
   return null;
 }
 
-/** Wrap a 20-byte KS256 root address as a {@link ParsedKs256RootKey}. */
+/**
+ * Wrap a 20-byte KS256 root address as a {@link ParsedKs256RootKey}.
+ *
+ * @throws When `address` is not 20 bytes: a key of any other length would
+ *   fail {@link isParsedKs256RootKey} and be mistaken for an ES256 key.
+ */
 export function ks256RootFromAddress(address: Uint8Array): ParsedKs256RootKey {
+  if (address.length !== 20) {
+    throw new Error("KS256 root address must be 20 bytes");
+  }
   return { kind: "KS256", alg: COSE_ALG_KS256, address };
 }
 

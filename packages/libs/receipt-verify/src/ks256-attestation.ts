@@ -34,6 +34,16 @@ const LABEL_BLOCK_NUMBER = 5;
 const LABEL_BLOCK_HASH = 6;
 const LABEL_MAGIC = 7;
 
+const KNOWN_LABELS = new Set<number>([
+  LABEL_VERSION,
+  LABEL_CHAIN_ID,
+  LABEL_ADDRESS,
+  LABEL_DIGEST,
+  LABEL_BLOCK_NUMBER,
+  LABEL_BLOCK_HASH,
+  LABEL_MAGIC,
+]);
+
 const ATTESTATION_VERSION = 1;
 
 /** A block-bound ERC-1271 `isValidSignature` result for one digest. */
@@ -84,7 +94,10 @@ function asBytes(v: unknown, length: number, what: string): Uint8Array {
   return v;
 }
 
-/** Strict decode and shape validation of an attestation artifact. */
+/**
+ * Strict decode and shape validation of an attestation artifact: canonical
+ * CBOR, known labels only, version 1, exact types and lengths.
+ */
 export function decodeKs256Attestation(bytes: Uint8Array): Ks256Attestation {
   let decoded: unknown;
   try {
@@ -95,6 +108,11 @@ export function decodeKs256Attestation(bytes: Uint8Array): Ks256Attestation {
   }
   if (!(decoded instanceof Map)) {
     throw new Error("ks256 attestation must be a CBOR map");
+  }
+  for (const label of decoded.keys()) {
+    if (!KNOWN_LABELS.has(label as number)) {
+      throw new Error(`ks256 attestation: unknown label ${String(label)}`);
+    }
   }
   const version = Number(asBigint(decoded.get(LABEL_VERSION), "version"));
   if (version !== ATTESTATION_VERSION) {

@@ -55,17 +55,21 @@ export function newKs256Root(): { sk: Uint8Array; address: Uint8Array } {
 }
 
 /** v2 genesis with a KS256 bootstrap address and a chain binding. */
-function buildKs256GenesisCbor(address: Uint8Array, logId: string): Uint8Array {
-  return encodeCborDeterministic(
-    new Map<number, unknown>([
-      [FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V2],
-      [FOREST_GENESIS_LABEL_GENESIS_ALG, COSE_ALG_KS256],
-      [FOREST_GENESIS_LABEL_BOOTSTRAP_KEY, address],
-      [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, new Uint8Array(20).fill(0xab)],
-      [FOREST_GENESIS_LABEL_CHAIN_ID, KS256_FIXTURE_CHAIN_ID.toString()],
-      [FOREST_GENESIS_LABEL_LOG_ID, toPaddedWire32(uuidToBytes(logId))],
-    ]),
-  );
+function buildKs256GenesisCbor(
+  address: Uint8Array,
+  logId: string,
+  omitChainId: boolean,
+): Uint8Array {
+  const genesis = new Map<number, unknown>([
+    [FOREST_GENESIS_LABEL_GENESIS_VERSION, FOREST_GENESIS_SCHEMA_V2],
+    [FOREST_GENESIS_LABEL_GENESIS_ALG, COSE_ALG_KS256],
+    [FOREST_GENESIS_LABEL_BOOTSTRAP_KEY, address],
+    [FOREST_GENESIS_LABEL_UNIVOCITY_ADDR, new Uint8Array(20).fill(0xab)],
+    [FOREST_GENESIS_LABEL_CHAIN_ID, KS256_FIXTURE_CHAIN_ID.toString()],
+    [FOREST_GENESIS_LABEL_LOG_ID, toPaddedWire32(uuidToBytes(logId))],
+  ]);
+  if (omitChainId) genesis.delete(FOREST_GENESIS_LABEL_CHAIN_ID);
+  return encodeCborDeterministic(genesis);
 }
 
 /** `r‖s‖v` secp256k1 signature over keccak256(bytes). */
@@ -90,6 +94,10 @@ export async function buildKs256DelegatedReceiptFixture(opts?: {
    * confusion, which must be refused although ecrecover would match.
    */
   algConfusion?: boolean;
+  /** Certificate expiresAt precedes the leaf's issuance time (FOR-420). */
+  expiredAtIssuance?: boolean;
+  /** Genesis carries no chain id, so an attestation can't be bound. */
+  omitGenesisChainId?: boolean;
 }): Promise<{
   genesisCbor: Uint8Array;
   receiptCbor: Uint8Array;
@@ -136,7 +144,7 @@ export async function buildKs256DelegatedReceiptFixture(opts?: {
       mmrEnd: 65535,
       delegatedPublicKeyCbor,
       issuedAt: leafTime - 3600,
-      expiresAt: leafTime + 3600,
+      expiresAt: opts?.expiredAtIssuance ? leafTime - 10 : leafTime + 3600,
       delegationId: new Uint8Array(16),
     },
     rootAddress,
@@ -171,7 +179,11 @@ export async function buildKs256DelegatedReceiptFixture(opts?: {
   });
 
   return {
-    genesisCbor: buildKs256GenesisCbor(rootAddress, logId),
+    genesisCbor: buildKs256GenesisCbor(
+      rootAddress,
+      logId,
+      opts?.omitGenesisChainId ?? false,
+    ),
     receiptCbor,
     grant,
     idtimestampBe8,
