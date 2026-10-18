@@ -10,8 +10,8 @@
  * - Anything ecrecover doesn't match (a contract root such as a Safe, or a
  *   wrong signer: offline you can't tell which) fails with
  *   `ks256_root_not_recovered`, unless the caller supplies an ERC-1271
- *   attestation (ks256-attestation.ts) bound to this root, this digest and
- *   the forest's genesis chain.
+ *   attestation (ks256-attestation.ts) bound to this root, this digest, this
+ *   signature and the forest's genesis chain.
  *
  * No network and no injected callback: the chain read is a separate helper's
  * job (forestrie-cli, mcp-resolve), as for the known accumulator.
@@ -23,6 +23,7 @@ import {
   verifyDelegationCertificateKs256,
   type Ks256CertificateDigest,
 } from "@forestrie/delegation-cose";
+import { keccak_256 } from "@noble/hashes/sha3";
 import {
   ERC1271_MAGIC_VALUE,
   type Ks256Attestation,
@@ -74,6 +75,9 @@ export async function verifyKs256DelegationCert(
   }
   if (!bytesEqual(attestation.digest, parts.digest)) {
     return { ok: false, reason: "ks256_attestation_digest_mismatch" };
+  }
+  if (!bytesEqual(attestation.signatureHash, keccak_256(parts.signature))) {
+    return { ok: false, reason: "ks256_attestation_signature_mismatch" };
   }
   if (forestChainId === undefined) {
     return { ok: false, reason: "ks256_attestation_chain_unbound" };

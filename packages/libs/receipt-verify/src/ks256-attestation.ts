@@ -8,8 +8,9 @@
  *
  * Same trust model as the known-accumulator snapshot (known-accumulator.ts):
  * the record is the fetching party's chain read, made explicit and auditable.
- * It binds `(chainId, address, digest, block)`, so anyone with RPC can re-run
- * the call at that block and confirm or disprove it. This package never makes
+ * It binds `(chainId, address, digest, signature hash, block)`, so anyone with
+ * RPC can re-run exactly that call at that block (the signature itself is in
+ * the receipt's certificate) and confirm or disprove it. This package never makes
  * that call; forestrie-cli and mcp-resolve fetch it (slice 04).
  *
  * The verifier accepts an attestation only for the exact root address and
@@ -33,6 +34,7 @@ const LABEL_DIGEST = 4;
 const LABEL_BLOCK_NUMBER = 5;
 const LABEL_BLOCK_HASH = 6;
 const LABEL_MAGIC = 7;
+const LABEL_SIGNATURE_HASH = 8;
 
 const KNOWN_LABELS = new Set<number>([
   LABEL_VERSION,
@@ -42,6 +44,7 @@ const KNOWN_LABELS = new Set<number>([
   LABEL_BLOCK_NUMBER,
   LABEL_BLOCK_HASH,
   LABEL_MAGIC,
+  LABEL_SIGNATURE_HASH,
 ]);
 
 const ATTESTATION_VERSION = 1;
@@ -55,6 +58,11 @@ export type Ks256Attestation = {
   address: Uint8Array;
   /** keccak256(Sig_structure) of the delegation certificate (32 bytes). */
   digest: Uint8Array;
+  /**
+   * keccak256 of the signature bytes `isValidSignature` was called with
+   * (32 bytes); must match the certificate's signature.
+   */
+  signatureHash: Uint8Array;
   /** Block the call was made at. */
   blockNumber: bigint;
   /** Hash of that block (32 bytes): the falsifiability handle. */
@@ -76,6 +84,7 @@ export function encodeKs256Attestation(
       [LABEL_BLOCK_NUMBER, attestation.blockNumber],
       [LABEL_BLOCK_HASH, attestation.blockHash],
       [LABEL_MAGIC, attestation.magic],
+      [LABEL_SIGNATURE_HASH, attestation.signatureHash],
     ]),
   );
 }
@@ -126,5 +135,10 @@ export function decodeKs256Attestation(bytes: Uint8Array): Ks256Attestation {
     blockNumber: asBigint(decoded.get(LABEL_BLOCK_NUMBER), "blockNumber"),
     blockHash: asBytes(decoded.get(LABEL_BLOCK_HASH), 32, "blockHash"),
     magic: asBytes(decoded.get(LABEL_MAGIC), 4, "magic"),
+    signatureHash: asBytes(
+      decoded.get(LABEL_SIGNATURE_HASH),
+      32,
+      "signatureHash",
+    ),
   };
 }

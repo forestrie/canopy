@@ -30,6 +30,7 @@ import { generateP256KeyPair } from "./helpers/grant-receipt-fixture.js";
 function attestationFor(
   address: Uint8Array,
   digest: Uint8Array,
+  signatureHash: Uint8Array,
   overrides: Partial<Ks256Attestation> = {},
 ): Ks256Attestation {
   return {
@@ -37,6 +38,7 @@ function attestationFor(
     chainId: KS256_FIXTURE_CHAIN_ID,
     address,
     digest,
+    signatureHash,
     blockNumber: 1234n,
     blockHash: new Uint8Array(32).fill(0x0b),
     magic: ERC1271_MAGIC_VALUE,
@@ -98,7 +100,9 @@ describe("KS256 contract root, ERC-1271 attestation", () => {
   it("verifies with an attestation bound to address, digest and chain", async () => {
     const fx = await buildKs256DelegatedReceiptFixture({ contractRoot: true });
     const attestation = decodeKs256Attestation(
-      encodeKs256Attestation(attestationFor(fx.rootAddress, fx.certDigest)),
+      encodeKs256Attestation(
+        attestationFor(fx.rootAddress, fx.certDigest, fx.certSignatureHash),
+      ),
     );
     const result = await verifyGrantReceiptOffline({
       ...fx,
@@ -110,6 +114,7 @@ describe("KS256 contract root, ERC-1271 attestation", () => {
   it.each([
     ["address", "ks256_attestation_address_mismatch"],
     ["digest", "ks256_attestation_digest_mismatch"],
+    ["signatureHash", "ks256_attestation_signature_mismatch"],
     ["chainId", "ks256_attestation_chain_mismatch"],
     ["magic", "ks256_attestation_magic_invalid"],
   ] as const)(
@@ -121,12 +126,18 @@ describe("KS256 contract root, ERC-1271 attestation", () => {
       const wrong: Partial<Ks256Attestation> = {
         address: { address: new Uint8Array(20).fill(0x77) },
         digest: { digest: new Uint8Array(32).fill(0x77) },
+        signatureHash: { signatureHash: new Uint8Array(32).fill(0x77) },
         chainId: { chainId: 1n },
         magic: { magic: new Uint8Array(4) },
       }[field];
       const result = await verifyGrantReceiptOffline({
         ...fx,
-        ks256Attestation: attestationFor(fx.rootAddress, fx.certDigest, wrong),
+        ks256Attestation: attestationFor(
+          fx.rootAddress,
+          fx.certDigest,
+          fx.certSignatureHash,
+          wrong,
+        ),
       });
       expect(result).toEqual({ ok: false, stage: "signature", reason });
     },
@@ -154,7 +165,11 @@ describe("KS256 known log key", () => {
   it("refuses an attestation without the forest genesis for its chain", async () => {
     const fx = await buildKs256DelegatedReceiptFixture({ contractRoot: true });
     const trustKeys = [await knownLogKeyFromBytes(fx.rootAddress)];
-    const ks256Attestation = attestationFor(fx.rootAddress, fx.certDigest);
+    const ks256Attestation = attestationFor(
+      fx.rootAddress,
+      fx.certDigest,
+      fx.certSignatureHash,
+    );
     const unbound = await verifyGrantReceiptOfflineWithKeys({
       ...fx,
       trustKeys,
@@ -197,7 +212,11 @@ describe("KS256 roots: constraints, mixed keys and strictness", () => {
     });
     const result = await verifyGrantReceiptOffline({
       ...fx,
-      ks256Attestation: attestationFor(fx.rootAddress, fx.certDigest),
+      ks256Attestation: attestationFor(
+        fx.rootAddress,
+        fx.certDigest,
+        fx.certSignatureHash,
+      ),
     });
     expect(result.reason).toBe("ks256_attestation_chain_unbound");
   });
@@ -232,6 +251,7 @@ describe("KS256 roots: constraints, mixed keys and strictness", () => {
     const good = attestationFor(
       new Uint8Array(20).fill(1),
       new Uint8Array(32).fill(2),
+      new Uint8Array(32).fill(3),
     );
     const encoded = encodeKs256Attestation(good);
     expect(decodeKs256Attestation(encoded)).toEqual(good);
@@ -241,7 +261,7 @@ describe("KS256 roots: constraints, mixed keys and strictness", () => {
       edit(m);
       return encodeCborDeterministic(m);
     };
-    expect(() => decodeKs256Attestation(variant((m) => m.set(8, 1)))).toThrow(
+    expect(() => decodeKs256Attestation(variant((m) => m.set(9, 1)))).toThrow(
       /unknown label/,
     );
     expect(() => decodeKs256Attestation(variant((m) => m.set(1, 2)))).toThrow(
@@ -259,6 +279,9 @@ describe("KS256 roots: constraints, mixed keys and strictness", () => {
     expect(() => decodeKs256Attestation(variant((m) => m.delete(4)))).toThrow(
       /digest/,
     );
+    expect(() =>
+      decodeKs256Attestation(variant((m) => m.set(8, new Uint8Array(31)))),
+    ).toThrow(/signatureHash/);
   });
 });
 

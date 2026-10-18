@@ -106,6 +106,8 @@ export async function buildKs256DelegatedReceiptFixture(opts?: {
   rootAddress: Uint8Array;
   /** keccak256(Sig_structure) of the certificate. */
   certDigest: Uint8Array;
+  /** keccak256 of the certificate's signature bytes. */
+  certSignatureHash: Uint8Array;
 }> {
   const root = newKs256Root();
   const rootAddress = opts?.contractRoot
@@ -164,11 +166,12 @@ export async function buildKs256DelegatedReceiptFixture(opts?: {
   );
   const signer =
     opts?.wrongSigner || opts?.contractRoot ? newKs256Root() : root;
+  const certSignature = ks256Sign(signer.sk, sigStructure);
   const delegationCert = encodeIntKeyCbor([
     protectedBytes,
     new Map<number, unknown>(),
     tbs.payloadBytes,
-    ks256Sign(signer.sk, sigStructure),
+    certSignature,
   ]);
 
   const receiptCbor = await buildDelegatedPeakReceipt({
@@ -189,5 +192,6 @@ export async function buildKs256DelegatedReceiptFixture(opts?: {
     idtimestampBe8,
     rootAddress,
     certDigest: keccak_256(sigStructure),
+    certSignatureHash: keccak_256(certSignature),
   };
 }
