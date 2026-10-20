@@ -243,18 +243,28 @@ export async function verifyReceiptOfflineAgainstKnownAccumulator(input: {
     };
   }
 
+  // The leaf (idtimestamp ‖ inner) and inclusion path ALWAYS decide the
+  // peak. An attached payload is only a claim of what that peak is: taken on
+  // its own, any receipt attaching a real anchored peak would "verify" for
+  // any payload and idtimestamp. Same stage and reason as the main offline
+  // path's inclusion check (verifySignatureAndInclusion).
   let recomputedPeak: Uint8Array;
-  if (parsed.explicitPeak !== null) {
-    recomputedPeak = parsed.explicitPeak;
-  } else {
-    const hasher = new SubtleHasher();
+  try {
     const leafHash = await univocityLeafHash(input.idtimestampBe8, input.inner);
     recomputedPeak = await calculateRoot(
-      hasher,
+      new SubtleHasher(),
       leafHash,
       parsed.proof,
       leafIdx,
     );
+  } catch {
+    return { ok: false, stage: "inclusion", reason: "inclusion_failed" };
+  }
+  if (
+    parsed.explicitPeak !== null &&
+    !bytesEqual(parsed.explicitPeak, recomputedPeak)
+  ) {
+    return { ok: false, stage: "inclusion", reason: "inclusion_failed" };
   }
 
   // 2. Exact peak match — receipt state is a snapshot-covered accumulator.

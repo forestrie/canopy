@@ -8,11 +8,16 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
+import {
   checkCheckpointLinkSizeBound,
   importEs256PublicKeyFromGrantDataXy64,
   ks256RootFromAddress,
   selectKs256Attestation,
   verifyReceiptAgainstCheckpointChain,
+  verifyReceiptOfflineWithKeys,
   type CheckpointChainReceiptOutcome,
   type Ks256Attestation,
   type RootVerifyKey,
@@ -562,6 +567,62 @@ describe("checkpoint-chain: KS256 roots and several attestations (D8)", () => {
     };
     // Right digest, wrong signature hash: not this certificate's attestation.
     expect(selectKs256Attestation(cert, [s.attA])).toBeUndefined();
+  });
+});
+
+describe("an attached peak must be the one the inclusion proof recomputes", () => {
+  /** The fixture receipt with its peak attached instead of detached. The
+   * Sig_structure is the same bytes either way, so the signature holds. */
+  function attach(fx: ChainFixture): Uint8Array {
+    const [p, u, , sig] = decodeCborDeterministic(fx.receipt) as unknown[];
+    return encodeCborDeterministic([p, u, fx.peak, sig]);
+  }
+
+  it("checkpoint chain: an honest attached peak matches", async () => {
+    const { fx, sealer, root, rootKey } = await setup();
+    const cert = await buildEs256Cert(root, sealer, wideLimits(fx));
+    const o = await run(
+      { ...fx, receipt: attach(fx) },
+      [await coveringLink(fx, sealer, cert)],
+      [rootKey],
+    );
+    expect(o.ok).toBe(true);
+  });
+
+  it("checkpoint chain: an anchored attached peak does not carry another payload", async () => {
+    const { fx, sealer, root, rootKey } = await setup();
+    const cert = await buildEs256Cert(root, sealer, wideLimits(fx));
+    const o = fail(
+      await run(
+        { ...fx, receipt: attach(fx), inner: new Uint8Array(32).fill(0x11) },
+        [await coveringLink(fx, sealer, cert)],
+        [rootKey],
+      ),
+    );
+    expect(o.stage).toBe("anchor");
+    expect(o.reason).toBe("peak_not_in_checkpoint_chain");
+  });
+
+  it("signature path: a validly signed attached peak does not carry another payload", async () => {
+    const { fx, sealer } = await setup();
+    const honest = await verifyReceiptOfflineWithKeys({
+      receiptCbor: attach(fx),
+      payload: PAYLOAD,
+      idtimestampBe8: fx.idtimestampBe8,
+      trustKeys: [sealer.publicKey],
+    });
+    expect(honest).toEqual({ ok: true, stage: "binding" });
+    const forged = await verifyReceiptOfflineWithKeys({
+      receiptCbor: attach(fx),
+      payload: new TextEncoder().encode("some other statement"),
+      idtimestampBe8: fx.idtimestampBe8,
+      trustKeys: [sealer.publicKey],
+    });
+    expect(forged).toEqual({
+      ok: false,
+      stage: "inclusion",
+      reason: "inclusion_failed",
+    });
   });
 });
 
