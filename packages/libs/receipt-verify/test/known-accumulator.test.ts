@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { calculateRoot } from "@forestrie/merklelog";
+import {
+  decodeCborDeterministic,
+  encodeCborDeterministic,
+} from "@forestrie/encoding";
 import { grantCommitmentHashFromGrant } from "../src/grant-commitment.js";
 import { parseReceipt } from "../src/parse-receipt.js";
 import { univocityLeafHash } from "../src/leaf-commitment.js";
@@ -40,7 +44,9 @@ describe("verifyReceiptOfflineAgainstKnownAccumulator", () => {
       idtimestampBe8: fx.idtimestampBe8,
       inner,
       accumulator: [peak],
-      size: 2n,
+      // The fixture's leaf 1 sits under the size-3 MMR's single peak (node
+      // 2); size 2 is no MMR size, and the peak's position is now checked.
+      size: 3n,
     });
     expect(result).toEqual({ ok: true, stage: "binding" });
   });
@@ -137,5 +143,128 @@ describe("known accumulator snapshot artifact", () => {
     expect(() =>
       assertSnapshotBinding(sample, { logId: "11".repeat(32) }),
     ).toThrow(/bound to log/);
+  });
+});
+
+/**
+ * An attached-payload receipt carries its peak explicitly. That peak must
+ * be the one the leaf and inclusion path recompute: otherwise any receipt
+ * that attaches a real anchored peak "verifies" for any payload.
+ */
+describe("verifyReceiptOfflineAgainstKnownAccumulator: attached peak", () => {
+  async function attachedPeakFixture() {
+    const fx = await buildGrantReceiptFixture();
+    const inner = await grantCommitmentHashFromGrant(fx.grant);
+    const peak = await recomputeFixturePeak({ ...fx, inner });
+    const [p, u, , sig] = decodeCborDeterministic(fx.receiptCbor) as unknown[];
+    const withPath = (path: Uint8Array[] | null) => {
+      const um = new Map(u as Map<number, unknown>);
+      if (path !== null) {
+        um.set(
+          396,
+          new Map([
+            [
+              -1,
+              [
+                new Map<number, unknown>([
+                  [1, 1n],
+                  [2, path],
+                ]),
+              ],
+            ],
+          ]),
+        );
+      }
+      return encodeCborDeterministic([p, um, peak, sig]);
+    };
+    return { fx, inner, peak, withPath };
+  }
+
+  it("verifies an honest attached peak", async () => {
+    const { fx, inner, peak, withPath } = await attachedPeakFixture();
+    const result = await verifyReceiptOfflineAgainstKnownAccumulator({
+      receiptCbor: withPath(null),
+      idtimestampBe8: fx.idtimestampBe8,
+      inner,
+      accumulator: [peak],
+      size: 3n,
+    });
+    expect(result).toEqual({ ok: true, stage: "binding" });
+  });
+
+  it.each([
+    ["another payload", "inner"],
+    ["another idtimestamp", "idtimestamp"],
+    ["a garbage inclusion path", "path"],
+  ] as const)(
+    "rejects an anchored attached peak with %s",
+    async (_what, tamper) => {
+      const { fx, inner, peak, withPath } = await attachedPeakFixture();
+      const result = await verifyReceiptOfflineAgainstKnownAccumulator({
+        receiptCbor:
+          tamper === "path"
+            ? withPath([new Uint8Array(32).fill(0x99)])
+            : withPath(null),
+        idtimestampBe8:
+          tamper === "idtimestamp"
+            ? new Uint8Array(8).fill(0x7e)
+            : fx.idtimestampBe8,
+        inner: tamper === "inner" ? new Uint8Array(32).fill(0x11) : inner,
+        accumulator: [peak],
+        size: 3n,
+      });
+      expect(result).toEqual({
+        ok: false,
+        stage: "inclusion",
+        reason: "inclusion_failed",
+      });
+    },
+  );
+});
+
+describe("verifyReceiptOfflineAgainstKnownAccumulator: peak position", () => {
+  it("a height-0 peak binds its position: a forged mmrIndex does not match", async () => {
+    // Size 4: peaks at nodes 2 and 3; node 3 is a leaf, so its receipt has
+    // an EMPTY path and only the peak's position binds its mmrIndex.
+    const idtimestampBe8 = new Uint8Array(8).fill(0x03);
+    const inner = new Uint8Array(32).fill(0x33);
+    const leaf3 = await univocityLeafHash(idtimestampBe8, inner);
+    const accumulator = [new Uint8Array(32).fill(0x22), leaf3];
+    const receiptFor = (mmrIndex: bigint) =>
+      encodeCborDeterministic([
+        encodeCborDeterministic(new Map([[1, -7]])),
+        new Map([
+          [
+            396,
+            new Map([
+              [
+                -1,
+                [
+                  new Map<number, unknown>([
+                    [1, mmrIndex],
+                    [2, []],
+                  ]),
+                ],
+              ],
+            ]),
+          ],
+        ]),
+        null,
+        new Uint8Array(64),
+      ]);
+    const verify = (mmrIndex: bigint) =>
+      verifyReceiptOfflineAgainstKnownAccumulator({
+        receiptCbor: receiptFor(mmrIndex),
+        idtimestampBe8,
+        inner,
+        accumulator,
+        size: 4n,
+      });
+    expect(await verify(3n)).toEqual({ ok: true, stage: "binding" });
+    expect(await verify(0n)).toEqual({
+      ok: false,
+      stage: "signature",
+      reason: "peak_not_in_known_accumulator",
+    });
   });
 });

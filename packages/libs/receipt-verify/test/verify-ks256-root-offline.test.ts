@@ -292,3 +292,99 @@ async function randomEs256Key(): Promise<CryptoKey> {
   );
   return (await knownLogKeyFromBytes(raw.slice(1))) as CryptoKey;
 }
+
+describe("KS256 contract root, several attestations (D8)", () => {
+  const decoy = (address: Uint8Array) =>
+    attestationFor(
+      address,
+      new Uint8Array(32).fill(0x55),
+      new Uint8Array(32).fill(0x66),
+    );
+
+  it("picks the attestation matching the receipt's certificate from a list", async () => {
+    const fx = await buildKs256DelegatedReceiptFixture({ contractRoot: true });
+    const right = attestationFor(
+      fx.rootAddress,
+      fx.certDigest,
+      fx.certSignatureHash,
+    );
+    const result = await verifyGrantReceiptOffline({
+      ...fx,
+      ks256Attestations: [decoy(fx.rootAddress), right],
+    });
+    expect(result).toEqual({ ok: true, stage: "binding" });
+  });
+
+  it("combines the list with the singular field", async () => {
+    const fx = await buildKs256DelegatedReceiptFixture({ contractRoot: true });
+    const result = await verifyGrantReceiptOffline({
+      ...fx,
+      ks256Attestations: [decoy(fx.rootAddress)],
+      ks256Attestation: attestationFor(
+        fx.rootAddress,
+        fx.certDigest,
+        fx.certSignatureHash,
+      ),
+    });
+    expect(result).toEqual({ ok: true, stage: "binding" });
+  });
+
+  it("a list with no matching attestation fails, naming the mismatch", async () => {
+    const fx = await buildKs256DelegatedReceiptFixture({ contractRoot: true });
+    const result = await verifyGrantReceiptOffline({
+      ...fx,
+      ks256Attestations: [decoy(fx.rootAddress), decoy(fx.rootAddress)],
+    });
+    expect(result).toEqual({
+      ok: false,
+      stage: "signature",
+      reason: "ks256_attestation_digest_mismatch",
+    });
+  });
+
+  it("picks from a list under a caller-known KS256 key too", async () => {
+    const fx = await buildKs256DelegatedReceiptFixture({ contractRoot: true });
+    const result = await verifyGrantReceiptOfflineWithKeys({
+      receiptCbor: fx.receiptCbor,
+      grant: fx.grant,
+      idtimestampBe8: fx.idtimestampBe8,
+      trustKeys: [await knownLogKeyFromBytes(fx.rootAddress)],
+      forestGenesisCbor: fx.genesisCbor,
+      ks256Attestations: [
+        decoy(fx.rootAddress),
+        attestationFor(fx.rootAddress, fx.certDigest, fx.certSignatureHash),
+      ],
+    });
+    expect(result).toEqual({ ok: true, stage: "binding" });
+  });
+
+  it("a bad copy in the list does not mask a good one, in the list or singular", async () => {
+    const fx = await buildKs256DelegatedReceiptFixture({ contractRoot: true });
+    const good = attestationFor(
+      fx.rootAddress,
+      fx.certDigest,
+      fx.certSignatureHash,
+    );
+    const bad = { ...good, chainId: 1n };
+    expect(
+      await verifyGrantReceiptOffline({
+        ...fx,
+        ks256Attestations: [bad, good],
+      }),
+    ).toEqual({ ok: true, stage: "binding" });
+    expect(
+      await verifyGrantReceiptOffline({
+        ...fx,
+        ks256Attestations: [bad],
+        ks256Attestation: good,
+      }),
+    ).toEqual({ ok: true, stage: "binding" });
+    expect(
+      await verifyGrantReceiptOffline({ ...fx, ks256Attestations: [bad] }),
+    ).toEqual({
+      ok: false,
+      stage: "signature",
+      reason: "ks256_attestation_chain_mismatch",
+    });
+  });
+});

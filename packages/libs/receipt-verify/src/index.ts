@@ -211,3 +211,33 @@ export {
   verifyReceiptOfflineAgainstKnownAccumulator,
   type KnownAccumulator,
 } from "./known-accumulator.js";
+/**
+ * Checkpoint-chain trust root with per-link delegation limits and several
+ * ERC-1271 attestations (owner ruling D8, receipt-verify 3.2.0): the one
+ * shared copy mcp-verify and forestrie-cli use. The high-level verifier
+ * folds, matches and judges expiry; the pieces serve callers that match
+ * peaks their own way.
+ */
+export { verifyReceiptAgainstCheckpointChain } from "./verify-receipt-against-checkpoint-chain.js";
+export type { VerifyReceiptAgainstCheckpointChainInput } from "./verify-receipt-against-checkpoint-chain.js";
+export type {
+  CheckpointChainReceiptOutcome,
+  CheckpointChainReceiptStage,
+} from "./checkpoint-chain-receipt-outcome.js";
+export {
+  checkCheckpointLinkExpiry,
+  checkCheckpointLinkSizeBound,
+  makeCheckpointLinkVerifier,
+  type CheckpointLinkVerifier,
+} from "./checkpoint-link-verifier.js";
+export type {
+  CheckpointLinkFailure,
+  CheckpointLinkRecord,
+  CheckpointLinkVerifiedBy,
+} from "./checkpoint-link-record.js";
+export { selectKs256Attestation } from "./select-ks256-attestation.js";
+export {
+  summarizeKs256AttestationUsage,
+  type Ks256AttestationUnusedReason,
+  type Ks256AttestationUsage,
+} from "./ks256-attestation-usage.js";

@@ -9,7 +9,6 @@ import { grantCommitmentHashFromGrant } from "./grant-commitment.js";
 import { decodeTrustRootFromGenesis } from "./decode-trust-root-from-genesis.js";
 import { decodeChainBindingFromGenesis } from "./decode-chain-binding-from-genesis.js";
 import type { Ks256Attestation } from "./ks256-attestation.js";
-import type { Ks256DelegationEvidence } from "./verify-ks256-delegation.js";
 import { isParsedKs256RootKey, type RootVerifyKey } from "./root-verify-key.js";
 import {
   checkDelegationConstraints,
@@ -19,6 +18,7 @@ import { univocityLeafHash } from "./leaf-commitment.js";
 import { parseReceipt } from "./parse-receipt.js";
 import type { ReceiptVerifyResult } from "./receipt-verify-result.js";
 import { SubtleHasher } from "./subtle-hasher.js";
+import { resolveWithKs256Attestations } from "./select-ks256-attestation.js";
 
 export type VerifyGrantReceiptOfflineInput = {
   genesisCbor: Uint8Array;
@@ -27,6 +27,8 @@ export type VerifyGrantReceiptOfflineInput = {
   idtimestampBe8: Uint8Array;
   /** See {@link VerifyReceiptOfflineInput.ks256Attestation}. */
   ks256Attestation?: Ks256Attestation;
+  /** See {@link VerifyReceiptOfflineInput.ks256Attestations}. */
+  ks256Attestations?: readonly Ks256Attestation[];
 };
 
 function readIdtimestampBe8(bytes: Uint8Array): bigint {
@@ -121,7 +123,7 @@ export async function verifyGrantReceiptOffline(
     receiptCbor: input.receiptCbor,
     idtimestampBe8: input.idtimestampBe8,
     inner,
-    ks256Attestation: input.ks256Attestation,
+    ks256Attestations: attestationCandidates(input),
   });
 }
 
@@ -150,7 +152,10 @@ export async function verifyGrantReceiptOfflineWithKeys(
     idtimestampBe8: input.idtimestampBe8,
     inner,
     trustKeys: input.trustKeys,
-    ks256Evidence: withKeysKs256Evidence(input),
+    ks256Attestations: attestationCandidates(input),
+    forestChainId: input.forestGenesisCbor
+      ? genesisChainIdOrUndefined(input.forestGenesisCbor)
+      : undefined,
   });
 }
 
@@ -171,6 +176,15 @@ export type VerifyReceiptOfflineInput = {
    * binds the root address, the certificate digest and the genesis chain id.
    */
   ks256Attestation?: Ks256Attestation;
+  /**
+   * Several attestations (owner ruling D8): the one whose digest and
+   * signature hash match the receipt's certificate is used
+   * ({@link selectKs256Attestation}). Combined with
+   * {@link ks256Attestation} when both are given. When none matches, one
+   * still reaches the KS256 check only to name the mismatch: it can never
+   * verify the certificate.
+   */
+  ks256Attestations?: readonly Ks256Attestation[];
 };
 
 /**
@@ -194,7 +208,7 @@ export async function verifyReceiptOffline(
     receiptCbor: input.receiptCbor,
     idtimestampBe8: input.idtimestampBe8,
     inner,
-    ks256Attestation: input.ks256Attestation,
+    ks256Attestations: attestationCandidates(input),
   });
 }
 
@@ -249,25 +263,25 @@ export async function verifyReceiptOfflineWithKeys(
     idtimestampBe8: input.idtimestampBe8,
     inner,
     trustKeys: input.trustKeys,
-    ks256Evidence: withKeysKs256Evidence(input),
+    ks256Attestations: attestationCandidates(input),
+    forestChainId: input.forestGenesisCbor
+      ? genesisChainIdOrUndefined(input.forestGenesisCbor)
+      : undefined,
   });
 }
 
 /**
- * KS256 chain evidence for the caller-known-key entries: the attestation, and
- * the chain id from the forest genesis the caller supplied, if any.
+ * Every attestation the caller supplied: the list, then the singular field
+ * (kept for 3.1.0 callers).
  */
-function withKeysKs256Evidence(input: {
+function attestationCandidates(input: {
   ks256Attestation?: Ks256Attestation | undefined;
-  forestGenesisCbor?: Uint8Array | undefined;
-}): Ks256DelegationEvidence {
-  if (!input.ks256Attestation) return {};
-  return {
-    attestation: input.ks256Attestation,
-    forestChainId: input.forestGenesisCbor
-      ? genesisChainIdOrUndefined(input.forestGenesisCbor)
-      : undefined,
-  };
+  ks256Attestations?: readonly Ks256Attestation[] | undefined;
+}): Ks256Attestation[] {
+  return [
+    ...(input.ks256Attestations ?? []),
+    ...(input.ks256Attestation ? [input.ks256Attestation] : []),
+  ];
 }
 
 /**
@@ -296,7 +310,7 @@ async function verifyReceiptOfflineWithLeafInner(input: {
   receiptCbor: Uint8Array;
   idtimestampBe8: Uint8Array;
   inner: Uint8Array;
-  ks256Attestation?: Ks256Attestation | undefined;
+  ks256Attestations: Ks256Attestation[];
 }): Promise<ReceiptVerifyResult> {
   let trustRoot: RootVerifyKey;
   try {
@@ -310,12 +324,8 @@ async function verifyReceiptOfflineWithLeafInner(input: {
     idtimestampBe8: input.idtimestampBe8,
     inner: input.inner,
     trustKeys: [trustRoot],
-    ks256Evidence: input.ks256Attestation
-      ? {
-          attestation: input.ks256Attestation,
-          forestChainId: genesisChainIdOrUndefined(input.genesisCbor),
-        }
-      : {},
+    ks256Attestations: input.ks256Attestations,
+    forestChainId: genesisChainIdOrUndefined(input.genesisCbor),
   });
 }
 
@@ -331,7 +341,9 @@ async function verifyReceiptOfflineWithLeafInnerKeys(input: {
   idtimestampBe8: Uint8Array;
   inner: Uint8Array;
   trustKeys: RootVerifyKey[];
-  ks256Evidence: Ks256DelegationEvidence;
+  ks256Attestations: Ks256Attestation[];
+  /** The forest genesis chain id an attestation must carry, if known. */
+  forestChainId: bigint | undefined;
 }): Promise<ReceiptVerifyResult> {
   let parsed: ReturnType<typeof parseReceipt>;
   try {
@@ -349,10 +361,14 @@ async function verifyReceiptOfflineWithLeafInnerKeys(input: {
   // delegated key first. A cert present but not chaining to a trust key is a
   // hard failure — do not silently fall back to the trust key (which cannot
   // verify a delegated-signed receipt anyway).
-  const delegation = await resolveDelegatedVerifyKey(
+  // D8: the attestations made for THIS receipt's certificate (digest and
+  // signature hash), tried in order; none matching, a stand-in only names
+  // the mismatch.
+  const { resolution: delegation } = await resolveWithKs256Attestations(
     input.receiptCbor,
     input.trustKeys,
-    input.ks256Evidence,
+    input.ks256Attestations,
+    input.forestChainId,
   );
   if (delegation.kind === "broken") {
     return {
