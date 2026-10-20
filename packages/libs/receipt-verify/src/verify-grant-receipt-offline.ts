@@ -9,7 +9,6 @@ import { grantCommitmentHashFromGrant } from "./grant-commitment.js";
 import { decodeTrustRootFromGenesis } from "./decode-trust-root-from-genesis.js";
 import { decodeChainBindingFromGenesis } from "./decode-chain-binding-from-genesis.js";
 import type { Ks256Attestation } from "./ks256-attestation.js";
-import type { Ks256DelegationEvidence } from "./verify-ks256-delegation.js";
 import { isParsedKs256RootKey, type RootVerifyKey } from "./root-verify-key.js";
 import {
   checkDelegationConstraints,
@@ -19,7 +18,7 @@ import { univocityLeafHash } from "./leaf-commitment.js";
 import { parseReceipt } from "./parse-receipt.js";
 import type { ReceiptVerifyResult } from "./receipt-verify-result.js";
 import { SubtleHasher } from "./subtle-hasher.js";
-import { attestationForCoseSign1 } from "./select-ks256-attestation.js";
+import { resolveWithKs256Attestations } from "./select-ks256-attestation.js";
 
 export type VerifyGrantReceiptOfflineInput = {
   genesisCbor: Uint8Array;
@@ -362,19 +361,14 @@ async function verifyReceiptOfflineWithLeafInnerKeys(input: {
   // delegated key first. A cert present but not chaining to a trust key is a
   // hard failure — do not silently fall back to the trust key (which cannot
   // verify a delegated-signed receipt anyway).
-  // D8: the attestation made for THIS receipt's certificate, by digest and
-  // signature hash; with none matching, a stand-in only names the mismatch.
-  const { evidence: attestation } = attestationForCoseSign1(
-    input.receiptCbor,
-    input.ks256Attestations,
-  );
-  const ks256Evidence: Ks256DelegationEvidence = attestation
-    ? { attestation, forestChainId: input.forestChainId }
-    : {};
-  const delegation = await resolveDelegatedVerifyKey(
+  // D8: the attestations made for THIS receipt's certificate (digest and
+  // signature hash), tried in order; none matching, a stand-in only names
+  // the mismatch.
+  const { resolution: delegation } = await resolveWithKs256Attestations(
     input.receiptCbor,
     input.trustKeys,
-    ks256Evidence,
+    input.ks256Attestations,
+    input.forestChainId,
   );
   if (delegation.kind === "broken") {
     return {

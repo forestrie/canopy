@@ -357,4 +357,34 @@ describe("KS256 contract root, several attestations (D8)", () => {
     });
     expect(result).toEqual({ ok: true, stage: "binding" });
   });
+
+  it("a bad copy in the list does not mask a good one, in the list or singular", async () => {
+    const fx = await buildKs256DelegatedReceiptFixture({ contractRoot: true });
+    const good = attestationFor(
+      fx.rootAddress,
+      fx.certDigest,
+      fx.certSignatureHash,
+    );
+    const bad = { ...good, chainId: 1n };
+    expect(
+      await verifyGrantReceiptOffline({
+        ...fx,
+        ks256Attestations: [bad, good],
+      }),
+    ).toEqual({ ok: true, stage: "binding" });
+    expect(
+      await verifyGrantReceiptOffline({
+        ...fx,
+        ks256Attestations: [bad],
+        ks256Attestation: good,
+      }),
+    ).toEqual({ ok: true, stage: "binding" });
+    expect(
+      await verifyGrantReceiptOffline({ ...fx, ks256Attestations: [bad] }),
+    ).toEqual({
+      ok: false,
+      stage: "signature",
+      reason: "ks256_attestation_chain_mismatch",
+    });
+  });
 });

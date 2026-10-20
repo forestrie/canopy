@@ -46,6 +46,12 @@ export type CheckpointLinkRecord = {
    */
   attestationIndex?: number;
   /**
+   * Indexes of attestations made for this link's certificate that were
+   * tried before {@link attestationIndex} and failed their own checks
+   * (address, chain id, magic).
+   */
+  attestationsRejected?: number[];
+  /**
    * The link verified only because of an attestation: re-resolving its
    * certificate under the same roots without one fails. Pure and offline.
    */
@@ -63,4 +69,6 @@ export type CheckpointLinkFailure = {
   reason: string;
   /** As {@link CheckpointLinkRecord.attestationIndex}. */
   attestationIndex?: number;
+  /** As {@link CheckpointLinkRecord.attestationsRejected}. */
+  attestationsRejected?: number[];
 };

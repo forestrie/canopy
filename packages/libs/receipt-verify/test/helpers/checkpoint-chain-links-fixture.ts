@@ -295,6 +295,40 @@ export async function twoLinks(
   ];
 }
 
+/**
+ * Two links over an MMR whose leaves are `leaf0` and `leaf1`: 0 -> 1
+ * (accumulator [leaf0]) then 1 -> 3 (accumulator [peak]).
+ */
+export async function twoLinksOverLeaves(
+  leaf0: Uint8Array,
+  leaf1: Uint8Array,
+  first: { sealer: CryptoKeyPair; cert: Uint8Array | null },
+  second: { sealer: CryptoKeyPair; cert: Uint8Array | null },
+): Promise<Uint8Array[]> {
+  const peak = await calculateRoot(
+    new SubtleHasher(),
+    leaf1,
+    { path: [leaf0], mmrIndex: 1n },
+    1n,
+  );
+  return [
+    await buildLink(
+      first.sealer,
+      first.cert,
+      1n,
+      [0n, 1n, [], [leaf0]],
+      [leaf0],
+    ),
+    await buildLink(
+      second.sealer,
+      second.cert,
+      3n,
+      [1n, 3n, [[leaf1]], []],
+      [peak],
+    ),
+  ];
+}
+
 /** One `.sth`: a consistency proof body, signed by `sealer`, cert at 1000. */
 async function buildLink(
   sealer: CryptoKeyPair,

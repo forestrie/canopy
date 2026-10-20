@@ -16,6 +16,7 @@ import {
   importEs256PublicKeyFromGrantDataXy64,
   ks256RootFromAddress,
   selectKs256Attestation,
+  summarizeKs256AttestationUsage,
   verifyReceiptAgainstCheckpointChain,
   verifyReceiptOfflineWithKeys,
   type CheckpointChainReceiptOutcome,
@@ -34,6 +35,7 @@ import {
   newKs256Signer,
   newSealer,
   twoLinks,
+  twoLinksOverLeaves,
   wideLimits,
   CHAIN_FIXTURE_CHAIN_ID,
   type ChainFixture,
@@ -266,6 +268,80 @@ describe("checkpoint-chain: delegation limits per link (ES256 root)", () => {
     expect(o.stage).toBe("delegation");
     expect(o.reason).toBe("delegation_expired");
     expect(o.at).toBe(0);
+  });
+
+  it("the expiry bound is exact: leaf time == expiresAt passes, one second later fails", async () => {
+    const { fx, sealer, root, rootKey } = await setup();
+    const at = async (expiresAt: number) =>
+      run(
+        fx,
+        [
+          await coveringLink(
+            fx,
+            sealer,
+            await buildEs256Cert(root, sealer, {
+              ...wideLimits(fx),
+              expiresAt,
+            }),
+          ),
+        ],
+        [rootKey],
+      );
+    expect((await at(leafUnixSeconds(fx))).ok).toBe(true);
+    const late = fail(await at(leafUnixSeconds(fx) - 1));
+    expect(late.reason).toBe("delegation_expired");
+  });
+
+  it("a height-0 peak binds its position: a forged mmrIndex cannot dodge expiry", async () => {
+    // Reviewer repro: link 0 (size 1) has accumulator [L0] under an expired
+    // cert; link 1 (size 3) is live. A receipt for L0 has an EMPTY path, so
+    // only the matched peak's position binds its mmrIndex.
+    const { fx, sealer, root, rootKey } = await setup();
+    const expired = await buildEs256Cert(root, sealer, {
+      ...wideLimits(fx),
+      expiresAt: leafUnixSeconds(fx) - 10,
+    });
+    const live = await buildEs256Cert(root, sealer, wideLimits(fx));
+    const l0 = fx.leafHash;
+    const checkpoints = await twoLinksOverLeaves(
+      l0,
+      new Uint8Array(32).fill(0x55),
+      { sealer, cert: expired },
+      { sealer, cert: live },
+    );
+    const leafReceipt = (mmrIndex: bigint) =>
+      encodeCborDeterministic([
+        encodeCborDeterministic(new Map([[1, -7]])),
+        new Map([
+          [
+            396,
+            new Map([
+              [
+                -1,
+                [
+                  new Map<number, unknown>([
+                    [1, mmrIndex],
+                    [2, []],
+                  ]),
+                ],
+              ],
+            ]),
+          ],
+        ]),
+        null,
+        new Uint8Array(64),
+      ]);
+    const honest = fail(
+      await run({ ...fx, receipt: leafReceipt(0n) }, checkpoints, [rootKey]),
+    );
+    expect(honest.stage).toBe("delegation");
+    expect(honest.reason).toBe("delegation_expired");
+    expect(honest.at).toBe(0);
+    const forged = fail(
+      await run({ ...fx, receipt: leafReceipt(1n) }, checkpoints, [rootKey]),
+    );
+    expect(forged.stage).toBe("anchor");
+    expect(forged.reason).toBe("peak_not_in_checkpoint_chain");
   });
 
   it("a link that does not cover the leaf is not held to the leaf's time", async () => {
@@ -525,14 +601,99 @@ describe("checkpoint-chain: KS256 roots and several attestations (D8)", () => {
     );
     expect(o.at).toBe(0);
     expect(o.reason).toBe("ks256_attestation_chain_mismatch");
+    expect(o.attestations.rejected).toEqual([
+      { index: 0, digestHex: hex(s.certA.digest), links: [0] },
+    ]);
     expect(o.attestations.unused).toEqual([
-      { index: 0, digestHex: hex(s.certA.digest), reason: "rejected" },
       {
         index: 1,
         digestHex: hex(s.certB.digest),
         reason: "no_matching_certificate",
       },
     ]);
+  });
+
+  it("a bad copy listed before a good one does not mask it", async () => {
+    const s = await safeRotation();
+    const bad = attestationFor(s.safe, s.certA, { chainId: 1n });
+    const o = await run(s.fx, s.checkpoints, s.rootKeys, {
+      attestations: [bad, s.attA, s.attB],
+      forestGenesisCbor: s.genesis,
+    });
+    expect(o.ok).toBe(true);
+    expect(o.records[0]).toMatchObject({
+      attestationIndex: 1,
+      attestationsRejected: [0],
+      attestationNeeded: true,
+    });
+    expect(o.attestations.used.map((u) => u.index)).toEqual([1, 2]);
+    expect(o.attestations.rejected).toEqual([
+      { index: 0, digestHex: hex(s.certA.digest), links: [0] },
+    ]);
+    expect(o.attestations.unused).toEqual([]);
+  });
+
+  it("only bad copies: the first one's specific reason is reported", async () => {
+    const s = await safeRotation();
+    const o = fail(
+      await run(s.fx, s.checkpoints, s.rootKeys, {
+        attestations: [
+          attestationFor(s.safe, s.certA, { chainId: 1n }),
+          attestationFor(s.safe, s.certA, { magic: new Uint8Array(4) }),
+        ],
+        forestGenesisCbor: s.genesis,
+      }),
+    );
+    expect(o.at).toBe(0);
+    expect(o.reason).toBe("ks256_attestation_chain_mismatch");
+    expect(o.linkFailure?.attestationsRejected).toEqual([0, 1]);
+  });
+
+  it("an identical second copy is reported as a duplicate", async () => {
+    const s = await safeRotation();
+    const o = await run(s.fx, s.checkpoints, s.rootKeys, {
+      attestations: [s.attA, s.attB, { ...s.attA }],
+      forestGenesisCbor: s.genesis,
+    });
+    expect(o.ok).toBe(true);
+    expect(o.attestations.unused).toEqual([
+      { index: 2, digestHex: hex(s.certA.digest), reason: "duplicate" },
+    ]);
+  });
+
+  it("an attestation used on one link and rejected on another shows both", () => {
+    const att = {
+      ...attestationFor(new Uint8Array(20), {
+        cert: new Uint8Array(),
+        digest: new Uint8Array(32).fill(1),
+        signatureHash: new Uint8Array(32).fill(2),
+      }),
+    };
+    const usage = summarizeKs256AttestationUsage(
+      [att],
+      [
+        {
+          index: 0,
+          signedSize: 1n,
+          constraints: null,
+          verifiedBy: "ks256-root",
+          attestationIndex: 0,
+          attestationNeeded: true,
+        },
+      ],
+      {
+        index: 1,
+        reason: "ks256_attestation_chain_mismatch",
+        attestationsRejected: [0],
+      },
+    );
+    expect(usage.used).toEqual([
+      { index: 0, digestHex: "01".repeat(32), links: [0] },
+    ]);
+    expect(usage.rejected).toEqual([
+      { index: 0, digestHex: "01".repeat(32), links: [1] },
+    ]);
+    expect(usage.unused).toEqual([]);
   });
 
   it("an attestation without the forest chain id cannot be bound", async () => {

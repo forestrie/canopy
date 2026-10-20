@@ -15,6 +15,11 @@
 import { keccak_256 } from "@noble/hashes/sha3";
 import type { Ks256CertificateDigest } from "@forestrie/delegation-cose";
 import type { Ks256Attestation } from "./ks256-attestation.js";
+import {
+  resolveDelegatedVerifyKey,
+  type DelegatedResolution,
+} from "./resolve-delegated-verify-key.js";
+import type { RootVerifyKey } from "./root-verify-key.js";
 import { extractKs256DelegationDigest } from "./verify-ks256-delegation.js";
 
 /**
@@ -24,7 +29,9 @@ import { extractKs256DelegationDigest } from "./verify-ks256-delegation.js";
  *
  * @param cert - From `extractKs256CertificateDigest` (delegation-cose) or
  *   {@link extractKs256DelegationDigest}.
- * @returns The matching attestation, or `undefined` when none matches.
+ * @returns The first matching attestation, or `undefined` when none
+ *   matches. The verifiers go further: they try EVERY match in order and
+ *   keep the first that passes its own checks.
  */
 export function selectKs256Attestation(
   cert: Ks256CertificateDigest,
@@ -38,40 +45,47 @@ function selectKs256AttestationIndex(
   cert: Ks256CertificateDigest,
   attestations: readonly Ks256Attestation[],
 ): number | undefined {
-  const signatureHash = keccak_256(cert.signature);
-  for (let i = 0; i < attestations.length; i++) {
-    const a = attestations[i]!;
-    if (
-      bytesEqual(a.digest, cert.digest) &&
-      bytesEqual(a.signatureHash, signatureHash)
-    ) {
-      return i;
-    }
-  }
-  return undefined;
+  return matchingIndexes(cert, attestations)[0];
 }
 
 /**
- * The attestation to hand `resolveDelegatedVerifyKey` for one COSE_Sign1
- * (a receipt or a checkpoint) carrying a label-1000 certificate.
+ * Resolve a COSE_Sign1's label-1000 certificate (a receipt or a checkpoint)
+ * under `rootKeys`, trying the supplied attestations made for it.
  *
- * - `selected`: index of the attestation made for this certificate, if any.
- * - `evidence`: the selected attestation; when none matches, a DIAGNOSTIC
- *   stand-in (one with the right digest if any, else the first) so a
- *   contract root fails with the precise `ks256_attestation_*_mismatch`
- *   reason rather than a bare `ks256_root_not_recovered`. A stand-in can
- *   never verify: its digest or signature hash differs from the
- *   certificate's, and `verifyKs256DelegationCert` checks both. With one
- *   attestation supplied this is exactly the 3.1.0 behaviour of the
- *   singular `ks256Attestation` input.
+ * Every attestation whose digest and signature hash match the certificate
+ * is tried in list order, and the first that resolves wins: a stale or
+ * wrong-chain copy listed before a good one must not mask it. When none
+ * resolves, the first failure is returned. When none matches at all, a
+ * DIAGNOSTIC stand-in (one with the right digest if any, else the first) is
+ * passed so a contract root fails with the precise
+ * `ks256_attestation_*_mismatch` reason rather than a bare
+ * `ks256_root_not_recovered`; a stand-in can never verify, because
+ * `verifyKs256DelegationCert` checks digest and signature hash. With one
+ * attestation supplied this is exactly the 3.1.0 behaviour of the singular
+ * `ks256Attestation` input.
  *
+ * @returns The resolution; `selected`, the index of the attestation it was
+ *   resolved with (whether or not ecrecover made it unnecessary); and
+ *   `rejected`, the matching attestations tried that failed their own
+ *   checks (address, chain id, magic).
  * @internal
  */
-export function attestationForCoseSign1(
+export async function resolveWithKs256Attestations(
   coseSign1Bytes: Uint8Array,
+  rootKeys: RootVerifyKey[],
   attestations: readonly Ks256Attestation[],
-): { selected?: number; evidence?: Ks256Attestation } {
-  if (attestations.length === 0) return {};
+  forestChainId: bigint | undefined,
+): Promise<{
+  resolution: DelegatedResolution;
+  selected?: number;
+  rejected: number[];
+}> {
+  if (attestations.length === 0) {
+    return {
+      resolution: await resolveDelegatedVerifyKey(coseSign1Bytes, rootKeys),
+      rejected: [],
+    };
+  }
   let cert: Ks256CertificateDigest | null = null;
   try {
     cert = extractKs256DelegationDigest(coseSign1Bytes);
@@ -80,17 +94,53 @@ export function attestationForCoseSign1(
     // made for it; the stand-in below is never consulted by an ES256 root.
     cert = null;
   }
-  if (cert !== null) {
-    const selected = selectKs256AttestationIndex(cert, attestations);
-    if (selected !== undefined) {
-      return { selected, evidence: attestations[selected] };
-    }
-    const sameDigest = attestations.find((a) =>
-      bytesEqual(a.digest, cert.digest),
+  const candidates = cert === null ? [] : matchingIndexes(cert, attestations);
+  const rejected: number[] = [];
+  let firstFailure: DelegatedResolution | undefined;
+  for (const i of candidates) {
+    const resolution = await resolveDelegatedVerifyKey(
+      coseSign1Bytes,
+      rootKeys,
+      { attestation: attestations[i], forestChainId },
     );
-    if (sameDigest !== undefined) return { evidence: sameDigest };
+    if (resolution.kind !== "broken") {
+      return { resolution, selected: i, rejected };
+    }
+    firstFailure ??= resolution;
+    // Only an attestation's own checks make it "rejected"; any other
+    // failure is the certificate's and no other copy can change it.
+    if (!resolution.reason?.startsWith("ks256_attestation_")) break;
+    rejected.push(i);
   }
-  return { evidence: attestations[0] };
+  if (firstFailure !== undefined) return { resolution: firstFailure, rejected };
+  const standIn =
+    (cert !== null &&
+      attestations.find((a) => bytesEqual(a.digest, cert.digest))) ||
+    attestations[0];
+  return {
+    resolution: await resolveDelegatedVerifyKey(coseSign1Bytes, rootKeys, {
+      attestation: standIn,
+      forestChainId,
+    }),
+    rejected,
+  };
+}
+
+function matchingIndexes(
+  cert: Ks256CertificateDigest,
+  attestations: readonly Ks256Attestation[],
+): number[] {
+  const signatureHash = keccak_256(cert.signature);
+  const out: number[] = [];
+  attestations.forEach((a, i) => {
+    if (
+      bytesEqual(a.digest, cert.digest) &&
+      bytesEqual(a.signatureHash, signatureHash)
+    ) {
+      out.push(i);
+    }
+  });
+  return out;
 }
 
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {

@@ -33,8 +33,13 @@ import {
   decodeCborDeterministic,
   encodeCborDeterministic,
 } from "@forestrie/encoding";
-import { calculateRoot, type Proof } from "@forestrie/merklelog";
+import {
+  calculateRoot,
+  peakMMRIndexes,
+  type Proof,
+} from "@forestrie/merklelog";
 import { normalizeHexAddress } from "@forestrie/chain-rpc";
+import { inclusionWalkEndIndex } from "./inclusion-walk-end.js";
 import { parseReceipt } from "./parse-receipt.js";
 import { univocityLeafHash } from "./leaf-commitment.js";
 import { SubtleHasher } from "./subtle-hasher.js";
@@ -268,8 +273,15 @@ export async function verifyReceiptOfflineAgainstKnownAccumulator(input: {
   }
 
   // 2. Exact peak match — receipt state is a snapshot-covered accumulator.
-  for (const peak of input.accumulator) {
-    if (bytesEqual(recomputedPeak, peak)) {
+  // The peak must also sit at the node the inclusion walk reaches (contract
+  // order is ascending MMR index, as peakMMRIndexes lists them): a leaf hash
+  // does not commit its position, so a value match alone would leave the
+  // mmrIndex the freshness check above relies on a caller claim.
+  const peakIndex = inclusionWalkEndIndex(leafIdx, parsed.proof.path.length);
+  const p = peakMMRIndexes(input.size - 1n).indexOf(peakIndex);
+  if (p >= 0) {
+    const anchored = input.accumulator[p];
+    if (anchored !== undefined && bytesEqual(recomputedPeak, anchored)) {
       return { ok: true, stage: "binding" };
     }
   }

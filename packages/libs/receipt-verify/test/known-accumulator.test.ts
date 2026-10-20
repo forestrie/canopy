@@ -44,7 +44,9 @@ describe("verifyReceiptOfflineAgainstKnownAccumulator", () => {
       idtimestampBe8: fx.idtimestampBe8,
       inner,
       accumulator: [peak],
-      size: 2n,
+      // The fixture's leaf 1 sits under the size-3 MMR's single peak (node
+      // 2); size 2 is no MMR size, and the peak's position is now checked.
+      size: 3n,
     });
     expect(result).toEqual({ ok: true, stage: "binding" });
   });
@@ -218,4 +220,51 @@ describe("verifyReceiptOfflineAgainstKnownAccumulator: attached peak", () => {
       });
     },
   );
+});
+
+describe("verifyReceiptOfflineAgainstKnownAccumulator: peak position", () => {
+  it("a height-0 peak binds its position: a forged mmrIndex does not match", async () => {
+    // Size 4: peaks at nodes 2 and 3; node 3 is a leaf, so its receipt has
+    // an EMPTY path and only the peak's position binds its mmrIndex.
+    const idtimestampBe8 = new Uint8Array(8).fill(0x03);
+    const inner = new Uint8Array(32).fill(0x33);
+    const leaf3 = await univocityLeafHash(idtimestampBe8, inner);
+    const accumulator = [new Uint8Array(32).fill(0x22), leaf3];
+    const receiptFor = (mmrIndex: bigint) =>
+      encodeCborDeterministic([
+        encodeCborDeterministic(new Map([[1, -7]])),
+        new Map([
+          [
+            396,
+            new Map([
+              [
+                -1,
+                [
+                  new Map<number, unknown>([
+                    [1, mmrIndex],
+                    [2, []],
+                  ]),
+                ],
+              ],
+            ]),
+          ],
+        ]),
+        null,
+        new Uint8Array(64),
+      ]);
+    const verify = (mmrIndex: bigint) =>
+      verifyReceiptOfflineAgainstKnownAccumulator({
+        receiptCbor: receiptFor(mmrIndex),
+        idtimestampBe8,
+        inner,
+        accumulator,
+        size: 4n,
+      });
+    expect(await verify(3n)).toEqual({ ok: true, stage: "binding" });
+    expect(await verify(0n)).toEqual({
+      ok: false,
+      stage: "signature",
+      reason: "peak_not_in_known_accumulator",
+    });
+  });
 });

@@ -14,7 +14,7 @@
  *
  * Pure over bytes; no network (canopy rule C1).
  */
-import { calculateRoot } from "@forestrie/merklelog";
+import { calculateRoot, peakMMRIndexes } from "@forestrie/merklelog";
 import {
   verifyCheckpointChain,
   type CheckpointChainLink,
@@ -27,6 +27,7 @@ import {
 import { decodeChainBindingFromGenesis } from "./decode-chain-binding-from-genesis.js";
 import type { Ks256Attestation } from "./ks256-attestation.js";
 import { summarizeKs256AttestationUsage } from "./ks256-attestation-usage.js";
+import { inclusionWalkEndIndex } from "./inclusion-walk-end.js";
 import { univocityLeafHash } from "./leaf-commitment.js";
 import { parseReceipt } from "./parse-receipt.js";
 import type { RootVerifyKey } from "./root-verify-key.js";
@@ -61,7 +62,10 @@ export type VerifyReceiptAgainstCheckpointChainInput = {
  * The receipt's own signature is not checked: the authenticated chain is
  * the authority, and the peak is ALWAYS recomputed from the leaf
  * (`idtimestamp ‖ inner`) and the inclusion path, never taken from an
- * attached payload, so a match binds the leaf's idtimestamp and mmrIndex.
+ * attached payload. A match binds the leaf's idtimestamp (through the leaf
+ * hash) and its mmrIndex (through the matched peak's POSITION, which must be
+ * the node the inclusion walk reaches: the leaf hash alone does not commit
+ * its position, and an empty path commits none).
  * Links are searched newest first; the newest cover is reported.
  */
 export async function verifyReceiptAgainstCheckpointChain(
@@ -196,11 +200,25 @@ export async function verifyReceiptAgainstCheckpointChain(
     };
   }
 
+  // The peak the path claims to reach. A leaf hash does not commit its
+  // position (and an empty path commits none), so a value match alone would
+  // leave mmrIndex a caller claim: the matched peak must sit at this index.
+  const peakIndex = inclusionWalkEndIndex(
+    leafMmrIndex,
+    parsed.proof.path.length,
+  );
   for (let i = links.length - 1; i >= 0; i--) {
-    const p = links[i]!.accumulator.findIndex((a) => bytesEqual(a, peak));
-    if (p < 0) continue;
-    // The leaf hash and inclusion path now bind idtimestamp and mmrIndex
-    // to an authenticated accumulator, so expiry can be judged on them.
+    const link = links[i]!;
+    const p =
+      link.treeSize2 > 0n
+        ? peakMMRIndexes(link.treeSize2 - 1n).indexOf(peakIndex)
+        : -1;
+    if (p < 0 || !bytesEqual(link.accumulator[p] ?? new Uint8Array(), peak)) {
+      continue;
+    }
+    // The leaf hash, inclusion path and peak position now bind idtimestamp
+    // and mmrIndex to an authenticated accumulator, so expiry can be judged
+    // on them.
     const expiry = checkCheckpointLinkExpiry(verifier.records, {
       mmrIndex: leafMmrIndex,
       idtimestamp,

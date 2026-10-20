@@ -31,7 +31,7 @@ import {
   type DelegationConstraints,
 } from "./resolve-delegated-verify-key.js";
 import { isParsedKs256RootKey, type RootVerifyKey } from "./root-verify-key.js";
-import { attestationForCoseSign1 } from "./select-ks256-attestation.js";
+import { resolveWithKs256Attestations } from "./select-ks256-attestation.js";
 
 /** The per-link verifier and what it has learned so far. */
 export type CheckpointLinkVerifier = {
@@ -88,22 +88,24 @@ export function makeCheckpointLinkVerifier(opts: {
     detachedPayload: Uint8Array,
   ): Promise<boolean> => {
     const index = calls++;
-    const chosen = attestationForCoseSign1(checkpointBytes, attestations);
+    const chosen = await resolveWithKs256Attestations(
+      checkpointBytes,
+      rootKeys,
+      attestations,
+      opts.forestChainId,
+    );
+    const resolution = chosen.resolution;
     const fail = (reason: string): false => {
       failure = { index, reason };
       if (chosen.selected !== undefined) {
         failure.attestationIndex = chosen.selected;
       }
+      if (chosen.rejected.length > 0) {
+        failure.attestationsRejected = chosen.rejected;
+      }
       return false;
     };
 
-    const resolution = await resolveDelegatedVerifyKey(
-      checkpointBytes,
-      rootKeys,
-      chosen.evidence !== undefined
-        ? { attestation: chosen.evidence, forestChainId: opts.forestChainId }
-        : {},
-    );
     if (resolution.kind === "broken") {
       return fail(resolution.reason ?? "delegation_invalid");
     }
@@ -169,6 +171,9 @@ export function makeCheckpointLinkVerifier(opts: {
       verifiedBy,
       attestationNeeded,
     };
+    if (chosen.rejected.length > 0) {
+      record.attestationsRejected = chosen.rejected;
+    }
     if (chosen.selected !== undefined) {
       record.attestationIndex = chosen.selected;
       if (attestationNeeded) {

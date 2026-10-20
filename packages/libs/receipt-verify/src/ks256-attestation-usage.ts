@@ -11,21 +11,28 @@ import type {
 
 /**
  * Why a supplied attestation contributed nothing:
- * - `no_matching_certificate`: no verified link's certificate has its
- *   digest and signature hash.
+ * - `no_matching_certificate`: no link's certificate has its digest and
+ *   signature hash.
  * - `not_needed`: it matched a certificate that verified without it
  *   (ecrecover, or an ES256 root also vouched).
- * - `rejected`: it matched the certificate of the link that failed (wrong
- *   address, chain or magic).
+ * - `duplicate`: another supplied attestation for the same certificate
+ *   (same digest and signature hash) was used, selected or rejected first,
+ *   so this one was never tried.
  */
 export type Ks256AttestationUnusedReason =
   | "no_matching_certificate"
   | "not_needed"
-  | "rejected";
+  | "duplicate";
 
-/** Which supplied attestations carried which links. */
+/**
+ * Which supplied attestations carried which links. An attestation may be
+ * in both `used` and `rejected` (used on earlier links, refused on a later
+ * one); it is in `unused` only when it is in neither.
+ */
 export type Ks256AttestationUsage = {
   used: { index: number; digestHex: string; links: number[] }[];
+  /** Tried for a link's certificate and failed its own checks there. */
+  rejected: { index: number; digestHex: string; links: number[] }[];
   unused: {
     index: number;
     digestHex: string;
@@ -45,25 +52,50 @@ export function summarizeKs256AttestationUsage(
   records: readonly CheckpointLinkRecord[],
   failure?: CheckpointLinkFailure,
 ): Ks256AttestationUsage {
-  const usage: Ks256AttestationUsage = { used: [], unused: [] };
+  const usage: Ks256AttestationUsage = { used: [], rejected: [], unused: [] };
+  const seen = [...records, ...(failure !== undefined ? [failure] : [])];
+  const tried = (i: number) =>
+    seen.some(
+      (r) =>
+        r.attestationIndex === i || (r.attestationsRejected ?? []).includes(i),
+    );
   attestations.forEach((a, index) => {
     const digestHex = bytesToHex(a.digest);
-    const links = records
+    const used = records
       .filter((r) => r.attestationIndex === index && r.attestationNeeded)
       .map((r) => r.index);
-    if (links.length > 0) {
-      usage.used.push({ index, digestHex, links });
-      return;
+    const rejected = seen
+      .filter((r) => (r.attestationsRejected ?? []).includes(index))
+      .map((r) => r.index);
+    if (used.length > 0) usage.used.push({ index, digestHex, links: used });
+    if (rejected.length > 0) {
+      usage.rejected.push({ index, digestHex, links: rejected });
     }
-    const reason: Ks256AttestationUnusedReason =
-      failure?.attestationIndex === index
-        ? "rejected"
-        : records.some((r) => r.attestationIndex === index)
-          ? "not_needed"
-          : "no_matching_certificate";
+    if (used.length > 0 || rejected.length > 0) return;
+    let reason: Ks256AttestationUnusedReason = "no_matching_certificate";
+    if (seen.some((r) => r.attestationIndex === index)) {
+      reason = "not_needed";
+    } else if (
+      attestations.some(
+        (b, j) =>
+          j !== index &&
+          tried(j) &&
+          bytesEqual(a.digest, b.digest) &&
+          bytesEqual(a.signatureHash, b.signatureHash),
+      )
+    ) {
+      reason = "duplicate";
+    }
     usage.unused.push({ index, digestHex, reason });
   });
   return usage;
+}
+
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  let x = 0;
+  for (let i = 0; i < a.length; i++) x |= a[i]! ^ b[i]!;
+  return x === 0;
 }
 
 function bytesToHex(bytes: Uint8Array): string {
