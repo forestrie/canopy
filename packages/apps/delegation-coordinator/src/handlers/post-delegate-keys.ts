@@ -118,11 +118,14 @@ export async function handlePostDelegateKeys(
           "publicKey and voucher must be valid base64",
         );
       }
-      const verdict = await verifyDelegateKeyVoucher(voucher, pinnedKey, {
-        sealerId: body.sealerId,
-        epoch: key.epoch,
-        publicKey,
-      });
+      // Claim 4 is checked whenever present; requiring it (and capping the
+      // row's notAfter at it) is plan-2609-12 slice 08.
+      const verdict = await verifyDelegateKeyVoucher(
+        voucher,
+        pinnedKey,
+        { sealerId: body.sealerId, epoch: key.epoch, publicKey },
+        Math.floor(Date.now() / 1000),
+      );
       if (!verdict.ok) {
         return problemResponse(
           400,

@@ -12,9 +12,13 @@
  * This mirrors the Go builder/verifier in arbor
  * `services/custodian/src/voucher.go`. The voucher uses the embedded-claims
  * profile: the payload is the canonical int-keyed CBOR map
- * `{1: sealerId (tstr), 2: epoch (uint), 3: delegateKeyCoseCbor (bstr)}`, so
- * verification is a signature check plus a field-compare — no cross-impl
- * re-canonicalisation of the voucher envelope is required.
+ * `{1: sealerId (tstr), 2: epoch (uint), 3: delegateKeyCoseCbor (bstr),
+ * 4: notAfter (uint, Unix seconds)}`, so verification is a signature check
+ * plus a field-compare — no cross-impl re-canonicalisation of the voucher
+ * envelope is required. Claim 4 bounds a replay of the voucher to its
+ * lifetime (plan-2609-12 slice 07, ruling 7); vouchers issued before it lack
+ * the claim. The protocol vector `vectors/fixtures/delegate-key-voucher.json`
+ * pins this verifier and the Go builder to the same bytes.
  */
 
 import { decodeCborDeterministic } from "./decode-cbor-deterministic.js";
@@ -37,11 +41,33 @@ export interface DelegateKeyVoucherClaims {
    * `delegated_pubkey_hash` preimage.
    */
   publicKey: Uint8Array;
+  /**
+   * Claim 4: the voucher's expiry, Unix seconds. Absent on vouchers issued
+   * before claim 4 existed. As an expectation it is compared only when set.
+   */
+  notAfter?: number;
 }
 
-/** Result of {@link verifyDelegateKeyVoucher}; `reason` names the failing check. */
+/** Options for {@link verifyDelegateKeyVoucher}. */
+export interface VerifyDelegateKeyVoucherOptions
+  extends VerifyCoseSign1Options {
+  /**
+   * Refuse a voucher without claim 4 (`not_after_missing`). Off, such a
+   * voucher still verifies; claim 4 is checked against `now` whenever it is
+   * present either way.
+   */
+  requireNotAfter?: boolean;
+}
+
+/**
+ * Result of {@link verifyDelegateKeyVoucher}. On success `notAfter` is the
+ * decoded claim 4, absent when the voucher has none. On failure `reason`
+ * names the failing check: `signature`, `decode`, `claims_decode`,
+ * `claims_shape`, `sealerId`, `epoch`, `publicKey`, `notAfter` (differs from
+ * the expected value), `not_after_missing` or `expired`.
+ */
 export type VerifyDelegateKeyVoucherResult =
-  | { ok: true }
+  | { ok: true; notAfter?: number }
   | { ok: false; reason: string };
 
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
@@ -51,20 +77,33 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return diff === 0;
 }
 
+/** Claim 4 as a safe integer of Unix seconds, or null when malformed. */
+function decodeNotAfter(raw: unknown): number | null {
+  const n = typeof raw === "bigint" ? Number(raw) : raw;
+  if (typeof n !== "number" || !Number.isSafeInteger(n) || n < 0) return null;
+  return n;
+}
+
 /**
  * Verify a voucher's signature against the pinned registrar key AND that its
- * claims equal `expect`. Both must hold. Any malformed input fails closed.
+ * claims equal `expect`, AND that claim 4, when present, is after `now`. All
+ * must hold. Any malformed input fails closed.
+ *
+ * A caller allowing clock skew passes `now` minus its allowance.
  *
  * @param voucherBytes - untagged COSE_Sign1 voucher CBOR
  * @param pinnedRegistrarKey - the pinned registrar public key (P-256 coords)
  * @param expect - the claims the caller requires the voucher to attest
- * @param opts - optional failure logging (forwarded to the COSE verifier)
+ * @param now - the verification time, Unix seconds
+ * @param opts - `requireNotAfter`, plus failure logging (forwarded to the
+ *   COSE verifier)
  */
 export async function verifyDelegateKeyVoucher(
   voucherBytes: Uint8Array,
   pinnedRegistrarKey: ParsedEcPublicKey,
   expect: DelegateKeyVoucherClaims,
-  opts?: VerifyCoseSign1Options,
+  now: number,
+  opts?: VerifyDelegateKeyVoucherOptions,
 ): Promise<VerifyDelegateKeyVoucherResult> {
   const sigOk = await verifyCoseSign1WithParsedKey(
     voucherBytes,
@@ -101,7 +140,19 @@ export async function verifyDelegateKeyVoucher(
   ) {
     return { ok: false, reason: "publicKey" };
   }
-  return { ok: true };
+
+  if (!claims.has(4)) {
+    if (opts?.requireNotAfter)
+      return { ok: false, reason: "not_after_missing" };
+    return { ok: true };
+  }
+  const notAfter = decodeNotAfter(claims.get(4));
+  if (notAfter === null) return { ok: false, reason: "claims_shape" };
+  if (expect.notAfter !== undefined && notAfter !== expect.notAfter) {
+    return { ok: false, reason: "notAfter" };
+  }
+  if (now >= notAfter) return { ok: false, reason: "expired" };
+  return { ok: true, notAfter };
 }
 
 /**

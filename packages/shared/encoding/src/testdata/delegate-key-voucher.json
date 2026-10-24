@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "description": "Delegate-key registrar voucher: an untagged COSE_Sign1 (ES256) over the canonical int-keyed claims map {1: sealerId, 2: epoch, 3: delegate COSE_Key, 4: notAfter}, with the registrar key that signed it and expiry cases (plan-2609-12 slice 07).",
+  "generator": "forestrie/arbor services/custodian/src/voucher_vector_test.go TestGenerateDelegateKeyVoucherVector (BuildDelegateKeyVoucherWithSigner)",
+  "conventions": {
+    "hex": "unprefixed lowercase",
+    "not_after": "claim 4, Unix seconds",
+    "now": "Unix seconds; a voucher is expired when now >= not_after"
+  },
+  "registrar": {
+    "alg": "ES256",
+    "public_key_xy_hex": "5fd25478298316adb790ab9795855ddce70bced54ebc38047b8cbecaba690fb21e6afc284204809b4923c56eeebfba9bbbcf12da808dd3248217ed495fed9a51",
+    "private_key_d_hex": "919121eb3d2eabdfdf0d94238a41b08e1b54011a2d9e3bf9bbe770f183954ba4"
+  },
+  "claims": {
+    "sealer_id": "sealer-vector",
+    "epoch": 2,
+    "public_key_cose_hex": "a401022001215820c7f29599d692f6e98af740d70ca8a0b6809d82982f5be04886eab7a2982c15a6225820ddf41a3f7134a8736caeb6ba8bd81434e573189455899a111559856380be0e51",
+    "not_after": 1800086400
+  },
+  "payload_hex": "a4016d7365616c65722d766563746f72020203584ba401022001215820c7f29599d692f6e98af740d70ca8a0b6809d82982f5be04886eab7a2982c15a6225820ddf41a3f7134a8736caeb6ba8bd81434e573189455899a111559856380be0e51041a6b4b2380",
+  "voucher_hex": "845847a3012603782f6170706c69636174696f6e2f666f726573747269652e64656c65676174652d6b65792d766f75636865722b63626f72045094f2d28e38e9936ce67cf2b1be13ee49a05866a4016d7365616c65722d766563746f72020203584ba401022001215820c7f29599d692f6e98af740d70ca8a0b6809d82982f5be04886eab7a2982c15a6225820ddf41a3f7134a8736caeb6ba8bd81434e573189455899a111559856380be0e51041a6b4b2380584046ab1ae48cc5f2a123635d91858bcf0e3e92c55ac947bd484a40ed419370c155ada31b764cef73c22433ac516a710c2879cd7afa0cc0938539b6387fb062c74a",
+  "cases": [
+    {
+      "name": "one second before not_after",
+      "now": 1800086399,
+      "require_not_after": true,
+      "result": "ok"
+    },
+    {
+      "name": "at not_after",
+      "now": 1800086400,
+      "require_not_after": true,
+      "result": "expired"
+    },
+    {
+      "name": "after not_after, claim 4 not required",
+      "now": 1800086401,
+      "require_not_after": false,
+      "result": "expired"
+    }
+  ]
+}
