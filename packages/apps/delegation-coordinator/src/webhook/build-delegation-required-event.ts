@@ -16,8 +16,9 @@ import { requestKeyFor } from "./request-key.js";
 export interface BuildDelegationRequiredEventInput {
   logIdHex32: string;
   authLogIdHex32: string;
-  mmrStart: number;
-  mmrEnd: number;
+  /** Demanded window; omit both for the window-less standing push. */
+  mmrStart?: number;
+  mmrEnd?: number;
   delegatedPublicKeyBase64: string;
   delegatedPubkeyHash: string;
   requestedAt: number;
@@ -33,10 +34,12 @@ export interface BuildDelegationRequiredEventInput {
 export async function buildDelegationRequiredEvent(
   input: BuildDelegationRequiredEventInput,
 ): Promise<DelegationRequiredEvent> {
+  // A window-less event keys on [0, 0], as the standing push always has,
+  // so its delivery idempotency is unchanged (FOR-612).
   const requestKey = await requestKeyFor(
     input.logIdHex32,
-    input.mmrStart,
-    input.mmrEnd,
+    input.mmrStart ?? 0,
+    input.mmrEnd ?? 0,
     input.delegatedPubkeyHash,
   );
   return {
@@ -45,8 +48,9 @@ export async function buildDelegationRequiredEvent(
     version: 1,
     logId: input.logIdHex32,
     authLogId: input.authLogIdHex32,
-    mmrStart: input.mmrStart,
-    mmrEnd: input.mmrEnd,
+    ...(input.mmrStart !== undefined && input.mmrEnd !== undefined
+      ? { mmrStart: input.mmrStart, mmrEnd: input.mmrEnd }
+      : {}),
     delegatedPublicKey: input.delegatedPublicKeyBase64,
     requestedAt: input.requestedAt,
     certificateSubmitUrl: input.certificateSubmitUrl,

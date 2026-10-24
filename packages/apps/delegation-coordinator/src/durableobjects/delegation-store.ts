@@ -971,8 +971,10 @@ export class DelegationStoreDO extends DurableObject<Env> {
   }
 
   /**
-   * Fire a delegation.required webhook for the log's current standing delegate
-   * key over the window-less [0,0] range (H4 genesis PUSH). No-op when no
+   * Fire a window-less delegation.required webhook for the log's current
+   * standing delegate key (H4 genesis PUSH): no mmrStart/mmrEnd, so the
+   * signer chooses its bounds (ADR-0050 Decision item 2). It used to send a
+   * literal [0, 0], which signers signed as stated (FOR-612). No-op when no
    * standing key is registered yet — the registration-completion trigger (a
    * bounded scan of signing routes still awaiting a standing delegation) covers
    * the cold-start ordering where the route precedes the sealer's registration.
@@ -998,8 +1000,6 @@ export class DelegationStoreDO extends DurableObject<Env> {
     await this.enqueueWebhookDelivery({
       logIdHex32,
       authLogIdHex32: logIdHex32,
-      mmrStart: 0,
-      mmrEnd: 0,
       delegatedPublicKey: publicKey,
       delegatedPubkeyHash,
       requestedAt: nowSeconds,
@@ -3253,8 +3253,9 @@ export class DelegationStoreDO extends DurableObject<Env> {
   private async enqueueWebhookDelivery(input: {
     logIdHex32: string;
     authLogIdHex32: string;
-    mmrStart: number;
-    mmrEnd: number;
+    /** Demanded window; omitted for the window-less standing push. */
+    mmrStart?: number;
+    mmrEnd?: number;
     delegatedPublicKey: Uint8Array;
     delegatedPubkeyHash: string;
     requestedAt: number;

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { encodeCborDeterministic } from "@forestrie/encoding";
 import { SELF, fetchMock } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { bytesToBase64 } from "../../src/encoding.js";
+import { base64ToBytes, bytesToBase64 } from "../../src/encoding.js";
 import {
   hex32ToWireLogIdBytes,
   normalizeLogIdToHex32,
@@ -420,7 +420,8 @@ describe("webhook delivery", () => {
       expect(deliveries).toBe(0);
 
       // Positive control: the http route's H4 push fires for the same
-      // standing key, over the window-less [0,0] range.
+      // standing key, window-less (FOR-612: it used to carry a literal
+      // [0, 0], which signers signed as stated).
       const httpRes = await fetchWithDoRetry(
         `http://localhost/api/logs/${logUuid}/signing-route`,
         {
@@ -438,8 +439,17 @@ describe("webhook delivery", () => {
       const event = JSON.parse(lastBody) as DelegationRequiredEvent;
       expect(event.type).toBe("delegation.required");
       expect(event.logId).toBe(logHex32);
-      expect(event.mmrStart).toBe(0);
-      expect(event.mmrEnd).toBe(0);
+      expect("mmrStart" in event).toBe(false);
+      expect("mmrEnd" in event).toBe(false);
+      // The request key stays derived from [0, 0], so delivery idempotency
+      // is unchanged. (Hash the offered key: other tests in this shard may
+      // have registered a newer standing key than this test's.)
+      const pubkeyHash = await import("../../src/certificate-key.js").then(
+        (m) => m.sha256Hex(base64ToBytes(event.delegatedPublicKey)),
+      );
+      expect(event.requestKey).toBe(
+        await requestKeyFor(logHex32, 0, 0, pubkeyHash),
+      );
     } finally {
       fetchMock.deactivate();
     }
