@@ -23,7 +23,9 @@ on:
 jobs:
   health:
     name: Health check (${{ inputs.environment }})
-    runs-on: ubuntu-latest
+    # Playwright cannot install chromium on ubuntu-26.04 (ubuntu-latest
+    # since 2026-10-24); unpin once it supports it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment: ${{ inputs.environment }}
 
