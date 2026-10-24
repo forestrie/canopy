@@ -736,6 +736,7 @@ export async function signAdvanceDelegation(opts: {
         epoch: standing.epoch,
         publicKey: delegatedPublicKey,
       },
+      Math.floor(Date.now() / 1000),
     );
     if (!verdict.ok) {
       throw new Error(

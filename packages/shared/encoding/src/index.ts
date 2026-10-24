@@ -81,6 +81,7 @@ export {
 } from "./verify-cose-sign1.js";
 export {
   type DelegateKeyVoucherClaims,
+  type VerifyDelegateKeyVoucherOptions,
   parseRegistrarKeyXY,
   verifyDelegateKeyVoucher,
   type VerifyDelegateKeyVoucherResult,
