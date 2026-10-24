@@ -23,7 +23,9 @@ on:
 jobs:
   health:
     name: Health check (${{ inputs.environment }})
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, where `playwright install
+    # chromium` (Playwright 1.56) refuses to run (FOR-609).
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment: ${{ inputs.environment }}
 
