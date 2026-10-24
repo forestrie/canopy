@@ -12,8 +12,13 @@ export interface DelegationRequiredEvent {
   version: 1;
   logId: string;
   authLogId: string;
-  mmrStart: number;
-  mmrEnd: number;
+  /**
+   * Demanded MMR window, inclusive. Omitted on the window-less standing
+   * delegate-key push sent at signing-route setup (ADR-0050 Decision
+   * item 2): the signer chooses its own bounds.
+   */
+  mmrStart?: number;
+  mmrEnd?: number;
   delegatedPublicKey: string;
   requestedAt: number;
   certificateSubmitUrl: string;

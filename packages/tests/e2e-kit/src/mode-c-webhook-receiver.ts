@@ -20,6 +20,7 @@ import {
   bytesToBase64,
 } from "./coordinator-delegation-helpers.js";
 import { normalizeForestrieHexId32 } from "./forestrie-hex-id.js";
+import { ADVANCE_HORIZON_MMR_END } from "./sign-standing-advance-delegation.js";
 
 export interface DelegationRequiredEvent {
   requestKey: string;
@@ -27,8 +28,9 @@ export interface DelegationRequiredEvent {
   version: 1;
   logId: string;
   authLogId: string;
-  mmrStart: number;
-  mmrEnd: number;
+  /** Demanded window; omitted on the window-less route-setup push. */
+  mmrStart?: number;
+  mmrEnd?: number;
   delegatedPublicKey: string;
   requestedAt: number;
   certificateSubmitUrl: string;
@@ -125,6 +127,20 @@ export function resolveOwnedLogId(
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The window the receiver signs for an event: the demanded window as
+ * stated, or `[0, ADVANCE_HORIZON_MMR_END]` for the window-less
+ * signing-route-setup push (ADR-0050 Decision item 2, FOR-612).
+ */
+export function receiverSigningWindow(
+  event: Pick<DelegationRequiredEvent, "mmrStart" | "mmrEnd">,
+): { mmrStart: number; mmrEnd: number } {
+  if (event.mmrStart !== undefined && event.mmrEnd !== undefined) {
+    return { mmrStart: event.mmrStart, mmrEnd: event.mmrEnd };
+  }
+  return { mmrStart: 0, mmrEnd: ADVANCE_HORIZON_MMR_END };
 }
 
 function readRequestBody(req: IncomingMessage): Promise<string> {
@@ -321,8 +337,7 @@ export async function startModeCWebhookReceiver(
           logIdUuid: ownedLogIdUuid,
           rootSignerAddress: config.rootSignerAddress,
           privateKeyHex: config.privateKeyHex,
-          mmrStart: event.mmrStart,
-          mmrEnd: event.mmrEnd,
+          ...receiverSigningWindow(event),
           delegatedPublicKey,
           certificateSubmitUrl:
             event.certificateSubmitUrl ?? event.materialSubmitUrl,
