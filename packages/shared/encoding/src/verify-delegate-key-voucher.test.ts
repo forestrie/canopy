@@ -225,6 +225,74 @@ describe("verifyDelegateKeyVoucher", () => {
     }
   });
 
+  it("treats an explicit claim 4 of 0 as present and expired", async () => {
+    const { priv, pub } = await genRegistrarKey();
+    const v = await makeVoucher(priv, "sealer-a", 3, delegKey, 0);
+    const expectClaims = {
+      sealerId: "sealer-a",
+      epoch: 3,
+      publicKey: delegKey,
+    };
+    for (const requireNotAfter of [false, true]) {
+      expect(
+        await verifyDelegateKeyVoucher(v, pub, expectClaims, NOW, {
+          requireNotAfter,
+        }),
+      ).toEqual({ ok: false, reason: "expired" });
+    }
+  });
+
+  it("refuses an unknown claim or a duplicated claim key", async () => {
+    const { priv, pub } = await genRegistrarKey();
+    const expectClaims = {
+      sealerId: "sealer-a",
+      epoch: 3,
+      publicKey: delegKey,
+    };
+    const unknown = encodeCborDeterministic(
+      new Map<number, unknown>([
+        [1, "sealer-a"],
+        [2, 3],
+        [3, delegKey],
+        [4, NOT_AFTER],
+        [5, "extra"],
+      ]),
+    );
+    const withUnknown = await signCoseSign1Statement(
+      unknown,
+      new Uint8Array([0xab]),
+      priv,
+      { alg: COSE_ALG_ES256 },
+    );
+    expect(
+      await verifyDelegateKeyVoucher(withUnknown, pub, expectClaims, NOW),
+    ).toEqual({ ok: false, reason: "claims_shape" });
+
+    // {1: "sealer-a", 1: "sealer-a", 2: 3, 3: key}: claim 1 twice.
+    const sealer = encodeCborDeterministic("sealer-a");
+    const key = encodeCborDeterministic(delegKey);
+    const dup = new Uint8Array([
+      0xa4,
+      0x01,
+      ...sealer,
+      0x01,
+      ...sealer,
+      0x02,
+      0x03,
+      0x03,
+      ...key,
+    ]);
+    const withDup = await signCoseSign1Statement(
+      dup,
+      new Uint8Array([0xab]),
+      priv,
+      { alg: COSE_ALG_ES256 },
+    );
+    expect(
+      await verifyDelegateKeyVoucher(withDup, pub, expectClaims, NOW),
+    ).toEqual({ ok: false, reason: "claims_decode" });
+  });
+
   it("parseRegistrarKeyXY requires 64 bytes", () => {
     expect(parseRegistrarKeyXY(new Uint8Array(63))).toBeNull();
     expect(parseRegistrarKeyXY(new Uint8Array(65))).toBeNull();
@@ -240,15 +308,16 @@ describe("verifyDelegateKeyVoucher", () => {
  * that generated it. Do not edit the copy; change protocol and re-copy.
  */
 const VOUCHER_VECTOR_SHA256 =
-  "48e7b6b12e3f0f82bc83ee1ce2a36b8947a7a1359390d51ef0f0849b6e57727d";
+  "9dce83715cbdacb23c5f71e4e1fc63fb6e7c57b34ab84c80e80f601f1eb7b8c1";
 
-interface VoucherVector {
-  registrar: { public_key_xy_hex: string };
+interface VoucherVectorEntry {
+  name: string;
   claims: {
     sealer_id: string;
     epoch: number;
     public_key_cose_hex: string;
-    not_after: number;
+    /** Omitted when the voucher has no claim 4. */
+    not_after?: number;
   };
   payload_hex: string;
   voucher_hex: string;
@@ -258,6 +327,11 @@ interface VoucherVector {
     require_not_after: boolean;
     result: "ok" | "expired" | "not_after_missing";
   }[];
+}
+
+interface VoucherVector {
+  registrar: { public_key_xy_hex: string };
+  vouchers: VoucherVectorEntry[];
 }
 
 describe("delegate-key-voucher.json (shared Go/TypeScript vector)", () => {
@@ -273,11 +347,6 @@ describe("delegate-key-voucher.json (shared Go/TypeScript vector)", () => {
   const registrar = parseRegistrarKeyXY(
     hexToBytes(v.registrar.public_key_xy_hex),
   )!;
-  const expectClaims = {
-    sealerId: v.claims.sealer_id,
-    epoch: v.claims.epoch,
-    publicKey: hexToBytes(v.claims.public_key_cose_hex),
-  };
 
   it("the vendored copy matches the pinned SHA-256", () => {
     expect(createHash("sha256").update(raw).digest("hex")).toBe(
@@ -285,32 +354,48 @@ describe("delegate-key-voucher.json (shared Go/TypeScript vector)", () => {
     );
   });
 
-  it("the claims re-encode to the signed payload", () => {
-    const payload = encodeCborDeterministic(
-      new Map<number, unknown>([
+  it("covers claim 4 set, absent and explicitly 0", () => {
+    expect(v.vouchers.map((e) => e.claims.not_after ?? "absent")).toEqual([
+      v.vouchers[0]!.claims.not_after,
+      "absent",
+      0,
+    ]);
+  });
+
+  for (const e of v.vouchers) {
+    const expectClaims = {
+      sealerId: e.claims.sealer_id,
+      epoch: e.claims.epoch,
+      publicKey: hexToBytes(e.claims.public_key_cose_hex),
+    };
+
+    it(`${e.name}: the claims re-encode to the signed payload`, () => {
+      const claims = new Map<number, unknown>([
         [1, expectClaims.sealerId],
         [2, expectClaims.epoch],
         [3, expectClaims.publicKey],
-        [4, v.claims.not_after],
-      ]),
-    );
-    expect(bytesToHex(payload)).toBe(v.payload_hex);
-  });
-
-  for (const c of v.cases) {
-    it(`case: ${c.name}`, async () => {
-      const got = await verifyDelegateKeyVoucher(
-        hexToBytes(v.voucher_hex),
-        registrar,
-        expectClaims,
-        c.now,
-        { requireNotAfter: c.require_not_after },
-      );
-      expect(got).toEqual(
-        c.result === "ok"
-          ? { ok: true, notAfter: v.claims.not_after }
-          : { ok: false, reason: c.result },
-      );
+      ]);
+      if (e.claims.not_after !== undefined) claims.set(4, e.claims.not_after);
+      expect(bytesToHex(encodeCborDeterministic(claims))).toBe(e.payload_hex);
     });
+
+    for (const c of e.cases) {
+      it(`${e.name}: ${c.name}`, async () => {
+        const got = await verifyDelegateKeyVoucher(
+          hexToBytes(e.voucher_hex),
+          registrar,
+          expectClaims,
+          c.now,
+          { requireNotAfter: c.require_not_after },
+        );
+        expect(got).toEqual(
+          c.result !== "ok"
+            ? { ok: false, reason: c.result }
+            : e.claims.not_after === undefined
+              ? { ok: true }
+              : { ok: true, notAfter: e.claims.not_after },
+        );
+      });
+    }
   }
 });

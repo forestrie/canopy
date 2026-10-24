@@ -63,7 +63,7 @@ export interface VerifyDelegateKeyVoucherOptions
  * Result of {@link verifyDelegateKeyVoucher}. On success `notAfter` is the
  * decoded claim 4, absent when the voucher has none. On failure `reason`
  * names the failing check: `signature`, `decode`, `claims_decode`,
- * `claims_shape`, `sealerId`, `epoch`, `publicKey`, `notAfter` (differs from
+ * `claims_shape` (including a claim outside 1 to 4), `sealerId`, `epoch`, `publicKey`, `notAfter` (differs from
  * the expected value), `not_after_missing` or `expired`.
  */
 export type VerifyDelegateKeyVoucherResult =
@@ -122,6 +122,13 @@ export async function verifyDelegateKeyVoucher(
     return { ok: false, reason: "claims_decode" };
   }
   if (!(claims instanceof Map)) return { ok: false, reason: "claims_shape" };
+  // Strict, as the Go mirror: a claim outside 1..4 fails closed (P16). The
+  // decoder already refuses duplicated keys (claims_decode).
+  for (const k of claims.keys()) {
+    if (k !== 1 && k !== 2 && k !== 3 && k !== 4) {
+      return { ok: false, reason: "claims_shape" };
+    }
+  }
 
   const sealerId = claims.get(1);
   const epochRaw = claims.get(2);
