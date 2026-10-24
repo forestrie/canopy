@@ -245,7 +245,9 @@ jobs:
     # The pre-FOR-531 condition had it; dropping it silently skipped the suite
     # on dispatch while push runs still worked.
     if: always() && needs.bootstrap-univocity.result == 'success'
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, where `playwright install
+    # chromium` (Playwright 1.56) refuses to run (FOR-609).
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     environment: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}
 
