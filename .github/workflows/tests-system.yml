@@ -322,6 +322,10 @@ jobs:
           # -> receipt path (~25s; caught two live regressions during the
           # FOR-316 cutover). All env it needs is exported above.
           E2E_BYOK_SEAL_STRETCH: ${{ (inputs.environment || 'dev') == 'dev' && '1' || '' }}
+          # Passkey (WebAuthn, alg -65800) seal stretch: dev lane only, the
+          # standing guard on the sealer's WebAuthn delegation lease verify
+          # (arbor#95) and the ADR-0065 offline rung (plan-2608-14 4.1).
+          E2E_PASSKEY_SEAL_STRETCH: ${{ (inputs.environment || 'dev') == 'dev' && '1' || '' }}
           # Late-delegation seal-hint latency spec (#224): dev lane only — it
           # needs a coordinator deployed with SEAL_HINT_QUEUE_URL (lane A).
           # Parks the sealer unsigned, submits the certificate late, and
