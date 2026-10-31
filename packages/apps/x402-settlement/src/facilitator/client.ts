@@ -46,6 +46,21 @@ export interface SettleResponse {
 }
 
 /**
+ * x402 `errorReason` values for which the facilitator failed to get its
+ * settlement transaction mined, leaving the authorization unspent.
+ *
+ * - `invalid_exact_evm_transaction_failed`: the facilitator's own
+ *   eth_sendRawTransaction or receipt wait failed. x402.org returned this,
+ *   with HTTP 200, for 6 of 15 lane-A settlements on 2026-10-24 (FOR-616).
+ * - `unexpected_settle_error`: the facilitator's catch-all for a settle that
+ *   threw before it could classify the failure.
+ */
+const TRANSIENT_ERROR_REASONS = new Set([
+  "invalid_exact_evm_transaction_failed",
+  "unexpected_settle_error",
+]);
+
+/**
  * Settle a charge against an x402 authorization.
  *
  * @param facilitatorUrl - Base URL of the facilitator API
@@ -117,6 +132,7 @@ export async function settleCharge(
         success?: boolean;
         transaction?: string;
         network?: string;
+        errorReason?: string;
       };
       // CDP returns { success: true, transaction: "0x...", network: "..." }
       if (data.success && data.transaction) {
@@ -125,11 +141,13 @@ export async function settleCharge(
           txHash: data.transaction,
         };
       }
-      // If response was 2xx but not success, treat as error
+      // A 2xx refusal is permanent unless the facilitator says its own
+      // transaction failed: the authorization is still unspent then, so a
+      // later attempt can settle it (FOR-616).
       return {
         ok: false,
         error: `Unexpected response: ${responseText.slice(0, 200)}`,
-        permanent: true,
+        permanent: !TRANSIENT_ERROR_REASONS.has(data.errorReason ?? ""),
       };
     }
 

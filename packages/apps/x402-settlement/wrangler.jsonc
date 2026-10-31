@@ -22,7 +22,7 @@
     // mainnet cutover, at which point CDP credentials become required.
     "X402_FACILITATOR_URL": "https://x402.org/facilitator",
     "X402_NETWORK": "eip155:84532",
-    "SETTLE_TIMEOUT_MS": "5000",
+    "SETTLE_TIMEOUT_MS": "30000",
     // Accrual indexer (plan-2607-43 slice 03). Observe-only until slice 04.
     "SUPPORTED_CHAINS_RPC": "{\"84532\":[\"https://sepolia.base.org\"]}",
     "ENFORCEMENT_ARMED": "false",
@@ -72,7 +72,7 @@
         // credential path stays exercised — it is just not load-bearing here.
         "X402_FACILITATOR_URL": "https://x402.org/facilitator",
         "X402_NETWORK": "eip155:84532",
-        "SETTLE_TIMEOUT_MS": "5000",
+        "SETTLE_TIMEOUT_MS": "30000",
         "SUPPORTED_CHAINS_RPC": "{\"84532\":[\"https://sepolia.base.org\"]}",
         "ENFORCEMENT_ARMED": "false",
         "CANOPY_API_ORIGIN": "",
@@ -100,7 +100,9 @@
             "queue": "forest-2-x402-settlement-a",
             "max_batch_size": 10,
             "max_batch_timeout": 30,
-            // No DLQ/retries - always ack, failures tracked in auth_state
+            // Transient settle failures retry while the authorization can still
+            // settle (src/settle-retry.ts, FOR-616); keep >= MAX_SETTLE_ATTEMPTS.
+            "max_retries": 10,
           },
         ],
       },
@@ -133,7 +135,7 @@
         // R2_GRANTS bucket at deploy; remaining literals deploy verbatim.
         "X402_FACILITATOR_URL": "https://x402.org/facilitator",
         "X402_NETWORK": "eip155:84532",
-        "SETTLE_TIMEOUT_MS": "5000",
+        "SETTLE_TIMEOUT_MS": "30000",
         // SUPPORTED_CHAINS_RPC deliberately absent: injected at deploy from
         // the environment (apply-runtime-contract.mjs), as canopy-api does.
         "ENFORCEMENT_ARMED": "false",
@@ -156,7 +158,9 @@
             "queue": "forest-2-x402-settlement-b",
             "max_batch_size": 10,
             "max_batch_timeout": 30,
-            // No DLQ/retries - always ack, failures tracked in auth_state
+            // Transient settle failures retry while the authorization can still
+            // settle (src/settle-retry.ts, FOR-616); keep >= MAX_SETTLE_ATTEMPTS.
+            "max_retries": 10,
           },
         ],
       },

@@ -181,7 +181,7 @@ export class X402SettlementDO extends DurableObject<Env> {
     }
 
     // Call facilitator to settle
-    const timeoutMs = parseInt(this.env.SETTLE_TIMEOUT_MS, 10) || 5000;
+    const timeoutMs = parseInt(this.env.SETTLE_TIMEOUT_MS, 10) || 30000;
     let response: SettleResponse;
 
     try {
@@ -205,7 +205,7 @@ export class X402SettlementDO extends DurableObject<Env> {
     } catch (err) {
       // Network or timeout error - transient, should retry
       console.error(`Facilitator call failed: ${err}`);
-      this.recordFailure(job.authId, `Network error: ${err}`);
+      this.recordFailure(job.authId, `Network error: ${err}`, false);
       return {
         ok: false,
         error: `Facilitator unreachable: ${err}`,
@@ -224,7 +224,11 @@ export class X402SettlementDO extends DurableObject<Env> {
 
     // Facilitator returned an error
     const isPermanent = response.permanent ?? false;
-    this.recordFailure(job.authId, response.error ?? "Unknown error");
+    this.recordFailure(
+      job.authId,
+      response.error ?? "Unknown error",
+      isPermanent,
+    );
 
     return {
       ok: false,
@@ -290,23 +294,35 @@ export class X402SettlementDO extends DurableObject<Env> {
 
   /**
    * Record a settlement failure and update auth state.
+   *
+   * Only a permanent refusal counts toward suspect / blocked. A transient
+   * failure is the facilitator's or the network's, not the payer's, and the
+   * queue retries it (FOR-616): counting each attempt would block a payer
+   * after one bad facilitator episode, and canopy-api then refuses them.
    */
-  private recordFailure(authId: string, reason: string): void {
+  private recordFailure(
+    authId: string,
+    reason: string,
+    permanent: boolean,
+  ): void {
     const now = Date.now();
+    const increment = permanent ? 1 : 0;
 
-    // Upsert auth state with incremented failure count
+    // Upsert auth state; the failure count moves only on a permanent refusal.
     this.ctx.storage.sql.exec(
       `INSERT INTO auth_state (auth_id, state, failure_count, last_failure_at, last_failure_reason, updated_at)
-       VALUES (?, 'active', 1, ?, ?, ?)
+       VALUES (?, 'active', ?, ?, ?, ?)
        ON CONFLICT(auth_id) DO UPDATE SET
-         failure_count = failure_count + 1,
+         failure_count = failure_count + ?,
          last_failure_at = excluded.last_failure_at,
          last_failure_reason = excluded.last_failure_reason,
          updated_at = excluded.updated_at`,
       authId,
+      increment,
       now,
       reason,
       now,
+      increment,
     );
 
     // Check if we need to update state based on failure count
