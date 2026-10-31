@@ -5,7 +5,9 @@
  * the X402SettlementDO Durable Object. Each job represents a charge to be
  * settled against an x402 authorization.
  *
- * See: devdocs/arc/arc-0015-x402-settlement-architecture.md
+ * See: devdocs/arc/arc-0015-x402-settlement-architecture.md. Unlike its
+ * always-ack rule (§8.1), transient failures are retried while the
+ * authorization can still settle (FOR-616, settle-retry.ts).
  */
 
 import type { SettlementJob } from "@canopy/x402-settlement-types";
@@ -16,6 +18,11 @@ import { X402SettlementDO } from "./durableobjects/x402settlement.js";
 import { ReceivablesDO } from "./durableobjects/receivables.js";
 import { generateCdpJwt, facilitatorRequiresAuth } from "./cdp-jwt.js";
 import { runCheckpointIndexer } from "./indexer/run-indexer.js";
+import {
+  CREDIT_RETRY_DELAY_SECONDS,
+  QUEUE_MAX_RETRIES,
+  settleRetryDecision,
+} from "./settle-retry.js";
 import {
   listRegisteredAccounts,
   readRegisteredAccount,
@@ -306,38 +313,57 @@ const handler = {
             try {
               await creditSettledPurchase(env, job, result.txHash);
             } catch (err) {
-              console.error(
-                `Settled ${job.kind} purchase failed to credit; retrying`,
-                {
+              const error = err instanceof Error ? err.message : String(err);
+              // This retry shares the delivery count with settle retries; on
+              // the last delivery the queue drops the message (no DLQ), so
+              // say so rather than lose a settled payment's credit silently.
+              if (message.attempts > QUEUE_MAX_RETRIES) {
+                console.error(`Settled ${job.kind} purchase credit abandoned`, {
                   jobId: job.jobId,
                   idempotencyKey: job.idempotencyKey,
-                  error: err instanceof Error ? err.message : String(err),
-                },
+                  univocityInstanceId: job.univocityInstanceId,
+                  credits: job.credits,
+                  attempts: message.attempts,
+                  error,
+                });
+                message.ack();
+                continue;
+              }
+              console.error(
+                `Settled ${job.kind} purchase failed to credit; retrying`,
+                { jobId: job.jobId, idempotencyKey: job.idempotencyKey, error },
               );
-              message.retry();
+              message.retry({ delaySeconds: CREDIT_RETRY_DELAY_SECONDS });
               continue;
             }
           }
         } else {
           // Settlement failed - DO has recorded the failure and updated auth state.
-          // We always ack to avoid DLQ; auth blocking provides visibility.
           console.error("Settlement failed", {
             jobId: job.jobId,
+            ...authorizationRef(job),
             error: result.error,
             permanent: result.permanent,
+            expired: result.expired,
+            attempts: message.attempts,
           });
+          // canopy-api already admitted the request (mint-on-verify): acking a
+          // transient failure loses the payment for good (FOR-616).
+          if (result.expired) {
+            logAbandoned(message, job, "authorization expired unsettled");
+          } else if (!result.permanent && retryTransient(message, job)) {
+            continue;
+          }
         }
-        // Always ack - failure tracking is handled by DO's auth_state table
         message.ack();
       } catch (err) {
-        // DO RPC error - log and ack to avoid DLQ buildup.
-        // This is rare and indicates infrastructure issues rather than
-        // payment problems. Auth state won't be updated but that's acceptable
-        // for transient DO failures.
+        // DO RPC error: infrastructure, not the payment. Retry like any other
+        // transient failure; processJob is idempotent on idempotencyKey.
         console.error("Settlement DO RPC error", {
           jobId: job.jobId,
           error: err instanceof Error ? err.message : String(err),
         });
+        if (retryTransient(message, job)) continue;
         message.ack();
       }
     }
@@ -527,6 +553,54 @@ export default {
     });
   },
 };
+
+/**
+ * Retry a transiently failed settlement if the authorization can still
+ * settle; otherwise log it as abandoned so the unpaid admission is visible.
+ * Returns true when the message was handed back to the queue.
+ */
+function retryTransient(
+  message: Message<SettlementJob>,
+  job: SettlementJob,
+): boolean {
+  const decision = settleRetryDecision(job, message.attempts);
+  if (decision.retry) {
+    message.retry({ delaySeconds: decision.delaySeconds });
+    return true;
+  }
+  logAbandoned(message, job, decision.reason);
+  return false;
+}
+
+/**
+ * Log a paid admission canopy will never collect for. The one line an
+ * operator (or the FOR-84 reconciler) needs: who, how much, which nonce.
+ */
+function logAbandoned(
+  message: Message<SettlementJob>,
+  job: SettlementJob,
+  reason: string,
+): void {
+  console.error("Settlement abandoned", {
+    jobId: job.jobId,
+    idempotencyKey: job.idempotencyKey,
+    kind: job.kind,
+    payer: job.payer,
+    amount: job.amount,
+    ...authorizationRef(job),
+    attempts: message.attempts,
+    reason,
+  });
+}
+
+/** The fields that find a job's authorization on-chain and in the logs. */
+function authorizationRef(job: SettlementJob): {
+  nonce?: string;
+  validBefore?: string;
+} {
+  const auth = job.payload?.payload?.authorization;
+  return { nonce: auth?.nonce, validBefore: auth?.validBefore };
+}
 
 /**
  * Whether a settled job tops up its instance credits pool. `credits` purchases
