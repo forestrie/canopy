@@ -12,12 +12,22 @@
  * legitimacy — a compromised COORDINATOR_APP_TOKEN cannot introduce a key the
  * custodian did not vouch for, so it can never be advertised or delegated to.
  *
- * Each shard enforces one key per (sealerId, epoch) among unexpired rows and
- * answers 409 with both hashes for a conflicting registration (plan-2609-12
- * ruling 4); the 409 is propagated verbatim. Sibling routes: lookup by hash
+ * Vouchers expire (plan-2609-12 ruling 7, slice 08): a voucher must carry
+ * claim 4 (notAfter), not yet passed and at most
+ * {@link MAX_VOUCHER_LIFETIME_SECONDS} out, and the row's notAfter is capped
+ * at it. The arbor sealer asserts each key every minute with the voucher the
+ * custodian issued it, so a refused voucher answers 400 "Invalid voucher",
+ * on which the sealer fetches fresh ones; an assertion identical to the
+ * stored row writes nothing.
+ *
+ * Each shard refuses a tombstoned key with 410 (ruling 8), then enforces one
+ * key per (sealerId, epoch) among unexpired rows and answers 409 with both
+ * hashes for a conflicting registration (ruling 4); both are propagated
+ * verbatim. Sibling routes: lookup by hash
  * ({@link handleGetDelegateKey}), by-sealer listing
- * ({@link handleListDelegateKeys}) and the operator-plane delete
- * ({@link handleAdminDeleteDelegateKeys}) that precedes a MAC-key replacement.
+ * ({@link handleListDelegateKeys}), the operator-plane delete
+ * ({@link handleAdminDeleteDelegateKeys}) that precedes a MAC-key replacement,
+ * and the tombstones ({@link handleAdminPostDelegateKeyTombstone}).
  */
 
 import type { Env } from "../env.js";
@@ -28,6 +38,7 @@ import type { RegisterDelegateKeysRequest } from "../types/register-delegate-key
 import type { handleGetDelegateKey } from "./get-delegate-key.js";
 import type { handleListDelegateKeys } from "./list-delegate-keys.js";
 import type { handleAdminDeleteDelegateKeys } from "./admin-delete-delegate-keys.js";
+import type { handleAdminPostDelegateKeyTombstone } from "./admin-delegate-key-tombstones.js";
 import {
   parseRegistrarKeyXY,
   verifyDelegateKeyVoucher,
@@ -40,11 +51,28 @@ import {
 } from "./handler.js";
 
 /**
+ * Furthest a voucher's claim 4 may lie in the future. The custodian's
+ * `DELEGATE_KEY_VOUCHER_TTL` is bounded to 30 days; one more day absorbs
+ * clock skew. A voucher further out is refused rather than capped, because
+ * no custodian issues one.
+ */
+export const MAX_VOUCHER_LIFETIME_SECONDS = 31 * 24 * 3600;
+
+/** Per-shard answer of PUT /sealer/delegate-keys. */
+interface ShardRegistration {
+  registered: number;
+  retired: number;
+  /** Hashes whose row this shard inserted or changed. */
+  written: string[];
+}
+
+/**
  * POST /api/sealer/delegate-keys — fan-out delegate-key registration.
  *
  * @param request - JSON {@link RegisterDelegateKeysRequest} body.
  * @param env - Worker bindings.
- * @returns `{ registered, retired, shards }` or a problem Response.
+ * @returns `{ registered, retired, written, shards }` or a problem Response;
+ *   `written` counts keys whose row changed, so 0 for a repeated assertion.
  */
 export async function handlePostDelegateKeys(
   request: Request,
@@ -102,8 +130,9 @@ export async function handlePostDelegateKeys(
     }
 
     // Verify every key's custodian voucher before touching any shard: a single
-    // bad voucher rejects the whole registration (the custodian sends a
-    // consistent batch), and nothing unverified is ever written.
+    // bad voucher rejects the whole registration, and nothing unverified is
+    // ever written.
+    const now = Math.floor(Date.now() / 1000);
     for (const key of body.keys) {
       let publicKey: Uint8Array;
       let voucher: Uint8Array;
@@ -118,22 +147,21 @@ export async function handlePostDelegateKeys(
           "publicKey and voucher must be valid base64",
         );
       }
-      // Claim 4 is checked whenever present; requiring it (and capping the
-      // row's notAfter at it) is plan-2609-12 slice 08.
       const verdict = await verifyDelegateKeyVoucher(
         voucher,
         pinnedKey,
         { sealerId: body.sealerId, epoch: key.epoch, publicKey },
-        Math.floor(Date.now() / 1000),
+        now,
+        { requireNotAfter: true },
       );
-      if (!verdict.ok) {
-        return problemResponse(
-          400,
-          "about:blank",
-          "Invalid voucher",
-          `delegate-key voucher failed verification (${verdict.reason})`,
-        );
+      if (!verdict.ok) return invalidVoucher(verdict.reason);
+      // requireNotAfter: a verified voucher always carries claim 4.
+      const claimNotAfter = verdict.notAfter!;
+      if (claimNotAfter > now + MAX_VOUCHER_LIFETIME_SECONDS) {
+        return invalidVoucher("not_after_too_far");
       }
+      // The signed claim bounds the row; the body field may only shorten it.
+      key.notAfter = Math.min(key.notAfter, claimNotAfter);
     }
 
     const payload = JSON.stringify(body);
@@ -153,6 +181,7 @@ export async function handlePostDelegateKeys(
 
     let registered = 0;
     let retired = 0;
+    const written = new Set<string>();
     for (const res of results) {
       if (!res.ok) {
         // Propagate the shard's problem document verbatim.
@@ -161,18 +190,55 @@ export async function handlePostDelegateKeys(
           headers: res.headers,
         });
       }
-      const shardResult = (await res.json()) as {
-        registered: number;
-        retired: number;
-      };
+      const shardResult = (await res.json()) as ShardRegistration;
       // Identical keys are written to each shard; report the per-shard count
       // once (max), and the total retired across shards.
       registered = Math.max(registered, shardResult.registered);
       retired += shardResult.retired;
+      for (const hash of shardResult.written) written.add(hash);
     }
 
-    return Response.json({ registered, retired, shards: shardCount });
+    // Ruling 4': the coordinator logs each registration whose row changed.
+    // A repeated assertion changes nothing and logs nothing.
+    if (written.size > 0) {
+      console.info(
+        JSON.stringify({
+          event: "delegate_keys_registered",
+          sealerId: body.sealerId,
+          pubkeyHashes: [...written].sort(),
+          keys: body.keys.map((k) => ({
+            epoch: k.epoch,
+            notAfter: k.notAfter,
+          })),
+          shards: shardCount,
+        }),
+      );
+    }
+
+    return Response.json({
+      registered,
+      retired,
+      written: written.size,
+      shards: shardCount,
+    });
   } catch (error) {
     return internalError(error);
   }
+}
+
+/**
+ * The 400 for a refused voucher. The title is a wire contract: on it the arbor
+ * sealer fetches fresh vouchers before asserting again (arbor
+ * `services/sealer/src/delegate_key_registrar.go`, `voucherFixes`).
+ *
+ * @param reason - The failing check, e.g. `not_after_missing`, `expired`,
+ *   `not_after_too_far` or a {@link verifyDelegateKeyVoucher} reason.
+ */
+function invalidVoucher(reason: string): Response {
+  return problemResponse(
+    400,
+    "about:blank",
+    "Invalid voucher",
+    `delegate-key voucher failed verification (${reason})`,
+  );
 }

@@ -33,6 +33,13 @@ import type {
   RegisterDelegateKeysRequest,
 } from "../types/register-delegate-keys-request.js";
 import type { DelegateKeyRecord } from "../types/delegate-key-record.js";
+import type { DelegateKeyTombstone } from "../types/delegate-key-tombstone.js";
+import type {
+  DelegateKeyTombstoneRequest,
+  PubkeyHashTombstoneTarget,
+  SealerEpochTombstoneTarget,
+} from "../types/delegate-key-tombstone-request.js";
+import { purgeClaimlessDelegateKeys } from "../purge-claimless-delegate-keys.js";
 import type { SigningRoute } from "../types/signing-route.js";
 import type { SubmitDelegationCertificateRequest } from "../types/submit-delegation-certificate-request.js";
 import type { PutWebhookRequest } from "../types/put-webhook-request.js";
@@ -181,6 +188,15 @@ interface DelegateKeyConflict {
   existingPubkeyHash: string;
 }
 
+/** A `delegate_key_tombstones` row as SQLite returns it. */
+interface DelegateKeyTombstoneRow {
+  pubkey_hash: string | null;
+  sealer_id: string | null;
+  max_epoch: number | null;
+  reason: string;
+  created_at: number;
+}
+
 /** `delegate_keys` columns the read routes project. */
 interface DelegateKeyRow {
   pubkey_hash: string;
@@ -269,6 +285,15 @@ export class DelegationStoreDO extends DurableObject<Env> {
         }
         if (method === "DELETE") {
           return this.handleDeleteDelegateKeys(url);
+        }
+      }
+
+      if (pathname === "/sealer/delegate-key-tombstones") {
+        if (method === "PUT") {
+          return this.handlePutDelegateKeyTombstone(request);
+        }
+        if (method === "DELETE") {
+          return this.handleDeleteDelegateKeyTombstone(url);
         }
       }
 
@@ -412,6 +437,41 @@ export class DelegationStoreDO extends DurableObject<Env> {
     `);
     this.ensureDelegateKeyVoucherColumn();
     this.ensureDelegateKeyRegisteredAtColumn();
+    const purged = purgeClaimlessDelegateKeys(this.ctx.storage.sql);
+    if (purged > 0) {
+      console.info(
+        JSON.stringify({ event: "delegate_keys_claimless_purged", purged }),
+      );
+    }
+
+    // Retired delegate keys (plan-2609-12 ruling 8), replicated to every shard
+    // like delegate_keys. Exactly one target per row: a key hash (sealer_id
+    // then names the sealer whose row it deleted, when there was one), or a
+    // sealer with every epoch <= max_epoch. Tombstones never expire.
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS delegate_key_tombstones (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pubkey_hash TEXT,
+        sealer_id TEXT,
+        max_epoch INTEGER,
+        reason TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        CHECK (
+          (pubkey_hash IS NOT NULL AND max_epoch IS NULL) OR
+          (pubkey_hash IS NULL AND sealer_id IS NOT NULL AND max_epoch IS NOT NULL)
+        )
+      )
+    `);
+    this.ctx.storage.sql.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS delegate_key_tombstones_hash
+        ON delegate_key_tombstones (pubkey_hash)
+        WHERE pubkey_hash IS NOT NULL
+    `);
+    this.ctx.storage.sql.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS delegate_key_tombstones_epoch
+        ON delegate_key_tombstones (sealer_id, max_epoch)
+        WHERE pubkey_hash IS NULL
+    `);
 
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS materials (
@@ -2483,6 +2543,14 @@ export class DelegationStoreDO extends DurableObject<Env> {
    * for the same pair is always a fault — a wrong MAC key or the wrong
    * custodian — and is refused with 409 carrying both hashes. The legitimate
    * case, replacing the MAC key, is preceded by the admin delete route.
+   *
+   * Before that check, a key under a tombstone (by hash, or by sealer and
+   * epoch <= max_epoch) is refused with 410 carrying the reason (ruling 8).
+   * A key whose row already holds the same sealer, epoch, not_after and
+   * voucher is a no-op: the sealer asserts every minute, so nothing is
+   * written and registered_at is left alone. The worker has already capped
+   * notAfter at the voucher's claim 4.
+   *
    * Validation and hashing complete before any write, and the writes are
    * synchronous, so a shard applies a batch atomically.
    */
@@ -2503,6 +2571,30 @@ export class DelegationStoreDO extends DurableObject<Env> {
     const now = Math.floor(Date.now() / 1000);
     const parsed = await this.parseDelegateKeyBatch(body.keys, now);
     if (parsed instanceof Response) return parsed;
+
+    for (const key of parsed) {
+      const tombstone = this.findDelegateKeyTombstone(
+        body.sealerId,
+        key.pubkeyHash,
+        key.epoch,
+      );
+      if (tombstone) {
+        return Response.json(
+          {
+            type: "about:blank",
+            title: "Gone",
+            status: 410,
+            detail: `delegate key ${key.pubkeyHash} (sealer ${body.sealerId} epoch ${key.epoch}) is tombstoned: ${tombstone.reason}`,
+            sealerId: body.sealerId,
+            epoch: key.epoch,
+            pubkeyHash: key.pubkeyHash,
+            reason: tombstone.reason,
+            tombstone: delegateKeyTombstoneFromRow(tombstone),
+          },
+          { status: 410 },
+        );
+      }
+    }
 
     // Retire first so an expired predecessor never blocks its successor.
     const retiredRows = [
@@ -2535,7 +2627,10 @@ export class DelegationStoreDO extends DurableObject<Env> {
       );
     }
 
+    const written: string[] = [];
     for (const key of parsed) {
+      if (this.delegateKeyRowMatches(body.sealerId, key)) continue;
+      written.push(key.pubkeyHash);
       this.ctx.storage.sql.exec(
         `INSERT INTO delegate_keys
            (pubkey_hash, sealer_id, alg, public_key, epoch, not_after, voucher,
@@ -2560,7 +2655,65 @@ export class DelegationStoreDO extends DurableObject<Env> {
       );
     }
 
-    return Response.json({ registered: parsed.length, retired });
+    return Response.json({ registered: parsed.length, retired, written });
+  }
+
+  /**
+   * The tombstone refusing a registration of `pubkeyHash` for (sealerId,
+   * epoch), or null when none applies.
+   */
+  private findDelegateKeyTombstone(
+    sealerId: string,
+    pubkeyHash: string,
+    epoch: number,
+  ): DelegateKeyTombstoneRow | null {
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT pubkey_hash, sealer_id, max_epoch, reason, created_at
+           FROM delegate_key_tombstones
+          WHERE pubkey_hash = ?
+             OR (pubkey_hash IS NULL AND sealer_id = ? AND max_epoch >= ?)
+          ORDER BY id
+          LIMIT 1`,
+        pubkeyHash,
+        sealerId,
+        epoch,
+      ),
+    ];
+    return rows.length > 0
+      ? (rows[0] as unknown as DelegateKeyTombstoneRow)
+      : null;
+  }
+
+  /**
+   * True when this shard's row for the key already holds exactly what the
+   * registration would write. alg and public_key are fixed by the hash.
+   */
+  private delegateKeyRowMatches(
+    sealerId: string,
+    key: ParsedDelegateKey,
+  ): boolean {
+    const rows = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT sealer_id, epoch, not_after, voucher FROM delegate_keys
+          WHERE pubkey_hash = ?`,
+        key.pubkeyHash,
+      ),
+    ];
+    if (rows.length === 0) return false;
+    const row = rows[0] as {
+      sealer_id: string;
+      epoch: number;
+      not_after: number;
+      voucher: ArrayBuffer | null;
+    };
+    return (
+      row.sealer_id === sealerId &&
+      Number(row.epoch) === key.epoch &&
+      Number(row.not_after) === key.notAfter &&
+      row.voucher instanceof ArrayBuffer &&
+      bytesEqual(new Uint8Array(row.voucher), key.voucher)
+    );
   }
 
   /**
@@ -2676,13 +2829,16 @@ export class DelegationStoreDO extends DurableObject<Env> {
   /**
    * GET /sealer/delegate-keys/{pubkeyHash} — this shard's replica of one
    * registered key (plan-2609-12 ruling 1). The worker consults every shard.
+   * An expired row is not registered: coverage ignores it, so this answers
+   * 404 for it too (slice 08).
    */
   private handleGetDelegateKey(pubkeyHash: string): Response {
     const rows = [
       ...this.ctx.storage.sql.exec(
         `SELECT pubkey_hash, sealer_id, epoch, not_after, registered_at
-           FROM delegate_keys WHERE pubkey_hash = ?`,
+           FROM delegate_keys WHERE pubkey_hash = ? AND not_after > ?`,
         pubkeyHash,
+        Math.floor(Date.now() / 1000),
       ),
     ];
     if (rows.length === 0) {
@@ -2701,7 +2857,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
    * sealer, each with the count of THIS shard's unexpired certificates bound
    * to it (plan-2609-12 ruling 4). Certificates are sharded per log, so the
    * worker sums the counts across shards. Expired keys not yet retired are
-   * included so an operator sees them.
+   * included, marked `expired`, so an operator sees them; so are the
+   * tombstones naming the sealer.
    */
   private handleListDelegateKeys(url: URL): Response {
     const sealerId = url.searchParams.get("sealerId") ?? "";
@@ -2730,11 +2887,22 @@ export class DelegationStoreDO extends DurableObject<Env> {
         sealerId,
       ),
     ] as unknown as Array<DelegateKeyRow & { unexpired_certificates: number }>;
+    const tombstones = [
+      ...this.ctx.storage.sql.exec(
+        `SELECT pubkey_hash, sealer_id, max_epoch, reason, created_at
+           FROM delegate_key_tombstones
+          WHERE sealer_id = ?
+          ORDER BY created_at, id`,
+        sealerId,
+      ),
+    ] as unknown as DelegateKeyTombstoneRow[];
     return Response.json({
       keys: rows.map((row) => ({
         ...delegateKeyRecordFromRow(row),
         unexpiredCertificates: Number(row.unexpired_certificates),
+        expired: Number(row.not_after) <= now,
       })),
+      tombstones: tombstones.map(delegateKeyTombstoneFromRow),
     });
   }
 
@@ -2768,6 +2936,102 @@ export class DelegationStoreDO extends DurableObject<Env> {
       sealerId,
     );
     return Response.json({ deleted });
+  }
+
+  /**
+   * PUT /sealer/delegate-key-tombstones — record this shard's replica of a
+   * tombstone and delete the rows it covers (plan-2609-12 ruling 8). The
+   * worker validated the body and set `createdAt` once for every shard. An
+   * existing tombstone for the same target is kept as it was; the delete
+   * still runs, so a retried fan-out completes.
+   */
+  private async handlePutDelegateKeyTombstone(
+    request: Request,
+  ): Promise<Response> {
+    const body = (await request.json()) as DelegateKeyTombstoneRequest & {
+      createdAt: number;
+    };
+    const sql = this.ctx.storage.sql;
+    let deleted: number;
+    if ("pubkeyHash" in body) {
+      const owner = [
+        ...sql.exec(
+          `SELECT sealer_id FROM delegate_keys WHERE pubkey_hash = ?`,
+          body.pubkeyHash,
+        ),
+      ];
+      deleted = owner.length;
+      sql.exec(
+        `INSERT INTO delegate_key_tombstones
+           (pubkey_hash, sealer_id, max_epoch, reason, created_at)
+         VALUES (?, ?, NULL, ?, ?)
+         ON CONFLICT (pubkey_hash) WHERE pubkey_hash IS NOT NULL DO NOTHING`,
+        body.pubkeyHash,
+        owner.length > 0 ? String(owner[0]!.sealer_id) : null,
+        body.reason,
+        body.createdAt,
+      );
+      sql.exec(
+        `DELETE FROM delegate_keys WHERE pubkey_hash = ?`,
+        body.pubkeyHash,
+      );
+    } else {
+      const counted = [
+        ...sql.exec(
+          `SELECT COUNT(*) AS n FROM delegate_keys
+            WHERE sealer_id = ? AND epoch <= ?`,
+          body.sealerId,
+          body.maxEpoch,
+        ),
+      ];
+      deleted = Number((counted[0] as { n: number }).n);
+      sql.exec(
+        `INSERT INTO delegate_key_tombstones
+           (pubkey_hash, sealer_id, max_epoch, reason, created_at)
+         VALUES (NULL, ?, ?, ?, ?)
+         ON CONFLICT (sealer_id, max_epoch) WHERE pubkey_hash IS NULL
+           DO NOTHING`,
+        body.sealerId,
+        body.maxEpoch,
+        body.reason,
+        body.createdAt,
+      );
+      sql.exec(
+        `DELETE FROM delegate_keys WHERE sealer_id = ? AND epoch <= ?`,
+        body.sealerId,
+        body.maxEpoch,
+      );
+    }
+    return Response.json({ deleted });
+  }
+
+  /**
+   * DELETE /sealer/delegate-key-tombstones?pubkeyHash= or
+   * ?sealerId=&maxEpoch= — lift this shard's replica of exactly that
+   * tombstone. The worker validated the target.
+   */
+  private handleDeleteDelegateKeyTombstone(url: URL): Response {
+    const q = url.searchParams;
+    const target: PubkeyHashTombstoneTarget | SealerEpochTombstoneTarget =
+      q.has("pubkeyHash")
+        ? { pubkeyHash: q.get("pubkeyHash")! }
+        : {
+            sealerId: q.get("sealerId") ?? "",
+            maxEpoch: Number(q.get("maxEpoch")),
+          };
+    const cursor =
+      "pubkeyHash" in target
+        ? this.ctx.storage.sql.exec(
+            `DELETE FROM delegate_key_tombstones WHERE pubkey_hash = ?`,
+            target.pubkeyHash,
+          )
+        : this.ctx.storage.sql.exec(
+            `DELETE FROM delegate_key_tombstones
+              WHERE pubkey_hash IS NULL AND sealer_id = ? AND max_epoch = ?`,
+            target.sealerId,
+            target.maxEpoch,
+          );
+    return Response.json({ lifted: cursor.rowsWritten });
   }
 
   /** Default true when no config row exists (same as webhook CRUD defaults). */
@@ -3450,6 +3714,19 @@ export class DelegationStoreDO extends DurableObject<Env> {
   }
 }
 
+/** Map a `delegate_key_tombstones` row to its wire {@link DelegateKeyTombstone}. */
+function delegateKeyTombstoneFromRow(
+  row: DelegateKeyTombstoneRow,
+): DelegateKeyTombstone {
+  return {
+    pubkeyHash: row.pubkey_hash === null ? null : String(row.pubkey_hash),
+    sealerId: row.sealer_id === null ? null : String(row.sealer_id),
+    maxEpoch: row.max_epoch === null ? null : Number(row.max_epoch),
+    reason: String(row.reason),
+    createdAt: Number(row.created_at),
+  };
+}
+
 /** Map a `delegate_keys` row to its wire {@link DelegateKeyRecord}. */
 function delegateKeyRecordFromRow(row: DelegateKeyRow): DelegateKeyRecord {
   return {
@@ -3462,4 +3739,11 @@ function delegateKeyRecordFromRow(row: DelegateKeyRow): DelegateKeyRecord {
         ? null
         : Number(row.registered_at),
   };
+}
+
+/** Byte-for-byte equality (stored voucher against a registration's). */
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }

@@ -10,7 +10,8 @@
  * reading custodian logs. Keys are replicated to every shard but certificates
  * live on their log's shard, so the worker merges the per-shard listings:
  * certificate counts are summed, and `shardsRegistered` exposes an incomplete
- * fan-out.
+ * fan-out. Expired rows are listed and marked, not hidden (slice 08), and the
+ * sealer's tombstones are listed with `shardsRecorded` the same way.
  *
  * Authenticated with {@link Env.COORDINATOR_APP_TOKEN}; public key metadata
  * only.
@@ -18,9 +19,11 @@
 
 import type { Env } from "../env.js";
 import { checkBearerToken } from "../auth/check-bearer-token.js";
+import type { DelegateKeyTombstone } from "../types/delegate-key-tombstone.js";
 import type {
   DelegateKeysListing,
   DelegateKeysListingEntry,
+  DelegateKeysListingTombstone,
 } from "../types/delegate-keys-listing.js";
 import {
   getShardCount,
@@ -29,9 +32,13 @@ import {
   problemResponse,
 } from "./handler.js";
 
-/** One shard's listing: its replica rows with that shard's certificate counts. */
+/**
+ * One shard's listing: its replica rows with that shard's certificate counts,
+ * and its replicas of the sealer's tombstones.
+ */
 interface ShardListing {
   keys: Array<Omit<DelegateKeysListingEntry, "shardsRegistered">>;
+  tombstones: DelegateKeyTombstone[];
 }
 
 /**
@@ -64,6 +71,7 @@ export async function handleListDelegateKeys(
     );
 
     const merged = new Map<string, DelegateKeysListingEntry>();
+    const tombstones = new Map<string, DelegateKeysListingTombstone>();
     for (const res of results) {
       if (!res.ok) {
         return new Response(res.body, {
@@ -86,14 +94,29 @@ export async function handleListDelegateKeys(
           existing.registeredAt = key.registeredAt;
           existing.epoch = key.epoch;
           existing.notAfter = key.notAfter;
+          existing.expired = key.expired;
         }
+      }
+      for (const t of shard.tombstones) {
+        // Replicas share every field, createdAt included (the worker sets it).
+        const id = `${t.pubkeyHash ?? ""}|${t.sealerId ?? ""}|${t.maxEpoch ?? ""}`;
+        const existing = tombstones.get(id);
+        if (existing) existing.shardsRecorded += 1;
+        else tombstones.set(id, { ...t, shardsRecorded: 1 });
       }
     }
 
     const keys = [...merged.values()].sort(
       (a, b) => b.epoch - a.epoch || a.pubkeyHash.localeCompare(b.pubkeyHash),
     );
-    const body: DelegateKeysListing = { sealerId, shards: shardCount, keys };
+    const body: DelegateKeysListing = {
+      sealerId,
+      shards: shardCount,
+      keys,
+      tombstones: [...tombstones.values()].sort(
+        (a, b) => a.createdAt - b.createdAt,
+      ),
+    };
     return Response.json(body);
   } catch (error) {
     return internalError(error);

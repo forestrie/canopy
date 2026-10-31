@@ -25,14 +25,20 @@ export interface RegisterDelegateKey {
   publicKey: string;
   /** Operator-bumped rotation epoch (>= 1). */
   epoch: number;
-  /** Unix seconds after which the key is retired and dropped. */
+  /**
+   * Unix seconds after which the key is retired and dropped. The stored row
+   * takes the earlier of this and the voucher's claim 4 (plan-2609-12 slice
+   * 08); the arbor sealer sends claim 4 itself.
+   */
   notAfter: number;
   /**
    * Base64 untagged COSE_Sign1 custodian voucher over (sealerId, epoch,
-   * publicKey), signed by the registrar voucher key. Required (FOR-390 phase
-   * G/H): the coordinator verifies it against `PINNED_REGISTRAR_KEY` before
-   * accepting, so only the custodian — not any COORDINATOR_APP_TOKEN holder —
-   * can introduce a delegate key the coordinator will advertise.
+   * publicKey, notAfter), signed by the registrar voucher key. Required
+   * (FOR-390 phase G/H): the coordinator verifies it against
+   * `PINNED_REGISTRAR_KEY` before accepting, so only the custodian — not any
+   * COORDINATOR_APP_TOKEN holder — can introduce a delegate key the
+   * coordinator will advertise. Claim 4 (notAfter) is required and at most 31
+   * days out (ruling 7), which bounds a replay to the voucher's lifetime.
    */
   voucher: string;
 }
