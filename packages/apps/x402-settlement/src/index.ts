@@ -18,7 +18,11 @@ import { X402SettlementDO } from "./durableobjects/x402settlement.js";
 import { ReceivablesDO } from "./durableobjects/receivables.js";
 import { generateCdpJwt, facilitatorRequiresAuth } from "./cdp-jwt.js";
 import { runCheckpointIndexer } from "./indexer/run-indexer.js";
-import { settleRetryDecision } from "./settle-retry.js";
+import {
+  CREDIT_RETRY_DELAY_SECONDS,
+  QUEUE_MAX_RETRIES,
+  settleRetryDecision,
+} from "./settle-retry.js";
 import {
   listRegisteredAccounts,
   readRegisteredAccount,
@@ -309,15 +313,27 @@ const handler = {
             try {
               await creditSettledPurchase(env, job, result.txHash);
             } catch (err) {
-              console.error(
-                `Settled ${job.kind} purchase failed to credit; retrying`,
-                {
+              const error = err instanceof Error ? err.message : String(err);
+              // This retry shares the delivery count with settle retries; on
+              // the last delivery the queue drops the message (no DLQ), so
+              // say so rather than lose a settled payment's credit silently.
+              if (message.attempts > QUEUE_MAX_RETRIES) {
+                console.error(`Settled ${job.kind} purchase credit abandoned`, {
                   jobId: job.jobId,
                   idempotencyKey: job.idempotencyKey,
-                  error: err instanceof Error ? err.message : String(err),
-                },
+                  univocityInstanceId: job.univocityInstanceId,
+                  credits: job.credits,
+                  attempts: message.attempts,
+                  error,
+                });
+                message.ack();
+                continue;
+              }
+              console.error(
+                `Settled ${job.kind} purchase failed to credit; retrying`,
+                { jobId: job.jobId, idempotencyKey: job.idempotencyKey, error },
               );
-              message.retry();
+              message.retry({ delaySeconds: CREDIT_RETRY_DELAY_SECONDS });
               continue;
             }
           }
@@ -325,12 +341,19 @@ const handler = {
           // Settlement failed - DO has recorded the failure and updated auth state.
           console.error("Settlement failed", {
             jobId: job.jobId,
+            ...authorizationRef(job),
             error: result.error,
             permanent: result.permanent,
+            expired: result.expired,
+            attempts: message.attempts,
           });
           // canopy-api already admitted the request (mint-on-verify): acking a
           // transient failure loses the payment for good (FOR-616).
-          if (!result.permanent && retryTransient(message, job)) continue;
+          if (result.expired) {
+            logAbandoned(message, job, "authorization expired unsettled");
+          } else if (!result.permanent && retryTransient(message, job)) {
+            continue;
+          }
         }
         message.ack();
       } catch (err) {
@@ -545,16 +568,38 @@ function retryTransient(
     message.retry({ delaySeconds: decision.delaySeconds });
     return true;
   }
+  logAbandoned(message, job, decision.reason);
+  return false;
+}
+
+/**
+ * Log a paid admission canopy will never collect for. The one line an
+ * operator (or the FOR-84 reconciler) needs: who, how much, which nonce.
+ */
+function logAbandoned(
+  message: Message<SettlementJob>,
+  job: SettlementJob,
+  reason: string,
+): void {
   console.error("Settlement abandoned", {
     jobId: job.jobId,
     idempotencyKey: job.idempotencyKey,
     kind: job.kind,
     payer: job.payer,
     amount: job.amount,
+    ...authorizationRef(job),
     attempts: message.attempts,
-    reason: decision.reason,
+    reason,
   });
-  return false;
+}
+
+/** The fields that find a job's authorization on-chain and in the logs. */
+function authorizationRef(job: SettlementJob): {
+  nonce?: string;
+  validBefore?: string;
+} {
+  const auth = job.payload?.payload?.authorization;
+  return { nonce: auth?.nonce, validBefore: auth?.validBefore };
 }
 
 /**

@@ -149,4 +149,9 @@ export interface SettlementResult {
   error?: string;
   /** When true, do not retry this job. */
   permanent?: boolean;
+  /**
+   * The authorization's validity window closed before it could settle:
+   * permanent, and not counted against the payer (FOR-616).
+   */
+  expired?: boolean;
 }

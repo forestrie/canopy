@@ -15,10 +15,18 @@ const BASE_DELAY_SECONDS = 10;
 const MAX_DELAY_SECONDS = 60;
 /**
  * Hard cap on deliveries, for authorizations with a distant `validBefore`.
- * Keep the consumer's `max_retries` in wrangler.jsonc at least this high, or
- * the queue drops the message before the policy gives up and logs it.
+ * Must stay below QUEUE_MAX_RETRIES + 1, or the queue drops the message
+ * before the policy gives up and logs it.
  */
 export const MAX_SETTLE_ATTEMPTS = 8;
+/**
+ * The consumer's `max_retries` in wrangler.jsonc (both lanes); keep them
+ * equal. A message is delivered at most QUEUE_MAX_RETRIES + 1 times, then
+ * dropped (no dead-letter queue).
+ */
+export const QUEUE_MAX_RETRIES = 10;
+/** Delay before re-crediting a settled purchase whose credit failed. */
+export const CREDIT_RETRY_DELAY_SECONDS = 30;
 /**
  * Time the retried settle needs before `validBefore`: the queue's batch
  * window (30s) plus the facilitator call and mining.

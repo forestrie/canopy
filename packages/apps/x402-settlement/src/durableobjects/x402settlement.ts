@@ -17,6 +17,7 @@ import type {
 import type { Env } from "../env.js";
 import { settleCharge, type SettleResponse } from "../facilitator/client.js";
 import { facilitatorRequiresAuth } from "../cdp-jwt.js";
+import { authorizationSpent } from "../authorization-state.js";
 
 /** Maximum consecutive failures before marking auth as suspect */
 const SUSPECT_THRESHOLD = 3;
@@ -153,6 +154,25 @@ export class X402SettlementDO extends DurableObject<Env> {
       };
     }
 
+    // The token contract, not the facilitator, says whether the money moved
+    // (authorization-state.ts): a redelivered job whose earlier attempt the
+    // facilitator reported as failed may have settled after all (FOR-616).
+    if ((await authorizationSpent(this.env, job)) === true) {
+      return this.settledOnChain(job, "before attempt");
+    }
+
+    // Past validBefore the token contract refuses the authorization, so the
+    // facilitator cannot settle it. Not the payer's doing: never counted.
+    if (authorizationExpired(job)) {
+      this.recordFailure(job.authId, "authorization expired unsettled", false);
+      return {
+        ok: false,
+        error: "authorization expired before it settled",
+        permanent: true,
+        expired: true,
+      };
+    }
+
     // Check auth state - reject if blocked
     const authState = this.getAuthState(job.authId);
     if (authState === "blocked") {
@@ -203,8 +223,12 @@ export class X402SettlementDO extends DurableObject<Env> {
           : undefined,
       );
     } catch (err) {
-      // Network or timeout error - transient, should retry
+      // Network or timeout error - transient, should retry. The facilitator
+      // may have broadcast before the abort, so ask the chain first.
       console.error(`Facilitator call failed: ${err}`);
+      if ((await authorizationSpent(this.env, job)) === true) {
+        return this.settledOnChain(job, "after facilitator error");
+      }
       this.recordFailure(job.authId, `Network error: ${err}`, false);
       return {
         ok: false,
@@ -222,19 +246,41 @@ export class X402SettlementDO extends DurableObject<Env> {
       };
     }
 
-    // Facilitator returned an error
+    // Facilitator returned an error. Its "transaction failed" can follow a
+    // broadcast that mines (or already mined, if this is a retry), and a
+    // nonce-already-used refusal means exactly that: ask the chain.
+    if ((await authorizationSpent(this.env, job)) === true) {
+      return this.settledOnChain(job, "after facilitator refusal");
+    }
     const isPermanent = response.permanent ?? false;
+    const expired = response.expired ?? false;
     this.recordFailure(
       job.authId,
       response.error ?? "Unknown error",
-      isPermanent,
+      isPermanent && !expired,
     );
 
     return {
       ok: false,
       error: response.error,
       permanent: isPermanent,
+      ...(expired ? { expired: true } : {}),
     };
+  }
+
+  /**
+   * Book a job whose authorization the token contract shows as spent. No
+   * transaction hash: the facilitator that broadcast it did not return one.
+   */
+  private settledOnChain(job: SettlementJob, when: string): SettlementResult {
+    console.log("Settlement found on-chain", {
+      jobId: job.jobId,
+      idempotencyKey: job.idempotencyKey,
+      nonce: job.payload?.payload?.authorization?.nonce,
+      when,
+    });
+    this.recordSuccess(job, undefined);
+    return { ok: true };
   }
 
   /**
@@ -295,18 +341,17 @@ export class X402SettlementDO extends DurableObject<Env> {
   /**
    * Record a settlement failure and update auth state.
    *
-   * Only a permanent refusal counts toward suspect / blocked. A transient
-   * failure is the facilitator's or the network's, not the payer's, and the
-   * queue retries it (FOR-616): counting each attempt would block a payer
-   * after one bad facilitator episode, and canopy-api then refuses them.
+   * Only a permanent refusal that is the payer's doing counts toward
+   * suspect / blocked (`counts`). A transient failure is the facilitator's
+   * or the network's and the queue retries it, and an authorization that
+   * expired while canopy retried is canopy's (FOR-616). Counting those would
+   * block an honest payer after one facilitator outage: this DO then refuses
+   * to settle for them (canopy-api does not read auth state, so it keeps
+   * admitting them unpaid).
    */
-  private recordFailure(
-    authId: string,
-    reason: string,
-    permanent: boolean,
-  ): void {
+  private recordFailure(authId: string, reason: string, counts: boolean): void {
     const now = Date.now();
-    const increment = permanent ? 1 : 0;
+    const increment = counts ? 1 : 0;
 
     // Upsert auth state; the failure count moves only on a permanent refusal.
     this.ctx.storage.sql.exec(
@@ -422,4 +467,18 @@ export class X402SettlementDO extends DurableObject<Env> {
     this.initialized = false;
     this.ensureSchema();
   }
+}
+
+/**
+ * Whether the job's authorization can no longer settle. The x402 verifier
+ * refuses one whose `validBefore` is within 6s, so match it.
+ */
+function authorizationExpired(
+  job: SettlementJob,
+  nowSeconds: number = Math.floor(Date.now() / 1000),
+): boolean {
+  const validBefore = Number(
+    job.payload?.payload?.authorization?.validBefore ?? NaN,
+  );
+  return Number.isFinite(validBefore) && validBefore < nowSeconds + 6;
 }

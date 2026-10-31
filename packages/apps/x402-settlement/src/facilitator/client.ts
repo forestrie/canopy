@@ -43,21 +43,38 @@ export interface SettleResponse {
   error?: string;
   /** Whether the error is permanent (no retry) */
   permanent?: boolean;
+  /** The authorization's validity window had closed (permanent, not the payer's fault). */
+  expired?: boolean;
 }
 
 /**
- * x402 `errorReason` values for which the facilitator failed to get its
- * settlement transaction mined, leaving the authorization unspent.
+ * x402 `errorReason` values meaning the facilitator could not get its
+ * settlement transaction mined. They are transient: worth another attempt
+ * while the authorization is valid. They do NOT prove the authorization is
+ * unspent (the reference facilitator returns them when its receipt wait
+ * fails after broadcast), which is why the DO reads the token contract
+ * before and after each attempt (authorization-state.ts).
  *
- * - `invalid_exact_evm_transaction_failed`: the facilitator's own
- *   eth_sendRawTransaction or receipt wait failed. x402.org returned this,
- *   with HTTP 200, for 6 of 15 lane-A settlements on 2026-10-24 (FOR-616).
- * - `unexpected_settle_error`: the facilitator's catch-all for a settle that
- *   threw before it could classify the failure.
+ * - `invalid_exact_evm_transaction_failed`: what x402.org returned, with
+ *   HTTP 200, for 6 of 15 lane-A settlements on 2026-10-24 (FOR-616).
+ * - `transaction_failed`: the same failure as `@x402/evm` 2.2.0's
+ *   `ExactEvmScheme.settle` names it (a self-hosted or CDP facilitator).
+ * - `unexpected_settle_error`: catch-all some facilitator builds return for
+ *   a settle that threw before it could classify the failure.
  */
 const TRANSIENT_ERROR_REASONS = new Set([
   "invalid_exact_evm_transaction_failed",
+  "transaction_failed",
   "unexpected_settle_error",
+]);
+
+/**
+ * x402 `errorReason` values meaning the authorization's validity window has
+ * closed (`@x402/evm` 2.2.0 verify). Not the payer's fault when canopy's own
+ * retry arrives late, so these never count toward payer blocking.
+ */
+const EXPIRED_ERROR_REASONS = new Set([
+  "invalid_exact_evm_payload_authorization_valid_before",
 ]);
 
 /**
@@ -118,10 +135,10 @@ export async function settleCharge(
       signal: controller.signal,
     });
 
-    clearTimeout(timeoutId);
-
-    // Classify response
+    // Classify response. The abort timer stays armed until the body is read:
+    // a stalled body is as much a timeout as stalled headers.
     const responseText = await response.text();
+    clearTimeout(timeoutId);
     console.log("settleCharge response", {
       status: response.status,
       body: responseText.slice(0, 500),
@@ -142,12 +159,14 @@ export async function settleCharge(
         };
       }
       // A 2xx refusal is permanent unless the facilitator says its own
-      // transaction failed: the authorization is still unspent then, so a
-      // later attempt can settle it (FOR-616).
+      // transaction failed, in which case a later attempt may settle it
+      // (FOR-616).
+      const reason = data.errorReason ?? "";
       return {
         ok: false,
         error: `Unexpected response: ${responseText.slice(0, 200)}`,
-        permanent: !TRANSIENT_ERROR_REASONS.has(data.errorReason ?? ""),
+        permanent: !TRANSIENT_ERROR_REASONS.has(reason),
+        ...(EXPIRED_ERROR_REASONS.has(reason) ? { expired: true } : {}),
       };
     }
 
