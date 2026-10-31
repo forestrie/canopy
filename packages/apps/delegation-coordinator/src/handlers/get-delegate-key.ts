@@ -2,11 +2,11 @@
  * GET /api/sealer/delegate-keys/{pubkeyHash} — lookup of one registered
  * standing delegate key (plan-2609-12 slice 04, ruling 1).
  *
- * The arbor sealer polls this from its readiness gate: a delegate key it holds
- * is "registered" only once the custodian's fan-out has landed on EVERY shard,
- * because a log's coverage retrieval reads `delegate_keys` on that log's shard
- * alone. So the lookup consults all shards and reports 404 for a partial
- * registration, which the custodian's registration outbox will complete.
+ * An operator read since the sealer asserts its own registration (ruling 1′):
+ * a delegate key is "registered" only once the fan-out has landed on EVERY
+ * shard, because a log's coverage retrieval reads `delegate_keys` on that
+ * log's shard alone. So the lookup consults all shards and reports 404 for a
+ * partial registration, and, like coverage, for an expired row (slice 08).
  *
  * Authenticated with {@link Env.COORDINATOR_APP_TOKEN}, like the sibling
  * `POST /api/sealer/delegate-keys`. The data is public key metadata.
@@ -23,7 +23,7 @@ import {
 } from "./handler.js";
 
 /** Lowercase hex sha256, the `delegate_keys.pubkey_hash` shape. */
-const PUBKEY_HASH_HEX = /^[0-9a-f]{64}$/;
+export const PUBKEY_HASH_HEX = /^[0-9a-f]{64}$/;
 
 /**
  * GET /api/sealer/delegate-keys/{pubkeyHash}.

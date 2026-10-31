@@ -15,4 +15,11 @@ export type { DelegateKeyRecord } from "./delegate-key-record.js";
 export type {
   DelegateKeysListing,
   DelegateKeysListingEntry,
+  DelegateKeysListingTombstone,
 } from "./delegate-keys-listing.js";
+export type { DelegateKeyTombstone } from "./delegate-key-tombstone.js";
+export type {
+  DelegateKeyTombstoneRequest,
+  PubkeyHashTombstoneTarget,
+  SealerEpochTombstoneTarget,
+} from "./delegate-key-tombstone-request.js";

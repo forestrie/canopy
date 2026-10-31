@@ -41,6 +41,8 @@ import {
   handleGetDelegateKey,
   handleListDelegateKeys,
   handleAdminDeleteDelegateKeys,
+  handleAdminDeleteDelegateKeyTombstone,
+  handleAdminPostDelegateKeyTombstone,
   handlePostAuthChallenge,
   handlePostAuthSession,
   WEBHOOK_JWKS_PATH,
@@ -142,6 +144,15 @@ const handler = {
 
     if (pathname === "/admin/api/sealer/delegate-keys" && method === "DELETE") {
       return handleAdminDeleteDelegateKeys(request, url, env);
+    }
+
+    if (pathname === "/admin/api/sealer/delegate-keys/tombstones") {
+      if (method === "POST") {
+        return handleAdminPostDelegateKeyTombstone(request, env);
+      }
+      if (method === "DELETE") {
+        return handleAdminDeleteDelegateKeyTombstone(request, url, env);
+      }
     }
 
     if (pathname === "/api/delegations/pending" && method === "GET") {
