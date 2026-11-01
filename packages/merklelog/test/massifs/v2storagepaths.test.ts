@@ -17,8 +17,7 @@ const RADIX_VECTORS: ReadonlyArray<[bigint, string]> = [
   [10n, "0000000000000010"],
   [16n, "0000000000000016"],
   [255n, "0000000000000255"],
-  [4294967295n, "0000004294967295"], // Go uint32 max
-  [9999999999999999n, "9999999999999999"],
+  [4294967295n, "0000004294967295"], // Go uint32 max (MAX_MASSIF_INDEX)
 ];
 
 describe("v2storagepaths", () => {
@@ -33,6 +32,7 @@ describe("v2storagepaths", () => {
 
     it.each([
       ["negative", -1n],
+      ["uint32 max + 1", 4294967296n],
       ["17 digits", 10000000000000000n],
       ["non-integer number", 1.5],
       ["unsafe number", Number.MAX_SAFE_INTEGER + 1],
@@ -192,6 +192,13 @@ describe("v2storagepaths", () => {
         const path = `v2/merklelog/massifs/14/log/${segment}.log`;
         expect(() => parseV2StorageObjectPath(path)).toThrow(
           "Massif index must be 16 decimal digits",
+        );
+      });
+
+      it("should throw on a 16-digit index beyond Go uint32", () => {
+        const path = "v2/merklelog/massifs/14/log/0000004294967296.log";
+        expect(() => parseV2StorageObjectPath(path)).toThrow(
+          "Massif index must be 0..4294967295",
         );
       });
 

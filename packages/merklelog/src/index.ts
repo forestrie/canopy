@@ -46,6 +46,7 @@ export {
 export {
   formatMassifObjectIndex,
   MASSIF_OBJECT_INDEX_DIGITS,
+  MAX_MASSIF_INDEX,
   parseV2StorageObjectPath,
   v2CheckpointObjectKey,
   v2MassifObjectKey,

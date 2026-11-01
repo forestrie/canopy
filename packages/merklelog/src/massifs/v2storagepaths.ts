@@ -18,9 +18,16 @@
 /** Width of the massif index segment in an object key. */
 export const MASSIF_OBJECT_INDEX_DIGITS = 16;
 
+/**
+ * Largest massif index the Go side can represent. go-merklelog
+ * `FmtMassifPath(prefix, massifIndex uint32)` and arbor's publisher
+ * (`strconv.ParseUint(base, 10, 32)`) use `uint32`; a larger index would be
+ * silently truncated by `ObjectIndexFromPath`, so it is rejected here.
+ */
+export const MAX_MASSIF_INDEX = 0xffffffffn;
+
 const MASSIF_OBJECT_INDEX_RE = /^[0-9]{16}$/;
 const MASSIF_HEIGHT_RE = /^[0-9]+$/;
-const MAX_MASSIF_OBJECT_INDEX = 10n ** BigInt(MASSIF_OBJECT_INDEX_DIGITS) - 1n;
 
 /**
  * Build the massif `.log` object key for a log.
@@ -48,16 +55,16 @@ export function v2CheckpointObjectKey(
  * Format a massif index as the 16-digit decimal key segment (Go `%016d`).
  *
  * @throws Error if the index is negative, not an integer, not a safe integer
- *   (number input), or does not fit in 16 decimal digits.
+ *   (number input), or exceeds {@link MAX_MASSIF_INDEX}.
  */
 export function formatMassifObjectIndex(massifIndex: bigint | number): string {
   if (typeof massifIndex === "number" && !Number.isSafeInteger(massifIndex)) {
     throw new Error(`Massif index must be a safe integer, got ${massifIndex}`);
   }
   const index = BigInt(massifIndex);
-  if (index < 0n || index > MAX_MASSIF_OBJECT_INDEX) {
+  if (index < 0n || index > MAX_MASSIF_INDEX) {
     throw new Error(
-      `Massif index must be 0..${MAX_MASSIF_OBJECT_INDEX}, got ${index}`,
+      `Massif index must be 0..${MAX_MASSIF_INDEX}, got ${index}`,
     );
   }
   return index.toString(10).padStart(MASSIF_OBJECT_INDEX_DIGITS, "0");
@@ -95,6 +102,11 @@ export function parseV2StorageObjectPath(path: string) {
     );
   }
   const massifIndex = BigInt(massifIndexStr);
+  if (massifIndex > MAX_MASSIF_INDEX) {
+    throw new Error(
+      `Massif index must be 0..${MAX_MASSIF_INDEX}, got ${massifIndex}`,
+    );
+  }
 
   if (!MASSIF_HEIGHT_RE.test(massifHeightStr)) {
     throw new Error(
