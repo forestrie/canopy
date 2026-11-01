@@ -28,6 +28,9 @@ const MAX_PENDING = 100_000;
 /** Maximum size for extra fields in bytes */
 const MAX_EXTRA_SIZE = 32;
 
+/** Content hashes are sha256 digests; ranger rejects any other length. */
+const CONTENT_HASH_SIZE = 32;
+
 /** Poller is considered inactive after this many ms without a pull */
 const POLLER_TIMEOUT_MS = 4000;
 
@@ -296,6 +299,16 @@ export class SequencingQueue extends DurableObject<Env> {
     extras?: EnqueueExtras,
   ): Promise<{ seq: number }> {
     this.ensureSchema();
+
+    // ranger hashes the content hash into a sha256 leaf and fails the whole
+    // batch on a bad one, so a wrong-length hash would block its log and,
+    // after MAX_ATTEMPTS, dead-letter the good entries pulled with it
+    // (FOR-653). Reject it here instead.
+    if (contentHash.byteLength !== CONTENT_HASH_SIZE) {
+      throw new Error(
+        `contentHash must be ${CONTENT_HASH_SIZE} bytes, got ${contentHash.byteLength}`,
+      );
+    }
 
     // Validate extra field sizes
     if (extras) {
