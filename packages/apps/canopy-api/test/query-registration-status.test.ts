@@ -10,6 +10,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import {
   urkleLeafTableStartByteOffset,
   leafCountForMassifHeight,
+  v2MassifObjectKey,
 } from "@forestrie/merklelog";
 
 import type { Env } from "../src/index";
@@ -361,11 +362,64 @@ describe("query-registration-status byte-range read", () => {
           testEnv.R2_MMRS,
           logId,
           massifHeight,
-          massifIndex,
           leafIndex,
         ),
       ).resolves.toBe(expectedIdtimestamp);
     });
+  });
+
+  describe("massif index derived from leaf index (FOR-620)", () => {
+    // A massif of one-based height h holds 2^(h-1) leaves (go-merklelog
+    // urkle.LeafCountForMassifHeight). The SequencingQueue used to store a
+    // massif index computed with 2^h; for leaves past the first massif that
+    // names an earlier massif that exists, so the read silently returned
+    // another leaf's idtimestamp. A decoy at the 2^h index catches that.
+    const cases: {
+      massifHeight: number;
+      leafIndex: number;
+      massifIndex: number;
+      leafOrdinal: number;
+    }[] = [
+      { massifHeight: 3, leafIndex: 4, massifIndex: 1, leafOrdinal: 0 },
+      { massifHeight: 3, leafIndex: 7, massifIndex: 1, leafOrdinal: 3 },
+      { massifHeight: 14, leafIndex: 8192, massifIndex: 1, leafOrdinal: 0 },
+      { massifHeight: 14, leafIndex: 16383, massifIndex: 1, leafOrdinal: 8191 },
+    ];
+
+    for (const { massifHeight, leafIndex, massifIndex, leafOrdinal } of cases) {
+      it(`h=${massifHeight} leaf ${leafIndex} reads massif ${massifIndex} ordinal ${leafOrdinal}`, async () => {
+        const expectedIdtimestamp = 0x0620062006200620n;
+        const decoyIdtimestamp = 0xdec0dec0dec0dec0n;
+        const decoyMassifIndex = Math.floor(leafIndex / 2 ** massifHeight);
+        const decoyOrdinal = leafIndex % 2 ** (massifHeight - 1);
+
+        await testEnv.R2_MMRS.put(
+          v2MassifObjectKey(massifHeight, logId, massifIndex),
+          buildMassifWithIdtimestamps(
+            massifHeight,
+            massifIndex,
+            new Map([[leafOrdinal, expectedIdtimestamp]]),
+          ),
+        );
+        await testEnv.R2_MMRS.put(
+          v2MassifObjectKey(massifHeight, logId, decoyMassifIndex),
+          buildMassifWithIdtimestamps(
+            massifHeight,
+            decoyMassifIndex,
+            new Map([[decoyOrdinal, decoyIdtimestamp]]),
+          ),
+        );
+
+        await expect(
+          readIdtimestampFromMassif(
+            testEnv.R2_MMRS,
+            logId,
+            massifHeight,
+            leafIndex,
+          ),
+        ).resolves.toBe(expectedIdtimestamp);
+      });
+    }
   });
 
   describe("big-endian reading", () => {

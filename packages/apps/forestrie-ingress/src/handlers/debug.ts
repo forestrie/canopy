@@ -35,7 +35,6 @@ export async function handleDebugRecent(
       enqueuedAt: number;
       ackedAt: number | null;
       leafIndex: number | null;
-      massifIndex: number | null;
     };
 
     // Collect entries from specified shard or all shards

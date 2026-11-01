@@ -31,6 +31,9 @@ import {
 
 import {
   MAX_MASSIF_INDEX,
+  leafCountForMassifHeight,
+  massifFirstLeaf,
+  massifIndexFromMMRIndex,
   v2CheckpointObjectKey,
   v2MassifObjectKey,
 } from "@forestrie/merklelog";
@@ -496,18 +499,13 @@ function v2OffsetsForMassif(massifHeight: number): {
   const fixedHeaderEnd = VALUE_BYTES + VALUE_BYTES * RESERVED_HEADER_SLOTS; // 256
   const trieHeaderEnd = fixedHeaderEnd + INDEX_HEADER_BYTES; // 288
 
-  const leafCount = urkleLeafCountForMassifHeight(massifHeight);
+  const leafCount = leafCountForMassifHeight(massifHeight);
   const indexDataBytes = indexDataBytesV2(leafCount);
 
   const peakStackStart = trieHeaderEnd + indexDataBytes;
   const logStart = peakStackStart + MAX_MMR_HEIGHT * VALUE_BYTES;
 
   return { peakStackStart, logStart };
-}
-
-function urkleLeafCountForMassifHeight(massifHeight: number): bigint {
-  if (!Number.isInteger(massifHeight) || massifHeight <= 0) return 0n;
-  return 1n << BigInt(massifHeight - 1);
 }
 
 function indexDataBytesV2(leafCount: bigint): bigint {
@@ -580,29 +578,6 @@ function readMassifStart(data: Uint8Array): MassifStartHeader {
 
 // --- MMR helpers (ported from go-merklelog/mmr) ---
 
-function mmrIndexFromLeafIndex(leafIndex: bigint): bigint {
-  // go-merklelog/mmr/mmrindex.go
-  let sum = 0n;
-  let current = leafIndex;
-
-  while (current > 0n) {
-    const h = BigInt(bitLength(current));
-    sum += (1n << h) - 1n;
-    const half = 1n << (h - 1n);
-    current -= half;
-  }
-
-  return sum;
-}
-
-function massifFirstLeaf(massifHeight: number, massifIndex: bigint): bigint {
-  // go-merklelog/massifs/massifstart.go MassifFirstLeaf
-  const m = (1n << BigInt(massifHeight)) - 1n;
-  const f = (m + 1n) / 2n;
-  const leafIndex = f * massifIndex;
-  return mmrIndexFromLeafIndex(leafIndex);
-}
-
 function leafMinusSpurSum(leafIndex: bigint): bigint {
   // go-merklelog/mmr/spurs.go LeafMinusSpurSum
   let sum = leafIndex;
@@ -644,19 +619,6 @@ function bitLength(num: bigint): number {
   return num.toString(2).length;
 }
 
-function firstMMRSize(mmrIndex: bigint): bigint {
-  // go-merklelog/mmr/firstmmrsize.go FirstMMRSize
-  let i = mmrIndex;
-  let h0 = indexHeight(i);
-  let h1 = indexHeight(i + 1n);
-  while (h0 < h1) {
-    i += 1n;
-    h0 = h1;
-    h1 = indexHeight(i + 1n);
-  }
-  return i + 1n;
-}
-
 function peaksBitmap(mmrSize: bigint): bigint {
   // go-merklelog/mmr/peaks.go PeaksBitmap
   if (mmrSize === 0n) return 0n;
@@ -675,23 +637,6 @@ function peaksBitmap(mmrSize: bigint): bigint {
   }
 
   return peakMap;
-}
-
-function leafIndexFromMMRIndex(mmrIndex: bigint): bigint {
-  // go-merklelog/mmr/leafcount.go LeafIndex
-  const size = firstMMRSize(mmrIndex);
-  const leafCount = peaksBitmap(size);
-  return leafCount - 1n;
-}
-
-function massifIndexFromMMRIndex(
-  massifHeight: number,
-  mmrIndex: bigint,
-): bigint {
-  // go-merklelog/massifs/massifindex.go MassifIndexFromMMRIndex
-  const leafIndex = leafIndexFromMMRIndex(mmrIndex);
-  const massifMaxLeaves = 1n << BigInt(massifHeight - 1);
-  return leafIndex / massifMaxLeaves;
 }
 
 function peaks(mmrIndex: bigint): bigint[] {

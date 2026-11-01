@@ -53,8 +53,6 @@ export interface SequencingQueueStub {
    * seqLo with their leaf indices. This is required because seq values are
    * allocated globally across all logs, making per-log seq values non-contiguous.
    *
-   * massifIndex is derived: floor(leafIndex / (1 << massifHeight))
-   *
    * See:
    * [ingress return path](https://github.com/forestrie/arbor/blob/main/docs/arc-cloudflare-do-ingress.md#312-return-path-unification)
    *
@@ -62,7 +60,8 @@ export interface SequencingQueueStub {
    * @param seqLo - Starting sequence number
    * @param limit - Number of entries to mark as sequenced
    * @param firstLeafIndex - Leaf index of the first entry
-   * @param massifHeight - Massif height (log2 of leaves per massif)
+   * @param massifHeight - One-based massif height (2^(h-1) leaves per
+   *   massif); sizes how many sequenced entries are retained
    * @returns Count of entries marked as sequenced
    */
   ackFirst(
@@ -76,8 +75,9 @@ export interface SequencingQueueStub {
   /**
    * Resolve a content hash to its sequencing result.
    *
-   * Returns the leaf_index and massif_index if the entry has been sequenced,
-   * or null if still pending or unknown.
+   * Returns the leaf index if the entry has been sequenced, or null if still
+   * pending or unknown. Derive the massif with `massifIndexFromLeafIndex`
+   * (@forestrie/merklelog).
    *
    * See:
    * [resolveContent RPC](https://github.com/forestrie/arbor/blob/main/docs/arc-cloudflare-do-ingress.md#3125-resolvecontent)
@@ -87,7 +87,7 @@ export interface SequencingQueueStub {
    */
   resolveContent(
     contentHash: ArrayBuffer,
-  ): Promise<{ leafIndex: number; massifIndex: number } | null>;
+  ): Promise<{ leafIndex: number } | null>;
 
   /**
    * Get the current pending count.

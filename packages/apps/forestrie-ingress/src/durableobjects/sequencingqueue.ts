@@ -18,6 +18,7 @@ import {
   type QueueStats,
   type EnqueueExtras,
 } from "@canopy/forestrie-ingress-types";
+import { leafCountForMassifHeight } from "@forestrie/merklelog";
 import type { Env } from "../env.js";
 
 /** Maximum pending entries before backpressure kicks in */
@@ -148,7 +149,6 @@ export class SequencingQueue extends DurableObject<Env> {
         enqueued_at INTEGER NOT NULL,
         -- Sequencing result fields (NULL until sequenced)
         leaf_index INTEGER DEFAULT NULL,
-        massif_index INTEGER DEFAULT NULL,
         acked_at INTEGER DEFAULT NULL
       );
 
@@ -176,7 +176,7 @@ export class SequencingQueue extends DurableObject<Env> {
       );
     `);
 
-    // Schema migration: add leaf_index and massif_index columns if missing
+    // Schema migration: add leaf_index and acked_at columns if missing
     // MUST run BEFORE creating indexes that reference these columns
     // These columns were added in Phase 9 (Return Path Unification)
     this.migrateSchema();
@@ -240,7 +240,9 @@ export class SequencingQueue extends DurableObject<Env> {
   /**
    * Migrate schema from older versions.
    * Adds columns that were introduced in later versions.
-   * Phase 9 added: leaf_index, massif_index columns and related indexes.
+   * Phase 9 added: the leaf_index column and related indexes. (Its
+   * massif_index column was removed by FOR-620: readers derive the massif
+   * from leaf_index. Old DOs keep the unused column until the lane reset.)
    */
   private migrateSchema(): void {
     try {
@@ -253,7 +255,6 @@ export class SequencingQueue extends DurableObject<Env> {
       console.log("[SequencingQueue] migrateSchema: existing columns", {
         columns: Array.from(columnNames),
         hasLeafIndex: columnNames.has("leaf_index"),
-        hasMassifIndex: columnNames.has("massif_index"),
       });
 
       // Add leaf_index if missing (Phase 9)
@@ -263,16 +264,6 @@ export class SequencingQueue extends DurableObject<Env> {
         );
         this.ctx.storage.sql.exec(
           "ALTER TABLE queue_entries ADD COLUMN leaf_index INTEGER DEFAULT NULL",
-        );
-      }
-
-      // Add massif_index if missing (Phase 9)
-      if (!columnNames.has("massif_index")) {
-        console.log(
-          "[SequencingQueue] migrateSchema: adding massif_index column",
-        );
-        this.ctx.storage.sql.exec(
-          "ALTER TABLE queue_entries ADD COLUMN massif_index INTEGER DEFAULT NULL",
         );
       }
 
@@ -552,14 +543,16 @@ export class SequencingQueue extends DurableObject<Env> {
   }
 
   /**
-   * Acknowledge entries by marking them as sequenced with leaf/massif indices.
+   * Acknowledge entries by marking them as sequenced with their leaf index.
    *
    * Updates the first N entries (by seq order) for the given log starting from
-   * seqLo, setting their leaf_index and massif_index. Entries are retained
-   * (not deleted) to serve as sequencing result cache for resolveContent.
+   * seqLo, setting their leaf_index. Entries are retained (not deleted) to
+   * serve as sequencing result cache for resolveContent.
    *
-   * massifIndex is derived from firstLeafIndex and massifHeight.
-   * Cleanup runs on each ack, retaining ~2 massifs worth of sequenced entries.
+   * massifHeight is the one-based height ranger commits massifs at; a massif
+   * holds {@link leafCountForMassifHeight} = 2^(h-1) leaves. It only sizes the
+   * cleanup that runs on each ack, retaining ~2 massifs of sequenced entries.
+   * Readers derive the massif from leaf_index; none is stored.
    *
    * See: arbor/docs/arc-cloudflare-do-ingress.md section 3.12
    */
@@ -575,8 +568,6 @@ export class SequencingQueue extends DurableObject<Env> {
     if (limit <= 0) {
       return { acked: 0 };
     }
-
-    const leavesPerMassif = 1 << massifHeight;
 
     // First, find the seq values to update
     const toUpdate = this.ctx.storage.sql
@@ -595,18 +586,16 @@ export class SequencingQueue extends DurableObject<Env> {
       return { acked: 0 };
     }
 
-    // Update each entry with its computed leaf_index, massif_index, and acked_at
+    // Update each entry with its leaf_index and acked_at
     const now = Date.now();
     for (let i = 0; i < toUpdate.length; i++) {
       const leafIndex = firstLeafIndex + i;
-      const massifIndex = Math.floor(leafIndex / leavesPerMassif);
 
       this.ctx.storage.sql.exec(
         `UPDATE queue_entries
-         SET leaf_index = ?, massif_index = ?, visible_after = NULL, acked_at = ?
+         SET leaf_index = ?, visible_after = NULL, acked_at = ?
          WHERE seq = ?`,
         leafIndex,
-        massifIndex,
         now,
         toUpdate[i].seq,
       );
@@ -616,7 +605,7 @@ export class SequencingQueue extends DurableObject<Env> {
     this.pendingCount = Math.max(0, this.pendingCount - acked);
 
     // Cleanup: retain ~2 massifs worth of sequenced entries per log
-    const retainCount = leavesPerMassif * 2;
+    const retainCount = Number(leafCountForMassifHeight(massifHeight)) * 2;
 
     this.ctx.storage.sql.exec(
       `DELETE FROM queue_entries
@@ -638,19 +627,20 @@ export class SequencingQueue extends DurableObject<Env> {
   /**
    * Resolve a content hash to its sequencing result.
    *
-   * Returns the leaf_index and massif_index if the entry has been sequenced,
-   * or null if still pending or unknown.
+   * Returns the leaf_index if the entry has been sequenced, or null if still
+   * pending or unknown. Callers derive the massif from it with
+   * `massifIndexFromLeafIndex` (@forestrie/merklelog).
    *
    * See: arbor/docs/arc-cloudflare-do-ingress.md section 3.12.5
    */
   async resolveContent(
     contentHash: ArrayBuffer,
-  ): Promise<{ leafIndex: number; massifIndex: number } | null> {
+  ): Promise<{ leafIndex: number } | null> {
     this.ensureSchema();
 
     const result = this.ctx.storage.sql
-      .exec<{ leaf_index: number; massif_index: number }>(
-        `SELECT leaf_index, massif_index
+      .exec<{ leaf_index: number }>(
+        `SELECT leaf_index
          FROM queue_entries
          WHERE content_hash = ? AND leaf_index IS NOT NULL`,
         contentHash,
@@ -661,10 +651,7 @@ export class SequencingQueue extends DurableObject<Env> {
       return null;
     }
 
-    return {
-      leafIndex: result[0].leaf_index,
-      massifIndex: result[0].massif_index,
-    };
+    return { leafIndex: result[0].leaf_index };
   }
 
   /**
@@ -679,7 +666,6 @@ export class SequencingQueue extends DurableObject<Env> {
       enqueuedAt: number;
       ackedAt: number | null;
       leafIndex: number | null;
-      massifIndex: number | null;
     }>
   > {
     this.ensureSchema();
@@ -692,9 +678,8 @@ export class SequencingQueue extends DurableObject<Env> {
         enqueued_at: number;
         acked_at: number | null;
         leaf_index: number | null;
-        massif_index: number | null;
       }>(
-        `SELECT seq, log_id, content_hash, enqueued_at, acked_at, leaf_index, massif_index
+        `SELECT seq, log_id, content_hash, enqueued_at, acked_at, leaf_index
          FROM queue_entries
          ORDER BY seq DESC
          LIMIT ?`,
@@ -709,7 +694,6 @@ export class SequencingQueue extends DurableObject<Env> {
       enqueuedAt: r.enqueued_at,
       ackedAt: r.acked_at,
       leafIndex: r.leaf_index,
-      massifIndex: r.massif_index,
     }));
   }
 

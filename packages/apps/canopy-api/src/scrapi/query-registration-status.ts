@@ -137,7 +137,6 @@ export async function queryRegistrationStatus(
       r2Mmrs,
       logID,
       massifHeight,
-      result.massifIndex,
       result.leafIndex,
     );
 
@@ -148,7 +147,6 @@ export async function queryRegistrationStatus(
       logID,
       contentHash,
       leafIndex: result.leafIndex,
-      massifIndex: result.massifIndex,
       idtimestamp: idtimestamp.toString(16),
       mmrIndex: mmrIndex.toString(),
     });

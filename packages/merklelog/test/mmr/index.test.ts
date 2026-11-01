@@ -117,6 +117,19 @@ describe("MMR Index Functions", () => {
       const result1 = massifFirstLeaf(3, 1);
       expect(result1).toBeGreaterThan(result0);
     });
+
+    // A massif of one-based height h holds 2^(h-1) leaves, so massif 1 starts
+    // at leaf 2^(h-1). JS number `1 << h` goes negative at h=31 and wraps at
+    // h=32; go-merklelog allows h up to 32 and canopy-api accepts up to 64.
+    for (const h of [3, 14, 31, 32, 33, 64]) {
+      it(`starts massif 1 at leaf 2^(h-1) for h=${h}`, () => {
+        expect(massifFirstLeaf(h, 1)).toBe(mmrIndex(1n << BigInt(h - 1)));
+      });
+    }
+
+    it("accepts a bigint massif index", () => {
+      expect(massifFirstLeaf(14, 2n)).toBe(massifFirstLeaf(14, 2));
+    });
   });
 
   describe("leafMinusSpurSum", () => {

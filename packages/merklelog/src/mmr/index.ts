@@ -33,10 +33,11 @@ export function leafMinusSpurSum(leafIndex: bigint): bigint {
  */
 export function massifFirstLeaf(
   massifHeight: number,
-  massifIndex: number,
+  massifIndex: number | bigint,
 ): bigint {
-  // The number of nodes 'm' in a massif is: m = (1 << h) - 1
-  const m = BigInt((1 << massifHeight) - 1);
+  // The number of nodes 'm' in a massif is: m = (1 << h) - 1. BigInt shift:
+  // a JS number `1 << h` is negative at h=31 and wraps at h=32.
+  const m = (1n << BigInt(massifHeight)) - 1n;
 
   // The number of leaves 'f' in every massif: f = (m + 1) / 2
   const f = (m + 1n) >> 1n;

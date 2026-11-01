@@ -8,7 +8,7 @@
  * With return path unification (Phase 9), ack also records leaf indices
  * to enable direct registration status queries from the DO.
  *
- * Request: CBOR { logId, seqLo, limit, firstLeafIndex, massifIndex, massifHeight }
+ * Request: CBOR { logId, seqLo, limit, firstLeafIndex, massifHeight }
  * Response: CBOR { acked: number }
  */
 

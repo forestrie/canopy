@@ -124,3 +124,48 @@ describe("SequencingQueue ackFirst", () => {
     expect(stats.pending).toBe(0);
   });
 });
+
+describe("SequencingQueue ackFirst massif height (FOR-620)", () => {
+  // massifHeight is one-based: a massif holds 2^(h-1) leaves (go-merklelog
+  // urkle.LeafCountForMassifHeight). The DO stores only the leaf index;
+  // readers derive the massif from it.
+
+  it("resolveContent returns the leaf index and no stored massif index", async () => {
+    const stub = getStub("ack-first-resolve-leaf-only");
+    const logId = new Uint8Array(16).fill(0x48).buffer;
+    const contentHash = new Uint8Array(32).fill(0x62).buffer;
+
+    const { seq } = await stub.enqueue(logId, contentHash);
+    await stub.ackFirst(logId, seq, 1, 8192, 14);
+
+    expect(await stub.resolveContent(contentHash)).toEqual({
+      leafIndex: 8192,
+    });
+  });
+
+  it("retains two massifs of sequenced entries at 2^(h-1) leaves each", async () => {
+    const stub = getStub("ack-first-retention-height");
+    const logId = new Uint8Array(16).fill(0x49).buffer;
+    const massifHeight = 3; // 4 leaves per massif -> retain 8 behind the max
+
+    const hashes = Array.from(
+      { length: 20 },
+      (_, i) => new Uint8Array(32).fill(i).buffer,
+    );
+    let firstSeq = 0;
+    for (const [i, contentHash] of hashes.entries()) {
+      const { seq } = await stub.enqueue(logId, contentHash);
+      if (i === 0) firstSeq = seq;
+    }
+    await stub.ackFirst(logId, firstSeq, 20, 0, massifHeight);
+
+    const retained: number[] = [];
+    for (const contentHash of hashes) {
+      const result = await stub.resolveContent(contentHash);
+      if (result) retained.push(result.leafIndex);
+    }
+
+    // Max leaf 19; entries with leaf_index < 19 - 8 are dropped.
+    expect(retained).toEqual([11, 12, 13, 14, 15, 16, 17, 18, 19]);
+  });
+});
