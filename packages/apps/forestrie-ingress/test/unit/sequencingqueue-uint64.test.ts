@@ -118,4 +118,31 @@ describe("SequencingQueue uint64 storage guards", () => {
       },
     );
   });
+
+  it("marks nothing sequenced when an ack fails part way through", async () => {
+    const name = "uint64-atomic-ack";
+    const stub = getStub(name);
+    const logId = new Uint8Array(16).fill(0x64).buffer;
+    const { seqLo } = await enqueueN(stub, logId, 2, 0x64);
+
+    // Assert inside the DO: an error escaping over RPC breaks the pool's
+    // per-test isolated storage. The second leaf, 2^64, cannot be encoded.
+    await runInDurableObject(
+      namespaceStub(name),
+      async (instance: SequencingQueue, state) => {
+        await expect(
+          instance.ackFirst(logId, seqLo, 2, UINT64_MAX, 40),
+        ).rejects.toThrow();
+        const sequenced = state.storage.sql
+          .exec<{
+            n: number;
+          }>(
+            "SELECT COUNT(*) AS n FROM queue_entries WHERE leaf_index IS NOT NULL",
+          )
+          .toArray()[0].n;
+        expect(sequenced).toBe(0);
+        expect((await instance.stats()).pending).toBe(2);
+      },
+    );
+  });
 });

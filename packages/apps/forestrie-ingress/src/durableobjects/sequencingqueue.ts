@@ -583,9 +583,27 @@ export class SequencingQueue extends DurableObject<Env> {
       return { acked: 0 };
     }
 
-    // Update each entry with its leaf_index and acked_at
+    // One transaction for the updates and the retention cleanup: a throw
+    // part way (e.g. a leaf past 2^64-1 from a caller that skipped the
+    // handler's bound) must leave every entry pending, not half acked.
     const now = Date.now();
-    for (let i = 0; i < toUpdate.length; i++) {
+    this.ctx.storage.transactionSync(() => {
+      this.markSequenced(toUpdate, firstLeafIndex, now);
+      this.dropBeyondRetention(logId, BigInt(retainCount));
+    });
+
+    const acked = toUpdate.length;
+    this.pendingCount = Math.max(0, this.pendingCount - acked);
+    return { acked };
+  }
+
+  /** Set consecutive be8 leaf indices from `firstLeafIndex` on `rows`. */
+  private markSequenced(
+    rows: { seq: number }[],
+    firstLeafIndex: bigint,
+    now: number,
+  ): void {
+    for (let i = 0; i < rows.length; i++) {
       const leafIndex = firstLeafIndex + BigInt(i);
 
       this.ctx.storage.sql.exec(
@@ -594,16 +612,17 @@ export class SequencingQueue extends DurableObject<Env> {
          WHERE seq = ?`,
         encodeUint64Be8(leafIndex),
         now,
-        toUpdate[i].seq,
+        rows[i].seq,
       );
     }
+  }
 
-    const acked = toUpdate.length;
-    this.pendingCount = Math.max(0, this.pendingCount - acked);
-
-    // Retention: keep retainCount entries behind the newest. The threshold
-    // is computed in bigint: SQL arithmetic on be8 BLOBs is not numeric, and
-    // the comparison parameter must be be8 too.
+  /**
+   * Retention: keep `retain` entries behind the log's newest leaf. The
+   * threshold is computed in bigint: SQL arithmetic on be8 BLOBs is not
+   * numeric, and the comparison parameter must be be8 too.
+   */
+  private dropBeyondRetention(logId: ArrayBuffer, retain: bigint): void {
     const maxRow = this.ctx.storage.sql
       .exec<{ max_leaf: ArrayBuffer | null }>(
         `SELECT MAX(leaf_index) AS max_leaf FROM queue_entries
@@ -612,7 +631,6 @@ export class SequencingQueue extends DurableObject<Env> {
       )
       .toArray();
     const maxLeaf = maxRow[0]?.max_leaf;
-    const retain = BigInt(retainCount);
     if (maxLeaf != null && decodeUint64Be8(maxLeaf) > retain) {
       this.ctx.storage.sql.exec(
         `DELETE FROM queue_entries
@@ -621,8 +639,6 @@ export class SequencingQueue extends DurableObject<Env> {
         encodeUint64Be8(decodeUint64Be8(maxLeaf) - retain),
       );
     }
-
-    return { acked };
   }
 
   /**

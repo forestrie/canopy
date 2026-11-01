@@ -312,5 +312,29 @@ describe("/queue/ack batch bounds", () => {
       {} as ExecutionContext,
     );
     expect(response.status).toBe(400);
+    const problem = (await response.json()) as ProblemDetails;
+    expect(problem.detail).toContain("2^64-1");
   });
+
+  // Above 64 a massif would hold more than 2^63 leaves, and the DO's
+  // retention window overflows a number. Reject before anything is written.
+  it.each([65, 1030, 2 ** 31])(
+    "rejects massifHeight %s with 400",
+    async (massifHeight) => {
+      const response = await worker.fetch(
+        createCborRequest("/queue/ack", "POST", {
+          logId: new Uint8Array(16).fill(0x7e),
+          seqLo: 1,
+          limit: 1,
+          firstLeafIndex: 0n,
+          massifHeight,
+        }),
+        testEnv,
+        {} as ExecutionContext,
+      );
+      expect(response.status).toBe(400);
+      const problem = (await response.json()) as ProblemDetails;
+      expect(problem.detail).toContain("massifHeight");
+    },
+  );
 });

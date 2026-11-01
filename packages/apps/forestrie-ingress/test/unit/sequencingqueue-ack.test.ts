@@ -152,6 +152,11 @@ describe("SequencingQueue ackFirst massif height (FOR-620)", () => {
     expect(retainedEntryCount(14)).toBe(32768);
     expect(() => retainedEntryCount(14.5)).toThrow(RangeError);
     expect(() => retainedEntryCount(0)).toThrow(RangeError);
+    // Above 64 the window overflows a number (Infinity near h=1026), so the
+    // pre-write guard must reject it rather than let it through.
+    expect(retainedEntryCount(64)).toBe(2 ** 65);
+    expect(() => retainedEntryCount(65)).toThrow(RangeError);
+    expect(() => retainedEntryCount(1030)).toThrow(RangeError);
   });
 
   it("retains four massifs of sequenced entries at 2^(h-1) leaves each", async () => {

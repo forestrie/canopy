@@ -15,6 +15,9 @@
  * carried as `bigint`. A batch that runs past 2^64-1, or whose last leaf
  * would fall in a massif beyond MAX_MASSIF_INDEX, is rejected: go-merklelog
  * cannot write that massif, so the sequencing result could never resolve.
+ * The bound uses the requested `limit`, not the rows the DO will find
+ * pending, so it can reject a batch the DO would only partly apply; ranger
+ * never sends such a batch.
  */
 
 import type { Env } from "../env.js";
@@ -26,6 +29,7 @@ import {
   massifIndexFromLeafIndex,
 } from "@forestrie/merklelog";
 import { encodeAckResponse } from "../encoding.js";
+import { MAX_MASSIF_HEIGHT } from "../durableobjects/retention.js";
 import {
   problemResponse,
   internalError,
@@ -104,21 +108,29 @@ export async function handleAck(
     if (
       typeof body.massifHeight !== "number" ||
       !Number.isInteger(body.massifHeight) ||
-      body.massifHeight < 1
+      body.massifHeight < 1 ||
+      body.massifHeight > MAX_MASSIF_HEIGHT
     ) {
       return problemResponse(
         400,
         PROBLEM_TYPES.INVALID_REQUEST,
         "Invalid request",
-        "massifHeight is required and must be a positive integer",
+        `massifHeight is required and must be an integer in [1, ${MAX_MASSIF_HEIGHT}]`,
       );
     }
 
     const lastLeafIndex = firstLeafIndex + BigInt(Math.max(body.limit, 1) - 1);
+    if (lastLeafIndex > UINT64_MAX) {
+      return problemResponse(
+        400,
+        PROBLEM_TYPES.INVALID_REQUEST,
+        "Invalid request",
+        `batch of ${body.limit} from leaf ${firstLeafIndex} runs past 2^64-1`,
+      );
+    }
     if (
-      lastLeafIndex > UINT64_MAX ||
       massifIndexFromLeafIndex(body.massifHeight, lastLeafIndex) >
-        MAX_MASSIF_INDEX
+      MAX_MASSIF_INDEX
     ) {
       return problemResponse(
         400,
