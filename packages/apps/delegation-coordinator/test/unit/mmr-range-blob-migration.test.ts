@@ -19,9 +19,11 @@ import {
 import { describe, expect, it } from "vitest";
 import { sha256Hex } from "../../src/certificate-key.js";
 import type { DelegationStoreDO } from "../../src/durableobjects/delegation-store.js";
-import type {
-  MmrRangeMigrationBudget,
-  MmrRangeMigrationChunkHook,
+import {
+  MmrRangeMigration,
+  type MmrRangeMigrationBudget,
+  type MmrRangeMigrationChunk,
+  type MmrRangeMigrationChunkHook,
 } from "../../src/durableobjects/mmr-range-migration.js";
 import {
   hex32ToWireLogIdBytes,
@@ -311,6 +313,27 @@ async function driveAlarmsToCompletion(stub: Stub): Promise<void> {
   throw new Error("range migration did not complete");
 }
 
+/**
+ * Sum the rows each event examined: a chunk with `chunkInEvent === 0` opens
+ * a new event.
+ */
+function examinedPerEvent(chunks: MmrRangeMigrationChunk[]): number[] {
+  const out: number[] = [];
+  for (const c of chunks) {
+    if (c.chunkInEvent === 0) out.push(0);
+    out[out.length - 1]! += c.examined;
+  }
+  return out;
+}
+
+async function schemaMetaKeys(stub: Stub): Promise<string[]> {
+  return runInDurableObject(stub, async (_i, state) =>
+    [...state.storage.sql.exec(`SELECT key FROM schema_meta ORDER BY key`)].map(
+      (r) => String(r.key),
+    ),
+  );
+}
+
 function be8Hex(v: bigint): string {
   return v.toString(16).padStart(16, "0").toUpperCase();
 }
@@ -331,7 +354,7 @@ describe("MMR range INTEGER → be8 BLOB in-place migration", () => {
     const pubkey = { hash: await sha256Hex(key), key };
     const expectedCert: Record<string, [string, string]> = {};
     const expectedPending: Record<string, [string, string]> = {};
-    const chunkCalls: Array<[string, number]> = [];
+    const chunkCalls: MmrRangeMigrationChunk[] = [];
 
     await seedLegacy(
       stub,
@@ -355,8 +378,8 @@ describe("MMR range INTEGER → be8 BLOB in-place migration", () => {
       },
       { chunkRows: 3, eventRows: 6, eventMs: 60_000 },
     );
-    await setChunkHook(stub, () => (phase, chunk) => {
-      chunkCalls.push([phase, chunk]);
+    await setChunkHook(stub, () => (chunk) => {
+      chunkCalls.push(chunk);
     });
 
     // First event converts at most one budget: range routes are refused.
@@ -380,8 +403,10 @@ describe("MMR range INTEGER → be8 BLOB in-place migration", () => {
     expect(after.triggers).toEqual(TRIGGERS);
     expect(after.quarantine).toEqual({});
     // 26 range rows at 3 per chunk and 6 per event: several events ran.
-    const events = chunkCalls.filter(([, chunk]) => chunk === 0).length;
-    expect(events).toBeGreaterThanOrEqual(4);
+    const perEvent = examinedPerEvent(chunkCalls);
+    expect(perEvent.length).toBeGreaterThanOrEqual(4);
+    expect(Math.max(...perEvent)).toBeLessThanOrEqual(6);
+    expect(await schemaMetaKeys(stub)).toEqual(["mmr_range_be8"]);
 
     const del = await getDelegation(stub, bigLog);
     expect(del.status).toBe(200);
@@ -437,8 +462,10 @@ describe("MMR range INTEGER → be8 BLOB in-place migration", () => {
     const seenMidChunk: string[][] = [];
     let failed = false;
     let certChunks = 0;
-    await setChunkHook(stub, (sql) => (phase) => {
-      if (failed || phase !== "delegation_certificates") return;
+    await setChunkHook(stub, (sql) => ({ phase, examined }) => {
+      if (failed || phase !== "delegation_certificates" || examined === 0) {
+        return;
+      }
       if (++certChunks !== 2) return;
       failed = true;
       seenMidChunk.push(
@@ -550,7 +577,7 @@ describe("MMR range INTEGER → be8 BLOB in-place migration", () => {
       },
       { chunkRows: 2, eventRows: 4, eventMs: 60_000 },
     );
-    await setChunkHook(stub, () => (phase) => {
+    await setChunkHook(stub, () => ({ phase }) => {
       if (phase === "webhook_deliveries") chunks.push(phase);
     });
 
@@ -591,6 +618,117 @@ describe("MMR range INTEGER → be8 BLOB in-place migration", () => {
       ].map((r) => `${String(r.name)}:${String(r.type)}`),
     );
     expect(declared).toEqual(["mmr_start:BLOB", "mmr_end:BLOB"]);
+  });
+
+  it("examines at most the window budget per event when most rows are already be8", async () => {
+    const stub = newStub("range-migration-mostly-be8");
+    const log = normalizeLogIdToHex32(randomUUID());
+    const key = testDelegatedCoseKey(67);
+    const pubkey = { hash: await sha256Hex(key), key };
+    const expected: Record<string, [string, string]> = {};
+    const chunks: MmrRangeMigrationChunk[] = [];
+    await seedLegacy(
+      stub,
+      (sql) => {
+        for (let i = 0; i < 40; i++) {
+          const v = BigInt(i) * 10n;
+          // Every tenth row is still INTEGER; the rest are already be8.
+          const asInt = i % 10 === 9;
+          const enc = (x: bigint) => {
+            const b = new Uint8Array(8);
+            new DataView(b.buffer).setBigUint64(0, x, false);
+            return b;
+          };
+          insertCert(
+            sql,
+            log,
+            `c${i}`,
+            asInt ? v : enc(v),
+            asInt ? v + 5n : enc(v + 5n),
+            pubkey,
+          );
+          expected[`c${i}`] = [be8Hex(v), be8Hex(v + 5n)];
+        }
+      },
+      { chunkRows: 4, eventRows: 8, eventMs: 60_000 },
+    );
+    await setChunkHook(stub, () => (chunk) => {
+      chunks.push(chunk);
+    });
+
+    expect((await getDelegation(stub, log)).status).toBe(503);
+    await driveAlarmsToCompletion(stub);
+
+    const perEvent = examinedPerEvent(chunks);
+    // 40 rows at 8 per event: every row is examined once, in bounded events.
+    expect(perEvent.reduce((a, b) => a + b, 0)).toBe(40);
+    expect(Math.max(...perEvent)).toBeLessThanOrEqual(8);
+    expect(perEvent.length).toBeGreaterThanOrEqual(5);
+    for (const c of chunks) expect(c.examined).toBeLessThanOrEqual(4);
+    expect((await inspect(stub)).certHex).toEqual(expected);
+    expect(await schemaMetaKeys(stub)).toEqual(["mmr_range_be8"]);
+  });
+
+  it("resumes from the persisted cursor after eviction", async () => {
+    const stub = newStub("range-migration-evicted");
+    const log = normalizeLogIdToHex32(randomUUID());
+    const key = testDelegatedCoseKey(68);
+    const pubkey = { hash: await sha256Hex(key), key };
+    const expected: Record<string, [string, string]> = {};
+    await seedLegacy(
+      stub,
+      (sql) => {
+        for (let i = 0; i < 30; i++) {
+          insertCert(sql, log, `c${i}`, BigInt(i), BigInt(i) + 1n, pubkey);
+          expected[`c${i}`] = [be8Hex(BigInt(i)), be8Hex(BigInt(i) + 1n)];
+        }
+      },
+      { chunkRows: 4, eventRows: 8, eventMs: 60_000 },
+    );
+    // The first event may convert two windows; after that the DO's own
+    // events (alarms) make no progress, so the cursor is deterministic.
+    let windowsAllowed = 2;
+    await setChunkHook(stub, () => (chunk) => {
+      if (chunk.examined === 0) return;
+      if (windowsAllowed-- <= 0) throw new Error("paused for the test");
+    });
+    expect((await getDelegation(stub, log)).status).toBe(503);
+
+    // A fresh migration object (no in-memory state, as after eviction)
+    // resumes from the cursor persisted with the last committed window.
+    await runInDurableObject(stub, async (instance, state) => {
+      const progress = [
+        ...state.storage.sql.exec(
+          `SELECT value FROM schema_meta WHERE key = 'mmr_range_be8_progress'`,
+        ),
+      ];
+      expect(progress).toHaveLength(1);
+      const before = JSON.parse(String(progress[0]!.value)) as {
+        phase: string;
+        cursor: number;
+      };
+      expect(before.phase).toBe("delegation_certificates");
+      expect(before.cursor).toBe(8);
+
+      const seen: MmrRangeMigrationChunk[] = [];
+      const fresh = new MmrRangeMigration(state.storage);
+      fresh.run({ chunkRows: 4, eventRows: 4, eventMs: 60_000 }, (c) => {
+        seen.push(c);
+      });
+      const window = seen.find((c) => c.examined > 0)!;
+      expect(window.from).toBe(before.cursor);
+      while (!fresh.run({ chunkRows: 4, eventRows: 8, eventMs: 60_000 })) {
+        // keep going
+      }
+      (instance as unknown as MigrationSeams).rangeMigrationChunkHook = null;
+    });
+
+    await runInDurableObject(stub, async (instance) => {
+      (instance as unknown as MigrationSeams).initialized = false;
+    });
+    expect((await getDelegation(stub, log)).status).toBe(200);
+    expect((await inspect(stub)).certHex).toEqual(expected);
+    expect(await schemaMetaKeys(stub)).toEqual(["mmr_range_be8"]);
   });
 
   it("is idempotent: a second boot after completion changes nothing", async () => {
