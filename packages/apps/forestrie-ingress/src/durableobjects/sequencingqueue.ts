@@ -242,7 +242,8 @@ export class SequencingQueue extends DurableObject<Env> {
    * Adds columns that were introduced in later versions.
    * Phase 9 added: the leaf_index column and related indexes. (Its
    * massif_index column was removed by FOR-620: readers derive the massif
-   * from leaf_index. Old DOs keep the unused column until the lane reset.)
+   * from leaf_index. Old DOs keep the column, nullable and never read or
+   * written: every INSERT names its columns and nothing selects `*`.)
    */
   private migrateSchema(): void {
     try {

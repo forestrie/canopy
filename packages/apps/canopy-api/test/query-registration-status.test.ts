@@ -13,8 +13,18 @@ import {
   v2MassifObjectKey,
 } from "@forestrie/merklelog";
 
+import { encodeCborDeterministic } from "@forestrie/encoding";
 import type { Env } from "../src/index";
 import { readIdtimestampFromMassif } from "../src/scrapi/sequencing-result.js";
+import { queryRegistrationStatus } from "../src/scrapi/query-registration-status.js";
+import { encodeEntryId } from "../src/scrapi/entry-id.js";
+import { FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID } from "../src/forest/forest-genesis-labels.js";
+import {
+  logIdToStorageSegment,
+  logIdToWireBytes,
+  toPaddedWire32,
+} from "../src/grant/log-id-wire.js";
+import { validGenesisV2Es256CborMap } from "./helpers/genesis-v2-body.js";
 
 // Cast the test env to our Env type.
 const testEnv = env as unknown as Env;
@@ -373,7 +383,9 @@ describe("query-registration-status byte-range read", () => {
     // urkle.LeafCountForMassifHeight). The SequencingQueue used to store a
     // massif index computed with 2^h; for leaves past the first massif that
     // names an earlier massif that exists, so the read silently returned
-    // another leaf's idtimestamp. A decoy at the 2^h index catches that.
+    // another leaf's idtimestamp. Each case plants a decoy at the 2^h index:
+    // the read must place the leaf by 2^(h-1) alone. The route-level test
+    // below covers a queue still reporting the stale index.
     const cases: {
       massifHeight: number;
       leafIndex: number;
@@ -420,6 +432,76 @@ describe("query-registration-status byte-range read", () => {
         ).resolves.toBe(expectedIdtimestamp);
       });
     }
+
+    // The route itself: a SequencingQueue that still reports the old
+    // 2^h-based massifIndex must not steer the read. h=14, leaf 8192 lives
+    // in massif 1; the stale index (0) names a decoy that exists.
+    it("registration status ignores a stale massifIndex from the queue", async () => {
+      const massifHeight = 14;
+      const leafIndex = 8192;
+      const expectedIdtimestamp = 0x0620062006200620n;
+      const bootstrapLogId = crypto.randomUUID();
+
+      const genesis = validGenesisV2Es256CborMap();
+      genesis.set(
+        FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID,
+        toPaddedWire32(logIdToWireBytes(bootstrapLogId)),
+      );
+      const storageSeg = logIdToStorageSegment(
+        logIdToWireBytes(bootstrapLogId),
+      );
+      await testEnv.R2_GRANTS.put(
+        `forests/forest/${storageSeg}/genesis.cbor`,
+        encodeCborDeterministic(genesis) as Uint8Array,
+      );
+
+      await testEnv.R2_MMRS.put(
+        v2MassifObjectKey(massifHeight, logId, 1),
+        buildMassifWithIdtimestamps(
+          massifHeight,
+          1,
+          new Map([[0, expectedIdtimestamp]]),
+        ),
+      );
+      await testEnv.R2_MMRS.put(
+        v2MassifObjectKey(massifHeight, logId, 0),
+        buildMassifWithIdtimestamps(
+          massifHeight,
+          0,
+          new Map([[0, 0xdec0dec0dec0dec0n]]),
+        ),
+      );
+
+      const staleQueue = {
+        idFromName: () => ({}) as DurableObjectId,
+        get: () =>
+          ({
+            resolveContent: async () => ({ leafIndex, massifIndex: 0 }),
+          }) as never,
+      };
+      const contentHash = "ab".repeat(32);
+      const response = await queryRegistrationStatus(
+        new Request(
+          `http://localhost/logs/${bootstrapLogId}/${logId}/entries/${contentHash}`,
+        ),
+        [bootstrapLogId, logId, "entries", contentHash],
+        staleQueue,
+        testEnv.R2_MMRS,
+        massifHeight,
+        "1",
+        testEnv.R2_GRANTS,
+      );
+
+      expect(response.status).toBe(303);
+      // Leaf 8192 is MMR index 16383 (2 * 8192 - popcount(8192)).
+      const entryId = encodeEntryId({
+        idtimestamp: expectedIdtimestamp,
+        mmrIndex: 16383n,
+      });
+      expect(response.headers.get("Location")).toContain(
+        `/entries/${entryId}/receipt`,
+      );
+    });
   });
 
   describe("big-endian reading", () => {

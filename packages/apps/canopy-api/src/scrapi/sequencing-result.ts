@@ -6,6 +6,7 @@
 import {
   leafCountForMassifHeight,
   massifIndexFromLeafIndex,
+  mmrIndex,
   urkleLeafTableStartByteOffset,
   v2MassifObjectKey,
 } from "@forestrie/merklelog";
@@ -17,20 +18,11 @@ const LEAF_RECORD_BYTES = 128;
 export const IDTIMESTAMP_BYTES = 8;
 
 /**
- * Compute MMR index from leaf index (go-merklelog/mmr/mmrindex.go MMRIndex).
+ * MMR index of a leaf (go-merklelog mmr.MMRIndex), for the entry id. Takes
+ * the number leafIndex resolveContent returns.
  */
 export function mmrIndexFromLeafIndex(leafIndex: number): bigint {
-  let sum = 0n;
-  let current = BigInt(leafIndex);
-
-  while (current > 0n) {
-    const h = BigInt(current.toString(2).length);
-    sum += (1n << h) - 1n;
-    const half = 1n << (h - 1n);
-    current -= half;
-  }
-
-  return sum;
+  return mmrIndex(BigInt(leafIndex));
 }
 
 /**

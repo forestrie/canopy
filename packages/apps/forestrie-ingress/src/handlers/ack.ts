@@ -87,12 +87,17 @@ export async function handleAck(
         "firstLeafIndex is required and must be a non-negative number",
       );
     }
-    if (typeof body.massifHeight !== "number" || body.massifHeight < 1) {
+    // One-based height ranger commits at; the DO sizes retention from it.
+    if (
+      typeof body.massifHeight !== "number" ||
+      !Number.isInteger(body.massifHeight) ||
+      body.massifHeight < 1
+    ) {
       return problemResponse(
         400,
         PROBLEM_TYPES.INVALID_REQUEST,
         "Invalid request",
-        "massifHeight is required and must be a positive number",
+        "massifHeight is required and must be a positive integer",
       );
     }
 
