@@ -10,9 +10,12 @@
  * (`V1MMRBlobNameFmt = "%016d.log"`, `V1MMRSignedTreeHeadBlobNameFmt =
  * "%016d.sth"`) and its reader
  * [objectindexfrompath.go](https://github.com/forestrie/go-merklelog/blob/main/massifs/storage/objectindexfrompath.go)
- * (`strconv.Atoi`). Every TypeScript reader and writer of these keys goes
- * through the functions here (FOR-621: an earlier reader parsed hex, which
- * agrees with the writer only for indices 0-9).
+ * (`strconv.Atoi`). canopy-api builds its R2 keys through the functions
+ * here (FOR-621: an earlier reader parsed hex, which agrees with the writer
+ * only for indices 0-9). Code outside this package that spells a key by hand
+ * (delegation-coordinator `seal-hint.ts`, test fixtures, demos) uses only
+ * index 0, which reads the same in any radix; anything that needs another
+ * index must use these helpers.
  */
 
 /** Width of the massif index segment in an object key. */
