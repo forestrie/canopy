@@ -187,3 +187,130 @@ function indexOfBytes(haystack: Uint8Array, needle: Uint8Array): number {
   }
   return -1;
 }
+
+/**
+ * firstLeafIndex is a uint64 on the wire: arbor's ranger sends it as CBOR
+ * major type 0 (pinned by `ackGoldenUint64MaxHex` in arbor
+ * services/ranger/src/consumer/ingress/ack_test.go; change both together).
+ */
+describe("/queue/ack uint64 firstLeafIndex", () => {
+  const GOLDEN_LOG_ID = Uint8Array.from({ length: 16 }, (_, i) => 0x10 + i);
+  const GOLDEN_PREFIX =
+    "a5" +
+    "656c696d697401" + // "limit": 1
+    "656c6f6749645010" +
+    "1112131415161718191a1b1c1d1e1f" + // "logId"
+    "657365714c6f01" + // "seqLo": 1
+    "6c6d6173736966486569676874" +
+    "1821" + // "massifHeight": 33
+    "6e66697273744c656166496e646578"; // "firstLeafIndex"
+  // arbor ranger golden: firstLeafIndex 2^64-1, massifHeight 33 (the lowest
+  // height whose massifs, 2^32 leaves each, can reach 2^64-1).
+  const GOLDEN_HEX = GOLDEN_PREFIX + "1bffffffffffffffff";
+
+  function rawCborAck(hex: string): Request {
+    const bytes = Uint8Array.from(hex.match(/../g)!, (b) => parseInt(b, 16));
+    return new Request(`http://localhost/queue/ack?shard=${DEFAULT_SHARD}`, {
+      method: "POST",
+      body: bytes,
+      headers: { "Content-Type": "application/cbor" },
+    });
+  }
+
+  async function post(request: Request): Promise<Response> {
+    return worker.fetch(request, testEnv, {} as ExecutionContext);
+  }
+
+  it("accepts the ranger's golden ack at 2^64-1 and records it exactly", async () => {
+    const stub = getStub(DEFAULT_SHARD);
+    const contentHash = new Uint8Array(32).fill(0x7a);
+    const { seq } = await stub.enqueue(
+      GOLDEN_LOG_ID.buffer,
+      contentHash.buffer,
+    );
+    expect(seq).toBe(1); // the golden body acks seqLo 1
+
+    const response = await post(rawCborAck(GOLDEN_HEX));
+    expect(response.status).toBe(200);
+    expect(decodeAckResponse(await response.arrayBuffer()).acked).toBe(1);
+
+    const UINT64_MAX = (1n << 64n) - 1n;
+    // Massif (2^64-1) / 2^32 = MAX_MASSIF_INDEX: the last writable massif.
+    expect(await stub.resolveContent(contentHash.buffer)).toEqual({
+      leafIndex: UINT64_MAX,
+    });
+  });
+
+  it("accepts 2^53+1 encoded by the canopy CBOR encoder", async () => {
+    const stub = getStub(DEFAULT_SHARD);
+    const logId = new Uint8Array(16).fill(0x7b);
+    const contentHash = new Uint8Array(32).fill(0x7b);
+    const { seq } = await stub.enqueue(logId.buffer, contentHash.buffer);
+
+    const response = await post(
+      createCborRequest("/queue/ack", "POST", {
+        logId,
+        seqLo: seq,
+        limit: 1,
+        firstLeafIndex: (1n << 53n) + 1n,
+        massifHeight: 24,
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(await stub.resolveContent(contentHash.buffer)).toEqual({
+      leafIndex: (1n << 53n) + 1n,
+    });
+  });
+
+  it.each([
+    ["a float", "f93e00"], // 1.5, shortest (half) form
+    ["a negative integer", "20"], // -1
+    ["a text string", "6131"], // "1"
+  ])("rejects firstLeafIndex as %s with 400", async (_, valueHex) => {
+    const response = await post(rawCborAck(GOLDEN_PREFIX + valueHex));
+    expect(response.status).toBe(400);
+    const problem = (await response.json()) as ProblemDetails;
+    expect(problem.detail).toContain("firstLeafIndex");
+  });
+
+  // A massif of one-based height h holds 2^(h-1) leaves, so the last leaf
+  // Go can write is 2^(31+h) - 1. h=32 pins the convention: with 2^h leaves
+  // per massif it would be accepted.
+  it.each([
+    ["h=14: massif 2^51 - 1", 14],
+    ["h=32: massif 2^33 - 1", 32],
+  ])(
+    "rejects 2^64-1 when its massif exceeds MAX_MASSIF_INDEX (%s)",
+    async (_, h) => {
+      const response = await post(
+        createCborRequest("/queue/ack", "POST", {
+          logId: new Uint8Array(16).fill(0x7c),
+          seqLo: 1,
+          limit: 1,
+          firstLeafIndex: (1n << 64n) - 1n,
+          massifHeight: h,
+        }),
+      );
+      expect(response.status).toBe(400);
+      const problem = (await response.json()) as ProblemDetails;
+      expect(problem.detail).toContain("massif index");
+    },
+  );
+});
+
+describe("/queue/ack batch bounds", () => {
+  it("rejects a batch that runs past 2^64-1", async () => {
+    const response = await worker.fetch(
+      createCborRequest("/queue/ack", "POST", {
+        logId: new Uint8Array(16).fill(0x7d),
+        seqLo: 1,
+        limit: 2,
+        firstLeafIndex: (1n << 64n) - 1n,
+        massifHeight: 40,
+      }),
+      testEnv,
+      {} as ExecutionContext,
+    );
+    expect(response.status).toBe(400);
+  });
+});

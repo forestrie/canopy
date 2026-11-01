@@ -18,6 +18,7 @@ import {
   type QueueStats,
   type EnqueueExtras,
 } from "@canopy/forestrie-ingress-types";
+import { decodeUint64Be8, encodeUint64Be8 } from "@forestrie/encoding";
 import type { Env } from "../env.js";
 import { retainedEntryCount } from "./retention.js";
 
@@ -130,11 +131,18 @@ export class SequencingQueue extends DurableObject<Env> {
   /**
    * Ensure the SQLite schema is created.
    * Called lazily on first operation.
+   *
+   * `leaf_index` is a uint64 stored as an 8-byte big-endian BLOB
+   * (`encodeUint64Be8` in `@forestrie/encoding`): SQLite `INTEGER` is signed,
+   * and memcmp order on be8 is numeric order, so the `(log_id, leaf_index)`
+   * index and range comparisons stay correct. Every value and parameter must
+   * go through the codec; triggers reject anything else, because SQLite sorts
+   * every INTEGER below every BLOB. No massif index is stored: readers derive
+   * it from leaf_index (FOR-620).
    */
   private ensureSchema(): void {
     if (this.initialized) return;
 
-    // Create base tables first (without Phase 9 columns for existing DOs)
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS queue_entries (
         seq INTEGER PRIMARY KEY,
@@ -147,8 +155,8 @@ export class SequencingQueue extends DurableObject<Env> {
         visible_after INTEGER,
         attempts INTEGER NOT NULL DEFAULT 0,
         enqueued_at INTEGER NOT NULL,
-        -- Sequencing result fields (NULL until sequenced)
-        leaf_index INTEGER DEFAULT NULL,
+        -- Sequencing result (NULL until sequenced): uint64 be8
+        leaf_index BLOB DEFAULT NULL,
         acked_at INTEGER DEFAULT NULL
       );
 
@@ -160,6 +168,12 @@ export class SequencingQueue extends DurableObject<Env> {
 
       CREATE INDEX IF NOT EXISTS idx_attempts
         ON queue_entries (attempts);
+
+      CREATE INDEX IF NOT EXISTS idx_content_hash
+        ON queue_entries (content_hash);
+
+      CREATE INDEX IF NOT EXISTS idx_log_leaf
+        ON queue_entries (log_id, leaf_index);
 
       CREATE TABLE IF NOT EXISTS dead_letters (
         seq INTEGER PRIMARY KEY,
@@ -176,19 +190,8 @@ export class SequencingQueue extends DurableObject<Env> {
       );
     `);
 
-    // Schema migration: add leaf_index and acked_at columns if missing
-    // MUST run BEFORE creating indexes that reference these columns
-    // These columns were added in Phase 9 (Return Path Unification)
-    this.migrateSchema();
-
-    // Create indexes that depend on Phase 9 columns (after migration)
-    this.ctx.storage.sql.exec(`
-      CREATE INDEX IF NOT EXISTS idx_content_hash
-        ON queue_entries (content_hash);
-
-      CREATE INDEX IF NOT EXISTS idx_log_leaf
-        ON queue_entries (log_id, leaf_index);
-    `);
+    this.assertUint64LeafIndexSchema();
+    this.installLeafIndexTriggers();
 
     this.initialized = true;
 
@@ -197,23 +200,56 @@ export class SequencingQueue extends DurableObject<Env> {
   }
 
   /**
+   * Refuse storage created before leaf indices were uint64 be8 BLOBs.
+   *
+   * `CREATE TABLE IF NOT EXISTS` leaves an older table's INTEGER column in
+   * place, and INTEGER rows would mis-compare against be8 parameters. There
+   * is no migration: the queue holds only transient state, so the deploy
+   * resets it (`devResetStorage`, see docs/agents/gotchas.md).
+   */
+  private assertUint64LeafIndexSchema(): void {
+    const columns = this.ctx.storage.sql
+      .exec<{ name: string; type: string }>("PRAGMA table_info(queue_entries)")
+      .toArray();
+    const col = columns.find((c) => c.name === "leaf_index");
+    if (col?.type.toUpperCase() !== "BLOB") {
+      throw new Error(
+        `SequencingQueue storage predates uint64 leaf indices ` +
+          `(leaf_index is ${col?.type ?? "missing"}); reset this queue`,
+      );
+    }
+  }
+
+  /**
+   * `BEFORE INSERT` / `BEFORE UPDATE` triggers that abort any write leaving
+   * `leaf_index` neither NULL nor an 8-byte BLOB.
+   */
+  private installLeafIndexTriggers(): void {
+    const valid =
+      "(NEW.leaf_index IS NULL OR " +
+      "(typeof(NEW.leaf_index) = 'blob' AND length(NEW.leaf_index) = 8))";
+    for (const op of ["INSERT", "UPDATE"]) {
+      this.ctx.storage.sql.exec(`
+        CREATE TRIGGER IF NOT EXISTS trg_queue_entries_leaf_index_${op.toLowerCase()}
+        BEFORE ${op} ON queue_entries
+        WHEN NOT ${valid}
+        BEGIN
+          SELECT RAISE(ABORT, 'queue_entries: leaf_index must be NULL or an 8-byte big-endian BLOB');
+        END
+      `);
+    }
+  }
+
+  /**
    * Initialize in-memory counters from SQLite state.
    * Called once after schema creation.
    */
   private initializeFromStorage(): void {
-    // Check if leaf_index column exists (for backwards compatibility)
-    const columns = this.ctx.storage.sql
-      .exec<{ name: string }>("PRAGMA table_info(queue_entries)")
-      .toArray();
-    const hasLeafIndex = columns.some((c) => c.name === "leaf_index");
-
     // Get pending count (only entries not yet sequenced)
-    // If leaf_index column doesn't exist, count all entries as pending
-    const pendingQuery = hasLeafIndex
-      ? "SELECT COUNT(*) as cnt FROM queue_entries WHERE leaf_index IS NULL"
-      : "SELECT COUNT(*) as cnt FROM queue_entries";
     const countResult = this.ctx.storage.sql
-      .exec<{ cnt: number }>(pendingQuery)
+      .exec<{
+        cnt: number;
+      }>("SELECT COUNT(*) as cnt FROM queue_entries WHERE leaf_index IS NULL")
       .toArray();
     this.pendingCount = countResult[0]?.cnt ?? 0;
 
@@ -235,52 +271,6 @@ export class SequencingQueue extends DurableObject<Env> {
       .toArray();
     const maxSeq = maxSeqResult[0]?.max_seq ?? 0;
     this.nextSeq = (maxSeq ?? 0) + 1;
-  }
-
-  /**
-   * Migrate schema from older versions.
-   * Adds columns that were introduced in later versions.
-   * Phase 9 added: the leaf_index column and related indexes. (Its
-   * massif_index column was removed by FOR-620: readers derive the massif
-   * from leaf_index. Old DOs keep the column, nullable and never read or
-   * written: every INSERT names its columns and nothing selects `*`.)
-   */
-  private migrateSchema(): void {
-    try {
-      // Check if leaf_index column exists by querying table info
-      const columns = this.ctx.storage.sql
-        .exec<{ name: string }>("PRAGMA table_info(queue_entries)")
-        .toArray();
-      const columnNames = new Set(columns.map((c) => c.name));
-
-      console.log("[SequencingQueue] migrateSchema: existing columns", {
-        columns: Array.from(columnNames),
-        hasLeafIndex: columnNames.has("leaf_index"),
-      });
-
-      // Add leaf_index if missing (Phase 9)
-      if (!columnNames.has("leaf_index")) {
-        console.log(
-          "[SequencingQueue] migrateSchema: adding leaf_index column",
-        );
-        this.ctx.storage.sql.exec(
-          "ALTER TABLE queue_entries ADD COLUMN leaf_index INTEGER DEFAULT NULL",
-        );
-      }
-
-      // Add acked_at if missing (latency measurement)
-      if (!columnNames.has("acked_at")) {
-        console.log("[SequencingQueue] migrateSchema: adding acked_at column");
-        this.ctx.storage.sql.exec(
-          "ALTER TABLE queue_entries ADD COLUMN acked_at INTEGER DEFAULT NULL",
-        );
-      }
-
-      console.log("[SequencingQueue] migrateSchema: complete");
-    } catch (error) {
-      console.error("[SequencingQueue] migrateSchema: failed", error);
-      throw error;
-    }
   }
 
   /**
@@ -553,7 +543,9 @@ export class SequencingQueue extends DurableObject<Env> {
    * massifHeight is the one-based height ranger commits massifs at; a massif
    * holds 2^(h-1) leaves (leafCountForMassifHeight). It only sizes the
    * cleanup that runs on each ack (see {@link retainedEntryCount}). Readers
-   * derive the massif from leaf_index; none is stored.
+   * derive the massif from leaf_index; none is stored. Leaf indices are
+   * uint64 `bigint`; the ack handler has already bounded the batch to
+   * MAX_MASSIF_INDEX and 2^64-1.
    *
    * See: arbor/docs/arc-cloudflare-do-ingress.md section 3.12
    */
@@ -561,7 +553,7 @@ export class SequencingQueue extends DurableObject<Env> {
     logId: ArrayBuffer,
     seqLo: number,
     limit: number,
-    firstLeafIndex: number,
+    firstLeafIndex: bigint,
     massifHeight: number,
   ): Promise<{ acked: number }> {
     this.ensureSchema();
@@ -594,13 +586,13 @@ export class SequencingQueue extends DurableObject<Env> {
     // Update each entry with its leaf_index and acked_at
     const now = Date.now();
     for (let i = 0; i < toUpdate.length; i++) {
-      const leafIndex = firstLeafIndex + i;
+      const leafIndex = firstLeafIndex + BigInt(i);
 
       this.ctx.storage.sql.exec(
         `UPDATE queue_entries
          SET leaf_index = ?, visible_after = NULL, acked_at = ?
          WHERE seq = ?`,
-        leafIndex,
+        encodeUint64Be8(leafIndex),
         now,
         toUpdate[i].seq,
       );
@@ -609,19 +601,26 @@ export class SequencingQueue extends DurableObject<Env> {
     const acked = toUpdate.length;
     this.pendingCount = Math.max(0, this.pendingCount - acked);
 
-    this.ctx.storage.sql.exec(
-      `DELETE FROM queue_entries
-       WHERE log_id = ?
-         AND leaf_index IS NOT NULL
-         AND leaf_index < (
-           SELECT COALESCE(MAX(leaf_index), 0) - ?
-           FROM queue_entries
-           WHERE log_id = ? AND leaf_index IS NOT NULL
-         )`,
-      logId,
-      retainCount,
-      logId,
-    );
+    // Retention: keep retainCount entries behind the newest. The threshold
+    // is computed in bigint: SQL arithmetic on be8 BLOBs is not numeric, and
+    // the comparison parameter must be be8 too.
+    const maxRow = this.ctx.storage.sql
+      .exec<{ max_leaf: ArrayBuffer | null }>(
+        `SELECT MAX(leaf_index) AS max_leaf FROM queue_entries
+         WHERE log_id = ? AND leaf_index IS NOT NULL`,
+        logId,
+      )
+      .toArray();
+    const maxLeaf = maxRow[0]?.max_leaf;
+    const retain = BigInt(retainCount);
+    if (maxLeaf != null && decodeUint64Be8(maxLeaf) > retain) {
+      this.ctx.storage.sql.exec(
+        `DELETE FROM queue_entries
+         WHERE log_id = ? AND leaf_index IS NOT NULL AND leaf_index < ?`,
+        logId,
+        encodeUint64Be8(decodeUint64Be8(maxLeaf) - retain),
+      );
+    }
 
     return { acked };
   }
@@ -637,11 +636,11 @@ export class SequencingQueue extends DurableObject<Env> {
    */
   async resolveContent(
     contentHash: ArrayBuffer,
-  ): Promise<{ leafIndex: number } | null> {
+  ): Promise<{ leafIndex: bigint } | null> {
     this.ensureSchema();
 
     const result = this.ctx.storage.sql
-      .exec<{ leaf_index: number }>(
+      .exec<{ leaf_index: ArrayBuffer }>(
         `SELECT leaf_index
          FROM queue_entries
          WHERE content_hash = ? AND leaf_index IS NOT NULL`,
@@ -653,7 +652,7 @@ export class SequencingQueue extends DurableObject<Env> {
       return null;
     }
 
-    return { leafIndex: result[0].leaf_index };
+    return { leafIndex: decodeUint64Be8(result[0].leaf_index) };
   }
 
   /**
@@ -667,7 +666,7 @@ export class SequencingQueue extends DurableObject<Env> {
       contentHash: string;
       enqueuedAt: number;
       ackedAt: number | null;
-      leafIndex: number | null;
+      leafIndex: bigint | null;
     }>
   > {
     this.ensureSchema();
@@ -679,7 +678,7 @@ export class SequencingQueue extends DurableObject<Env> {
         content_hash: ArrayBuffer;
         enqueued_at: number;
         acked_at: number | null;
-        leaf_index: number | null;
+        leaf_index: ArrayBuffer | null;
       }>(
         `SELECT seq, log_id, content_hash, enqueued_at, acked_at, leaf_index
          FROM queue_entries
@@ -695,7 +694,7 @@ export class SequencingQueue extends DurableObject<Env> {
       contentHash: this.bufferToHex(r.content_hash),
       enqueuedAt: r.enqueued_at,
       ackedAt: r.acked_at,
-      leafIndex: r.leaf_index,
+      leafIndex: r.leaf_index === null ? null : decodeUint64Be8(r.leaf_index),
     }));
   }
 

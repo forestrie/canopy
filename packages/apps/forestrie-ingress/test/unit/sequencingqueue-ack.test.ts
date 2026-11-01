@@ -27,7 +27,7 @@ describe("SequencingQueue ackFirst", () => {
     expect(stats.pending).toBe(5);
 
     // Ack first 3 entries starting from seq1
-    const result = await stub.ackFirst(logId, seq1.seq, 3, 0, 14);
+    const result = await stub.ackFirst(logId, seq1.seq, 3, 0n, 14);
     expect(result.acked).toBe(3);
 
     // Stats should reflect remaining
@@ -51,7 +51,7 @@ describe("SequencingQueue ackFirst", () => {
 
     // Ack first 2 entries for logA starting from seqA1
     // Should mark entries with seq 1 and 3 as sequenced (the first 2 for logA)
-    const result = await stub.ackFirst(logIdA, seqA1.seq, 2, 0, 14);
+    const result = await stub.ackFirst(logIdA, seqA1.seq, 2, 0n, 14);
     expect(result.acked).toBe(2);
 
     // Should have 3 entries left (1 for logA, 2 for logB)
@@ -75,7 +75,7 @@ describe("SequencingQueue ackFirst", () => {
     expect(stats.pending).toBe(4);
 
     // Ack only logId1's entries
-    const result = await stub.ackFirst(logId1, seq1.seq, 2, 0, 14);
+    const result = await stub.ackFirst(logId1, seq1.seq, 2, 0n, 14);
     expect(result.acked).toBe(2);
 
     // logId2's entries should remain
@@ -90,7 +90,7 @@ describe("SequencingQueue ackFirst", () => {
 
     await stub.enqueue(logId, contentHash);
 
-    const result = await stub.ackFirst(logId, 1, 0, 0, 14);
+    const result = await stub.ackFirst(logId, 1, 0, 0n, 14);
     expect(result.acked).toBe(0);
 
     const stats = await stub.stats();
@@ -101,7 +101,7 @@ describe("SequencingQueue ackFirst", () => {
     const stub = getStub("ack-first-empty-test");
     const logId = new Uint8Array(16).fill(0x46).buffer;
 
-    const result = await stub.ackFirst(logId, 1, 10, 0, 14);
+    const result = await stub.ackFirst(logId, 1, 10, 0n, 14);
     expect(result.acked).toBe(0);
   });
 
@@ -113,11 +113,11 @@ describe("SequencingQueue ackFirst", () => {
     const { seq } = await stub.enqueue(logId, contentHash);
 
     // First ack marks the entry as sequenced
-    const result1 = await stub.ackFirst(logId, seq, 1, 0, 14);
+    const result1 = await stub.ackFirst(logId, seq, 1, 0n, 14);
     expect(result1.acked).toBe(1);
 
     // Second ack on same params should return 0 (already sequenced)
-    const result2 = await stub.ackFirst(logId, seq, 1, 0, 14);
+    const result2 = await stub.ackFirst(logId, seq, 1, 0n, 14);
     expect(result2.acked).toBe(0);
 
     // Stats should still show 0 pending
@@ -137,10 +137,10 @@ describe("SequencingQueue ackFirst massif height (FOR-620)", () => {
     const contentHash = new Uint8Array(32).fill(0x62).buffer;
 
     const { seq } = await stub.enqueue(logId, contentHash);
-    await stub.ackFirst(logId, seq, 1, 8192, 14);
+    await stub.ackFirst(logId, seq, 1, 8192n, 14);
 
     expect(await stub.resolveContent(contentHash)).toEqual({
-      leafIndex: 8192,
+      leafIndex: 8192n,
     });
   });
 
@@ -168,9 +168,9 @@ describe("SequencingQueue ackFirst massif height (FOR-620)", () => {
       const { seq } = await stub.enqueue(logId, contentHash);
       if (i === 0) firstSeq = seq;
     }
-    await stub.ackFirst(logId, firstSeq, 30, 0, massifHeight);
+    await stub.ackFirst(logId, firstSeq, 30, 0n, massifHeight);
 
-    const retained: number[] = [];
+    const retained: bigint[] = [];
     for (const contentHash of hashes) {
       const result = await stub.resolveContent(contentHash);
       if (result) retained.push(result.leafIndex);
@@ -178,6 +178,8 @@ describe("SequencingQueue ackFirst massif height (FOR-620)", () => {
 
     // Max leaf 29; entries with leaf_index < 29 - 16 are dropped, so the
     // max and the 16 behind it (17 rows) remain.
-    expect(retained).toEqual(Array.from({ length: 17 }, (_, i) => 13 + i));
+    expect(retained).toEqual(
+      Array.from({ length: 17 }, (_, i) => BigInt(13 + i)),
+    );
   });
 });
