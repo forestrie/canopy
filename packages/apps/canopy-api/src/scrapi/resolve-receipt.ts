@@ -29,7 +29,11 @@ import {
   readProtectedTreeSize2,
 } from "@forestrie/encoding";
 
-import { v2CheckpointObjectKey, v2MassifObjectKey } from "@forestrie/merklelog";
+import {
+  MAX_MASSIF_INDEX,
+  v2CheckpointObjectKey,
+  v2MassifObjectKey,
+} from "@forestrie/merklelog";
 import { CBOR_CONTENT_TYPES } from "../cbor-api/cbor-content-types.js";
 import { NO_STORE_HEADERS } from "../cbor-api/cache-policy.js";
 import { cborResponse } from "../cbor-api/cbor-response.js";
@@ -126,6 +130,12 @@ export async function resolveReceipt(
     const { mmrIndex } = decodeEntryId(entryIdRaw);
 
     const massifIndex = massifIndexFromMMRIndex(massifHeight, mmrIndex);
+    // entryId is client-supplied; an index Go cannot write cannot exist in R2.
+    if (massifIndex > MAX_MASSIF_INDEX) {
+      return ClientErrors.notFound(
+        "Entry receipt not found (checkpoint missing)",
+      );
+    }
     const checkpointKey = v2CheckpointObjectKey(
       massifHeight,
       logID,
@@ -808,6 +818,8 @@ export async function buildReceiptForEntry(
 ): Promise<Uint8Array | null> {
   try {
     const massifIndex = massifIndexFromMMRIndex(massifHeight, mmrIndex);
+    // Beyond Go's uint32 massif index: the entry cannot exist in R2.
+    if (massifIndex > MAX_MASSIF_INDEX) return null;
     const checkpointKey = v2CheckpointObjectKey(
       massifHeight,
       logId,
