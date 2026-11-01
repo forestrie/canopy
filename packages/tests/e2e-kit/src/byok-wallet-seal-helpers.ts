@@ -1,4 +1,5 @@
 import type { APIRequestContext } from "@playwright/test";
+import { parseDecimalUint64 } from "./decimal-uint64.js";
 import {
   decodeCborDeterministic,
   encodeCborDeterministic,
@@ -168,8 +169,8 @@ export async function signPendingDelegations(opts: {
   }
   const body = (await pending.json()) as {
     entries: Array<{
-      mmrStart?: number;
-      mmrEnd?: number;
+      mmrStart?: string;
+      mmrEnd?: string;
       delegatedPublicKey: string;
     }>;
   };
@@ -183,8 +184,8 @@ export async function signPendingDelegations(opts: {
   const windowed = body.entries.filter(
     (
       e,
-    ): e is { mmrStart: number; mmrEnd: number; delegatedPublicKey: string } =>
-      typeof e.mmrStart === "number" && typeof e.mmrEnd === "number",
+    ): e is { mmrStart: string; mmrEnd: string; delegatedPublicKey: string } =>
+      typeof e.mmrStart === "string" && typeof e.mmrEnd === "string",
   );
   if (opts.stats && windowed.length > 0) {
     opts.stats.pendingEntriesSeen += windowed.length;
@@ -197,8 +198,8 @@ export async function signPendingDelegations(opts: {
     const material = await buildByokDelegationMaterial({
       rootKeyPair: opts.rootKeyPair,
       logIdHex32: opts.logIdHex32,
-      mmrStart: entry.mmrStart,
-      mmrEnd: entry.mmrEnd,
+      mmrStart: parseDecimalUint64(entry.mmrStart, "mmrStart"),
+      mmrEnd: parseDecimalUint64(entry.mmrEnd, "mmrEnd"),
       delegatedPublicKey,
     });
     const verified = await verifyByokDelegationCertificate({

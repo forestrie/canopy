@@ -3,6 +3,7 @@
  */
 
 import type { APIRequestContext } from "@playwright/test";
+import { formatDecimalUint64, parseDecimalUint64 } from "./decimal-uint64.js";
 import { decodeCborDeterministic } from "@forestrie/encoding";
 import {
   E2E_POLL_MAX_WAIT_MS,
@@ -61,8 +62,8 @@ export async function signPendingModeCKs256Delegations(
   }
   const body = (await pending.json()) as {
     entries: Array<{
-      mmrStart?: number;
-      mmrEnd?: number;
+      mmrStart?: string;
+      mmrEnd?: string;
       delegatedPublicKey: string;
     }>;
   };
@@ -73,8 +74,8 @@ export async function signPendingModeCKs256Delegations(
   const windowed = body.entries.filter(
     (
       e,
-    ): e is { mmrStart: number; mmrEnd: number; delegatedPublicKey: string } =>
-      typeof e.mmrStart === "number" && typeof e.mmrEnd === "number",
+    ): e is { mmrStart: string; mmrEnd: string; delegatedPublicKey: string } =>
+      typeof e.mmrStart === "string" && typeof e.mmrEnd === "string",
   );
   let signed = 0;
   for (const entry of windowed) {
@@ -87,8 +88,8 @@ export async function signPendingModeCKs256Delegations(
       logIdUuid: opts.logIdUuid,
       rootSignerAddress: opts.rootSignerAddress,
       privateKeyHex: opts.privateKeyHex,
-      mmrStart: entry.mmrStart,
-      mmrEnd: entry.mmrEnd,
+      mmrStart: parseDecimalUint64(entry.mmrStart, "mmrStart"),
+      mmrEnd: parseDecimalUint64(entry.mmrEnd, "mmrEnd"),
       delegatedPublicKey,
     });
     opts.signedMaterialKeys.add(dedupeKey);
@@ -269,8 +270,8 @@ export async function waitForModeCDelegationMaterial(opts: {
   receiverStats: ModeCWebhookReceiverStats;
   rootSignerAddress: Uint8Array;
   privateKeyHex: string;
-  mmrStart: number;
-  mmrEnd: number;
+  mmrStart: bigint;
+  mmrEnd: bigint;
   delegatedPublicKey: Uint8Array;
   maxWaitMs?: number;
 }): Promise<"webhook" | "pull"> {
@@ -306,15 +307,15 @@ export async function waitForModeCDelegationMaterial(opts: {
   }
   const body = (await pending.json()) as {
     entries: Array<{
-      mmrStart: number;
-      mmrEnd: number;
+      mmrStart?: string;
+      mmrEnd?: string;
       delegatedPublicKey: string;
     }>;
   };
   const match = body.entries.find(
     (e) =>
-      e.mmrStart === opts.mmrStart &&
-      e.mmrEnd === opts.mmrEnd &&
+      e.mmrStart === formatDecimalUint64(opts.mmrStart) &&
+      e.mmrEnd === formatDecimalUint64(opts.mmrEnd) &&
       e.delegatedPublicKey === bytesToBase64(opts.delegatedPublicKey),
   );
   if (!match) {

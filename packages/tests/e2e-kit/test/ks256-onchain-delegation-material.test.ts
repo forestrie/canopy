@@ -52,8 +52,8 @@ describe("buildKs256BootstrapDelegationMaterial", () => {
       rootSignerAddress: address,
       privateKeyHex: ROOT_PRIVATE_KEY_HEX,
       logIdHex32,
-      mmrStart: 0,
-      mmrEnd: 16383,
+      mmrStart: 0n,
+      mmrEnd: 16383n,
       delegatedPublicKey,
     });
 

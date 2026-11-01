@@ -38,6 +38,7 @@ import {
   buildKs256BootstrapDelegationMaterial,
   bytesToBase64,
 } from "./coordinator-delegation-helpers.js";
+import { formatDecimalUint64 } from "./decimal-uint64.js";
 import { assertGoCompatibleDelegatedKeyInCertificate } from "./delegation-cbor-contract.js";
 
 /**
@@ -46,12 +47,13 @@ import { assertGoCompatibleDelegatedKeyInCertificate } from "./delegation-cbor-c
  * `mmrIndex ∈ [start, end]`, so this bounds how far the standing key stays
  * usable; 2^16-1 covers any log a system test builds.
  */
-export const ADVANCE_HORIZON_MMR_END = 65535;
+export const ADVANCE_HORIZON_MMR_END = 65535n;
 
 type StandingEntry = {
   delegatedPublicKey: string;
-  mmrStart?: number;
-  mmrEnd?: number;
+  /** Decimal uint64 strings on windowed entries (canopy plan-2611-01 D1). */
+  mmrStart?: string;
+  mmrEnd?: string;
   suggestedTtlSeconds?: number;
 };
 
@@ -73,7 +75,7 @@ export async function signStandingAdvanceDelegation(opts: {
   logId: string;
   logIdHex32: string;
   signingContext: BootstrapSigningContext;
-  horizonMmrEnd?: number;
+  horizonMmrEnd?: bigint;
 }): Promise<StandingAdvanceSignOutcome> {
   const pending = await opts.request.get(
     `${opts.coordinatorUrl}/api/logs/${opts.logId}/pending-delegation`,
@@ -96,7 +98,7 @@ export async function signStandingAdvanceDelegation(opts: {
     return { signed: false, reason: "no standing delegate-key entry yet" };
   }
 
-  const mmrStart = 0;
+  const mmrStart = 0n;
   const mmrEnd = opts.horizonMmrEnd ?? ADVANCE_HORIZON_MMR_END;
   const delegatedPublicKey = base64ToBytes(standing.delegatedPublicKey);
 
@@ -148,8 +150,8 @@ export async function signStandingAdvanceDelegation(opts: {
       },
       data: {
         logId: opts.logId,
-        mmrStart,
-        mmrEnd,
+        mmrStart: formatDecimalUint64(mmrStart),
+        mmrEnd: formatDecimalUint64(mmrEnd),
         delegatedPublicKey: standing.delegatedPublicKey,
         certificate: bytesToBase64(material.certificate),
         issuedAt: material.issuedAt,

@@ -85,6 +85,7 @@ export * from "./register-grant-through-receipt.js";
 export * from "./register-grant-with-payment.js";
 export * from "./bootstrap-delegation-coordinator.js";
 export * from "./coordinator-delegation-helpers.js";
+export * from "./decimal-uint64.js";
 export * from "./sign-standing-advance-delegation.js";
 export * from "./wallet-challenge-session-e2e.js";
 export * from "./delegation-cbor-contract.js";

@@ -95,8 +95,8 @@ describe("signStandingAdvanceDelegation (passkey root)", () => {
       await verifyOnchainDelegationSignatureWebauthn(
         {
           logIdHex: LOG_HEX32,
-          mmrStart: body.mmrStart as number,
-          mmrEnd: body.mmrEnd as number,
+          mmrStart: BigInt(body.mmrStart as string),
+          mmrEnd: BigInt(body.mmrEnd as string),
           delegatedKeyX: x,
           delegatedKeyY: y,
         },

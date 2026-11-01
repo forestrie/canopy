@@ -46,8 +46,8 @@ describe("buildByokDelegationMaterial (ES256)", () => {
     const material = await buildByokDelegationMaterial({
       rootKeyPair,
       logIdHex32,
-      mmrStart: 0,
-      mmrEnd: 16383,
+      mmrStart: 0n,
+      mmrEnd: 16383n,
       delegatedPublicKey,
     });
 

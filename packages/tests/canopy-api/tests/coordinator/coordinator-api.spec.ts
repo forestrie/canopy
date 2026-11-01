@@ -48,8 +48,8 @@ test.describe("delegation-coordinator APIs", () => {
   const childLogUuid = randomUUID();
   const childLogHex32 = normalizeForestrieHexId32(childLogUuid);
 
-  const mmrStart = 0;
-  const mmrEnd = 1024;
+  const mmrStart = 0n;
+  const mmrEnd = 1024n;
   let delegatedPublicKey: Uint8Array;
   let materialIssuedAt: number;
   let materialExpiresAt: number;
@@ -158,8 +158,8 @@ test.describe("delegation-coordinator APIs", () => {
         },
         data: {
           logId: authLogUuid,
-          mmrStart,
-          mmrEnd,
+          mmrStart: String(mmrStart),
+          mmrEnd: String(mmrEnd),
           delegatedPublicKey: bytesToBase64(delegatedPublicKey),
           certificate: materialCertificateB64,
           issuedAt: materialIssuedAt,

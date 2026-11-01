@@ -147,7 +147,7 @@ test.describe("late-delegation seal hint", () => {
         logId: rootLogId,
       });
       parked = entries.filter(
-        (e) => typeof e.mmrStart === "number" && typeof e.mmrEnd === "number",
+        (e) => typeof e.mmrStart === "string" && typeof e.mmrEnd === "string",
       ).length;
       if (parked > 0) break;
       await sleepMs(3000);

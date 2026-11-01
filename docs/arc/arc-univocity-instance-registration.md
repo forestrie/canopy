@@ -318,8 +318,8 @@ The event the coordinator POSTs to `webhook_url` when it inserts a
   "version": 1,
   "logId": "<32 hex>",
   "authLogId": "<32 hex>",
-  "mmrStart": 2,
-  "mmrEnd": 64,                          // checkpoint MMR range the delegation authorizes; monotonic mmrEnd ⇒ staleness/order
+  "mmrStart": "2",                       // decimal uint64 string (plan-2611-01 D1)
+  "mmrEnd": "64",                        // checkpoint MMR range the delegation authorizes; monotonic mmrEnd ⇒ staleness/order
   "delegatedPublicKey": "<base64 CBOR>", // ephemeral sealer key — part of the key; NOT a secret
   "requestedAt": 1750000000,             // freshness only; idempotency does not depend on it
   "materialSubmitUrl": "https://coordinator…/api/delegations/material"
