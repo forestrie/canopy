@@ -28,6 +28,7 @@ import { base64UrlEncode } from "@forestrie/encoding";
 import { bytesEqual, toArrayBuffer } from "./bytes-utils.js";
 import { encodeIntKeyCbor } from "./encode-int-map.js";
 import { encodeSigStructure } from "./encode-sig-structure.js";
+import { toUint64 } from "./to-uint64.js";
 import type { Ks256VerifyHooks } from "./ks256-verify-hooks.js";
 import {
   COSE_ALG_ES256,
@@ -52,9 +53,12 @@ export const ONCHAIN_DELEGATION_DOMAIN = "forestrie.univocity.delegation.v1";
 export interface OnchainDelegationInput {
   /** Forestrie log id as 32-char hex (16 bytes, right-aligned to 32). */
   logIdHex: string;
-  /** Inclusive MMR start index of the delegation lease. */
+  /**
+   * Inclusive MMR start index of the delegation lease (uint64). A `number`
+   * must be a non-negative safe integer; it is never rounded into a bigint.
+   */
   mmrStart: number | bigint;
-  /** Exclusive MMR end index of the delegation lease. */
+  /** Exclusive MMR end index of the delegation lease (uint64, `>= mmrStart`). */
   mmrEnd: number | bigint;
   /** Delegated P-256 public key x coordinate (32 bytes). */
   delegatedKeyX: Uint8Array;
@@ -91,11 +95,27 @@ export interface OnchainDelegationProofParts {
   algData: Uint8Array[];
 }
 
-function bigEndianUint64(value: number | bigint): Uint8Array {
-  const v = BigInt(value);
-  if (v < 0n || v > 0xffffffffffffffffn) {
-    throw new Error("mmr index out of uint64 range");
+/**
+ * Validate the lease range against the contract's `uint64` packing: both
+ * bounds uint64 (via {@link toUint64}, so an unsafe JS number is rejected
+ * rather than rounded) and `mmrStart <= mmrEnd`, as the certificate builder
+ * and parser enforce.
+ *
+ * @throws When a bound is not a uint64 or `mmrStart > mmrEnd`.
+ */
+function onchainRange(input: OnchainDelegationInput): {
+  mmrStart: bigint;
+  mmrEnd: bigint;
+} {
+  const mmrStart = toUint64(input.mmrStart, "mmrStart");
+  const mmrEnd = toUint64(input.mmrEnd, "mmrEnd");
+  if (mmrStart > mmrEnd) {
+    throw new Error(`delegation mmrStart ${mmrStart} > mmrEnd ${mmrEnd}`);
   }
+  return { mmrStart, mmrEnd };
+}
+
+function bigEndianUint64(v: bigint): Uint8Array {
   const out = new Uint8Array(8);
   new DataView(out.buffer).setBigUint64(0, v);
   return out;
@@ -125,8 +145,9 @@ function buildOnchainDelegationToBeSignedWithAlg(
   );
   const logId32 = logId32FromHex(input.logIdHex);
   const domain = new TextEncoder().encode(ONCHAIN_DELEGATION_DOMAIN);
-  const mmrStart = bigEndianUint64(input.mmrStart);
-  const mmrEnd = bigEndianUint64(input.mmrEnd);
+  const range = onchainRange(input);
+  const mmrStart = bigEndianUint64(range.mmrStart);
+  const mmrEnd = bigEndianUint64(range.mmrEnd);
 
   const payload = new Uint8Array(domain.length + 32 + 8 + 8 + 32 + 32);
   let off = 0;
@@ -229,8 +250,7 @@ export function signOnchainDelegationKs256(
   return {
     protectedHeader: tbs.protectedHeader,
     delegationKey: tbs.delegationKey,
-    mmrStart: BigInt(input.mmrStart),
-    mmrEnd: BigInt(input.mmrEnd),
+    ...onchainRange(input),
     signature,
     algData: [],
   };
@@ -299,8 +319,7 @@ export async function signOnchainDelegationEs256(
   return {
     protectedHeader: tbs.protectedHeader,
     delegationKey: tbs.delegationKey,
-    mmrStart: BigInt(input.mmrStart),
-    mmrEnd: BigInt(input.mmrEnd),
+    ...onchainRange(input),
     signature: normalizeEs256SignatureLowS(signature),
     algData: [],
   };

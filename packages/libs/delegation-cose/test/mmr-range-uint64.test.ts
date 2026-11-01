@@ -90,17 +90,18 @@ function payloadWith(range: {
 }
 
 /**
- * Encode `payload` with label 4's value replaced by a CBOR float64 (`fb`) of
+ * Encode `payload` with `label`'s value replaced by a CBOR float64 (`fb`) of
  * `value` — what cbor-x emitted for an integer above uint32. The sentinel
  * uint64 head (`1b` + 8 bytes) and the float64 head are both 9 bytes, so the
  * map stays well formed.
  */
-function encodeWithFloatAtLabel4(
+function encodeWithFloatAtLabel(
   payload: Map<number, unknown>,
+  label: number,
   value: number,
 ): Uint8Array {
   const sentinel = 0x1122334455667788n;
-  const bytes = encodeCborDeterministic(new Map(payload).set(4, sentinel));
+  const bytes = encodeCborDeterministic(new Map(payload).set(label, sentinel));
   const head = [0x1b, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88];
   const at = bytes.findIndex((_, i) =>
     head.every((b, j) => bytes[i + j] === b),
@@ -127,8 +128,9 @@ describe("parseDelegationCertificate mmr range", () => {
 
 describe("parseDelegationCertificate rejects a malformed mmr range", () => {
   it("rejects a CBOR float64 at label 4 (the cbor-x encoding of 2^32+1)", () => {
-    const payload = encodeWithFloatAtLabel4(
+    const payload = encodeWithFloatAtLabel(
       payloadWith({ start: 0, end: 0 }),
+      4,
       2 ** 32 + 1,
     );
     expect(() =>
@@ -192,5 +194,81 @@ describe("delegation certificate build rejects an mmr range outside uint64", () 
     await expect(buildWithRange(11n, 10n)).rejects.toThrow(
       /mmrStart 11 > mmrEnd 10/,
     );
+  });
+});
+
+describe("parseDelegationCertificate reads labels 7/8/9 strictly", () => {
+  /** A well-formed payload with `label` replaced, or removed when undefined. */
+  function payloadWithLabel(label: number, value: unknown): Uint8Array {
+    const m = payloadWith({ start: 0, end: 10 });
+    if (value === undefined) m.delete(label);
+    else m.set(label, value);
+    return encodeIntKeyCbor(m);
+  }
+
+  const labels = [
+    [7, "schemaVersion"],
+    [8, "issuedAt"],
+    [9, "expiresAt"],
+  ] as const;
+
+  it("reads the validity window and schema version as numbers", () => {
+    const info = parseDelegationCertificate(
+      certificateWithPayload(
+        encodeIntKeyCbor(payloadWith({ start: 0, end: 10 })),
+      ),
+    );
+    expect(info.schemaVersion).toBe(1);
+    expect(info.issuedAt).toBe(1_700_000_000);
+    expect(info.expiresAt).toBe(1_700_003_600);
+  });
+
+  it.each(labels)("rejects a missing label %i (%s)", (label, name) => {
+    expect(() =>
+      parseDelegationCertificate(
+        certificateWithPayload(payloadWithLabel(label, undefined)),
+      ),
+    ).toThrow(new RegExp(`payload missing ${name} \\(label ${label}\\)`));
+  });
+
+  it.each(labels)("rejects a negative label %i (%s)", (label, name) => {
+    expect(() =>
+      parseDelegationCertificate(
+        certificateWithPayload(payloadWithLabel(label, -1)),
+      ),
+    ).toThrow(new RegExp(`${name} \\(label ${label}\\) is not a safe uint`));
+  });
+
+  it.each(labels)("rejects a text label %i (%s)", (label, name) => {
+    expect(() =>
+      parseDelegationCertificate(
+        certificateWithPayload(payloadWithLabel(label, "1700000000")),
+      ),
+    ).toThrow(new RegExp(`${name} \\(label ${label}\\) is not a safe uint`));
+  });
+
+  it.each(labels)("rejects a CBOR float64 at label %i (%s)", (label, name) => {
+    const payload = encodeWithFloatAtLabel(
+      payloadWith({ start: 0, end: 10 }),
+      label,
+      // A value only float64 holds: the deterministic decoder rejects a
+      // float that a shorter encoding could carry.
+      1_700_000_000.5,
+    );
+    expect(() =>
+      parseDelegationCertificate(certificateWithPayload(payload)),
+    ).toThrow(
+      new RegExp(
+        `${name} \\(label ${label}\\) is not a safe uint \\(got CborFloat\\)`,
+      ),
+    );
+  });
+
+  it("rejects an integer above 2^53-1 rather than rounding it", () => {
+    expect(() =>
+      parseDelegationCertificate(
+        certificateWithPayload(payloadWithLabel(9, (1n << 53n) + 1n)),
+      ),
+    ).toThrow(/expiresAt \(label 9\) is not a safe uint/);
   });
 });
