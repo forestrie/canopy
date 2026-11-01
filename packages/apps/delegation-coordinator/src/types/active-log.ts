@@ -1,6 +1,7 @@
 /**
  * Per-log row of GET /api/delegations/active, the sealer's level-triggered
- * resync feed (arbor plan-2607-04).
+ * resync feed
+ * ([arbor sealer resync](https://github.com/forestrie/arbor/blob/main/services/sealer/src/resync.go)).
  *
  * The range bounds are canonical decimal uint64 strings, never JSON numbers:
  * arbor's sealer resync parses them with `strconv.ParseUint(s, 10, 64)` and
