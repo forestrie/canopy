@@ -39,14 +39,15 @@ export function grantUintToCbor(value: number, field: string): bigint {
  * Convert a decoded grant uint field to the `number` {@link Grant} carries.
  *
  * @param value - What `decodeCborDeterministic` returned for the field: a
- *   `number` for a safe integer, a `bigint` above that.
+ *   `number` for a safe integer, a `bigint` above that. An unsafe `number`
+ *   is rejected: it came from another decoder and may already have rounded.
  * @param field - Field name for the error message.
  * @throws When the value is not a non-negative integer (CBOR major type 1
  *   decodes as a negative number), or is a `bigint` a `number` cannot hold
  *   exactly.
  */
 export function grantUintFromCbor(value: unknown, field: string): number {
-  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
     return value;
   }
   if (typeof value === "bigint" && value >= 0n && value <= UINT64_MAX) {

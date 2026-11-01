@@ -25,9 +25,13 @@ Extended notes beyond [AGENTS.md](../../AGENTS.md) critical gotchas.
   `ingress.{slot}.{DNS_SUB}.*`.
 - Historical bug recycled `nextSeq` without `dead_letters` max — fixed in
   `SequencingQueue.initializeFromStorage()`.
-- **Ingress queue reset**: `INGRESS_RESET_TOKEN` (forest-platform) + `POST …/queue/admin/reset-storage?shard=all` — token in Doppler `forest-platform/dev`, refs in project `infra` and canopy GitHub/Doppler
+- **Ingress queue reset**: `POST …/queue/admin/reset-storage?shard=all` with
+  header `X-Forestrie-Ingress-Reset: $INGRESS_RESET_TOKEN`. The route is
+  token-gated only, with no per-environment gate: it works on every lane whose
+  worker has the secret (Lane A: Doppler `canopy/dev`; Lane B, the `prod`
+  GitHub environment: Doppler `canopy/prd`). Without the secret it returns
+  503; with a wrong token, 401.
 - **Content reset orchestrator** (forest-1): `task content-reset` — see [forest-1/docs/ops/content-reset.md](../../forest-1/docs/ops/content-reset.md)
-  with header `X-Forestrie-Ingress-Reset` (404 in production).
 
 ## Bootstrap grant Playwright (system project)
 

@@ -147,24 +147,35 @@ describe.each([
       ).grant,
   ],
 ] as const)("%s uint bounds", (_, decode) => {
-  const payload = (uintHex: string): string =>
-    PAYLOAD_PREFIX + uintHex + "05" + "00" + GRANT_DATA_SUFFIX;
+  // Key 4 (maxHeight) and key 5 (minGrowth) each carry the value under test.
+  const FIELDS = [
+    ["maxHeight", (u: string) => PAYLOAD_PREFIX + u + "05" + "00"],
+    ["minGrowth", (u: string) => PAYLOAD_PREFIX + "00" + "05" + u],
+  ] as const;
 
-  it.each([
-    ["1b001fffffffffffff", 2 ** 53 - 1],
-    ["1b1000000000000000", 2 ** 60],
-  ])("decodes maxHeight %s exactly", (uintHex, expected) => {
-    expect(decode(payload(uintHex)).maxHeight).toBe(expected);
+  describe.each(FIELDS)("%s", (field, head) => {
+    const payload = (uintHex: string): string =>
+      head(uintHex) + GRANT_DATA_SUFFIX;
+
+    it.each([
+      ["1b001fffffffffffff", 2 ** 53 - 1],
+      ["1b1000000000000000", 2 ** 60],
+    ])("decodes %s exactly", (uintHex, expected) => {
+      expect(decode(payload(uintHex))[field]).toBe(expected);
+    });
+
+    // A number cannot hold these exactly (2^53+1 rounds to 2^53, 2^64-1 to
+    // 2^64), so they are rejected. "20" is CBOR -1 (major type 1, decoded as
+    // a number); "3b0fffffffffffffff" is -2^60 (decoded as a bigint).
+    it.each([
+      "1b0020000000000001",
+      "1bffffffffffffffff",
+      "20",
+      "3b0fffffffffffffff",
+    ])("rejects %s rather than rounding or accepting it", (uintHex) => {
+      expect(() => decode(payload(uintHex))).toThrow(new RegExp(field));
+    });
   });
-
-  // Grant.maxHeight is a number: these would round (2^53+1 to 2^53, 2^64-1
-  // to 2^64), so they are rejected. "20" is CBOR -1 (major type 1).
-  it.each(["1b0020000000000001", "1bffffffffffffffff", "20"])(
-    "rejects maxHeight %s rather than rounding or accepting it",
-    (uintHex) => {
-      expect(() => decode(payload(uintHex))).toThrow(/maxHeight/);
-    },
-  );
 });
 
 /** Padding, truncation and length-head cases the representative grant misses. */
