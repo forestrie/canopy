@@ -8,6 +8,10 @@
  * With return path unification (Phase 9), ack also records leaf indices
  * to enable direct registration status queries from the DO. Readers derive
  * the massif from the leaf index; see {@link AckRequest.massifHeight}.
+ *
+ * Leaf indices are uint64: arbor's ranger sends `firstLeafIndex` as CBOR
+ * major type 0, which decodes to `bigint` above 2^53, so they are carried as
+ * `bigint` end to end and never as `number`.
  */
 export interface AckRequest {
   /** Log identifier (16 bytes) */
@@ -16,8 +20,8 @@ export interface AckRequest {
   seqLo: number;
   /** Number of entries to acknowledge starting from seqLo */
   limit: number;
-  /** First leaf index in the committed batch */
-  firstLeafIndex: number;
+  /** First leaf index in the committed batch (uint64) */
+  firstLeafIndex: bigint;
   /**
    * One-based massif height h that ranger commits massifs at: a massif holds
    * 2^(h-1) leaves (go-merklelog urkle.LeafCountForMassifHeight). The DO uses
@@ -41,7 +45,7 @@ export interface AckResponse {
 export interface SequencingResult {
   /**
    * Leaf index within the log's merkle tree. Derive the massif that holds it
-   * with `massifIndexFromLeafIndex` (@forestrie/merklelog).
+   * with `massifIndexFromLeafIndex` (@forestrie/merklelog). uint64.
    */
-  leafIndex: number;
+  leafIndex: bigint;
 }

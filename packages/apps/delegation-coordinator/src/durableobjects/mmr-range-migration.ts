@@ -1,7 +1,7 @@
 /**
  * In-place migration of the delegation MMR range columns from SQLite INTEGER
  * to the 8-byte big-endian BLOB the storage codec reads
- * ({@link ../mmr-index-be8.ts}: uint64 bounds stored big-endian so byte order
+ * (`encodeUint64Be8` in `@forestrie/encoding`: uint64 bounds stored big-endian so byte order
  * is numeric order).
  *
  * SQLite keeps a BLOB unchanged in an INTEGER-affinity column, so no table
@@ -35,10 +35,8 @@
  * deletes the progress record, leaving only the done flag.
  */
 
-import {
-  parseDelegationCertificate,
-  toUint64,
-} from "@forestrie/delegation-cose";
+import { parseDelegationCertificate } from "@forestrie/delegation-cose";
+import { toUint64 } from "@forestrie/encoding";
 import { formatDecimalUint64 } from "../decimal-uint64.js";
 
 /** Per-event work limits for {@link MmrRangeMigration.run}. */

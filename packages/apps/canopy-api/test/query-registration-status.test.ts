@@ -10,6 +10,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import {
   urkleLeafTableStartByteOffset,
   leafCountForMassifHeight,
+  mmrIndex,
   v2MassifObjectKey,
 } from "@forestrie/merklelog";
 
@@ -17,7 +18,7 @@ import { encodeCborDeterministic } from "@forestrie/encoding";
 import type { Env } from "../src/index";
 import { readIdtimestampFromMassif } from "../src/scrapi/sequencing-result.js";
 import { queryRegistrationStatus } from "../src/scrapi/query-registration-status.js";
-import { encodeEntryId } from "../src/scrapi/entry-id.js";
+import { decodeEntryId, encodeEntryId } from "../src/scrapi/entry-id.js";
 import { FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID } from "../src/forest/forest-genesis-labels.js";
 import {
   logIdToStorageSegment,
@@ -147,40 +148,25 @@ describe("query-registration-status byte-range read", () => {
     });
   });
 
-  describe("mmrIndexFromLeafIndex", () => {
+  describe("mmrIndex for the entry id", () => {
     // These test values match go-merklelog/mmr/mmrindex.go MMRIndex
-    const testCases: [number, bigint][] = [
-      [0, 0n],
-      [1, 1n],
-      [2, 3n],
-      [3, 4n],
-      [4, 7n],
-      [5, 8n],
-      [6, 10n],
-      [7, 11n],
-      [8, 15n],
-      [100, 197n],
-      [1000, 1994n], // Verified with go-merklelog
+    const testCases: [bigint, bigint][] = [
+      [0n, 0n],
+      [1n, 1n],
+      [2n, 3n],
+      [3n, 4n],
+      [4n, 7n],
+      [5n, 8n],
+      [6n, 10n],
+      [7n, 11n],
+      [8n, 15n],
+      [100n, 197n],
+      [1000n, 1994n], // Verified with go-merklelog
     ];
-
-    // Import the function for testing (we'll inline the implementation since it's not exported)
-    function mmrIndexFromLeafIndex(leafIndex: number): bigint {
-      let sum = 0n;
-      let current = BigInt(leafIndex);
-
-      while (current > 0n) {
-        const h = BigInt(current.toString(2).length);
-        sum += (1n << h) - 1n;
-        const half = 1n << (h - 1n);
-        current -= half;
-      }
-
-      return sum;
-    }
 
     for (const [leafIndex, expectedMmrIndex] of testCases) {
       it(`converts leaf index ${leafIndex} to MMR index ${expectedMmrIndex}`, () => {
-        expect(mmrIndexFromLeafIndex(leafIndex)).toBe(expectedMmrIndex);
+        expect(mmrIndex(leafIndex)).toBe(expectedMmrIndex);
       });
     }
   });
@@ -355,7 +341,7 @@ describe("query-registration-status byte-range read", () => {
     it("reads massif index 10 from the decimal-keyed object", async () => {
       const massifHeight = 3; // 4 leaves per massif
       const massifIndex = 10;
-      const leafIndex = 41; // ordinal 1 in massif 10
+      const leafIndex = 41n; // ordinal 1 in massif 10
       const expectedIdtimestamp = 0x0a0a0a0a0a0a0a0an;
 
       await testEnv.R2_MMRS.put(
@@ -427,7 +413,7 @@ describe("query-registration-status byte-range read", () => {
             testEnv.R2_MMRS,
             logId,
             massifHeight,
-            leafIndex,
+            BigInt(leafIndex),
           ),
         ).resolves.toBe(expectedIdtimestamp);
       });
@@ -476,7 +462,10 @@ describe("query-registration-status byte-range read", () => {
         idFromName: () => ({}) as DurableObjectId,
         get: () =>
           ({
-            resolveContent: async () => ({ leafIndex, massifIndex: 0 }),
+            resolveContent: async () => ({
+              leafIndex: BigInt(leafIndex),
+              massifIndex: 0,
+            }),
           }) as never,
       };
       const contentHash = "ab".repeat(32);
@@ -531,6 +520,103 @@ describe("query-registration-status byte-range read", () => {
       const leValue = view.getBigUint64(0, true);
       expect(leValue).not.toBe(0x0102030405060708n);
       expect(leValue).toBe(0x0807060504030201n);
+    });
+  });
+
+  describe("uint64 leaf indices (FOR-619)", () => {
+    /** MMR index of leaf L is 2L - popcount(L) (go-merklelog MMRIndex). */
+    function expectedMmrIndex(leaf: bigint): bigint {
+      const popcount = [...leaf.toString(2)].filter((b) => b === "1").length;
+      return 2n * leaf - BigInt(popcount);
+    }
+
+    it.each([
+      ["2^53+1", (1n << 53n) + 1n],
+      ["2^63+12345", (1n << 63n) + 12345n],
+      ["2^64-1", (1n << 64n) - 1n],
+    ])("maps leaf index %s to its exact MMR index", (_, leaf) => {
+      expect(mmrIndex(leaf)).toBe(expectedMmrIndex(leaf));
+    });
+
+    // Through the route: a queue resolving leaf 2^53+1 at height 24 gives a
+    // 303 whose entryId carries the exact MMR index and idtimestamp.
+    it("registration status redirects to the exact entryId for leaf 2^53+1", async () => {
+      const massifHeight = 24;
+      const leaf = (1n << 53n) + 1n;
+      const idtimestamp = 0x0619061906190619n;
+      const bootstrapLogId = crypto.randomUUID();
+
+      const genesis = validGenesisV2Es256CborMap();
+      genesis.set(
+        FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID,
+        toPaddedWire32(logIdToWireBytes(bootstrapLogId)),
+      );
+      await testEnv.R2_GRANTS.put(
+        `forests/forest/${logIdToStorageSegment(logIdToWireBytes(bootstrapLogId))}/genesis.cbor`,
+        encodeCborDeterministic(genesis) as Uint8Array,
+      );
+      const r2 = {
+        async get() {
+          const buf = new ArrayBuffer(8);
+          new DataView(buf).setBigUint64(0, idtimestamp, false);
+          return { arrayBuffer: async () => buf };
+        },
+      } as unknown as R2Bucket;
+      const queue = {
+        idFromName: () => ({}) as DurableObjectId,
+        get: () =>
+          ({ resolveContent: async () => ({ leafIndex: leaf }) }) as never,
+      };
+
+      const contentHash = "cd".repeat(32);
+      const response = await queryRegistrationStatus(
+        new Request(
+          `http://localhost/logs/${bootstrapLogId}/${logId}/entries/${contentHash}`,
+        ),
+        [bootstrapLogId, logId, "entries", contentHash],
+        queue,
+        r2,
+        massifHeight,
+        "1",
+        testEnv.R2_GRANTS,
+      );
+
+      expect(response.status).toBe(303);
+      const entryId = response.headers
+        .get("Location")!
+        .match(/\/entries\/([^/]+)\/receipt/)![1];
+      expect(decodeEntryId(entryId)).toEqual({
+        idtimestamp,
+        mmrIndex: expectedMmrIndex(leaf),
+      });
+    });
+
+    it("reads the idtimestamp for a leaf index above 2^53 at its exact offset", async () => {
+      const massifHeight = 24;
+      const leafIndex = (1n << 53n) + 1n;
+      const massifIndex = leafIndex >> 23n; // 2^(h-1) = 2^23 leaves per massif
+      const calls: { key: string; offset: number }[] = [];
+      const r2 = {
+        async get(key: string, opts: { range: { offset: number } }) {
+          calls.push({ key, offset: opts.range.offset });
+          const buf = new ArrayBuffer(8);
+          new DataView(buf).setBigUint64(0, 0x0b0b0b0b0b0b0b0bn, false);
+          return { arrayBuffer: async () => buf };
+        },
+      } as unknown as R2Bucket;
+
+      await expect(
+        readIdtimestampFromMassif(r2, logId, massifHeight, leafIndex),
+      ).resolves.toBe(0x0b0b0b0b0b0b0b0bn);
+
+      // (2^53+1) mod 2^23 = 1: the second leaf record in its massif.
+      expect(calls).toEqual([
+        {
+          key: `v2/merklelog/massifs/24/${logId}/${massifIndex.toString().padStart(16, "0")}.log`,
+          offset:
+            urkleLeafTableStartByteOffset(massifHeight) + 1 * LEAF_RECORD_BYTES,
+        },
+      ]);
     });
   });
 });

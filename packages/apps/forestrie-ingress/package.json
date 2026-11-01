@@ -14,11 +14,10 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
-    "@forestrie/encoding": "workspace:*",
     "@canopy/forestrie-ingress-types": "workspace:*",
     "@canopy/forestrie-sharding": "workspace:*",
-    "@forestrie/merklelog": "workspace:*",
-    "@forestrie/encoding": "workspace:*"
+    "@forestrie/encoding": "workspace:*",
+    "@forestrie/merklelog": "workspace:*"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.9.13",

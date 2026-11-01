@@ -40,9 +40,10 @@ import {
   coseUnprotectedToMap,
   decodeCborDeterministic,
   decodeCoseSign1,
+  toUint64,
   verifyCoseSign1WithParsedKey,
 } from "@forestrie/encoding";
-import { toSafeUint, toUint64 } from "@forestrie/delegation-cose";
+import { toSafeUint } from "@forestrie/delegation-cose";
 import { isParsedKs256RootKey, type RootVerifyKey } from "./root-verify-key.js";
 import {
   verifyKs256DelegationCert,

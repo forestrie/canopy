@@ -133,3 +133,7 @@ export {
   uuidToBytes,
 } from "./uuid-bytes.js";
 export type { LogId } from "./uuid-bytes.js";
+
+/** uint64 validation and the be8 BLOB storage form (DO SQLite). */
+export { UINT64_MAX, toUint64 } from "./uint64.js";
+export { decodeUint64Be8, encodeUint64Be8 } from "./uint64-be8.js";

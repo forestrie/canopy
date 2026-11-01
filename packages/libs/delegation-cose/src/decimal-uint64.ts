@@ -13,7 +13,7 @@
  * A JSON number, a leading zero, a sign or whitespace is malformed.
  */
 
-import { UINT64_MAX } from "./to-uint64.js";
+import { UINT64_MAX } from "@forestrie/encoding";
 
 /** Canonical unsigned decimal: no sign, no leading zero, no whitespace. */
 const CANONICAL_DECIMAL = /^(0|[1-9][0-9]*)$/;

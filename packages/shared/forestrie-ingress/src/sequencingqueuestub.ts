@@ -1,6 +1,7 @@
 import type { PullRequest } from "./pullrequest.js";
 import type { PullResponse } from "./pullresponse.js";
 import type { QueueStats } from "./queuestats.js";
+import type { SequencingResult } from "./ack.js";
 
 /**
  * Optional extra fields attached at enqueue (each ≤32 bytes on wire).
@@ -68,7 +69,7 @@ export interface SequencingQueueStub {
     logId: ArrayBuffer,
     seqLo: number,
     limit: number,
-    firstLeafIndex: number,
+    firstLeafIndex: bigint,
     massifHeight: number,
   ): Promise<{ acked: number }>;
 
@@ -85,9 +86,7 @@ export interface SequencingQueueStub {
    * @param contentHash - SHA-256 content hash (32 bytes)
    * @returns Sequencing result or null if not yet sequenced
    */
-  resolveContent(
-    contentHash: ArrayBuffer,
-  ): Promise<{ leafIndex: number } | null>;
+  resolveContent(contentHash: ArrayBuffer): Promise<SequencingResult | null>;
 
   /**
    * Get the current pending count.

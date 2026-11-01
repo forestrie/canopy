@@ -15,7 +15,9 @@ import { internalError, getQueueStub, getShardCount } from "./handler.js";
  * - limit: max entries to return per shard (default 100)
  * - shard: optional specific shard to query (default: all shards)
  *
- * Response: JSON array of recent entries with timestamps and latency metrics
+ * Response: JSON array of recent entries with timestamps and latency metrics.
+ * Leaf indices are uint64 and reported as decimal strings, since a JSON
+ * number loses precision above 2^53.
  */
 export async function handleDebugRecent(
   request: Request,
@@ -34,7 +36,7 @@ export async function handleDebugRecent(
       contentHash: string;
       enqueuedAt: number;
       ackedAt: number | null;
-      leafIndex: number | null;
+      leafIndex: bigint | null;
     };
 
     // Collect entries from specified shard or all shards
@@ -67,6 +69,7 @@ export async function handleDebugRecent(
     const now = Date.now();
     const enriched = entries.map((e) => ({
       ...e,
+      leafIndex: e.leafIndex === null ? null : e.leafIndex.toString(),
       ageMs: now - e.enqueuedAt,
       sequenced: e.leafIndex !== null,
       // Sequencing latency: time from enqueue to ack (null if not yet acked)

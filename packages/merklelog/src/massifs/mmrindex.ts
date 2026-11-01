@@ -17,7 +17,7 @@ import { massifFirstLeaf } from "../mmr/index.js";
  */
 export function computeLastMMRIndex(
   massifHeight: number,
-  massifIndex: number,
+  massifIndex: number | bigint,
   blobSize: number,
 ): bigint {
   // Calculate number of log entries (nodes) in the blob

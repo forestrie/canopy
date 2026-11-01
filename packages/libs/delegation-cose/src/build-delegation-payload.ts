@@ -10,7 +10,7 @@ import type { DelegationInput } from "./delegation-input.js";
 import type { DelegationToBeSigned } from "./delegation-tbs.js";
 import { decodeDelegatedCoseKeyFromBytes } from "./parse-delegated-cose-key.js";
 import { encodeIntKeyCbor } from "./encode-int-map.js";
-import { UINT64_MAX } from "./to-uint64.js";
+import { UINT64_MAX } from "@forestrie/encoding";
 import {
   PAYLOAD_CONSTRAINTS,
   PAYLOAD_DELEGATION_ID,

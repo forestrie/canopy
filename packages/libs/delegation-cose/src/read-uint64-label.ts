@@ -7,7 +7,7 @@
  * test presence first and use {@link toUint64} on the value.
  */
 
-import { toUint64 } from "./to-uint64.js";
+import { toUint64 } from "@forestrie/encoding";
 
 /**
  * Read `label` from a decoded payload map as a uint64.
