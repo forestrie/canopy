@@ -16,6 +16,14 @@ import { certificateKeyFor, sha256Hex } from "../certificate-key.js";
 import { formatDecimalUint64 } from "../decimal-uint64.js";
 import { decodeMmrIndexBe8, encodeMmrIndexBe8 } from "../mmr-index-be8.js";
 import { parseJsonMmrRange, type MmrRange } from "../mmr-range.js";
+import {
+  DEFAULT_MMR_RANGE_MIGRATION_BUDGET,
+  ensureMmrRangeMigrationTables,
+  isMmrRangeMigrationDone,
+  MmrRangeMigration,
+  type MmrRangeMigrationBudget,
+  type MmrRangeMigrationChunkHook,
+} from "./mmr-range-migration.js";
 import type { ActiveLog } from "../types/active-log.js";
 import type { CurrentDelegationResponse } from "../types/current-delegation-response.js";
 import { hex32ToWireLogIdBytes, logIdWireBytesToHex32 } from "../log-id.js";
@@ -134,8 +142,7 @@ const DELEGATION_CERTIFICATES_COLUMNS = `
   mmr_start BLOB,
   mmr_end BLOB,
   onchain_authenticator_data BLOB,
-  onchain_client_data_json BLOB,
-  PRIMARY KEY (log_id_hex32, certificate_key)`;
+  onchain_client_data_json BLOB`;
 
 /** Current `pending` shape; range bounds are be8 BLOBs (FOR-613). */
 const PENDING_COLUMNS = `
@@ -147,6 +154,25 @@ const PENDING_COLUMNS = `
   delegated_pubkey_hash TEXT NOT NULL,
   delegated_public_key BLOB NOT NULL,
   requested_at INTEGER NOT NULL`;
+
+/**
+ * Routes that read or write MMR range columns, as `${method} ${pathname}`.
+ * They answer 503 until the range migration completes (plan-2611-01 D6), so
+ * no range query sees INTEGER and BLOB bounds side by side; every other
+ * route proceeds during the migration.
+ */
+const RANGE_ROUTES = new Set([
+  "PUT /certificate",
+  "POST /issue",
+  "GET /pending",
+  "GET /active",
+  "GET /pending-delegation",
+  "GET /delegation",
+  "POST /pending-hint",
+]);
+
+/** `Retry-After` seconds on a range route while the migration runs. */
+const RANGE_MIGRATION_RETRY_AFTER_SECONDS = 1;
 
 /**
  * Alg the stored onchain_signature was validated under. ES256_WEBAUTHN is a
@@ -232,18 +258,41 @@ interface DelegateKeyRow {
 export class DelegationStoreDO extends DurableObject<Env> {
   private initialized = false;
 
+  /**
+   * Cached `schema_meta` done flag for the range migration, so the per-request
+   * check is a boolean (read once in ensureSchema, set when a run completes).
+   */
+  private rangeMigrationDone = false;
+
+  private rangeMigration: MmrRangeMigration;
+
+  /** Per-event migration budget (@internal — tests shrink it). */
+  private rangeMigrationBudget: MmrRangeMigrationBudget =
+    DEFAULT_MMR_RANGE_MIGRATION_BUDGET;
+
+  /** Runs inside each migration chunk (@internal — tests inject failures). */
+  private rangeMigrationChunkHook: MmrRangeMigrationChunkHook | null = null;
+
   /** Bind Cloudflare DO state and worker env. */
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    this.rangeMigration = new MmrRangeMigration(ctx.storage);
   }
 
   /** Route internal fetch paths to store handlers. */
   async fetch(request: Request): Promise<Response> {
     this.ensureSchema();
+    if (!this.rangeMigrationDone) {
+      await this.advanceRangeMigrationFromFetch();
+    }
 
     const url = new URL(request.url);
     const method = request.method;
     const pathname = url.pathname;
+
+    if (!this.rangeMigrationDone && RANGE_ROUTES.has(`${method} ${pathname}`)) {
+      return rangeMigrationInProgressResponse();
+    }
 
     try {
       const signingRouteMatch = /^\/signing-route\/([0-9a-f]{32})$/.exec(
@@ -417,7 +466,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS delegation_certificates (
-        ${DELEGATION_CERTIFICATES_COLUMNS}
+        ${DELEGATION_CERTIFICATES_COLUMNS},
+        PRIMARY KEY (log_id_hex32, certificate_key)
       )
     `);
 
@@ -468,9 +518,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
       `DELETE FROM pending WHERE length(delegated_public_key) = 0`,
     );
 
-    // Range columns INTEGER → be8 BLOB (FOR-613). Before the range indexes
-    // below: the rebuild drops the old tables, and their indexes with them.
-    this.ensureMmrRangeColumnsBlob();
+    // Range columns created INTEGER before FOR-613 are converted to be8 in
+    // place by MmrRangeMigration, a chunk per event (fetch / alarm), not here.
 
     this.ctx.storage.sql.exec(`
       CREATE INDEX IF NOT EXISTS idx_delegation_certificates_coverage
@@ -554,7 +603,44 @@ export class DelegationStoreDO extends DurableObject<Env> {
       ON webhook_deliveries (next_attempt_at)
     `);
 
+    ensureMmrRangeMigrationTables(
+      this.ctx.storage.sql,
+      DELEGATION_CERTIFICATES_COLUMNS,
+    );
+    this.rangeMigrationDone = isMmrRangeMigrationDone(this.ctx.storage.sql);
+
     this.initialized = true;
+  }
+
+  /**
+   * Run one budget of the range migration on the fetch path. A failing chunk
+   * is logged, not surfaced: its transaction rolled back, range routes keep
+   * answering 503, and the alarm retries.
+   */
+  private async advanceRangeMigrationFromFetch(): Promise<void> {
+    try {
+      this.rangeMigrationDone = this.rangeMigration.run(
+        this.rangeMigrationBudget,
+        this.rangeMigrationChunkHook,
+      );
+    } catch (error) {
+      console.error("mmr range migration chunk failed:", error);
+    }
+    if (!this.rangeMigrationDone) {
+      await this.scheduleImmediateAlarm();
+    }
+  }
+
+  /**
+   * Bring the alarm forward to now without pushing back an earlier one
+   * (`min(existing, now)`), so the migration continues on its own.
+   */
+  private async scheduleImmediateAlarm(): Promise<void> {
+    const now = Date.now();
+    const existing = await this.ctx.storage.getAlarm();
+    if (existing === null || existing > now) {
+      await this.ctx.storage.setAlarm(now);
+    }
   }
 
   /** Copy legacy materials rows into delegation_certificates when present. */
@@ -609,9 +695,12 @@ export class DelegationStoreDO extends DurableObject<Env> {
    * opaque certificate_key folds (mmrStart, mmrEnd, delegatedKey) together for
    * exact-match; coverage retrieval needs them as first-class columns. The
    * SIGNED range persisted here — never the issue request's range — is what
-   * the issue response's onchainProof is rebuilt from (review V1). Kept
-   * alongside certificate_key for rollback compatibility. Fresh databases get
-   * the columns from the base CREATE TABLE; this handles legacy tables only.
+   * the issue response's onchainProof is rebuilt from (review V1).
+   * certificate_key stays the exact-match key for pre-coverage rows, whose
+   * range columns are NULL. Fresh databases get the columns from the base
+   * CREATE TABLE; this handles legacy tables only. Range storage is
+   * fix-forward only: once migrated, triggers reject the INTEGER bounds a
+   * pre-FOR-613 build would write (see mmr-range-migration.ts).
    */
   private ensureCertificateCoverageColumns(): void {
     try {
@@ -628,7 +717,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
         `ALTER TABLE delegation_certificates ADD COLUMN delegated_public_key BLOB`,
       );
       // be8 BLOB from the start (FOR-613); the coverage index is created in
-      // ensureSchema once the range columns are BLOB.
+      // ensureSchema.
       this.ctx.storage.sql.exec(
         `ALTER TABLE delegation_certificates ADD COLUMN mmr_start BLOB`,
       );
@@ -885,168 +974,6 @@ export class DelegationStoreDO extends DurableObject<Env> {
             }`,
           );
         }
-      }
-    }
-  }
-
-  /**
-   * Move the `delegation_certificates` and `pending` range columns from
-   * SQLite INTEGER (signed int64) to 8-byte big-endian BLOB (plan-2611-01
-   * D2, FOR-613). SQLite cannot change a column's declared type, so each
-   * table still declaring INTEGER is rebuilt: create the BLOB-typed shape
-   * under a temporary name, copy every row converting the two bounds through
-   * {@link encodeMmrIndexBe8}, drop the old table (and its indexes), rename.
-   * ensureSchema recreates the range indexes on the new columns. A rebuild
-   * keeps the column names, so every query keeps its text; only bound
-   * parameters change to be8.
-   *
-   * Runs every boot and converges: a table already declaring BLOB is left
-   * alone, so a second boot is a no-op. Each table's rebuild is one
-   * transaction. A row whose bound is not a uint64 (pending rows came from
-   * the unvalidated pre-FOR-613 issue path) is dropped with a warning rather
-   * than crashing the constructor on every boot: a pending row is a 1-hour
-   * demand the sealer re-raises, and a certificate row's range was checked
-   * against its signed payload, so none is expected there.
-   *
-   * In-flight `webhook_deliveries` payloads built before the cutover carry
-   * JSON-number bounds; they are rewritten to decimal strings with the
-   * pending rebuild so a retry reaches a new-build receiver in the shape it
-   * parses (D5: no dual parsing on either side). Their `requestKey` is
-   * unchanged (range keys format identically below 2^53).
-   */
-  private ensureMmrRangeColumnsBlob(): void {
-    if (this.rangeColumnsDeclaredInteger("delegation_certificates")) {
-      this.ctx.storage.transactionSync(() =>
-        this.rebuildWithBlobRange(
-          "delegation_certificates",
-          DELEGATION_CERTIFICATES_COLUMNS,
-          [
-            "log_id_hex32",
-            "certificate_key",
-            "certificate",
-            "issued_at",
-            "expires_at",
-            "onchain_signature",
-            "onchain_root_alg",
-            "delegated_pubkey_hash",
-            "delegated_public_key",
-            "onchain_authenticator_data",
-            "onchain_client_data_json",
-          ],
-        ),
-      );
-    }
-    if (this.rangeColumnsDeclaredInteger("pending")) {
-      this.ctx.storage.transactionSync(() => {
-        this.rebuildWithBlobRange("pending", PENDING_COLUMNS, [
-          "id",
-          "auth_log_id_hex32",
-          "log_id_hex32",
-          "delegated_pubkey_hash",
-          "delegated_public_key",
-          "requested_at",
-        ]);
-        this.rewriteWebhookPayloadRanges();
-      });
-    }
-  }
-
-  /** True when the table's mmr_start column is still declared INTEGER. */
-  private rangeColumnsDeclaredInteger(table: string): boolean {
-    const rows = [
-      ...this.ctx.storage.sql.exec(
-        `SELECT type FROM pragma_table_info('${table}') WHERE name = 'mmr_start'`,
-      ),
-    ];
-    return (
-      rows.length > 0 &&
-      String((rows[0] as { type: string }).type).toUpperCase() === "INTEGER"
-    );
-  }
-
-  /**
-   * Rebuild one table with BLOB range columns, copying `columns` verbatim
-   * and converting `mmr_start` / `mmr_end` to be8 (NULL stays NULL).
-   * Callers run it inside `transactionSync` so a failure leaves the old
-   * table untouched.
-   */
-  private rebuildWithBlobRange(
-    table: string,
-    columnsDdl: string,
-    columns: string[],
-  ): void {
-    const sql = this.ctx.storage.sql;
-    const tmp = `${table}__be8`;
-    sql.exec(`DROP TABLE IF EXISTS ${tmp}`);
-    sql.exec(`CREATE TABLE ${tmp} (${columnsDdl})`);
-    const all = [...columns, "mmr_start", "mmr_end"];
-    const insert = `INSERT INTO ${tmp} (${all.join(", ")})
-      VALUES (${all.map(() => "?").join(", ")})`;
-    let dropped = 0;
-    const rows = [...sql.exec(`SELECT ${all.join(", ")} FROM ${table}`)];
-    for (const row of rows) {
-      let start: Uint8Array | null;
-      let end: Uint8Array | null;
-      try {
-        start = blobRangeValue(row.mmr_start, "mmr_start");
-        end = blobRangeValue(row.mmr_end, "mmr_end");
-      } catch {
-        dropped++;
-        continue;
-      }
-      sql.exec(insert, ...columns.map((c) => row[c] ?? null), start, end);
-    }
-    sql.exec(`DROP TABLE ${table}`);
-    sql.exec(`ALTER TABLE ${tmp} RENAME TO ${table}`);
-    if (dropped > 0) {
-      console.warn(
-        `mmr range migration: ${table} dropped ${dropped} row(s) whose range is not a uint64`,
-      );
-    }
-  }
-
-  /** Rewrite JSON-number range bounds in queued webhook payloads to strings. */
-  private rewriteWebhookPayloadRanges(): void {
-    const sql = this.ctx.storage.sql;
-    let rows: Record<string, SqlStorageValue>[];
-    try {
-      rows = [
-        ...sql.exec(`SELECT request_key, payload_json FROM webhook_deliveries`),
-      ];
-    } catch {
-      return; // table not created yet: nothing queued
-    }
-    for (const row of rows) {
-      const key = row.request_key as string;
-      try {
-        const payload = JSON.parse(row.payload_json as string) as Record<
-          string,
-          unknown
-        >;
-        if (
-          typeof payload.mmrStart !== "number" &&
-          typeof payload.mmrEnd !== "number"
-        ) {
-          continue;
-        }
-        payload.mmrStart = formatDecimalUint64(
-          toUint64(payload.mmrStart, "mmrStart"),
-        );
-        payload.mmrEnd = formatDecimalUint64(
-          toUint64(payload.mmrEnd, "mmrEnd"),
-        );
-        sql.exec(
-          `UPDATE webhook_deliveries SET payload_json = ? WHERE request_key = ?`,
-          JSON.stringify(payload),
-          key,
-        );
-      } catch (error) {
-        sql.exec(`DELETE FROM webhook_deliveries WHERE request_key = ?`, key);
-        console.warn(
-          `mmr range migration: webhook delivery "${key}" dropped: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
       }
     }
   }
@@ -3599,8 +3526,16 @@ export class DelegationStoreDO extends DurableObject<Env> {
     this.scheduleNextWebhookAlarm();
   }
 
-  /** Set DO alarm to earliest webhook_deliveries.next_attempt_at. */
+  /**
+   * Set DO alarm to earliest webhook_deliveries.next_attempt_at. While the
+   * range migration runs it owns an immediate alarm instead, which a later
+   * retry time must not push back.
+   */
   private scheduleNextWebhookAlarm(): void {
+    if (!this.rangeMigrationDone) {
+      this.ctx.storage.setAlarm(Date.now());
+      return;
+    }
     const rows = [
       ...this.ctx.storage.sql.exec(
         `SELECT MIN(next_attempt_at) AS min_at FROM webhook_deliveries`,
@@ -3611,9 +3546,24 @@ export class DelegationStoreDO extends DurableObject<Env> {
     this.ctx.storage.setAlarm(minAt * 1000);
   }
 
-  /** Process due webhook delivery retries. */
+  /**
+   * Continue the range migration, then process due webhook delivery retries.
+   * Deliveries wait for the migration: queued payloads may still carry
+   * JSON-number bounds until its webhook phase rewrites them. A chunk failure
+   * throws so workerd retries the alarm with backoff.
+   */
   async alarm(): Promise<void> {
     this.ensureSchema();
+    if (!this.rangeMigrationDone) {
+      this.rangeMigrationDone = this.rangeMigration.run(
+        this.rangeMigrationBudget,
+        this.rangeMigrationChunkHook,
+      );
+      if (!this.rangeMigrationDone) {
+        await this.scheduleImmediateAlarm();
+        return;
+      }
+    }
     const now = Math.floor(Date.now() / 1000);
     const due = [
       ...this.ctx.storage.sql.exec(
@@ -3680,6 +3630,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
   async devResetStorage(): Promise<void> {
     await this.ctx.storage.deleteAll();
     this.initialized = false;
+    this.rangeMigrationDone = false;
+    this.rangeMigration = new MmrRangeMigration(this.ctx.storage);
     this.ensureSchema();
   }
 }
@@ -3698,15 +3650,20 @@ function delegateKeyRecordFromRow(row: DelegateKeyRow): DelegateKeyRecord {
   };
 }
 
-/**
- * Convert a pre-FOR-613 INTEGER range value to its be8 BLOB for the rebuild.
- * NULL (a pre-coverage certificate row) stays NULL.
- *
- * @throws When the stored value is not a uint64 (negative, REAL, text).
- */
-function blobRangeValue(value: unknown, what: string): Uint8Array | null {
-  if (value === null || value === undefined) return null;
-  return encodeMmrIndexBe8(toUint64(value, what));
+/** 503 for a range route while the range migration runs (plan-2611-01 D6). */
+function rangeMigrationInProgressResponse(): Response {
+  return Response.json(
+    {
+      type: "about:blank",
+      title: "Service Unavailable",
+      status: 503,
+      detail: "MMR range storage migration in progress",
+    },
+    {
+      status: 503,
+      headers: { "Retry-After": String(RANGE_MIGRATION_RETRY_AFTER_SECONDS) },
+    },
+  );
 }
 
 /** 400 problem for a malformed delegation MMR range (FOR-613). */

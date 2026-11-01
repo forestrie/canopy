@@ -1,20 +1,28 @@
 /**
- * Boot-time migration of the delegation MMR range columns from SQLite
- * INTEGER to 8-byte big-endian BLOB (plan-2611-01 D2, FOR-613).
+ * In-place, chunked migration of the delegation MMR range columns from
+ * SQLite INTEGER to 8-byte big-endian BLOB (plan-2611-01 D6, FOR-613;
+ * src/durableobjects/mmr-range-migration.ts).
  *
- * Seeds a dedicated DO (never one of the worker's shards) with the exact
- * pre-FOR-613 `delegation_certificates`, `pending` and `webhook_deliveries`
- * shapes and rows, then lets the first fetch run ensureSchema. Rows must
- * survive with the same values, the range indexes must exist on the rebuilt
- * tables, and a second boot must change nothing.
+ * Each test seeds a dedicated DO (never one of the worker's shards) with the
+ * exact pre-FOR-613 table shapes before its first fetch, shrinks the
+ * per-event budget through the DO's test seams where it needs several
+ * events, and drives the rest with alarms.
  */
 
 import { randomUUID } from "node:crypto";
 import { encodeCborDeterministic } from "@forestrie/encoding";
-import { env, runInDurableObject } from "cloudflare:test";
+import {
+  env,
+  runDurableObjectAlarm,
+  runInDurableObject,
+} from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { sha256Hex } from "../../src/certificate-key.js";
 import type { DelegationStoreDO } from "../../src/durableobjects/delegation-store.js";
+import type {
+  MmrRangeMigrationBudget,
+  MmrRangeMigrationChunkHook,
+} from "../../src/durableobjects/mmr-range-migration.js";
 import {
   hex32ToWireLogIdBytes,
   normalizeLogIdToHex32,
@@ -22,9 +30,26 @@ import {
 import type { PendingEntry } from "../../src/types/pending-entry.js";
 import { testDelegatedCoseKey } from "./byok-material-fixture.js";
 
+type Stub = DurableObjectStub<DelegationStoreDO>;
+
+/** The private fields tests reach through (`rangeMigration*` seams). */
+interface MigrationSeams {
+  initialized: boolean;
+  rangeMigrationBudget: MmrRangeMigrationBudget;
+  rangeMigrationChunkHook: MmrRangeMigrationChunkHook | null;
+}
+
 const FAR_FUTURE = 4_102_444_800;
 const CERT_BYTES = new Uint8Array([0xd2, 0x84, 0x40, 0xa0, 0xf6, 0x40]);
 const LEGACY_CERT_BYTES = new Uint8Array([0xd2, 0x84, 0x41, 0x00]);
+const TWO_53_PLUS_1 = 2n ** 53n + 1n;
+const INT64_MAX = 2n ** 63n - 1n;
+const TRIGGERS = [
+  "trg_delegation_certificates_mmr_range_insert",
+  "trg_delegation_certificates_mmr_range_update",
+  "trg_pending_mmr_range_insert",
+  "trg_pending_mmr_range_update",
+];
 
 /** The pre-FOR-613 table shapes: base CREATE plus the legacy ALTER path. */
 function createLegacyTables(sql: SqlStorage): void {
@@ -87,269 +112,502 @@ function createLegacyTables(sql: SqlStorage): void {
   `);
 }
 
-interface Seeded {
-  stub: DurableObjectStub<DelegationStoreDO>;
-  logHex32: string;
-  legacyLogHex32: string;
-  delegatedKey: Uint8Array;
-  pendingKey: Uint8Array;
+/**
+ * A range value to seed. A `bigint` binds as its decimal string, which the
+ * legacy INTEGER affinity stores as an exact INTEGER (the DO SQL API binds no
+ * bigint); bytes bind as an ArrayBuffer (a BLOB); the rest as-is.
+ */
+type SeedValue = bigint | number | string | Uint8Array | null;
+
+function bind(v: SeedValue): SqlStorageValue {
+  if (typeof v === "bigint") return v.toString(10);
+  if (v instanceof Uint8Array) return new Uint8Array(v).buffer as ArrayBuffer;
+  return v;
 }
 
-/** Seed legacy-schema rows into a fresh DO without booting its schema. */
-async function seedLegacyStore(): Promise<Seeded> {
-  const stub = env.DELEGATION_STORE.get(
-    env.DELEGATION_STORE.idFromName(`range-blob-migration-${randomUUID()}`),
+function insertCert(
+  sql: SqlStorage,
+  logHex32: string,
+  key: string,
+  start: SeedValue,
+  end: SeedValue,
+  pubkey: { hash: string; key: Uint8Array } | null = null,
+): void {
+  sql.exec(
+    `INSERT INTO delegation_certificates
+       (log_id_hex32, certificate_key, certificate, issued_at, expires_at,
+        delegated_pubkey_hash, delegated_public_key, mmr_start, mmr_end)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    logHex32,
+    key,
+    start === null ? LEGACY_CERT_BYTES : CERT_BYTES,
+    1_700_000_000,
+    FAR_FUTURE,
+    pubkey?.hash ?? null,
+    pubkey?.key ?? null,
+    bind(start),
+    bind(end),
   );
-  const logHex32 = normalizeLogIdToHex32(randomUUID());
-  const legacyLogHex32 = normalizeLogIdToHex32(randomUUID());
-  const delegatedKey = testDelegatedCoseKey(61);
-  const pendingKey = testDelegatedCoseKey(62);
-  const delegatedHash = await sha256Hex(delegatedKey);
-  const pendingHash = await sha256Hex(pendingKey);
-  const now = Math.floor(Date.now() / 1000);
+}
 
-  await runInDurableObject(stub, async (_instance, state) => {
-    const sql = state.storage.sql;
-    createLegacyTables(sql);
-    // A coverage-era row with a range at the edge of what a JSON number
-    // could carry exactly.
-    sql.exec(
-      `INSERT INTO delegation_certificates
-         (log_id_hex32, certificate_key, certificate, issued_at, expires_at,
-          delegated_pubkey_hash, delegated_public_key, mmr_start, mmr_end)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      logHex32,
-      `0:${Number.MAX_SAFE_INTEGER}:${delegatedHash}`,
-      CERT_BYTES,
-      1_700_000_000,
-      FAR_FUTURE,
-      delegatedHash,
-      delegatedKey,
-      0,
-      Number.MAX_SAFE_INTEGER,
-    );
-    // A pre-coverage row: NULL range columns, served by exact key only.
-    sql.exec(
-      `INSERT INTO delegation_certificates
-         (log_id_hex32, certificate_key, certificate, issued_at, expires_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      legacyLogHex32,
-      `3:4:${delegatedHash}`,
-      LEGACY_CERT_BYTES,
-      1_700_000_000,
-      FAR_FUTURE,
-    );
-    sql.exec(
-      `INSERT INTO pending
-         (id, auth_log_id_hex32, log_id_hex32, mmr_start, mmr_end,
-          delegated_pubkey_hash, delegated_public_key, requested_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      "pending-1",
-      logHex32,
-      logHex32,
-      4294967296,
-      4294967297,
-      pendingHash,
-      pendingKey,
-      now,
-    );
-    sql.exec(
-      `INSERT INTO webhook_deliveries
-         (request_key, log_id_hex32, webhook_url, payload_json, attempt,
-          next_attempt_at, created_at)
-       VALUES (?, ?, ?, ?, 2, ?, ?)`,
-      "rk-windowed",
-      logHex32,
-      "https://hooks.example.test/legacy",
-      JSON.stringify({
-        requestKey: "rk-windowed",
-        type: "delegation.required",
-        version: 1,
-        logId: logHex32,
-        authLogId: logHex32,
-        mmrStart: 4294967296,
-        mmrEnd: 4294967297,
-        delegatedPublicKey: "AA==",
-        requestedAt: now,
-      }),
-      FAR_FUTURE,
-      now,
-    );
-    sql.exec(
-      `INSERT INTO webhook_deliveries
-         (request_key, log_id_hex32, webhook_url, payload_json, attempt,
-          next_attempt_at, created_at)
-       VALUES (?, ?, ?, ?, 0, ?, ?)`,
-      "rk-windowless",
-      logHex32,
-      "https://hooks.example.test/legacy",
-      JSON.stringify({ requestKey: "rk-windowless", logId: logHex32 }),
-      FAR_FUTURE,
-      now,
+function insertPending(
+  sql: SqlStorage,
+  id: string,
+  logHex32: string,
+  start: SeedValue,
+  end: SeedValue,
+  pubkey: { hash: string; key: Uint8Array },
+): void {
+  sql.exec(
+    `INSERT INTO pending
+       (id, auth_log_id_hex32, log_id_hex32, mmr_start, mmr_end,
+        delegated_pubkey_hash, delegated_public_key, requested_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    id,
+    logHex32,
+    logHex32,
+    bind(start),
+    bind(end),
+    pubkey.hash,
+    pubkey.key,
+    Math.floor(Date.now() / 1000),
+  );
+}
+
+function insertWebhook(
+  sql: SqlStorage,
+  requestKey: string,
+  logHex32: string,
+  payload: Record<string, unknown>,
+): void {
+  sql.exec(
+    `INSERT INTO webhook_deliveries
+       (request_key, log_id_hex32, webhook_url, payload_json, attempt,
+        next_attempt_at, created_at)
+     VALUES (?, ?, ?, ?, 0, ?, ?)`,
+    requestKey,
+    logHex32,
+    "https://hooks.example.test/legacy",
+    JSON.stringify({ requestKey, ...payload }),
+    FAR_FUTURE,
+    Math.floor(Date.now() / 1000),
+  );
+}
+
+function newStub(prefix: string): Stub {
+  return env.DELEGATION_STORE.get(
+    env.DELEGATION_STORE.idFromName(`${prefix}-${randomUUID()}`),
+  );
+}
+
+/** Create the legacy tables, run `seed`, and install the test seams. */
+async function seedLegacy(
+  stub: Stub,
+  seed: (sql: SqlStorage) => void,
+  budget?: MmrRangeMigrationBudget,
+): Promise<void> {
+  await runInDurableObject(stub, async (instance, state) => {
+    createLegacyTables(state.storage.sql);
+    seed(state.storage.sql);
+    if (budget) {
+      (instance as unknown as MigrationSeams).rangeMigrationBudget = budget;
+    }
+  });
+}
+
+async function setChunkHook(
+  stub: Stub,
+  hook: (sql: SqlStorage) => MmrRangeMigrationChunkHook | null,
+): Promise<void> {
+  await runInDurableObject(stub, async (instance, state) => {
+    (instance as unknown as MigrationSeams).rangeMigrationChunkHook = hook(
+      state.storage.sql,
     );
   });
-  return { stub, logHex32, legacyLogHex32, delegatedKey, pendingKey };
 }
 
-/** Column storage classes, range values and indexes, read straight from SQL. */
-async function inspect(stub: DurableObjectStub<DelegationStoreDO>): Promise<{
+/** Storage facts the assertions read, straight from SQL. */
+interface Inspected {
+  done: boolean;
+  triggers: string[];
+  leftoverTables: string[];
+  /** `certificate_key` → [hex(mmr_start), hex(mmr_end)] ('' for NULL). */
+  certHex: Record<string, [string, string]>;
   certTypes: string[];
-  pendingTypes: string[];
-  indexes: string[];
-  declared: Record<string, string>;
-  payloads: Record<string, unknown>;
-}> {
+  pendingHex: Record<string, [string, string]>;
+  quarantine: Record<string, string>;
+  payloads: Record<string, Record<string, unknown>>;
+}
+
+async function inspect(stub: Stub): Promise<Inspected> {
   return runInDurableObject(stub, async (_instance, state) => {
     const sql = state.storage.sql;
-    const certTypes = [
-      ...sql.exec(
-        `SELECT typeof(mmr_start) AS s, typeof(mmr_end) AS e
-           FROM delegation_certificates ORDER BY certificate_key`,
-      ),
-    ].map((r) => `${r.s}/${r.e}`);
-    const pendingTypes = [
-      ...sql.exec(
-        `SELECT typeof(mmr_start) AS s, typeof(mmr_end) AS e FROM pending`,
-      ),
-    ].map((r) => `${r.s}/${r.e}`);
-    const indexes = [
-      ...sql.exec(
-        `SELECT name FROM sqlite_master
-          WHERE type = 'index' AND tbl_name IN ('pending', 'delegation_certificates')
-            AND name LIKE 'idx_%' ORDER BY name`,
-      ),
-    ].map((r) => r.name as string);
-    const declared: Record<string, string> = {};
-    for (const table of ["delegation_certificates", "pending"]) {
-      for (const r of sql.exec(
-        `SELECT name, type FROM pragma_table_info('${table}')
-          WHERE name IN ('mmr_start', 'mmr_end')`,
+    const rows = (q: string) => [...sql.exec(q)];
+    const tableExists = (name: string) =>
+      rows(
+        `SELECT name FROM sqlite_master WHERE type = 'table' AND name = '${name}'`,
+      ).length > 0;
+    const certHex: Inspected["certHex"] = {};
+    const certTypes: string[] = [];
+    for (const r of rows(
+      `SELECT certificate_key, hex(mmr_start) AS s, hex(mmr_end) AS e,
+              typeof(mmr_start) AS ts, typeof(mmr_end) AS te
+         FROM delegation_certificates`,
+    )) {
+      certHex[String(r.certificate_key)] = [String(r.s), String(r.e)];
+      certTypes.push(`${String(r.ts)}/${String(r.te)}`);
+    }
+    const pendingHex: Inspected["pendingHex"] = {};
+    for (const r of rows(
+      `SELECT id, hex(mmr_start) AS s, hex(mmr_end) AS e FROM pending`,
+    )) {
+      pendingHex[String(r.id)] = [String(r.s), String(r.e)];
+    }
+    const quarantine: Record<string, string> = {};
+    if (tableExists("delegation_certificates_quarantine")) {
+      for (const r of rows(
+        `SELECT certificate_key, reason FROM delegation_certificates_quarantine`,
       )) {
-        declared[`${table}.${r.name as string}`] = r.type as string;
+        quarantine[String(r.certificate_key)] = String(r.reason);
       }
     }
-    const payloads: Record<string, unknown> = {};
-    for (const r of sql.exec(
+    const payloads: Inspected["payloads"] = {};
+    for (const r of rows(
       `SELECT request_key, payload_json FROM webhook_deliveries`,
     )) {
-      payloads[r.request_key as string] = JSON.parse(r.payload_json as string);
+      payloads[String(r.request_key)] = JSON.parse(String(r.payload_json));
     }
-    return { certTypes, pendingTypes, indexes, declared, payloads };
+    return {
+      done:
+        tableExists("schema_meta") &&
+        rows(`SELECT 1 FROM schema_meta WHERE key = 'mmr_range_be8'`).length >
+          0,
+      triggers: rows(
+        `SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name`,
+      ).map((r) => String(r.name)),
+      leftoverTables: rows(
+        `SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '%__be8'`,
+      ).map((r) => String(r.name)),
+      certHex,
+      certTypes,
+      pendingHex,
+      quarantine,
+      payloads,
+    };
   });
 }
 
-/** Assert the migrated rows read back with their original values. */
-async function expectMigratedValues(s: Seeded): Promise<void> {
-  // Coverage-era row: served through coverage retrieval from BLOB columns.
-  const issue = await s.stub.fetch("https://do.internal/issue", {
-    method: "POST",
-    headers: { "Content-Type": "application/cbor" },
-    body: encodeCborDeterministic({
-      logId: hex32ToWireLogIdBytes(s.logHex32),
-      mmrStart: 5,
-      mmrEnd: 7,
-      algorithm: "ES256",
-      delegatedPublicKey: s.delegatedKey,
-    }),
-  });
-  expect(issue.status).toBe(200);
-
-  const del = await s.stub.fetch(
-    `https://do.internal/delegation?logId=${s.logHex32}`,
-  );
-  expect(del.status).toBe(200);
-  const current = (await del.json()) as { mmrStart: string; mmrEnd: string };
-  expect(current.mmrStart).toBe("0");
-  expect(current.mmrEnd).toBe(String(Number.MAX_SAFE_INTEGER));
-
-  // Pre-coverage row: still NULL, still served by the exact certificate_key.
-  const legacy = await s.stub.fetch("https://do.internal/issue", {
-    method: "POST",
-    headers: { "Content-Type": "application/cbor" },
-    body: encodeCborDeterministic({
-      logId: hex32ToWireLogIdBytes(s.legacyLogHex32),
-      mmrStart: 3,
-      mmrEnd: 4,
-      algorithm: "ES256",
-      delegatedPublicKey: s.delegatedKey,
-    }),
-  });
-  expect(legacy.status).toBe(200);
-
-  const pending = await s.stub.fetch(
-    `https://do.internal/pending-delegation?logId=${s.logHex32}`,
-  );
-  const { entries } = (await pending.json()) as { entries: PendingEntry[] };
-  const entry = entries.find((e) => e.id === "pending-1");
-  expect(entry?.mmrStart).toBe("4294967296");
-  expect(entry?.mmrEnd).toBe("4294967297");
+/**
+ * Drive the migration with alarms only (no fetches) until the done flag is
+ * set. Alarms may also fire on their own; either way the flag must arrive.
+ */
+async function driveAlarmsToCompletion(stub: Stub): Promise<void> {
+  for (let i = 0; i < 200; i++) {
+    if ((await inspect(stub)).done) return;
+    if (!(await runDurableObjectAlarm(stub))) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  }
+  throw new Error("range migration did not complete");
 }
 
-describe("MMR range INTEGER → be8 BLOB boot-time migration", () => {
-  it("rebuilds both tables with BLOB range columns and keeps every value", async () => {
-    const seeded = await seedLegacyStore();
-    const before = await inspect(seeded.stub);
-    expect(before.declared["pending.mmr_start"]).toBe("INTEGER");
+function be8Hex(v: bigint): string {
+  return v.toString(16).padStart(16, "0").toUpperCase();
+}
 
-    await expectMigratedValues(seeded);
+async function getDelegation(stub: Stub, logHex32: string): Promise<Response> {
+  return stub.fetch(`https://do.internal/delegation?logId=${logHex32}`);
+}
 
-    const after = await inspect(seeded.stub);
-    expect(after.declared).toEqual({
-      "delegation_certificates.mmr_start": "BLOB",
-      "delegation_certificates.mmr_end": "BLOB",
-      "pending.mmr_start": "BLOB",
-      "pending.mmr_end": "BLOB",
+describe("MMR range INTEGER → be8 BLOB in-place migration", () => {
+  it("migrates more rows than several budgets: 503 meanwhile, alarms finish it", async () => {
+    const stub = newStub("range-migration-large");
+    const logs = Array.from({ length: 12 }, () =>
+      normalizeLogIdToHex32(randomUUID()),
+    );
+    const bigLog = normalizeLogIdToHex32(randomUUID());
+    const legacyLog = normalizeLogIdToHex32(randomUUID());
+    const key = testDelegatedCoseKey(61);
+    const pubkey = { hash: await sha256Hex(key), key };
+    const expectedCert: Record<string, [string, string]> = {};
+    const expectedPending: Record<string, [string, string]> = {};
+    const chunkCalls: Array<[string, number]> = [];
+
+    await seedLegacy(
+      stub,
+      (sql) => {
+        logs.forEach((log, i) => {
+          const start = BigInt(i) * 1000n;
+          const end = start + 999n;
+          insertCert(sql, log, `c${i}`, start, end, pubkey);
+          expectedCert[`c${i}`] = [be8Hex(start), be8Hex(end)];
+          insertPending(sql, `p${i}`, log, end + 1n, end + 2n, pubkey);
+          expectedPending[`p${i}`] = [be8Hex(end + 1n), be8Hex(end + 2n)];
+        });
+        insertCert(sql, bigLog, "big", TWO_53_PLUS_1, INT64_MAX, pubkey);
+        expectedCert.big = [be8Hex(TWO_53_PLUS_1), be8Hex(INT64_MAX)];
+        // Pre-coverage row: NULL range, keyed `start:end:pubkeyHash`.
+        insertCert(sql, legacyLog, `3:4:${pubkey.hash}`, null, null);
+        expectedCert[`3:4:${pubkey.hash}`] = ["", ""];
+        // Leftovers from the earlier rebuild-based build of this migration.
+        sql.exec(`CREATE TABLE delegation_certificates__be8 (x)`);
+        sql.exec(`CREATE TABLE pending__be8 (x)`);
+      },
+      { chunkRows: 3, eventRows: 6, eventMs: 60_000 },
+    );
+    await setChunkHook(stub, () => (phase, chunk) => {
+      chunkCalls.push([phase, chunk]);
     });
-    expect(after.certTypes.sort()).toEqual(["blob/blob", "null/null"]);
-    expect(after.pendingTypes).toEqual(["blob/blob"]);
-    expect(after.indexes).toEqual([
-      "idx_delegation_certificates_coverage",
-      "idx_pending_auth_log",
-      "idx_pending_log_range_pubkey",
-    ]);
 
-    // In-flight webhook payloads move to the decimal-string contract too, so
-    // a retry after deploy reaches a new-build receiver in a shape it parses.
-    const windowed = after.payloads["rk-windowed"] as Record<string, unknown>;
-    expect(windowed.mmrStart).toBe("4294967296");
-    expect(windowed.mmrEnd).toBe("4294967297");
-    expect(windowed.requestKey).toBe("rk-windowed");
-    const windowless = after.payloads["rk-windowless"] as Record<
-      string,
-      unknown
-    >;
-    expect(windowless).toEqual({
+    // First event converts at most one budget: range routes are refused.
+    const first = await getDelegation(stub, bigLog);
+    expect(first.status).toBe(503);
+    expect(first.headers.get("Retry-After")).toBe("1");
+    const pending = await stub.fetch(
+      `https://do.internal/pending-delegation?logId=${logs[0]}`,
+    );
+    expect(pending.status).toBe(503);
+    // A route that never touches ranges proceeds.
+    const webhook = await stub.fetch(`https://do.internal/webhook/${logs[0]}`);
+    expect(webhook.status).not.toBe(503);
+
+    await driveAlarmsToCompletion(stub);
+
+    const after = await inspect(stub);
+    expect(after.certHex).toEqual(expectedCert);
+    expect(after.pendingHex).toEqual(expectedPending);
+    expect(after.leftoverTables).toEqual([]);
+    expect(after.triggers).toEqual(TRIGGERS);
+    expect(after.quarantine).toEqual({});
+    // 26 range rows at 3 per chunk and 6 per event: several events ran.
+    const events = chunkCalls.filter(([, chunk]) => chunk === 0).length;
+    expect(events).toBeGreaterThanOrEqual(4);
+
+    const del = await getDelegation(stub, bigLog);
+    expect(del.status).toBe(200);
+    const current = (await del.json()) as { mmrStart: string; mmrEnd: string };
+    expect(current.mmrStart).toBe(TWO_53_PLUS_1.toString());
+    expect(current.mmrEnd).toBe(INT64_MAX.toString());
+
+    // Pre-coverage row: still NULL, still served by the exact certificate_key.
+    const issue = await stub.fetch("https://do.internal/issue", {
+      method: "POST",
+      headers: { "Content-Type": "application/cbor" },
+      body: encodeCborDeterministic({
+        logId: hex32ToWireLogIdBytes(legacyLog),
+        mmrStart: 3,
+        mmrEnd: 4,
+        algorithm: "ES256",
+        delegatedPublicKey: key,
+      }),
+    });
+    expect(issue.status).toBe(200);
+
+    const pendingAfter = await stub.fetch(
+      `https://do.internal/pending-delegation?logId=${logs[11]}`,
+    );
+    const { entries } = (await pendingAfter.json()) as {
+      entries: PendingEntry[];
+    };
+    const entry = entries.find((e) => e.id === "p11");
+    expect(entry?.mmrStart).toBe("12000");
+    expect(entry?.mmrEnd).toBe("12001");
+  });
+
+  it("resumes after a chunk fails mid-transaction", async () => {
+    const stub = newStub("range-migration-interrupted");
+    const log = normalizeLogIdToHex32(randomUUID());
+    const key = testDelegatedCoseKey(63);
+    const pubkey = { hash: await sha256Hex(key), key };
+    const expected: Record<string, [string, string]> = {};
+    await seedLegacy(
+      stub,
+      (sql) => {
+        for (let i = 0; i < 10; i++) {
+          const v = 2n ** 40n + BigInt(i);
+          insertCert(sql, log, `c${i}`, v, v + 1n, pubkey);
+          expected[`c${i}`] = [be8Hex(v), be8Hex(v + 1n)];
+        }
+      },
+      { chunkRows: 3, eventRows: 100, eventMs: 60_000 },
+    );
+
+    // Fail the second certificate chunk once, after its writes, before
+    // commit; record what that chunk saw so the rollback can be checked.
+    const seenMidChunk: string[][] = [];
+    let failed = false;
+    let certChunks = 0;
+    await setChunkHook(stub, (sql) => (phase) => {
+      if (failed || phase !== "delegation_certificates") return;
+      if (++certChunks !== 2) return;
+      failed = true;
+      seenMidChunk.push(
+        [
+          ...sql.exec(
+            `SELECT typeof(mmr_start) AS t FROM delegation_certificates`,
+          ),
+        ].map((r) => String(r.t)),
+      );
+      throw new Error("injected chunk failure");
+    });
+
+    const res = await getDelegation(stub, log);
+    expect(res.status).toBe(503);
+    // Mid-chunk: two chunks' rows written, the rest still INTEGER — only
+    // ever visible inside the transaction that then rolled back.
+    expect(seenMidChunk[0]!.filter((t) => t === "blob")).toHaveLength(6);
+    expect(seenMidChunk[0]!.filter((t) => t === "integer")).toHaveLength(4);
+
+    await driveAlarmsToCompletion(stub);
+    const after = await inspect(stub);
+    expect(after.certHex).toEqual(expected);
+    expect(after.triggers).toEqual(TRIGGERS);
+    expect((await getDelegation(stub, log)).status).toBe(200);
+  });
+
+  it("quarantines certificates whose range is not a uint64 and deletes bad pending rows", async () => {
+    const stub = newStub("range-migration-quarantine");
+    const key = testDelegatedCoseKey(64);
+    const pubkey = { hash: await sha256Hex(key), key };
+    const badLogs = {
+      real: normalizeLogIdToHex32(randomUUID()),
+      negative: normalizeLogIdToHex32(randomUUID()),
+      text: normalizeLogIdToHex32(randomUUID()),
+      short: normalizeLogIdToHex32(randomUUID()),
+    };
+    const goodLog = normalizeLogIdToHex32(randomUUID());
+    await seedLegacy(stub, (sql) => {
+      // INTEGER affinity turns 5.0 or '5' into integer 5, so the bad values
+      // are ones it cannot convert.
+      insertCert(sql, badLogs.real, "real", 1.5, 10, pubkey);
+      insertCert(sql, badLogs.negative, "negative", 0, -1, pubkey);
+      insertCert(sql, badLogs.text, "text", "not-a-number", 10, pubkey);
+      insertCert(sql, badLogs.short, "short", new Uint8Array(4), 10, pubkey);
+      insertCert(sql, goodLog, "good", 0, 10, pubkey);
+      insertPending(sql, "bad-pending", goodLog, 2.5, 3, pubkey);
+      insertPending(sql, "good-pending", goodLog, 20, 30, pubkey);
+    });
+
+    expect((await getDelegation(stub, goodLog)).status).toBe(200);
+    const after = await inspect(stub);
+    expect(after.done).toBe(true);
+    expect(after.quarantine).toEqual({
+      real: "mmr_start is real",
+      negative: "mmr_end is negative",
+      text: "mmr_start is text",
+      short: "mmr_start is a 4-byte blob",
+    });
+    expect(Object.keys(after.certHex)).toEqual(["good"]);
+    expect(Object.keys(after.pendingHex)).toEqual(["good-pending"]);
+    for (const log of Object.values(badLogs)) {
+      expect((await getDelegation(stub, log)).status).toBe(404);
+    }
+  });
+
+  it("installs triggers that reject a non-be8 range once complete", async () => {
+    const stub = newStub("range-migration-triggers");
+    const log = normalizeLogIdToHex32(randomUUID());
+    const key = testDelegatedCoseKey(65);
+    const pubkey = { hash: await sha256Hex(key), key };
+    await seedLegacy(stub, (sql) => {
+      insertCert(sql, log, "c0", 1, 2, pubkey);
+    });
+    expect((await getDelegation(stub, log)).status).toBe(200);
+
+    await runInDurableObject(stub, async (_instance, state) => {
+      const sql = state.storage.sql;
+      const reject = /8-byte big-endian BLOB/;
+      expect(() => insertCert(sql, log, "c1", 5, 6, pubkey)).toThrow(reject);
+      expect(() => insertPending(sql, "p-int", log, 5, 6, pubkey)).toThrow(
+        reject,
+      );
+      expect(() =>
+        sql.exec(`UPDATE delegation_certificates SET mmr_end = 7`),
+      ).toThrow(reject);
+      // A be8 BLOB and a NULL range still pass.
+      insertCert(sql, log, "c2", new Uint8Array(8), new Uint8Array(8), pubkey);
+      insertCert(sql, log, "c3", null, null);
+    });
+  });
+
+  it("rewrites queued webhook payload ranges across several chunks", async () => {
+    const stub = newStub("range-migration-webhooks");
+    const log = normalizeLogIdToHex32(randomUUID());
+    const chunks: string[] = [];
+    await seedLegacy(
+      stub,
+      (sql) => {
+        for (let i = 0; i < 7; i++) {
+          insertWebhook(sql, `rk${i}`, log, {
+            type: "delegation.required",
+            logId: log,
+            mmrStart: 4294967296 + i,
+            mmrEnd: 4294967297 + i,
+          });
+        }
+        insertWebhook(sql, "rk-windowless", log, { logId: log });
+        insertWebhook(sql, "rk-negative", log, { mmrStart: -1, mmrEnd: 2 });
+      },
+      { chunkRows: 2, eventRows: 4, eventMs: 60_000 },
+    );
+    await setChunkHook(stub, () => (phase) => {
+      if (phase === "webhook_deliveries") chunks.push(phase);
+    });
+
+    await stub.fetch(`https://do.internal/webhook/${log}`);
+    await driveAlarmsToCompletion(stub);
+
+    const after = await inspect(stub);
+    for (let i = 0; i < 7; i++) {
+      const p = after.payloads[`rk${i}`]!;
+      expect(p.mmrStart).toBe(String(4294967296 + i));
+      expect(p.mmrEnd).toBe(String(4294967297 + i));
+      expect(p.requestKey).toBe(`rk${i}`);
+    }
+    expect(after.payloads["rk-windowless"]).toEqual({
       requestKey: "rk-windowless",
-      logId: seeded.logHex32,
+      logId: log,
     });
+    expect(after.payloads["rk-negative"]).toBeUndefined();
+    // 8 numeric payloads at 2 per chunk, plus the empty closing scans.
+    expect(chunks.length).toBeGreaterThanOrEqual(4);
   });
 
-  it("is idempotent: a second boot changes nothing", async () => {
-    const seeded = await seedLegacyStore();
-    await expectMigratedValues(seeded);
-    const first = await inspect(seeded.stub);
-
-    await runInDurableObject(seeded.stub, async (instance) => {
-      (instance as unknown as { initialized: boolean }).initialized = false;
-    });
-    await expectMigratedValues(seeded);
-    expect(await inspect(seeded.stub)).toEqual(first);
-  });
-
-  it("creates BLOB range columns directly on a fresh database", async () => {
-    const stub = env.DELEGATION_STORE.get(
-      env.DELEGATION_STORE.idFromName(`range-blob-fresh-${randomUUID()}`),
-    );
-    const res = await stub.fetch(
-      `https://do.internal/delegation?logId=${"0".repeat(32)}`,
-    );
+  it("does no work on a fresh database: done flag and triggers at once", async () => {
+    const stub = newStub("range-migration-fresh");
+    // The very first event completes: a range route answers, not 503.
+    const res = await getDelegation(stub, "0".repeat(32));
     expect(res.status).toBe(404);
     const after = await inspect(stub);
-    expect(after.declared).toEqual({
-      "delegation_certificates.mmr_start": "BLOB",
-      "delegation_certificates.mmr_end": "BLOB",
-      "pending.mmr_start": "BLOB",
-      "pending.mmr_end": "BLOB",
+    expect(after.done).toBe(true);
+    expect(after.triggers).toEqual(TRIGGERS);
+    expect(after.leftoverTables).toEqual([]);
+    const declared = await runInDurableObject(stub, async (_i, state) =>
+      [
+        ...state.storage.sql.exec(
+          `SELECT name, type FROM pragma_table_info('pending')
+            WHERE name IN ('mmr_start', 'mmr_end')`,
+        ),
+      ].map((r) => `${String(r.name)}:${String(r.type)}`),
+    );
+    expect(declared).toEqual(["mmr_start:BLOB", "mmr_end:BLOB"]);
+  });
+
+  it("is idempotent: a second boot after completion changes nothing", async () => {
+    const stub = newStub("range-migration-reboot");
+    const log = normalizeLogIdToHex32(randomUUID());
+    const key = testDelegatedCoseKey(66);
+    const pubkey = { hash: await sha256Hex(key), key };
+    await seedLegacy(stub, (sql) => {
+      insertCert(sql, log, "c0", 7, INT64_MAX, pubkey);
     });
+    expect((await getDelegation(stub, log)).status).toBe(200);
+    const first = await inspect(stub);
+
+    await runInDurableObject(stub, async (instance) => {
+      (instance as unknown as MigrationSeams).initialized = false;
+    });
+    expect((await getDelegation(stub, log)).status).toBe(200);
+    expect(await inspect(stub)).toEqual(first);
   });
 });
