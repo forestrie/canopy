@@ -45,71 +45,6 @@ const OBJECT_EXTENSIONS: Readonly<Record<string, string>> = {
 };
 
 /**
- * Build the massif `.log` object key for a log.
- */
-export function v2MassifObjectKey(
-  massifHeight: number,
-  logId: string,
-  massifIndex: bigint | number,
-): string {
-  assertKeyHeightAndLogId(massifHeight, logId);
-  return `v2/merklelog/massifs/${massifHeight}/${logId}/${formatMassifObjectIndex(massifIndex)}.log`;
-}
-
-/**
- * Build the signed checkpoint `.sth` object key for a log.
- */
-export function v2CheckpointObjectKey(
-  massifHeight: number,
-  logId: string,
-  massifIndex: bigint | number,
-): string {
-  assertKeyHeightAndLogId(massifHeight, logId);
-  return `v2/merklelog/checkpoints/${massifHeight}/${logId}/${formatMassifObjectIndex(massifIndex)}.sth`;
-}
-
-/**
- * Reject a massif height or log id that would build a key Go cannot read:
- * height outside 1..255 or non-integer, or a log id that is empty or would
- * add path segments.
- */
-function assertKeyHeightAndLogId(massifHeight: number, logId: string): void {
-  if (
-    !Number.isInteger(massifHeight) ||
-    massifHeight < MIN_MASSIF_HEIGHT ||
-    massifHeight > MAX_MASSIF_HEIGHT
-  ) {
-    throw new Error(
-      `Massif height must be an integer ${MIN_MASSIF_HEIGHT}..${MAX_MASSIF_HEIGHT}, got ${massifHeight}`,
-    );
-  }
-  if (logId.length === 0 || logId.includes("/")) {
-    throw new Error(
-      `Log id must be a non-empty path segment, got: ${JSON.stringify(logId)}`,
-    );
-  }
-}
-
-/**
- * Format a massif index as the 16-digit decimal key segment (Go `%016d`).
- *
- * @throws Error if the index is negative, not an integer, not a safe integer
- *   (number input), or exceeds {@link MAX_MASSIF_INDEX}.
- */
-export function formatMassifObjectIndex(massifIndex: bigint | number): string {
-  if (typeof massifIndex === "number" && !Number.isSafeInteger(massifIndex)) {
-    throw new Error(`Massif index must be a safe integer, got ${massifIndex}`);
-  }
-  const index = BigInt(massifIndex);
-  if (index < 0n || index > MAX_MASSIF_INDEX) {
-    throw new Error(
-      `Massif index must be 0..${MAX_MASSIF_INDEX}, got ${index}`,
-    );
-  }
-  return index.toString(10).padStart(MASSIF_OBJECT_INDEX_DIGITS, "0");
-}
-
-/**
  * Parse an R2 object path to extract log ID, massif height, and massif index.
  *
  * @param path - The object path from the R2 notification
@@ -173,4 +108,69 @@ export function parseV2StorageObjectPath(path: string) {
     massifIndex,
     type: typePart,
   };
+}
+
+/**
+ * Build the massif `.log` object key for a log.
+ */
+export function v2MassifObjectKey(
+  massifHeight: number,
+  logId: string,
+  massifIndex: bigint | number,
+): string {
+  assertKeyHeightAndLogId(massifHeight, logId);
+  return `v2/merklelog/massifs/${massifHeight}/${logId}/${formatMassifObjectIndex(massifIndex)}.log`;
+}
+
+/**
+ * Build the signed checkpoint `.sth` object key for a log.
+ */
+export function v2CheckpointObjectKey(
+  massifHeight: number,
+  logId: string,
+  massifIndex: bigint | number,
+): string {
+  assertKeyHeightAndLogId(massifHeight, logId);
+  return `v2/merklelog/checkpoints/${massifHeight}/${logId}/${formatMassifObjectIndex(massifIndex)}.sth`;
+}
+
+/**
+ * Format a massif index as the 16-digit decimal key segment (Go `%016d`).
+ *
+ * @throws Error if the index is negative, not an integer, not a safe integer
+ *   (number input), or exceeds {@link MAX_MASSIF_INDEX}.
+ */
+export function formatMassifObjectIndex(massifIndex: bigint | number): string {
+  if (typeof massifIndex === "number" && !Number.isSafeInteger(massifIndex)) {
+    throw new Error(`Massif index must be a safe integer, got ${massifIndex}`);
+  }
+  const index = BigInt(massifIndex);
+  if (index < 0n || index > MAX_MASSIF_INDEX) {
+    throw new Error(
+      `Massif index must be 0..${MAX_MASSIF_INDEX}, got ${index}`,
+    );
+  }
+  return index.toString(10).padStart(MASSIF_OBJECT_INDEX_DIGITS, "0");
+}
+
+/**
+ * Reject a massif height or log id that would build a key Go cannot read:
+ * height outside 1..255 or non-integer, or a log id that is empty or would
+ * add path segments.
+ */
+function assertKeyHeightAndLogId(massifHeight: number, logId: string): void {
+  if (
+    !Number.isInteger(massifHeight) ||
+    massifHeight < MIN_MASSIF_HEIGHT ||
+    massifHeight > MAX_MASSIF_HEIGHT
+  ) {
+    throw new Error(
+      `Massif height must be an integer ${MIN_MASSIF_HEIGHT}..${MAX_MASSIF_HEIGHT}, got ${massifHeight}`,
+    );
+  }
+  if (logId.length === 0 || logId.includes("/")) {
+    throw new Error(
+      `Log id must be a non-empty path segment, got: ${JSON.stringify(logId)}`,
+    );
+  }
 }
