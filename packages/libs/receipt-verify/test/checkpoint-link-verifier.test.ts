@@ -38,6 +38,7 @@ import {
   twoLinksOverLeaves,
   wideLimits,
   CHAIN_FIXTURE_CHAIN_ID,
+  type CertLimits,
   type ChainFixture,
   type Es256Root,
 } from "./helpers/checkpoint-chain-links-fixture.js";
@@ -113,20 +114,23 @@ describe("checkpoint-chain: delegation limits per link (ES256 root)", () => {
     expect(o.records[0]!.constraints).toBeNull();
   });
 
-  it("a partial limit set (label 4 only) is treated as no limits", async () => {
+  it("labels 8/9 without labels 3/4 are a legacy certificate: no limits", async () => {
     const { fx, sealer, root, rootKey } = await setup();
-    const cert = await buildEs256Cert(root, sealer, { mmrEnd: 0n });
+    const { issuedAt, expiresAt } = wideLimits(fx);
+    const cert = await buildEs256Cert(root, sealer, { issuedAt, expiresAt });
     const o = await run(fx, [await coveringLink(fx, sealer, cert)], [rootKey]);
     expect(o.ok).toBe(true);
+    expect(o.records[0]!.constraints).toBeNull();
   });
 
-  // plan-2611-01 D4: absent is legacy (no bound); present but not a uint64
-  // is a hard reject, never "no limits" (FOR-613 B1, fail-open).
-  it("rejects a certificate whose mmrEnd is a CBOR float (the cbor-x encoding)", async () => {
+  // Labels 3 AND 4 absent is a legacy certificate (no bound). Any other
+  // incomplete or non-integer window is malformed, never "no limits".
+  async function expectMalformed(
+    limits: (fx: ChainFixture) => CertLimits,
+    malformed: Parameters<typeof buildEs256Cert>[3] = {},
+  ): Promise<void> {
     const { fx, sealer, root, rootKey } = await setup();
-    const cert = await buildEs256Cert(root, sealer, wideLimits(fx), {
-      mmrEndFloat64: 2 ** 32 + 1,
-    });
+    const cert = await buildEs256Cert(root, sealer, limits(fx), malformed);
     const o = fail(
       await run(fx, [await coveringLink(fx, sealer, cert)], [rootKey]),
     );
@@ -135,7 +139,37 @@ describe("checkpoint-chain: delegation limits per link (ES256 root)", () => {
       index: 0,
       reason: "delegation_range_malformed",
     });
-  });
+  }
+
+  it("label 4 without label 3 is malformed", () =>
+    expectMalformed((fx) => ({ ...wideLimits(fx), mmrStart: undefined })));
+
+  it("label 3 without label 4 is malformed", () =>
+    expectMalformed((fx) => ({ ...wideLimits(fx), mmrEnd: undefined })));
+
+  it("mmrStart > mmrEnd is malformed", () =>
+    expectMalformed((fx) => ({ ...wideLimits(fx), mmrStart: 5n, mmrEnd: 4n })));
+
+  it.each(["issuedAt", "expiresAt"] as const)(
+    "a range without %s is malformed",
+    (name) =>
+      expectMalformed((fx) => ({ ...wideLimits(fx), [name]: undefined })),
+  );
+
+  it.each([
+    ["a negative issuedAt", { issuedAt: -1 }],
+    ["a text expiresAt", { expiresAt: "1700000000" }],
+    ["a null expiresAt", { expiresAt: null }],
+    ["null labels 3 and 4", { mmrStart: null, mmrEnd: null }],
+    ["an expiresAt above 2^53-1", { expiresAt: (1n << 53n) + 1n }],
+    ["a float64 issuedAt", { float64: { label: 8, value: 2 ** 40 + 0.5 } }],
+    ["a float64 expiresAt", { float64: { label: 9, value: 2 ** 40 + 0.5 } }],
+  ] as const)("a range with %s is malformed", (_name, malformed) =>
+    expectMalformed(wideLimits, malformed),
+  );
+
+  it("rejects a certificate whose mmrEnd is a CBOR float (the cbor-x encoding)", () =>
+    expectMalformed(wideLimits, { float64: { label: 4, value: 2 ** 32 + 1 } }));
 
   it.each([
     ["a negative mmrStart", { mmrStart: -1 }],

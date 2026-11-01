@@ -219,6 +219,8 @@ export async function buildDelegatedGrantReceiptFixture(opts?: {
   omitCert?: boolean;
   /** Cert coverage range excludes the verified leaf's mmrIndex (FOR-420). */
   nonCovering?: boolean;
+  /** Sign a cert with `mmrStart > mmrEnd` (a malformed window). */
+  invertedRange?: boolean;
   /** Cert expiresAt precedes the leaf's issuance time (FOR-420). */
   expiredAtIssuance?: boolean;
   /** Cert issuedAt follows the leaf's issuance time — valid (FOR-420). */
@@ -273,7 +275,7 @@ export async function buildDelegatedGrantReceiptFixture(opts?: {
   // Leaf is at mmrIndex 1. A non-covering cert sets mmrEnd below the leaf so the
   // leaf (a lower bound on the checkpoint's treeSize-1) is beyond the authorized
   // horizon; a covering cert is wide (mmrStart=0, the lane norm).
-  const mmrStart = 0;
+  const mmrStart = opts?.invertedRange ? 65536 : 0;
   const mmrEnd = opts?.nonCovering ? 0 : 65535;
   const issuedAt = opts?.leafBeforeIssued ? leafTime + 10 : leafTime - 3600;
   const expiresAt = opts?.expiredAtIssuance ? leafTime - 10 : leafTime + 3600;

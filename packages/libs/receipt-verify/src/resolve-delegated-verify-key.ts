@@ -42,7 +42,7 @@ import {
   decodeCoseSign1,
   verifyCoseSign1WithParsedKey,
 } from "@forestrie/encoding";
-import { toUint64 } from "@forestrie/delegation-cose";
+import { toSafeUint, toUint64 } from "@forestrie/delegation-cose";
 import { isParsedKs256RootKey, type RootVerifyKey } from "./root-verify-key.js";
 import {
   verifyKs256DelegationCert,
@@ -109,11 +109,14 @@ export type DelegationConstraints = {
  * root-only: no delegation cert present — verify against the root keys as-is.
  * resolved: cert verified under a root key; use `delegatedKey` first.
  *   `constraints` carries the cert's coverage/validity window when the payload
- *   declares it (null for legacy certs that predate labels 3/4/8/9).
+ *   declares one (null for a legacy cert with neither label 3 nor 4).
  * broken: a cert is present but did not verify under the root, or its delegated
- *   key could not be parsed, or its range label 3/4 is present but not a
- *   uint64 (`delegation_range_malformed`) — the delegation chain is invalid.
- *   `reason` is set when it is more specific than `delegation_invalid`.
+ *   key could not be parsed, or its window is malformed
+ *   (`delegation_range_malformed`: only one of labels 3/4, a range label that
+ *   is not a uint64, `mmrStart > mmrEnd`, or labels 8/9 absent or not a
+ *   non-negative integer alongside a range) — the delegation chain is
+ *   invalid. `reason` is set when it is more specific than
+ *   `delegation_invalid`.
  */
 export type DelegatedResolution =
   | { kind: "root-only" }
@@ -133,8 +136,9 @@ function extractDelegationCertBytes(unprotected: unknown): Uint8Array | null {
 function labelGetter(map: unknown): ((label: number) => unknown) | null {
   if (map instanceof Map) return (label) => map.get(label);
   if (typeof map === "object" && map !== null) {
-    const obj = map as Record<string | number, unknown>;
-    return (label) => obj[label] ?? obj[String(label)];
+    // Presence, not truthiness: a label present as null is not absent.
+    const obj = map as Record<string, unknown>;
+    return (label) => (String(label) in obj ? obj[String(label)] : undefined);
   }
   return null;
 }
@@ -193,41 +197,38 @@ function extractDelegatedKeyFromPayloadMap(
   return get ? get(PAYLOAD_DELEGATED_KEY) : null;
 }
 
-function toNumberOrNull(v: unknown): number | null {
-  if (typeof v === "bigint") return Number(v);
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  return null;
-}
-
 /**
- * Parse the cert's coverage/validity window from its payload map. Returns null
- * when any of labels 3/4/8/9 is absent (legacy certs predating FOR-390 advance
- * delegation) — enforcement is then skipped, preserving pre-constraint trust.
+ * Parse the cert's coverage/validity window from its payload map.
  *
- * Absent is not malformed (plan-2611-01 D4, FOR-613): a label 3/4 that is
- * present but not a uint64 (a cbor-x float, a negative, a string) throws, so
- * a malformed range can never pass as "no range". arbor's sealer and
- * delegation-cose's `parseDelegationCertificate` reject the same values.
+ * Labels 3 (mmrStart) AND 4 (mmrEnd) both absent is a legacy certificate: it
+ * declares no window, returns null and enforcement is skipped, whatever
+ * labels 8/9 hold (arbor's builder omits 3/4 for a cert without a log id).
+ * Once either range label is present the window must be complete and well
+ * formed: both 3 and 4 uint64 with `mmrStart <= mmrEnd`, and 8/9 (issuedAt,
+ * expiresAt, Unix seconds) non-negative safe integers. Anything else throws,
+ * so a malformed window can never pass as "no window". arbor's sealer and
+ * delegation-cose's `parseDelegationCertificate` reject the same range
+ * values ([delegationcert](https://github.com/forestrie/arbor/tree/main/services/pkgs/delegationcert)).
  *
- * @throws When label 3 or 4 is present but not a uint64.
+ * @throws When the window is incomplete or a label is not an integer of
+ *   the required range.
  */
 function parseDelegationConstraints(
   payloadMap: unknown,
 ): DelegationConstraints | null {
   const get = labelGetter(payloadMap);
   if (!get) return null;
-  const mmrStart = uint64OrAbsent(get(PAYLOAD_MMR_START), "mmrStart");
-  const mmrEnd = uint64OrAbsent(get(PAYLOAD_MMR_END), "mmrEnd");
-  const issuedAt = toNumberOrNull(get(PAYLOAD_ISSUED_AT));
-  const expiresAt = toNumberOrNull(get(PAYLOAD_EXPIRES_AT));
-  if (mmrStart === null || mmrEnd === null) return null;
-  if (issuedAt === null || expiresAt === null) return null;
+  const rawStart = get(PAYLOAD_MMR_START);
+  const rawEnd = get(PAYLOAD_MMR_END);
+  if (rawStart === undefined && rawEnd === undefined) return null;
+  const mmrStart = toUint64(rawStart, "delegation mmrStart");
+  const mmrEnd = toUint64(rawEnd, "delegation mmrEnd");
+  if (mmrStart > mmrEnd) {
+    throw new Error(`delegation mmrStart ${mmrStart} > mmrEnd ${mmrEnd}`);
+  }
+  const issuedAt = toSafeUint(get(PAYLOAD_ISSUED_AT), "delegation issuedAt");
+  const expiresAt = toSafeUint(get(PAYLOAD_EXPIRES_AT), "delegation expiresAt");
   return { mmrStart, mmrEnd, issuedAt, expiresAt };
-}
-
-/** `null` for an absent label; otherwise the value must be a uint64. */
-function uint64OrAbsent(v: unknown, name: string): bigint | null {
-  return v === undefined ? null : toUint64(v, `delegation ${name}`);
 }
 
 /**
@@ -335,7 +336,7 @@ export async function resolveDelegatedVerifyKey(
   try {
     constraints = parseDelegationConstraints(payloadMap);
   } catch {
-    // A present but malformed range is a broken chain, never "no range".
+    // A malformed window is a broken chain, never "no window".
     return { kind: "broken", reason: "delegation_range_malformed" };
   }
   return { kind: "resolved", delegatedKey, constraints };

@@ -158,12 +158,15 @@ export function wideLimits(fx: ChainFixture): Required<CertLimits> {
 /**
  * A root-signed ES256 delegation certificate for `sealer`.
  *
- * @param malformed.mmrStart / malformed.mmrEnd - Raw values written at
- *   label 3 / 4 instead of `limits`' (a negative integer, a string, …).
- * @param malformed.mmrEndFloat64 - Write label 4 as a CBOR float64 (`fb`)
- *   of this value: what cbor-x emitted for an integer above uint32
- *   (FOR-613). `encodeCborDeterministic` cannot write a float, so a
- *   9-byte uint64 sentinel is swapped for the 9-byte float in place.
+ * @param malformed.mmrStart / mmrEnd / issuedAt / expiresAt - Raw values
+ *   written at label 3 / 4 / 8 / 9 instead of `limits`' (a negative
+ *   integer, a string, …).
+ * @param malformed.float64 - Write `label` as a CBOR float64 (`fb`) of
+ *   `value`: what cbor-x emitted for an integer above uint32.
+ *   `encodeCborDeterministic` cannot write a float, so a 9-byte uint64
+ *   sentinel is swapped for the 9-byte float in place. The value must need
+ *   float64 (the deterministic decoder rejects a float a shorter encoding
+ *   could carry).
  */
 export async function buildEs256Cert(
   root: Es256Root,
@@ -172,7 +175,9 @@ export async function buildEs256Cert(
   malformed: {
     mmrStart?: unknown;
     mmrEnd?: unknown;
-    mmrEndFloat64?: number;
+    issuedAt?: unknown;
+    expiresAt?: unknown;
+    float64?: { label: 3 | 4 | 8 | 9; value: number };
   } = {},
 ): Promise<Uint8Array> {
   const payload = new Map<number, unknown>([
@@ -184,13 +189,15 @@ export async function buildEs256Cert(
   if (limits.expiresAt !== undefined) payload.set(9, limits.expiresAt);
   if (malformed.mmrStart !== undefined) payload.set(3, malformed.mmrStart);
   if (malformed.mmrEnd !== undefined) payload.set(4, malformed.mmrEnd);
-  if (malformed.mmrEndFloat64 !== undefined) payload.set(4, FLOAT_SENTINEL);
+  if (malformed.issuedAt !== undefined) payload.set(8, malformed.issuedAt);
+  if (malformed.expiresAt !== undefined) payload.set(9, malformed.expiresAt);
+  if (malformed.float64) payload.set(malformed.float64.label, FLOAT_SENTINEL);
   const protectedBytes = encodeCborDeterministic(
     new Map<number, unknown>([[1, -7]]),
   );
   const payloadBytes = encodeCborDeterministic(payload);
-  if (malformed.mmrEndFloat64 !== undefined) {
-    swapSentinelForFloat64(payloadBytes, malformed.mmrEndFloat64);
+  if (malformed.float64) {
+    swapSentinelForFloat64(payloadBytes, malformed.float64.value);
   }
   const sig = await es256Sign(
     root.pair.privateKey,
