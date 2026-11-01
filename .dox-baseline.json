@@ -1,0 +1,3445 @@
+{
+  "version": 1,
+  "findings": [
+    {
+      "check": "id-unique",
+      "path": "docs/adr-0004-forest-genesis-chain-binding-required.md",
+      "message": "number ADR-0004 is shared with adr-0004-ks256-register-statement-binding"
+    },
+    {
+      "check": "id-unique",
+      "path": "docs/adr/adr-0004-ks256-register-statement-binding.md",
+      "message": "number ADR-0004 is shared with adr-0004-forest-genesis-chain-binding-required"
+    },
+    {
+      "check": "index-fresh",
+      "path": "docs/adr/README.md",
+      "message": "generated index missing"
+    },
+    {
+      "check": "index-fresh",
+      "path": "docs/arc/README.md",
+      "message": "generated index missing"
+    },
+    {
+      "check": "links-local",
+      "path": "README.md",
+      "message": "relative link does not resolve: docs/CLOUDFLARE_TOKENS.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/adr/adr-0001-encoding-one-per-artifact.md",
+      "message": "relative link does not resolve: arc/arc-statement-cose-encoding.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/adr/adr-0001-encoding-one-per-artifact.md",
+      "message": "relative link does not resolve: plans/plan-0003-encoding-redux.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/adr/adr-0002-delegation-signer-local-test-key.md",
+      "message": "relative link does not resolve: docs/plans/plan-0004-log-bootstraping/subplan-04-delegation-signer-in-canopy.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/adr/adr-0002-delegation-signer-local-test-key.md",
+      "message": "relative link does not resolve: plans/plan-0010-deploy-and-test-on-branch.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/adr/adr-0002-delegation-signer-local-test-key.md",
+      "message": "relative link does not resolve: plans/plan-0016-delegation-signer-custodian-migration.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/adr/adr-0003-delegation-pending-202-accepted.md",
+      "message": "relative link does not resolve: plans/plan-0021-delegation-coordinator-apis.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/adr/adr-0003-delegation-pending-202-accepted.md",
+      "message": "relative link does not resolve: plans/plan-0024-byok-checkpoint-seal-rca.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/adr/adr-0005-delegation-webhook-delivery.md",
+      "message": "link leaves the repository: ../../../devdocs/arc/arc-0015-x402-settlement-architecture.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/adr/adr-0007-wallet-challenge-coordinator-auth.md",
+      "message": "link leaves the repository: ../../../devdocs/arc/arc-0023-wallet-challenge-control-plane-auth.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/adr/adr-0007-wallet-challenge-coordinator-auth.md",
+      "message": "link leaves the repository: ../../../mandate/packages/libs/coordinator-types/"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/adr/adr-0008-authority-source-route-boundaries.md",
+      "message": "link leaves the repository: ../../../devdocs/arc/arc-0022-byok-user-log-delegation-and-operator-hosted-sealing.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/adr/adr-0008-authority-source-route-boundaries.md",
+      "message": "link leaves the repository: ../../../devdocs/arc/arc-0023-wallet-challenge-control-plane-auth.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/adr/adr-0008-authority-source-route-boundaries.md",
+      "message": "link leaves the repository: ../../../mandate/docs/adr/adr-0001-auth-strategy-seams.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/adr/adr-0009-self-service-onboard-provisioning.md",
+      "message": "link leaves the repository: ../../../devdocs/arc/arc-021-payment-onboarding/07-self-service-onboard-request.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/adr/adr-0010-supported-chains-rpc-config.md",
+      "message": "link leaves the repository: ../../../devdocs/adr/adr-0034-forest-genesis-chain-binding-required.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/agents/README.md",
+      "message": "relative link does not resolve: ../../devdocs/"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/agents/README.md",
+      "message": "relative link does not resolve: ../../devdocs/AGENTS.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/agents/README.md",
+      "message": "relative link does not resolve: ../../devdocs/arc/arc-0019-grant-verification-model.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/agents/README.md",
+      "message": "relative link does not resolve: ../../devdocs/architecture.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/agents/README.md",
+      "message": "relative link does not resolve: ../../devdocs/glossary.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/agents/domain.md",
+      "message": "link leaves the repository: ../../../devdocs/glossary.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/agents/gotchas.md",
+      "message": "relative link does not resolve: ../../forest-1/docs/ops/content-reset.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/api/canopy-api.md",
+      "message": "relative link does not resolve: ../plans/plan-0001-register-grant-and-grant-auth-phase.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/api/canopy-api.md",
+      "message": "relative link does not resolve: ../plans/plan-0001-register-grant-and-grant-auth-phase.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/api/register-grant.md",
+      "message": "relative link does not resolve: ../plans/plan-0001-register-grant-and-grant-auth-phase.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/api/register-grant.md",
+      "message": "relative link does not resolve: ../plans/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/api/register-statement.md",
+      "message": "relative link does not resolve: ../plans/plan-0001-register-grant-and-grant-auth-phase.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/api/register-statement.md",
+      "message": "relative link does not resolve: arc-0001-grant-verification.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-checkpoint-delegation-isolation.md",
+      "message": "link leaves the repository: ../../../arbor/docs/plan-0003-non-custodial-checkpoint-support.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-checkpoint-delegation-isolation.md",
+      "message": "link leaves the repository: ../../../arbor/docs/plan-0004-coordinator-backed-byok-lease-proof.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-checkpoint-delegation-isolation.md",
+      "message": "link leaves the repository: ../../../devdocs/adr/adr-0031-payments-and-univocity-contract-involvement.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-checkpoint-delegation-isolation.md",
+      "message": "link leaves the repository: ../../../devdocs/adr/adr-0031-payments-and-univocity-contract-involvement.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-checkpoint-delegation-isolation.md",
+      "message": "link leaves the repository: ../../../devdocs/glossary.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-grant-statement-signer-binding.md",
+      "message": "relative link does not resolve: adr-0001-encoding-one-per-artifact.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-grant-statement-signer-binding.md",
+      "message": "relative link does not resolve: arc-0001-grant-verification.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-grant-statement-signer-binding.md",
+      "message": "relative link does not resolve: arc-0001-grant-verification.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-grant-statement-signer-binding.md",
+      "message": "relative link does not resolve: arc-0001-grant-verification.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-grant-statement-signer-binding.md",
+      "message": "relative link does not resolve: arc/arc-statement-cose-encoding.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "relative link does not resolve: adr-0001-encoding-one-per-artifact.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "relative link does not resolve: adr-0004-ks256-register-statement-binding.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "relative link does not resolve: api/register-grant.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "relative link does not resolve: api/register-statement.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "relative link does not resolve: arc-0001-grant-verification.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "relative link does not resolve: arc-0001-grant-verification.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "relative link does not resolve: arc-0001-grant-verification.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "relative link does not resolve: plans/plan-0001-register-grant-and-grant-auth-phase.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "relative link does not resolve: plans/plan-0005-grant-receipt-unified-resolve.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "relative link does not resolve: plans/plan-0005-grant-receipt-unified-resolve.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "relative link does not resolve: plans/plan-0005-grant-receipt-unified-resolve.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "relative link does not resolve: plans/plan-0007-grant-type-and-commitment-alignment.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "link leaves the repository: ../../../devdocs/adr/adr-0031-payments-and-univocity-contract-involvement.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "link leaves the repository: ../../../devdocs/adr/adr-0031-payments-and-univocity-contract-involvement.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "link leaves the repository: ../../../devdocs/adr/adr-0031-payments-and-univocity-contract-involvement.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "link leaves the repository: ../../../devdocs/adr/adr-0059-instance-root-fee-accounts.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "link leaves the repository: ../../../devdocs/arc/arc-0026-onboard-grant-apis-and-fee-tracing.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "link leaves the repository: ../../../devdocs/glossary.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "relative link does not resolve: ../../devdocs/ops/ops-0011-canopy-coordinator-forward-orphan-recovery.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/canopy-grant-verification-implementation.md",
+      "message": "relative link does not resolve: arc/arc-grant-statement-signer-binding.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/arc/canopy-grant-verification-implementation.md",
+      "message": "relative link does not resolve: arc/arc-statement-cose-encoding.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/brainstorm-0001-x402-checkpoint-grants.md",
+      "message": "link leaves the repository: ../../devdocs/arc/arc-0015-x402-settlement-architecture.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/brainstorm-0001-x402-checkpoint-grants.md",
+      "message": "link leaves the repository: ../../devdocs/arc/arc-0016-checkpoint-incentivisation-model.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/brainstorm-0001-x402-checkpoint-grants.md",
+      "message": "link leaves the repository: ../../devdocs/arc/arc-0017-hierarchical-authority-logs-and-fee-distribution.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/demo/scitt-hackathon.md",
+      "message": "link leaves the repository: ../../../arbor/services/_deps/go-merklelog/massifs/checkpointsign.go"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/demo/scitt-hackathon.md",
+      "message": "link leaves the repository: ../../../mandate/FORKING.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/README.md",
+      "message": "link leaves the repository: ../../../devdocs/plans/README.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0001/plan-0001-register-grant-and-grant-auth-phase.md",
+      "message": "relative link does not resolve: ../../api/"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0001/plan-0001-register-grant-and-grant-auth-phase.md",
+      "message": "relative link does not resolve: ../../api/"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0001/plan-0001-register-grant-and-grant-auth-phase.md",
+      "message": "relative link does not resolve: ../../api/canopy-api.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0001/plan-0001-register-grant-and-grant-auth-phase.md",
+      "message": "relative link does not resolve: ../../api/canopy-api.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0001/plan-0001-register-grant-and-grant-auth-phase.md",
+      "message": "relative link does not resolve: ../../api/register-grant.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0001/plan-0001-register-grant-and-grant-auth-phase.md",
+      "message": "relative link does not resolve: ../../api/register-grant.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0001/plan-0001-register-grant-and-grant-auth-phase.md",
+      "message": "relative link does not resolve: ../../api/register-grant.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0001/plan-0001-register-grant-and-grant-auth-phase.md",
+      "message": "relative link does not resolve: ../../api/register-statement.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0001/plan-0001-register-grant-and-grant-auth-phase.md",
+      "message": "relative link does not resolve: ../../api/register-statement.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0001/plan-0001-register-grant-and-grant-auth-phase.md",
+      "message": "relative link does not resolve: ../../brainstorm-0001-x402-checkpoint-grants.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0001/plan-0001-register-grant-and-grant-auth-phase.md",
+      "message": "relative link does not resolve: ../../brainstorm-0001-x402-checkpoint-grants.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0001/plan-0001-register-grant-and-grant-auth-phase.md",
+      "message": "relative link does not resolve: ../api/register-grant.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-01-shared-encoding-univocity-alignment.md",
+      "message": "relative link does not resolve: ../../api/register-grant.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-01-shared-encoding-univocity-alignment.md",
+      "message": "relative link does not resolve: ../../api/register-grant.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-01-shared-encoding-univocity-alignment.md",
+      "message": "relative link does not resolve: ../../brainstorm-0001-x402-checkpoint-grants.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-01-shared-encoding-univocity-alignment.md",
+      "message": "relative link does not resolve: ../plan-0001-register-grant-and-grant-auth-phase.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-01-shared-encoding-univocity-alignment.md",
+      "message": "relative link does not resolve: overview.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-02-rest-auth-log-status.md",
+      "message": "relative link does not resolve: overview.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-03-evaluation-async-status-and-unified-receipt.md",
+      "message": "relative link does not resolve: overview.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-03-grant-sequencing-component.md",
+      "message": "relative link does not resolve: overview.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-04-assessment-key-creation-via-delegation.md",
+      "message": "relative link does not resolve: overview.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-04-delegation-signer-in-canopy.md",
+      "message": "relative link does not resolve: overview.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-04-signer-delegation-bootstrap-and-parent.md",
+      "message": "relative link does not resolve: overview.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-05-queue-consumer-grant-issuance.md",
+      "message": "relative link does not resolve: overview.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md",
+      "message": "relative link does not resolve: ../arc-0001-grant-verification.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md",
+      "message": "relative link does not resolve: ../arc-0001-grant-verification.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md",
+      "message": "relative link does not resolve: ../arc-0001-grant-verification.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md",
+      "message": "relative link does not resolve: ../arc-0001-grant-verification.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md",
+      "message": "relative link does not resolve: ../arc-0001-grant-verification.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md",
+      "message": "relative link does not resolve: ../plan-0005-grant-receipt-unified-resolve.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md",
+      "message": "relative link does not resolve: ../plan-0005-grant-receipt-unified-resolve.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md",
+      "message": "relative link does not resolve: ../plan-0005-grant-receipt-unified-resolve.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md",
+      "message": "relative link does not resolve: ../plan-0005-grant-receipt-unified-resolve.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md",
+      "message": "relative link does not resolve: ../plan-0005-grant-receipt-unified-resolve.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md",
+      "message": "relative link does not resolve: ../plan-0005-grant-receipt-unified-resolve.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md",
+      "message": "relative link does not resolve: overview.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md",
+      "message": "relative link does not resolve: subplan-06-canopy-settlement-to-issue-grant-queue.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0010-bootstrap-env/plan-0010-bootstrap-env.md",
+      "message": "relative link does not resolve: ../../adr-0002-delegation-signer-local-test-key.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/archived/plan-0016-delegation-signer-custodian-migration.md",
+      "message": "relative link does not resolve: plan-0004-log-bootstraping/subplan-07-sealer-key-resolution-per-log.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0003-encoding-redux.md",
+      "message": "relative link does not resolve: ../adr-0001-encoding-one-per-artifact.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0003-encoding-redux.md",
+      "message": "relative link does not resolve: ../arc-statement-cose-encoding.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0003-encoding-redux.md",
+      "message": "relative link does not resolve: ../arc-statement-cose-encoding.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0003-encoding-redux.md",
+      "message": "relative link does not resolve: ../arc-statement-cose-encoding.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0003-encoding-redux.md",
+      "message": "relative link does not resolve: plan-0001-register-grant-and-grant-auth-phase.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0003-grant-pool-script-review.md",
+      "message": "relative link does not resolve: ../adr-0001-encoding-one-per-artifact.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0004-log-bootstraping/overview.md",
+      "message": "relative link does not resolve: ../arc-0001-grant-verification.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0004-log-bootstraping/overview.md",
+      "message": "relative link does not resolve: ../arc-0001-grant-verification.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0004-log-bootstraping/overview.md",
+      "message": "relative link does not resolve: archived/plan-0004-log-bootstraping/subplan-01-shared-encoding-univocity-alignment.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0004-log-bootstraping/overview.md",
+      "message": "relative link does not resolve: archived/plan-0004-log-bootstraping/subplan-02-rest-auth-log-status.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0004-log-bootstraping/overview.md",
+      "message": "relative link does not resolve: archived/plan-0004-log-bootstraping/subplan-03-grant-sequencing-component.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0004-log-bootstraping/overview.md",
+      "message": "relative link does not resolve: archived/plan-0004-log-bootstraping/subplan-03-grant-sequencing-component.md#6-what-breaks-vs-previous-plan-subplan-03"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0004-log-bootstraping/overview.md",
+      "message": "relative link does not resolve: archived/plan-0004-log-bootstraping/subplan-04-delegation-signer-in-canopy.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0004-log-bootstraping/overview.md",
+      "message": "relative link does not resolve: archived/plan-0004-log-bootstraping/subplan-04-signer-delegation-bootstrap-and-parent.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0004-log-bootstraping/overview.md",
+      "message": "relative link does not resolve: archived/plan-0004-log-bootstraping/subplan-05-queue-consumer-grant-issuance.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0004-log-bootstraping/overview.md",
+      "message": "relative link does not resolve: archived/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0004-log-bootstraping/overview.md",
+      "message": "relative link does not resolve: archived/plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0004-log-bootstraping/subplan-06-canopy-settlement-to-issue-grant-queue.md",
+      "message": "relative link does not resolve: subplan-08-grant-first-bootstrap.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0004-log-bootstraping/subplan-06-canopy-settlement-to-issue-grant-queue.md",
+      "message": "relative link does not resolve: subplan-08-grant-first-bootstrap.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0005-grant-receipt-unified-resolve.md",
+      "message": "relative link does not resolve: plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0007-grant-type-and-commitment-alignment.md",
+      "message": "relative link does not resolve: plan-0004-log-bootstraping/subplan-01-shared-encoding-univocity-alignment.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0008-remove-grants-authority-storage.md",
+      "message": "relative link does not resolve: plan-0004-log-bootstraping/subplan-03-grant-sequencing-component.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0009-bootstrap-and-load-test-readiness.md",
+      "message": "relative link does not resolve: plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0010-deploy-and-test-on-branch.md",
+      "message": "relative link does not resolve: ../adr-0002-delegation-signer-local-test-key.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0010-grant-workflow-and-taskfiles.md",
+      "message": "relative link does not resolve: plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0011-custodian-integration-and-current-state.md",
+      "message": "link leaves the repository: ../../../arbor/docs/plan-0001-custodian-cbor-api.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0011-custodian-integration-and-current-state.md",
+      "message": "link leaves the repository: ../../../arbor/docs/plan-0001-custodian-cbor-api.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0011-custodian-integration-and-current-state.md",
+      "message": "relative link does not resolve: plan-0004-log-bootstraping/subplan-04-delegation-signer-in-canopy.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0011-custodian-integration-and-current-state.md",
+      "message": "relative link does not resolve: plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0020-custodial-delegation-seams-pilot.md",
+      "message": "relative link does not resolve: ../../arbor/docs/plan-0003-non-custodial-checkpoint-support.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0020-custodial-delegation-seams-pilot.md",
+      "message": "relative link does not resolve: plan-0016-delegation-signer-custodian-migration.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0021-delegation-coordinator-apis.md",
+      "message": "relative link does not resolve: ../../arbor/docs/plan-0003-non-custodial-checkpoint-support.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0021-delegation-coordinator-apis.md",
+      "message": "relative link does not resolve: ../../arbor/docs/plan-0003-non-custodial-checkpoint-support.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0021-delegation-coordinator-apis.md",
+      "message": "relative link does not resolve: ../../arbor/docs/plan-0004-coordinator-backed-byok-lease-proof.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0021-delegation-coordinator-apis.md",
+      "message": "relative link does not resolve: ../../forest-1/docs/arc-0001-per-project-ingress-isolation.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0021-delegation-coordinator-apis.md",
+      "message": "relative link does not resolve: ../../forest-1/docs/plans/plan-0001-dns-catalog-rollout-completion.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0021-delegation-coordinator-apis.md",
+      "message": "relative link does not resolve: plan-0016-delegation-signer-custodian-migration.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0022-delegation-coordinator-ops-parity.md",
+      "message": "relative link does not resolve: ../../forest-1/docs/bootstrap-canopy-contract.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0023-coordinator-public-root.md",
+      "message": "relative link does not resolve: ../../arbor/docs/plan-0004-coordinator-backed-byok-lease-proof.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0023-coordinator-public-root.md",
+      "message": "relative link does not resolve: ../../arbor/docs/plan-0005-sealer-trust-root-end-to-end.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0023-coordinator-public-root.md",
+      "message": "relative link does not resolve: ../../arbor/docs/plan-0005-sealer-trust-root-end-to-end.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0025-queue-independent-grant-authorization.md",
+      "message": "relative link does not resolve: ../../packages/apps/canopy-api/test/register-grant-child-data.test.ts"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0026-auth-data-log-parent-receipt-rca.md",
+      "message": "relative link does not resolve: ../packages/apps/canopy-api/src/env/receipt-authority-resolver.ts"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0026-auth-data-log-parent-receipt-rca.md",
+      "message": "relative link does not resolve: ../packages/apps/canopy-api/src/env/receipt-authority-resolver.ts"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0026-auth-data-log-parent-receipt-rca.md",
+      "message": "relative link does not resolve: ../packages/apps/canopy-api/src/env/receipt-authority-resolver.ts"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0026-auth-data-log-parent-receipt-rca.md",
+      "message": "relative link does not resolve: ../packages/apps/canopy-api/src/scrapi/auth-grant.ts"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0026-auth-data-log-parent-receipt-rca.md",
+      "message": "relative link does not resolve: ../packages/apps/canopy-api/test/receipt-authority-resolver-cache.test.ts"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0026-auth-data-log-parent-receipt-rca.md",
+      "message": "relative link does not resolve: ../packages/tests/canopy-api/tests/system/docs/auth-data-log-chain.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0026-auth-data-log-parent-receipt-rca.md",
+      "message": "relative link does not resolve: ../packages/tests/canopy-api/tests/utils/parent-grant-receipt-diagnostics.ts"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0028-forest-genesis-chain-binding.md",
+      "message": "link leaves the repository: ../../../arbor/docs/plan-0003-non-custodial-checkpoint-support.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0029-delegate-grant-validation-to-univocity.md",
+      "message": "link leaves the repository: ../../../arbor/docs/plan-0008-univocity-grant-store-and-authority-resolver.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0030-forests-storage-and-uuid-logid.md",
+      "message": "relative link does not resolve: ../../arbor/docs/adr/adr-0004-forests-storage-and-uuid-log-ids.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0030-forests-storage-and-uuid-logid.md",
+      "message": "relative link does not resolve: ../../arbor/docs/plan-0009-forests-storage-and-uuid-logid.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0031-ks256-forest-roots.md",
+      "message": "relative link does not resolve: ../../univocity/docs/plans/plan-0029-eip-compatible-ks256-signers.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0031-ks256-forest-roots.md",
+      "message": "relative link does not resolve: ../../univocity/docs/plans/plan-0032-es256-immutable-deploy.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0032-univocity-imutable-e2e-provision.md",
+      "message": "relative link does not resolve: ../../univocity-tools/docs/adr/adr-0004-deploy-propose-execute-model.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0032-univocity-imutable-e2e-provision.md",
+      "message": "relative link does not resolve: ../../univocity-tools/docs/adr/adr-0009-propose-from-build-archive.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0032-univocity-imutable-e2e-provision.md",
+      "message": "relative link does not resolve: ../taskfiles/e2e-setup.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0033-ks256-register-statement.md",
+      "message": "link leaves the repository: ../../../forest-1/docs/plans/plan-0002-per-slot-pipeline-rollout.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0039-self-service-onboard-provisioning.md",
+      "message": "link leaves the repository: ../../../devdocs/arc/arc-021-payment-onboarding/07-self-service-onboard-request.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0040-onboard-epic-closure-backlog.md",
+      "message": "relative link does not resolve: ../../mandate/FORKING.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0041-canopy-admin-ops-console.md",
+      "message": "link leaves the repository: ../../../devdocs/arc/arc-021-payment-onboarding/01-ops-admin-token.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0041-canopy-admin-ops-console.md",
+      "message": "link leaves the repository: ../../../devdocs/glossary.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0049-e2e-imutable-provision-consolidation.md",
+      "message": "relative link does not resolve: ../../univocity-tools/docs/adr/adr-0010-e2e-provision-in-deployer.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-0050-for-325-onchain-delegation-review-remediation.md",
+      "message": "link leaves the repository: ../../../devdocs/plans/plan-2607-10-byok-onchain-delegation-proof.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-2607-02-slice01-review-remediation.md",
+      "message": "link leaves the repository: ../../../devdocs/adr/adr-0059-instance-root-fee-accounts.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-2607-02-slice01-review-remediation.md",
+      "message": "link leaves the repository: ../../../devdocs/plans/plan-2607-43-instance-root-fee-accounts/01-identity-and-registry.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-2607-02-slice01-review-remediation.md",
+      "message": "link leaves the repository: ../../../devdocs/plans/plan-2607-43-instance-root-fee-accounts/06-bootstrap-key-attestation.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-2607-02-slice01-review-remediation.md",
+      "message": "link leaves the repository: ../../../devdocs/plans/plan-2607-43-instance-root-fee-accounts/06-bootstrap-key-attestation.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/plans/plan-2607-03-slice03-review-remediation.md",
+      "message": "link leaves the repository: ../../../devdocs/plans/plan-2607-43-instance-root-fee-accounts/03-accrual-observe-only.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/workers-environments.md",
+      "message": "link leaves the repository: ../../devdocs/adr/adr-0049-doppler-github-oidc-worker-deploy.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/workers-environments.md",
+      "message": "link leaves the repository: ../../forest-1/docs/adr-0004-symmetric-lane-hostnames.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/workers-environments.md",
+      "message": "link leaves the repository: ../../forest-1/docs/arc-0003-ingress-and-dns-provisioning.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/workers-environments.md",
+      "message": "link leaves the repository: ../../forest-1/docs/bootstrap-canopy-contract.md"
+    },
+    {
+      "check": "links-local",
+      "path": "docs/workers-environments.md",
+      "message": "link leaves the repository: ../../forest-1/docs/doppler.md"
+    },
+    {
+      "check": "links-local",
+      "path": "packages/apps/canopy-admin/README.md",
+      "message": "relative link does not resolve: ../../docs/plans/plan-0041-canopy-admin-ops-console.md"
+    },
+    {
+      "check": "links-local",
+      "path": "packages/tests/canopy-api/README.md",
+      "message": "relative link does not resolve: ../../docs/plans/plan-0032-univocity-imutable-e2e-provision.md"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/README.md",
+      "message": "work file in a canon tree"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/archived/README.md",
+      "message": "work file in a canon tree"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/archived/plan-0001/plan-0001-assessment.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/archived/plan-0001/plan-0001-register-grant-and-grant-auth-phase.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/archived/plan-0004-log-bootstraping/README.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/archived/plan-0010-bootstrap-env/plan-0010-bootstrap-env.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/archived/plan-0016-delegation-signer-custodian-migration.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0002-doppler-secrets-migration.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0003-encoding-redux.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0003-grant-pool-script-review.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0003-scripts-consolidation.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0004-log-bootstraping/README.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0005-grant-receipt-unified-resolve.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0006-idtimestamp-separate-parameter.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0007-grant-type-and-commitment-alignment.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0008-remove-grants-authority-storage.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0009-bootstrap-and-load-test-readiness.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0010-deploy-and-test-on-branch.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0010-grant-workflow-and-taskfiles.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0011-custodian-integration-and-current-state.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0012-perf-workflow-synthesize-log-ids.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0014-register-grant-custodian-signing.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0015-custody-grant-signing-canopy-api.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0017-custodian-custody-sign-iam.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0018-forest-genesis-api.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0019-bootstrap-path-and-genesis-cache.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0020-custodial-delegation-seams-pilot.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0021-delegation-coordinator-apis.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0022-delegation-coordinator-ops-parity.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0023-coordinator-public-root.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0024-byok-checkpoint-seal-rca.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0025-queue-independent-grant-authorization.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0026-auth-data-log-parent-receipt-rca.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0027-mmr-interior-node-position-commitment.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0028-forest-genesis-chain-binding.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0029-delegate-grant-validation-to-univocity.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0030-forests-storage-and-uuid-logid.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0031-ks256-forest-roots.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0032-univocity-imutable-e2e-provision.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0033-ks256-register-statement.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0034-ci-consolidation.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0035-delegation-cose-library.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0036-webhook-delivery.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0037-mode-c-onboarding-coordinator-forward.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0038-wallet-challenge-coordinator-e2e.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0039-self-service-onboard-provisioning.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0040-onboard-epic-closure-backlog.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0041-canopy-admin-ops-console.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0042-admin-ops-remediation.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0043-admin-ops-followup-remediation.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0044-package-d-cross-stack-e2e.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0045-package-c-review-remediation.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0046-package-d-review-remediation.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0047-ks256-byok-register-grant-remediation.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0048-package-f-hygiene-batch.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0049-e2e-imutable-provision-consolidation.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0050-for-325-onchain-delegation-review-remediation.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0051-pipe-fee-receivables-review-remediation.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-0052-for-468-instance-webhook-review-remediation.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-2607-01-paid-onboard-review-remediation.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-2607-02-slice01-review-remediation.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-2607-03-slice03-review-remediation.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-2607-04-registration-block-metering-floor.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-2607-05-registration-block-review-remediation.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-2607-06-metering-canary.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-2607-07-for-497-account-read-review-remediation.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-2607-08-for-478-enumeration-review-remediation.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-2607-09-safe-1x1-slice01-review-remediation.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-plans-in-canon",
+      "path": "docs/plans/plan-2607-10-root-binding-review-remediation.md",
+      "message": "plan document in a canon repository"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "README.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "README.md",
+      "message": "tracker id FOR-434 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "README.md",
+      "message": "tracker id FOR-48 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0001-encoding-one-per-artifact.md",
+      "message": "plan id plan-0003 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0002-delegation-signer-local-test-key.md",
+      "message": "plan id plan-0004 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0002-delegation-signer-local-test-key.md",
+      "message": "plan id plan-0010 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0002-delegation-signer-local-test-key.md",
+      "message": "plan id plan-0016 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0003-delegation-pending-202-accepted.md",
+      "message": "bold header (use frontmatter) **Date:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0003-delegation-pending-202-accepted.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0003-delegation-pending-202-accepted.md",
+      "message": "plan id plan-0021 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0003-delegation-pending-202-accepted.md",
+      "message": "plan id plan-0021 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0003-delegation-pending-202-accepted.md",
+      "message": "plan id plan-0024 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0003-delegation-pending-202-accepted.md",
+      "message": "plan id plan-0024 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0004-ks256-register-statement-binding.md",
+      "message": "plan id plan-0033 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0004-ks256-register-statement-binding.md",
+      "message": "plan id plan-0033 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0004-ks256-register-statement-binding.md",
+      "message": "tracker id FOR-74 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0004-ks256-register-statement-binding.md",
+      "message": "tracker id FOR-74 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0005-delegation-webhook-delivery.md",
+      "message": "bold header (use frontmatter) **Date:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0005-delegation-webhook-delivery.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0005-delegation-webhook-delivery.md",
+      "message": "plan id plan-0021 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0005-delegation-webhook-delivery.md",
+      "message": "plan id plan-0021 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0005-delegation-webhook-delivery.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0005-delegation-webhook-delivery.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0005-delegation-webhook-delivery.md",
+      "message": "tracker id FOR-468 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0005-delegation-webhook-delivery.md",
+      "message": "tracker id FOR-468 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0006-webhook-source-authentication.md",
+      "message": "bold header (use frontmatter) **Date:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0006-webhook-source-authentication.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0006-webhook-source-authentication.md",
+      "message": "tracker id FOR-92 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0006-webhook-source-authentication.md",
+      "message": "tracker id FOR-92 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0006-webhook-source-authentication.md",
+      "message": "tracker id FOR-92 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0006-webhook-source-authentication.md",
+      "message": "tracker id FOR-93 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0006-webhook-source-authentication.md",
+      "message": "tracker id FOR-93 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0006-webhook-source-authentication.md",
+      "message": "tracker id FOR-93 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0006-webhook-source-authentication.md",
+      "message": "tracker id FOR-93 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0006-webhook-source-authentication.md",
+      "message": "tracker id FOR-93 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0006-webhook-source-authentication.md",
+      "message": "tracker id FOR-99 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0007-wallet-challenge-coordinator-auth.md",
+      "message": "bold header (use frontmatter) **Date:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0007-wallet-challenge-coordinator-auth.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0008-authority-source-route-boundaries.md",
+      "message": "bold header (use frontmatter) **Date:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0008-authority-source-route-boundaries.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0008-authority-source-route-boundaries.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0008-authority-source-route-boundaries.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0008-authority-source-route-boundaries.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0008-authority-source-route-boundaries.md",
+      "message": "tracker id FOR-129 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0008-authority-source-route-boundaries.md",
+      "message": "tracker id FOR-134 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0008-authority-source-route-boundaries.md",
+      "message": "tracker id FOR-134 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0008-authority-source-route-boundaries.md",
+      "message": "tracker id FOR-134 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0008-authority-source-route-boundaries.md",
+      "message": "tracker id FOR-504 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0008-authority-source-route-boundaries.md",
+      "message": "tracker id FOR-508 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0009-self-service-onboard-provisioning.md",
+      "message": "bold header (use frontmatter) **Date:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0009-self-service-onboard-provisioning.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0009-self-service-onboard-provisioning.md",
+      "message": "plan id plan-0039 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0009-self-service-onboard-provisioning.md",
+      "message": "plan id plan-0039 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0009-self-service-onboard-provisioning.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0009-self-service-onboard-provisioning.md",
+      "message": "tracker id FOR-112 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0009-self-service-onboard-provisioning.md",
+      "message": "tracker id FOR-133 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0009-self-service-onboard-provisioning.md",
+      "message": "tracker id FOR-166 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0009-self-service-onboard-provisioning.md",
+      "message": "tracker id FOR-166 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0010-supported-chains-rpc-config.md",
+      "message": "bold header (use frontmatter) **Date:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/adr/adr-0010-supported-chains-rpc-config.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/agents/e2e.md",
+      "message": "plan id plan-0032 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/agents/e2e.md",
+      "message": "plan id plan-0032 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/agents/e2e.md",
+      "message": "plan id plan-0047 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/agents/e2e.md",
+      "message": "plan id plan-0047 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/agents/e2e.md",
+      "message": "plan id plan-0047 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/agents/e2e.md",
+      "message": "plan id plan-0049 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/agents/e2e.md",
+      "message": "plan id plan-0049 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/agents/e2e.md",
+      "message": "tracker id FOR-123 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/api/canopy-api.md",
+      "message": "plan id plan-0001 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/api/canopy-api.md",
+      "message": "plan id plan-0001 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/api/register-grant.md",
+      "message": "plan id plan-0001 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/api/register-grant.md",
+      "message": "plan id plan-0004 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/api/register-grant.md",
+      "message": "plan id plan-0005 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/api/register-grant.md",
+      "message": "plan id plan-0005 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/api/register-grant.md",
+      "message": "plan id plan-0005 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/api/register-statement.md",
+      "message": "plan id plan-0001 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/api/register-statement.md",
+      "message": "plan id plan-0005 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/api/register-statement.md",
+      "message": "plan id plan-0005 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/api/register-statement.md",
+      "message": "plan id plan-0005 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-checkpoint-delegation-isolation.md",
+      "message": "bold header (use frontmatter) **Date:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-checkpoint-delegation-isolation.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-checkpoint-delegation-isolation.md",
+      "message": "plan id plan-0003 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-checkpoint-delegation-isolation.md",
+      "message": "plan id plan-0003 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-checkpoint-delegation-isolation.md",
+      "message": "plan id plan-0003 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-checkpoint-delegation-isolation.md",
+      "message": "plan id plan-0003 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-checkpoint-delegation-isolation.md",
+      "message": "plan id plan-0004 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-checkpoint-delegation-isolation.md",
+      "message": "plan id plan-0004 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-checkpoint-delegation-isolation.md",
+      "message": "plan id plan-0004 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-checkpoint-delegation-isolation.md",
+      "message": "plan id plan-0021 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-checkpoint-delegation-isolation.md",
+      "message": "plan id plan-0021 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-checkpoint-delegation-isolation.md",
+      "message": "plan id plan-0023 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-checkpoint-delegation-isolation.md",
+      "message": "plan id plan-0023 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-grant-statement-signer-binding.md",
+      "message": "bold header (use frontmatter) **Date:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-grant-statement-signer-binding.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "plan id plan-0001 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "plan id plan-0005 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "plan id plan-0005 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "plan id plan-0005 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "plan id plan-0007 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "plan id plan-0033 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "tracker id FOR-74 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-statement-cose-encoding.md",
+      "message": "tracker id FOR-74 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "bold header (use frontmatter) **Date:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "plan id plan-0018 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "plan id plan-0018 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "plan id plan-0021 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "plan id plan-0021 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "plan id plan-0028 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "plan id plan-0028 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "plan id plan-0028 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "plan id plan-0028 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "plan id plan-0037 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "plan id plan-0037 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "tracker id FOR-328 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "tracker id FOR-468 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "tracker id FOR-92 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "tracker id FOR-93 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "tracker id FOR-93 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/arc-univocity-instance-registration.md",
+      "message": "tracker id FOR-93 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/canopy-grant-verification-implementation.md",
+      "message": "tracker id FOR-535 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/canopy-grant-verification-implementation.md",
+      "message": "tracker id FOR-535 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/canopy-grant-verification-implementation.md",
+      "message": "tracker id FOR-535 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/canopy-grant-verification-implementation.md",
+      "message": "tracker id FOR-535 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/canopy-grant-verification-implementation.md",
+      "message": "tracker id FOR-535 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/canopy-grant-verification-implementation.md",
+      "message": "tracker id FOR-535 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/canopy-grant-verification-implementation.md",
+      "message": "tracker id FOR-535 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/arc/canopy-grant-verification-implementation.md",
+      "message": "tracker id FOR-535 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/brainstorm-0001-x402-checkpoint-grants.md",
+      "message": "plan id plan-0021 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/brainstorm-0001-x402-checkpoint-grants.md",
+      "message": "plan id plan-0021 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "plan id plan-0031 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-340 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-340 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-341 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-342 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-343 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-344 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-344 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-345 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-345 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-346 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-347 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-347 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-355 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-390 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-390 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-390 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-390 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-390 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-390 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/forestrie-demo.md",
+      "message": "tracker id FOR-453 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/scitt-hackathon.md",
+      "message": "bold header (use frontmatter) **Date:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/scitt-hackathon.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/scitt-hackathon.md",
+      "message": "plan id plan-0019 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/scitt-hackathon.md",
+      "message": "plan id plan-0019 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/scitt-hackathon.md",
+      "message": "plan id plan-0028 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/scitt-hackathon.md",
+      "message": "plan id plan-0028 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/scitt-hackathon.md",
+      "message": "plan id plan-0032 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/demo/scitt-hackathon.md",
+      "message": "plan id plan-0032 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/grants.md",
+      "message": "bold header (use frontmatter) **Date:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/grants.md",
+      "message": "bold header (use frontmatter) **Status:** in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/grants.md",
+      "message": "plan id plan-0007 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/grants.md",
+      "message": "plan id plan-0028 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/grants.md",
+      "message": "plan id plan-0028 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/grants.md",
+      "message": "tracker id FOR-328 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0001 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0001 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0002 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0002 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0003 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0003 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0003 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0003 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0003 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0003 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0004 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0004 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0004 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0005 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0005 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0006 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0006 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0007 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0007 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0008 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0008 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0009 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0009 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0010 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0010 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0010 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0010 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0010 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0011 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0011 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0012 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0012 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0014 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0014 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0015 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0015 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0016 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0016 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0017 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0017 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0018 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0018 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0019 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0019 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0020 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0020 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0021 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0021 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0022 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0022 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0023 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0023 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0024 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0024 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0025 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0025 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0026 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0026 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0027 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0027 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0028 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0028 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0029 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0029 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0030 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0030 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0031 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0031 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0032 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0032 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0033 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0033 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0034 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0034 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0035 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0035 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0036 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0036 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0037 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0037 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0038 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0038 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0039 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0039 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0040 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0040 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0041 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0041 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0041 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0042 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0042 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0043 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0043 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0044 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0044 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0045 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0045 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0046 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0046 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0047 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0047 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0048 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0048 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0049 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0049 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-0049 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "plan id plan-2607 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-115 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-138 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-166 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-172 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-172 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-172 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-172 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-178 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-180 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-181 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-184 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-201 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-201 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-204 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-214 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-477 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-478 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-479 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-497 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-498 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-93 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/README.md",
+      "message": "tracker id FOR-94 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/archived/README.md",
+      "message": "plan id plan-0001 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/archived/README.md",
+      "message": "plan id plan-0001 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/archived/README.md",
+      "message": "plan id plan-0001 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/archived/README.md",
+      "message": "plan id plan-0001 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/archived/README.md",
+      "message": "plan id plan-0001 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/archived/README.md",
+      "message": "plan id plan-0001 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/archived/README.md",
+      "message": "plan id plan-0001 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/archived/README.md",
+      "message": "plan id plan-0004 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/archived/README.md",
+      "message": "plan id plan-0004 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/archived/README.md",
+      "message": "plan id plan-0004 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/archived/README.md",
+      "message": "plan id plan-0004 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/archived/README.md",
+      "message": "plan id plan-0004 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/archived/README.md",
+      "message": "plan id plan-0010 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/archived/README.md",
+      "message": "plan id plan-0010 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/archived/README.md",
+      "message": "plan id plan-0010 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/archived/README.md",
+      "message": "plan id plan-0010 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/archived/README.md",
+      "message": "plan id plan-0011 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/plans/archived/README.md",
+      "message": "plan id plan-0011 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "plan id plan-0002 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "plan id plan-0002 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "plan id plan-0022 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "plan id plan-0022 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "plan id plan-0039 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "plan id plan-0039 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "tracker id FOR-166 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "tracker id FOR-434 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "tracker id FOR-434 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "tracker id FOR-444 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "tracker id FOR-445 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "tracker id FOR-79 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "tracker id FOR-79 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "tracker id FOR-79 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "tracker id FOR-80 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "tracker id FOR-80 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "tracker id FOR-83 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "tracker id FOR-83 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "tracker id FOR-83 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "tracker id FOR-83 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "docs/workers-environments.md",
+      "message": "tracker id FOR-83 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/apps/canopy-admin/README.md",
+      "message": "plan id plan-0040 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/apps/canopy-admin/README.md",
+      "message": "plan id plan-0041 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/apps/canopy-admin/README.md",
+      "message": "plan id plan-0041 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/apps/canopy-admin/README.md",
+      "message": "plan id plan-0041 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/apps/canopy-admin/README.md",
+      "message": "plan id plan-0041 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/apps/canopy-admin/README.md",
+      "message": "tracker id FOR-172 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/apps/canopy-admin/README.md",
+      "message": "tracker id FOR-172 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/apps/canopy-admin/README.md",
+      "message": "tracker id FOR-178 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/apps/canopy-admin/README.md",
+      "message": "tracker id FOR-178 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/apps/canopy-admin/README.md",
+      "message": "tracker id FOR-181 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/apps/canopy-admin/README.md",
+      "message": "tracker id FOR-182 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/apps/canopy-admin/README.md",
+      "message": "tracker id FOR-185 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/apps/canopy-api/test/fixtures/SOURCE.md",
+      "message": "plan id plan-2609 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/apps/canopy-api/test/fixtures/SOURCE.md",
+      "message": "tracker id FOR-580 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/apps/canopy-api/test/fixtures/SOURCE.md",
+      "message": "tracker id FOR-580 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/apps/canopy-api/test/fixtures/SOURCE.md",
+      "message": "tracker id FOR-580 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/libs/receipt-verify/test/fixtures/golden/session-key-endorsement-v2-real-authenticator.provenance.md",
+      "message": "plan id plan-2608 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/libs/receipt-verify/test/fixtures/lane-a/PROVENANCE.md",
+      "message": "plan id plan-2609 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/libs/receipt-verify/test/fixtures/lane-a/PROVENANCE.md",
+      "message": "plan id plan-2609 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/libs/scrapi-client/test/fixtures/lane-a/PROVENANCE.md",
+      "message": "plan id plan-2609 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/libs/scrapi-client/test/fixtures/lane-a/PROVENANCE.md",
+      "message": "plan id plan-2609 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/canopy-api/README.md",
+      "message": "plan id plan-0021 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/canopy-api/README.md",
+      "message": "plan id plan-0032 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/canopy-api/README.md",
+      "message": "plan id plan-0032 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/canopy-api/tests/system/docs/README.md",
+      "message": "plan id plan-0017 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/canopy-api/tests/system/docs/README.md",
+      "message": "plan id plan-0017 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/canopy-api/tests/system/docs/grants-bootstrap.md",
+      "message": "plan id plan-0033 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/canopy-api/tests/system/docs/overview.md",
+      "message": "plan id plan-0005 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/canopy-api/tests/system/docs/overview.md",
+      "message": "plan id plan-0005 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/canopy-api/tests/system/docs/passkey-endorsed-session-seal.md",
+      "message": "plan id plan-2608 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/canopy-api/tests/system/docs/passkey-endorsed-session-seal.md",
+      "message": "plan id plan-2608 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/canopy-api/tests/system/docs/passkey-endorsed-session-seal.md",
+      "message": "plan id plan-2608 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/canopy-api/tests/system/docs/passkey-endorsed-session-seal.md",
+      "message": "plan id plan-2608 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/canopy-api/tests/system/docs/passkey-endorsed-session-seal.md",
+      "message": "plan id plan-2608 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/canopy-api/tests/system/docs/passkey-endorsed-session-seal.md",
+      "message": "plan id plan-2608 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/e2e-kit/README.md",
+      "message": "plan id plan-0030 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/e2e-kit/README.md",
+      "message": "plan id plan-0030 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/e2e-kit/README.md",
+      "message": "plan id plan-2608 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/e2e-kit/README.md",
+      "message": "tracker id FOR-286 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/e2e-kit/README.md",
+      "message": "tracker id FOR-353 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/e2e-kit/README.md",
+      "message": "tracker id FOR-361 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "packages/tests/e2e-kit/README.md",
+      "message": "tracker id FOR-531 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "taskfiles/e2e-setup.md",
+      "message": "plan id plan-0032 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "taskfiles/e2e-setup.md",
+      "message": "plan id plan-0032 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "taskfiles/e2e-setup.md",
+      "message": "plan id plan-0049 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "taskfiles/e2e-setup.md",
+      "message": "plan id plan-0049 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "taskfiles/e2e-setup.md",
+      "message": "tracker id FOR-123 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "taskfiles/e2e-setup.md",
+      "message": "tracker id FOR-123 in canon prose"
+    },
+    {
+      "check": "no-work-ids",
+      "path": "taskfiles/e2e-setup.md",
+      "message": "tracker id FOR-531 in canon prose"
+    },
+    {
+      "check": "placement",
+      "path": "docs/adr-0004-forest-genesis-chain-binding-required.md",
+      "message": "adr document: belongs in adr"
+    },
+    {
+      "check": "placement",
+      "path": "docs/arc-0001-grant-verification.md",
+      "message": "arc document: belongs in arc"
+    },
+    {
+      "check": "schema",
+      "path": "docs/adr-0004-forest-genesis-chain-binding-required.md",
+      "message": "no YAML frontmatter (adr)"
+    },
+    {
+      "check": "schema",
+      "path": "docs/adr/adr-0001-encoding-one-per-artifact.md",
+      "message": "no YAML frontmatter (adr)"
+    },
+    {
+      "check": "schema",
+      "path": "docs/adr/adr-0002-delegation-signer-local-test-key.md",
+      "message": "no YAML frontmatter (adr)"
+    },
+    {
+      "check": "schema",
+      "path": "docs/adr/adr-0003-delegation-pending-202-accepted.md",
+      "message": "no YAML frontmatter (adr)"
+    },
+    {
+      "check": "schema",
+      "path": "docs/adr/adr-0004-ks256-register-statement-binding.md",
+      "message": "no YAML frontmatter (adr)"
+    },
+    {
+      "check": "schema",
+      "path": "docs/adr/adr-0005-delegation-webhook-delivery.md",
+      "message": "no YAML frontmatter (adr)"
+    },
+    {
+      "check": "schema",
+      "path": "docs/adr/adr-0006-webhook-source-authentication.md",
+      "message": "no YAML frontmatter (adr)"
+    },
+    {
+      "check": "schema",
+      "path": "docs/adr/adr-0007-wallet-challenge-coordinator-auth.md",
+      "message": "no YAML frontmatter (adr)"
+    },
+    {
+      "check": "schema",
+      "path": "docs/adr/adr-0008-authority-source-route-boundaries.md",
+      "message": "no YAML frontmatter (adr)"
+    },
+    {
+      "check": "schema",
+      "path": "docs/adr/adr-0009-self-service-onboard-provisioning.md",
+      "message": "no YAML frontmatter (adr)"
+    },
+    {
+      "check": "schema",
+      "path": "docs/adr/adr-0010-supported-chains-rpc-config.md",
+      "message": "no YAML frontmatter (adr)"
+    },
+    {
+      "check": "schema",
+      "path": "docs/arc-0001-grant-verification.md",
+      "message": "no YAML frontmatter (arc)"
+    }
+  ]
+}
