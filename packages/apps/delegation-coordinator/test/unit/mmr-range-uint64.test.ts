@@ -1,9 +1,8 @@
 /**
- * Delegation MMR range as uint64 end to end through the coordinator
- * (plan-2611-01 slice S3, FOR-613).
+ * Delegation MMR range as uint64 end to end through the coordinator.
  *
- * JSON routes carry each bound as a canonical decimal string (D1); the DO
- * stores it as an 8-byte big-endian BLOB (D2). These tests drive values at
+ * JSON routes carry each bound as a canonical decimal string; the DO stores
+ * it as an 8-byte big-endian BLOB, so byte order is numeric order. These tests drive values at
  * 2^32, 2^53+1, 2^63 and 2^64-1 through the real worker routes and the real
  * DO SQLite, where a JSON number or a signed-int64 column would round or
  * overflow.

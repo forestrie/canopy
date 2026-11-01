@@ -15,7 +15,7 @@ export interface DelegationIssueRequest {
   logId: Uint8Array;
   /**
    * CBOR major type 0 as decoded: `number` when safe, `bigint` above 2^53.
-   * Validated with `toUint64` (start <= end) before use (FOR-613).
+   * Validated with `toUint64` (start <= end) before use; never rounded.
    */
   mmrStart: number | bigint;
   mmrEnd: number | bigint;

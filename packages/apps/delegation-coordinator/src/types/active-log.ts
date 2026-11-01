@@ -2,7 +2,7 @@
  * Per-log row of GET /api/delegations/active, the sealer's level-triggered
  * resync feed (arbor plan-2607-04).
  *
- * The range bounds are canonical decimal uint64 strings (plan-2611-01 D1):
+ * The range bounds are canonical decimal uint64 strings, never JSON numbers:
  * arbor's sealer resync parses them with `strconv.ParseUint(s, 10, 64)` and
  * treats a JSON number as malformed
  * ([resync.go](https://github.com/forestrie/arbor/blob/main/services/sealer/src/resync.go)).

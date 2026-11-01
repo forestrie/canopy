@@ -1,6 +1,7 @@
 /**
  * Storage codec for delegation MMR range bounds in the coordinator's Durable
- * Object SQLite (plan-2611-01 D2, FOR-613).
+ * Object SQLite: uint64 bounds as 8-byte big-endian BLOBs, so byte order is
+ * numeric order.
  *
  * SQLite `INTEGER` is signed int64, so a uint64 above 2^63-1 cannot be stored
  * as one. Each bound is stored as an 8-byte big-endian BLOB instead. SQLite

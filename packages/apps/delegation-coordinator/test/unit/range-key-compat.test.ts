@@ -1,5 +1,6 @@
 /**
- * Range-derived keys stay byte-identical across the FOR-613 bigint cutover.
+ * Range-derived keys stay byte-identical across the move from JS number to
+ * bigint bounds.
  *
  * `certificate_key` rows, pending natural keys and webhook `requestKey`
  * idempotency keys were built from JSON `number` bounds with template
@@ -16,7 +17,7 @@ import { testDelegatedCoseKey } from "./byok-material-fixture.js";
 
 const LOG = "0123456789abcdef0123456789abcdef";
 
-/** The pre-FOR-613 key shape, built from JS numbers. */
+/** The earlier key shape, built from JS numbers. */
 function legacyCertificateKey(
   start: number,
   end: number,

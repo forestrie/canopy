@@ -8,9 +8,9 @@
 export interface PendingHintRequest {
   authLogId: string;
   logId: string;
-  /** Canonical decimal uint64 string (plan-2611-01 D1). */
+  /** Canonical decimal uint64 string. */
   mmrStart: string;
-  /** Canonical decimal uint64 string (plan-2611-01 D1). */
+  /** Canonical decimal uint64 string. */
   mmrEnd: string;
   /** Base64-encoded delegated public key CBOR bytes. */
   delegatedPublicKey: string;

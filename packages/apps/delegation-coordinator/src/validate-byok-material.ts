@@ -151,7 +151,7 @@ export async function validateByokDelegationMaterial(opts: {
     throw new ByokMaterialValidationError("payload log id mismatch");
   }
   // uint64 to uint64: the submit range is parsed from decimal strings and
-  // the certificate range is read as bigint (FOR-613).
+  // the certificate range is read as bigint, so equality is exact.
   if (info.mmrStart !== opts.mmrStart) {
     throw new ByokMaterialValidationError("payload mmrStart mismatch");
   }

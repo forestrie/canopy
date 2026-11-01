@@ -22,7 +22,7 @@ export async function requestKeyFor(
   mmrEnd: bigint,
   delegatedPubkeyHash: string,
 ): Promise<string> {
-  // toString(10) matches the pre-FOR-613 number interpolation below 2^53, so
+  // toString(10) matches the earlier number interpolation below 2^53, so
   // in-flight delivery rows keep their idempotency key.
   const canonical = `${logIdHex32}:${mmrStart.toString(10)}:${mmrEnd.toString(10)}:${delegatedPubkeyHash}`;
   return sha256Hex(new TextEncoder().encode(canonical));

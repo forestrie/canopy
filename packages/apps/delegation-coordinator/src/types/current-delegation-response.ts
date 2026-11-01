@@ -3,7 +3,7 @@
  * certificate (newest unexpired, widest range on ties).
  *
  * Signers read `expiresAt` / `mmrEnd` to anticipate renewal; the range bounds
- * are canonical decimal uint64 strings (plan-2611-01 D1).
+ * are canonical decimal uint64 strings, never JSON numbers.
  */
 
 /** Current delegation certificate for one log. */

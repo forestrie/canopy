@@ -126,7 +126,7 @@ const STANDING_DELEGATION_TTL_SECONDS = 6 * 60 * 60;
 
 /**
  * Current `delegation_certificates` shape. `mmr_start` / `mmr_end` are
- * 8-byte big-endian BLOBs ({@link encodeMmrIndexBe8}, FOR-613), NULL on
+ * 8-byte big-endian BLOBs ({@link encodeMmrIndexBe8}), NULL on
  * pre-coverage rows served by exact `certificate_key` only.
  */
 const DELEGATION_CERTIFICATES_COLUMNS = `
@@ -144,7 +144,7 @@ const DELEGATION_CERTIFICATES_COLUMNS = `
   onchain_authenticator_data BLOB,
   onchain_client_data_json BLOB`;
 
-/** Current `pending` shape; range bounds are be8 BLOBs (FOR-613). */
+/** Current `pending` shape; range bounds are be8 BLOBs. */
 const PENDING_COLUMNS = `
   id TEXT PRIMARY KEY,
   auth_log_id_hex32 TEXT NOT NULL,
@@ -157,7 +157,7 @@ const PENDING_COLUMNS = `
 
 /**
  * Routes that read or write MMR range columns, as `${method} ${pathname}`.
- * They answer 503 until the range migration completes (plan-2611-01 D6), so
+ * They answer 503 until the range migration completes, so
  * no range query sees INTEGER and BLOB bounds side by side; every other
  * route proceeds during the migration.
  */
@@ -518,7 +518,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
       `DELETE FROM pending WHERE length(delegated_public_key) = 0`,
     );
 
-    // Range columns created INTEGER before FOR-613 are converted to be8 in
+    // Range columns created INTEGER by older builds are converted to be8 in
     // place by MmrRangeMigration, a chunk per event (fetch / alarm), not here.
 
     this.ctx.storage.sql.exec(`
@@ -695,12 +695,12 @@ export class DelegationStoreDO extends DurableObject<Env> {
    * opaque certificate_key folds (mmrStart, mmrEnd, delegatedKey) together for
    * exact-match; coverage retrieval needs them as first-class columns. The
    * SIGNED range persisted here — never the issue request's range — is what
-   * the issue response's onchainProof is rebuilt from (review V1).
+   * the issue response's onchainProof is rebuilt from.
    * certificate_key stays the exact-match key for pre-coverage rows, whose
    * range columns are NULL. Fresh databases get the columns from the base
    * CREATE TABLE; this handles legacy tables only. Range storage is
    * fix-forward only: once migrated, triggers reject the INTEGER bounds a
-   * pre-FOR-613 build would write (see mmr-range-migration.ts).
+   * build that binds numbers would write (see mmr-range-migration.ts).
    */
   private ensureCertificateCoverageColumns(): void {
     try {
@@ -716,7 +716,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
       this.ctx.storage.sql.exec(
         `ALTER TABLE delegation_certificates ADD COLUMN delegated_public_key BLOB`,
       );
-      // be8 BLOB from the start (FOR-613); the coverage index is created in
+      // be8 BLOB from the start; the coverage index is created in
       // ensureSchema.
       this.ctx.storage.sql.exec(
         `ALTER TABLE delegation_certificates ADD COLUMN mmr_start BLOB`,
@@ -1821,7 +1821,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
     const logIdHex32 = logIdWireBytesToHex32(req.logId);
 
     // The sealer sends CBOR major type 0 (arbor `uint64`); the decoder yields
-    // number or bigint. Anything else, or start > end, is malformed (FOR-613).
+    // number or bigint. Anything else, or start > end, is malformed.
     let range: MmrRange;
     try {
       range = {
@@ -3650,7 +3650,7 @@ function delegateKeyRecordFromRow(row: DelegateKeyRow): DelegateKeyRecord {
   };
 }
 
-/** 503 for a range route while the range migration runs (plan-2611-01 D6). */
+/** 503 for a range route while the range storage migration runs. */
 function rangeMigrationInProgressResponse(): Response {
   return Response.json(
     {
@@ -3666,7 +3666,7 @@ function rangeMigrationInProgressResponse(): Response {
   );
 }
 
-/** 400 problem for a malformed delegation MMR range (FOR-613). */
+/** 400 problem for a malformed delegation MMR range (not a uint64). */
 function invalidRangeResponse(error: unknown): Response {
   return Response.json(
     {

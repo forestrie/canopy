@@ -3,7 +3,7 @@
  *
  * Public route with size cap; validated in {@link DelegationStoreDO} via
  * {@link validateByokDelegationCertificate}. `mmrStart` / `mmrEnd` are
- * canonical decimal uint64 strings (plan-2611-01 D1); a JSON number or a
+ * canonical decimal uint64 strings on the JSON wire; a JSON number or a
  * non-canonical string is a 400 here, before the store is touched.
  */
 

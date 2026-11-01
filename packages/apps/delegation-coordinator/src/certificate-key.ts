@@ -19,7 +19,7 @@ export async function certificateKeyFor(
   delegatedPublicKey: Uint8Array,
 ): Promise<string> {
   const hash = await sha256Hex(delegatedPublicKey);
-  // toString(10) of a bigint is byte-identical to the pre-FOR-613 number
+  // toString(10) of a bigint is byte-identical to the earlier number
   // interpolation below 2^53, so stored keys keep matching.
   return `${mmrStart.toString(10)}:${mmrEnd.toString(10)}:${hash}`;
 }

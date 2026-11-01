@@ -10,9 +10,9 @@ export interface PendingEntry {
   id: string;
   authLogIdHex32: string;
   logIdHex32: string;
-  /** Range start, canonical decimal uint64 string (plan-2611-01 D1). */
+  /** Range start, canonical decimal uint64 string. */
   mmrStart: string;
-  /** Range end, canonical decimal uint64 string (plan-2611-01 D1). */
+  /** Range end, canonical decimal uint64 string. */
   mmrEnd: string;
   delegatedPublicKeyHash: string;
   /** Base64-encoded delegated public key CBOR bytes. */

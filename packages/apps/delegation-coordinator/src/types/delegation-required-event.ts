@@ -16,7 +16,7 @@ export interface DelegationRequiredEvent {
    * Demanded MMR window, inclusive. Omitted on the window-less standing
    * delegate-key push sent at signing-route setup (ADR-0050 Decision
    * item 2): the signer chooses its own bounds. Each bound is a canonical
-   * decimal uint64 string (plan-2611-01 D1): receivers (mandate agent,
+   * decimal uint64 string: receivers (mandate agent,
    * operator signers) must parse it as a uint64, never as a JS number.
    */
   mmrStart?: string;

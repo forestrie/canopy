@@ -9,7 +9,7 @@
 /** Runner-submitted BYOK delegation certificate for storage. */
 export interface SubmitDelegationCertificateRequest {
   logId: string;
-  /** Range start (inclusive), canonical decimal uint64 string (plan-2611-01 D1). */
+  /** Range start (inclusive), canonical decimal uint64 string. */
   mmrStart: string;
   /** Range end (inclusive), canonical decimal uint64 string. */
   mmrEnd: string;

@@ -1,10 +1,10 @@
 /**
  * In-place, chunked migration of the delegation MMR range columns from
- * SQLite INTEGER to 8-byte big-endian BLOB (plan-2611-01 D6, FOR-613;
+ * SQLite INTEGER to 8-byte big-endian BLOB (fix-forward only;
  * src/durableobjects/mmr-range-migration.ts).
  *
  * Each test seeds a dedicated DO (never one of the worker's shards) with the
- * exact pre-FOR-613 table shapes before its first fetch, shrinks the
+ * exact older table shapes before its first fetch, shrinks the
  * per-event budget through the DO's test seams where it needs several
  * events, and drives the rest with alarms.
  */
@@ -53,7 +53,7 @@ const TRIGGERS = [
   "trg_pending_mmr_range_update",
 ];
 
-/** The pre-FOR-613 table shapes: base CREATE plus the legacy ALTER path. */
+/** The older table shapes, with INTEGER range columns: base CREATE plus the legacy ALTER path. */
 function createLegacyTables(sql: SqlStorage): void {
   sql.exec(`
     CREATE TABLE delegation_certificates (
