@@ -16,11 +16,9 @@ import type { SequencingQueueStub } from "@canopy/forestrie-ingress-types";
 import { getQueueForLog } from "../sequeue/logshard.js";
 import { seeOtherResponse } from "../cbor-api/cbor-response.js";
 import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
+import { mmrIndex } from "@forestrie/merklelog";
 import { encodeEntryId } from "./entry-id";
-import {
-  mmrIndexFromLeafIndex,
-  readIdtimestampFromMassif,
-} from "./sequencing-result.js";
+import { readIdtimestampFromMassif } from "./sequencing-result.js";
 import { logIdSegmentToCanonicalUuid } from "../grant/log-id-wire.js";
 import { bytesToUuid } from "../grant/uuid-bytes.js";
 import { getParsedGenesis } from "../forest/genesis-cache.js";
@@ -141,14 +139,14 @@ export async function queryRegistrationStatus(
     );
 
     // Convert leaf index to MMR index for the entry ID
-    const mmrIndex = mmrIndexFromLeafIndex(result.leafIndex);
+    const entryMmrIndex = mmrIndex(result.leafIndex);
 
     console.log("[query-registration-status] cache hit", {
       logID,
       contentHash,
-      leafIndex: result.leafIndex,
+      leafIndex: result.leafIndex.toString(),
       idtimestamp: idtimestamp.toString(16),
-      mmrIndex: mmrIndex.toString(),
+      mmrIndex: entryMmrIndex.toString(),
     });
 
     if (univocityGrantClient && idtimestamp !== 0n) {
@@ -173,7 +171,7 @@ export async function queryRegistrationStatus(
 
     const entryId = encodeEntryId({
       idtimestamp,
-      mmrIndex,
+      mmrIndex: entryMmrIndex,
     });
 
     const requestUrl = new URL(request.url);
