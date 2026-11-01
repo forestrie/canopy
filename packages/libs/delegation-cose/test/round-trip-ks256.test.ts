@@ -51,8 +51,8 @@ describe("KS256 delegation certificate", () => {
     const certificate = await buildDelegationCertificateKs256(
       {
         logIdHex32: "b2c3d4e5f67890ab1234567890abcdef12",
-        mmrStart: 1,
-        mmrEnd: 100,
+        mmrStart: 1n,
+        mmrEnd: 100n,
         delegatedPublicKeyCbor,
         issuedAt: 1_700_000_100,
         expiresAt: 1_700_003_700,
@@ -77,8 +77,8 @@ describe("KS256 delegation certificate", () => {
     const certificate = await buildDelegationCertificateKs256(
       {
         logIdHex32: "c3d4e5f67890ab1234567890abcdef1234",
-        mmrStart: 0,
-        mmrEnd: 10,
+        mmrStart: 0n,
+        mmrEnd: 10n,
         delegatedPublicKeyCbor,
         issuedAt: 1_700_000_200,
         expiresAt: 1_700_003_800,

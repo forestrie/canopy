@@ -21,6 +21,7 @@ import {
   PAYLOAD_MMR_START,
   PAYLOAD_SCHEMA_VER,
 } from "./payload-labels.js";
+import { readUint64Label } from "./read-uint64-label.js";
 
 /**
  * Parse delegation scope and validity metadata from a COSE_Sign1 certificate.
@@ -28,7 +29,8 @@ import {
  * @param certificate - Full delegation certificate bytes.
  * @returns Structured payload fields for coordinator persistence or sealer
  *   lease checks.
- * @throws When required payload labels are missing or malformed.
+ * @throws When required payload labels are missing or malformed, including
+ *   an MMR range label that is not a uint64 or `mmrStart > mmrEnd`.
  */
 export function parseDelegationCertificate(
   certificate: Uint8Array,
@@ -41,10 +43,17 @@ export function parseDelegationCertificate(
   if (typeof logIdHex32 !== "string") {
     throw new Error("payload missing log id");
   }
+  // The range is uint64 (CBOR major type 0) and kept as bigint: Number()
+  // would round above 2^53 and accept a cbor-x float (FOR-613).
+  const mmrStart = readUint64Label(payloadMap, PAYLOAD_MMR_START, "mmrStart");
+  const mmrEnd = readUint64Label(payloadMap, PAYLOAD_MMR_END, "mmrEnd");
+  if (mmrStart > mmrEnd) {
+    throw new Error(`payload mmrStart ${mmrStart} > mmrEnd ${mmrEnd}`);
+  }
   return {
     logIdHex32,
-    mmrStart: Number(payloadMap.get(PAYLOAD_MMR_START)),
-    mmrEnd: Number(payloadMap.get(PAYLOAD_MMR_END)),
+    mmrStart,
+    mmrEnd,
     issuedAt: Number(payloadMap.get(PAYLOAD_ISSUED_AT)),
     expiresAt: Number(payloadMap.get(PAYLOAD_EXPIRES_AT)),
     schemaVersion: Number(payloadMap.get(PAYLOAD_SCHEMA_VER)),

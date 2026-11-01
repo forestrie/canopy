@@ -198,8 +198,8 @@ export async function buildKs256Cert(opts: {
   const tbs = buildDelegationToBeSignedKs256(
     {
       logIdHex32: LOG_ID_HEX32,
-      mmrStart: Number(opts.limits.mmrStart),
-      mmrEnd: Number(opts.limits.mmrEnd),
+      mmrStart: opts.limits.mmrStart,
+      mmrEnd: opts.limits.mmrEnd,
       delegatedPublicKeyCbor: encodeCborDeterministic(
         await coseKeyMap(opts.sealer.publicKey),
       ),

@@ -9,10 +9,15 @@
 export interface DelegationInput {
   /** 32-character hex Forestrie log id (payload label 1). */
   logIdHex32: string;
-  /** Inclusive MMR leaf index start (payload label 3). */
-  mmrStart: number;
-  /** Exclusive MMR leaf index end (payload label 4). */
-  mmrEnd: number;
+  /**
+   * Inclusive MMR leaf index start (payload label 3); uint64, encoded as
+   * CBOR major type 0.
+   */
+  mmrStart: bigint;
+  /**
+   * Exclusive MMR leaf index end (payload label 4); uint64, `>= mmrStart`.
+   */
+  mmrEnd: bigint;
   /** CBOR-encoded delegated EC2 P-256 COSE_Key (embedded inline at label 5). */
   delegatedPublicKeyCbor: Uint8Array;
   /** Unix seconds; defaults to now when omitted (payload label 8). */

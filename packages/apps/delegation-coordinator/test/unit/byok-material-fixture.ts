@@ -192,8 +192,8 @@ export async function buildTestByokWebauthnMaterial(opts: {
   const certificate = await buildDelegationCertificateWebauthn(
     {
       logIdHex32: opts.logIdHex32,
-      mmrStart: opts.mmrStart,
-      mmrEnd: opts.mmrEnd,
+      mmrStart: BigInt(opts.mmrStart),
+      mmrEnd: BigInt(opts.mmrEnd),
       delegatedPublicKeyCbor: opts.delegatedPublicKey,
       issuedAt,
       expiresAt,

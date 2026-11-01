@@ -69,8 +69,8 @@ function signedCertificate(
   );
   const payloadBytes = buildDelegationPayloadBytes({
     logIdHex32: "0123456789abcdef0123456789abcdef",
-    mmrStart: 0,
-    mmrEnd: 10,
+    mmrStart: 0n,
+    mmrEnd: 10n,
     delegatedPublicKeyCbor,
     issuedAt: 1_700_000_000,
     expiresAt: 1_700_003_600,

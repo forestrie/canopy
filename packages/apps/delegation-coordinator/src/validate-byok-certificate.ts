@@ -136,10 +136,19 @@ export async function validateByokDelegationCertificate(opts: {
   if (info.logIdHex32 !== opts.logIdHex32) {
     throw new ByokCertificateValidationError("payload log id mismatch");
   }
-  if (info.mmrStart !== opts.mmrStart) {
+  // The certificate range is bigint (delegation-cose 0.5.0); the JSON
+  // submit still carries numbers, so only a safe integer can match
+  // (FOR-613; S3 moves the route to decimal strings).
+  if (
+    !Number.isSafeInteger(opts.mmrStart) ||
+    info.mmrStart !== BigInt(opts.mmrStart)
+  ) {
     throw new ByokCertificateValidationError("payload mmrStart mismatch");
   }
-  if (info.mmrEnd !== opts.mmrEnd) {
+  if (
+    !Number.isSafeInteger(opts.mmrEnd) ||
+    info.mmrEnd !== BigInt(opts.mmrEnd)
+  ) {
     throw new ByokCertificateValidationError("payload mmrEnd mismatch");
   }
   if (opts.issuedAt !== info.issuedAt) {

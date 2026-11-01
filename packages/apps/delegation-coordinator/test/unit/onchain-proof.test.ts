@@ -150,8 +150,8 @@ async function buildKs256Submission(opts: {
   const certificate = await buildDelegationCertificateKs256(
     {
       logIdHex32: logHex32,
-      mmrStart: opts.mmrStart,
-      mmrEnd: opts.mmrEnd,
+      mmrStart: BigInt(opts.mmrStart),
+      mmrEnd: BigInt(opts.mmrEnd),
       delegatedPublicKeyCbor: delegatedPublicKey,
       issuedAt,
       expiresAt,

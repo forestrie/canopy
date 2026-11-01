@@ -372,8 +372,8 @@ export async function buildKs256BootstrapDelegationMaterial(opts: {
   const certificate = await buildDelegationCertificateKs256(
     {
       logIdHex32: opts.logIdHex32,
-      mmrStart: opts.mmrStart,
-      mmrEnd: opts.mmrEnd,
+      mmrStart: BigInt(opts.mmrStart),
+      mmrEnd: BigInt(opts.mmrEnd),
       delegatedPublicKeyCbor: opts.delegatedPublicKey,
       ttlSeconds: opts.ttlSeconds,
     },
@@ -426,8 +426,8 @@ export async function buildByokDelegationMaterial(opts: {
   const certificate = await buildDelegationCertificateEs256(
     {
       logIdHex32: opts.logIdHex32,
-      mmrStart: opts.mmrStart,
-      mmrEnd: opts.mmrEnd,
+      mmrStart: BigInt(opts.mmrStart),
+      mmrEnd: BigInt(opts.mmrEnd),
       delegatedPublicKeyCbor: opts.delegatedPublicKey,
       ttlSeconds: opts.ttlSeconds,
     },
@@ -523,8 +523,8 @@ export async function buildByokDelegationMaterialWebauthn(opts: {
   const certificate = await buildDelegationCertificateWebauthn(
     {
       logIdHex32: opts.logIdHex32,
-      mmrStart: opts.mmrStart,
-      mmrEnd: opts.mmrEnd,
+      mmrStart: BigInt(opts.mmrStart),
+      mmrEnd: BigInt(opts.mmrEnd),
       delegatedPublicKeyCbor: opts.delegatedPublicKey,
       ttlSeconds: opts.ttlSeconds,
     },

@@ -43,8 +43,8 @@ describe("delegation TBS matches Go delegationcert canonical golden", () => {
     const tbs = buildDelegationToBeSignedEs256(
       {
         logIdHex32: "a1b2c3d4e5f67890abcdef1234567890",
-        mmrStart: 0,
-        mmrEnd: 63,
+        mmrStart: 0n,
+        mmrEnd: 63n,
         delegatedPublicKeyCbor: fixedDelegatedKeyCbor(),
         delegationId,
         issuedAt: 1000000,
@@ -60,8 +60,8 @@ describe("delegation TBS matches Go delegationcert canonical golden", () => {
     const tbs = buildDelegationToBeSignedEs256(
       {
         logIdHex32: "a1b2c3d4e5f67890abcdef1234567890",
-        mmrStart: 0,
-        mmrEnd: 63,
+        mmrStart: 0n,
+        mmrEnd: 63n,
         delegatedPublicKeyCbor: fixedDelegatedKeyCbor(),
         delegationId,
         issuedAt: 1000000,
