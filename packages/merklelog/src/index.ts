@@ -43,7 +43,14 @@ export {
   isMassifFull,
 } from "./massifs/types.js";
 
-export { parseV2StorageObjectPath } from "./massifs/v2storagepaths.js";
+export {
+  formatMassifObjectIndex,
+  MASSIF_OBJECT_INDEX_DIGITS,
+  MAX_MASSIF_INDEX,
+  parseV2StorageObjectPath,
+  v2CheckpointObjectKey,
+  v2MassifObjectKey,
+} from "./massifs/v2storagepaths.js";
 
 // Massif blob node access for MMR proof building (plan-2607-15 §4)
 export { openMassifNodeStore } from "./massifs/nodestore.js";

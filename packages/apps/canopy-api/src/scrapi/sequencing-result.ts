@@ -6,6 +6,7 @@
 import {
   leafCountForMassifHeight,
   urkleLeafTableStartByteOffset,
+  v2MassifObjectKey,
 } from "@forestrie/merklelog";
 
 /** Leaf record size in bytes (from Urkle.LeafRecordBytes). */
@@ -47,8 +48,7 @@ export async function readIdtimestampFromMassif(
   const leafTableStart = urkleLeafTableStartByteOffset(massifHeight);
   const leafRecordOffset = leafTableStart + leafOrdinal * LEAF_RECORD_BYTES;
 
-  const objectIndex = massifIndex.toString().padStart(16, "0");
-  const objectKey = `v2/merklelog/massifs/${massifHeight}/${logId}/${objectIndex}.log`;
+  const objectKey = v2MassifObjectKey(massifHeight, logId, massifIndex);
 
   const object = await r2.get(objectKey, {
     range: { offset: leafRecordOffset, length: IDTIMESTAMP_BYTES },
