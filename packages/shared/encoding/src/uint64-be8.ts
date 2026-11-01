@@ -1,7 +1,8 @@
 /**
- * Storage codec for delegation MMR range bounds in the coordinator's Durable
- * Object SQLite: uint64 bounds as 8-byte big-endian BLOBs, so byte order is
- * numeric order.
+ * Storage codec for uint64 values in Durable Object SQLite: 8-byte
+ * big-endian BLOBs, so byte order is numeric order. Used for the
+ * delegation-coordinator's MMR range bounds and forestrie-ingress's
+ * SequencingQueue leaf and massif indices.
  *
  * SQLite `INTEGER` is signed int64, so a uint64 above 2^63-1 cannot be stored
  * as one. Each bound is stored as an 8-byte big-endian BLOB instead. SQLite
@@ -13,21 +14,21 @@
  * parameter silently mis-compares.
  */
 
-import { UINT64_MAX } from "@forestrie/delegation-cose";
+import { UINT64_MAX } from "./uint64.js";
 
 /** Width of a stored bound: one uint64. */
 const BE8_LENGTH = 8;
 
 /**
- * Encode a uint64 as the 8-byte big-endian BLOB the range columns hold.
+ * Encode a uint64 as an 8-byte big-endian BLOB.
  *
  * @param value - A `bigint` in `[0, 2^64-1]`.
  * @returns 8 bytes, most significant first.
  * @throws When `value` is outside the uint64 range.
  */
-export function encodeMmrIndexBe8(value: bigint): Uint8Array {
+export function encodeUint64Be8(value: bigint): Uint8Array {
   if (value < 0n || value > UINT64_MAX) {
-    throw new Error(`MMR index ${value} is not a uint64`);
+    throw new Error(`${value} is not a uint64`);
   }
   const out = new Uint8Array(BE8_LENGTH);
   new DataView(out.buffer).setBigUint64(0, value, false);
@@ -35,14 +36,14 @@ export function encodeMmrIndexBe8(value: bigint): Uint8Array {
 }
 
 /**
- * Decode a range column value read back from SQLite.
+ * Decode a uint64 column value read back from SQLite.
  *
  * @param value - The column value: an `ArrayBuffer` (how the DO SQL API
  *   returns a BLOB) or `Uint8Array` of exactly 8 bytes.
  * @returns The uint64 as `bigint`.
  * @throws When the value is not an 8-byte BLOB (e.g. an unmigrated INTEGER).
  */
-export function decodeMmrIndexBe8(value: unknown): bigint {
+export function decodeUint64Be8(value: unknown): bigint {
   const bytes =
     value instanceof ArrayBuffer
       ? new Uint8Array(value)
@@ -50,7 +51,7 @@ export function decodeMmrIndexBe8(value: unknown): bigint {
         ? value
         : null;
   if (!bytes || bytes.length !== BE8_LENGTH) {
-    throw new Error("MMR index column is not an 8-byte big-endian BLOB");
+    throw new Error("uint64 column is not an 8-byte big-endian BLOB");
   }
   return new DataView(
     bytes.buffer,

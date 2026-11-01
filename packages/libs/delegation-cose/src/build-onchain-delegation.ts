@@ -24,11 +24,10 @@
 
 import { keccak_256 } from "@noble/hashes/sha3";
 import { secp256k1 } from "@noble/curves/secp256k1";
-import { base64UrlEncode } from "@forestrie/encoding";
+import { base64UrlEncode, toUint64 } from "@forestrie/encoding";
 import { bytesEqual, toArrayBuffer } from "./bytes-utils.js";
 import { encodeIntKeyCbor } from "./encode-int-map.js";
 import { encodeSigStructure } from "./encode-sig-structure.js";
-import { toUint64 } from "./to-uint64.js";
 import type { Ks256VerifyHooks } from "./ks256-verify-hooks.js";
 import {
   COSE_ALG_ES256,

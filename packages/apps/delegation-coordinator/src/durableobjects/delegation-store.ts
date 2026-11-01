@@ -14,7 +14,6 @@ import { decodeCborStruct, encodeCbor } from "../cbor.js";
 import type { Env } from "../env.js";
 import { certificateKeyFor, sha256Hex } from "../certificate-key.js";
 import { formatDecimalUint64 } from "../decimal-uint64.js";
-import { decodeMmrIndexBe8, encodeMmrIndexBe8 } from "../mmr-index-be8.js";
 import { parseJsonMmrRange, type MmrRange } from "../mmr-range.js";
 import {
   DEFAULT_MMR_RANGE_MIGRATION_BUDGET,
@@ -81,11 +80,15 @@ import {
   decodeDelegatedCoseKeyFromBytes,
   normalizeEs256SignatureLowS,
   parseDelegatedCoseKeyFromPayload,
-  toUint64,
   verifyOnchainDelegationSignatureEs256,
   verifyOnchainDelegationSignatureKs256,
   verifyOnchainDelegationSignatureWebauthn,
 } from "@forestrie/delegation-cose";
+import {
+  decodeUint64Be8,
+  encodeUint64Be8,
+  toUint64,
+} from "@forestrie/encoding";
 import { Erc1271UnavailableError } from "@forestrie/chain-rpc";
 import {
   chainIdFromUnivocityInstanceId,
@@ -133,7 +136,7 @@ const STANDING_DELEGATION_TTL_SECONDS = 6 * 60 * 60;
 
 /**
  * Current `delegation_certificates` shape. `mmr_start` / `mmr_end` are
- * 8-byte big-endian BLOBs ({@link encodeMmrIndexBe8}), NULL on
+ * 8-byte big-endian BLOBs ({@link encodeUint64Be8}), NULL on
  * pre-coverage rows served by exact `certificate_key` only.
  */
 const DELEGATION_CERTIFICATES_COLUMNS = `
@@ -1600,7 +1603,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
         logIdHex32,
         pubkeyHash,
         submitKey,
-        encodeMmrIndexBe8(range.mmrEnd),
+        encodeUint64Be8(range.mmrEnd),
         body.expiresAt,
       ),
     ];
@@ -1611,7 +1614,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
           type: "about:blank",
           title: "Conflict",
           status: 409,
-          detail: `delegation certificate is stale: superseded by mmrEnd=${formatDecimalUint64(decodeMmrIndexBe8(s.mmr_end))} expiresAt=${s.expires_at}`,
+          detail: `delegation certificate is stale: superseded by mmrEnd=${formatDecimalUint64(decodeUint64Be8(s.mmr_end))} expiresAt=${s.expires_at}`,
         },
         { status: 409 },
       );
@@ -1859,8 +1862,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
       onchainClientDataJSON,
       pubkeyHash,
       delegatedPublicKey,
-      encodeMmrIndexBe8(range.mmrStart),
-      encodeMmrIndexBe8(range.mmrEnd),
+      encodeUint64Be8(range.mmrStart),
+      encodeUint64Be8(range.mmrEnd),
     );
 
     // C5: satisfy every pending demand for this key whose window the accepted
@@ -1871,8 +1874,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
          AND mmr_start >= ? AND mmr_end <= ?`,
       logIdHex32,
       pubkeyHash,
-      encodeMmrIndexBe8(range.mmrStart),
-      encodeMmrIndexBe8(range.mmrEnd),
+      encodeUint64Be8(range.mmrStart),
+      encodeUint64Be8(range.mmrEnd),
     ).rowsWritten;
 
     // A satisfied pending row means a sealer already asked, was told
@@ -1970,8 +1973,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
         ...heldHashes,
         logIdHex32,
         nowSeconds,
-        encodeMmrIndexBe8(range.mmrStart),
-        encodeMmrIndexBe8(range.mmrEnd),
+        encodeUint64Be8(range.mmrStart),
+        encodeUint64Be8(range.mmrEnd),
         reqKeyHash,
       ),
     ];
@@ -2027,8 +2030,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
         id,
         logIdHex32,
         logIdHex32,
-        encodeMmrIndexBe8(range.mmrStart),
-        encodeMmrIndexBe8(range.mmrEnd),
+        encodeUint64Be8(range.mmrStart),
+        encodeUint64Be8(range.mmrEnd),
         pubkeyHash,
         req.delegatedPublicKey,
         now,
@@ -2102,8 +2105,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
         // fall back to the live root — same behaviour as pre-R1.
         const onchainProof = this.onchainProofFromStored(
           logIdHex32,
-          decodeMmrIndexBe8(row.mmr_start),
-          decodeMmrIndexBe8(row.mmr_end),
+          decodeUint64Be8(row.mmr_start),
+          decodeUint64Be8(row.mmr_end),
           new Uint8Array(row.delegated_public_key),
           new Uint8Array(row.onchain_signature),
           storedAlg ?? currentAlg,
@@ -2367,8 +2370,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
         id: r.id,
         authLogIdHex32: r.auth_log_id_hex32,
         logIdHex32: r.log_id_hex32,
-        mmrStart: formatDecimalUint64(decodeMmrIndexBe8(r.mmr_start)),
-        mmrEnd: formatDecimalUint64(decodeMmrIndexBe8(r.mmr_end)),
+        mmrStart: formatDecimalUint64(decodeUint64Be8(r.mmr_start)),
+        mmrEnd: formatDecimalUint64(decodeUint64Be8(r.mmr_end)),
         delegatedPublicKeyHash: r.delegated_pubkey_hash,
         delegatedPublicKey: bytesToBase64(
           new Uint8Array(r.delegated_public_key),
@@ -2448,11 +2451,11 @@ export class DelegationStoreDO extends DurableObject<Env> {
         mmrStart:
           r.mmr_start === null
             ? null
-            : formatDecimalUint64(decodeMmrIndexBe8(r.mmr_start)),
+            : formatDecimalUint64(decodeUint64Be8(r.mmr_start)),
         mmrEnd:
           r.mmr_end === null
             ? null
-            : formatDecimalUint64(decodeMmrIndexBe8(r.mmr_end)),
+            : formatDecimalUint64(decodeUint64Be8(r.mmr_end)),
       };
     });
 
@@ -2512,8 +2515,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
         id: r.id,
         authLogIdHex32: r.auth_log_id_hex32,
         logIdHex32: r.log_id_hex32,
-        mmrStart: formatDecimalUint64(decodeMmrIndexBe8(r.mmr_start)),
-        mmrEnd: formatDecimalUint64(decodeMmrIndexBe8(r.mmr_end)),
+        mmrStart: formatDecimalUint64(decodeUint64Be8(r.mmr_start)),
+        mmrEnd: formatDecimalUint64(decodeUint64Be8(r.mmr_end)),
         delegatedPublicKeyHash: r.delegated_pubkey_hash,
         delegatedPublicKey: bytesToBase64(
           new Uint8Array(r.delegated_public_key),
@@ -2654,8 +2657,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
     const current: CurrentDelegationResponse = {
       logId: logIdHex32,
       certificate: bytesToBase64(new Uint8Array(row.certificate)),
-      mmrStart: formatDecimalUint64(decodeMmrIndexBe8(row.mmr_start)),
-      mmrEnd: formatDecimalUint64(decodeMmrIndexBe8(row.mmr_end)),
+      mmrStart: formatDecimalUint64(decodeUint64Be8(row.mmr_start)),
+      mmrEnd: formatDecimalUint64(decodeUint64Be8(row.mmr_end)),
       delegatedPublicKey: row.delegated_public_key
         ? bytesToBase64(new Uint8Array(row.delegated_public_key))
         : null,
@@ -2694,8 +2697,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
       id,
       authLogIdHex32,
       logIdHex32,
-      encodeMmrIndexBe8(range.mmrStart),
-      encodeMmrIndexBe8(range.mmrEnd),
+      encodeUint64Be8(range.mmrStart),
+      encodeUint64Be8(range.mmrEnd),
       pubkeyHash,
       delegatedPublicKey,
       now,

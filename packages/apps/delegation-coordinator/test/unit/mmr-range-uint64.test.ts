@@ -20,7 +20,7 @@ import {
   hex32ToWireLogIdBytes,
   normalizeLogIdToHex32,
 } from "../../src/log-id.js";
-import { encodeMmrIndexBe8 } from "../../src/mmr-index-be8.js";
+import { encodeUint64Be8 } from "@forestrie/encoding";
 import type { PendingEntry } from "../../src/types/pending-entry.js";
 import {
   buildTestByokMaterial,
@@ -369,7 +369,7 @@ describe("delegation MMR range is uint64 on the JSON routes", () => {
       sql.exec(`CREATE TABLE be8_order (v BLOB NOT NULL)`);
       // Insert shuffled so ORDER BY does the work.
       for (const v of [...values].reverse()) {
-        sql.exec(`INSERT INTO be8_order (v) VALUES (?)`, encodeMmrIndexBe8(v));
+        sql.exec(`INSERT INTO be8_order (v) VALUES (?)`, encodeUint64Be8(v));
       }
       const hex = (b: ArrayBuffer) =>
         BigInt(
@@ -393,8 +393,8 @@ describe("delegation MMR range is uint64 on the JSON routes", () => {
       const between = [
         ...sql.exec(
           `SELECT COUNT(*) AS n FROM be8_order WHERE v >= ? AND v <= ?`,
-          encodeMmrIndexBe8(P32),
-          encodeMmrIndexBe8(P63),
+          encodeUint64Be8(P32),
+          encodeUint64Be8(P63),
         ),
       ][0]!;
       expect(between.n).toBe(7); // 2^32 .. 2^63 inclusive
