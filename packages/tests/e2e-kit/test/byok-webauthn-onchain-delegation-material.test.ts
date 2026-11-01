@@ -90,8 +90,8 @@ describe("buildByokDelegationMaterialWebauthn", () => {
       await verifyOnchainDelegationSignatureWebauthn(
         {
           logIdHex: logIdHex32,
-          mmrStart: 0,
-          mmrEnd: 16383,
+          mmrStart: 0n,
+          mmrEnd: 16383n,
           delegatedKeyX: x,
           delegatedKeyY: y,
         },
@@ -109,8 +109,8 @@ describe("buildByokDelegationMaterialWebauthn", () => {
       await verifyOnchainDelegationSignatureWebauthn(
         {
           logIdHex: logIdHex32,
-          mmrStart: 0,
-          mmrEnd: 12,
+          mmrStart: 0n,
+          mmrEnd: 12n,
           delegatedKeyX: x,
           delegatedKeyY: y,
         },

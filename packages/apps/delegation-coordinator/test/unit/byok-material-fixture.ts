@@ -208,8 +208,8 @@ export async function buildTestByokWebauthnMaterial(opts: {
   );
   const tbs = buildOnchainDelegationToBeSignedWebauthn({
     logIdHex: opts.logIdHex32,
-    mmrStart: opts.mmrStart,
-    mmrEnd: opts.mmrEnd,
+    mmrStart: BigInt(opts.mmrStart),
+    mmrEnd: BigInt(opts.mmrEnd),
     delegatedKeyX: delegated.x,
     delegatedKeyY: delegated.y,
   });

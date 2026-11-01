@@ -224,8 +224,8 @@ describe("WebAuthn BYOK on-chain delegation proof", () => {
       await verifyOnchainDelegationSignatureWebauthn(
         {
           logIdHex: logHex32,
-          mmrStart: Number(wire.mmrStart),
-          mmrEnd: Number(wire.mmrEnd),
+          mmrStart: BigInt(wire.mmrStart),
+          mmrEnd: BigInt(wire.mmrEnd),
           delegatedKeyX: delegated.x,
           delegatedKeyY: delegated.y,
         },
@@ -290,8 +290,8 @@ describe("WebAuthn BYOK on-chain delegation proof", () => {
       await verifyOnchainDelegationSignatureWebauthn(
         {
           logIdHex: logHex32,
-          mmrStart: 0,
-          mmrEnd: 16383,
+          mmrStart: 0n,
+          mmrEnd: 16383n,
           delegatedKeyX: delegated.x,
           delegatedKeyY: delegated.y,
         },
@@ -396,8 +396,8 @@ describe("WebAuthn BYOK on-chain delegation proof", () => {
     const proof = await signOnchainDelegationEs256(
       {
         logIdHex: logHex32,
-        mmrStart: 0,
-        mmrEnd: 16383,
+        mmrStart: 0n,
+        mmrEnd: 16383n,
         delegatedKeyX: delegated.x,
         delegatedKeyY: delegated.y,
       },

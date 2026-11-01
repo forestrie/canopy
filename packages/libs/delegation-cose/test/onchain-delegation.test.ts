@@ -113,18 +113,18 @@ describe("buildOnchainDelegationToBeSignedKs256", () => {
     ).toThrow(message);
   });
 
-  it("rejects an unsafe number instead of rounding it into a bigint", () => {
+  it("rejects a JS number smuggled past the bigint type", () => {
     expect(() =>
       buildOnchainDelegationToBeSignedKs256({
         ...fixtureInput(),
-        mmrEnd: 2 ** 53 + 2,
+        mmrEnd: (2 ** 53 + 2) as unknown as bigint,
       }),
     ).toThrow(/mmrEnd is not a uint64/);
   });
 
   it("signing returns the validated range as bigint", () => {
     const proof = signOnchainDelegationKs256(
-      { ...fixtureInput(), mmrStart: 3, mmrEnd: 2 ** 40 },
+      { ...fixtureInput(), mmrStart: 3n, mmrEnd: 2n ** 40n },
       TEST_PRIVATE_KEY_HEX,
     );
     expect(proof.mmrStart).toBe(3n);

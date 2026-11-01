@@ -112,8 +112,8 @@ async function submitCert(opts: {
     const proof = await signOnchainDelegationEs256(
       {
         logIdHex: opts.logHex32,
-        mmrStart: opts.mmrStart,
-        mmrEnd: opts.mmrEnd,
+        mmrStart: BigInt(opts.mmrStart),
+        mmrEnd: BigInt(opts.mmrEnd),
         delegatedKeyX: x,
         delegatedKeyY: y,
       },

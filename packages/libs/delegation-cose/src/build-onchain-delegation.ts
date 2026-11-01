@@ -53,13 +53,10 @@ export const ONCHAIN_DELEGATION_DOMAIN = "forestrie.univocity.delegation.v1";
 export interface OnchainDelegationInput {
   /** Forestrie log id as 32-char hex (16 bytes, right-aligned to 32). */
   logIdHex: string;
-  /**
-   * Inclusive MMR start index of the delegation lease (uint64). A `number`
-   * must be a non-negative safe integer; it is never rounded into a bigint.
-   */
-  mmrStart: number | bigint;
+  /** Inclusive MMR start index of the delegation lease (uint64). */
+  mmrStart: bigint;
   /** Exclusive MMR end index of the delegation lease (uint64, `>= mmrStart`). */
-  mmrEnd: number | bigint;
+  mmrEnd: bigint;
   /** Delegated P-256 public key x coordinate (32 bytes). */
   delegatedKeyX: Uint8Array;
   /** Delegated P-256 public key y coordinate (32 bytes). */
@@ -97,9 +94,9 @@ export interface OnchainDelegationProofParts {
 
 /**
  * Validate the lease range against the contract's `uint64` packing: both
- * bounds uint64 (via {@link toUint64}, so an unsafe JS number is rejected
- * rather than rounded) and `mmrStart <= mmrEnd`, as the certificate builder
- * and parser enforce.
+ * bounds in `[0, 2^64-1]` (the type is `bigint`, but JS callers can still
+ * pass anything) and `mmrStart <= mmrEnd`, as the certificate builder and
+ * parser enforce.
  *
  * @throws When a bound is not a uint64 or `mmrStart > mmrEnd`.
  */

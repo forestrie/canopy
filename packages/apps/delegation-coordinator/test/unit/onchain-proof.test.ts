@@ -235,8 +235,8 @@ describe("BYOK on-chain delegation proof", () => {
     const proof = signOnchainDelegationKs256(
       {
         logIdHex: sub.logHex32,
-        mmrStart: sub.mmrStart,
-        mmrEnd: sub.mmrEnd,
+        mmrStart: BigInt(sub.mmrStart),
+        mmrEnd: BigInt(sub.mmrEnd),
         delegatedKeyX: x,
         delegatedKeyY: y,
       },
@@ -283,8 +283,8 @@ describe("BYOK on-chain delegation proof", () => {
     const proof = signOnchainDelegationKs256(
       {
         logIdHex: sub.logHex32,
-        mmrStart: sub.mmrStart,
-        mmrEnd: sub.mmrEnd,
+        mmrStart: BigInt(sub.mmrStart),
+        mmrEnd: BigInt(sub.mmrEnd),
         delegatedKeyX: x,
         delegatedKeyY: y,
       },
@@ -318,8 +318,8 @@ describe("BYOK on-chain delegation proof", () => {
     const proof = await signOnchainDelegationEs256(
       {
         logIdHex: logHex32,
-        mmrStart: 0,
-        mmrEnd: 16383,
+        mmrStart: 0n,
+        mmrEnd: 16383n,
         delegatedKeyX: x,
         delegatedKeyY: y,
       },
@@ -377,8 +377,8 @@ describe("BYOK on-chain delegation proof", () => {
     const proof = await signOnchainDelegationEs256(
       {
         logIdHex: logHex32,
-        mmrStart: 0,
-        mmrEnd: 16383,
+        mmrStart: 0n,
+        mmrEnd: 16383n,
         delegatedKeyX: x,
         delegatedKeyY: y,
       },
@@ -442,8 +442,8 @@ describe("BYOK on-chain delegation proof", () => {
     const proof = signOnchainDelegationKs256(
       {
         logIdHex: sub.logHex32,
-        mmrStart: sub.mmrStart,
-        mmrEnd: sub.mmrEnd,
+        mmrStart: BigInt(sub.mmrStart),
+        mmrEnd: BigInt(sub.mmrEnd),
         delegatedKeyX: x,
         delegatedKeyY: y,
       },

@@ -66,8 +66,8 @@ describe("buildKs256BootstrapDelegationMaterial", () => {
     const ok = await verifyOnchainDelegationSignatureKs256(
       {
         logIdHex: logIdHex32,
-        mmrStart: 0,
-        mmrEnd: 16383,
+        mmrStart: 0n,
+        mmrEnd: 16383n,
         delegatedKeyX: x,
         delegatedKeyY: y,
       },

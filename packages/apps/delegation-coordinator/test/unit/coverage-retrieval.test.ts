@@ -179,8 +179,8 @@ async function seedWideCert(opts: {
     const proof = await signOnchainDelegationEs256(
       {
         logIdHex: logHex32,
-        mmrStart: opts.mmrStart,
-        mmrEnd: opts.mmrEnd,
+        mmrStart: BigInt(opts.mmrStart),
+        mmrEnd: BigInt(opts.mmrEnd),
         delegatedKeyX: x,
         delegatedKeyY: y,
       },
@@ -607,8 +607,8 @@ describe("FOR-421 hermetic positive advance-delegation", () => {
     const onchain = await signOnchainDelegationEs256(
       {
         logIdHex: logHex32,
-        mmrStart: 0,
-        mmrEnd: 16383,
+        mmrStart: 0n,
+        mmrEnd: 16383n,
         delegatedKeyX: delX,
         delegatedKeyY: delY,
       },
