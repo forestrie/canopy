@@ -606,7 +606,10 @@ export async function fetchLogPendingDelegation(opts: {
 }): Promise<{
   entries: Array<{
     logIdHex32: string;
-    /** Decimal uint64 string (canopy plan-2611-01 D1). */
+    /**
+     * Canonical decimal uint64 string (`@forestrie/delegation-cose`
+     * `parseDecimalUint64`).
+     */
     mmrStart: string;
     mmrEnd: string;
     delegatedPublicKey: string;

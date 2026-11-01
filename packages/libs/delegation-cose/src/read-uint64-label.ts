@@ -1,7 +1,9 @@
 /**
  * Strict uint64 reader for integer-keyed CBOR payload labels, such as the
  * delegation MMR range (labels 3/4). Absent is an error here; callers that
- * give an absent label a legacy meaning (receipt-verify, plan-2611-01 D4)
+ * give an absent label a legacy meaning (receipt-verify's
+ * `resolve-delegated-verify-key.ts`, where labels 3 and 4 both absent mean
+ * a legacy certificate with no window)
  * test presence first and use {@link toUint64} on the value.
  */
 

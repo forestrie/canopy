@@ -2,7 +2,7 @@
  * Delegation MMR range (payload labels 3/4) is a uint64 end to end: build
  * encodes CBOR major type 0 up to 2^64-1, parse returns it as `bigint`
  * without rounding, and a label that is present but not a uint64 is a hard
- * reject (plan-2611-01 S1, FOR-613).
+ * reject, as arbor's sealer (Go `uint64`) decodes it.
  */
 
 import { encodeCborDeterministic } from "@forestrie/encoding";

@@ -33,7 +33,8 @@ export interface DelegationRequiredEvent {
   logId: string;
   authLogId: string;
   /**
-   * Demanded window as decimal uint64 strings (canopy plan-2611-01 D1);
+   * Demanded window as canonical decimal uint64 strings
+   * (`@forestrie/delegation-cose` `parseDecimalUint64`);
    * omitted on the window-less route-setup push.
    */
   mmrStart?: string;

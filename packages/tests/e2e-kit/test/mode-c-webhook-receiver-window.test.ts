@@ -25,7 +25,7 @@ describe("receiverSigningWindow", () => {
     });
   });
 
-  // The event carries decimal strings (canopy plan-2611-01 D1, FOR-613).
+  // The event carries decimal strings, so a bound above 2^53 is exact.
   it("reads a window above 2^53 exactly", () => {
     expect(
       receiverSigningWindow({

@@ -51,7 +51,10 @@ export const ADVANCE_HORIZON_MMR_END = 65535n;
 
 type StandingEntry = {
   delegatedPublicKey: string;
-  /** Decimal uint64 strings on windowed entries (canopy plan-2611-01 D1). */
+  /**
+   * Canonical decimal uint64 strings on windowed entries
+   * (`@forestrie/delegation-cose` `formatDecimalUint64`).
+   */
   mmrStart?: string;
   mmrEnd?: string;
   suggestedTtlSeconds?: number;

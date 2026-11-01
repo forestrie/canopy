@@ -27,7 +27,7 @@ import {
  * Validate the MMR range against the uint64 wire contract arbor's sealer
  * decodes (Go `uint64`) before it is signed: both bounds in `[0, 2^64-1]`
  * and `mmrStart <= mmrEnd`. A certificate the sealer would reject is never
- * produced (FOR-613).
+ * produced.
  *
  * @param input - Reads `mmrStart` and `mmrEnd` only.
  * @throws When a bound is outside uint64 or `mmrStart > mmrEnd`.
