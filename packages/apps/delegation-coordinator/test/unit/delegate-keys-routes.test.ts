@@ -138,8 +138,8 @@ async function seedCertificate(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         logId: logHex32,
-        mmrStart: 0,
-        mmrEnd: 1000,
+        mmrStart: "0",
+        mmrEnd: "1000",
         delegatedPublicKey: bytesToBase64(delegatedPublicKey),
         certificate: bytesToBase64(material.certificate),
         issuedAt: material.issuedAt,

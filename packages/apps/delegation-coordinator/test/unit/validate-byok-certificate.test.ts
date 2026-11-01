@@ -27,8 +27,8 @@ describe("validateByokDelegationCertificate submit timestamps", () => {
     await expect(
       validateByokDelegationCertificate({
         logIdHex32: logHex32,
-        mmrStart: 1,
-        mmrEnd: 8,
+        mmrStart: 1n,
+        mmrEnd: 8n,
         delegatedPublicKey,
         certificate,
         issuedAt,
@@ -55,8 +55,8 @@ describe("validateByokDelegationCertificate submit timestamps", () => {
     await expect(
       validateByokDelegationCertificate({
         logIdHex32: logHex32,
-        mmrStart: 1,
-        mmrEnd: 8,
+        mmrStart: 1n,
+        mmrEnd: 8n,
         delegatedPublicKey,
         certificate,
         issuedAt,

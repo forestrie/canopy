@@ -126,8 +126,8 @@ async function submitCert(opts: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       logId: opts.logHex32,
-      mmrStart: opts.mmrStart,
-      mmrEnd: opts.mmrEnd,
+      mmrStart: String(opts.mmrStart),
+      mmrEnd: String(opts.mmrEnd),
       delegatedPublicKey: bytesToBase64(delegatedPublicKey),
       certificate: bytesToBase64(material.certificate),
       issuedAt: opts.issuedAt,
@@ -181,13 +181,13 @@ describe("C2 — public GET /api/logs/{logId}/delegation", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       certificate: string;
-      mmrStart: number;
-      mmrEnd: number;
+      mmrStart: string;
+      mmrEnd: string;
       expiresAt: number;
       delegatedPublicKey: string | null;
     };
-    expect(body.mmrStart).toBe(0);
-    expect(body.mmrEnd).toBe(16383);
+    expect(body.mmrStart).toBe("0");
+    expect(body.mmrEnd).toBe("16383");
     expect(body.expiresAt).toBe(FAR_FUTURE);
     expect(typeof body.certificate).toBe("string");
     expect(body.delegatedPublicKey).toBe(

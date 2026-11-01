@@ -9,6 +9,7 @@
  * [ARC-0017](https://github.com/forestrie/devdocs/blob/main/arc/arc-0017-hierarchical-authority-logs-and-fee-distribution.md).
  */
 
+import { formatDecimalUint64 } from "../decimal-uint64.js";
 import type { DelegationRequiredEvent } from "../types/delegation-required-event.js";
 import { requestKeyFor } from "./request-key.js";
 
@@ -17,8 +18,8 @@ export interface BuildDelegationRequiredEventInput {
   logIdHex32: string;
   authLogIdHex32: string;
   /** Demanded window; omit both for the window-less standing push. */
-  mmrStart?: number;
-  mmrEnd?: number;
+  mmrStart?: bigint;
+  mmrEnd?: bigint;
   delegatedPublicKeyBase64: string;
   delegatedPubkeyHash: string;
   requestedAt: number;
@@ -38,8 +39,8 @@ export async function buildDelegationRequiredEvent(
   // so its delivery idempotency is unchanged (FOR-612).
   const requestKey = await requestKeyFor(
     input.logIdHex32,
-    input.mmrStart ?? 0,
-    input.mmrEnd ?? 0,
+    input.mmrStart ?? 0n,
+    input.mmrEnd ?? 0n,
     input.delegatedPubkeyHash,
   );
   return {
@@ -49,7 +50,10 @@ export async function buildDelegationRequiredEvent(
     logId: input.logIdHex32,
     authLogId: input.authLogIdHex32,
     ...(input.mmrStart !== undefined && input.mmrEnd !== undefined
-      ? { mmrStart: input.mmrStart, mmrEnd: input.mmrEnd }
+      ? {
+          mmrStart: formatDecimalUint64(input.mmrStart),
+          mmrEnd: formatDecimalUint64(input.mmrEnd),
+        }
       : {}),
     delegatedPublicKey: input.delegatedPublicKeyBase64,
     requestedAt: input.requestedAt,

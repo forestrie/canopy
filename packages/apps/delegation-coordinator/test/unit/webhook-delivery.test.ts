@@ -187,8 +187,8 @@ describe("webhook delivery", () => {
       expect(event.type).toBe("delegation.required");
       expect(event.version).toBe(1);
       expect(event.logId).toBe(logHex32);
-      expect(event.mmrStart).toBe(1);
-      expect(event.mmrEnd).toBe(8);
+      expect(event.mmrStart).toBe("1");
+      expect(event.mmrEnd).toBe("8");
       expect(event.delegatedPublicKey).toBe(bytesToBase64(key));
       expect(event.certificateSubmitUrl).toBe(
         "http://localhost/api/delegations/certificate",
@@ -200,7 +200,7 @@ describe("webhook delivery", () => {
       const pubkeyHash = await import("../../src/certificate-key.js").then(
         (m) => m.sha256Hex(key),
       );
-      const expectedKey = await requestKeyFor(logHex32, 1, 8, pubkeyHash);
+      const expectedKey = await requestKeyFor(logHex32, 1n, 8n, pubkeyHash);
       expect(event.requestKey).toBe(expectedKey);
 
       expect(receivedTimestamp).toMatch(/^\d+$/);
@@ -314,10 +314,10 @@ describe("webhook delivery", () => {
       );
       expect(pendingRes.status).toBe(200);
       const pending = (await pendingRes.json()) as {
-        entries: Array<{ mmrStart: number; mmrEnd: number }>;
+        entries: Array<{ mmrStart: string; mmrEnd: string }>;
       };
       expect(
-        pending.entries.some((e) => e.mmrStart === 4 && e.mmrEnd === 11),
+        pending.entries.some((e) => e.mmrStart === "4" && e.mmrEnd === "11"),
       ).toBe(true);
 
       // Positive control, same log + same interceptor: flip the route back to
@@ -448,7 +448,7 @@ describe("webhook delivery", () => {
         (m) => m.sha256Hex(base64ToBytes(event.delegatedPublicKey)),
       );
       expect(event.requestKey).toBe(
-        await requestKeyFor(logHex32, 0, 0, pubkeyHash),
+        await requestKeyFor(logHex32, 0n, 0n, pubkeyHash),
       );
     } finally {
       fetchMock.deactivate();

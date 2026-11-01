@@ -35,8 +35,8 @@ export async function generateTestRootKeyPair(): Promise<CryptoKeyPair> {
 export async function buildTestByokMaterial(opts: {
   rootKeyPair: CryptoKeyPair;
   logIdHex32: string;
-  mmrStart: number;
-  mmrEnd: number;
+  mmrStart: number | bigint;
+  mmrEnd: number | bigint;
   delegatedPublicKey: Uint8Array;
   /** Override the signed issuedAt/expiresAt (defaults to a fixed 2023 pair). */
   issuedAt?: number;
@@ -163,8 +163,8 @@ export async function syntheticWebauthnAssertion(opts: {
 export async function buildTestByokWebauthnMaterial(opts: {
   rootKeyPair: CryptoKeyPair;
   logIdHex32: string;
-  mmrStart: number;
-  mmrEnd: number;
+  mmrStart: number | bigint;
+  mmrEnd: number | bigint;
   delegatedPublicKey: Uint8Array;
   issuedAt?: number;
   expiresAt?: number;

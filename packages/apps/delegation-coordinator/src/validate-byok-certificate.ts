@@ -123,8 +123,8 @@ async function importEs256PublicKey(
  */
 export async function validateByokDelegationCertificate(opts: {
   logIdHex32: string;
-  mmrStart: number;
-  mmrEnd: number;
+  mmrStart: bigint;
+  mmrEnd: bigint;
   delegatedPublicKey: Uint8Array;
   certificate: Uint8Array;
   issuedAt: number;
@@ -136,19 +136,12 @@ export async function validateByokDelegationCertificate(opts: {
   if (info.logIdHex32 !== opts.logIdHex32) {
     throw new ByokCertificateValidationError("payload log id mismatch");
   }
-  // The certificate range is bigint (delegation-cose 0.5.0); the JSON
-  // submit still carries numbers, so only a safe integer can match
-  // (FOR-613; S3 moves the route to decimal strings).
-  if (
-    !Number.isSafeInteger(opts.mmrStart) ||
-    info.mmrStart !== BigInt(opts.mmrStart)
-  ) {
+  // uint64 to uint64: the submit range is parsed from decimal strings and
+  // the certificate range is read as bigint (FOR-613).
+  if (info.mmrStart !== opts.mmrStart) {
     throw new ByokCertificateValidationError("payload mmrStart mismatch");
   }
-  if (
-    !Number.isSafeInteger(opts.mmrEnd) ||
-    info.mmrEnd !== BigInt(opts.mmrEnd)
-  ) {
+  if (info.mmrEnd !== opts.mmrEnd) {
     throw new ByokCertificateValidationError("payload mmrEnd mismatch");
   }
   if (opts.issuedAt !== info.issuedAt) {

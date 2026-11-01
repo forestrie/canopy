@@ -9,8 +9,10 @@
 /** Runner-submitted BYOK delegation certificate for storage. */
 export interface SubmitDelegationCertificateRequest {
   logId: string;
-  mmrStart: number;
-  mmrEnd: number;
+  /** Range start (inclusive), canonical decimal uint64 string (plan-2611-01 D1). */
+  mmrStart: string;
+  /** Range end (inclusive), canonical decimal uint64 string. */
+  mmrEnd: string;
   /** Base64-encoded delegated public key CBOR bytes. */
   delegatedPublicKey: string;
   /** Base64-encoded delegation certificate COSE Sign1 bytes. */

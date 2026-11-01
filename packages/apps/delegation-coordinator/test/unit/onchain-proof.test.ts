@@ -179,8 +179,8 @@ async function submitCertificate(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       logId: sub.logHex32,
-      mmrStart: sub.mmrStart,
-      mmrEnd: sub.mmrEnd,
+      mmrStart: String(sub.mmrStart),
+      mmrEnd: String(sub.mmrEnd),
       delegatedPublicKey: bytesToBase64(sub.delegatedPublicKey),
       certificate: bytesToBase64(sub.certificate),
       issuedAt: sub.issuedAt,

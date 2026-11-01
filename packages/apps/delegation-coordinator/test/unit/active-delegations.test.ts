@@ -86,8 +86,8 @@ async function seedCert(opts: {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         logId: logHex32,
-        mmrStart: 0,
-        mmrEnd,
+        mmrStart: "0",
+        mmrEnd: String(mmrEnd),
         delegatedPublicKey: bytesToBase64(delegatedPublicKey),
         certificate: bytesToBase64(material.certificate),
         issuedAt: material.issuedAt,
@@ -102,8 +102,8 @@ async function seedCert(opts: {
 interface ActiveLog {
   logIdHex32: string;
   expiresAt: number;
-  mmrStart: number | null;
-  mmrEnd: number | null;
+  mmrStart: string | null;
+  mmrEnd: string | null;
 }
 
 /** Page the whole active set following the opaque cursor to termination. */
@@ -183,8 +183,8 @@ describe("GET /api/delegations/active", () => {
     const row = walk.find((l) => l.logIdHex32 === logHex32);
     expect(row).toBeDefined();
     expect(row!.expiresAt).toBe(soon);
-    expect(row!.mmrStart).toBe(0); // seedCert uses mmrStart 0
-    expect(row!.mmrEnd).toBe(42);
+    expect(row!.mmrStart).toBe("0"); // seedCert uses mmrStart 0
+    expect(row!.mmrEnd).toBe("42");
   });
 
   it("excludes a log disabled via the operator kill-switch", async () => {

@@ -13,8 +13,12 @@ export interface DelegationIssueRequest {
   chainId?: string;
   contractAddress?: string;
   logId: Uint8Array;
-  mmrStart: number;
-  mmrEnd: number;
+  /**
+   * CBOR major type 0 as decoded: `number` when safe, `bigint` above 2^53.
+   * Validated with `toUint64` (start <= end) before use (FOR-613).
+   */
+  mmrStart: number | bigint;
+  mmrEnd: number | bigint;
   algorithm: string;
   delegatedPublicKey: Uint8Array;
   requestedTtlSeconds?: number;
