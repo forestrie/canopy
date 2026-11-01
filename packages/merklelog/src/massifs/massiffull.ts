@@ -18,8 +18,9 @@ export function isMassifFull(
   // Convert 1-based height to 0-based height index
   const heightIndex = massifHeight - 1;
 
-  // Expected number of leaves for a full massif: f = 2^g = 1 << heightIndex
-  const expectedLeaves = BigInt(1 << heightIndex);
+  // Expected number of leaves for a full massif: f = 2^g, in bigint (a JS
+  // number `1 << g` wraps at g = 32).
+  const expectedLeaves = 1n << BigInt(heightIndex);
 
   // Actual number of leaves: f = (n + 1) / 2
   const actualLeaves = (logEntries + 1n) >> 1n;

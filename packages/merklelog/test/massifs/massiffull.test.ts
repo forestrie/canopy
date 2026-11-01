@@ -94,4 +94,13 @@ describe("massiffull", () => {
       });
     });
   });
+
+  describe("isMassifFull above height 32", () => {
+    // `1 << 32` is 1 as a JS number, which made any non-empty massif full.
+    it("needs 2^32 leaves at height 33", () => {
+      expect(isMassifFull(33, 1n)).toBe(false);
+      expect(isMassifFull(33, (1n << 33n) - 3n)).toBe(false);
+      expect(isMassifFull(33, (1n << 33n) - 1n)).toBe(true);
+    });
+  });
 });
