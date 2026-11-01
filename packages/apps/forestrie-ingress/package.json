@@ -17,6 +17,7 @@
     "@forestrie/encoding": "workspace:*",
     "@canopy/forestrie-ingress-types": "workspace:*",
     "@canopy/forestrie-sharding": "workspace:*",
+    "@forestrie/merklelog": "workspace:*",
     "@forestrie/encoding": "workspace:*"
   },
   "devDependencies": {

@@ -31,6 +31,12 @@ import {
 
 import {
   MAX_MASSIF_INDEX,
+  indexHeight,
+  leafCountForMassifHeight,
+  massifFirstLeaf,
+  massifIndexFromMMRIndex,
+  peakStackMap,
+  peaksBitmap,
   v2CheckpointObjectKey,
   v2MassifObjectKey,
 } from "@forestrie/merklelog";
@@ -240,7 +246,7 @@ export async function resolveReceipt(
 
     const firstIndex = massifFirstLeaf(massifHeader.massifHeight, massifIndex);
 
-    const peakStackMap = peakStackMapForMassif(massifHeight, firstIndex);
+    const peakSlots = peakStackMap(massifHeight, firstIndex);
 
     const { peakStackStart, logStart } = v2OffsetsForMassif(massifHeight);
 
@@ -253,7 +259,7 @@ export async function resolveReceipt(
         }
 
         // Ancestor peak in the fixed peak-stack region.
-        const peakIdx = peakStackMap.get(i);
+        const peakIdx = peakSlots.get(i);
         if (peakIdx === undefined) {
           throw new Error(
             `missing ancestor peak for mmr index ${i.toString(10)}`,
@@ -496,18 +502,13 @@ function v2OffsetsForMassif(massifHeight: number): {
   const fixedHeaderEnd = VALUE_BYTES + VALUE_BYTES * RESERVED_HEADER_SLOTS; // 256
   const trieHeaderEnd = fixedHeaderEnd + INDEX_HEADER_BYTES; // 288
 
-  const leafCount = urkleLeafCountForMassifHeight(massifHeight);
+  const leafCount = leafCountForMassifHeight(massifHeight);
   const indexDataBytes = indexDataBytesV2(leafCount);
 
   const peakStackStart = trieHeaderEnd + indexDataBytes;
   const logStart = peakStackStart + MAX_MMR_HEIGHT * VALUE_BYTES;
 
   return { peakStackStart, logStart };
-}
-
-function urkleLeafCountForMassifHeight(massifHeight: number): bigint {
-  if (!Number.isInteger(massifHeight) || massifHeight <= 0) return 0n;
-  return 1n << BigInt(massifHeight - 1);
 }
 
 function indexDataBytesV2(leafCount: bigint): bigint {
@@ -579,167 +580,6 @@ function readMassifStart(data: Uint8Array): MassifStartHeader {
 }
 
 // --- MMR helpers (ported from go-merklelog/mmr) ---
-
-function mmrIndexFromLeafIndex(leafIndex: bigint): bigint {
-  // go-merklelog/mmr/mmrindex.go
-  let sum = 0n;
-  let current = leafIndex;
-
-  while (current > 0n) {
-    const h = BigInt(bitLength(current));
-    sum += (1n << h) - 1n;
-    const half = 1n << (h - 1n);
-    current -= half;
-  }
-
-  return sum;
-}
-
-function massifFirstLeaf(massifHeight: number, massifIndex: bigint): bigint {
-  // go-merklelog/massifs/massifstart.go MassifFirstLeaf
-  const m = (1n << BigInt(massifHeight)) - 1n;
-  const f = (m + 1n) / 2n;
-  const leafIndex = f * massifIndex;
-  return mmrIndexFromLeafIndex(leafIndex);
-}
-
-function leafMinusSpurSum(leafIndex: bigint): bigint {
-  // go-merklelog/mmr/spurs.go LeafMinusSpurSum
-  let sum = leafIndex;
-  let current = leafIndex >> 1n;
-  while (current > 0n) {
-    sum -= current;
-    current >>= 1n;
-  }
-  return sum;
-}
-
-function indexHeight(i: bigint): number {
-  // go-merklelog/mmr/indexheight.go IndexHeight -> PosHeight(i+1)
-  return posHeight(i + 1n);
-}
-
-function posHeight(pos: bigint): number {
-  let current = pos;
-  while (!allOnes(current)) {
-    current = jumpLeftPerfect(current);
-  }
-  return bitLength(current) - 1;
-}
-
-function allOnes(num: bigint): boolean {
-  // Equivalent to (num & (num+1)) == 0 for num>0.
-  return num > 0n && (num & (num + 1n)) === 0n;
-}
-
-function jumpLeftPerfect(pos: bigint): bigint {
-  const bl = bitLength(pos);
-  if (bl === 0) return pos;
-  const msb = 1n << BigInt(bl - 1);
-  return pos - (msb - 1n);
-}
-
-function bitLength(num: bigint): number {
-  if (num === 0n) return 0;
-  return num.toString(2).length;
-}
-
-function firstMMRSize(mmrIndex: bigint): bigint {
-  // go-merklelog/mmr/firstmmrsize.go FirstMMRSize
-  let i = mmrIndex;
-  let h0 = indexHeight(i);
-  let h1 = indexHeight(i + 1n);
-  while (h0 < h1) {
-    i += 1n;
-    h0 = h1;
-    h1 = indexHeight(i + 1n);
-  }
-  return i + 1n;
-}
-
-function peaksBitmap(mmrSize: bigint): bigint {
-  // go-merklelog/mmr/peaks.go PeaksBitmap
-  if (mmrSize === 0n) return 0n;
-
-  let pos = mmrSize;
-  let peakSize = (1n << BigInt(bitLength(mmrSize))) - 1n;
-  let peakMap = 0n;
-
-  while (peakSize > 0n) {
-    peakMap <<= 1n;
-    if (pos >= peakSize) {
-      pos -= peakSize;
-      peakMap |= 1n;
-    }
-    peakSize >>= 1n;
-  }
-
-  return peakMap;
-}
-
-function leafIndexFromMMRIndex(mmrIndex: bigint): bigint {
-  // go-merklelog/mmr/leafcount.go LeafIndex
-  const size = firstMMRSize(mmrIndex);
-  const leafCount = peaksBitmap(size);
-  return leafCount - 1n;
-}
-
-function massifIndexFromMMRIndex(
-  massifHeight: number,
-  mmrIndex: bigint,
-): bigint {
-  // go-merklelog/massifs/massifindex.go MassifIndexFromMMRIndex
-  const leafIndex = leafIndexFromMMRIndex(mmrIndex);
-  const massifMaxLeaves = 1n << BigInt(massifHeight - 1);
-  return leafIndex / massifMaxLeaves;
-}
-
-function peaks(mmrIndex: bigint): bigint[] {
-  // go-merklelog/mmr/peaks.go Peaks
-  let mmrSize = mmrIndex + 1n;
-
-  // catch invalid range, where siblings exist but no parent exists
-  if (posHeight(mmrSize + 1n) > posHeight(mmrSize)) {
-    return [];
-  }
-
-  let peak = 0n;
-  const out: bigint[] = [];
-
-  while (mmrSize !== 0n) {
-    const peakSize = topPeak(mmrSize - 1n) + 1n;
-    peak = peak + peakSize;
-    out.push(peak - 1n);
-    mmrSize -= peakSize;
-  }
-
-  return out;
-}
-
-function topPeak(i: bigint): bigint {
-  // go-merklelog/mmr/peaks.go TopPeak
-  const bl = bitLength(i + 2n);
-  return (1n << BigInt(bl - 1)) - 2n;
-}
-
-function peakStackMapForMassif(
-  massifHeight: number,
-  firstIndex: bigint,
-): Map<bigint, number> {
-  // go-merklelog/massifs/peakstack.go PeakStackMap
-  const map = new Map<bigint, number>();
-  const iPeaks = peaks(firstIndex);
-
-  for (let i = 0; i < iPeaks.length; i++) {
-    const ip = iPeaks[i];
-    if (indexHeight(ip) < massifHeight - 1) {
-      continue;
-    }
-    map.set(ip, i);
-  }
-
-  return map;
-}
 
 function inclusionProof(
   store: IndexStoreGetter,
@@ -862,7 +702,7 @@ export async function buildReceiptForEntry(
     if (BigInt(massifHeader.massifIndex) !== massifIndex) return null;
 
     const firstIndex = massifFirstLeaf(massifHeader.massifHeight, massifIndex);
-    const peakStackMap = peakStackMapForMassif(massifHeight, firstIndex);
+    const peakSlots = peakStackMap(massifHeight, firstIndex);
     const { peakStackStart, logStart } = v2OffsetsForMassif(massifHeight);
     const store: IndexStoreGetter = {
       get: (i) => {
@@ -871,7 +711,7 @@ export async function buildReceiptForEntry(
           const off = logStart + localIndex * 32n;
           return slice32(massifBytes, off, "log-data");
         }
-        const peakIdx = peakStackMap.get(i);
+        const peakIdx = peakSlots.get(i);
         if (peakIdx === undefined) {
           throw new Error(
             `missing ancestor peak for mmr index ${i.toString(10)}`,

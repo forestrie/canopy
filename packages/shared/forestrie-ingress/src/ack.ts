@@ -6,8 +6,8 @@
  * [ingress ack model](https://github.com/forestrie/arbor/blob/main/docs/arc-cloudflare-do-ingress.md#23-ack-model-limit-based).
  *
  * With return path unification (Phase 9), ack also records leaf indices
- * to enable direct registration status queries from the DO.
- * massifIndex is derived: floor(leafIndex / (1 << massifHeight))
+ * to enable direct registration status queries from the DO. Readers derive
+ * the massif from the leaf index; see {@link AckRequest.massifHeight}.
  */
 export interface AckRequest {
   /** Log identifier (16 bytes) */
@@ -18,7 +18,11 @@ export interface AckRequest {
   limit: number;
   /** First leaf index in the committed batch */
   firstLeafIndex: number;
-  /** Massif height (log2 of leaves per massif) - used to derive massifIndex */
+  /**
+   * One-based massif height h that ranger commits massifs at: a massif holds
+   * 2^(h-1) leaves (go-merklelog urkle.LeafCountForMassifHeight). The DO uses
+   * it only to size how many sequenced entries it retains.
+   */
   massifHeight: number;
 }
 
@@ -35,8 +39,9 @@ export interface AckResponse {
  * Returned by the resolveContent RPC method.
  */
 export interface SequencingResult {
-  /** Leaf index within the log's merkle tree */
+  /**
+   * Leaf index within the log's merkle tree. Derive the massif that holds it
+   * with `massifIndexFromLeafIndex` (@forestrie/merklelog).
+   */
   leafIndex: number;
-  /** Massif index containing this leaf */
-  massifIndex: number;
 }

@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import { getStub } from "./sequencingqueue-fixture";
+import { retainedEntryCount } from "../../src/durableobjects/retention";
 
 describe("SequencingQueue ackFirst", () => {
   it("deletes first N entries for log and returns count", async () => {
@@ -122,5 +123,61 @@ describe("SequencingQueue ackFirst", () => {
     // Stats should still show 0 pending
     const stats = await stub.stats();
     expect(stats.pending).toBe(0);
+  });
+});
+
+describe("SequencingQueue ackFirst massif height (FOR-620)", () => {
+  // massifHeight is one-based: a massif holds 2^(h-1) leaves (go-merklelog
+  // urkle.LeafCountForMassifHeight). The DO stores only the leaf index;
+  // readers derive the massif from it.
+
+  it("resolveContent returns the leaf index and no stored massif index", async () => {
+    const stub = getStub("ack-first-resolve-leaf-only");
+    const logId = new Uint8Array(16).fill(0x48).buffer;
+    const contentHash = new Uint8Array(32).fill(0x62).buffer;
+
+    const { seq } = await stub.enqueue(logId, contentHash);
+    await stub.ackFirst(logId, seq, 1, 8192, 14);
+
+    expect(await stub.resolveContent(contentHash)).toEqual({
+      leafIndex: 8192,
+    });
+  });
+
+  // ackFirst calls retainedEntryCount before any write. A throw out of the DO
+  // breaks vitest-pool-workers isolated storage, so the guard is tested on
+  // the pure function rather than through the stub.
+  it("retainedEntryCount sizes 4 massifs and rejects a bad height", () => {
+    expect(retainedEntryCount(3)).toBe(16);
+    expect(retainedEntryCount(14)).toBe(32768);
+    expect(() => retainedEntryCount(14.5)).toThrow(RangeError);
+    expect(() => retainedEntryCount(0)).toThrow(RangeError);
+  });
+
+  it("retains four massifs of sequenced entries at 2^(h-1) leaves each", async () => {
+    const stub = getStub("ack-first-retention-height");
+    const logId = new Uint8Array(16).fill(0x49).buffer;
+    const massifHeight = 3; // 4 leaves per massif -> retain 16 behind the max
+
+    const hashes = Array.from(
+      { length: 30 },
+      (_, i) => new Uint8Array(32).fill(i).buffer,
+    );
+    let firstSeq = 0;
+    for (const [i, contentHash] of hashes.entries()) {
+      const { seq } = await stub.enqueue(logId, contentHash);
+      if (i === 0) firstSeq = seq;
+    }
+    await stub.ackFirst(logId, firstSeq, 30, 0, massifHeight);
+
+    const retained: number[] = [];
+    for (const contentHash of hashes) {
+      const result = await stub.resolveContent(contentHash);
+      if (result) retained.push(result.leafIndex);
+    }
+
+    // Max leaf 29; entries with leaf_index < 29 - 16 are dropped, so the
+    // max and the 16 behind it (17 rows) remain.
+    expect(retained).toEqual(Array.from({ length: 17 }, (_, i) => 13 + i));
   });
 });

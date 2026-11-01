@@ -53,6 +53,7 @@ export {
 } from "./massifs/v2storagepaths.js";
 
 // Massif blob node access for MMR proof building (plan-2607-15 §4)
+export { massifIndexFromLeafIndex } from "./massifs/massifindex.js";
 export { openMassifNodeStore } from "./massifs/nodestore.js";
 export type { MassifNodeStore } from "./massifs/nodestore.js";
 

@@ -5,6 +5,8 @@
 
 import {
   leafCountForMassifHeight,
+  massifIndexFromLeafIndex,
+  mmrIndex,
   urkleLeafTableStartByteOffset,
   v2MassifObjectKey,
 } from "@forestrie/merklelog";
@@ -16,32 +18,28 @@ const LEAF_RECORD_BYTES = 128;
 export const IDTIMESTAMP_BYTES = 8;
 
 /**
- * Compute MMR index from leaf index (go-merklelog/mmr/mmrindex.go MMRIndex).
+ * MMR index of a leaf (go-merklelog mmr.MMRIndex), for the entry id. Takes
+ * the number leafIndex resolveContent returns.
  */
 export function mmrIndexFromLeafIndex(leafIndex: number): bigint {
-  let sum = 0n;
-  let current = BigInt(leafIndex);
-
-  while (current > 0n) {
-    const h = BigInt(current.toString(2).length);
-    sum += (1n << h) - 1n;
-    const half = 1n << (h - 1n);
-    current -= half;
-  }
-
-  return sum;
+  return mmrIndex(BigInt(leafIndex));
 }
 
 /**
  * Read the idtimestamp for a leaf entry using an efficient byte-range request.
+ *
+ * The massif and the leaf's position in it both come from `leafIndex` and
+ * the one-based `massifHeight` (2^(h-1) leaves per massif), the same
+ * arithmetic go-merklelog uses when ranger commits the massif. Nothing
+ * here trusts a massif index stored elsewhere.
  */
 export async function readIdtimestampFromMassif(
   r2: R2Bucket,
   logId: string,
   massifHeight: number,
-  massifIndex: number,
   leafIndex: number,
 ): Promise<bigint> {
+  const massifIndex = massifIndexFromLeafIndex(massifHeight, leafIndex);
   const leavesPerMassif = Number(leafCountForMassifHeight(massifHeight));
   const leafOrdinal = leafIndex % leavesPerMassif;
 
