@@ -62,7 +62,8 @@ export type CheckpointLinkRecord = {
 export type CheckpointLinkFailure = {
   index: number;
   /**
-   * `delegation_invalid`, a KS256 reason (`ks256_root_not_recovered`,
+   * `delegation_invalid`, `delegation_range_malformed` (label 3/4 present
+   * but not a uint64), a KS256 reason (`ks256_root_not_recovered`,
    * `ks256_attestation_*`, `delegation_not_ks256`), `delegation_out_of_range`,
    * `signature_invalid` or `proof_malformed`.
    */

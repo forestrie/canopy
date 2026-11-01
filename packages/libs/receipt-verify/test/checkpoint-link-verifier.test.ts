@@ -120,6 +120,44 @@ describe("checkpoint-chain: delegation limits per link (ES256 root)", () => {
     expect(o.ok).toBe(true);
   });
 
+  // plan-2611-01 D4: absent is legacy (no bound); present but not a uint64
+  // is a hard reject, never "no limits" (FOR-613 B1, fail-open).
+  it("rejects a certificate whose mmrEnd is a CBOR float (the cbor-x encoding)", async () => {
+    const { fx, sealer, root, rootKey } = await setup();
+    const cert = await buildEs256Cert(root, sealer, wideLimits(fx), {
+      mmrEndFloat64: 2 ** 32 + 1,
+    });
+    const o = fail(
+      await run(fx, [await coveringLink(fx, sealer, cert)], [rootKey]),
+    );
+    expect(o.stage).toBe("chain");
+    expect(o.linkFailure).toEqual({
+      index: 0,
+      reason: "delegation_range_malformed",
+    });
+  });
+
+  it.each([
+    ["a negative mmrStart", { mmrStart: -1 }],
+    ["a text mmrEnd", { mmrEnd: "65535" }],
+  ])("rejects a certificate with %s", async (_name, malformed) => {
+    const { fx, sealer, root, rootKey } = await setup();
+    const cert = await buildEs256Cert(root, sealer, wideLimits(fx), malformed);
+    const o = fail(
+      await run(fx, [await coveringLink(fx, sealer, cert)], [rootKey]),
+    );
+    expect(o.linkFailure?.reason).toBe("delegation_range_malformed");
+  });
+
+  it("a malformed label 3 is rejected even when label 4 is absent", async () => {
+    const { fx, sealer, root, rootKey } = await setup();
+    const cert = await buildEs256Cert(root, sealer, {}, { mmrStart: -1 });
+    const o = fail(
+      await run(fx, [await coveringLink(fx, sealer, cert)], [rootKey]),
+    );
+    expect(o.linkFailure?.reason).toBe("delegation_range_malformed");
+  });
+
   it("a root-signed link without a certificate is verified by the ES256 root", async () => {
     const { fx, root, rootKey } = await setup();
     const o = await run(
