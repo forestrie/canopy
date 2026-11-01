@@ -8,7 +8,7 @@ interface __BaseEnv_Env {
   DO_SHARD_COUNT: "4";
   X402_FACILITATOR_URL: "https://x402.org/facilitator";
   X402_NETWORK: "eip155:84532";
-  SETTLE_TIMEOUT_MS: "5000";
+  SETTLE_TIMEOUT_MS: "30000";
   SUPPORTED_CHAINS_RPC?: '{"84532":["https://sepolia.base.org"]}';
   ENFORCEMENT_ARMED: "false";
   X402_SETTLEMENT_DO: DurableObjectNamespace<
@@ -28,7 +28,7 @@ declare namespace Cloudflare {
     DO_SHARD_COUNT: "4";
     X402_FACILITATOR_URL: "https://x402.org/facilitator";
     X402_NETWORK: "eip155:84532";
-    SETTLE_TIMEOUT_MS: "5000";
+    SETTLE_TIMEOUT_MS: "30000";
     SUPPORTED_CHAINS_RPC: '{"84532":["https://sepolia.base.org"]}';
     ENFORCEMENT_ARMED: "false";
     X402_SETTLEMENT_DO: DurableObjectNamespace<
@@ -43,7 +43,7 @@ declare namespace Cloudflare {
     DO_SHARD_COUNT: "4";
     X402_FACILITATOR_URL: "https://x402.org/facilitator";
     X402_NETWORK: "eip155:84532";
-    SETTLE_TIMEOUT_MS: "5000";
+    SETTLE_TIMEOUT_MS: "30000";
     ENFORCEMENT_ARMED: "false";
     X402_SETTLEMENT_DO: DurableObjectNamespace<
       import("./src/index").X402SettlementDO

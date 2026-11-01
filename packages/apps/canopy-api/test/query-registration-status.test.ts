@@ -13,6 +13,7 @@ import {
 } from "@forestrie/merklelog";
 
 import type { Env } from "../src/index";
+import { readIdtimestampFromMassif } from "../src/scrapi/sequencing-result.js";
 
 // Cast the test env to our Env type.
 const testEnv = env as unknown as Env;
@@ -337,16 +338,33 @@ describe("query-registration-status byte-range read", () => {
     });
   });
 
-  describe("massif index padding", () => {
-    it("pads single digit to 16 characters", () => {
-      expect((0).toString().padStart(16, "0")).toBe("0000000000000000");
-      expect((1).toString().padStart(16, "0")).toBe("0000000000000001");
-      expect((9).toString().padStart(16, "0")).toBe("0000000000000009");
-    });
+  describe("massif object key radix (FOR-621)", () => {
+    // The Go writer names massifs with a 16-digit DECIMAL index (`%016d`), so
+    // massif 10 lives at ...0000000000000010.log, not at hex 0x10 (=16).
+    it("reads massif index 10 from the decimal-keyed object", async () => {
+      const massifHeight = 3; // 4 leaves per massif
+      const massifIndex = 10;
+      const leafIndex = 41; // ordinal 1 in massif 10
+      const expectedIdtimestamp = 0x0a0a0a0a0a0a0a0an;
 
-    it("pads larger numbers correctly", () => {
-      expect((123).toString().padStart(16, "0")).toBe("0000000000000123");
-      expect((999999999).toString().padStart(16, "0")).toBe("0000000999999999");
+      await testEnv.R2_MMRS.put(
+        `v2/merklelog/massifs/${massifHeight}/${logId}/0000000000000010.log`,
+        buildMassifWithIdtimestamps(
+          massifHeight,
+          massifIndex,
+          new Map([[1, expectedIdtimestamp]]),
+        ),
+      );
+
+      await expect(
+        readIdtimestampFromMassif(
+          testEnv.R2_MMRS,
+          logId,
+          massifHeight,
+          massifIndex,
+          leafIndex,
+        ),
+      ).resolves.toBe(expectedIdtimestamp);
     });
   });
 

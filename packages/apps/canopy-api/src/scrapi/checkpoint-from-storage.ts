@@ -10,6 +10,7 @@ import {
   decodeCborDeterministic,
   readProtectedTreeSize2,
 } from "@forestrie/encoding";
+import { v2CheckpointObjectKey } from "@forestrie/merklelog";
 import type { Hex } from "viem";
 import type { CheckpointFromStorage } from "./checkpoint-from-storage-result.js";
 import type {
@@ -27,17 +28,12 @@ export type {
   StorageCheckpointEnvUrl,
 } from "./types.js";
 
-function formatObjectIndex16(massifIndex: number): string {
-  return massifIndex.toString(10).padStart(16, "0");
-}
-
 function checkpointPath(
   logId: LogIdUuid,
   massifHeight: number,
   massifIndex: number,
 ): string {
-  const objectIndex = formatObjectIndex16(massifIndex);
-  return `v2/merklelog/checkpoints/${massifHeight}/${logId}/${objectIndex}.sth`;
+  return v2CheckpointObjectKey(massifHeight, logId, massifIndex);
 }
 
 /**

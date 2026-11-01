@@ -43,7 +43,39 @@ export interface SettleResponse {
   error?: string;
   /** Whether the error is permanent (no retry) */
   permanent?: boolean;
+  /** The authorization's validity window had closed (permanent, not the payer's fault). */
+  expired?: boolean;
 }
+
+/**
+ * x402 `errorReason` values meaning the facilitator could not get its
+ * settlement transaction mined. They are transient: worth another attempt
+ * while the authorization is valid. They do NOT prove the authorization is
+ * unspent (the reference facilitator returns them when its receipt wait
+ * fails after broadcast), which is why the DO reads the token contract
+ * before and after each attempt (authorization-state.ts).
+ *
+ * - `invalid_exact_evm_transaction_failed`: what x402.org returned, with
+ *   HTTP 200, for 6 of 15 lane-A settlements on 2026-10-24 (FOR-616).
+ * - `transaction_failed`: the same failure as `@x402/evm` 2.2.0's
+ *   `ExactEvmScheme.settle` names it (a self-hosted or CDP facilitator).
+ * - `unexpected_settle_error`: catch-all some facilitator builds return for
+ *   a settle that threw before it could classify the failure.
+ */
+const TRANSIENT_ERROR_REASONS = new Set([
+  "invalid_exact_evm_transaction_failed",
+  "transaction_failed",
+  "unexpected_settle_error",
+]);
+
+/**
+ * x402 `errorReason` values meaning the authorization's validity window has
+ * closed (`@x402/evm` 2.2.0 verify). Not the payer's fault when canopy's own
+ * retry arrives late, so these never count toward payer blocking.
+ */
+const EXPIRED_ERROR_REASONS = new Set([
+  "invalid_exact_evm_payload_authorization_valid_before",
+]);
 
 /**
  * Settle a charge against an x402 authorization.
@@ -103,10 +135,10 @@ export async function settleCharge(
       signal: controller.signal,
     });
 
-    clearTimeout(timeoutId);
-
-    // Classify response
+    // Classify response. The abort timer stays armed until the body is read:
+    // a stalled body is as much a timeout as stalled headers.
     const responseText = await response.text();
+    clearTimeout(timeoutId);
     console.log("settleCharge response", {
       status: response.status,
       body: responseText.slice(0, 500),
@@ -117,6 +149,7 @@ export async function settleCharge(
         success?: boolean;
         transaction?: string;
         network?: string;
+        errorReason?: string;
       };
       // CDP returns { success: true, transaction: "0x...", network: "..." }
       if (data.success && data.transaction) {
@@ -125,11 +158,15 @@ export async function settleCharge(
           txHash: data.transaction,
         };
       }
-      // If response was 2xx but not success, treat as error
+      // A 2xx refusal is permanent unless the facilitator says its own
+      // transaction failed, in which case a later attempt may settle it
+      // (FOR-616).
+      const reason = data.errorReason ?? "";
       return {
         ok: false,
         error: `Unexpected response: ${responseText.slice(0, 200)}`,
-        permanent: true,
+        permanent: !TRANSIENT_ERROR_REASONS.has(reason),
+        ...(EXPIRED_ERROR_REASONS.has(reason) ? { expired: true } : {}),
       };
     }
 

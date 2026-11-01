@@ -17,6 +17,7 @@ import type {
 import type { Env } from "../env.js";
 import { settleCharge, type SettleResponse } from "../facilitator/client.js";
 import { facilitatorRequiresAuth } from "../cdp-jwt.js";
+import { authorizationSpent } from "../authorization-state.js";
 
 /** Maximum consecutive failures before marking auth as suspect */
 const SUSPECT_THRESHOLD = 3;
@@ -153,6 +154,25 @@ export class X402SettlementDO extends DurableObject<Env> {
       };
     }
 
+    // The token contract, not the facilitator, says whether the money moved
+    // (authorization-state.ts): a redelivered job whose earlier attempt the
+    // facilitator reported as failed may have settled after all (FOR-616).
+    if ((await authorizationSpent(this.env, job)) === true) {
+      return this.settledOnChain(job, "before attempt");
+    }
+
+    // Past validBefore the token contract refuses the authorization, so the
+    // facilitator cannot settle it. Not the payer's doing: never counted.
+    if (authorizationExpired(job)) {
+      this.recordFailure(job.authId, "authorization expired unsettled", false);
+      return {
+        ok: false,
+        error: "authorization expired before it settled",
+        permanent: true,
+        expired: true,
+      };
+    }
+
     // Check auth state - reject if blocked
     const authState = this.getAuthState(job.authId);
     if (authState === "blocked") {
@@ -181,7 +201,7 @@ export class X402SettlementDO extends DurableObject<Env> {
     }
 
     // Call facilitator to settle
-    const timeoutMs = parseInt(this.env.SETTLE_TIMEOUT_MS, 10) || 5000;
+    const timeoutMs = parseInt(this.env.SETTLE_TIMEOUT_MS, 10) || 30000;
     let response: SettleResponse;
 
     try {
@@ -203,9 +223,13 @@ export class X402SettlementDO extends DurableObject<Env> {
           : undefined,
       );
     } catch (err) {
-      // Network or timeout error - transient, should retry
+      // Network or timeout error - transient, should retry. The facilitator
+      // may have broadcast before the abort, so ask the chain first.
       console.error(`Facilitator call failed: ${err}`);
-      this.recordFailure(job.authId, `Network error: ${err}`);
+      if ((await authorizationSpent(this.env, job)) === true) {
+        return this.settledOnChain(job, "after facilitator error");
+      }
+      this.recordFailure(job.authId, `Network error: ${err}`, false);
       return {
         ok: false,
         error: `Facilitator unreachable: ${err}`,
@@ -222,15 +246,41 @@ export class X402SettlementDO extends DurableObject<Env> {
       };
     }
 
-    // Facilitator returned an error
+    // Facilitator returned an error. Its "transaction failed" can follow a
+    // broadcast that mines (or already mined, if this is a retry), and a
+    // nonce-already-used refusal means exactly that: ask the chain.
+    if ((await authorizationSpent(this.env, job)) === true) {
+      return this.settledOnChain(job, "after facilitator refusal");
+    }
     const isPermanent = response.permanent ?? false;
-    this.recordFailure(job.authId, response.error ?? "Unknown error");
+    const expired = response.expired ?? false;
+    this.recordFailure(
+      job.authId,
+      response.error ?? "Unknown error",
+      isPermanent && !expired,
+    );
 
     return {
       ok: false,
       error: response.error,
       permanent: isPermanent,
+      ...(expired ? { expired: true } : {}),
     };
+  }
+
+  /**
+   * Book a job whose authorization the token contract shows as spent. No
+   * transaction hash: the facilitator that broadcast it did not return one.
+   */
+  private settledOnChain(job: SettlementJob, when: string): SettlementResult {
+    console.log("Settlement found on-chain", {
+      jobId: job.jobId,
+      idempotencyKey: job.idempotencyKey,
+      nonce: job.payload?.payload?.authorization?.nonce,
+      when,
+    });
+    this.recordSuccess(job, undefined);
+    return { ok: true };
   }
 
   /**
@@ -290,23 +340,34 @@ export class X402SettlementDO extends DurableObject<Env> {
 
   /**
    * Record a settlement failure and update auth state.
+   *
+   * Only a permanent refusal that is the payer's doing counts toward
+   * suspect / blocked (`counts`). A transient failure is the facilitator's
+   * or the network's and the queue retries it, and an authorization that
+   * expired while canopy retried is canopy's (FOR-616). Counting those would
+   * block an honest payer after one facilitator outage: this DO then refuses
+   * to settle for them (canopy-api does not read auth state, so it keeps
+   * admitting them unpaid).
    */
-  private recordFailure(authId: string, reason: string): void {
+  private recordFailure(authId: string, reason: string, counts: boolean): void {
     const now = Date.now();
+    const increment = counts ? 1 : 0;
 
-    // Upsert auth state with incremented failure count
+    // Upsert auth state; the failure count moves only on a permanent refusal.
     this.ctx.storage.sql.exec(
       `INSERT INTO auth_state (auth_id, state, failure_count, last_failure_at, last_failure_reason, updated_at)
-       VALUES (?, 'active', 1, ?, ?, ?)
+       VALUES (?, 'active', ?, ?, ?, ?)
        ON CONFLICT(auth_id) DO UPDATE SET
-         failure_count = failure_count + 1,
+         failure_count = failure_count + ?,
          last_failure_at = excluded.last_failure_at,
          last_failure_reason = excluded.last_failure_reason,
          updated_at = excluded.updated_at`,
       authId,
+      increment,
       now,
       reason,
       now,
+      increment,
     );
 
     // Check if we need to update state based on failure count
@@ -406,4 +467,18 @@ export class X402SettlementDO extends DurableObject<Env> {
     this.initialized = false;
     this.ensureSchema();
   }
+}
+
+/**
+ * Whether the job's authorization can no longer settle. The x402 verifier
+ * refuses one whose `validBefore` is within 6s, so match it.
+ */
+function authorizationExpired(
+  job: SettlementJob,
+  nowSeconds: number = Math.floor(Date.now() / 1000),
+): boolean {
+  const validBefore = Number(
+    job.payload?.payload?.authorization?.validBefore ?? NaN,
+  );
+  return Number.isFinite(validBefore) && validBefore < nowSeconds + 6;
 }

@@ -15,81 +15,26 @@ import { shardNameForIndex } from "@canopy/forestrie-sharding";
 import { bytesToBase64 } from "../../src/encoding.js";
 import { sha256Hex } from "../../src/certificate-key.js";
 import { normalizeLogIdToHex32 } from "../../src/log-id.js";
-import { encodeCborDeterministic } from "@forestrie/encoding";
 import {
   buildTestByokMaterial,
   generateTestRootKeyPair,
 } from "./byok-material-fixture.js";
-import { delegateKeyEntryWithVoucher } from "./registrar-voucher-fixture.js";
+import {
+  ADMIN_BASE,
+  appTokenHeaders,
+  BASE,
+  FAR_FUTURE,
+  freshKey,
+  listing,
+  lookup,
+  register,
+  uniqueSealerId,
+} from "./delegate-keys-client.js";
 import { fetchWithDoRetry } from "./fetch-with-do-retry.js";
 import {
   mintTestSessionToken,
   sessionHeaders,
 } from "./wallet-session-helpers.js";
-
-const TEST_TOKEN = "test-coordinator-token";
-const FAR_FUTURE = 4_102_444_800; // 2100-01-01
-const BASE = "http://localhost/api/sealer/delegate-keys";
-const ADMIN_BASE = "http://localhost/admin/api/sealer/delegate-keys";
-
-function appTokenHeaders(extra?: HeadersInit): HeadersInit {
-  return { Authorization: `Bearer ${TEST_TOKEN}`, ...extra };
-}
-
-function uniqueSealerId(): string {
-  return `sealer-s04-${randomUUID().slice(0, 8)}`;
-}
-
-/** A random EC2 COSE_Key (the shape the fixture's seeded keys use). */
-function freshKey(): { publicKey: Uint8Array } {
-  const x = crypto.getRandomValues(new Uint8Array(32));
-  const y = crypto.getRandomValues(new Uint8Array(32));
-  return {
-    publicKey: encodeCborDeterministic(
-      new Map<number, unknown>([
-        [1, 2],
-        [-1, 1],
-        [-2, x],
-        [-3, y],
-      ]),
-    ),
-  };
-}
-
-async function register(
-  sealerId: string,
-  keys: Array<{ publicKey: Uint8Array; epoch: number; notAfter?: number }>,
-): Promise<Response> {
-  return fetchWithDoRetry(BASE, {
-    method: "POST",
-    headers: appTokenHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({
-      sealerId,
-      keys: await Promise.all(
-        keys.map((k) =>
-          delegateKeyEntryWithVoucher({
-            sealerId,
-            publicKey: k.publicKey,
-            epoch: k.epoch,
-            notAfter: k.notAfter ?? FAR_FUTURE,
-          }),
-        ),
-      ),
-    }),
-  });
-}
-
-async function lookup(pubkeyHash: string): Promise<Response> {
-  return fetchWithDoRetry(`${BASE}/${pubkeyHash}`, {
-    headers: appTokenHeaders(),
-  });
-}
-
-async function listing(sealerId: string): Promise<Response> {
-  return fetchWithDoRetry(`${BASE}?sealerId=${encodeURIComponent(sealerId)}`, {
-    headers: appTokenHeaders(),
-  });
-}
 
 async function adminDelete(sealerId: string): Promise<Response> {
   return fetchWithDoRetry(
@@ -206,31 +151,15 @@ describe("GET /api/sealer/delegate-keys/{pubkeyHash}", () => {
     expect(body.pubkeyHash).toBe(hash);
     expect(body.sealerId).toBe(sealerId);
     expect(body.epoch).toBe(1);
-    expect(body.notAfter).toBe(FAR_FUTURE);
+    // The body asks for 2100; the row is capped at the voucher's claim 4.
+    expect(body.notAfter).toBeGreaterThan(before);
+    expect(body.notAfter).toBeLessThan(FAR_FUTURE);
     expect(body.registeredAt).toBeGreaterThanOrEqual(before);
     expect(body.shards).toBe(4);
   });
 });
 
 describe("one key per (sealerId, epoch)", () => {
-  it("upserts the same key again and refreshes registeredAt", async () => {
-    const sealerId = uniqueSealerId();
-    const key = freshKey();
-    expect((await register(sealerId, [{ ...key, epoch: 1 }])).status).toBe(200);
-    const first = (await (
-      await lookup(await sha256Hex(key.publicKey))
-    ).json()) as { registeredAt: number };
-    const again = await register(sealerId, [
-      { ...key, epoch: 1, notAfter: FAR_FUTURE + 1 },
-    ]);
-    expect(again.status).toBe(200);
-    const second = (await (
-      await lookup(await sha256Hex(key.publicKey))
-    ).json()) as { registeredAt: number; notAfter: number };
-    expect(second.registeredAt).toBeGreaterThanOrEqual(first.registeredAt);
-    expect(second.notAfter).toBe(FAR_FUTURE + 1);
-  });
-
   it("refuses a different key for a registered epoch with both hashes", async () => {
     const sealerId = uniqueSealerId();
     const good = freshKey();

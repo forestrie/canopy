@@ -83,6 +83,8 @@ export function buildSealHint(
   return {
     action: "PutObject",
     object: {
+      // Index 0 spelled out; any other index must use the 16-digit decimal
+      // helpers in @forestrie/merklelog v2storagepaths.ts (FOR-621).
       key: `v2/merklelog/massifs/${massifHeight}/${hex32ToUuid(logIdHex32)}/0000000000000000.log`,
     },
     eventTime,
