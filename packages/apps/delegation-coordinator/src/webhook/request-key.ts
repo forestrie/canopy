@@ -18,10 +18,12 @@ import { sha256Hex } from "../certificate-key.js";
  */
 export async function requestKeyFor(
   logIdHex32: string,
-  mmrStart: number,
-  mmrEnd: number,
+  mmrStart: bigint,
+  mmrEnd: bigint,
   delegatedPubkeyHash: string,
 ): Promise<string> {
-  const canonical = `${logIdHex32}:${mmrStart}:${mmrEnd}:${delegatedPubkeyHash}`;
+  // toString(10) matches the earlier number interpolation below 2^53, so
+  // in-flight delivery rows keep their idempotency key.
+  const canonical = `${logIdHex32}:${mmrStart.toString(10)}:${mmrEnd.toString(10)}:${delegatedPubkeyHash}`;
   return sha256Hex(new TextEncoder().encode(canonical));
 }

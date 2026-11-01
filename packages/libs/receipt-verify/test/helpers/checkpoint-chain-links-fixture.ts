@@ -155,11 +155,30 @@ export function wideLimits(fx: ChainFixture): Required<CertLimits> {
   };
 }
 
-/** A root-signed ES256 delegation certificate for `sealer`. */
+/**
+ * A root-signed ES256 delegation certificate for `sealer`.
+ *
+ * @param malformed.mmrStart / mmrEnd / issuedAt / expiresAt - Raw values
+ *   written at label 3 / 4 / 8 / 9 instead of `limits`' (a negative
+ *   integer, a string, …).
+ * @param malformed.float64 - Write `label` as a CBOR float64 (`fb`) of
+ *   `value`: what cbor-x emitted for an integer above uint32.
+ *   `encodeCborDeterministic` cannot write a float, so a 9-byte uint64
+ *   sentinel is swapped for the 9-byte float in place. The value must need
+ *   float64 (the deterministic decoder rejects a float a shorter encoding
+ *   could carry).
+ */
 export async function buildEs256Cert(
   root: Es256Root,
   sealer: CryptoKeyPair,
   limits: CertLimits,
+  malformed: {
+    mmrStart?: unknown;
+    mmrEnd?: unknown;
+    issuedAt?: unknown;
+    expiresAt?: unknown;
+    float64?: { label: 3 | 4 | 8 | 9; value: number };
+  } = {},
 ): Promise<Uint8Array> {
   const payload = new Map<number, unknown>([
     [5, await coseKeyMap(sealer.publicKey)],
@@ -168,10 +187,18 @@ export async function buildEs256Cert(
   if (limits.mmrEnd !== undefined) payload.set(4, limits.mmrEnd);
   if (limits.issuedAt !== undefined) payload.set(8, limits.issuedAt);
   if (limits.expiresAt !== undefined) payload.set(9, limits.expiresAt);
+  if (malformed.mmrStart !== undefined) payload.set(3, malformed.mmrStart);
+  if (malformed.mmrEnd !== undefined) payload.set(4, malformed.mmrEnd);
+  if (malformed.issuedAt !== undefined) payload.set(8, malformed.issuedAt);
+  if (malformed.expiresAt !== undefined) payload.set(9, malformed.expiresAt);
+  if (malformed.float64) payload.set(malformed.float64.label, FLOAT_SENTINEL);
   const protectedBytes = encodeCborDeterministic(
     new Map<number, unknown>([[1, -7]]),
   );
   const payloadBytes = encodeCborDeterministic(payload);
+  if (malformed.float64) {
+    swapSentinelForFloat64(payloadBytes, malformed.float64.value);
+  }
   const sig = await es256Sign(
     root.pair.privateKey,
     encodeSigStructure(protectedBytes, new Uint8Array(0), payloadBytes),
@@ -198,8 +225,8 @@ export async function buildKs256Cert(opts: {
   const tbs = buildDelegationToBeSignedKs256(
     {
       logIdHex32: LOG_ID_HEX32,
-      mmrStart: Number(opts.limits.mmrStart),
-      mmrEnd: Number(opts.limits.mmrEnd),
+      mmrStart: opts.limits.mmrStart,
+      mmrEnd: opts.limits.mmrEnd,
       delegatedPublicKeyCbor: encodeCborDeterministic(
         await coseKeyMap(opts.sealer.publicKey),
       ),
@@ -362,6 +389,21 @@ async function buildLink(
   ]);
   if (cert !== null) unprotected.set(1000, cert);
   return encodeCborDeterministic([protectedBytes, unprotected, null, sig]);
+}
+
+/** Encodes as `1b 11 22 33 44 55 66 77 88`, the same width as a float64. */
+const FLOAT_SENTINEL = 0x1122334455667788n;
+
+function swapSentinelForFloat64(bytes: Uint8Array, value: number): void {
+  const head = [0x1b, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88];
+  const at = bytes.findIndex((_, i) =>
+    head.every((b, j) => bytes[i + j] === b),
+  );
+  if (at < 0) throw new Error("float sentinel not found");
+  const float = new Uint8Array(9);
+  float[0] = 0xfb;
+  new DataView(float.buffer).setFloat64(1, value, false);
+  bytes.set(float, at);
 }
 
 async function coseKeyMap(pub: CryptoKey): Promise<Map<number, unknown>> {

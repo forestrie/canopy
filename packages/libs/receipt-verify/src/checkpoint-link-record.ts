@@ -30,7 +30,7 @@ export type CheckpointLinkRecord = {
   signedSize: bigint;
   /**
    * The delegation certificate's limits, `null` when the link carries no
-   * certificate or the certificate declares none of labels 3/4/8/9.
+   * certificate or the certificate is legacy (neither label 3 nor 4).
    */
   constraints: DelegationConstraints | null;
   verifiedBy: CheckpointLinkVerifiedBy;
@@ -62,7 +62,11 @@ export type CheckpointLinkRecord = {
 export type CheckpointLinkFailure = {
   index: number;
   /**
-   * `delegation_invalid`, a KS256 reason (`ks256_root_not_recovered`,
+   * `delegation_invalid`, `delegation_range_malformed` (the certificate's
+   * window is incomplete or not integers: one of labels 3/4 without the
+   * other, a range label that is not a uint64, `mmrStart > mmrEnd`, or
+   * labels 8/9 absent or not non-negative integers alongside a range), a
+   * KS256 reason (`ks256_root_not_recovered`,
    * `ks256_attestation_*`, `delegation_not_ks256`), `delegation_out_of_range`,
    * `signature_invalid` or `proof_malformed`.
    */

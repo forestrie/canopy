@@ -112,11 +112,11 @@ describe("signAdvanceDelegation", () => {
       logId: LOG_HEX32,
       logIdHex32: LOG_HEX32,
       rootKeyPair,
-      horizonMmrEnd: 65535,
+      horizonMmrEnd: 65535n,
     });
 
-    expect(result.mmrStart).toBe(0);
-    expect(result.mmrEnd).toBe(65535);
+    expect(result.mmrStart).toBe(0n);
+    expect(result.mmrEnd).toBe(65535n);
     expect(result.delegatedPublicKey).toBe(standingKeyB64);
 
     expect(posts).toHaveLength(1);
@@ -125,8 +125,8 @@ describe("signAdvanceDelegation", () => {
     );
     const body = posts[0]!.data;
     expect(body.logId).toBe(LOG_HEX32);
-    expect(body.mmrStart).toBe(0);
-    expect(body.mmrEnd).toBe(65535);
+    expect(body.mmrStart).toBe("0");
+    expect(body.mmrEnd).toBe("65535");
     expect(body.delegatedPublicKey).toBe(standingKeyB64);
     // V3: the on-chain signature is REQUIRED on advance submits.
     expect(typeof body.onchainSignature).toBe("string");
@@ -144,7 +144,7 @@ describe("signAdvanceDelegation", () => {
         logId: LOG_HEX32,
         logIdHex32: LOG_HEX32,
         rootKeyPair,
-        horizonMmrEnd: 100,
+        horizonMmrEnd: 100n,
       }),
     ).rejects.toThrow(/no standing delegate-key entry/);
   });
@@ -163,7 +163,7 @@ describe("signAdvanceDelegation", () => {
         logId: LOG_HEX32,
         logIdHex32: LOG_HEX32,
         rootKeyPair,
-        horizonMmrEnd: 100,
+        horizonMmrEnd: 100n,
       }),
     ).rejects.toThrow(/POST advance delegation: 400/);
   });
@@ -190,7 +190,7 @@ describe("signAdvanceDelegation", () => {
       logId: LOG_HEX32,
       logIdHex32: LOG_HEX32,
       rootKeyPair,
-      horizonMmrEnd: 65535,
+      horizonMmrEnd: 65535n,
       pinnedRegistrarKey: pinnedB64,
     });
     expect(result.delegatedPublicKey).toBe(standingKeyB64);
@@ -221,7 +221,7 @@ describe("signAdvanceDelegation", () => {
         logId: LOG_HEX32,
         logIdHex32: LOG_HEX32,
         rootKeyPair,
-        horizonMmrEnd: 65535,
+        horizonMmrEnd: 65535n,
         pinnedRegistrarKey: wrong.pinnedB64,
       }),
     ).rejects.toThrow(/refusing to bind/);
@@ -247,7 +247,7 @@ describe("signAdvanceDelegation", () => {
         logId: LOG_HEX32,
         logIdHex32: LOG_HEX32,
         rootKeyPair,
-        horizonMmrEnd: 65535,
+        horizonMmrEnd: 65535n,
         pinnedRegistrarKey: pinnedB64,
       }),
     ).rejects.toThrow(/missing its registrar voucher/);

@@ -12,12 +12,12 @@
  * @param delegatedPublicKey - Delegated signer public key bytes.
  */
 export async function materialKeyFor(
-  mmrStart: number,
-  mmrEnd: number,
+  mmrStart: bigint,
+  mmrEnd: bigint,
   delegatedPublicKey: Uint8Array,
 ): Promise<string> {
   const hash = await sha256Hex(delegatedPublicKey);
-  return `${mmrStart}:${mmrEnd}:${hash}`;
+  return `${mmrStart.toString(10)}:${mmrEnd.toString(10)}:${hash}`;
 }
 
 /**

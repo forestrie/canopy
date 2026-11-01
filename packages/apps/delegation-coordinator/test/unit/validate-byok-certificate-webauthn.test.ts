@@ -37,8 +37,8 @@ describe("validateByokDelegationCertificate — WebAuthn envelope (ADR-0063)", (
     await expect(
       validateByokDelegationCertificate({
         logIdHex32: LOG_HEX32,
-        mmrStart: 1,
-        mmrEnd: 8,
+        mmrStart: 1n,
+        mmrEnd: 8n,
         delegatedPublicKey,
         certificate: m.certificate,
         issuedAt: m.issuedAt,
@@ -61,8 +61,8 @@ describe("validateByokDelegationCertificate — WebAuthn envelope (ADR-0063)", (
     await expect(
       validateByokDelegationCertificate({
         logIdHex32: LOG_HEX32,
-        mmrStart: 1,
-        mmrEnd: 8,
+        mmrStart: 1n,
+        mmrEnd: 8n,
         delegatedPublicKey,
         certificate: m.certificate,
         issuedAt: m.issuedAt,
@@ -85,8 +85,8 @@ describe("validateByokDelegationCertificate — WebAuthn envelope (ADR-0063)", (
     await expect(
       validateByokDelegationCertificate({
         logIdHex32: LOG_HEX32,
-        mmrStart: 1,
-        mmrEnd: 8,
+        mmrStart: 1n,
+        mmrEnd: 8n,
         delegatedPublicKey,
         certificate: m.certificate,
         issuedAt: m.issuedAt,
@@ -122,8 +122,8 @@ describe("validateByokDelegationCertificate — WebAuthn envelope (ADR-0063)", (
     await expect(
       validateByokDelegationCertificate({
         logIdHex32: LOG_HEX32,
-        mmrStart: 1,
-        mmrEnd: 8,
+        mmrStart: 1n,
+        mmrEnd: 8n,
         delegatedPublicKey,
         certificate: tampered,
         issuedAt: plain.issuedAt,

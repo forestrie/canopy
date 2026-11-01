@@ -13,6 +13,19 @@ import { DurableObject } from "cloudflare:workers";
 import { decodeCborStruct, encodeCbor } from "../cbor.js";
 import type { Env } from "../env.js";
 import { certificateKeyFor, sha256Hex } from "../certificate-key.js";
+import { formatDecimalUint64 } from "../decimal-uint64.js";
+import { decodeMmrIndexBe8, encodeMmrIndexBe8 } from "../mmr-index-be8.js";
+import { parseJsonMmrRange, type MmrRange } from "../mmr-range.js";
+import {
+  DEFAULT_MMR_RANGE_MIGRATION_BUDGET,
+  ensureMmrRangeMigrationTables,
+  isMmrRangeMigrationDone,
+  MmrRangeMigration,
+  type MmrRangeMigrationBudget,
+  type MmrRangeMigrationChunkHook,
+} from "./mmr-range-migration.js";
+import type { ActiveLog } from "../types/active-log.js";
+import type { CurrentDelegationResponse } from "../types/current-delegation-response.js";
 import { hex32ToWireLogIdBytes, logIdWireBytesToHex32 } from "../log-id.js";
 import type { PutPublicRootBody } from "../types/put-public-root-body.js";
 import type { TrustRootResponseCbor } from "../types/trust-root-response.js";
@@ -68,6 +81,7 @@ import {
   decodeDelegatedCoseKeyFromBytes,
   normalizeEs256SignatureLowS,
   parseDelegatedCoseKeyFromPayload,
+  toUint64,
   verifyOnchainDelegationSignatureEs256,
   verifyOnchainDelegationSignatureKs256,
   verifyOnchainDelegationSignatureWebauthn,
@@ -116,6 +130,65 @@ const PENDING_CAP_PER_LOG = 32;
  * plan-2607-24 / ADR-0050.
  */
 const STANDING_DELEGATION_TTL_SECONDS = 6 * 60 * 60;
+
+/**
+ * Current `delegation_certificates` shape. `mmr_start` / `mmr_end` are
+ * 8-byte big-endian BLOBs ({@link encodeMmrIndexBe8}), NULL on
+ * pre-coverage rows served by exact `certificate_key` only.
+ */
+const DELEGATION_CERTIFICATES_COLUMNS = `
+  log_id_hex32 TEXT NOT NULL,
+  certificate_key TEXT NOT NULL,
+  certificate BLOB NOT NULL,
+  issued_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  onchain_signature BLOB,
+  onchain_root_alg TEXT,
+  delegated_pubkey_hash TEXT,
+  delegated_public_key BLOB,
+  mmr_start BLOB,
+  mmr_end BLOB,
+  onchain_authenticator_data BLOB,
+  onchain_client_data_json BLOB`;
+
+/** Current `pending` shape; range bounds are be8 BLOBs. */
+const PENDING_COLUMNS = `
+  id TEXT PRIMARY KEY,
+  auth_log_id_hex32 TEXT NOT NULL,
+  log_id_hex32 TEXT NOT NULL,
+  mmr_start BLOB NOT NULL,
+  mmr_end BLOB NOT NULL,
+  delegated_pubkey_hash TEXT NOT NULL,
+  delegated_public_key BLOB NOT NULL,
+  requested_at INTEGER NOT NULL`;
+
+/**
+ * Routes that read or write MMR range columns, as `${method} ${pathname}`.
+ * They answer 503 until the range migration completes, so
+ * no range query sees INTEGER and BLOB bounds side by side; every other
+ * route proceeds during the migration.
+ */
+export const RANGE_ROUTES: ReadonlySet<string> = new Set([
+  "PUT /certificate",
+  "POST /issue",
+  "GET /pending",
+  "GET /active",
+  "GET /pending-delegation",
+  "GET /delegation",
+  "POST /pending-hint",
+]);
+
+/** `Retry-After` seconds on a range route while the migration runs. */
+const RANGE_MIGRATION_RETRY_AFTER_SECONDS = 1;
+
+/**
+ * Alarm backoff after a failed migration chunk: 1 s, doubling per
+ * consecutive failure, capped at 5 min. The alarm re-arms itself instead of
+ * throwing, so the migration (and the webhook delivery queued behind it)
+ * never depends on workerd's bounded alarm retries or on the next fetch.
+ */
+const RANGE_MIGRATION_RETRY_BASE_MS = 1000;
+const RANGE_MIGRATION_RETRY_MAX_MS = 5 * 60 * 1000;
 
 /**
  * Alg the stored onchain_signature was validated under. ES256_WEBAUTHN is a
@@ -210,18 +283,48 @@ interface DelegateKeyRow {
 export class DelegationStoreDO extends DurableObject<Env> {
   private initialized = false;
 
+  /**
+   * Cached `schema_meta` done flag for the range migration, so the per-request
+   * check is a boolean (read once in ensureSchema, set when a run completes).
+   */
+  private rangeMigrationDone = false;
+
+  private rangeMigration: MmrRangeMigration;
+
+  /** Per-event migration budget (@internal — tests shrink it). */
+  private rangeMigrationBudget: MmrRangeMigrationBudget =
+    DEFAULT_MMR_RANGE_MIGRATION_BUDGET;
+
+  /** Runs inside each migration chunk (@internal — tests inject failures). */
+  private rangeMigrationChunkHook: MmrRangeMigrationChunkHook | null = null;
+
+  /**
+   * Consecutive migration chunk failures seen by alarm(), for its backoff.
+   * In memory only: eviction restarts the backoff at 1 s, and nothing is
+   * left in storage after completion.
+   */
+  private rangeMigrationAlarmFailures = 0;
+
   /** Bind Cloudflare DO state and worker env. */
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    this.rangeMigration = new MmrRangeMigration(ctx.storage);
   }
 
   /** Route internal fetch paths to store handlers. */
   async fetch(request: Request): Promise<Response> {
     this.ensureSchema();
+    if (!this.rangeMigrationDone) {
+      await this.advanceRangeMigrationFromFetch();
+    }
 
     const url = new URL(request.url);
     const method = request.method;
     const pathname = url.pathname;
+
+    if (!this.rangeMigrationDone && RANGE_ROUTES.has(`${method} ${pathname}`)) {
+      return rangeMigrationInProgressResponse();
+    }
 
     try {
       const signingRouteMatch = /^\/signing-route\/([0-9a-f]{32})$/.exec(
@@ -404,11 +507,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS delegation_certificates (
-        log_id_hex32 TEXT NOT NULL,
-        certificate_key TEXT NOT NULL,
-        certificate BLOB NOT NULL,
-        issued_at INTEGER NOT NULL,
-        expires_at INTEGER NOT NULL,
+        ${DELEGATION_CERTIFICATES_COLUMNS},
         PRIMARY KEY (log_id_hex32, certificate_key)
       )
     `);
@@ -486,14 +585,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS pending (
-        id TEXT PRIMARY KEY,
-        auth_log_id_hex32 TEXT NOT NULL,
-        log_id_hex32 TEXT NOT NULL,
-        mmr_start INTEGER NOT NULL,
-        mmr_end INTEGER NOT NULL,
-        delegated_pubkey_hash TEXT NOT NULL,
-        delegated_public_key BLOB NOT NULL,
-        requested_at INTEGER NOT NULL
+        ${PENDING_COLUMNS}
       )
     `);
 
@@ -501,6 +593,14 @@ export class DelegationStoreDO extends DurableObject<Env> {
     this.ctx.storage.sql.exec(
       `DELETE FROM pending WHERE length(delegated_public_key) = 0`,
     );
+
+    // Range columns created INTEGER by older builds are converted to be8 in
+    // place by MmrRangeMigration, a chunk per event (fetch / alarm), not here.
+
+    this.ctx.storage.sql.exec(`
+      CREATE INDEX IF NOT EXISTS idx_delegation_certificates_coverage
+      ON delegation_certificates (log_id_hex32, expires_at, mmr_start, mmr_end)
+    `);
 
     this.ctx.storage.sql.exec(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_log_range_pubkey
@@ -579,7 +679,44 @@ export class DelegationStoreDO extends DurableObject<Env> {
       ON webhook_deliveries (next_attempt_at)
     `);
 
+    ensureMmrRangeMigrationTables(
+      this.ctx.storage.sql,
+      DELEGATION_CERTIFICATES_COLUMNS,
+    );
+    this.rangeMigrationDone = isMmrRangeMigrationDone(this.ctx.storage.sql);
+
     this.initialized = true;
+  }
+
+  /**
+   * Run one budget of the range migration on the fetch path. A failing chunk
+   * is logged, not surfaced: its transaction rolled back, range routes keep
+   * answering 503, and the alarm retries.
+   */
+  private async advanceRangeMigrationFromFetch(): Promise<void> {
+    try {
+      this.rangeMigrationDone = this.rangeMigration.run(
+        this.rangeMigrationBudget,
+        this.rangeMigrationChunkHook,
+      );
+    } catch (error) {
+      console.error("mmr range migration chunk failed:", error);
+    }
+    if (!this.rangeMigrationDone) {
+      await this.scheduleImmediateAlarm();
+    }
+  }
+
+  /**
+   * Bring the alarm forward to now without pushing back an earlier one
+   * (`min(existing, now)`), so the migration continues on its own.
+   */
+  private async scheduleImmediateAlarm(): Promise<void> {
+    const now = Date.now();
+    const existing = await this.ctx.storage.getAlarm();
+    if (existing === null || existing > now) {
+      await this.ctx.storage.setAlarm(now);
+    }
   }
 
   /** Copy legacy materials rows into delegation_certificates when present. */
@@ -634,8 +771,12 @@ export class DelegationStoreDO extends DurableObject<Env> {
    * opaque certificate_key folds (mmrStart, mmrEnd, delegatedKey) together for
    * exact-match; coverage retrieval needs them as first-class columns. The
    * SIGNED range persisted here — never the issue request's range — is what
-   * the issue response's onchainProof is rebuilt from (review V1). Kept
-   * alongside certificate_key for rollback compatibility.
+   * the issue response's onchainProof is rebuilt from.
+   * certificate_key stays the exact-match key for pre-coverage rows, whose
+   * range columns are NULL. Fresh databases get the columns from the base
+   * CREATE TABLE; this handles legacy tables only. Range storage is
+   * fix-forward only: once migrated, triggers reject the INTEGER bounds a
+   * build that binds numbers would write (see mmr-range-migration.ts).
    */
   private ensureCertificateCoverageColumns(): void {
     try {
@@ -651,17 +792,15 @@ export class DelegationStoreDO extends DurableObject<Env> {
       this.ctx.storage.sql.exec(
         `ALTER TABLE delegation_certificates ADD COLUMN delegated_public_key BLOB`,
       );
+      // be8 BLOB from the start; the coverage index is created in
+      // ensureSchema.
       this.ctx.storage.sql.exec(
-        `ALTER TABLE delegation_certificates ADD COLUMN mmr_start INTEGER`,
+        `ALTER TABLE delegation_certificates ADD COLUMN mmr_start BLOB`,
       );
       this.ctx.storage.sql.exec(
-        `ALTER TABLE delegation_certificates ADD COLUMN mmr_end INTEGER`,
+        `ALTER TABLE delegation_certificates ADD COLUMN mmr_end BLOB`,
       );
     }
-    this.ctx.storage.sql.exec(`
-      CREATE INDEX IF NOT EXISTS idx_delegation_certificates_coverage
-      ON delegation_certificates (log_id_hex32, expires_at, mmr_start, mmr_end)
-    `);
   }
 
   /**
@@ -1393,6 +1532,12 @@ export class DelegationStoreDO extends DurableObject<Env> {
   /** PUT /certificate — validate and persist delegation certificate. */
   private async handlePutCertificate(request: Request): Promise<Response> {
     const body = (await request.json()) as SubmitDelegationCertificateRequest;
+    let range: MmrRange;
+    try {
+      range = parseJsonMmrRange(body);
+    } catch (error) {
+      return invalidRangeResponse(error);
+    }
     const logIdHex32 = body.logId;
     const delegatedPublicKey = base64ToBytes(body.delegatedPublicKey);
     const certificate = base64ToBytes(body.certificate);
@@ -1401,8 +1546,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
     // The opaque key this submission upserts (range + key). Used to exclude the
     // row an idempotent re-submit/refresh updates from the staleness check.
     const submitKey = await certificateKeyFor(
-      body.mmrStart,
-      body.mmrEnd,
+      range.mmrStart,
+      range.mmrEnd,
       delegatedPublicKey,
     );
 
@@ -1455,18 +1600,18 @@ export class DelegationStoreDO extends DurableObject<Env> {
         logIdHex32,
         pubkeyHash,
         submitKey,
-        body.mmrEnd,
+        encodeMmrIndexBe8(range.mmrEnd),
         body.expiresAt,
       ),
     ];
     if (superseding.length > 0) {
-      const s = superseding[0] as { mmr_end: number; expires_at: number };
+      const s = superseding[0] as { mmr_end: ArrayBuffer; expires_at: number };
       return Response.json(
         {
           type: "about:blank",
           title: "Conflict",
           status: 409,
-          detail: `delegation certificate is stale: superseded by mmrEnd=${s.mmr_end} expiresAt=${s.expires_at}`,
+          detail: `delegation certificate is stale: superseded by mmrEnd=${formatDecimalUint64(decodeMmrIndexBe8(s.mmr_end))} expiresAt=${s.expires_at}`,
         },
         { status: 409 },
       );
@@ -1497,8 +1642,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
     try {
       await validateByokDelegationCertificate({
         logIdHex32,
-        mmrStart: body.mmrStart,
-        mmrEnd: body.mmrEnd,
+        mmrStart: range.mmrStart,
+        mmrEnd: range.mmrEnd,
         delegatedPublicKey,
         certificate,
         issuedAt: body.issuedAt,
@@ -1583,8 +1728,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
       );
       const scope = {
         logIdHex: logIdHex32,
-        mmrStart: body.mmrStart,
-        mmrEnd: body.mmrEnd,
+        mmrStart: range.mmrStart,
+        mmrEnd: range.mmrEnd,
         delegatedKeyX: delegated.x,
         delegatedKeyY: delegated.y,
       };
@@ -1714,8 +1859,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
       onchainClientDataJSON,
       pubkeyHash,
       delegatedPublicKey,
-      body.mmrStart,
-      body.mmrEnd,
+      encodeMmrIndexBe8(range.mmrStart),
+      encodeMmrIndexBe8(range.mmrEnd),
     );
 
     // C5: satisfy every pending demand for this key whose window the accepted
@@ -1726,8 +1871,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
          AND mmr_start >= ? AND mmr_end <= ?`,
       logIdHex32,
       pubkeyHash,
-      body.mmrStart,
-      body.mmrEnd,
+      encodeMmrIndexBe8(range.mmrStart),
+      encodeMmrIndexBe8(range.mmrEnd),
     ).rowsWritten;
 
     // A satisfied pending row means a sealer already asked, was told
@@ -1750,6 +1895,22 @@ export class DelegationStoreDO extends DurableObject<Env> {
     );
 
     const logIdHex32 = logIdWireBytesToHex32(req.logId);
+
+    // The sealer sends CBOR major type 0 (arbor `uint64`); the decoder yields
+    // number or bigint. Anything else, or start > end, is malformed.
+    let range: MmrRange;
+    try {
+      range = {
+        mmrStart: toUint64(req.mmrStart, "mmrStart"),
+        mmrEnd: toUint64(req.mmrEnd, "mmrEnd"),
+      };
+      if (range.mmrStart > range.mmrEnd) {
+        throw new Error("mmrStart must not exceed mmrEnd");
+      }
+    } catch (error) {
+      return invalidRangeResponse(error);
+    }
+
     if (!this.isDelegationSurfacingEnabled(logIdHex32)) {
       return delegationPendingResponse(202);
     }
@@ -1809,8 +1970,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
         ...heldHashes,
         logIdHex32,
         nowSeconds,
-        req.mmrStart,
-        req.mmrEnd,
+        encodeMmrIndexBe8(range.mmrStart),
+        encodeMmrIndexBe8(range.mmrEnd),
         reqKeyHash,
       ),
     ];
@@ -1823,7 +1984,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
       // the request range is correct (the V1 hazard only applies to coverage).
       const legacy = await this.issueFromLegacyExactMatch(
         logIdHex32,
-        req,
+        range,
+        req.delegatedPublicKey,
         nowSeconds,
       );
       if (legacy) return legacy;
@@ -1865,8 +2027,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
         id,
         logIdHex32,
         logIdHex32,
-        req.mmrStart,
-        req.mmrEnd,
+        encodeMmrIndexBe8(range.mmrStart),
+        encodeMmrIndexBe8(range.mmrEnd),
         pubkeyHash,
         req.delegatedPublicKey,
         now,
@@ -1877,8 +2039,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
         this.enqueueWebhookDelivery({
           logIdHex32,
           authLogIdHex32: logIdHex32,
-          mmrStart: req.mmrStart,
-          mmrEnd: req.mmrEnd,
+          mmrStart: range.mmrStart,
+          mmrEnd: range.mmrEnd,
           delegatedPublicKey: req.delegatedPublicKey,
           delegatedPubkeyHash: pubkeyHash,
           requestedAt: now,
@@ -1897,8 +2059,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
       onchain_authenticator_data: ArrayBuffer | null;
       onchain_client_data_json: ArrayBuffer | null;
       delegated_public_key: ArrayBuffer | null;
-      mmr_start: number | null;
-      mmr_end: number | null;
+      mmr_start: ArrayBuffer | null;
+      mmr_end: ArrayBuffer | null;
     };
 
     const certificateBytes = new Uint8Array(row.certificate);
@@ -1940,8 +2102,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
         // fall back to the live root — same behaviour as pre-R1.
         const onchainProof = this.onchainProofFromStored(
           logIdHex32,
-          row.mmr_start,
-          row.mmr_end,
+          decodeMmrIndexBe8(row.mmr_start),
+          decodeMmrIndexBe8(row.mmr_end),
           new Uint8Array(row.delegated_public_key),
           new Uint8Array(row.onchain_signature),
           storedAlg ?? currentAlg,
@@ -2005,8 +2167,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
    */
   private onchainProofFromStored(
     logIdHex32: string,
-    mmrStart: number,
-    mmrEnd: number,
+    mmrStart: bigint,
+    mmrEnd: bigint,
     delegatedPublicKey: Uint8Array,
     signature: Uint8Array,
     rootAlg: StoredOnchainRootAlg | null,
@@ -2047,8 +2209,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
       const wire: OnchainDelegationProofWire = {
         protectedHeader: tbs.protectedHeader,
         delegationKey: tbs.delegationKey,
-        mmrStart: BigInt(mmrStart),
-        mmrEnd: BigInt(mmrEnd),
+        mmrStart,
+        mmrEnd,
         signature,
       };
       if (rootAlg === "ES256_WEBAUTHN" && assertion) {
@@ -2080,13 +2242,14 @@ export class DelegationStoreDO extends DurableObject<Env> {
    */
   private async issueFromLegacyExactMatch(
     logIdHex32: string,
-    req: DelegationIssueRequest,
+    range: MmrRange,
+    delegatedPublicKey: Uint8Array,
     nowSeconds: number,
   ): Promise<Response | null> {
     const key = await certificateKeyFor(
-      req.mmrStart,
-      req.mmrEnd,
-      req.delegatedPublicKey,
+      range.mmrStart,
+      range.mmrEnd,
+      delegatedPublicKey,
     );
     const rows = [
       ...this.ctx.storage.sql.exec(
@@ -2129,9 +2292,9 @@ export class DelegationStoreDO extends DurableObject<Env> {
         // scope is the signed scope — the V1 hazard does not apply here.
         const onchainProof = this.onchainProofFromStored(
           logIdHex32,
-          req.mmrStart,
-          req.mmrEnd,
-          req.delegatedPublicKey,
+          range.mmrStart,
+          range.mmrEnd,
+          delegatedPublicKey,
           new Uint8Array(row.onchain_signature),
           storedAlg ?? currentAlg,
         );
@@ -2194,8 +2357,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
         id: string;
         auth_log_id_hex32: string;
         log_id_hex32: string;
-        mmr_start: number;
-        mmr_end: number;
+        mmr_start: ArrayBuffer;
+        mmr_end: ArrayBuffer;
         delegated_pubkey_hash: string;
         delegated_public_key: ArrayBuffer;
         requested_at: number;
@@ -2204,8 +2367,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
         id: r.id,
         authLogIdHex32: r.auth_log_id_hex32,
         logIdHex32: r.log_id_hex32,
-        mmrStart: r.mmr_start,
-        mmrEnd: r.mmr_end,
+        mmrStart: formatDecimalUint64(decodeMmrIndexBe8(r.mmr_start)),
+        mmrEnd: formatDecimalUint64(decodeMmrIndexBe8(r.mmr_end)),
         delegatedPublicKeyHash: r.delegated_pubkey_hash,
         delegatedPublicKey: bytesToBase64(
           new Uint8Array(r.delegated_public_key),
@@ -2271,18 +2434,25 @@ export class DelegationStoreDO extends DurableObject<Env> {
       ),
     ];
 
-    const logs = rows.map((row) => {
+    // MIN/MAX over equal-length be8 BLOBs is memcmp, i.e. numeric order.
+    const logs: ActiveLog[] = rows.map((row) => {
       const r = row as {
         log_id_hex32: string;
         expires_at: number;
-        mmr_start: number | null;
-        mmr_end: number | null;
+        mmr_start: ArrayBuffer | null;
+        mmr_end: ArrayBuffer | null;
       };
       return {
         logIdHex32: r.log_id_hex32,
         expiresAt: r.expires_at,
-        mmrStart: r.mmr_start,
-        mmrEnd: r.mmr_end,
+        mmrStart:
+          r.mmr_start === null
+            ? null
+            : formatDecimalUint64(decodeMmrIndexBe8(r.mmr_start)),
+        mmrEnd:
+          r.mmr_end === null
+            ? null
+            : formatDecimalUint64(decodeMmrIndexBe8(r.mmr_end)),
       };
     });
 
@@ -2332,8 +2502,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
         id: string;
         auth_log_id_hex32: string;
         log_id_hex32: string;
-        mmr_start: number;
-        mmr_end: number;
+        mmr_start: ArrayBuffer;
+        mmr_end: ArrayBuffer;
         delegated_pubkey_hash: string;
         delegated_public_key: ArrayBuffer;
         requested_at: number;
@@ -2342,8 +2512,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
         id: r.id,
         authLogIdHex32: r.auth_log_id_hex32,
         logIdHex32: r.log_id_hex32,
-        mmrStart: r.mmr_start,
-        mmrEnd: r.mmr_end,
+        mmrStart: formatDecimalUint64(decodeMmrIndexBe8(r.mmr_start)),
+        mmrEnd: formatDecimalUint64(decodeMmrIndexBe8(r.mmr_end)),
         delegatedPublicKeyHash: r.delegated_pubkey_hash,
         delegatedPublicKey: bytesToBase64(
           new Uint8Array(r.delegated_public_key),
@@ -2478,25 +2648,32 @@ export class DelegationStoreDO extends DurableObject<Env> {
       issued_at: number;
       expires_at: number;
       delegated_public_key: ArrayBuffer | null;
-      mmr_start: number;
-      mmr_end: number;
+      mmr_start: ArrayBuffer;
+      mmr_end: ArrayBuffer;
     };
-    return Response.json({
+    const current: CurrentDelegationResponse = {
       logId: logIdHex32,
       certificate: bytesToBase64(new Uint8Array(row.certificate)),
-      mmrStart: row.mmr_start,
-      mmrEnd: row.mmr_end,
+      mmrStart: formatDecimalUint64(decodeMmrIndexBe8(row.mmr_start)),
+      mmrEnd: formatDecimalUint64(decodeMmrIndexBe8(row.mmr_end)),
       delegatedPublicKey: row.delegated_public_key
         ? bytesToBase64(new Uint8Array(row.delegated_public_key))
         : null,
       issuedAt: row.issued_at,
       expiresAt: row.expires_at,
-    });
+    };
+    return Response.json(current);
   }
 
   /** POST /pending-hint — upsert pending row from worker hint. */
   private async handlePendingHint(request: Request): Promise<Response> {
     const body = (await request.json()) as PendingHintRequest;
+    let range: MmrRange;
+    try {
+      range = parseJsonMmrRange(body);
+    } catch (error) {
+      return invalidRangeResponse(error);
+    }
     const authLogIdHex32 = body.authLogId;
     const logIdHex32 = body.logId;
     const delegatedPublicKey = base64ToBytes(body.delegatedPublicKey);
@@ -2517,8 +2694,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
       id,
       authLogIdHex32,
       logIdHex32,
-      body.mmrStart,
-      body.mmrEnd,
+      encodeMmrIndexBe8(range.mmrStart),
+      encodeMmrIndexBe8(range.mmrEnd),
       pubkeyHash,
       delegatedPublicKey,
       now,
@@ -3518,8 +3695,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
     logIdHex32: string;
     authLogIdHex32: string;
     /** Demanded window; omitted for the window-less standing push. */
-    mmrStart?: number;
-    mmrEnd?: number;
+    mmrStart?: bigint;
+    mmrEnd?: bigint;
     delegatedPublicKey: Uint8Array;
     delegatedPubkeyHash: string;
     requestedAt: number;
@@ -3629,8 +3806,16 @@ export class DelegationStoreDO extends DurableObject<Env> {
     this.scheduleNextWebhookAlarm();
   }
 
-  /** Set DO alarm to earliest webhook_deliveries.next_attempt_at. */
+  /**
+   * Set DO alarm to earliest webhook_deliveries.next_attempt_at. While the
+   * range migration runs it owns an immediate alarm instead, which a later
+   * retry time must not push back.
+   */
   private scheduleNextWebhookAlarm(): void {
+    if (!this.rangeMigrationDone) {
+      this.ctx.storage.setAlarm(Date.now());
+      return;
+    }
     const rows = [
       ...this.ctx.storage.sql.exec(
         `SELECT MIN(next_attempt_at) AS min_at FROM webhook_deliveries`,
@@ -3641,9 +3826,43 @@ export class DelegationStoreDO extends DurableObject<Env> {
     this.ctx.storage.setAlarm(minAt * 1000);
   }
 
-  /** Process due webhook delivery retries. */
+  /**
+   * Continue the range migration, then process due webhook delivery retries.
+   * Deliveries wait for the migration: queued payloads may still carry
+   * JSON-number bounds until its webhook phase rewrites them. A failed chunk
+   * (rolled back, cursor included) is logged and the alarm re-armed with
+   * bounded exponential backoff rather than thrown. Inside the handler the
+   * running alarm is the only one, so setting it directly cannot clobber
+   * another schedule.
+   */
   async alarm(): Promise<void> {
     this.ensureSchema();
+    if (!this.rangeMigrationDone) {
+      try {
+        this.rangeMigrationDone = this.rangeMigration.run(
+          this.rangeMigrationBudget,
+          this.rangeMigrationChunkHook,
+        );
+        this.rangeMigrationAlarmFailures = 0;
+      } catch (error) {
+        this.rangeMigrationAlarmFailures++;
+        const delayMs = Math.min(
+          RANGE_MIGRATION_RETRY_BASE_MS *
+            2 ** Math.min(this.rangeMigrationAlarmFailures - 1, 20),
+          RANGE_MIGRATION_RETRY_MAX_MS,
+        );
+        console.error(
+          `mmr range migration chunk failed (${this.rangeMigrationAlarmFailures} in a row); retrying in ${delayMs} ms:`,
+          error,
+        );
+        await this.ctx.storage.setAlarm(Date.now() + delayMs);
+        return;
+      }
+      if (!this.rangeMigrationDone) {
+        await this.ctx.storage.setAlarm(Date.now());
+        return;
+      }
+    }
     const now = Math.floor(Date.now() / 1000);
     const due = [
       ...this.ctx.storage.sql.exec(
@@ -3710,6 +3929,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
   async devResetStorage(): Promise<void> {
     await this.ctx.storage.deleteAll();
     this.initialized = false;
+    this.rangeMigrationDone = false;
+    this.rangeMigration = new MmrRangeMigration(this.ctx.storage);
     this.ensureSchema();
   }
 }
@@ -3739,6 +3960,35 @@ function delegateKeyRecordFromRow(row: DelegateKeyRow): DelegateKeyRecord {
         ? null
         : Number(row.registered_at),
   };
+}
+
+/** 503 for a range route while the range storage migration runs. */
+function rangeMigrationInProgressResponse(): Response {
+  return Response.json(
+    {
+      type: "about:blank",
+      title: "Service Unavailable",
+      status: 503,
+      detail: "MMR range storage migration in progress",
+    },
+    {
+      status: 503,
+      headers: { "Retry-After": String(RANGE_MIGRATION_RETRY_AFTER_SECONDS) },
+    },
+  );
+}
+
+/** 400 problem for a malformed delegation MMR range (not a uint64). */
+function invalidRangeResponse(error: unknown): Response {
+  return Response.json(
+    {
+      type: "about:blank",
+      title: "Invalid request",
+      status: 400,
+      detail: error instanceof Error ? error.message : "invalid MMR range",
+    },
+    { status: 400 },
+  );
 }
 
 /** Byte-for-byte equality (stored voucher against a registration's). */

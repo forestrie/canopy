@@ -38,8 +38,8 @@ test.describe("delegation-coordinator BYOK public-root", () => {
 
   const logUuid = randomUUID();
   const logHex32 = normalizeForestrieHexId32(logUuid);
-  const mmrStart = 0;
-  const mmrEnd = 128;
+  const mmrStart = 0n;
+  const mmrEnd = 128n;
 
   let rootKeyPair: CryptoKeyPair;
   let rootX: Uint8Array;
@@ -113,8 +113,8 @@ test.describe("delegation-coordinator BYOK public-root", () => {
         },
         data: {
           logId: logUuid,
-          mmrStart,
-          mmrEnd,
+          mmrStart: String(mmrStart),
+          mmrEnd: String(mmrEnd),
           delegatedPublicKey: bytesToBase64(delegatedPublicKey),
           certificate: bytesToBase64(material.certificate),
           issuedAt: material.issuedAt,

@@ -48,8 +48,8 @@ test.describe("delegation-coordinator KS256 wallet-challenge", () => {
 
   const logUuid = randomUUID();
   const logHex32 = normalizeForestrieHexId32(logUuid);
-  const mmrStart = 0;
-  const mmrEnd = 512;
+  const mmrStart = 0n;
+  const mmrEnd = 512n;
 
   const privateKeyHex = randomKs256PrivateKeyHex();
   const rootAddress = ks256AddressFromPrivateKeyHex(privateKeyHex);
@@ -145,16 +145,16 @@ test.describe("delegation-coordinator KS256 wallet-challenge", () => {
     const body = (await res.json()) as {
       entries: Array<{
         logIdHex32: string;
-        mmrStart: number;
-        mmrEnd: number;
+        mmrStart: string;
+        mmrEnd: string;
       }>;
     };
     expect(
       body.entries.some(
         (e) =>
           e.logIdHex32 === logHex32 &&
-          e.mmrStart === mmrStart &&
-          e.mmrEnd === mmrEnd,
+          e.mmrStart === String(mmrStart) &&
+          e.mmrEnd === String(mmrEnd),
       ),
     ).toBe(false);
   });
@@ -178,8 +178,8 @@ test.describe("delegation-coordinator KS256 wallet-challenge", () => {
         headers: { "Content-Type": "application/json" },
         data: {
           logId: logUuid,
-          mmrStart,
-          mmrEnd,
+          mmrStart: String(mmrStart),
+          mmrEnd: String(mmrEnd),
           delegatedPublicKey: bytesToBase64(delegatedPublicKey),
           certificate: materialCertificateB64,
           issuedAt: materialIssuedAt,
@@ -230,14 +230,14 @@ test.describe("delegation-coordinator KS256 wallet-challenge", () => {
     );
     expect(res.ok()).toBeTruthy();
     const body = (await res.json()) as {
-      entries: Array<{ logIdHex32: string; mmrStart: number; mmrEnd: number }>;
+      entries: Array<{ logIdHex32: string; mmrStart: string; mmrEnd: string }>;
     };
     expect(
       body.entries.some(
         (e) =>
           e.logIdHex32 === logHex32 &&
-          e.mmrStart === mmrStart &&
-          e.mmrEnd === mmrEnd,
+          e.mmrStart === String(mmrStart) &&
+          e.mmrEnd === String(mmrEnd),
       ),
     ).toBe(false);
   });

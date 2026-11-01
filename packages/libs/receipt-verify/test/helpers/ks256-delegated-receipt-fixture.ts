@@ -142,8 +142,8 @@ export async function buildKs256DelegatedReceiptFixture(opts?: {
   const tbs = buildDelegationToBeSignedKs256(
     {
       logIdHex32: "770e8400e29b41d4a716446655440002",
-      mmrStart: 0,
-      mmrEnd: 65535,
+      mmrStart: 0n,
+      mmrEnd: 65535n,
       delegatedPublicKeyCbor,
       issuedAt: leafTime - 3600,
       expiresAt: opts?.expiredAtIssuance ? leafTime - 10 : leafTime + 3600,

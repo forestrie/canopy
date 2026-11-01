@@ -10,6 +10,7 @@ import type { DelegationInput } from "./delegation-input.js";
 import type { DelegationToBeSigned } from "./delegation-tbs.js";
 import { decodeDelegatedCoseKeyFromBytes } from "./parse-delegated-cose-key.js";
 import { encodeIntKeyCbor } from "./encode-int-map.js";
+import { UINT64_MAX } from "./to-uint64.js";
 import {
   PAYLOAD_CONSTRAINTS,
   PAYLOAD_DELEGATION_ID,
@@ -21,6 +22,31 @@ import {
   PAYLOAD_MMR_START,
   PAYLOAD_SCHEMA_VER,
 } from "./payload-labels.js";
+
+/**
+ * Validate the MMR range against the uint64 wire contract arbor's sealer
+ * decodes (Go `uint64`) before it is signed: both bounds in `[0, 2^64-1]`
+ * and `mmrStart <= mmrEnd`. A certificate the sealer would reject is never
+ * produced.
+ *
+ * @param input - Reads `mmrStart` and `mmrEnd` only.
+ * @throws When a bound is outside uint64 or `mmrStart > mmrEnd`.
+ */
+function assertMmrRange(input: DelegationInput): void {
+  for (const [name, v] of [
+    ["mmrStart", input.mmrStart],
+    ["mmrEnd", input.mmrEnd],
+  ] as const) {
+    if (typeof v !== "bigint" || v < 0n || v > UINT64_MAX) {
+      throw new Error(`delegation ${name} ${String(v)} is outside uint64`);
+    }
+  }
+  if (input.mmrStart > input.mmrEnd) {
+    throw new Error(
+      `delegation mmrStart ${input.mmrStart} > mmrEnd ${input.mmrEnd}`,
+    );
+  }
+}
 
 /**
  * Resolve issuance and expiry timestamps from optional {@link DelegationInput}
@@ -64,10 +90,12 @@ function resolveDelegationId(input: DelegationInput): Uint8Array {
  * @param input - Full delegation parameters including
  *   `delegatedPublicKeyCbor`.
  * @returns Payload bstr bytes for COSE Sign1 and Sig_structure.
+ * @throws When the MMR range is outside uint64 or `mmrStart > mmrEnd`.
  */
 export function buildDelegationPayloadBytes(
   input: DelegationInput,
 ): Uint8Array {
+  assertMmrRange(input);
   const { issuedAt, expiresAt } = resolveTimestamps(input);
   const delegatedKey = decodeDelegatedCoseKeyFromBytes(
     input.delegatedPublicKeyCbor,

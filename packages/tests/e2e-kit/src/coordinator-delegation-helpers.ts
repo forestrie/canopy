@@ -17,6 +17,7 @@ import {
   buildOnchainDelegationToBeSignedWebauthn,
   decodeDelegatedCoseKeyFromBytes,
   deriveEs256KidFromPublicKey,
+  formatDecimalUint64,
   normalizeEs256SignatureLowS,
   parseDelegatedCoseKeyFromPayload,
   parseDelegationCertificate,
@@ -126,8 +127,8 @@ export async function postCustodianDelegationIssue(opts: {
   custodianBaseUrl: string;
   appToken: string;
   logIdHex32: string;
-  mmrStart: number;
-  mmrEnd: number;
+  mmrStart: bigint;
+  mmrEnd: bigint;
   delegatedPublicKey: Uint8Array;
   requestedTtlSeconds?: number;
 }): Promise<CustodianDelegationIssueResult> {
@@ -364,8 +365,8 @@ export async function buildKs256BootstrapDelegationMaterial(opts: {
   rootSignerAddress: Uint8Array;
   privateKeyHex: string;
   logIdHex32: string;
-  mmrStart: number;
-  mmrEnd: number;
+  mmrStart: bigint;
+  mmrEnd: bigint;
   delegatedPublicKey: Uint8Array;
   ttlSeconds?: number;
 }): Promise<ByokDelegationMaterial> {
@@ -418,8 +419,8 @@ export async function verifyKs256BootstrapDelegationCertificate(opts: {
 export async function buildByokDelegationMaterial(opts: {
   rootKeyPair: CryptoKeyPair;
   logIdHex32: string;
-  mmrStart: number;
-  mmrEnd: number;
+  mmrStart: bigint;
+  mmrEnd: bigint;
   delegatedPublicKey: Uint8Array;
   ttlSeconds?: number;
 }): Promise<ByokDelegationMaterial> {
@@ -514,8 +515,8 @@ export async function syntheticWebauthnAssertion(opts: {
 export async function buildByokDelegationMaterialWebauthn(opts: {
   rootKeyPair: CryptoKeyPair;
   logIdHex32: string;
-  mmrStart: number;
-  mmrEnd: number;
+  mmrStart: bigint;
+  mmrEnd: bigint;
   delegatedPublicKey: Uint8Array;
   ttlSeconds?: number;
 }): Promise<ByokDelegationMaterial> {
@@ -605,8 +606,12 @@ export async function fetchLogPendingDelegation(opts: {
 }): Promise<{
   entries: Array<{
     logIdHex32: string;
-    mmrStart: number;
-    mmrEnd: number;
+    /**
+     * Canonical decimal uint64 string (`@forestrie/delegation-cose`
+     * `parseDecimalUint64`).
+     */
+    mmrStart: string;
+    mmrEnd: string;
     delegatedPublicKey: string;
   }>;
 }> {
@@ -621,8 +626,8 @@ export async function fetchLogPendingDelegation(opts: {
   return (await res.json()) as {
     entries: Array<{
       logIdHex32: string;
-      mmrStart: number;
-      mmrEnd: number;
+      mmrStart: string;
+      mmrEnd: string;
       delegatedPublicKey: string;
     }>;
   };
@@ -651,7 +656,8 @@ type AdvanceDelegationRequest = {
 export interface StandingDelegationEntry {
   delegatedPublicKey: string;
   suggestedTtlSeconds?: number;
-  mmrStart?: number;
+  /** Decimal uint64 string on windowed entries; absent on the standing one. */
+  mmrStart?: string;
   /** Custodian voucher + attested identity for the standing key (FOR-390 phase H). */
   voucher?: string;
   sealerId?: string;
@@ -675,7 +681,7 @@ export async function signAdvanceDelegation(opts: {
   logId: string;
   logIdHex32: string;
   rootKeyPair: CryptoKeyPair;
-  horizonMmrEnd: number;
+  horizonMmrEnd: bigint;
   ttlSeconds?: number;
   /**
    * Base64 x||y of the pinned registrar voucher key (FOR-390 phase I). When
@@ -686,8 +692,8 @@ export async function signAdvanceDelegation(opts: {
    */
   pinnedRegistrarKey?: string;
 }): Promise<{
-  mmrStart: number;
-  mmrEnd: number;
+  mmrStart: bigint;
+  mmrEnd: bigint;
   delegatedPublicKey: string;
   expiresAt: number;
 }> {
@@ -744,7 +750,7 @@ export async function signAdvanceDelegation(opts: {
       );
     }
   }
-  const mmrStart = 0;
+  const mmrStart = 0n;
   const mmrEnd = opts.horizonMmrEnd;
   const material = await buildByokDelegationMaterial({
     rootKeyPair: opts.rootKeyPair,
@@ -764,8 +770,8 @@ export async function signAdvanceDelegation(opts: {
       headers: { "Content-Type": "application/json" },
       data: {
         logId: opts.logId,
-        mmrStart,
-        mmrEnd,
+        mmrStart: formatDecimalUint64(mmrStart),
+        mmrEnd: formatDecimalUint64(mmrEnd),
         delegatedPublicKey: standing.delegatedPublicKey,
         certificate: bytesToBase64(material.certificate),
         issuedAt: material.issuedAt,

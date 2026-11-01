@@ -86,6 +86,14 @@ export {
 } from "./build-tbs-es256.js";
 export { buildDelegationToBeSignedKs256 } from "./build-tbs-ks256.js";
 export { parseDelegationCertificate } from "./parse-certificate.js";
+export { readUint64Label } from "./read-uint64-label.js";
+export { UINT64_MAX, toUint64 } from "./to-uint64.js";
+export { toSafeUint } from "./to-safe-uint.js";
+export {
+  DecimalUint64Error,
+  formatDecimalUint64,
+  parseDecimalUint64,
+} from "./decimal-uint64.js";
 export {
   assertDelegatedKeyInCertificate,
   decodeCoseSign1Parts,

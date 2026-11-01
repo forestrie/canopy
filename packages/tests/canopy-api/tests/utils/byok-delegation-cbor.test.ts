@@ -25,8 +25,8 @@ describe("BYOK delegation CBOR contract", () => {
     const material = await buildByokDelegationMaterial({
       rootKeyPair,
       logIdHex32: logHex32,
-      mmrStart: 0,
-      mmrEnd: 63,
+      mmrStart: 0n,
+      mmrEnd: 63n,
       delegatedPublicKey,
     });
 
@@ -72,8 +72,8 @@ describe("BYOK delegation CBOR contract", () => {
     const material = await buildByokDelegationMaterial({
       rootKeyPair,
       logIdHex32: logHex32,
-      mmrStart: 0,
-      mmrEnd: 63,
+      mmrStart: 0n,
+      mmrEnd: 63n,
       delegatedPublicKey,
     });
     expect(() =>
@@ -95,8 +95,8 @@ describe("BYOK delegation CBOR contract", () => {
       rootSignerAddress: rootAddress,
       privateKeyHex,
       logIdHex32: logHex32,
-      mmrStart: 0,
-      mmrEnd: 127,
+      mmrStart: 0n,
+      mmrEnd: 127n,
       delegatedPublicKey,
     });
     expect(() =>

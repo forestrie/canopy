@@ -86,8 +86,8 @@ describe("validateByokDelegationMaterial", () => {
     await expect(
       validateByokDelegationMaterial({
         logIdHex32: logHex32,
-        mmrStart: 0,
-        mmrEnd: 7,
+        mmrStart: 0n,
+        mmrEnd: 7n,
         delegatedPublicKey,
         certificate,
         publicRoot: { alg: "ES256", x, y },
@@ -172,8 +172,8 @@ describe("validateByokDelegationMaterial", () => {
     await expect(
       validateByokDelegationMaterial({
         logIdHex32: logHex32,
-        mmrStart: 0,
-        mmrEnd: 7,
+        mmrStart: 0n,
+        mmrEnd: 7n,
         delegatedPublicKey,
         certificate,
         publicRoot: { alg: "ES256", x, y },
@@ -212,8 +212,8 @@ describe("validateByokDelegationMaterial", () => {
     await expect(
       validateByokDelegationMaterial({
         logIdHex32: logHex32,
-        mmrStart: 1,
-        mmrEnd: 8,
+        mmrStart: 1n,
+        mmrEnd: 8n,
         delegatedPublicKey: delegatedBytes,
         certificate,
         publicRoot: { alg: "ES256", x, y },

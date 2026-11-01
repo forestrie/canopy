@@ -2,12 +2,15 @@
  * POST /api/delegations/certificate — runner BYOK certificate submission.
  *
  * Public route with size cap; validated in {@link DelegationStoreDO} via
- * {@link validateByokDelegationCertificate}.
+ * {@link validateByokDelegationCertificate}. `mmrStart` / `mmrEnd` are
+ * canonical decimal uint64 strings on the JSON wire; a JSON number or a
+ * non-canonical string is a 400 here, before the store is touched.
  */
 
 import type { Env } from "../env.js";
 import { base64ToBytes } from "../encoding.js";
 import { normalizeLogIdToHex32 } from "../log-id.js";
+import { parseJsonMmrRange } from "../mmr-range.js";
 import type { SubmitDelegationCertificateRequest } from "../types/submit-delegation-certificate-request.js";
 import { forwardToStore, internalError, problemResponse } from "./handler.js";
 
@@ -46,6 +49,17 @@ export async function handlePostCertificate(
         "about:blank",
         "Invalid request",
         "logId, mmrStart, mmrEnd, delegatedPublicKey, and certificate are required",
+      );
+    }
+
+    try {
+      parseJsonMmrRange(body);
+    } catch (error) {
+      return problemResponse(
+        400,
+        "about:blank",
+        "Invalid request",
+        error instanceof Error ? error.message : "Invalid MMR range",
       );
     }
 

@@ -8,10 +8,10 @@
 export interface CertificateInfo {
   /** 32-character hex Forestrie log id. */
   logIdHex32: string;
-  /** Inclusive MMR leaf index start. */
-  mmrStart: number;
-  /** Exclusive MMR leaf index end. */
-  mmrEnd: number;
+  /** Inclusive MMR leaf index start (uint64). */
+  mmrStart: bigint;
+  /** Exclusive MMR leaf index end (uint64, `>= mmrStart`). */
+  mmrEnd: bigint;
   /** Unix seconds when the delegation becomes valid. */
   issuedAt: number;
   /** Unix seconds when the delegation expires. */

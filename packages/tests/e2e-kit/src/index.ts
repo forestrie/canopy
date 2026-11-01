@@ -85,6 +85,13 @@ export * from "./register-grant-through-receipt.js";
 export * from "./register-grant-with-payment.js";
 export * from "./bootstrap-delegation-coordinator.js";
 export * from "./coordinator-delegation-helpers.js";
+// The JSON decimal uint64 codec is owned by @forestrie/delegation-cose;
+// re-exported so kit consumers keep importing it from here.
+export {
+  DecimalUint64Error,
+  formatDecimalUint64,
+  parseDecimalUint64,
+} from "@forestrie/delegation-cose";
 export * from "./sign-standing-advance-delegation.js";
 export * from "./wallet-challenge-session-e2e.js";
 export * from "./delegation-cbor-contract.js";

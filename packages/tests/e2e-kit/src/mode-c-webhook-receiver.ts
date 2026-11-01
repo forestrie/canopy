@@ -19,6 +19,10 @@ import {
   buildKs256BootstrapDelegationMaterial,
   bytesToBase64,
 } from "./coordinator-delegation-helpers.js";
+import {
+  formatDecimalUint64,
+  parseDecimalUint64,
+} from "@forestrie/delegation-cose";
 import { normalizeForestrieHexId32 } from "./forestrie-hex-id.js";
 import { ADVANCE_HORIZON_MMR_END } from "./sign-standing-advance-delegation.js";
 
@@ -28,9 +32,13 @@ export interface DelegationRequiredEvent {
   version: 1;
   logId: string;
   authLogId: string;
-  /** Demanded window; omitted on the window-less route-setup push. */
-  mmrStart?: number;
-  mmrEnd?: number;
+  /**
+   * Demanded window as canonical decimal uint64 strings
+   * (`@forestrie/delegation-cose` `parseDecimalUint64`);
+   * omitted on the window-less route-setup push.
+   */
+  mmrStart?: string;
+  mmrEnd?: string;
   delegatedPublicKey: string;
   requestedAt: number;
   certificateSubmitUrl: string;
@@ -85,8 +93,8 @@ export interface SubmitModeCKs256MaterialInput {
   logIdUuid: string;
   rootSignerAddress: Uint8Array;
   privateKeyHex: string;
-  mmrStart: number;
-  mmrEnd: number;
+  mmrStart: bigint;
+  mmrEnd: bigint;
   delegatedPublicKey: Uint8Array;
   certificateSubmitUrl?: string;
   /** @deprecated use certificateSubmitUrl */
@@ -136,11 +144,14 @@ export function resolveOwnedLogId(
  */
 export function receiverSigningWindow(
   event: Pick<DelegationRequiredEvent, "mmrStart" | "mmrEnd">,
-): { mmrStart: number; mmrEnd: number } {
+): { mmrStart: bigint; mmrEnd: bigint } {
   if (event.mmrStart !== undefined && event.mmrEnd !== undefined) {
-    return { mmrStart: event.mmrStart, mmrEnd: event.mmrEnd };
+    return {
+      mmrStart: parseDecimalUint64(event.mmrStart, "mmrStart"),
+      mmrEnd: parseDecimalUint64(event.mmrEnd, "mmrEnd"),
+    };
   }
-  return { mmrStart: 0, mmrEnd: ADVANCE_HORIZON_MMR_END };
+  return { mmrStart: 0n, mmrEnd: ADVANCE_HORIZON_MMR_END };
 }
 
 function readRequestBody(req: IncomingMessage): Promise<string> {
@@ -228,8 +239,8 @@ export async function submitModeCKs256DelegationMaterial(
     },
     body: JSON.stringify({
       logId: input.logIdUuid,
-      mmrStart: input.mmrStart,
-      mmrEnd: input.mmrEnd,
+      mmrStart: formatDecimalUint64(input.mmrStart),
+      mmrEnd: formatDecimalUint64(input.mmrEnd),
       delegatedPublicKey: bytesToBase64(input.delegatedPublicKey),
       certificate: bytesToBase64(material.certificate),
       issuedAt: material.issuedAt,

@@ -77,6 +77,20 @@ describe("verifyGrantReceiptOffline — delegated (FOR-297)", () => {
     expect(result.reason).toBe("delegation_expired");
   });
 
+  // An inverted window is malformed: the chain is broken, not unbounded.
+  it("rejects a cert whose mmrStart exceeds its mmrEnd", async () => {
+    const fx = await buildDelegatedGrantReceiptFixture({ invertedRange: true });
+    const result = await verifyGrantReceiptOffline({
+      genesisCbor: fx.genesisCbor,
+      receiptCbor: fx.receiptCbor,
+      grant: fx.grant,
+      idtimestampBe8: fx.idtimestampBe8,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.stage).toBe("signature");
+    expect(result.reason).toBe("delegation_range_malformed");
+  });
+
   // NB: the `issuedAt` lower bound is intentionally NOT enforced — on live
   // lanes the cert is signed a few seconds AFTER the leaf is sequenced, so a
   // cert with `issuedAt > leafTime` is valid (verified on lane A). A receipt

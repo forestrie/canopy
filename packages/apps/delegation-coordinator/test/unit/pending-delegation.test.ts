@@ -116,8 +116,8 @@ describe("GET /api/logs/{logId}/pending-delegation", () => {
     const matching = body.entries.filter(
       (entry) =>
         entry.logIdHex32 === logHex32 &&
-        entry.mmrStart === 0 &&
-        entry.mmrEnd === 7,
+        entry.mmrStart === "0" &&
+        entry.mmrEnd === "7",
     );
     expect(matching).toHaveLength(2);
     expect(matching.map((entry) => entry.delegatedPublicKey).sort()).toEqual(
@@ -182,8 +182,8 @@ describe("GET /api/logs/{logId}/pending-delegation", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           logId: logUuid,
-          mmrStart: 2,
-          mmrEnd: 9,
+          mmrStart: "2",
+          mmrEnd: "9",
           delegatedPublicKey: bytesToBase64(firstKey),
           certificate: bytesToBase64(certificate),
           issuedAt,

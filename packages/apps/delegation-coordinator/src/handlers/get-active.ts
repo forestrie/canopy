@@ -20,26 +20,13 @@
 
 import type { Env } from "../env.js";
 import { checkBearerToken } from "../auth/check-bearer-token.js";
+import type { ActiveLog } from "../types/active-log.js";
 import {
   getShardCount,
   getStoreStub,
   internalError,
   problemResponse,
 } from "./handler.js";
-
-/** Per-log active-delegation summary returned to the sealer resync. */
-interface ActiveLog {
-  logIdHex32: string;
-  /** Furthest cert expiry for this log (epoch seconds). */
-  expiresAt: number;
-  /** Lowest authorized mmr start across this log's certs, or null if unknown. */
-  mmrStart: number | null;
-  /**
-   * Highest authorized mmr end across this log's certs, or null if unknown.
-   * The sealer resync uses this to hint how far the log should be sealed.
-   */
-  mmrEnd: number | null;
-}
 
 /** Default grace window (seconds) when the caller does not specify one. */
 const DEFAULT_GRACE_SECONDS = 60 * 60;

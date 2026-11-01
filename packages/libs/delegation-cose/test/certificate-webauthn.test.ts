@@ -108,8 +108,8 @@ async function rootXy(
 describe("buildDelegationCertificateWebauthn", () => {
   const input = {
     logIdHex32: LOG_ID_HEX32,
-    mmrStart: 0,
-    mmrEnd: 16383,
+    mmrStart: 0n,
+    mmrEnd: 16383n,
     issuedAt: 1_700_000_000,
     expiresAt: 4_102_444_800,
   };
@@ -143,8 +143,8 @@ describe("buildDelegationCertificateWebauthn", () => {
 
     const info = parseDelegationCertificate(certificate);
     expect(info.logIdHex32).toBe(LOG_ID_HEX32);
-    expect(info.mmrStart).toBe(0);
-    expect(info.mmrEnd).toBe(16383);
+    expect(info.mmrStart).toBe(0n);
+    expect(info.mmrEnd).toBe(16383n);
     expect(info.issuedAt).toBe(input.issuedAt);
     expect(info.expiresAt).toBe(input.expiresAt);
   });

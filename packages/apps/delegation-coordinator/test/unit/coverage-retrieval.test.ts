@@ -105,8 +105,8 @@ async function submitCert(opts: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       logId: opts.logHex32,
-      mmrStart: opts.mmrStart,
-      mmrEnd: opts.mmrEnd,
+      mmrStart: String(opts.mmrStart),
+      mmrEnd: String(opts.mmrEnd),
       delegatedPublicKey: bytesToBase64(opts.delegatedPublicKey),
       certificate: bytesToBase64(opts.certificate),
       issuedAt: opts.issuedAt,
@@ -179,8 +179,8 @@ async function seedWideCert(opts: {
     const proof = await signOnchainDelegationEs256(
       {
         logIdHex: logHex32,
-        mmrStart: opts.mmrStart,
-        mmrEnd: opts.mmrEnd,
+        mmrStart: BigInt(opts.mmrStart),
+        mmrEnd: BigInt(opts.mmrEnd),
         delegatedKeyX: x,
         delegatedKeyY: y,
       },
@@ -607,8 +607,8 @@ describe("FOR-421 hermetic positive advance-delegation", () => {
     const onchain = await signOnchainDelegationEs256(
       {
         logIdHex: logHex32,
-        mmrStart: 0,
-        mmrEnd: 16383,
+        mmrStart: 0n,
+        mmrEnd: 16383n,
         delegatedKeyX: delX,
         delegatedKeyY: delY,
       },

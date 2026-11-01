@@ -60,8 +60,8 @@ describe("ES256 delegation certificate", () => {
     const certificate = await buildDelegationCertificateEs256(
       {
         logIdHex32,
-        mmrStart: 0,
-        mmrEnd: 63,
+        mmrStart: 0n,
+        mmrEnd: 63n,
         delegatedPublicKeyCbor,
         issuedAt,
         expiresAt,
@@ -78,8 +78,8 @@ describe("ES256 delegation certificate", () => {
 
     const info = parseDelegationCertificate(certificate);
     expect(info.logIdHex32).toBe(logIdHex32);
-    expect(info.mmrStart).toBe(0);
-    expect(info.mmrEnd).toBe(63);
+    expect(info.mmrStart).toBe(0n);
+    expect(info.mmrEnd).toBe(63n);
     expect(info.issuedAt).toBe(issuedAt);
     expect(info.expiresAt).toBe(expiresAt);
 

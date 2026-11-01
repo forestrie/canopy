@@ -46,8 +46,8 @@ test.describe("delegation-coordinator BYOK material", () => {
 
   const logUuid = randomUUID();
   const logHex32 = normalizeForestrieHexId32(logUuid);
-  const mmrStart = 2;
-  const mmrEnd = 64;
+  const mmrStart = 2n;
+  const mmrEnd = 64n;
 
   let rootKeyPair: CryptoKeyPair;
   let rootX: Uint8Array;
@@ -123,8 +123,8 @@ test.describe("delegation-coordinator BYOK material", () => {
       body.entries.some(
         (entry) =>
           entry.logIdHex32 === logHex32 &&
-          entry.mmrStart === mmrStart &&
-          entry.mmrEnd === mmrEnd,
+          entry.mmrStart === String(mmrStart) &&
+          entry.mmrEnd === String(mmrEnd),
       ),
     ).toBe(false);
   });
@@ -157,8 +157,8 @@ test.describe("delegation-coordinator BYOK material", () => {
         },
         data: {
           logId: logUuid,
-          mmrStart,
-          mmrEnd,
+          mmrStart: String(mmrStart),
+          mmrEnd: String(mmrEnd),
           delegatedPublicKey: bytesToBase64(delegatedPublicKey),
           certificate: bytesToBase64(materialCertificate),
           issuedAt: materialIssuedAt,
@@ -205,8 +205,8 @@ test.describe("delegation-coordinator BYOK material", () => {
       body.entries.some(
         (entry) =>
           entry.logIdHex32 === logHex32 &&
-          entry.mmrStart === mmrStart &&
-          entry.mmrEnd === mmrEnd,
+          entry.mmrStart === String(mmrStart) &&
+          entry.mmrEnd === String(mmrEnd),
       ),
     ).toBe(false);
   });

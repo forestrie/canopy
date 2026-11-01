@@ -177,8 +177,8 @@ describe("POST /api/delegations/certificate (public sealing)", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           logId: logUuid,
-          mmrStart,
-          mmrEnd,
+          mmrStart: String(mmrStart),
+          mmrEnd: String(mmrEnd),
           delegatedPublicKey: bytesToBase64(delegatedKey),
           certificate: bytesToBase64(certificate),
           issuedAt,
@@ -223,8 +223,8 @@ describe("POST /api/delegations/certificate (public sealing)", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           logId: logUuid,
-          mmrStart,
-          mmrEnd,
+          mmrStart: String(mmrStart),
+          mmrEnd: String(mmrEnd),
           delegatedPublicKey: bytesToBase64(delegatedKey),
           certificate: bytesToBase64(badCert),
           issuedAt: good.issuedAt,
@@ -269,8 +269,8 @@ describe("POST /api/delegations/certificate (public sealing)", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           logId: logUuidMismatch,
-          mmrStart,
-          mmrEnd,
+          mmrStart: String(mmrStart),
+          mmrEnd: String(mmrEnd),
           delegatedPublicKey: bytesToBase64(delegatedKey),
           certificate: bytesToBase64(certificate),
           issuedAt,
@@ -310,8 +310,8 @@ describe("POST /api/delegations/certificate (public sealing)", () => {
 
     const payload = {
       logId: logUuid2,
-      mmrStart,
-      mmrEnd,
+      mmrStart: String(mmrStart),
+      mmrEnd: String(mmrEnd),
       delegatedPublicKey: bytesToBase64(delegatedKey),
       certificate: bytesToBase64(certificate),
       issuedAt,
@@ -348,8 +348,8 @@ describe("POST /api/delegations/certificate (public sealing)", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           logId: logUuid,
-          mmrStart: 0,
-          mmrEnd: 1,
+          mmrStart: "0",
+          mmrEnd: "1",
           delegatedPublicKey: bytesToBase64(delegatedKey),
           certificate: oversized,
           issuedAt: 1,
