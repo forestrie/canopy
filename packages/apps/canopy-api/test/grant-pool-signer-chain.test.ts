@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { decodeGrantPayload } from "../src/grant/codec.js";
+import { decodeGrantPayload } from "@forestrie/encoding";
 import { grantDataToBytes } from "../src/grant/grant-data.js";
 import { statementSignerBindingBytes } from "../src/grant/statement-signer-binding.js";
 import {

@@ -6,7 +6,7 @@
 import { encodeCoseSign1Raw, encodeSigStructure } from "@forestrie/encoding";
 import { encodeCborDeterministic } from "@forestrie/encoding";
 import { sha256 } from "@noble/hashes/sha256";
-import { encodeGrantPayload } from "../../src/grant/codec.js";
+import { encodeGrantPayload } from "@forestrie/encoding";
 import type { Grant } from "../../src/grant/types.js";
 import {
   HEADER_FORESTRIE_GRANT_V0,

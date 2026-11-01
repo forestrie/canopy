@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { decodeGrantResponse } from "../src/grant/codec.js";
+import { decodeGrantResponse } from "@forestrie/encoding";
 import {
   grantCommitmentHashFromGrant,
   grantCommitmentHashToHex,

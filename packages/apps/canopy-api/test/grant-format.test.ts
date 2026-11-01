@@ -8,7 +8,7 @@ import {
   decodeGrantPayload,
   decodeGrantResponse,
   encodeGrantForResponse,
-} from "../src/grant/codec.js";
+} from "@forestrie/encoding";
 import { grantDataToBytes, type Grant } from "../src/grant/types.js";
 import { uuidToBytes } from "../src/grant/uuid-bytes.js";
 import grantVectors from "./fixtures/grant_vectors.json";
