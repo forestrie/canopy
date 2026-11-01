@@ -2,7 +2,7 @@
  * Storage codec for uint64 values in Durable Object SQLite: 8-byte
  * big-endian BLOBs, so byte order is numeric order. Used for the
  * delegation-coordinator's MMR range bounds and forestrie-ingress's
- * SequencingQueue leaf and massif indices.
+ * SequencingQueue leaf indices.
  *
  * SQLite `INTEGER` is signed int64, so a uint64 above 2^63-1 cannot be stored
  * as one. Each bound is stored as an 8-byte big-endian BLOB instead. SQLite
@@ -24,9 +24,12 @@ const BE8_LENGTH = 8;
  *
  * @param value - A `bigint` in `[0, 2^64-1]`.
  * @returns 8 bytes, most significant first.
- * @throws When `value` is outside the uint64 range.
+ * @throws When `value` is not a `bigint` or is outside the uint64 range.
  */
 export function encodeUint64Be8(value: bigint): Uint8Array {
+  if (typeof value !== "bigint") {
+    throw new TypeError(`uint64 must be a bigint, got ${typeof value}`);
+  }
   if (value < 0n || value > UINT64_MAX) {
     throw new Error(`${value} is not a uint64`);
   }

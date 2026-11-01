@@ -55,6 +55,18 @@ describe("uint64 be8 codec", () => {
     }
   });
 
+  it("decodes a view that starts part way into its buffer", () => {
+    const backing = new Uint8Array(16).fill(0xee);
+    backing.set(encodeUint64Be8((1n << 53n) + 1n), 4);
+    expect(decodeUint64Be8(backing.subarray(4, 12))).toBe((1n << 53n) + 1n);
+  });
+
+  it("rejects a number with a clear error rather than a DataView TypeError", () => {
+    expect(() => encodeUint64Be8(5 as unknown as bigint)).toThrow(
+      /uint64 must be a bigint, got number/,
+    );
+  });
+
   it("rejects out-of-range values and anything that is not 8 bytes", () => {
     expect(() => encodeUint64Be8(-1n)).toThrow();
     expect(() => encodeUint64Be8(UINT64_MAX + 1n)).toThrow();

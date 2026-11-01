@@ -538,16 +538,56 @@ describe("query-registration-status byte-range read", () => {
       expect(mmrIndex(leaf)).toBe(expectedMmrIndex(leaf));
     });
 
-    it("builds an entryId that carries the exact MMR index", () => {
+    // Through the route: a queue resolving leaf 2^53+1 at height 24 gives a
+    // 303 whose entryId carries the exact MMR index and idtimestamp.
+    it("registration status redirects to the exact entryId for leaf 2^53+1", async () => {
+      const massifHeight = 24;
       const leaf = (1n << 53n) + 1n;
-      const entryMmrIndex = mmrIndex(leaf);
-      const entryId = encodeEntryId({
-        idtimestamp: 0x1234n,
-        mmrIndex: entryMmrIndex,
-      });
+      const idtimestamp = 0x0619061906190619n;
+      const bootstrapLogId = crypto.randomUUID();
+
+      const genesis = validGenesisV2Es256CborMap();
+      genesis.set(
+        FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID,
+        toPaddedWire32(logIdToWireBytes(bootstrapLogId)),
+      );
+      await testEnv.R2_GRANTS.put(
+        `forests/forest/${logIdToStorageSegment(logIdToWireBytes(bootstrapLogId))}/genesis.cbor`,
+        encodeCborDeterministic(genesis) as Uint8Array,
+      );
+      const r2 = {
+        async get() {
+          const buf = new ArrayBuffer(8);
+          new DataView(buf).setBigUint64(0, idtimestamp, false);
+          return { arrayBuffer: async () => buf };
+        },
+      } as unknown as R2Bucket;
+      const queue = {
+        idFromName: () => ({}) as DurableObjectId,
+        get: () =>
+          ({ resolveContent: async () => ({ leafIndex: leaf }) }) as never,
+      };
+
+      const contentHash = "cd".repeat(32);
+      const response = await queryRegistrationStatus(
+        new Request(
+          `http://localhost/logs/${bootstrapLogId}/${logId}/entries/${contentHash}`,
+        ),
+        [bootstrapLogId, logId, "entries", contentHash],
+        queue,
+        r2,
+        massifHeight,
+        "1",
+        testEnv.R2_GRANTS,
+      );
+
+      expect(response.status).toBe(303);
+      const entryId = response.headers
+        .get("Location")!
+        .match(/\/entries\/([^/]+)\/receipt/)![1];
       expect(decodeEntryId(entryId)).toEqual({
-        idtimestamp: 0x1234n,
-        mmrIndex: entryMmrIndex,
+        idtimestamp,
+        mmrIndex: expectedMmrIndex(leaf),
       });
     });
 
@@ -569,13 +609,12 @@ describe("query-registration-status byte-range read", () => {
         readIdtimestampFromMassif(r2, logId, massifHeight, leafIndex),
       ).resolves.toBe(0x0b0b0b0b0b0b0b0bn);
 
-      const ordinal = leafIndex % leafCountForMassifHeight(massifHeight);
+      // (2^53+1) mod 2^23 = 1: the second leaf record in its massif.
       expect(calls).toEqual([
         {
           key: `v2/merklelog/massifs/24/${logId}/${massifIndex.toString().padStart(16, "0")}.log`,
           offset:
-            urkleLeafTableStartByteOffset(massifHeight) +
-            Number(ordinal) * LEAF_RECORD_BYTES,
+            urkleLeafTableStartByteOffset(massifHeight) + 1 * LEAF_RECORD_BYTES,
         },
       ]);
     });

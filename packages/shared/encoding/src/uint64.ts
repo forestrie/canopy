@@ -1,7 +1,7 @@
 /**
  * uint64 validation for decoded CBOR values. `@forestrie/encoding`'s
  * `decodeCborDeterministic` returns a major-type-0 integer as `number` when
- * safe and `bigint` above 2^53, and a float as `CborFloat`; only the first
+ * safe (up to 2^53-1) and `bigint` from 2^53, and a float as `CborFloat`; only the first
  * two are a uint64. Matches arbor
  * [delegationcert](https://github.com/forestrie/arbor/tree/main/services/pkgs/delegationcert),
  * which decodes the delegation MMR range as Go `uint64`, and arbor's ranger
