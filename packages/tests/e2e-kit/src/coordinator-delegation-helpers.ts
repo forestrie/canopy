@@ -17,6 +17,7 @@ import {
   buildOnchainDelegationToBeSignedWebauthn,
   decodeDelegatedCoseKeyFromBytes,
   deriveEs256KidFromPublicKey,
+  formatDecimalUint64,
   normalizeEs256SignatureLowS,
   parseDelegatedCoseKeyFromPayload,
   parseDelegationCertificate,
@@ -27,7 +28,6 @@ import {
 } from "@forestrie/delegation-cose";
 import { cborIntKeyBytes } from "./cbor-int-key.js";
 import { custodianApiV1BaseUrl } from "./custodian-api-env.js";
-import { formatDecimalUint64 } from "./decimal-uint64.js";
 import { custodianDecodeCbor } from "./custodian-api-cbor.js";
 import { normalizeForestrieHexId32 } from "./forestrie-hex-id.js";
 

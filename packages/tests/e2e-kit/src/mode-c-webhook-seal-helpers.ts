@@ -3,7 +3,10 @@
  */
 
 import type { APIRequestContext } from "@playwright/test";
-import { formatDecimalUint64, parseDecimalUint64 } from "./decimal-uint64.js";
+import {
+  formatDecimalUint64,
+  parseDecimalUint64,
+} from "@forestrie/delegation-cose";
 import { decodeCborDeterministic } from "@forestrie/encoding";
 import {
   E2E_POLL_MAX_WAIT_MS,

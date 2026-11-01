@@ -19,7 +19,10 @@ import {
   buildKs256BootstrapDelegationMaterial,
   bytesToBase64,
 } from "./coordinator-delegation-helpers.js";
-import { formatDecimalUint64, parseDecimalUint64 } from "./decimal-uint64.js";
+import {
+  formatDecimalUint64,
+  parseDecimalUint64,
+} from "@forestrie/delegation-cose";
 import { normalizeForestrieHexId32 } from "./forestrie-hex-id.js";
 import { ADVANCE_HORIZON_MMR_END } from "./sign-standing-advance-delegation.js";
 

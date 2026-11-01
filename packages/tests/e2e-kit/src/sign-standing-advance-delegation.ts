@@ -38,7 +38,7 @@ import {
   buildKs256BootstrapDelegationMaterial,
   bytesToBase64,
 } from "./coordinator-delegation-helpers.js";
-import { formatDecimalUint64 } from "./decimal-uint64.js";
+import { formatDecimalUint64 } from "@forestrie/delegation-cose";
 import { assertGoCompatibleDelegatedKeyInCertificate } from "./delegation-cbor-contract.js";
 
 /**

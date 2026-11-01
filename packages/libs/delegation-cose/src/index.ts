@@ -90,6 +90,11 @@ export { readUint64Label } from "./read-uint64-label.js";
 export { UINT64_MAX, toUint64 } from "./to-uint64.js";
 export { toSafeUint } from "./to-safe-uint.js";
 export {
+  DecimalUint64Error,
+  formatDecimalUint64,
+  parseDecimalUint64,
+} from "./decimal-uint64.js";
+export {
   assertDelegatedKeyInCertificate,
   decodeCoseSign1Parts,
   decodeDelegatedCoseKeyFromBytes,

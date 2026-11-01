@@ -1,5 +1,5 @@
 import type { APIRequestContext } from "@playwright/test";
-import { parseDecimalUint64 } from "./decimal-uint64.js";
+import { parseDecimalUint64 } from "@forestrie/delegation-cose";
 import {
   decodeCborDeterministic,
   encodeCborDeterministic,

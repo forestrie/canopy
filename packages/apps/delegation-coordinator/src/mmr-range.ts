@@ -3,8 +3,9 @@
  *
  * The range is payload labels 3/4 of the delegation certificate
  * (`@forestrie/delegation-cose`), a uint64 everywhere it is built, stored and
- * checked (plan-2611-01, FOR-613). On the wire each bound is a canonical
- * decimal string ({@link parseDecimalUint64}); after parsing it is `bigint`.
+ * checked, as arbor's sealer decodes it (Go `uint64`). On the wire each bound
+ * is a canonical decimal string ({@link parseDecimalUint64}); after parsing
+ * it is `bigint`.
  */
 
 import { DecimalUint64Error, parseDecimalUint64 } from "./decimal-uint64.js";
