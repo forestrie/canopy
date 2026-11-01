@@ -18,8 +18,8 @@ import {
   type QueueStats,
   type EnqueueExtras,
 } from "@canopy/forestrie-ingress-types";
-import { leafCountForMassifHeight } from "@forestrie/merklelog";
 import type { Env } from "../env.js";
+import { retainedEntryCount } from "./retention.js";
 
 /** Maximum pending entries before backpressure kicks in */
 const MAX_PENDING = 100_000;
@@ -550,9 +550,9 @@ export class SequencingQueue extends DurableObject<Env> {
    * serve as sequencing result cache for resolveContent.
    *
    * massifHeight is the one-based height ranger commits massifs at; a massif
-   * holds {@link leafCountForMassifHeight} = 2^(h-1) leaves. It only sizes the
-   * cleanup that runs on each ack, retaining ~2 massifs of sequenced entries.
-   * Readers derive the massif from leaf_index; none is stored.
+   * holds 2^(h-1) leaves (leafCountForMassifHeight). It only sizes the
+   * cleanup that runs on each ack (see {@link retainedEntryCount}). Readers
+   * derive the massif from leaf_index; none is stored.
    *
    * See: arbor/docs/arc-cloudflare-do-ingress.md section 3.12
    */
@@ -564,6 +564,10 @@ export class SequencingQueue extends DurableObject<Env> {
     massifHeight: number,
   ): Promise<{ acked: number }> {
     this.ensureSchema();
+
+    // Before any write: throws on a bad height, so nothing is marked
+    // sequenced with the retention cleanup skipped.
+    const retainCount = retainedEntryCount(massifHeight);
 
     if (limit <= 0) {
       return { acked: 0 };
@@ -603,9 +607,6 @@ export class SequencingQueue extends DurableObject<Env> {
 
     const acked = toUpdate.length;
     this.pendingCount = Math.max(0, this.pendingCount - acked);
-
-    // Cleanup: retain ~2 massifs worth of sequenced entries per log
-    const retainCount = Number(leafCountForMassifHeight(massifHeight)) * 2;
 
     this.ctx.storage.sql.exec(
       `DELETE FROM queue_entries
