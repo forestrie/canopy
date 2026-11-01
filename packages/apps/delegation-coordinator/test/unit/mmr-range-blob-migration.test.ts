@@ -127,6 +127,86 @@ function bind(v: SeedValue): SqlStorageValue {
   return v;
 }
 
+/**
+ * An unsigned COSE_Sign1 delegation certificate carrying `start..end` as
+ * CBOR uint64 labels 3/4. The migration parses payloads but never verifies
+ * signatures, so the signature is zeros.
+ */
+function certificateFor(
+  logHex32: string,
+  start: bigint,
+  end: bigint,
+  payloadEdit: (payload: Uint8Array) => Uint8Array = (p) => p,
+): Uint8Array {
+  const payload = encodeCborDeterministic(
+    new Map<number, unknown>([
+      [1, logHex32],
+      [3, start],
+      [4, end],
+      [7, 1],
+      [8, 1_700_000_000],
+      [9, FAR_FUTURE],
+      [10, new Uint8Array(16)],
+    ]),
+  );
+  return encodeCborDeterministic([
+    new Uint8Array([0xa0]),
+    new Map(),
+    payloadEdit(payload),
+    new Uint8Array(64),
+  ]);
+}
+
+/**
+ * Re-encode label 4 (mmrEnd) as a CBOR float64 of the same value, as cbor-x
+ * did for numbers above 2^32. `end` must take the 9-byte uint64 form
+ * (`0x1b` + 8 bytes), which has the same length as a float64 (`0xfb` + 8).
+ */
+function float64MmrEnd(end: bigint): (payload: Uint8Array) => Uint8Array {
+  return (payload) => {
+    const uint = new Uint8Array(10);
+    uint[0] = 0x04;
+    uint[1] = 0x1b;
+    new DataView(uint.buffer).setBigUint64(2, end, false);
+    const at = indexOfBytes(payload, uint);
+    if (at < 0) throw new Error("label 4 uint64 not found");
+    const out = payload.slice();
+    out[at + 1] = 0xfb;
+    new DataView(out.buffer).setFloat64(at + 2, Number(end), false);
+    return out;
+  };
+}
+
+function indexOfBytes(haystack: Uint8Array, needle: Uint8Array): number {
+  outer: for (let i = 0; i + needle.length <= haystack.length; i++) {
+    for (let j = 0; j < needle.length; j++) {
+      if (haystack[i + j] !== needle[j]) continue outer;
+    }
+    return i;
+  }
+  return -1;
+}
+
+/** A real certificate for a uint64 range; placeholder bytes otherwise. */
+function certificateBytesFor(
+  logHex32: string,
+  start: SeedValue,
+  end: SeedValue,
+): Uint8Array {
+  if (start === null) return LEGACY_CERT_BYTES;
+  const asU64 = (v: SeedValue) =>
+    typeof v === "bigint" && v >= 0n
+      ? v
+      : typeof v === "number" && Number.isSafeInteger(v) && v >= 0
+        ? BigInt(v)
+        : null;
+  const s = asU64(start);
+  const e = asU64(end);
+  return s !== null && e !== null && s <= e
+    ? certificateFor(logHex32, s, e)
+    : CERT_BYTES;
+}
+
 function insertCert(
   sql: SqlStorage,
   logHex32: string,
@@ -134,6 +214,7 @@ function insertCert(
   start: SeedValue,
   end: SeedValue,
   pubkey: { hash: string; key: Uint8Array } | null = null,
+  certificate: Uint8Array = certificateBytesFor(logHex32, start, end),
 ): void {
   sql.exec(
     `INSERT INTO delegation_certificates
@@ -142,7 +223,7 @@ function insertCert(
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     logHex32,
     key,
-    start === null ? LEGACY_CERT_BYTES : CERT_BYTES,
+    certificate,
     1_700_000_000,
     FAR_FUTURE,
     pubkey?.hash ?? null,
@@ -728,6 +809,80 @@ describe("MMR range INTEGER → be8 BLOB in-place migration", () => {
     });
     expect((await getDelegation(stub, log)).status).toBe(200);
     expect((await inspect(stub)).certHex).toEqual(expected);
+    expect(await schemaMetaKeys(stub)).toEqual(["mmr_range_be8"]);
+  });
+
+  it("quarantines a certificate whose payload range the strict parser rejects or contradicts", async () => {
+    const stub = newStub("range-migration-payload");
+    const key = testDelegatedCoseKey(69);
+    const pubkey = { hash: await sha256Hex(key), key };
+    const floatLog = normalizeLogIdToHex32(randomUUID());
+    const mismatchLog = normalizeLogIdToHex32(randomUUID());
+    const goodLog = normalizeLogIdToHex32(randomUUID());
+    const end = 2n ** 32n + 1n;
+    await seedLegacy(stub, (sql) => {
+      // cbor-x wrote label 4 as a float64; the columns still hold integers.
+      insertCert(
+        sql,
+        floatLog,
+        "float",
+        0n,
+        end,
+        pubkey,
+        certificateFor(floatLog, 0n, end, float64MmrEnd(end)),
+      );
+      // The signed range says 0..10; the columns say 0..11.
+      insertCert(
+        sql,
+        mismatchLog,
+        "mismatch",
+        0n,
+        11n,
+        pubkey,
+        certificateFor(mismatchLog, 0n, 10n),
+      );
+      insertCert(sql, goodLog, "good", 0n, end, pubkey);
+    });
+
+    expect((await getDelegation(stub, goodLog)).status).toBe(200);
+    const after = await inspect(stub);
+    expect(Object.keys(after.certHex)).toEqual(["good"]);
+    expect(after.quarantine.float).toMatch(
+      /^certificate payload rejected: .*mmrEnd/,
+    );
+    expect(after.quarantine.mismatch).toBe(
+      "certificate payload range 0..10 disagrees with columns 0..11",
+    );
+    expect((await getDelegation(stub, floatLog)).status).toBe(404);
+    expect((await getDelegation(stub, mismatchLog)).status).toBe(404);
+  });
+
+  it("re-arms the alarm with backoff when a chunk fails in alarm()", async () => {
+    const stub = newStub("range-migration-alarm-backoff");
+    const log = normalizeLogIdToHex32(randomUUID());
+    const key = testDelegatedCoseKey(71);
+    const pubkey = { hash: await sha256Hex(key), key };
+    await seedLegacy(stub, (sql) => {
+      insertCert(sql, log, "c0", 1n, 2n, pubkey);
+    });
+    await setChunkHook(stub, () => () => {
+      throw new Error("injected chunk failure");
+    });
+    expect((await getDelegation(stub, log)).status).toBe(503);
+
+    // The alarm swallows the failure and re-arms in the future.
+    await runDurableObjectAlarm(stub);
+    const rearmed = await runInDurableObject(stub, async (_i, state) =>
+      state.storage.getAlarm(),
+    );
+    expect(rearmed).not.toBeNull();
+    expect(rearmed!).toBeGreaterThan(Date.now() + 500);
+    expect((await inspect(stub)).done).toBe(false);
+
+    await setChunkHook(stub, () => null);
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    const after = await inspect(stub);
+    expect(after.done).toBe(true);
     expect(await schemaMetaKeys(stub)).toEqual(["mmr_range_be8"]);
   });
 

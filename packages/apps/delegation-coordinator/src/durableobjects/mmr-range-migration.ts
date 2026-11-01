@@ -35,7 +35,10 @@
  * deletes the progress record, leaving only the done flag.
  */
 
-import { toUint64 } from "@forestrie/delegation-cose";
+import {
+  parseDelegationCertificate,
+  toUint64,
+} from "@forestrie/delegation-cose";
 import { formatDecimalUint64 } from "../decimal-uint64.js";
 
 /** Per-event work limits for {@link MmrRangeMigration.run}. */
@@ -333,7 +336,7 @@ function convertRangeWindow(
   const needs = `NOT (${be8OrNull("mmr_start")} AND ${be8OrNull("mmr_end")})`;
   const bad = `NOT (${convertibleOrDone("mmr_start")} AND ${convertibleOrDone("mmr_end")})`;
   if (table === "delegation_certificates") {
-    quarantineBadCertificates(sql, `${inWindow} AND ${bad}`, from, to);
+    quarantineCertificates(sql, `${inWindow} AND ${bad}`, [from, to]);
   } else {
     const dropped = [
       ...sql.exec(
@@ -350,6 +353,9 @@ function convertRangeWindow(
     }
   }
   sql.exec(`DELETE FROM ${table} WHERE ${inWindow} AND ${bad}`, from, to);
+  if (table === "delegation_certificates") {
+    quarantineRejectedPayloads(sql, from, to);
+  }
   sql.exec(
     `UPDATE ${table}
         SET mmr_start = ${be8FromInteger("mmr_start")},
@@ -361,16 +367,67 @@ function convertRangeWindow(
 }
 
 /**
- * Copy the window's bad certificate rows into the quarantine table (the
- * caller deletes them from the live table in the same transaction). Columns
- * are the quarantine table's own, so a live table grown by ALTERs in a
- * different column order still copies by name.
+ * Strict-parse the signed certificate of each window row still holding
+ * INTEGER bounds, and quarantine (then delete) any whose payload range does
+ * not parse as uint64 labels 3/4 — e.g. a float64 written by an older
+ * encoder — or disagrees with the row's columns. The column types alone
+ * would pass such a row, coverage would serve it, and the sealer's strict
+ * parser would then reject the certificate while it also suppressed new
+ * delegation demand until expiry. Pre-coverage rows (NULL bounds) are
+ * served by exact key and are not re-parsed here.
  */
-function quarantineBadCertificates(
+function quarantineRejectedPayloads(
   sql: SqlStorage,
-  where: string,
   from: number,
   to: number,
+): void {
+  const rows = [
+    ...sql.exec(
+      `SELECT rowid AS rid, certificate,
+              printf('%016x', mmr_start) AS s, printf('%016x', mmr_end) AS e
+         FROM delegation_certificates
+        WHERE rowid > ? AND rowid <= ?
+          AND typeof(mmr_start) = 'integer' AND typeof(mmr_end) = 'integer'`,
+      from,
+      to,
+    ),
+  ];
+  for (const row of rows) {
+    const start = BigInt(`0x${String(row.s)}`);
+    const end = BigInt(`0x${String(row.e)}`);
+    let reason: string | null = null;
+    try {
+      const info = parseDelegationCertificate(
+        new Uint8Array(row.certificate as ArrayBuffer),
+      );
+      if (info.mmrStart !== start || info.mmrEnd !== end) {
+        reason = `certificate payload range ${info.mmrStart}..${info.mmrEnd} disagrees with columns ${start}..${end}`;
+      }
+    } catch (error) {
+      reason = `certificate payload rejected: ${
+        error instanceof Error ? error.message : String(error)
+      }`;
+    }
+    if (reason === null) continue;
+    quarantineCertificates(sql, "rowid = ?", [row.rid], reason);
+    sql.exec(`DELETE FROM delegation_certificates WHERE rowid = ?`, row.rid);
+  }
+}
+
+/**
+ * Copy the certificate rows matching `where` into the quarantine table (the
+ * caller deletes them from the live table in the same transaction), logging
+ * each. Columns are the quarantine table's own, so a live table grown by
+ * ALTERs in a different column order still copies by name.
+ *
+ * @param reason - Fixed reason text; when omitted the reason is derived in
+ *   SQL from the bad bound's type.
+ */
+function quarantineCertificates(
+  sql: SqlStorage,
+  where: string,
+  whereParams: SqlStorageValue[],
+  reason?: string,
 ): void {
   const columns = [
     ...sql.exec(`SELECT name FROM pragma_table_info('${QUARANTINE_TABLE}')`),
@@ -378,15 +435,17 @@ function quarantineBadCertificates(
     .map((r) => String(r.name))
     .filter((c) => c !== "quarantined_at" && c !== "reason");
   const list = columns.join(", ");
+  const reasonParams = reason === undefined ? [] : [reason];
   const moved = [
     ...sql.exec(
       `INSERT INTO ${QUARANTINE_TABLE} (${list}, quarantined_at, reason)
-       SELECT ${list}, ?, ${reasonSql()} FROM delegation_certificates
+       SELECT ${list}, ?, ${reason === undefined ? reasonSql() : "?"}
+         FROM delegation_certificates
         WHERE ${where}
        RETURNING log_id_hex32, certificate_key, reason`,
       Math.floor(Date.now() / 1000),
-      from,
-      to,
+      ...reasonParams,
+      ...whereParams,
     ),
   ];
   for (const r of moved) {

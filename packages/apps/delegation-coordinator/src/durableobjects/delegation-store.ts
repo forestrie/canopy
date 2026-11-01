@@ -175,6 +175,15 @@ const RANGE_ROUTES = new Set([
 const RANGE_MIGRATION_RETRY_AFTER_SECONDS = 1;
 
 /**
+ * Alarm backoff after a failed migration chunk: 1 s, doubling per
+ * consecutive failure, capped at 5 min. The alarm re-arms itself instead of
+ * throwing, so the migration (and the webhook delivery queued behind it)
+ * never depends on workerd's bounded alarm retries or on the next fetch.
+ */
+const RANGE_MIGRATION_RETRY_BASE_MS = 1000;
+const RANGE_MIGRATION_RETRY_MAX_MS = 5 * 60 * 1000;
+
+/**
  * Alg the stored onchain_signature was validated under. ES256_WEBAUTHN is a
  * WebAuthn assertion by an ES256 (P-256 x/y) root — same root key material,
  * different proof construction (univocity ADR-0008).
@@ -272,6 +281,13 @@ export class DelegationStoreDO extends DurableObject<Env> {
 
   /** Runs inside each migration chunk (@internal — tests inject failures). */
   private rangeMigrationChunkHook: MmrRangeMigrationChunkHook | null = null;
+
+  /**
+   * Consecutive migration chunk failures seen by alarm(), for its backoff.
+   * In memory only: eviction restarts the backoff at 1 s, and nothing is
+   * left in storage after completion.
+   */
+  private rangeMigrationAlarmFailures = 0;
 
   /** Bind Cloudflare DO state and worker env. */
   constructor(ctx: DurableObjectState, env: Env) {
@@ -3549,18 +3565,37 @@ export class DelegationStoreDO extends DurableObject<Env> {
   /**
    * Continue the range migration, then process due webhook delivery retries.
    * Deliveries wait for the migration: queued payloads may still carry
-   * JSON-number bounds until its webhook phase rewrites them. A chunk failure
-   * throws so workerd retries the alarm with backoff.
+   * JSON-number bounds until its webhook phase rewrites them. A failed chunk
+   * (rolled back, cursor included) is logged and the alarm re-armed with
+   * bounded exponential backoff rather than thrown. Inside the handler the
+   * running alarm is the only one, so setting it directly cannot clobber
+   * another schedule.
    */
   async alarm(): Promise<void> {
     this.ensureSchema();
     if (!this.rangeMigrationDone) {
-      this.rangeMigrationDone = this.rangeMigration.run(
-        this.rangeMigrationBudget,
-        this.rangeMigrationChunkHook,
-      );
+      try {
+        this.rangeMigrationDone = this.rangeMigration.run(
+          this.rangeMigrationBudget,
+          this.rangeMigrationChunkHook,
+        );
+        this.rangeMigrationAlarmFailures = 0;
+      } catch (error) {
+        this.rangeMigrationAlarmFailures++;
+        const delayMs = Math.min(
+          RANGE_MIGRATION_RETRY_BASE_MS *
+            2 ** Math.min(this.rangeMigrationAlarmFailures - 1, 20),
+          RANGE_MIGRATION_RETRY_MAX_MS,
+        );
+        console.error(
+          `mmr range migration chunk failed (${this.rangeMigrationAlarmFailures} in a row); retrying in ${delayMs} ms:`,
+          error,
+        );
+        await this.ctx.storage.setAlarm(Date.now() + delayMs);
+        return;
+      }
       if (!this.rangeMigrationDone) {
-        await this.scheduleImmediateAlarm();
+        await this.ctx.storage.setAlarm(Date.now());
         return;
       }
     }
