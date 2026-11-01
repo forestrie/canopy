@@ -29,6 +29,7 @@ import {
   readProtectedTreeSize2,
 } from "@forestrie/encoding";
 
+import { v2CheckpointObjectKey, v2MassifObjectKey } from "@forestrie/merklelog";
 import { CBOR_CONTENT_TYPES } from "../cbor-api/cbor-content-types.js";
 import { NO_STORE_HEADERS } from "../cbor-api/cache-policy.js";
 import { cborResponse } from "../cbor-api/cbor-response.js";
@@ -125,10 +126,12 @@ export async function resolveReceipt(
     const { mmrIndex } = decodeEntryId(entryIdRaw);
 
     const massifIndex = massifIndexFromMMRIndex(massifHeight, mmrIndex);
-    const objectIndex = formatObjectIndex16(massifIndex);
-
-    const checkpointKey = `v2/merklelog/checkpoints/${massifHeight}/${logID}/${objectIndex}.sth`;
-    const massifKey = `v2/merklelog/massifs/${massifHeight}/${logID}/${objectIndex}.log`;
+    const checkpointKey = v2CheckpointObjectKey(
+      massifHeight,
+      logID,
+      massifIndex,
+    );
+    const massifKey = v2MassifObjectKey(massifHeight, logID, massifIndex);
 
     const checkpointObject = await mmrs.get(checkpointKey);
     if (!checkpointObject) {
@@ -459,11 +462,6 @@ function asBigInt(value: unknown): bigint {
   if (typeof value === "number" && Number.isFinite(value)) return BigInt(value);
   if (typeof value === "string" && /^[0-9]+$/.test(value)) return BigInt(value);
   return 0n;
-}
-
-function formatObjectIndex16(index: bigint): string {
-  const s = index.toString(10);
-  return s.padStart(16, "0");
 }
 
 // --- Merklelog v2 massif layout ---
@@ -810,9 +808,12 @@ export async function buildReceiptForEntry(
 ): Promise<Uint8Array | null> {
   try {
     const massifIndex = massifIndexFromMMRIndex(massifHeight, mmrIndex);
-    const objectIndex = formatObjectIndex16(massifIndex);
-    const checkpointKey = `v2/merklelog/checkpoints/${massifHeight}/${logId}/${objectIndex}.sth`;
-    const massifKey = `v2/merklelog/massifs/${massifHeight}/${logId}/${objectIndex}.log`;
+    const checkpointKey = v2CheckpointObjectKey(
+      massifHeight,
+      logId,
+      massifIndex,
+    );
+    const massifKey = v2MassifObjectKey(massifHeight, logId, massifIndex);
 
     const checkpointObject = await mmrs.get(checkpointKey);
     if (!checkpointObject) return null;

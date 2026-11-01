@@ -3,16 +3,9 @@ import { env as testEnv } from "cloudflare:test";
 import {
   firstMassifObjectKey,
   isLogInitializedMmrs,
-  massifIndexToObjectKeySegment,
 } from "../src/scrapi/log-initialized-mmrs.js";
 
 describe("log-initialized-mmrs", () => {
-  it("formats massif index 0 as 16-digit decimal segment", () => {
-    expect(massifIndexToObjectKeySegment(0)).toBe("0000000000000000");
-    expect(massifIndexToObjectKeySegment(1)).toBe("0000000000000001");
-    expect(massifIndexToObjectKeySegment(10)).toBe("0000000000000010");
-  });
-
   it("builds first massif key matching resolve-receipt layout", () => {
     const logId = "00000000-0000-4000-8000-000000000001";
     const h = 14;

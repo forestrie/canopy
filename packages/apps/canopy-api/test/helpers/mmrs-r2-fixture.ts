@@ -9,6 +9,7 @@ import {
   VDS_MMR_CONSISTENCY,
   encodeCborDeterministic,
 } from "@forestrie/encoding";
+import { v2CheckpointObjectKey, v2MassifObjectKey } from "@forestrie/merklelog";
 import { DELEGATION_CERT_LABEL } from "../../src/grant/delegation-verify.js";
 
 export const SEAL_PEAK_RECEIPTS_LABEL = -65931;
@@ -24,16 +25,12 @@ const URKLE_FRONTIER_STATE_V1_BYTES = 544;
 const URKLE_LEAF_RECORD_BYTES = 128;
 const URKLE_NODE_RECORD_BYTES = 64;
 
-export function formatMassifObjectIndex(massifIndex: bigint): string {
-  return massifIndex.toString(10).padStart(16, "0");
-}
-
 export function mmrsCheckpointKey(
   logId: string,
   massifHeight: number,
   massifIndex: bigint,
 ): string {
-  return `v2/merklelog/checkpoints/${massifHeight}/${logId}/${formatMassifObjectIndex(massifIndex)}.sth`;
+  return v2CheckpointObjectKey(massifHeight, logId, massifIndex);
 }
 
 export function mmrsMassifKey(
@@ -41,7 +38,7 @@ export function mmrsMassifKey(
   massifHeight: number,
   massifIndex: bigint,
 ): string {
-  return `v2/merklelog/massifs/${massifHeight}/${logId}/${formatMassifObjectIndex(massifIndex)}.log`;
+  return v2MassifObjectKey(massifHeight, logId, massifIndex);
 }
 
 /**

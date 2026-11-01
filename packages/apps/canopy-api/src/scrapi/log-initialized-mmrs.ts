@@ -1,23 +1,21 @@
+import { v2MassifObjectKey } from "@forestrie/merklelog";
+
 /**
  * Log "initialized" for register-grant bootstrap branching: the first massif tile exists
- * in R2_MMRS (Ranger / sequenced merklelog v2 layout). Same key shape as resolve-receipt
- * and sequencing-result (massif index 0 → 16-digit decimal segment).
+ * in R2_MMRS (Ranger / sequenced merklelog v2 layout). Key built by
+ * {@link v2MassifObjectKey} (`@forestrie/merklelog`), shared with resolve-receipt and
+ * sequencing-result.
  *
  * Races between "no massif yet" and "first leaf landed" are accepted; duplicate bootstrap
  * grants at sequencing are treated as idempotent.
  */
 
-/** 16-digit decimal segment for R2 object keys (matches checkpoint-from-storage / sequencing-result). */
-export function massifIndexToObjectKeySegment(massifIndex: number): string {
-  return massifIndex.toString(10).padStart(16, "0");
-}
-
+/** R2 key of the first massif (index 0) `.log` object for a log. */
 export function firstMassifObjectKey(
   logId: string,
   massifHeight: number,
 ): string {
-  const objectIndex = massifIndexToObjectKeySegment(0);
-  return `v2/merklelog/massifs/${massifHeight}/${logId}/${objectIndex}.log`;
+  return v2MassifObjectKey(massifHeight, logId, 0n);
 }
 
 /**
