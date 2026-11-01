@@ -43,7 +43,12 @@ describe("appendCborUint64", () => {
     }
   });
 
-  it.each([-1, -1n, 1.5, Number.NaN, Infinity, 2 ** 53, UINT64_MAX + 1n])(
+  // An integer number is exact, so 2^60 as a number is fine; 2^64 is not.
+  it("writes an integer number above 2^53 exactly", () => {
+    expect(emit(2 ** 60)).toBe("1b1000000000000000");
+  });
+
+  it.each([-1, -1n, 1.5, Number.NaN, Infinity, 2 ** 64, UINT64_MAX + 1n])(
     "rejects %s and appends nothing",
     (v) => {
       const out: number[] = [];

@@ -90,7 +90,7 @@ Review of every touchpoint for inconsistent or incorrect handling of the 32-byte
 | Location | What happens | Risk / note |
 |----------|----------------|--------------|
 | `register-grant.ts` | Decodes **Authorization: Forestrie-Grant** → **`Grant`**; enqueues commitment for sequencing (**Plan 0008**: no server-side grant object storage). | Caller completes the transparent statement with **`idtimestamp`** + receipt via status / resolve-receipt. |
-| `grant/codec.ts` | **`decodeGrantPayload`** rejects keys **7** and **8**. | Same v0 map **1–6** as commitment preimage inputs. |
+| `@forestrie/encoding` `grant-codec.ts` | **`decodeGrantPayload`** rejects keys **7** and **8**. | Same v0 map **1–6** as commitment preimage inputs. |
 
 **Verdict:** Statement-signer binding is **`grantData`** in the grant payload the client carries (Forestrie-Grant), not a second wire **`signer`** field.
 

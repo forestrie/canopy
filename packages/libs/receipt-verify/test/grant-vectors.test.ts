@@ -4,9 +4,8 @@
  * negative vector carrying the retired keys 7 (`signer`) / 8 (`kind`) is
  * rejected. Before FOR-580, {@link decodeGrantPayload} and
  * {@link decodeGrantResponse} read fields by key number and silently
- * ignored keys 7/8, unlike the admission-path codecs
- * (`packages/shared/encoding/src/grant-codec.ts`,
- * `packages/apps/canopy-api/src/grant/codec.ts`).
+ * ignored keys 7/8, unlike the admission-path codec
+ * (`packages/shared/encoding/src/grant-codec.ts`).
  *
  * Vector files: read via a relative path from canopy-api's vendored copy
  * (packages/apps/canopy-api/test/fixtures/grant_vectors{,_negative}.json) —

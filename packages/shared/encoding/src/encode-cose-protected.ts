@@ -91,9 +91,11 @@ function appendCborInt(out: number[], v: number): void {
   if (!Number.isSafeInteger(v)) {
     throw new Error(`COSE header value must be an integer, got ${v}`);
   }
-  // The emitters below have no 8-byte branch; values past the 4-byte range
-  // would silently truncate mod 2^32 (e.g. a milliseconds iat signing as a
-  // 1986 date, or an oversized claim key aliasing an existing one). Reject.
+  // Keep header integers in the 4-byte range. The negative emitter below has
+  // no 8-byte branch and would truncate mod 2^32; the uint path
+  // (appendCborUint64) would not, but a value that large is a bug here (e.g.
+  // a milliseconds iat signing as a 1986 date, or an oversized claim key
+  // aliasing an existing one), so both signs share one bound. Reject.
   if (v > 0xffffffff || v < -0x100000000) {
     throw new Error(
       `COSE header integer out of 4-byte CBOR range [-2^32, 2^32-1]: ${v}`,

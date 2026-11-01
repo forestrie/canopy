@@ -1,17 +1,24 @@
 /**
  * Golden bytes for every grant v0 wire encoder. arbor (go-univocity) and the
  * univocity contract hash these bytes, so moving the encoders onto
- * `encodeCborDeterministic` must leave them byte-identical. The vectors were
- * captured from the hand-rolled writers before that change (FOR-619 S5).
+ * `encodeCborDeterministic` must leave them byte-identical (FOR-619 S5).
  *
- * `maxHeight` and `minGrowth` are CBOR major type 0. Every value up to
- * 2^53-1 encodes in shortest form; the old exported `appendCborUint` had no
- * 8-byte branch and truncated anything at or above 2^32 to its low 4 bytes.
+ * The representative grant, the padding and length-head cases, and the uint
+ * rows below 2^32 were captured from the hand-rolled writers before that
+ * change. The uint rows from 2^32 up are written by hand from RFC 8949 §3.1:
+ * the old exported `appendCborUint` (behind `encodeGrantPayloadV0Canonical`)
+ * had no 8-byte branch and truncated them to their low 4 bytes.
+ *
+ * `maxHeight` and `minGrowth` are JS numbers. Any integer number denotes one
+ * exact value, so every non-negative integer below 2^64 encodes exactly;
+ * negative, fractional, NaN and infinite values, and 2^64 itself, throw. On
+ * decode, a uint that a number cannot hold exactly (it would round) throws.
  */
 
 import { describe, expect, it } from "vitest";
 import {
   decodeGrantPayload,
+  decodeGrantResponse,
   encodeGrantForResponse,
   encodeGrantPayload,
   encodeGrantRequest,
@@ -20,6 +27,7 @@ import { encodeGrantPayloadV0Canonical } from "./grant-payload-canonical.js";
 import type { Grant } from "./grant.js";
 
 const hex = (b: Uint8Array): string => Buffer.from(b).toString("hex");
+const encodePayload = (g: Grant): Uint8Array => encodeGrantPayload(g);
 
 function grantWith(maxHeight: number, minGrowth: number): Grant {
   return {
@@ -75,6 +83,8 @@ const UINT_VECTORS: [number, string][] = [
   [2 ** 32 - 1, "1affffffff"],
   [2 ** 32, "1b0000000100000000"],
   [2 ** 53 - 1, "1b001fffffffffffff"],
+  [2 ** 60, "1b1000000000000000"],
+  [2 ** 63, "1b8000000000000000"],
 ];
 
 const ENCODERS: [string, (g: Grant) => Uint8Array, string][] = [
@@ -112,7 +122,7 @@ describe.each(ENCODERS)("%s golden bytes", (_, encode, prefix) => {
     },
   );
 
-  it.each([-1, 1.5, Number.NaN, Infinity, 2 ** 53])(
+  it.each([-1, 1.5, Number.NaN, Infinity, 2 ** 64])(
     "rejects maxHeight %s instead of emitting a wrong uint",
     (v) => {
       expect(() => encode(grantWith(v, 0))).toThrow(/maxHeight/);
@@ -121,24 +131,122 @@ describe.each(ENCODERS)("%s golden bytes", (_, encode, prefix) => {
   );
 });
 
-describe("decodeGrantPayload uint bounds", () => {
-  const bytes = (uintHex: string): Uint8Array =>
-    Buffer.from(
-      PAYLOAD_PREFIX + uintHex + "05" + "00" + GRANT_DATA_SUFFIX,
-      "hex",
-    );
+describe.each([
+  [
+    "decodeGrantPayload",
+    (h: string) => decodeGrantPayload(Buffer.from(h, "hex")),
+  ],
+  [
+    "decodeGrantResponse",
+    (h: string) =>
+      decodeGrantResponse(
+        Buffer.from(
+          "a7" + "00" + "48" + "0102030405060708" + h.slice(2),
+          "hex",
+        ),
+      ).grant,
+  ],
+] as const)("%s uint bounds", (_, decode) => {
+  const payload = (uintHex: string): string =>
+    PAYLOAD_PREFIX + uintHex + "05" + "00" + GRANT_DATA_SUFFIX;
 
-  it("decodes maxHeight 2^53-1 exactly", () => {
-    expect(decodeGrantPayload(bytes("1b001fffffffffffff")).maxHeight).toBe(
-      2 ** 53 - 1,
+  it.each([
+    ["1b001fffffffffffff", 2 ** 53 - 1],
+    ["1b1000000000000000", 2 ** 60],
+  ])("decodes maxHeight %s exactly", (uintHex, expected) => {
+    expect(decode(payload(uintHex)).maxHeight).toBe(expected);
+  });
+
+  // Grant.maxHeight is a number: these would round (2^53+1 to 2^53, 2^64-1
+  // to 2^64), so they are rejected. "20" is CBOR -1 (major type 1).
+  it.each(["1b0020000000000001", "1bffffffffffffffff", "20"])(
+    "rejects maxHeight %s rather than rounding or accepting it",
+    (uintHex) => {
+      expect(() => decode(payload(uintHex))).toThrow(/maxHeight/);
+    },
+  );
+});
+
+/** Padding, truncation and length-head cases the representative grant misses. */
+describe("grant wire padding and lengths", () => {
+  const base = grantWith(14, 300);
+  const tail = (gdHead: string, gd: Uint8Array): string =>
+    "0e" + "05" + "19012c" + "06" + gdHead + hex(gd);
+
+  it("pads a 32-byte logId differently in encodeGrantRequest (leftPad) and encodeGrantPayload (toPaddedWire32)", () => {
+    const logId32 = Uint8Array.from([
+      ...new Uint8Array(16).fill(0xaa),
+      ...base.logId,
+    ]);
+    const g = { ...base, logId: logId32 };
+    const req = hex(
+      encodeGrantRequest(g as Parameters<typeof encodeGrantRequest>[0]),
+    );
+    const pay = hex(encodePayload(g));
+    expect(req.slice(0, 2 + 2 + 4 + 64)).toBe(
+      "a6" +
+        "01" +
+        "5820" +
+        "aa".repeat(16) +
+        "101112131415161718191a1b1c1d1e1f",
+    );
+    expect(pay.slice(0, 2 + 2 + 4 + 64)).toBe(
+      "a6" +
+        "01" +
+        "5820" +
+        "00".repeat(16) +
+        "101112131415161718191a1b1c1d1e1f",
     );
   });
 
-  // Grant.maxHeight is a number; 2^53+1 used to decode as 2^53.
-  it.each(["1b0020000000000000", "1b0020000000000001", "1bffffffffffffffff"])(
-    "rejects maxHeight %s rather than rounding it",
-    (uintHex) => {
-      expect(() => decodeGrantPayload(bytes(uintHex))).toThrow(/2\^53-1/);
-    },
-  );
+  it("keeps the low 8 bytes of longer flags and left-pads a short idtimestamp", () => {
+    const g = { ...base, grant: Uint8Array.from([9, 0, 0, 0, 0, 0, 0, 0, 3]) };
+    expect(hex(encodePayload(g))).toBe(
+      PAYLOAD_PREFIX + tail("5840", base.grantData as Uint8Array),
+    );
+    expect(
+      hex(encodeGrantForResponse(base, Uint8Array.from([1, 2, 3, 4, 5, 6, 7]))),
+    ).toBe(
+      "a7" +
+        "00" +
+        "48" +
+        "00010203040506" +
+        "07" +
+        PAYLOAD_PREFIX.slice(2) +
+        tail("5840", base.grantData as Uint8Array),
+    );
+  });
+
+  it.each([
+    [0, "40"],
+    [23, "57"],
+    [24, "5818"],
+    [255, "58ff"],
+    [256, "590100"],
+  ])("emits grantData of length %s with head %s", (n, head) => {
+    const gd = Uint8Array.from({ length: n }, (_, i) => i & 0xff);
+    const g = { ...base, grantData: gd };
+    for (const encode of [encodePayload, encodeGrantPayloadV0Canonical]) {
+      expect(hex(encode(g))).toBe(PAYLOAD_PREFIX + tail(head, gd));
+    }
+  });
+
+  it("encodeGrantRequest normalises a structured grantData to its bytes", () => {
+    const xy = base.grantData as Uint8Array;
+    const g = { ...base, grantData: { kind: "es256-xy", xy } };
+    expect(
+      hex(
+        encodeGrantRequest(
+          g as unknown as Parameters<typeof encodeGrantRequest>[0],
+        ),
+      ),
+    ).toBe(PAYLOAD_PREFIX + tail("5840", xy));
+  });
+
+  it("encodes Buffer subarrays with a nonzero byteOffset as their own bytes", () => {
+    const backing = Buffer.alloc(64, 0xee);
+    Buffer.from(base.logId as Uint8Array).copy(backing, 4);
+    const g = { ...base, logId: backing.subarray(4, 20) };
+    expect(hex(encodePayload(g))).toBe(hex(encodePayload(base)));
+  });
 });

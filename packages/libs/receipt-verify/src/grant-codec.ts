@@ -3,7 +3,11 @@ import {
   encodeCborDeterministic,
 } from "@forestrie/encoding";
 import type { Grant } from "@forestrie/encoding";
-import { grantDataToBytes } from "@forestrie/encoding";
+import {
+  grantDataToBytes,
+  grantUintFromCbor,
+  grantUintToCbor,
+} from "@forestrie/encoding";
 import { fromPaddedWire32, toPaddedWire32 } from "./uuid-bytes.js";
 
 const CBOR_KEY_IDTIMESTAMP = 0;
@@ -28,9 +32,9 @@ function leftPad(b: Uint8Array, length: number): Uint8Array {
 /**
  * Grant wire v0 map keys are 0–6; keys 7 (`signer`) and 8 (`kind`) were
  * retired before this package existed (FOR-580 owner ruling) and must be
- * rejected here the same way the encoding and canopy-api codecs already do
- * on the admission path (`packages/shared/encoding/src/grant-codec.ts`,
- * `packages/apps/canopy-api/src/grant/codec.ts`) — this codec previously
+ * rejected here the same way the encoding codec already does on the
+ * admission path (`packages/shared/encoding/src/grant-codec.ts`) — this
+ * codec previously
  * decoded by key number and silently ignored them.
  */
 function assertNoObsoleteWireKeys(
@@ -61,11 +65,6 @@ function mapToGrant(m: Map<number, unknown> | Record<number, unknown>): Grant {
     if (v.length < minLen) throw new Error("Grant payload: bstr too short");
     return v;
   };
-  const requireUint = (v: unknown): number => {
-    if (typeof v === "number" && Number.isInteger(v)) return v;
-    if (typeof v === "bigint") return Number(v);
-    throw new Error("Grant payload: expected uint");
-  };
 
   return {
     logId: fromPaddedWire32(requireBstr(get(CBOR_KEY_LOG_ID))),
@@ -74,8 +73,9 @@ function mapToGrant(m: Map<number, unknown> | Record<number, unknown>): Grant {
       requireBstr(get(CBOR_KEY_GRANT_FLAGS)),
       WIRE_GRANT_FLAGS_BYTES,
     ),
-    maxHeight: requireUint(get(CBOR_KEY_MAX_HEIGHT)),
-    minGrowth: requireUint(get(CBOR_KEY_MIN_GROWTH)),
+    // Same conversion as canopy admission, so both accept the same grants.
+    maxHeight: grantUintFromCbor(get(CBOR_KEY_MAX_HEIGHT), "maxHeight"),
+    minGrowth: grantUintFromCbor(get(CBOR_KEY_MIN_GROWTH), "minGrowth"),
     grantData:
       get(CBOR_KEY_GRANT_DATA) instanceof Uint8Array
         ? (get(CBOR_KEY_GRANT_DATA) as Uint8Array)
@@ -127,8 +127,8 @@ export function encodeGrantPayload(grant: Grant): Uint8Array {
     [CBOR_KEY_LOG_ID, toPaddedWire32(grant.logId)],
     [CBOR_KEY_OWNER_LOG_ID, toPaddedWire32(grant.ownerLogId)],
     [CBOR_KEY_GRANT_FLAGS, leftPad(grant.grant, WIRE_GRANT_FLAGS_BYTES)],
-    [CBOR_KEY_MAX_HEIGHT, grant.maxHeight ?? 0],
-    [CBOR_KEY_MIN_GROWTH, grant.minGrowth ?? 0],
+    [CBOR_KEY_MAX_HEIGHT, grantUintToCbor(grant.maxHeight ?? 0, "maxHeight")],
+    [CBOR_KEY_MIN_GROWTH, grantUintToCbor(grant.minGrowth ?? 0, "minGrowth")],
     [
       CBOR_KEY_GRANT_DATA,
       grantDataToBytes(grant.grantData ?? new Uint8Array(0)),

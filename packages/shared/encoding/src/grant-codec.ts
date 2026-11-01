@@ -12,7 +12,7 @@ import { encodeCborDeterministic } from "./encode-cbor-deterministic.js";
 import { decodeCborDeterministic } from "./decode-cbor-deterministic.js";
 import { grantDataToBytes } from "./grant-data.js";
 import { fromPaddedWire32, toPaddedWire32 } from "./uuid-bytes.js";
-import { toUint64 } from "./uint64.js";
+import { grantUintFromCbor, grantUintToCbor } from "./grant-uint.js";
 
 const CBOR_KEY_IDTIMESTAMP = 0;
 const CBOR_KEY_LOG_ID = 1;
@@ -127,18 +127,6 @@ function mapToGrant(m: Map<number, unknown> | Record<number, unknown>): Grant {
     if (v.length < minLen) throw new Error("Grant payload: bstr too short");
     return v;
   };
-  // Grant.maxHeight / minGrowth are numbers: a uint past 2^53-1 cannot be
-  // represented exactly, so reject it rather than round it.
-  const requireUint = (v: unknown): number => {
-    if (typeof v === "number" && Number.isSafeInteger(v) && v >= 0) return v;
-    if (
-      typeof v === "bigint" &&
-      v >= 0n &&
-      v <= BigInt(Number.MAX_SAFE_INTEGER)
-    )
-      return Number(v);
-    throw new Error("Grant payload: expected uint no greater than 2^53-1");
-  };
 
   const logId = fromPaddedWire32(requireBstr(get(CBOR_KEY_LOG_ID)));
   const ownerLogId = fromPaddedWire32(requireBstr(get(CBOR_KEY_OWNER_LOG_ID)));
@@ -146,8 +134,8 @@ function mapToGrant(m: Map<number, unknown> | Record<number, unknown>): Grant {
     requireBstr(get(CBOR_KEY_GRANT_FLAGS)),
     WIRE_GRANT_FLAGS_BYTES,
   );
-  const maxHeight = requireUint(get(CBOR_KEY_MAX_HEIGHT));
-  const minGrowth = requireUint(get(CBOR_KEY_MIN_GROWTH));
+  const maxHeight = grantUintFromCbor(get(CBOR_KEY_MAX_HEIGHT), "maxHeight");
+  const minGrowth = grantUintFromCbor(get(CBOR_KEY_MIN_GROWTH), "minGrowth");
   const grantDataRaw = get(CBOR_KEY_GRANT_DATA);
   const grantData =
     grantDataRaw instanceof Uint8Array ? grantDataRaw : new Uint8Array(0);
@@ -177,9 +165,9 @@ function leftPad(b: Uint8Array, length: number): Uint8Array {
  * package applies (canonical-key-order.ts) and RFC 8949 §4.2.1's bytewise
  * order agree.
  *
- * @throws When `maxHeight` or `minGrowth` is not a uint representable
- *   exactly: negative, fractional, NaN, infinite or past 2^53-1. The old
- *   hand-rolled writers emitted wrong bytes for these instead.
+ * @throws When `maxHeight` or `minGrowth` is negative, fractional, NaN,
+ *   infinite or at least 2^64 ({@link grantUintToCbor}). The old hand-rolled
+ *   writers emitted wrong bytes for these instead.
  */
 function grantWireEntries(grant: Grant): [number, unknown][] {
   return [
@@ -189,8 +177,8 @@ function grantWireEntries(grant: Grant): [number, unknown][] {
       CBOR_KEY_GRANT_FLAGS,
       leftPad(grant.grant as Uint8Array, WIRE_GRANT_FLAGS_BYTES),
     ],
-    [CBOR_KEY_MAX_HEIGHT, toUint64(grant.maxHeight ?? 0, "maxHeight")],
-    [CBOR_KEY_MIN_GROWTH, toUint64(grant.minGrowth ?? 0, "minGrowth")],
+    [CBOR_KEY_MAX_HEIGHT, grantUintToCbor(grant.maxHeight ?? 0, "maxHeight")],
+    [CBOR_KEY_MIN_GROWTH, grantUintToCbor(grant.minGrowth ?? 0, "minGrowth")],
     [
       CBOR_KEY_GRANT_DATA,
       grantDataToBytes(grant.grantData ?? new Uint8Array(0)),

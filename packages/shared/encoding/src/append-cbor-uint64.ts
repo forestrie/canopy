@@ -16,18 +16,18 @@ import { UINT64_MAX } from "./uint64.js";
  * encoded per RFC 8949 §4.2.1.
  *
  * @param out - Byte accumulator to append to.
- * @param v - A non-negative integer: a `bigint`, or a `number` that is a
- *   safe integer (a larger `number` has already lost precision).
- * @throws When `v` is negative, not an integer, an unsafe `number`, or
- *   exceeds 2^64-1. Nothing is appended in that case.
+ * @param v - A non-negative integer, as a `bigint` or a `number`. An integer
+ *   `number` denotes one exact value, so one above 2^53 is written exactly.
+ * @throws When `v` is negative, not an integer, or exceeds 2^64-1. Nothing
+ *   is appended in that case.
  */
 export function appendCborUint64(out: number[], v: bigint | number): void {
   let n: bigint;
   if (typeof v === "bigint") {
     n = v;
   } else {
-    if (!Number.isSafeInteger(v)) {
-      throw new Error(`CBOR uint must be a safe integer, got ${v}`);
+    if (!Number.isInteger(v)) {
+      throw new Error(`CBOR uint must be an integer, got ${v}`);
     }
     n = BigInt(v);
   }

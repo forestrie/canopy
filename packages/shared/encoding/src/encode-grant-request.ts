@@ -6,7 +6,8 @@
  */
 
 import { encodeCborDeterministic } from "./encode-cbor-deterministic.js";
-import { toUint64 } from "./uint64.js";
+import { grantDataToBytes } from "./grant-data.js";
+import { grantUintToCbor } from "./grant-uint.js";
 
 const WIRE_LOG_ID_OWNER_LOG_ID_BYTES = 32;
 const WIRE_GRANT_FLAGS_BYTES = 8;
@@ -60,7 +61,7 @@ export interface GrantRequestInput {
  * @param input - Grant content fields (idtimestamp is not included)
  * @returns CBOR map bytes suitable for register-grant request bodies
  * @throws When `maxHeight` or `minGrowth` is negative, fractional, NaN,
- *   infinite or past 2^53-1.
+ *   infinite or at least 2^64, or `grantData` is not bytes.
  */
 export function encodeGrantRequest(input: GrantRequestInput): Uint8Array {
   const k = GRANT_REQUEST_KEYS;
@@ -69,9 +70,11 @@ export function encodeGrantRequest(input: GrantRequestInput): Uint8Array {
       [k.logId, leftPad(input.logId, WIRE_LOG_ID_OWNER_LOG_ID_BYTES)],
       [k.ownerLogId, leftPad(input.ownerLogId, WIRE_LOG_ID_OWNER_LOG_ID_BYTES)],
       [k.grant, leftPad(input.grant, WIRE_GRANT_FLAGS_BYTES)],
-      [k.maxHeight, toUint64(input.maxHeight ?? 0, "maxHeight")],
-      [k.minGrowth, toUint64(input.minGrowth ?? 0, "minGrowth")],
-      [k.grantData, input.grantData ?? new Uint8Array(0)],
+      [k.maxHeight, grantUintToCbor(input.maxHeight ?? 0, "maxHeight")],
+      [k.minGrowth, grantUintToCbor(input.minGrowth ?? 0, "minGrowth")],
+      // Normalised like the other grant encoders: a structured GrantData
+      // that slipped past the type must not encode as a CBOR map.
+      [k.grantData, grantDataToBytes(input.grantData ?? new Uint8Array(0))],
     ]),
   );
 }
