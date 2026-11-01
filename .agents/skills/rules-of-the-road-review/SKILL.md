@@ -60,13 +60,7 @@ A rule tagged `⤷ specialises P#` is the concrete check for that platform rule
 in this component — a violation there is also a platform violation; cite both
 (e.g. `canopy/C1` + `P2`).
 
-## 3. Guard against the not-yet-live section
-
-Rules in `platform.md` under **"Not-yet-live"** are design direction, not
-shipped behaviour. Do **not** raise a finding that a diff fails to implement
-them; do flag a diff that makes them *harder* to reach later.
-
-## 4. Report
+## 3. Report
 
 - Findings first, most severe first, each: `rule-id — file:line — what breaks`.
 - Then a one-line **verdict**: any VIOLATES → request changes; only AT RISK →
