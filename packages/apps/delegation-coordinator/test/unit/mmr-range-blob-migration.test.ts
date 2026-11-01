@@ -18,7 +18,11 @@ import {
 } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { sha256Hex } from "../../src/certificate-key.js";
-import type { DelegationStoreDO } from "../../src/durableobjects/delegation-store.js";
+import {
+  RANGE_ROUTES,
+  type DelegationStoreDO,
+} from "../../src/durableobjects/delegation-store.js";
+import delegationStoreSource from "../../src/durableobjects/delegation-store.ts?raw";
 import {
   MmrRangeMigration,
   type MmrRangeMigrationBudget,
@@ -857,6 +861,69 @@ describe("MMR range INTEGER → be8 BLOB in-place migration", () => {
     expect((await getDelegation(stub, mismatchLog)).status).toBe(404);
   });
 
+  it("touches nothing beyond the current window", async () => {
+    const stub = newStub("range-migration-window-bounds");
+    const key = testDelegatedCoseKey(70);
+    const pubkey = { hash: await sha256Hex(key), key };
+    const log = normalizeLogIdToHex32(randomUUID());
+    await seedLegacy(
+      stub,
+      (sql) => {
+        insertCert(sql, log, "c1", 1n, 2n, pubkey);
+        insertCert(sql, log, "c2", 3n, 4n, pubkey);
+        insertCert(sql, log, "bad", 1.5, 4, pubkey); // rowid 3: window 2
+        insertCert(
+          sql,
+          log,
+          "bad-payload",
+          0n,
+          11n,
+          pubkey,
+          certificateFor(log, 0n, 10n),
+        );
+        for (let i = 0; i < 4; i++) {
+          insertWebhook(sql, `rk${i}`, log, { mmrStart: i, mmrEnd: i + 1 });
+        }
+      },
+      { chunkRows: 2, eventRows: 2, eventMs: 60_000 },
+    );
+    // Allow exactly one certificate window and one webhook window.
+    const allowed = new Set<string>();
+    await setChunkHook(stub, () => ({ phase, examined }) => {
+      if (examined === 0) return;
+      if (allowed.has(phase)) throw new Error("paused for the test");
+      allowed.add(phase);
+    });
+    expect((await getDelegation(stub, log)).status).toBe(503);
+
+    let after = await inspect(stub);
+    expect(after.quarantine).toEqual({});
+    expect(Object.keys(after.certHex).sort()).toEqual([
+      "bad",
+      "bad-payload",
+      "c1",
+      "c2",
+    ]);
+
+    // Skip the certificate phase so the next event opens one webhook window.
+    await runInDurableObject(stub, async (_instance, state) => {
+      state.storage.sql.exec(
+        `UPDATE schema_meta SET value = ? WHERE key = 'mmr_range_be8_progress'`,
+        JSON.stringify({
+          phase: "webhook_deliveries",
+          cursor: 0,
+          maxRowid: null,
+        }),
+      );
+    });
+    expect((await getDelegation(stub, log)).status).toBe(503);
+    after = await inspect(stub);
+    expect(after.payloads.rk0!.mmrStart).toBe("0");
+    expect(after.payloads.rk1!.mmrStart).toBe("1");
+    expect(after.payloads.rk2!.mmrStart).toBe(2);
+    expect(after.payloads.rk3!.mmrStart).toBe(3);
+  });
+
   it("re-arms the alarm with backoff when a chunk fails in alarm()", async () => {
     const stub = newStub("range-migration-alarm-backoff");
     const log = normalizeLogIdToHex32(randomUUID());
@@ -903,4 +970,94 @@ describe("MMR range INTEGER → be8 BLOB in-place migration", () => {
     expect((await getDelegation(stub, log)).status).toBe(200);
     expect(await inspect(stub)).toEqual(first);
   });
+});
+
+/** Each range route, the handler fetch dispatches it to. */
+const RANGE_ROUTE_HANDLERS: Record<string, string> = {
+  "PUT /certificate": "handlePutCertificate",
+  "POST /issue": "handleIssue",
+  "GET /pending": "handleGetPending",
+  "GET /active": "handleGetActive",
+  "GET /pending-delegation": "handleGetPendingDelegation",
+  "GET /delegation": "handleGetDelegation",
+  "POST /pending-hint": "handlePendingHint",
+};
+
+/** Method name → body text, split at each class-member signature. */
+function methodBodies(source: string): Map<string, string> {
+  const re =
+    /^ {2}(?:private |public |protected )?(?:async )?([A-Za-z_]\w*)\s*\(/gm;
+  const marks = [...source.matchAll(re)].map((m) => ({
+    name: m[1]!,
+    at: m.index!,
+  }));
+  const out = new Map<string, string>();
+  marks.forEach((m, i) => {
+    out.set(m.name, source.slice(m.at, marks[i + 1]?.at ?? source.length));
+  });
+  return out;
+}
+
+/** Handlers whose body, or any method it calls, reads or writes `mmr_*`. */
+function handlersTouchingRangeColumns(source: string): Set<string> {
+  const bodies = methodBodies(source);
+  const memo = new Map<string, boolean>();
+  const touches = (name: string, seen: Set<string>): boolean => {
+    if (memo.has(name)) return memo.get(name)!;
+    const body = bodies.get(name);
+    if (body === undefined || seen.has(name)) return false;
+    seen.add(name);
+    const callees = [...body.matchAll(/this\.(\w+)\(/g)].map((m) => m[1]!);
+    const result =
+      /\bmmr_(start|end)\b/.test(body) || callees.some((c) => touches(c, seen));
+    memo.set(name, result);
+    return result;
+  };
+  return new Set(
+    [...bodies.keys()].filter(
+      (n) => n.startsWith("handle") && touches(n, new Set()),
+    ),
+  );
+}
+
+describe("range routes are gated while the migration runs", () => {
+  it("RANGE_ROUTES is exactly the routes whose handlers touch mmr_* columns", () => {
+    expect([...RANGE_ROUTES].sort()).toEqual(
+      Object.keys(RANGE_ROUTE_HANDLERS).sort(),
+    );
+    expect(
+      [...handlersTouchingRangeColumns(delegationStoreSource)].sort(),
+    ).toEqual(Object.values(RANGE_ROUTE_HANDLERS).sort());
+    for (const [route, handler] of Object.entries(RANGE_ROUTE_HANDLERS)) {
+      const [method, path] = route.split(" ");
+      const dispatch = new RegExp(
+        `pathname === "${path}" && method === "${method}"\\)\\s*\\{\\s*return this\\.${handler}\\(`,
+      );
+      expect(delegationStoreSource, route).toMatch(dispatch);
+    }
+  });
+
+  it.each(Object.keys(RANGE_ROUTE_HANDLERS))(
+    "%s answers 503 with Retry-After in mixed state",
+    async (route) => {
+      const stub = newStub("range-migration-gate");
+      const log = normalizeLogIdToHex32(randomUUID());
+      const key = testDelegatedCoseKey(72);
+      const pubkey = { hash: await sha256Hex(key), key };
+      await seedLegacy(stub, (sql) => {
+        insertCert(sql, log, "c0", 1n, 2n, pubkey);
+      });
+      // Every chunk fails: the migration can never finish during the test.
+      await setChunkHook(stub, () => () => {
+        throw new Error("paused for the test");
+      });
+      const [method, path] = route.split(" ");
+      const res = await stub.fetch(`https://do.internal${path}?logId=${log}`, {
+        method,
+        ...(method === "GET" ? {} : { body: new Uint8Array([0xa0]) }),
+      });
+      expect(res.status).toBe(503);
+      expect(res.headers.get("Retry-After")).toBe("1");
+    },
+  );
 });

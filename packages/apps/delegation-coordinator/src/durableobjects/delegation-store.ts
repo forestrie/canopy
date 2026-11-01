@@ -161,7 +161,7 @@ const PENDING_COLUMNS = `
  * no range query sees INTEGER and BLOB bounds side by side; every other
  * route proceeds during the migration.
  */
-const RANGE_ROUTES = new Set([
+export const RANGE_ROUTES: ReadonlySet<string> = new Set([
   "PUT /certificate",
   "POST /issue",
   "GET /pending",
