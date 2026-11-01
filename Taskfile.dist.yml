@@ -38,6 +38,13 @@ includes:
   univocity-tools: ./taskfiles/univocity-tools.yml
 
 tasks:
+  docs:lint:
+    desc: Check docs with dox against forestrie/dox (see .dox.toml)
+    env:
+      DOX_SCHEMA_REPO: forestrie/dox
+    cmds:
+      - dox lint
+
   default:
     desc: Show available tasks
     cmds:

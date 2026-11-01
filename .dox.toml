@@ -1,0 +1,5 @@
+schema_ref = "v1.0.0"
+namespace = "canopy"
+root = "docs"
+types = ["adr", "arc", "named-doc", "rules"]
+baseline = ".dox-baseline.json"

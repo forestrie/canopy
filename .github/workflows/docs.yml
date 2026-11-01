@@ -1,0 +1,17 @@
+# Docs gate: dox checks every document against forestrie/dox at the
+# version .dox.toml pins (devdocs ADR-0071 section 10).
+name: docs
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  dox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: robinbryce/dox@v0.1.0
+        with:
+          schema-repo: forestrie/dox
