@@ -26,8 +26,20 @@ export const MASSIF_OBJECT_INDEX_DIGITS = 16;
  */
 export const MAX_MASSIF_INDEX = 0xffffffffn;
 
+/**
+ * Massif height bounds. Go writes height as `%d` of a `uint8` and arbor's
+ * publisher `ParseCheckpointKey` rejects 0, so valid heights are 1..255 with
+ * no leading zeros.
+ */
+const MIN_MASSIF_HEIGHT = 1;
+const MAX_MASSIF_HEIGHT = 255;
+
 const MASSIF_OBJECT_INDEX_RE = /^[0-9]{16}$/;
-const MASSIF_HEIGHT_RE = /^[0-9]+$/;
+const MASSIF_HEIGHT_RE = /^[1-9][0-9]{0,2}$/;
+const OBJECT_EXTENSIONS: Readonly<Record<string, string>> = {
+  massifs: ".log",
+  checkpoints: ".sth",
+};
 
 /**
  * Build the massif `.log` object key for a log.
@@ -37,6 +49,7 @@ export function v2MassifObjectKey(
   logId: string,
   massifIndex: bigint | number,
 ): string {
+  assertKeyHeightAndLogId(massifHeight, logId);
   return `v2/merklelog/massifs/${massifHeight}/${logId}/${formatMassifObjectIndex(massifIndex)}.log`;
 }
 
@@ -48,7 +61,30 @@ export function v2CheckpointObjectKey(
   logId: string,
   massifIndex: bigint | number,
 ): string {
+  assertKeyHeightAndLogId(massifHeight, logId);
   return `v2/merklelog/checkpoints/${massifHeight}/${logId}/${formatMassifObjectIndex(massifIndex)}.sth`;
+}
+
+/**
+ * Reject a massif height or log id that would build a key Go cannot read:
+ * height outside 1..255 or non-integer, or a log id that is empty or would
+ * add path segments.
+ */
+function assertKeyHeightAndLogId(massifHeight: number, logId: string): void {
+  if (
+    !Number.isInteger(massifHeight) ||
+    massifHeight < MIN_MASSIF_HEIGHT ||
+    massifHeight > MAX_MASSIF_HEIGHT
+  ) {
+    throw new Error(
+      `Massif height must be an integer ${MIN_MASSIF_HEIGHT}..${MAX_MASSIF_HEIGHT}, got ${massifHeight}`,
+    );
+  }
+  if (logId.length === 0 || logId.includes("/")) {
+    throw new Error(
+      `Log id must be a non-empty path segment, got: ${JSON.stringify(logId)}`,
+    );
+  }
 }
 
 /**
@@ -80,15 +116,25 @@ export function formatMassifObjectIndex(massifIndex: bigint | number): string {
 export function parseV2StorageObjectPath(path: string) {
   const parts = path.split("/");
 
-  if (parts.length < 6 || parts[0] !== "v2" || parts[1] !== "merklelog")
+  if (parts.length !== 6 || parts[0] !== "v2" || parts[1] !== "merklelog")
     throw new Error(`Unrecognized path format: ${path}`);
 
-  const typePart = parts[2]; // "massifs" or "checkpoints"
+  const typePart = parts[2];
   const massifHeightStr = parts[3];
   const logId = parts[4];
   const filename = parts[5];
 
-  const expectedExt = typePart === "massifs" ? ".log" : ".sth";
+  const expectedExt = Object.hasOwn(OBJECT_EXTENSIONS, typePart)
+    ? OBJECT_EXTENSIONS[typePart]
+    : undefined;
+  if (expectedExt === undefined) {
+    throw new Error(
+      `Object type must be massifs or checkpoints, got: ${typePart}`,
+    );
+  }
+  if (logId.length === 0) {
+    throw new Error(`Log id segment is empty: ${path}`);
+  }
   if (!filename.endsWith(expectedExt)) {
     throw new Error(
       `Expected ${expectedExt} extension for ${typePart}, got: ${filename}`,
@@ -108,7 +154,10 @@ export function parseV2StorageObjectPath(path: string) {
     );
   }
 
-  if (!MASSIF_HEIGHT_RE.test(massifHeightStr)) {
+  if (
+    !MASSIF_HEIGHT_RE.test(massifHeightStr) ||
+    Number(massifHeightStr) > MAX_MASSIF_HEIGHT
+  ) {
     throw new Error(
       `Failed to parse massif height as number: ${massifHeightStr}`,
     );

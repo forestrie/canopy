@@ -54,6 +54,18 @@ describe("v2storagepaths", () => {
       );
     });
 
+    it.each([
+      ["height 0", 0, "log"],
+      ["height 256", 256, "log"],
+      ["fractional height", 1.5, "log"],
+      ["NaN height", Number.NaN, "log"],
+      ["empty log id", 14, ""],
+      ["log id with slash", 14, "a/b"],
+    ])("rejects %s", (_label, height, logId) => {
+      expect(() => v2MassifObjectKey(height, logId, 0n)).toThrow();
+      expect(() => v2CheckpointObjectKey(height, logId, 0n)).toThrow();
+    });
+
     it.each(RADIX_VECTORS)("round-trips index %s", (index) => {
       expect(
         parseV2StorageObjectPath(v2MassifObjectKey(14, "l", index)).massifIndex,
@@ -206,6 +218,44 @@ describe("v2storagepaths", () => {
         const path = "v2/merklelog/massifs/14x/log/0000000000000000.log";
         expect(() => parseV2StorageObjectPath(path)).toThrow(
           "Failed to parse massif height",
+        );
+      });
+
+      it.each([
+        ["zero", "0"],
+        ["leading zero", "014"],
+        ["above uint8", "256"],
+        ["huge", "99999999999999999999"],
+      ])("should throw on massif height %s", (_label, height) => {
+        const path = `v2/merklelog/massifs/${height}/log/0000000000000000.log`;
+        expect(() => parseV2StorageObjectPath(path)).toThrow(
+          "Failed to parse massif height",
+        );
+      });
+
+      it("should accept massif height 255", () => {
+        const path = "v2/merklelog/massifs/255/log/0000000000000000.log";
+        expect(parseV2StorageObjectPath(path).massifHeight).toBe(255);
+      });
+
+      it("should throw on unknown object type", () => {
+        const path = "v2/merklelog/foo/14/log/0000000000000000.sth";
+        expect(() => parseV2StorageObjectPath(path)).toThrow(
+          "Object type must be massifs or checkpoints",
+        );
+      });
+
+      it("should throw on trailing path segments", () => {
+        const path = "v2/merklelog/massifs/14/log/0000000000000010.log/extra";
+        expect(() => parseV2StorageObjectPath(path)).toThrow(
+          "Unrecognized path format",
+        );
+      });
+
+      it("should throw on empty log id segment", () => {
+        const path = "v2/merklelog/massifs/14//0000000000000000.log";
+        expect(() => parseV2StorageObjectPath(path)).toThrow(
+          "Log id segment is empty",
         );
       });
 
