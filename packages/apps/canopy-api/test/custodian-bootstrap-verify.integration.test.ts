@@ -9,7 +9,7 @@ import {
 } from "@forestrie/encoding";
 import { env as cloudflareTestEnv } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { encodeGrantPayload } from "../src/grant/codec.js";
+import { encodeGrantPayload } from "@forestrie/encoding";
 import type { Grant } from "../src/grant/grant.js";
 import { uuidToBytes } from "../src/grant/uuid-bytes.js";
 import {

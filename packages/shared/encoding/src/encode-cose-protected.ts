@@ -14,11 +14,8 @@
 import { compareCanonicalKeys } from "./canonical-key-order.js";
 import { encodeCborBstr } from "./encode-cbor-bstr.js";
 import { COSE_LABEL_ALG, COSE_LABEL_TREE_SIZE_2 } from "./cose-labels.js";
-import {
-  appendCborBstr,
-  appendCborText,
-  appendCborUint,
-} from "./grant-payload-canonical.js";
+import { appendCborUint64 } from "./append-cbor-uint64.js";
+import { appendCborBstr, appendCborText } from "./grant-payload-canonical.js";
 
 /**
  * COSE header label for algorithm (alg). RFC 9052 §3.1. Alias of
@@ -94,16 +91,18 @@ function appendCborInt(out: number[], v: number): void {
   if (!Number.isSafeInteger(v)) {
     throw new Error(`COSE header value must be an integer, got ${v}`);
   }
-  // The emitters below have no 8-byte branch; values past the 4-byte range
-  // would silently truncate mod 2^32 (e.g. a milliseconds iat signing as a
-  // 1986 date, or an oversized claim key aliasing an existing one). Reject.
+  // Keep header integers in the 4-byte range. The negative emitter below has
+  // no 8-byte branch and would truncate mod 2^32; the uint path
+  // (appendCborUint64) would not, but a value that large is a bug here (e.g.
+  // a milliseconds iat signing as a 1986 date, or an oversized claim key
+  // aliasing an existing one), so both signs share one bound. Reject.
   if (v > 0xffffffff || v < -0x100000000) {
     throw new Error(
       `COSE header integer out of 4-byte CBOR range [-2^32, 2^32-1]: ${v}`,
     );
   }
   if (v >= 0) {
-    appendCborUint(out, v);
+    appendCborUint64(out, v);
     return;
   }
   const n = -1 - v;
@@ -118,55 +117,6 @@ function appendCborInt(out: number[], v: number): void {
       (n >> 8) & 0xff,
       n & 0xff,
     );
-}
-
-/** Largest value representable as a CBOR uint64 (major type 0, ai=27). */
-const MAX_UINT64 = (1n << 64n) - 1n;
-
-/**
- * Append a CBOR unsigned integer (major type 0) in the full uint64 range,
- * shortest-form encoded per RFC 8949 §4.2.1. Unlike {@link appendCborUint}
- * (4-byte max) this has an 8-byte branch, for `tree-size-1` / `tree-size-2`
- * (ADR-0066 D3), which are MMR leaf counts that can exceed 2^32.
- *
- * @throws When `v` is negative, not an integer, or exceeds 2^64-1
- */
-function appendCborUint64(out: number[], v: bigint | number): void {
-  let n: bigint;
-  if (typeof v === "bigint") {
-    n = v;
-  } else {
-    if (!Number.isInteger(v)) {
-      throw new Error(`COSE header uint value must be an integer, got ${v}`);
-    }
-    n = BigInt(v);
-  }
-  if (n < 0n) {
-    throw new Error(`COSE header uint value must not be negative: ${n}`);
-  }
-  if (n > MAX_UINT64) {
-    throw new Error(`COSE header uint value exceeds uint64 range: ${n}`);
-  }
-  if (n < 24n) {
-    out.push(Number(n));
-  } else if (n <= 0xffn) {
-    out.push(0x18, Number(n));
-  } else if (n <= 0xffffn) {
-    out.push(0x19, Number((n >> 8n) & 0xffn), Number(n & 0xffn));
-  } else if (n <= 0xffffffffn) {
-    out.push(
-      0x1a,
-      Number((n >> 24n) & 0xffn),
-      Number((n >> 16n) & 0xffn),
-      Number((n >> 8n) & 0xffn),
-      Number(n & 0xffn),
-    );
-  } else {
-    out.push(0x1b);
-    for (let shift = 56n; shift >= 0n; shift -= 8n) {
-      out.push(Number((n >> shift) & 0xffn));
-    }
-  }
 }
 
 /**
@@ -274,19 +224,19 @@ export function encodeCoseProtectedMapBytes(
   // Canonical map: integer keys ascending (1 < 3 < 4 < 15), size < 24 so 0xa0|size.
   const out: number[] = [0xa0 | size];
   if (hasAlg) {
-    appendCborUint(out, COSE_ALG);
+    appendCborUint64(out, COSE_ALG);
     appendCborInt(out, options.alg as number);
   }
   if (hasCty) {
-    appendCborUint(out, COSE_CTY);
+    appendCborUint64(out, COSE_CTY);
     const cty = options.cty as string | number;
     if (typeof cty === "string") appendBoundedCborText(out, cty);
-    else appendCborUint(out, cty);
+    else appendCborUint64(out, cty);
   }
-  appendCborUint(out, COSE_KID);
+  appendCborUint64(out, COSE_KID);
   appendCborBstr(out, kid);
   if (hasClaims) {
-    appendCborUint(out, COSE_CWT_CLAIMS);
+    appendCborUint64(out, COSE_CWT_CLAIMS);
     appendCwtClaimsMap(out, options.cwtClaims as CwtClaims);
   }
   if (hasTreeSize2) {

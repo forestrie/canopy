@@ -7,7 +7,7 @@ export {
   decodeGrantResponse,
   encodeGrantForResponse,
   encodeGrantPayload,
-} from "./codec.js";
+} from "@forestrie/encoding";
 export {
   grantCommitmentHashFromGrant,
   grantCommitmentHashToHex,

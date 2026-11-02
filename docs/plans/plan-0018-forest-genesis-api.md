@@ -4,7 +4,7 @@ Date: 2026-04-04
 Related:
   - [plan-0014](plan-0014-register-grant-custodian-signing.md)
   - [plan-0028](plan-0028-forest-genesis-chain-binding.md) — v1 chain binding on POST
-  - Grant `logId` wire format: [`codec.ts`](../../packages/apps/canopy-api/src/grant/codec.ts) (CBOR key 1)
+  - Grant `logId` wire format: [`grant-codec.ts`](../../packages/shared/encoding/src/grant-codec.ts) (CBOR key 1)
 ---
 
 # Plan 0018 — `/api/forest` genesis API (step 1)

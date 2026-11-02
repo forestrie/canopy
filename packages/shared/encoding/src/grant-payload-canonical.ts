@@ -1,41 +1,19 @@
 /**
- * Canonical (tag-free) CBOR emission for grant v0 payloads and COSE assembly.
+ * Canonical (tag-free) CBOR emission helpers for COSE assembly, and the grant
+ * v0 payload under its canonical name.
  *
  * arbor (fxamacker) rebuilds the `Sig_structure` from the bare protected/payload
  * byte strings, so the signed bytes must be canonical. `cbor-x` would tag `Map`
  * (tag 259) and `Uint8Array` (tag 64), which diverges from arbor's canonical
- * encoding and breaks verification — so the grant payload, `Sig_structure`, and
- * Sign1 are emitted byte-by-byte here.
- *
- * Key order: the grant v0 payload carries only the labels 1–6, every one a
- * single-byte key, so the fixed emission sequence below is ascending under
- * both canonical orders — length-first-then-bytewise ({@link
- * ./canonical-key-order.ts}, what this package's encoder and decoder apply)
- * and RFC 8949 §4.2.1's pure bytewise one, which differ only when a map mixes
- * keys of unequal encoded length. Adding a multi-byte label here would need
- * the general {@link ./encode-cbor-deterministic.ts} writer or an explicit
- * {@link compareCanonicalKeys} sort.
+ * encoding and breaks verification. The grant payload goes through this
+ * package's tag-free {@link ./encode-cbor-deterministic.ts}; `Sig_structure`
+ * and Sign1 assembly (grant-builder) stream byte strings and text through the
+ * helpers below. Unsigned integers stream through
+ * {@link ./append-cbor-uint64.ts}.
  */
 
 import type { Grant } from "./grant.js";
-import { toPaddedWire32 } from "./uuid-bytes.js";
-import { grantDataToBytes } from "./grant-data.js";
-
-const WIRE_GRANT_FLAGS_BYTES = 8;
-
-export function appendCborUint(out: number[], v: number): void {
-  if (v < 24) out.push(v);
-  else if (v <= 0xff) out.push(0x18, v);
-  else if (v <= 0xffff) out.push(0x19, (v >> 8) & 0xff, v & 0xff);
-  else
-    out.push(
-      0x1a,
-      (v >>> 24) & 0xff,
-      (v >> 16) & 0xff,
-      (v >> 8) & 0xff,
-      v & 0xff,
-    );
-}
+import { encodeGrantPayload } from "./grant-codec.js";
 
 /** Append a CBOR byte string (major type 2) with canonical length prefix. */
 export function appendCborBstr(out: number[], bytes: Uint8Array): void {
@@ -73,31 +51,14 @@ export function leftPadBytes(b: Uint8Array, length: number): Uint8Array {
 }
 
 /**
- * Canonical grant v0 payload CBOR (map keys 1-6, no idtimestamp), matching
- * `encodeGrantForResponse` minus key 0. Tag-free so arbor decodes `grantData`
- * as a bare 64-byte byte string.
+ * Canonical grant v0 payload CBOR (map keys 1-6, no idtimestamp), the bytes
+ * arbor rebuilds the `Sig_structure` from. The same encoding as
+ * {@link encodeGrantPayload}, kept under this name for grant-builder,
+ * e2e-kit and forestrie-cli; `encodeCborDeterministic` is tag-free, so arbor
+ * decodes `grantData` as a bare byte string.
+ *
+ * @throws When `maxHeight` or `minGrowth` is not a uint (see grant-codec.ts).
  */
 export function encodeGrantPayloadV0Canonical(grant: Grant): Uint8Array {
-  const logId32 = toPaddedWire32(grant.logId as Uint8Array);
-  const ownerLogId32 = toPaddedWire32(grant.ownerLogId as Uint8Array);
-  const flags8 = leftPadBytes(
-    grant.grant as Uint8Array,
-    WIRE_GRANT_FLAGS_BYTES,
-  );
-  const grantData = grantDataToBytes(grant.grantData ?? new Uint8Array(0));
-
-  const out: number[] = [0xa6]; // map(6) — keys 1-6
-  out.push(0x01);
-  appendCborBstr(out, logId32);
-  out.push(0x02);
-  appendCborBstr(out, ownerLogId32);
-  out.push(0x03);
-  appendCborBstr(out, flags8);
-  out.push(0x04);
-  appendCborUint(out, grant.maxHeight ?? 0);
-  out.push(0x05);
-  appendCborUint(out, grant.minGrowth ?? 0);
-  out.push(0x06);
-  appendCborBstr(out, grantData);
-  return new Uint8Array(out);
+  return encodeGrantPayload(grant);
 }
