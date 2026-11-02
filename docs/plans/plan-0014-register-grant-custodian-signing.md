@@ -5,7 +5,7 @@ Related:
   - [plan-0011-custodian-integration-and-current-state.md](plan-0011-custodian-integration-and-current-state.md)
   - [plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md](plan-0004-log-bootstraping/subplan-08-grant-first-bootstrap.md)
   - arbor `services/custodian/README.md` (Custodian wire format and tokens)
-  - devdocs [Plan 0013 Custodian](https://github.com/forestrie/devdocs/blob/main/plans/plan-0013-custodian-implementation.md)
+  - devdocs [Plan 0013 Custodian](https://github.com/forestrie/work/blob/main/plans/plan-0013-custodian-implementation.md)
 ---
 
 > **Note (2026-06):** `:bootstrap` KMS sign/public routes and

@@ -9,7 +9,7 @@ Related:
   - [archived plan-0001](archived/plan-0001/plan-0001-register-grant-and-grant-auth-phase.md)
   - [archived plan-0010-bootstrap-env](archived/plan-0010-bootstrap-env/plan-0010-bootstrap-env.md)
   - arbor [plan-0001-custodian-cbor-api.md](../../../arbor/docs/plan-0001-custodian-cbor-api.md) (Custodian HTTP surface)
-  - devdocs [Plan 0013 Custodian](https://github.com/forestrie/devdocs/blob/main/plans/plan-0013-custodian-implementation.md)
+  - devdocs [Plan 0013 Custodian](https://github.com/forestrie/work/blob/main/plans/plan-0013-custodian-implementation.md)
 ---
 
 > **Note (2026-06):** Custodian `:bootstrap` KMS alias, `BOOTSTRAP_KMS_CRYPTO_KEY_ID`,

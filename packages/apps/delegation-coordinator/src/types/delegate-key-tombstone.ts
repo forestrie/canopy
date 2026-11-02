@@ -1,6 +1,6 @@
 /**
  * A delegate-key tombstone as the coordinator stores and reports it
- * ([devdocs plan-2609-12 slice 08](https://github.com/forestrie/devdocs/blob/main/plans/plan-2609-12-delegate-key-registration-hardening/08-coordinator-voucher-enforcement.md),
+ * ([devdocs plan-2609-12 slice 08](https://github.com/forestrie/work/blob/main/plans/plan-2609-12-delegate-key-registration-hardening/08-coordinator-voucher-enforcement.md),
  * ruling 8). Replicated to every shard, like `delegate_keys`, so each shard
  * refuses a retired key's registration on its own. Tombstones never expire;
  * an operator lifts one only to undo a mistake.

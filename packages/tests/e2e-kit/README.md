@@ -52,7 +52,7 @@ Cross-repo lane specs (forest genesis, Mode B/C registration, BYOK) run in
 ### 0.4.0 — Offline receipt verify slice (includes 0.3.0)
 
 - Offline grant receipt verification re-exported from `@forestrie/receipt-verify`
-  ([plan-0030](https://github.com/forestrie/devdocs/blob/main/plans/plan-0030-offline-receipt-verification-gates.md), FOR-286):
+  ([plan-0030](https://github.com/forestrie/work/blob/main/plans/plan-0030-offline-receipt-verification-gates.md), FOR-286):
   `verifyGrantReceiptOffline`, `parseReceipt`, `decodeTrustRootFromGenesis`,
   plus types `VerifyGrantReceiptOfflineInput`, `ReceiptVerifyResult`, `ReceiptVerifyStage`
 - Lets the lane suite's specs verify receipts in-process instead of shelling

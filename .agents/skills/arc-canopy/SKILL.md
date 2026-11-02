@@ -37,9 +37,9 @@ delegation APIs, Playwright e2e.
 | Agent router | [AGENTS.md](https://github.com/forestrie/canopy/blob/main/AGENTS.md) |
 | E2E / Doppler | [docs/agents/e2e.md](https://github.com/forestrie/canopy/blob/main/docs/agents/e2e.md) |
 | Grant verification map | [docs/arc/canopy-grant-verification-implementation.md](https://github.com/forestrie/canopy/blob/main/docs/arc/canopy-grant-verification-implementation.md) |
-| Fee accounts / metering | [devdocs ADR-0059](https://github.com/forestrie/devdocs/blob/main/archive/2607/adr/adr-0059-instance-root-fee-accounts.md) — every univocity instance root is its own fee account; supersedes the ancestry-walk model |
-| Onboard grant APIs & fee tracing | [devdocs ARC-0026](https://github.com/forestrie/devdocs/blob/main/archive/2607/arc/arc-0026-onboard-grant-apis-and-fee-tracing.md) |
-| x402 architecture (historical) | [devdocs ARC-0015](https://github.com/forestrie/devdocs/blob/main/archive/2601/arc/arc-0015-x402-settlement-architecture.md) — SUPERSEDED; progression in the [payments theme index](https://github.com/forestrie/devdocs/blob/main/archive/INDEX-payments-fees.md) |
+| Fee accounts / metering | [devdocs ADR-0059](https://github.com/forestrie/devdocs/blob/main/adr/adr-0059-instance-root-fee-accounts.md) — every univocity instance root is its own fee account; supersedes the ancestry-walk model |
+| Onboard grant APIs & fee tracing | [devdocs ARC-0026](https://github.com/forestrie/devdocs/blob/main/arc/arc-0026-onboard-grant-apis-and-fee-tracing.md) |
+| x402 architecture (historical) | [devdocs ARC-0015](https://github.com/forestrie/devdocs/blob/main/arc/retired/arc-0015-x402-settlement-architecture.md) — SUPERSEDED; progression in the [payments theme index](https://github.com/forestrie/devdocs/blob/main/themes/payments-fees.md) |
 | System testing | [devdocs ARC-0024](https://github.com/forestrie/devdocs/blob/main/arc/arc-0024-system-testing-architecture.md) |
 
 ## Platform cross-links
@@ -48,7 +48,7 @@ delegation APIs, Playwright e2e.
 |--------|-------|
 | Sequencing / signing (GKE) | [arc-arbor](../arc-arbor/SKILL.md) |
 | On-chain checkpoints | [arc-univocity](../arc-univocity/SKILL.md) |
-| Grant verification model | [devdocs ARC-0019](https://github.com/forestrie/devdocs/blob/main/archive/2603/arc/arc-0019-grant-verification-model.md) |
+| Grant verification model | [devdocs ARC-0019](https://github.com/forestrie/protocol/blob/main/decisions/arc-0019-grant-verification-model.md) |
 | MMR / COSE receipts | [draft-bryce-cose-receipts-mmr-profile](https://github.com/robinbryce/draft-bryce-cose-receipts-mmr-profile) |
 
 ## Gotchas
