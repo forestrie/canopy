@@ -37,7 +37,7 @@ devdocs numbers plans by **date cohort** and archives by month — see
 [Numbering](#numbering) and [Archival](#archival). Its series directories hold
 currently active work only; everything else lives under `devdocs/archive/`,
 reached through
-[archive/INDEX.md](https://github.com/forestrie/devdocs/blob/main/archive/INDEX.md).
+[archive/INDEX.md](https://github.com/forestrie/devdocs/blob/main/themes/README.md).
 Repo-local `docs/` keeps the sequential scheme described below.
 
 ## Required header
@@ -81,7 +81,7 @@ Take max + 1.
 allocated by `/plan-new` from the highest ordinal in the *current month* only.
 Legacy `plan-NNNN` ids there are frozen; never renumber them. The
 authoritative statement is the numbering blockquotes in
-[devdocs plans/README.md](https://github.com/forestrie/devdocs/blob/main/plans/README.md).
+[devdocs plans/README.md](https://github.com/forestrie/devdocs/blob/7ef8db8887225ec9b3b042fb9d0dbd3c847db97b/plans/README.md).
 devdocs ADR/ARC/OPS keep the sequential scheme.
 
 Archiving never affects allocation: the current month's cohort always stays in
@@ -134,7 +134,7 @@ unless it is currently active work — active plans, the decisions they cite,
 recent non-superseded decisions and runbooks, and living product docs stay.
 Multi-part plan directories move whole. Tooling and the disposition rules live
 in
-[devdocs tools/archive/](https://github.com/forestrie/devdocs/blob/main/tools/archive/README.md).
+[devdocs tools/archive/](https://github.com/forestrie/devdocs/blob/7ef8db8887225ec9b3b042fb9d0dbd3c847db97b/tools/archive/README.md).
 
 Agents reach archived devdocs material only through
 `archive/INDEX.md` → `archive/INDEX-<theme>.md` → the specific document, and

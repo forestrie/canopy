@@ -3,7 +3,7 @@
  *
  * Jobs flow canopy-api → Cloudflare Queue → `@canopy/x402-settlement` worker.
  * Architecture:
- * [ARC-0015](https://github.com/forestrie/devdocs/blob/main/arc/arc-0015-x402-settlement-architecture.md).
+ * [ARC-0015](https://github.com/forestrie/devdocs/blob/main/arc/retired/arc-0015-x402-settlement-architecture.md).
  * Uses standard x402 **exact** scheme with EIP-3009 `transferWithAuthorization`.
  */
 

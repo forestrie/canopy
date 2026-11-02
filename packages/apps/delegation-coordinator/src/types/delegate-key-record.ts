@@ -1,6 +1,6 @@
 /**
  * A registered standing delegate key as the coordinator reports it
- * ([devdocs plan-2609-12 slice 04](https://github.com/forestrie/devdocs/blob/main/plans/plan-2609-12-delegate-key-registration-hardening/04-coordinator-routes-and-invariant.md),
+ * ([devdocs plan-2609-12 slice 04](https://github.com/forestrie/work/blob/main/plans/plan-2609-12-delegate-key-registration-hardening/04-coordinator-routes-and-invariant.md),
  * rulings 1 and 4). Read by the arbor sealer's readiness gate through
  * `GET /api/sealer/delegate-keys/{pubkeyHash}` and by the operator listing
  * `GET /api/sealer/delegate-keys?sealerId=`. Public metadata only: the hash

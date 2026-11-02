@@ -9,7 +9,7 @@
  * KS256 address. Every child forward carries the forest's chain binding so that
  * the coordinator can select ERC-1271 RPC for a contract root at any depth, and
  * a grandchild can inherit the chain from its parent's registered root.
- * See the [ADR-0053 amendment of 2026-10-18](https://github.com/forestrie/devdocs/blob/main/archive/2607/adr/adr-0053-child-log-onboarding-parent-authorized.md)
+ * See the [ADR-0053 amendment of 2026-10-18](https://github.com/forestrie/devdocs/blob/main/adr/adr-0053-child-log-onboarding-parent-authorized.md)
  * and plan-2610-03 decisions D2 and D6.
  */
 
