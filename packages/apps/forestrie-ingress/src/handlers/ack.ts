@@ -8,8 +8,14 @@
  * With return path unification (Phase 9), ack also records leaf indices
  * to enable direct registration status queries from the DO.
  *
- * Request: CBOR { logId, seqLo, limit, firstLeafIndex, massifHeight }
+ * Request: CBOR { logId, seqLo, seqHi, leaseExpiry, limit, firstLeafIndex,
+ *   massifHeight }
  * Response: CBOR { acked: number }
+ *
+ * seqLo, seqHi and leaseExpiry name the pulled batch. If the DO does not
+ * find exactly `limit` rows still pending under that lease (re-pulled after
+ * the lease expired, dead-lettered, or already sequenced), it marks nothing
+ * and this returns 409, so ranger treats the ack as failed (FOR-655).
  *
  * firstLeafIndex is a uint64 (CBOR major type 0) from arbor's ranger and is
  * carried as `bigint`. A batch that runs past 2^64-1, or whose last leaf
@@ -85,6 +91,31 @@ export async function handleAck(
         "seqLo is required and must be a non-negative number",
       );
     }
+    if (
+      typeof body.seqHi !== "number" ||
+      !Number.isSafeInteger(body.seqHi) ||
+      body.seqHi < body.seqLo
+    ) {
+      return problemResponse(
+        400,
+        PROBLEM_TYPES.INVALID_REQUEST,
+        "Invalid request",
+        "seqHi is required and must be an integer >= seqLo",
+      );
+    }
+    // A ms timestamp exceeds 2^32, so CBOR may decode it as bigint.
+    let leaseExpiry: number;
+    try {
+      leaseExpiry = Number(toUint64(body.leaseExpiry, "leaseExpiry"));
+      if (!Number.isSafeInteger(leaseExpiry)) throw new Error("unsafe");
+    } catch {
+      return problemResponse(
+        400,
+        PROBLEM_TYPES.INVALID_REQUEST,
+        "Invalid request",
+        "leaseExpiry is required and must be the pull response's leaseExpiry",
+      );
+    }
     if (!Number.isSafeInteger(body.limit) || body.limit < 0) {
       return problemResponse(
         400,
@@ -152,13 +183,24 @@ export async function handleAck(
           ).slice().buffer;
 
     const stub = getQueueStub(env, shardIndex);
-    const result = await stub.ackFirst(
-      logIdBuffer,
-      body.seqLo,
-      body.limit,
+    const result = await stub.ackFirst({
+      logId: logIdBuffer,
+      seqLo: body.seqLo,
+      seqHi: body.seqHi,
+      leaseExpiry,
+      limit: body.limit,
       firstLeafIndex,
-      body.massifHeight,
-    );
+      massifHeight: body.massifHeight,
+    });
+    if (result.acked !== body.limit) {
+      return problemResponse(
+        409,
+        PROBLEM_TYPES.ACK_LEASE_MISMATCH,
+        "Ack does not match its lease",
+        `expected ${body.limit} pending rows in seq ${body.seqLo}..${body.seqHi} ` +
+          `under lease ${leaseExpiry}; nothing was acked`,
+      );
+    }
 
     return new Response(encodeAckResponse(result.acked), {
       status: 200,

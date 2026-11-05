@@ -3,6 +3,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { ackOf, pullBatch } from "../pulledbatch";
 import { getStub } from "./sequencingqueue-fixture";
 
 describe("SequencingQueue stats", () => {
@@ -31,7 +32,7 @@ describe("SequencingQueue stats", () => {
     expect(stats.oldestEntryAgeMs).toBeNull();
 
     // Enqueue entries
-    const seq1 = await stub.enqueue(logId, contentHash);
+    await stub.enqueue(logId, contentHash);
     await stub.enqueue(logId, contentHash);
     await stub.enqueue(logId, contentHash);
 
@@ -39,8 +40,9 @@ describe("SequencingQueue stats", () => {
     expect(stats.pending).toBe(3);
     expect(stats.oldestEntryAgeMs).toBeGreaterThanOrEqual(0);
 
-    // Ack some using limit-based ack
-    await stub.ackFirst(logId, seq1.seq, 2, 0n, 14);
+    // Pull two and ack them
+    const batch = await pullBatch(stub, logId, { batchSize: 2 });
+    await stub.ackFirst(ackOf(batch, 0n));
 
     stats = await stub.stats();
     expect(stats.pending).toBe(1);

@@ -12,13 +12,24 @@
  * Leaf indices are uint64: arbor's ranger sends `firstLeafIndex` as CBOR
  * major type 0, which decodes to `bigint` above 2^53, so they are carried as
  * `bigint` end to end and never as `number`.
+ *
+ * An ack names the batch it acknowledges: `seqLo`, `seqHi` and `leaseExpiry`
+ * echo the pull's LogGroup and lease. The DO marks only the rows that pull
+ * leased, and refuses the ack (marking nothing) unless exactly `limit` of
+ * them are still pending under that lease. A batch that was re-pulled,
+ * dead-lettered or already sequenced since is therefore never shifted onto
+ * other rows (FOR-655).
  */
 export interface AckRequest {
   /** Log identifier (16 bytes) */
   logId: ArrayBuffer;
-  /** Starting sequence number (first entry to acknowledge) */
+  /** First sequence number of the pulled LogGroup */
   seqLo: number;
-  /** Number of entries to acknowledge starting from seqLo */
+  /** Last sequence number of the pulled LogGroup */
+  seqHi: number;
+  /** The pull response's leaseExpiry (ms); identifies the pull's lease */
+  leaseExpiry: number;
+  /** Number of entries committed: every entry of the LogGroup */
   limit: number;
   /** First leaf index in the committed batch (uint64) */
   firstLeafIndex: bigint;

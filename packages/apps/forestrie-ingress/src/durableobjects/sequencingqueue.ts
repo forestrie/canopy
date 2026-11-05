@@ -17,6 +17,7 @@ import {
   type Entry,
   type QueueStats,
   type EnqueueExtras,
+  type AckRequest,
 } from "@canopy/forestrie-ingress-types";
 import { decodeUint64Be8, encodeUint64Be8 } from "@forestrie/encoding";
 import type { Env } from "../env.js";
@@ -469,19 +470,22 @@ export class SequencingQueue extends DurableObject<Env> {
 
     if (rows.length === 0) return [];
 
-    // Update visibility and increment attempts
-    const seqs = rows.map((r) => r.seq);
-    const seqLo = seqs[0];
-    const seqHi = seqs[seqs.length - 1];
+    // Lease exactly the rows returned: the same predicate as the SELECT,
+    // within its seq range. Rows in the range that another poller holds
+    // (or that are sequenced) keep their lease and attempts (FOR-655).
+    const seqLo = rows[0].seq;
+    const seqHi = rows[rows.length - 1].seq;
 
     this.ctx.storage.sql.exec(
       `UPDATE queue_entries
        SET visible_after = ?, attempts = attempts + 1
-       WHERE log_id = ? AND seq >= ? AND seq <= ?`,
+       WHERE log_id = ? AND seq >= ? AND seq <= ? AND leaf_index IS NULL
+         AND (visible_after IS NULL OR visible_after <= ?)`,
       leaseExpiry,
       logId,
       seqLo,
       seqHi,
+      now,
     );
 
     return rows.map((row) => ({
@@ -495,7 +499,9 @@ export class SequencingQueue extends DurableObject<Env> {
 
   /**
    * Move entries exceeding MAX_ATTEMPTS to dead_letters table.
-   * Only affects pending entries (not yet sequenced).
+   * Only affects pending entries (not yet sequenced) whose lease has
+   * expired: a batch on its last attempt may be mid-commit, and deleting
+   * its rows would leave ranger's ack nothing to match (FOR-655).
    */
   private movePoisonToDeadLetters(now: number): void {
     // Find poison entries (pending only)
@@ -512,8 +518,11 @@ export class SequencingQueue extends DurableObject<Env> {
         enqueued_at: number;
       }>(
         `SELECT seq, log_id, content_hash, extra0, extra1, extra2, extra3, attempts, enqueued_at
-         FROM queue_entries WHERE leaf_index IS NULL AND attempts >= ?`,
+         FROM queue_entries
+         WHERE leaf_index IS NULL AND attempts >= ?
+           AND (visible_after IS NULL OR visible_after <= ?)`,
         MAX_ATTEMPTS,
+        now,
       )
       .toArray();
 
@@ -547,11 +556,17 @@ export class SequencingQueue extends DurableObject<Env> {
   }
 
   /**
-   * Acknowledge entries by marking them as sequenced with their leaf index.
+   * Acknowledge a pulled batch by marking its rows sequenced with their
+   * leaf indices, `firstLeafIndex + i` in seq order. Entries are retained
+   * (not deleted) to serve as sequencing result cache for resolveContent.
    *
-   * Updates the first N entries (by seq order) for the given log starting from
-   * seqLo, setting their leaf_index. Entries are retained (not deleted) to
-   * serve as sequencing result cache for resolveContent.
+   * The ack names its batch: the rows of `logId` in `seqLo`..`seqHi` still
+   * pending under the pull's lease (`visible_after = leaseExpiry`). Unless
+   * there are exactly `limit` of them, nothing is marked and `acked` is 0.
+   * That refuses an ack whose batch was re-pulled after its lease expired,
+   * dead-lettered, or already sequenced, instead of shifting it onto rows
+   * that were never committed (FOR-655). An ack after the lease expired is
+   * still accepted if nothing re-pulled the rows: the commit is real.
    *
    * massifHeight is the one-based height ranger commits massifs at; a massif
    * holds 2^(h-1) leaves (leafCountForMassifHeight). It only sizes the
@@ -562,37 +577,32 @@ export class SequencingQueue extends DurableObject<Env> {
    *
    * See: arbor/docs/arc-cloudflare-do-ingress.md section 3.12
    */
-  async ackFirst(
-    logId: ArrayBuffer,
-    seqLo: number,
-    limit: number,
-    firstLeafIndex: bigint,
-    massifHeight: number,
-  ): Promise<{ acked: number }> {
+  async ackFirst(ack: AckRequest): Promise<{ acked: number }> {
     this.ensureSchema();
+    const { logId, seqLo, seqHi, leaseExpiry, limit, firstLeafIndex } = ack;
 
     // Before any write: throws on a bad height, so nothing is marked
     // sequenced with the retention cleanup skipped.
-    const retainCount = retainedEntryCount(massifHeight);
+    const retainCount = retainedEntryCount(ack.massifHeight);
 
     if (limit <= 0) {
       return { acked: 0 };
     }
 
-    // First, find the seq values to update
     const toUpdate = this.ctx.storage.sql
       .exec<{ seq: number }>(
         `SELECT seq FROM queue_entries
-         WHERE log_id = ? AND seq >= ? AND leaf_index IS NULL
-         ORDER BY seq ASC
-         LIMIT ?`,
+         WHERE log_id = ? AND seq >= ? AND seq <= ?
+           AND leaf_index IS NULL AND visible_after = ?
+         ORDER BY seq ASC`,
         logId,
         seqLo,
-        limit,
+        seqHi,
+        leaseExpiry,
       )
       .toArray();
 
-    if (toUpdate.length === 0) {
+    if (toUpdate.length !== limit) {
       return { acked: 0 };
     }
 

@@ -11,6 +11,7 @@ import { runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import type { SequencingQueue } from "../../src/durableobjects/sequencingqueue";
 import { getStub, testEnv } from "./sequencingqueue-fixture";
+import { ackOf, pullBatch } from "../pulledbatch";
 
 const UINT64_MAX = (1n << 64n) - 1n;
 
@@ -20,23 +21,21 @@ function namespaceStub(name: string) {
   return ns.get(ns.idFromName(name));
 }
 
-/** Enqueue `n` entries with distinct content hashes; return hashes and seqLo. */
+/** Enqueue `n` entries with distinct content hashes; return the hashes. */
 async function enqueueN(
   stub: ReturnType<typeof getStub>,
   logId: ArrayBuffer,
   n: number,
   tag: number,
-): Promise<{ seqLo: number; hashes: ArrayBuffer[] }> {
+): Promise<{ hashes: ArrayBuffer[] }> {
   const hashes: ArrayBuffer[] = [];
-  let seqLo = 0;
   for (let i = 0; i < n; i++) {
     const hash = new Uint8Array(32).fill(tag);
     hash[31] = i;
-    const { seq } = await stub.enqueue(logId, hash.buffer);
-    if (i === 0) seqLo = seq;
+    await stub.enqueue(logId, hash.buffer);
     hashes.push(hash.buffer);
   }
-  return { seqLo, hashes };
+  return { hashes };
 }
 
 describe("SequencingQueue uint64 leaf indices", () => {
@@ -50,9 +49,10 @@ describe("SequencingQueue uint64 leaf indices", () => {
   ])("records and resolves leaf index %s exactly", async (_, first, h) => {
     const stub = getStub(`uint64-roundtrip-${first}`);
     const logId = new Uint8Array(16).fill(0x61).buffer;
-    const { seqLo, hashes } = await enqueueN(stub, logId, 2, 0x61);
+    const { hashes } = await enqueueN(stub, logId, 2, 0x61);
 
-    const { acked } = await stub.ackFirst(logId, seqLo, 2, first, h);
+    const batch = await pullBatch(stub, logId);
+    const { acked } = await stub.ackFirst(ackOf(batch, first, h));
     expect(acked).toBe(2);
 
     for (let i = 0; i < 2; i++) {
@@ -71,9 +71,9 @@ describe("SequencingQueue retention with uint64 leaf indices", () => {
   ])("keeps the newest leaves across the %s boundary", async (_, first) => {
     const stub = getStub(`uint64-retention-${first}`);
     const logId = new Uint8Array(16).fill(0x62).buffer;
-    const { seqLo, hashes } = await enqueueN(stub, logId, 10, 0x62);
+    const { hashes } = await enqueueN(stub, logId, 10, 0x62);
 
-    await stub.ackFirst(logId, seqLo, 10, first, 1);
+    await stub.ackFirst(ackOf(await pullBatch(stub, logId), first, 1));
 
     // Newest is first+9; leaves below first+9-4 are dropped.
     for (let i = 0; i < 10; i++) {
@@ -123,7 +123,8 @@ describe("SequencingQueue uint64 storage guards", () => {
     const name = "uint64-atomic-ack";
     const stub = getStub(name);
     const logId = new Uint8Array(16).fill(0x64).buffer;
-    const { seqLo } = await enqueueN(stub, logId, 2, 0x64);
+    await enqueueN(stub, logId, 2, 0x64);
+    const batch = await pullBatch(stub, logId);
 
     // Assert inside the DO: an error escaping over RPC breaks the pool's
     // per-test isolated storage. The second leaf, 2^64, cannot be encoded.
@@ -131,7 +132,7 @@ describe("SequencingQueue uint64 storage guards", () => {
       namespaceStub(name),
       async (instance: SequencingQueue, state) => {
         await expect(
-          instance.ackFirst(logId, seqLo, 2, UINT64_MAX, 40),
+          instance.ackFirst(ackOf(batch, UINT64_MAX, 40)),
         ).rejects.toThrow();
         const sequenced = state.storage.sql
           .exec<{
