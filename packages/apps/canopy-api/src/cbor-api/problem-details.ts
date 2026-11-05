@@ -1,15 +1,17 @@
-import { cborResponse } from "./cbor-response.js";
+import { problemCborResponse } from "./cbor-response.js";
 
+/** Every helper here is a Concise Problem Details document served as
+ *  `application/problem+cbor` (see `problemResponse`). */
 function pd(status: number, title: string, detail?: string) {
   const body: Record<string, unknown> = { type: "about:blank", title, status };
   if (detail) body.detail = detail;
-  return cborResponse(body, status);
+  return problemCborResponse(body, status);
 }
 
 export const ClientErrors = {
   badRequest: (detail?: string) => pd(400, "Bad Request", detail),
   unauthorized: (detail?: string, headers?: HeadersInit) =>
-    cborResponse(
+    problemCborResponse(
       { type: "about:blank", title: "Unauthorized", status: 401, detail },
       401,
       headers,
@@ -24,7 +26,7 @@ export const ClientErrors = {
     if (extensions && Object.keys(extensions).length > 0) {
       body.extensions = extensions;
     }
-    return cborResponse(body, 403);
+    return problemCborResponse(body, 403);
   },
   notFound: (what?: string, detail?: string) =>
     pd(404, `${what ?? "Not Found"}`, detail),
@@ -58,7 +60,7 @@ export const ServerErrors = {
    * This signals to clients they should back off and retry later.
    */
   serviceUnavailableWithRetry: (detail: string, retryAfterSeconds: number) =>
-    cborResponse(
+    problemCborResponse(
       {
         type: "about:blank",
         title: "Service Unavailable",
