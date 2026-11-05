@@ -8,8 +8,13 @@
  * under that lease (FOR-655).
  */
 
+import { runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { getStub } from "./sequencingqueue-fixture";
+import {
+  assignLog,
+  type SequencingQueue,
+} from "../../src/durableobjects/sequencingqueue";
+import { getStub, testEnv } from "./sequencingqueue-fixture";
 import { retainedEntryCount } from "../../src/durableobjects/retention";
 import { ackOf, batchFor, pullBatch, pullBatches } from "../pulledbatch";
 
@@ -182,6 +187,103 @@ describe("SequencingQueue ackFirst is bound to its lease (FOR-655)", () => {
     }
     expect(await pullBatches(stub)).toEqual([]);
     expect((await stub.stats()).deadLetters).toBe(1);
+  });
+});
+
+describe("SequencingQueue leases name one pull (FOR-655)", () => {
+  // A log that poller A owns alone and poller B owns once both are active,
+  // so the two pulls below both lease rows of it.
+  function movingLog(): ArrayBuffer {
+    for (let i = 0; i < 256; i++) {
+      const logId = new Uint8Array(16).fill(i).buffer;
+      if (
+        assignLog(logId, ["A"]) === "A" &&
+        assignLog(logId, ["A", "B"]) === "B"
+      ) {
+        return logId;
+      }
+    }
+    throw new Error("no log moves from A to B");
+  }
+
+  it("gives same-millisecond pulls distinct leases and their own seq ranges", async () => {
+    const ns = testEnv.SEQUENCING_QUEUE;
+    const stub = ns.get(ns.idFromName("lease-same-ms"));
+    const logId = movingLog();
+
+    await runInDurableObject(stub, async (q: SequencingQueue, state) => {
+      for (let i = 1; i <= 3; i++) await q.enqueue(logId, hash(0x60 + i));
+      // Row 2 is on its last attempt.
+      state.storage.sql.exec(
+        "UPDATE queue_entries SET attempts = 4 WHERE seq = 2",
+      );
+
+      // No I/O between the pulls, so the DO clock does not advance.
+      const a = await q.pull({ pollerId: "A", batchSize: 1, visibilityMs: 50 });
+      const b = await q.pull({
+        pollerId: "B",
+        batchSize: 10,
+        visibilityMs: 50,
+      });
+      expect(b.leaseExpiry).toBeGreaterThan(a.leaseExpiry);
+      expect(a.logGroups.map((g) => [g.seqLo, g.seqHi])).toEqual([[1, 1]]);
+      expect(b.logGroups.map((g) => [g.seqLo, g.seqHi])).toEqual([[2, 3]]);
+
+      // A never acks. Both leases expire and row 2 is dead-lettered.
+      await new Promise((r) => setTimeout(r, 120));
+      (
+        q as unknown as { movePoisonToDeadLetters(now: number): void }
+      ).movePoisonToDeadLetters(Date.now());
+
+      // B committed rows 2 and 3; with row 2 gone its ack must be refused,
+      // and must not land on A's row 1.
+      const bg = b.logGroups[0];
+      const result = await q.ackFirst({
+        logId,
+        seqLo: bg.seqLo,
+        seqHi: bg.seqHi,
+        leaseExpiry: b.leaseExpiry,
+        limit: bg.entries.length,
+        firstLeafIndex: 100n,
+        massifHeight: 14,
+      });
+      expect(result.acked).toBe(0);
+      expect(await q.resolveContent(hash(0x61))).toBeNull();
+      expect(await q.resolveContent(hash(0x63))).toBeNull();
+    });
+  });
+
+  it("does not re-lease a row in its seq range that another pull holds", async () => {
+    const ns = testEnv.SEQUENCING_QUEUE;
+    const stub = ns.get(ns.idFromName("lease-only-returned-rows"));
+    const logId = new Uint8Array(16).fill(0x70).buffer;
+    const heldUntil = Date.now() + 60_000;
+
+    await runInDurableObject(stub, async (q: SequencingQueue, state) => {
+      for (let i = 1; i <= 3; i++) await q.enqueue(logId, hash(0x70 + i));
+      // Row 2 is held by another pull's live lease.
+      state.storage.sql.exec(
+        "UPDATE queue_entries SET visible_after = ?, attempts = 1 WHERE seq = 2",
+        heldUntil,
+      );
+
+      const pulled = await q.pull({
+        pollerId: "A",
+        batchSize: 10,
+        visibilityMs: 30000,
+      });
+      expect(
+        pulled.logGroups.map((g) => [g.seqLo, g.seqHi, g.entries.length]),
+      ).toEqual([[1, 3, 2]]);
+
+      const row2 = state.storage.sql
+        .exec<{
+          visible_after: number;
+          attempts: number;
+        }>("SELECT visible_after, attempts FROM queue_entries WHERE seq = 2")
+        .toArray()[0];
+      expect(row2).toEqual({ visible_after: heldUntil, attempts: 1 });
+    });
   });
 });
 

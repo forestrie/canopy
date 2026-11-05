@@ -25,7 +25,7 @@ interface Puller {
 export interface PullOptions {
   batchSize?: number;
   pollerId?: string;
-  /** 0 leases rows already expired, as if the commit outlasted the lease */
+  /** 0: the lease has expired on return, as if the commit outlasted it */
   visibilityMs?: number;
 }
 
@@ -39,6 +39,11 @@ export async function pullBatches(
   }: PullOptions = {},
 ): Promise<PulledBatch[]> {
   const response = await stub.pull({ pollerId, batchSize, visibilityMs });
+  // Each pull's lease is unique (at least one ms past the previous one), so
+  // a short lease may not have expired yet: wait until it has.
+  while (Date.now() <= response.leaseExpiry && visibilityMs === 0) {
+    await new Promise((r) => setTimeout(r, 1));
+  }
   return response.logGroups.map((g) => ({
     logId: g.logId,
     seqLo: g.seqLo,

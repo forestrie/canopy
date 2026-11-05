@@ -179,6 +179,13 @@ export class SequencingQueue extends DurableObject<Env> {
       CREATE INDEX IF NOT EXISTS idx_log_leaf
         ON queue_entries (log_id, leaf_index);
 
+      -- One row: the last leaseExpiry handed out. Each pull's lease is
+      -- strictly greater, so a lease value names exactly one pull (FOR-655).
+      CREATE TABLE IF NOT EXISTS lease_clock (
+        id INTEGER PRIMARY KEY CHECK (id = 0),
+        last_lease INTEGER NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS dead_letters (
         seq INTEGER PRIMARY KEY,
         log_id BLOB NOT NULL,
@@ -353,7 +360,6 @@ export class SequencingQueue extends DurableObject<Env> {
     this.ensureSchema();
 
     const now = Date.now();
-    const leaseExpiry = now + request.visibilityMs;
 
     // Update poller state and get active pollers
     const activePollerIds = this.updatePollers(request.pollerId);
@@ -362,10 +368,12 @@ export class SequencingQueue extends DurableObject<Env> {
     if (activePollerIds === null) {
       return {
         version: 1,
-        leaseExpiry,
+        leaseExpiry: now + request.visibilityMs,
         logGroups: [],
       };
     }
+
+    const leaseExpiry = this.allocateLeaseExpiry(now + request.visibilityMs);
 
     // First, move poison messages to dead letters
     this.movePoisonToDeadLetters(now);
@@ -397,7 +405,7 @@ export class SequencingQueue extends DurableObject<Env> {
       if (totalEntries >= request.batchSize) break;
 
       const remaining = request.batchSize - totalEntries;
-      const entries = this.pullEntriesForLog(
+      const { entries, seqLo, seqHi } = this.pullEntriesForLog(
         logId,
         remaining,
         leaseExpiry,
@@ -405,19 +413,6 @@ export class SequencingQueue extends DurableObject<Env> {
       );
 
       if (entries.length > 0) {
-        // Get seq range from the first query (we need to query again for seqs)
-        const seqResult = this.ctx.storage.sql
-          .exec<{ seq_lo: number; seq_hi: number }>(
-            `SELECT MIN(seq) as seq_lo, MAX(seq) as seq_hi FROM queue_entries
-             WHERE log_id = ? AND visible_after = ?`,
-            logId,
-            leaseExpiry,
-          )
-          .toArray();
-
-        const seqLo = seqResult[0]?.seq_lo ?? 0;
-        const seqHi = seqResult[0]?.seq_hi ?? 0;
-
         logGroups.push({
           logId,
           seqLo,
@@ -445,7 +440,7 @@ export class SequencingQueue extends DurableObject<Env> {
     limit: number,
     leaseExpiry: number,
     now: number,
-  ): Entry[] {
+  ): { entries: Entry[]; seqLo: number; seqHi: number } {
     // Query visible pending entries for this log (not yet sequenced)
     const rows = this.ctx.storage.sql
       .exec<{
@@ -468,7 +463,7 @@ export class SequencingQueue extends DurableObject<Env> {
       )
       .toArray();
 
-    if (rows.length === 0) return [];
+    if (rows.length === 0) return { entries: [], seqLo: 0, seqHi: 0 };
 
     // Lease exactly the rows returned: the same predicate as the SELECT,
     // within its seq range. Rows in the range that another poller holds
@@ -488,13 +483,38 @@ export class SequencingQueue extends DurableObject<Env> {
       now,
     );
 
-    return rows.map((row) => ({
+    const entries = rows.map((row) => ({
       contentHash: row.content_hash,
       extra0: row.extra0,
       extra1: row.extra1,
       extra2: row.extra2,
       extra3: row.extra3,
     }));
+    return { entries, seqLo, seqHi };
+  }
+
+  /**
+   * The lease for one pull: `candidate` (now + visibilityMs), raised if
+   * needed to one more than the last lease handed out, and persisted. Two
+   * pulls therefore never share a leaseExpiry, even in the same millisecond,
+   * with different visibilityMs, or across a DO restart, so an ack's
+   * `visible_after = leaseExpiry` matches only the rows its own pull leased
+   * (FOR-655). The raise is at most one ms per pull in a burst.
+   */
+  private allocateLeaseExpiry(candidate: number): number {
+    const last = this.ctx.storage.sql
+      .exec<{
+        last_lease: number;
+      }>("SELECT last_lease FROM lease_clock WHERE id = 0")
+      .toArray()[0]?.last_lease;
+    const lease =
+      last !== undefined && last >= candidate ? last + 1 : candidate;
+    this.ctx.storage.sql.exec(
+      `INSERT INTO lease_clock (id, last_lease) VALUES (0, ?)
+       ON CONFLICT(id) DO UPDATE SET last_lease = excluded.last_lease`,
+      lease,
+    );
+    return lease;
   }
 
   /**
