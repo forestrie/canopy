@@ -2,8 +2,10 @@
  * SequencingQueue enqueue() tests.
  */
 
+import { runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { getStub } from "./sequencingqueue-fixture";
+import type { SequencingQueue } from "../../src/durableobjects/sequencingqueue";
+import { getStub, testEnv } from "./sequencingqueue-fixture";
 
 describe("SequencingQueue enqueue", () => {
   it("returns incrementing seq numbers", async () => {
@@ -65,6 +67,26 @@ describe("SequencingQueue enqueue", () => {
     }
     expect(error).toBeDefined();
     expect(error?.message).toContain("exceeds maximum size");
+  });
+
+  // Runs inside the DO with runInDurableObject: a throw that crosses the
+  // RPC stub breaks vitest-pool-workers isolated storage (see the skipped
+  // extras test above).
+  it("rejects a content hash that is not 32 bytes", async () => {
+    const ns = testEnv.SEQUENCING_QUEUE;
+    const stub = ns.get(ns.idFromName("enqueue-content-hash-reject-test"));
+    const logId = new Uint8Array(16).fill(0x04).buffer;
+
+    await runInDurableObject(stub, async (queue: SequencingQueue) => {
+      for (const len of [0, 31, 33]) {
+        const contentHash = new Uint8Array(len).fill(0xdd).buffer;
+        await expect(queue.enqueue(logId, contentHash)).rejects.toThrow(
+          "contentHash must be 32 bytes",
+        );
+      }
+      // Nothing was queued, so a bad entry cannot block the log.
+      expect((await queue.stats()).pending).toBe(0);
+    });
   });
 
   // Note: Testing QueueFullError at MAX_PENDING (100,000) is impractical in unit tests.

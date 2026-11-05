@@ -7,17 +7,16 @@
 import { describe, expect, it } from "vitest";
 import worker from "../../../src/index";
 import { testEnv, getStub, DEFAULT_SHARD } from "./fixture";
+import { ackOf, pullBatch } from "../../pulledbatch";
 
 describe("/queue/debug/recent", () => {
   it("reports a sequenced leaf index above 2^53 as a decimal string", async () => {
     const stub = getStub(DEFAULT_SHARD);
     const logId = new Uint8Array(16).fill(0x91);
-    const { seq } = await stub.enqueue(
-      logId.buffer,
-      new Uint8Array(32).fill(0x91).buffer,
-    );
+    await stub.enqueue(logId.buffer, new Uint8Array(32).fill(0x91).buffer);
     const leafIndex = (1n << 53n) + 1n;
-    await stub.ackFirst(logId.buffer, seq, 1, leafIndex, 24);
+    const batch = await pullBatch(stub, logId.buffer);
+    await stub.ackFirst(ackOf(batch, leafIndex, 24));
 
     const response = await worker.fetch(
       new Request(`http://localhost/queue/debug/recent?shard=${DEFAULT_SHARD}`),

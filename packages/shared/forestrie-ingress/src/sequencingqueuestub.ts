@@ -1,7 +1,7 @@
 import type { PullRequest } from "./pullrequest.js";
 import type { PullResponse } from "./pullresponse.js";
 import type { QueueStats } from "./queuestats.js";
-import type { SequencingResult } from "./ack.js";
+import type { AckRequest, SequencingResult } from "./ack.js";
 
 /**
  * Optional extra fields attached at enqueue (each ≤32 bytes on wire).
@@ -57,21 +57,14 @@ export interface SequencingQueueStub {
    * See:
    * [ingress return path](https://github.com/forestrie/arbor/blob/main/docs/arc-cloudflare-do-ingress.md#312-return-path-unification)
    *
-   * @param logId - Log identifier (16 bytes)
-   * @param seqLo - Starting sequence number
-   * @param limit - Number of entries to mark as sequenced
-   * @param firstLeafIndex - Leaf index of the first entry
-   * @param massifHeight - One-based massif height (2^(h-1) leaves per
-   *   massif); sizes how many sequenced entries are retained
-   * @returns Count of entries marked as sequenced
+   * Acks only the rows the named pull leased (`seqLo`..`seqHi` under
+   * `leaseExpiry`). Unless exactly `limit` of them are still pending under
+   * that lease, nothing is marked and `acked` is 0 (FOR-655).
+   *
+   * @param ack - The batch to acknowledge; see {@link AckRequest}
+   * @returns Count of entries marked as sequenced: `limit`, or 0 if refused
    */
-  ackFirst(
-    logId: ArrayBuffer,
-    seqLo: number,
-    limit: number,
-    firstLeafIndex: bigint,
-    massifHeight: number,
-  ): Promise<{ acked: number }>;
+  ackFirst(ack: AckRequest): Promise<{ acked: number }>;
 
   /**
    * Resolve a content hash to its sequencing result.

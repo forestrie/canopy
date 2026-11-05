@@ -47,10 +47,12 @@ describe("HTTP round-trip integration", () => {
     expect(group).toBeDefined();
     expect(group!.entries.length).toBe(2);
 
-    // Ack via HTTP using limit-based ack (seqLo and entry count)
+    // Ack via HTTP, naming the pulled batch and its lease
     const ackRequest = createCborRequest("/queue/ack", "POST", {
       logId: logId,
       seqLo: group!.seqLo,
+      seqHi: group!.seqHi,
+      leaseExpiry: pullResult.leaseExpiry,
       limit: group!.entries.length,
       firstLeafIndex: 0,
       massifHeight: 14,
@@ -126,6 +128,8 @@ describe("HTTP round-trip integration", () => {
     const ackRequest = createCborRequest("/queue/ack", "POST", {
       logId: logId,
       seqLo: group2!.seqLo,
+      seqHi: group2!.seqHi,
+      leaseExpiry: pullResult2.leaseExpiry,
       limit: group2!.entries.length,
       firstLeafIndex: 0,
       massifHeight: 14,
@@ -197,12 +201,17 @@ describe("HTTP round-trip integration", () => {
       expect(idsB.has(id)).toBe(false);
     }
 
-    // Clean up: ack all entries using limit-based ack
+    // Clean up: ack every group under its pull's lease
     let leafIndex = 0;
-    for (const group of [...groupsA, ...groupsB]) {
+    for (const [group, leaseExpiry] of [
+      ...groupsA.map((g) => [g, pullResultA.leaseExpiry] as const),
+      ...groupsB.map((g) => [g, pullResultB.leaseExpiry] as const),
+    ]) {
       const ackRequest = createCborRequest("/queue/ack", "POST", {
         logId: new Uint8Array(group.logId),
         seqLo: group.seqLo,
+        seqHi: group.seqHi,
+        leaseExpiry,
         limit: group.entries.length,
         firstLeafIndex: leafIndex,
         massifHeight: 14,

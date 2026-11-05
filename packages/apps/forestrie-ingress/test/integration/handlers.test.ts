@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import worker from "../../src/index";
 import { testEnv, getStubByName, createRequest } from "./handlers/fixture";
+import { ackOf, batchFor, pullBatch, pullBatches } from "../pulledbatch";
 
 describe("forestrie-ingress worker", () => {
   it("health endpoint returns 200", async () => {
@@ -65,17 +66,20 @@ describe("forestrie-ingress DO integration", () => {
     expect(stats.pending).toBe(3);
     expect(stats.oldestEntryAgeMs).toBeGreaterThanOrEqual(0);
 
-    // Ack first two entries using limit-based ack
+    // Pull and ack the first two entries
     // (firstLeafIndex=0, massifHeight=14 for test)
-    const ackResult = await stub.ackFirst(logId, seq1.seq, 2, 0n, 14);
+    const first = await pullBatch(stub, logId, { batchSize: 2 });
+    const ackResult = await stub.ackFirst(ackOf(first, 0n));
     expect(ackResult.acked).toBe(2);
 
     // Verify one entry remains
     stats = await stub.stats();
     expect(stats.pending).toBe(1);
 
-    // Ack the last entry
-    const ackResult2 = await stub.ackFirst(logId, seq3.seq, 1, 2n, 14);
+    // Pull and ack the last entry
+    const last = await pullBatch(stub, logId);
+    expect(last).toMatchObject({ seqLo: seq3.seq, seqHi: seq3.seq });
+    const ackResult2 = await stub.ackFirst(ackOf(last, 2n));
     expect(ackResult2.acked).toBe(1);
 
     // Queue should be empty
@@ -91,25 +95,28 @@ describe("forestrie-ingress DO integration", () => {
     const contentHash = new Uint8Array(32).fill(0xd3).buffer;
 
     // Enqueue to both logs (interleaved to create non-contiguous seq per log)
-    const seq1 = await stub.enqueue(logId1, contentHash); // seq 1
+    await stub.enqueue(logId1, contentHash); // seq 1
     await stub.enqueue(logId1, contentHash); // seq 2
     await stub.enqueue(logId2, contentHash); // seq 3
     await stub.enqueue(logId2, contentHash); // seq 4
-    const seq5 = await stub.enqueue(logId2, contentHash); // seq 5
+    await stub.enqueue(logId2, contentHash); // seq 5
 
     let stats = await stub.stats();
     expect(stats.pending).toBe(5);
 
-    // Ack all of logId1 (2 entries) using limit-based ack
-    const result1 = await stub.ackFirst(logId1, seq1.seq, 2, 0n, 14);
+    const batches = await pullBatches(stub);
+
+    // Ack all of logId1 (2 entries)
+    const result1 = await stub.ackFirst(ackOf(batchFor(batches, logId1), 0n));
     expect(result1.acked).toBe(2);
 
     stats = await stub.stats();
     expect(stats.pending).toBe(3);
 
-    // Ack all of logId2 (3 entries) using limit-based ack
-    // Note: seq values for logId2 are [3, 4, 5] (contiguous in this case)
-    const result2 = await stub.ackFirst(logId2, 3, 3, 2n, 14);
+    // Ack all of logId2 (3 entries, seq 3..5)
+    const batch2 = batchFor(batches, logId2);
+    expect(batch2).toMatchObject({ seqLo: 3, seqHi: 5, count: 3 });
+    const result2 = await stub.ackFirst(ackOf(batch2, 2n));
     expect(result2.acked).toBe(3);
 
     stats = await stub.stats();
@@ -171,9 +178,21 @@ describe("forestrie-ingress DO integration", () => {
     );
     expect(group1!.entries[1].extra0).toBeNull();
 
-    // Now ack all entries using limit-based ack (seqLo + entry count)
-    await stub.ackFirst(logId1, group1!.seqLo, group1!.entries.length, 0n, 14);
-    await stub.ackFirst(logId2, group2!.seqLo, group2!.entries.length, 3n, 14);
+    // Now ack each group under the pull's lease
+    for (const [group, first] of [
+      [group1!, 0n],
+      [group2!, 3n],
+    ] as const) {
+      await stub.ackFirst({
+        logId: group.logId,
+        seqLo: group.seqLo,
+        seqHi: group.seqHi,
+        leaseExpiry: response.leaseExpiry,
+        limit: group.entries.length,
+        firstLeafIndex: first,
+        massifHeight: 14,
+      });
+    }
 
     // Queue should be empty
     const stats = await stub.stats();

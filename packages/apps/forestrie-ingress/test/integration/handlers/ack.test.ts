@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import worker from "../../../src/index";
 import type { ProblemDetails } from "@canopy/forestrie-ingress-types";
 import { decodeAckResponse } from "../../../src/encoding";
+import { runInDurableObject } from "cloudflare:test";
+import type { SequencingQueue } from "../../../src/durableobjects/sequencingqueue";
 import {
   testEnv,
   createRequest,
@@ -9,6 +11,10 @@ import {
   getStub,
   DEFAULT_SHARD,
 } from "./fixture";
+import { pullBatch } from "../../pulledbatch";
+
+// Validation tests stop before the DO, so any lease will do.
+const NO_LEASE = { seqHi: 1, leaseExpiry: 1 };
 
 describe("/queue/ack", () => {
   it("POST with CBOR returns CBOR response", async () => {
@@ -16,12 +22,15 @@ describe("/queue/ack", () => {
     const stub = getStub(DEFAULT_SHARD);
     const logId = new Uint8Array(16).fill(0xaa);
     const contentHash = new Uint8Array(32).fill(0xbb);
-    const { seq } = await stub.enqueue(logId.buffer, contentHash.buffer);
+    await stub.enqueue(logId.buffer, contentHash.buffer);
+    const batch = await pullBatch(stub, logId.buffer);
 
-    // Ack via HTTP with CBOR-encoded body using limit-based ack
+    // Ack via HTTP with CBOR-encoded body, naming the pulled batch
     const request = createCborRequest("/queue/ack", "POST", {
       logId: logId,
-      seqLo: seq,
+      seqLo: batch.seqLo,
+      seqHi: batch.seqHi,
+      leaseExpiry: batch.leaseExpiry,
       limit: 1,
       firstLeafIndex: 0,
       massifHeight: 14,
@@ -38,6 +47,53 @@ describe("/queue/ack", () => {
 
     const result = decodeAckResponse(await response.arrayBuffer());
     expect(result.acked).toBe(1);
+  });
+
+  it("returns 409 and acks nothing when the ack does not match its lease", async () => {
+    const stub = getStub(DEFAULT_SHARD);
+    const logId = new Uint8Array(16).fill(0xab);
+    const contentHash = new Uint8Array(32).fill(0xab);
+    await stub.enqueue(logId.buffer, contentHash.buffer);
+    const batch = await pullBatch(stub, logId.buffer);
+
+    const response = await worker.fetch(
+      createCborRequest("/queue/ack", "POST", {
+        logId,
+        seqLo: batch.seqLo,
+        seqHi: batch.seqHi,
+        leaseExpiry: batch.leaseExpiry + 1, // another pull's lease
+        limit: 1,
+        firstLeafIndex: 0,
+        massifHeight: 14,
+      }),
+      testEnv,
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(409);
+    const problem = (await response.json()) as ProblemDetails;
+    expect(problem.type).toContain("ack-lease-mismatch");
+    expect(await stub.resolveContent(contentHash.buffer)).toBeNull();
+  });
+
+  it.each([
+    ["seqHi below seqLo", { seqLo: 5, seqHi: 4, leaseExpiry: 1 }, "seqHi"],
+    ["a missing leaseExpiry", { seqLo: 1, seqHi: 1 }, "leaseExpiry"],
+  ])("returns 400 for %s", async (_, fields, mentions) => {
+    const response = await worker.fetch(
+      createCborRequest("/queue/ack", "POST", {
+        logId: new Uint8Array(16).fill(0xac),
+        ...fields,
+        limit: 1,
+        firstLeafIndex: 0,
+        massifHeight: 14,
+      }),
+      testEnv,
+      {} as ExecutionContext,
+    );
+    expect(response.status).toBe(400);
+    const problem = (await response.json()) as ProblemDetails;
+    expect(problem.detail).toContain(mentions);
   });
 
   it("returns 415 for JSON content type", async () => {
@@ -91,6 +147,8 @@ describe("/queue/ack", () => {
     const request = createCborRequest("/queue/ack", "POST", {
       logId: new Uint8Array(16).fill(0xcc),
       seqLo: 10,
+      seqHi: 10,
+      leaseExpiry: 1,
       limit: -5, // Invalid: negative limit
     });
 
@@ -135,6 +193,7 @@ describe("/queue/ack", () => {
     const ok = createCborRequest("/queue/ack", "POST", {
       logId: new Uint8Array(16).fill(0xde),
       seqLo: 1,
+      ...NO_LEASE,
       limit: 1,
       firstLeafIndex: 0,
       massifHeight: 14,
@@ -195,12 +254,16 @@ function indexOfBytes(haystack: Uint8Array, needle: Uint8Array): number {
  */
 describe("/queue/ack uint64 firstLeafIndex", () => {
   const GOLDEN_LOG_ID = Uint8Array.from({ length: 16 }, (_, i) => 0x10 + i);
+  const GOLDEN_LEASE_EXPIRY = 1_700_000_030_000;
   const GOLDEN_PREFIX =
-    "a5" +
+    "a7" +
     "656c696d697401" + // "limit": 1
     "656c6f6749645010" +
     "1112131415161718191a1b1c1d1e1f" + // "logId"
+    "65736571486901" + // "seqHi": 1
     "657365714c6f01" + // "seqLo": 1
+    "6b6c65617365457870697279" +
+    "1b0000018bcfe5dd30" + // "leaseExpiry": 1700000030000
     "6c6d6173736966486569676874" +
     "1821" + // "massifHeight": 33
     "6e66697273744c656166496e646578"; // "firstLeafIndex"
@@ -228,7 +291,17 @@ describe("/queue/ack uint64 firstLeafIndex", () => {
       GOLDEN_LOG_ID.buffer,
       contentHash.buffer,
     );
-    expect(seq).toBe(1); // the golden body acks seqLo 1
+    expect(seq).toBe(1); // the golden body acks seqLo..seqHi 1..1
+    // Lease the row, then move its lease to the golden one: a real lease
+    // is now + visibility, which a fixed golden body cannot match.
+    await pullBatch(stub, GOLDEN_LOG_ID.buffer);
+    await runInDurableObject(stub, async (_: SequencingQueue, state) => {
+      state.storage.sql.exec(
+        "UPDATE queue_entries SET visible_after = ? WHERE seq = ?",
+        GOLDEN_LEASE_EXPIRY,
+        seq,
+      );
+    });
 
     const response = await post(rawCborAck(GOLDEN_HEX));
     expect(response.status).toBe(200);
@@ -245,12 +318,15 @@ describe("/queue/ack uint64 firstLeafIndex", () => {
     const stub = getStub(DEFAULT_SHARD);
     const logId = new Uint8Array(16).fill(0x7b);
     const contentHash = new Uint8Array(32).fill(0x7b);
-    const { seq } = await stub.enqueue(logId.buffer, contentHash.buffer);
+    await stub.enqueue(logId.buffer, contentHash.buffer);
+    const batch = await pullBatch(stub, logId.buffer);
 
     const response = await post(
       createCborRequest("/queue/ack", "POST", {
         logId,
-        seqLo: seq,
+        seqLo: batch.seqLo,
+        seqHi: batch.seqHi,
+        leaseExpiry: batch.leaseExpiry,
         limit: 1,
         firstLeafIndex: (1n << 53n) + 1n,
         massifHeight: 24,
@@ -286,6 +362,7 @@ describe("/queue/ack uint64 firstLeafIndex", () => {
         createCborRequest("/queue/ack", "POST", {
           logId: new Uint8Array(16).fill(0x7c),
           seqLo: 1,
+          ...NO_LEASE,
           limit: 1,
           firstLeafIndex: (1n << 64n) - 1n,
           massifHeight: h,
@@ -304,6 +381,7 @@ describe("/queue/ack batch bounds", () => {
       createCborRequest("/queue/ack", "POST", {
         logId: new Uint8Array(16).fill(0x7d),
         seqLo: 1,
+        ...NO_LEASE,
         limit: 2,
         firstLeafIndex: (1n << 64n) - 1n,
         massifHeight: 40,
@@ -325,6 +403,7 @@ describe("/queue/ack batch bounds", () => {
         createCborRequest("/queue/ack", "POST", {
           logId: new Uint8Array(16).fill(0x7e),
           seqLo: 1,
+          ...NO_LEASE,
           limit: 1,
           firstLeafIndex: 0n,
           massifHeight,

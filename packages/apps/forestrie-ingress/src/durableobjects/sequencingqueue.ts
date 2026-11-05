@@ -17,6 +17,7 @@ import {
   type Entry,
   type QueueStats,
   type EnqueueExtras,
+  type AckRequest,
 } from "@canopy/forestrie-ingress-types";
 import { decodeUint64Be8, encodeUint64Be8 } from "@forestrie/encoding";
 import type { Env } from "../env.js";
@@ -27,6 +28,9 @@ const MAX_PENDING = 100_000;
 
 /** Maximum size for extra fields in bytes */
 const MAX_EXTRA_SIZE = 32;
+
+/** Content hashes are sha256 digests; ranger rejects any other length. */
+const CONTENT_HASH_SIZE = 32;
 
 /** Poller is considered inactive after this many ms without a pull */
 const POLLER_TIMEOUT_MS = 4000;
@@ -175,6 +179,13 @@ export class SequencingQueue extends DurableObject<Env> {
       CREATE INDEX IF NOT EXISTS idx_log_leaf
         ON queue_entries (log_id, leaf_index);
 
+      -- One row: the last leaseExpiry handed out. Each pull's lease is
+      -- strictly greater, so a lease value names exactly one pull (FOR-655).
+      CREATE TABLE IF NOT EXISTS lease_clock (
+        id INTEGER PRIMARY KEY CHECK (id = 0),
+        last_lease INTEGER NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS dead_letters (
         seq INTEGER PRIMARY KEY,
         log_id BLOB NOT NULL,
@@ -297,6 +308,16 @@ export class SequencingQueue extends DurableObject<Env> {
   ): Promise<{ seq: number }> {
     this.ensureSchema();
 
+    // ranger hashes the content hash into a sha256 leaf and fails the whole
+    // batch on a bad one, so a wrong-length hash would block its log and,
+    // after MAX_ATTEMPTS, dead-letter the good entries pulled with it
+    // (FOR-653). Reject it here instead.
+    if (contentHash.byteLength !== CONTENT_HASH_SIZE) {
+      throw new Error(
+        `contentHash must be ${CONTENT_HASH_SIZE} bytes, got ${contentHash.byteLength}`,
+      );
+    }
+
     // Validate extra field sizes
     if (extras) {
       this.validateExtraSize(extras.extra0, "extra0");
@@ -339,7 +360,6 @@ export class SequencingQueue extends DurableObject<Env> {
     this.ensureSchema();
 
     const now = Date.now();
-    const leaseExpiry = now + request.visibilityMs;
 
     // Update poller state and get active pollers
     const activePollerIds = this.updatePollers(request.pollerId);
@@ -348,10 +368,12 @@ export class SequencingQueue extends DurableObject<Env> {
     if (activePollerIds === null) {
       return {
         version: 1,
-        leaseExpiry,
+        leaseExpiry: now + request.visibilityMs,
         logGroups: [],
       };
     }
+
+    const leaseExpiry = this.allocateLeaseExpiry(now + request.visibilityMs);
 
     // First, move poison messages to dead letters
     this.movePoisonToDeadLetters(now);
@@ -383,7 +405,7 @@ export class SequencingQueue extends DurableObject<Env> {
       if (totalEntries >= request.batchSize) break;
 
       const remaining = request.batchSize - totalEntries;
-      const entries = this.pullEntriesForLog(
+      const { entries, seqLo, seqHi } = this.pullEntriesForLog(
         logId,
         remaining,
         leaseExpiry,
@@ -391,19 +413,6 @@ export class SequencingQueue extends DurableObject<Env> {
       );
 
       if (entries.length > 0) {
-        // Get seq range from the first query (we need to query again for seqs)
-        const seqResult = this.ctx.storage.sql
-          .exec<{ seq_lo: number; seq_hi: number }>(
-            `SELECT MIN(seq) as seq_lo, MAX(seq) as seq_hi FROM queue_entries
-             WHERE log_id = ? AND visible_after = ?`,
-            logId,
-            leaseExpiry,
-          )
-          .toArray();
-
-        const seqLo = seqResult[0]?.seq_lo ?? 0;
-        const seqHi = seqResult[0]?.seq_hi ?? 0;
-
         logGroups.push({
           logId,
           seqLo,
@@ -431,7 +440,7 @@ export class SequencingQueue extends DurableObject<Env> {
     limit: number,
     leaseExpiry: number,
     now: number,
-  ): Entry[] {
+  ): { entries: Entry[]; seqLo: number; seqHi: number } {
     // Query visible pending entries for this log (not yet sequenced)
     const rows = this.ctx.storage.sql
       .exec<{
@@ -454,35 +463,65 @@ export class SequencingQueue extends DurableObject<Env> {
       )
       .toArray();
 
-    if (rows.length === 0) return [];
+    if (rows.length === 0) return { entries: [], seqLo: 0, seqHi: 0 };
 
-    // Update visibility and increment attempts
-    const seqs = rows.map((r) => r.seq);
-    const seqLo = seqs[0];
-    const seqHi = seqs[seqs.length - 1];
+    // Lease exactly the rows returned: the same predicate as the SELECT,
+    // within its seq range. Rows in the range that another poller holds
+    // (or that are sequenced) keep their lease and attempts (FOR-655).
+    const seqLo = rows[0].seq;
+    const seqHi = rows[rows.length - 1].seq;
 
     this.ctx.storage.sql.exec(
       `UPDATE queue_entries
        SET visible_after = ?, attempts = attempts + 1
-       WHERE log_id = ? AND seq >= ? AND seq <= ?`,
+       WHERE log_id = ? AND seq >= ? AND seq <= ? AND leaf_index IS NULL
+         AND (visible_after IS NULL OR visible_after <= ?)`,
       leaseExpiry,
       logId,
       seqLo,
       seqHi,
+      now,
     );
 
-    return rows.map((row) => ({
+    const entries = rows.map((row) => ({
       contentHash: row.content_hash,
       extra0: row.extra0,
       extra1: row.extra1,
       extra2: row.extra2,
       extra3: row.extra3,
     }));
+    return { entries, seqLo, seqHi };
+  }
+
+  /**
+   * The lease for one pull: `candidate` (now + visibilityMs), raised if
+   * needed to one more than the last lease handed out, and persisted. Two
+   * pulls therefore never share a leaseExpiry, even in the same millisecond,
+   * with different visibilityMs, or across a DO restart, so an ack's
+   * `visible_after = leaseExpiry` matches only the rows its own pull leased
+   * (FOR-655). The raise is at most one ms per pull in a burst.
+   */
+  private allocateLeaseExpiry(candidate: number): number {
+    const last = this.ctx.storage.sql
+      .exec<{
+        last_lease: number;
+      }>("SELECT last_lease FROM lease_clock WHERE id = 0")
+      .toArray()[0]?.last_lease;
+    const lease =
+      last !== undefined && last >= candidate ? last + 1 : candidate;
+    this.ctx.storage.sql.exec(
+      `INSERT INTO lease_clock (id, last_lease) VALUES (0, ?)
+       ON CONFLICT(id) DO UPDATE SET last_lease = excluded.last_lease`,
+      lease,
+    );
+    return lease;
   }
 
   /**
    * Move entries exceeding MAX_ATTEMPTS to dead_letters table.
-   * Only affects pending entries (not yet sequenced).
+   * Only affects pending entries (not yet sequenced) whose lease has
+   * expired: a batch on its last attempt may be mid-commit, and deleting
+   * its rows would leave ranger's ack nothing to match (FOR-655).
    */
   private movePoisonToDeadLetters(now: number): void {
     // Find poison entries (pending only)
@@ -499,8 +538,11 @@ export class SequencingQueue extends DurableObject<Env> {
         enqueued_at: number;
       }>(
         `SELECT seq, log_id, content_hash, extra0, extra1, extra2, extra3, attempts, enqueued_at
-         FROM queue_entries WHERE leaf_index IS NULL AND attempts >= ?`,
+         FROM queue_entries
+         WHERE leaf_index IS NULL AND attempts >= ?
+           AND (visible_after IS NULL OR visible_after <= ?)`,
         MAX_ATTEMPTS,
+        now,
       )
       .toArray();
 
@@ -534,11 +576,17 @@ export class SequencingQueue extends DurableObject<Env> {
   }
 
   /**
-   * Acknowledge entries by marking them as sequenced with their leaf index.
+   * Acknowledge a pulled batch by marking its rows sequenced with their
+   * leaf indices, `firstLeafIndex + i` in seq order. Entries are retained
+   * (not deleted) to serve as sequencing result cache for resolveContent.
    *
-   * Updates the first N entries (by seq order) for the given log starting from
-   * seqLo, setting their leaf_index. Entries are retained (not deleted) to
-   * serve as sequencing result cache for resolveContent.
+   * The ack names its batch: the rows of `logId` in `seqLo`..`seqHi` still
+   * pending under the pull's lease (`visible_after = leaseExpiry`). Unless
+   * there are exactly `limit` of them, nothing is marked and `acked` is 0.
+   * That refuses an ack whose batch was re-pulled after its lease expired,
+   * dead-lettered, or already sequenced, instead of shifting it onto rows
+   * that were never committed (FOR-655). An ack after the lease expired is
+   * still accepted if nothing re-pulled the rows: the commit is real.
    *
    * massifHeight is the one-based height ranger commits massifs at; a massif
    * holds 2^(h-1) leaves (leafCountForMassifHeight). It only sizes the
@@ -549,37 +597,32 @@ export class SequencingQueue extends DurableObject<Env> {
    *
    * See: arbor/docs/arc-cloudflare-do-ingress.md section 3.12
    */
-  async ackFirst(
-    logId: ArrayBuffer,
-    seqLo: number,
-    limit: number,
-    firstLeafIndex: bigint,
-    massifHeight: number,
-  ): Promise<{ acked: number }> {
+  async ackFirst(ack: AckRequest): Promise<{ acked: number }> {
     this.ensureSchema();
+    const { logId, seqLo, seqHi, leaseExpiry, limit, firstLeafIndex } = ack;
 
     // Before any write: throws on a bad height, so nothing is marked
     // sequenced with the retention cleanup skipped.
-    const retainCount = retainedEntryCount(massifHeight);
+    const retainCount = retainedEntryCount(ack.massifHeight);
 
     if (limit <= 0) {
       return { acked: 0 };
     }
 
-    // First, find the seq values to update
     const toUpdate = this.ctx.storage.sql
       .exec<{ seq: number }>(
         `SELECT seq FROM queue_entries
-         WHERE log_id = ? AND seq >= ? AND leaf_index IS NULL
-         ORDER BY seq ASC
-         LIMIT ?`,
+         WHERE log_id = ? AND seq >= ? AND seq <= ?
+           AND leaf_index IS NULL AND visible_after = ?
+         ORDER BY seq ASC`,
         logId,
         seqLo,
-        limit,
+        seqHi,
+        leaseExpiry,
       )
       .toArray();
 
-    if (toUpdate.length === 0) {
+    if (toUpdate.length !== limit) {
       return { acked: 0 };
     }
 

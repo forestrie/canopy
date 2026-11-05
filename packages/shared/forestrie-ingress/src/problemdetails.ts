@@ -46,6 +46,8 @@ export const PROBLEM_TYPES = {
   QUEUE_FULL: "https://forestrie.io/problems/queue-full",
   /** Extra field exceeds 32 byte limit */
   INVALID_EXTRA_SIZE: "https://forestrie.io/problems/invalid-extra-size",
+  /** Ack does not match the rows its pull leased; nothing was acked */
+  ACK_LEASE_MISMATCH: "https://forestrie.io/problems/ack-lease-mismatch",
   /** Required field missing or malformed */
   INVALID_REQUEST: "https://forestrie.io/problems/invalid-request",
   /** Internal server error */
