@@ -1,6 +1,7 @@
 /**
  * Coerce unknown values to primitive types when decoding CBOR or other untrusted input.
- * Use for grant/codec, register-grant, and any CBOR map field parsing.
+ * Use for register-grant and any CBOR map field parsing (the grant codec
+ * itself lives in `@forestrie/encoding`).
  */
 
 export function toBytes(v: unknown): Uint8Array | undefined {

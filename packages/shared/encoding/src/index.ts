@@ -115,10 +115,13 @@ export {
 export {
   appendCborBstr,
   appendCborText,
-  appendCborUint,
   encodeGrantPayloadV0Canonical,
   leftPadBytes,
 } from "./grant-payload-canonical.js";
+/** The one streaming CBOR uint writer (full uint64 range). */
+export { appendCborUint64 } from "./append-cbor-uint64.js";
+/** Grant maxHeight / minGrowth conversion (shared with receipt-verify). */
+export { grantUintFromCbor, grantUintToCbor } from "./grant-uint.js";
 
 /** Log id (UUID) wire helpers. */
 export {

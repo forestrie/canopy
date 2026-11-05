@@ -19,9 +19,10 @@
  * sorted bytewise and so emitted maps its own decoder rejected, for example
  * `Map{-1: 0, 395: 0}`.
  *
- * The specialised {@link ./grant-payload-canonical.ts} fast-path emits the same
- * bytes for grant v0 payloads; this writer is the general form used for
- * arbitrary COSE headers / receipts / responses.
+ * It is the one encoder for grant v0 payloads, requests and responses
+ * (grant-codec.ts, encode-grant-request.ts) as well as arbitrary COSE
+ * headers / receipts / responses. Byte-by-byte emitters that cannot build a
+ * value tree stream uints through {@link ./append-cbor-uint64.ts}.
  *
  * Supported value types: unsigned + negative integers (`number` | `bigint`),
  * `boolean`, `null`, byte strings (`Uint8Array` | `ArrayBuffer`), text strings

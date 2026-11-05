@@ -38,7 +38,7 @@ Prefer stable **GitHub blob links** to forestrie repos:
 |--------|-----------|
 | Same repo doc | `https://github.com/forestrie/<repo>/blob/main/docs/…` |
 | Platform ARC/ADR | [devdocs/arc/](https://github.com/forestrie/devdocs/tree/main/arc), [devdocs/adr/](https://github.com/forestrie/devdocs/tree/main/adr) |
-| Glossary | [devdocs/glossary.md](https://github.com/forestrie/devdocs/blob/main/glossary.md) |
+| Glossary | [devdocs/glossary.md](https://github.com/forestrie/protocol/blob/main/glossary.md) |
 | Canopy | [canopy/docs/](https://github.com/forestrie/canopy/tree/main/docs) |
 | Arbor / Go deps | [go-merklelog](https://github.com/forestrie/go-merklelog), [go-univocity](https://github.com/forestrie/go-univocity), [go-sigv4](https://github.com/forestrie/go-sigv4) |
 | MMR COSE profile | [draft-bryce-cose-receipts-mmr-profile](https://github.com/robinbryce/draft-bryce-cose-receipts-mmr-profile) |

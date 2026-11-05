@@ -1,6 +1,6 @@
 {
   "name": "@forestrie/receipt-verify",
-  "version": "3.3.1",
+  "version": "3.3.2",
   "license": "MIT",
   "type": "module",
   "description": "Offline SCITT grant receipt verification (ADR-0045)",

@@ -12,6 +12,7 @@ import { encodeCborDeterministic } from "./encode-cbor-deterministic.js";
 import { decodeCborDeterministic } from "./decode-cbor-deterministic.js";
 import { grantDataToBytes } from "./grant-data.js";
 import { fromPaddedWire32, toPaddedWire32 } from "./uuid-bytes.js";
+import { grantUintFromCbor, grantUintToCbor } from "./grant-uint.js";
 
 const CBOR_KEY_IDTIMESTAMP = 0;
 const CBOR_KEY_LOG_ID = 1;
@@ -21,12 +22,8 @@ const CBOR_KEY_MAX_HEIGHT = 4;
 const CBOR_KEY_MIN_GROWTH = 5;
 const CBOR_KEY_GRANT_DATA = 6;
 
-const WIRE_LOG_ID_OWNER_LOG_ID_BYTES = 32;
 const WIRE_GRANT_FLAGS_BYTES = 8;
 const IDTIMESTAMP_BYTES = 8;
-
-const CBOR_BSTR_LEN_8 = 0x48;
-const CBOR_BSTR_LEN32_LEAD = 0x58;
 
 function assertNoObsoleteWireKeys(
   m: Map<number, unknown> | Record<number, unknown>,
@@ -59,39 +56,12 @@ export function encodeGrantForResponse(
     idtimestamp.length === IDTIMESTAMP_BYTES
       ? idtimestamp
       : leftPad(idtimestamp, IDTIMESTAMP_BYTES);
-  const logId32 = toPaddedWire32(grant.logId as Uint8Array);
-  const ownerLogId32 = toPaddedWire32(grant.ownerLogId as Uint8Array);
-  const flags8 = leftPad(grant.grant as Uint8Array, WIRE_GRANT_FLAGS_BYTES);
-  const maxHeight = grant.maxHeight ?? 0;
-  const minGrowth = grant.minGrowth ?? 0;
-  const grantData = grantDataToBytes(grant.grantData ?? new Uint8Array(0));
-
-  const b: number[] = [];
-  // Keys 0–6, each a single byte, emitted in a fixed ascending sequence:
-  // canonical under both the length-first order this package applies
-  // (canonical-key-order.ts) and RFC 8949 §4.2.1's pure bytewise one, which
-  // differ only across unequal key lengths.
-  b.push(0xa7); // map(7) — keys 0–6
-  b.push(CBOR_KEY_IDTIMESTAMP, CBOR_BSTR_LEN_8);
-  for (let i = 0; i < IDTIMESTAMP_BYTES; i++) b.push(idts[i]!);
-  b.push(CBOR_KEY_LOG_ID, CBOR_BSTR_LEN32_LEAD, WIRE_LOG_ID_OWNER_LOG_ID_BYTES);
-  for (let i = 0; i < WIRE_LOG_ID_OWNER_LOG_ID_BYTES; i++) b.push(logId32[i]!);
-  b.push(
-    CBOR_KEY_OWNER_LOG_ID,
-    CBOR_BSTR_LEN32_LEAD,
-    WIRE_LOG_ID_OWNER_LOG_ID_BYTES,
+  return encodeCborDeterministic(
+    new Map<number, unknown>([
+      [CBOR_KEY_IDTIMESTAMP, idts],
+      ...grantWireEntries(grant),
+    ]),
   );
-  for (let i = 0; i < WIRE_LOG_ID_OWNER_LOG_ID_BYTES; i++)
-    b.push(ownerLogId32[i]!);
-  b.push(CBOR_KEY_GRANT_FLAGS, CBOR_BSTR_LEN_8);
-  for (let i = 0; i < WIRE_GRANT_FLAGS_BYTES; i++) b.push(flags8[i]!);
-  b.push(CBOR_KEY_MAX_HEIGHT);
-  appendCborUint(b, maxHeight);
-  b.push(CBOR_KEY_MIN_GROWTH);
-  appendCborUint(b, minGrowth);
-  b.push(CBOR_KEY_GRANT_DATA);
-  appendCborBstr(b, grantData);
-  return new Uint8Array(b);
 }
 
 /** Decode CBOR response bytes (keys 0–6). */
@@ -133,19 +103,7 @@ export function decodeGrantResponse(bytes: Uint8Array): {
  * Encode grant as payload only (CBOR map keys 1–6, no idtimestamp).
  */
 export function encodeGrantPayload(grant: Grant): Uint8Array {
-  const logId32 = toPaddedWire32(grant.logId as Uint8Array);
-  const ownerLogId32 = toPaddedWire32(grant.ownerLogId as Uint8Array);
-  const flags8 = leftPad(grant.grant as Uint8Array, WIRE_GRANT_FLAGS_BYTES);
-  const grantData = grantDataToBytes(grant.grantData ?? new Uint8Array(0));
-  const map = new Map<number, unknown>([
-    [CBOR_KEY_LOG_ID, logId32],
-    [CBOR_KEY_OWNER_LOG_ID, ownerLogId32],
-    [CBOR_KEY_GRANT_FLAGS, flags8],
-    [CBOR_KEY_MAX_HEIGHT, grant.maxHeight ?? 0],
-    [CBOR_KEY_MIN_GROWTH, grant.minGrowth ?? 0],
-    [CBOR_KEY_GRANT_DATA, grantData],
-  ]);
-  return new Uint8Array(encodeCborDeterministic(map));
+  return encodeCborDeterministic(new Map(grantWireEntries(grant)));
 }
 
 /** Decode grant payload (CBOR map keys 1–6 only). */
@@ -169,11 +127,6 @@ function mapToGrant(m: Map<number, unknown> | Record<number, unknown>): Grant {
     if (v.length < minLen) throw new Error("Grant payload: bstr too short");
     return v;
   };
-  const requireUint = (v: unknown): number => {
-    if (typeof v === "number" && Number.isInteger(v)) return v;
-    if (typeof v === "bigint") return Number(v);
-    throw new Error("Grant payload: expected uint");
-  };
 
   const logId = fromPaddedWire32(requireBstr(get(CBOR_KEY_LOG_ID)));
   const ownerLogId = fromPaddedWire32(requireBstr(get(CBOR_KEY_OWNER_LOG_ID)));
@@ -181,8 +134,8 @@ function mapToGrant(m: Map<number, unknown> | Record<number, unknown>): Grant {
     requireBstr(get(CBOR_KEY_GRANT_FLAGS)),
     WIRE_GRANT_FLAGS_BYTES,
   );
-  const maxHeight = requireUint(get(CBOR_KEY_MAX_HEIGHT));
-  const minGrowth = requireUint(get(CBOR_KEY_MIN_GROWTH));
+  const maxHeight = grantUintFromCbor(get(CBOR_KEY_MAX_HEIGHT), "maxHeight");
+  const minGrowth = grantUintFromCbor(get(CBOR_KEY_MIN_GROWTH), "minGrowth");
   const grantDataRaw = get(CBOR_KEY_GRANT_DATA);
   const grantData =
     grantDataRaw instanceof Uint8Array ? grantDataRaw : new Uint8Array(0);
@@ -206,38 +159,29 @@ function leftPad(b: Uint8Array, length: number): Uint8Array {
   return out;
 }
 
-function appendCborUint(b: number[], v: number): void {
-  if (v < 24) b.push(v);
-  else if (v <= 0xff) b.push(0x18, v);
-  else if (v <= 0xffff) {
-    b.push(0x19, (v >> 8) & 0xff, v & 0xff);
-  } else if (v <= 0xffffffff) {
-    b.push(0x1a, (v >> 24) & 0xff, (v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff);
-  } else {
-    const lo = v >>> 0;
-    const hi = (v / 0x100000000) >>> 0;
-    b.push(
-      0x1b,
-      (hi >> 24) & 0xff,
-      (hi >> 16) & 0xff,
-      (hi >> 8) & 0xff,
-      hi & 0xff,
-      (lo >> 24) & 0xff,
-      (lo >> 16) & 0xff,
-      (lo >> 8) & 0xff,
-      lo & 0xff,
-    );
-  }
-}
-
-function appendCborBstr(b: number[], s: Uint8Array): void {
-  const n = s.length;
-  if (n < 24) b.push(0x40 | n);
-  else if (n <= 0xff) b.push(CBOR_BSTR_LEN32_LEAD, n);
-  else if (n <= 0xffff) {
-    b.push(0x59, (n >> 8) & 0xff, n & 0xff);
-  } else {
-    b.push(0x5a, (n >> 24) & 0xff, (n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff);
-  }
-  for (let i = 0; i < n; i++) b.push(s[i]!);
+/**
+ * Grant v0 keys 1–6 in ascending order. `encodeCborDeterministic` sorts map
+ * keys anyway; every key is a single byte, so the length-first order this
+ * package applies (canonical-key-order.ts) and RFC 8949 §4.2.1's bytewise
+ * order agree.
+ *
+ * @throws When `maxHeight` or `minGrowth` is negative, fractional, NaN,
+ *   infinite or at least 2^64 ({@link grantUintToCbor}). The old hand-rolled
+ *   writers emitted wrong bytes for these instead.
+ */
+function grantWireEntries(grant: Grant): [number, unknown][] {
+  return [
+    [CBOR_KEY_LOG_ID, toPaddedWire32(grant.logId as Uint8Array)],
+    [CBOR_KEY_OWNER_LOG_ID, toPaddedWire32(grant.ownerLogId as Uint8Array)],
+    [
+      CBOR_KEY_GRANT_FLAGS,
+      leftPad(grant.grant as Uint8Array, WIRE_GRANT_FLAGS_BYTES),
+    ],
+    [CBOR_KEY_MAX_HEIGHT, grantUintToCbor(grant.maxHeight ?? 0, "maxHeight")],
+    [CBOR_KEY_MIN_GROWTH, grantUintToCbor(grant.minGrowth ?? 0, "minGrowth")],
+    [
+      CBOR_KEY_GRANT_DATA,
+      grantDataToBytes(grant.grantData ?? new Uint8Array(0)),
+    ],
+  ];
 }

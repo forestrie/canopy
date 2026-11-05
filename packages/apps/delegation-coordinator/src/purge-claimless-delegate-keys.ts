@@ -1,6 +1,6 @@
 /**
  * Cutover data step for voucher expiry
- * ([devdocs plan-2609-12 slice 08](https://github.com/forestrie/devdocs/blob/main/plans/plan-2609-12-delegate-key-registration-hardening/08-coordinator-voucher-enforcement.md)
+ * ([devdocs plan-2609-12 slice 08](https://github.com/forestrie/work/blob/main/plans/plan-2609-12-delegate-key-registration-hardening/08-coordinator-voucher-enforcement.md)
  * change 5, ruling 7). From slice 08 the coordinator accepts only vouchers
  * carrying claim 4 (notAfter), and the kit will refuse a served voucher
  * without it, so a row registered before the cutover is deleted rather than

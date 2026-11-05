@@ -10,7 +10,7 @@ import { sha256 } from "@noble/hashes/sha256";
 import { decodeCborDeterministic } from "@forestrie/encoding";
 import type { GrantResult } from "./grant-result.js";
 import type { ParsedReceipt } from "./parsed-receipt.js";
-import { decodeGrantPayload } from "./codec.js";
+import { decodeGrantPayload } from "@forestrie/encoding";
 import { parseReceipt } from "./receipt-verify.js";
 
 /** Full SCITT receipt (COSE Sign1 bytes) in transparent statement unprotected (grants.md §3.2). */

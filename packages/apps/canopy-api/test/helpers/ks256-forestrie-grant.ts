@@ -17,7 +17,7 @@ import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { sha256 } from "@noble/hashes/sha256";
 import { COSE_ALG_KS256 } from "../../src/cose/cose-key.js";
-import { encodeGrantPayload } from "../../src/grant/codec.js";
+import { encodeGrantPayload } from "@forestrie/encoding";
 import type { Grant } from "../../src/grant/types.js";
 import {
   HEADER_FORESTRIE_GRANT_V0,
