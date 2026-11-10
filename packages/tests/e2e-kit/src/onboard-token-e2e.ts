@@ -53,7 +53,8 @@ export function univocityInstanceIdE2e(binding: E2eChainBinding): string {
  * chain-bindings route. 404 (nothing held) is success; no-op when the ops
  * token is absent, and for a pooled contract: nothing earlier can hold its
  * claim, and leaving it in place means a contract handed to two forests is
- * refused at genesis (409) instead of failing later as authority-pending.
+ * refused at the second forest's onboard mint (409, already reserved) instead
+ * of failing later as authority-pending.
  */
 export async function releaseChainBindingClaimE2e(
   request: APIRequestContext,

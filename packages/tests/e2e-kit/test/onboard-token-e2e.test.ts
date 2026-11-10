@@ -62,7 +62,7 @@ describe("releaseChainBindingClaimE2e", () => {
     process.env = env;
   });
 
-  it("leaves a pooled contract's claim in place, so a reused contract is refused at genesis", async () => {
+  it("leaves a pooled contract's claim in place, so a reused contract is refused at the onboard mint", async () => {
     await releaseChainBindingClaimE2e(request, {
       chainId: "84532",
       univocityAddr: POOLED.toUpperCase().replace("0X", "0x"),
