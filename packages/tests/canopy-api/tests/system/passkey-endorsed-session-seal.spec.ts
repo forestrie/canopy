@@ -61,7 +61,7 @@ import {
   dataLogCreateExtendFlags,
   withRequiresUserVerification,
 } from "@e2e-utils/e2e-grant-flags";
-import { describeForEachBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
+import { describeForEachBootstrapPool } from "@e2e-utils/e2e-bootstrap-variant";
 import type {
   E2eBootstrapVariant,
   E2eBootstrapVariantPool,
@@ -120,7 +120,7 @@ async function absoluteUrl(baseURL: string, location: string): Promise<string> {
   return `${base}${location.startsWith("/") ? location : `/${location}`}`;
 }
 
-describeForEachBootstrapVariant(
+describeForEachBootstrapPool(
   "Passkey-rooted data log — endorsed session leaves (ADR-0065)",
   (pool: E2eBootstrapVariantPool) => {
     test.describe.configure({ mode: "serial" });

@@ -25,7 +25,7 @@ import {
   assertBootstrapMintE2eEnv,
   e2eReceiptBootstrapRootLogId,
 } from "@e2e-utils/e2e-env-guards";
-import { describeForEachBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
+import { describeForEachBootstrapPool } from "@e2e-utils/e2e-bootstrap-variant";
 import type { E2eBootstrapVariantPool } from "@e2e-utils/e2e-bootstrap-variant";
 import {
   formatProblemDetailsMessage,
@@ -51,7 +51,7 @@ function forestrieGrantBase64ToBytes(b64: string): Uint8Array {
  * Ephemeral Imutable chain-bound bootstrap: genesis POST, contract-bootstrap-signed
  * root creation grant, register-grant, sequencing → SCITT receipt.
  */
-describeForEachBootstrapVariant(
+describeForEachBootstrapPool(
   "Bootstrap grant e2e — mint and register-grant",
   (pool: E2eBootstrapVariantPool) => {
     // Not serial: each test roots its own forest on its own contract and

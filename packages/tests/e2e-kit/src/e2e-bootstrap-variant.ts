@@ -371,11 +371,32 @@ export async function bootstrapVariantForGrantE2e(): Promise<E2eBootstrapVariant
 }
 
 /**
+ * Register a describe block per env-pinned bootstrap variant (ES256 +
+ * KS256), for lane suites that pin one contract per alg. A contract has one
+ * root log, so only the first forest rooted on each pin ever anchors; canopy's
+ * suite uses {@link describeForEachBootstrapPool} instead.
+ */
+export function describeForEachBootstrapVariant(
+  title: string,
+  register: (variant: E2eBootstrapVariant) => void,
+): void {
+  for (const variant of E2E_BOOTSTRAP_VARIANTS) {
+    test.describe(`${title} (${variant.label})`, () => {
+      test.beforeAll(async () => {
+        const skip = await variant.skipReason();
+        if (skip) test.skip(true, skip);
+      });
+      register(variant);
+    });
+  }
+}
+
+/**
  * Register a describe block per bootstrap alg (ES256 + KS256). `register`
  * receives that alg's contract pool; each forest the block creates claims its
  * own contract from it. The block skips when the pool has none of the alg.
  */
-export function describeForEachBootstrapVariant(
+export function describeForEachBootstrapPool(
   title: string,
   register: (pool: E2eBootstrapVariantPool) => void,
 ): void {

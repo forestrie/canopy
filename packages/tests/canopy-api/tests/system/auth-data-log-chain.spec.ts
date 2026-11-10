@@ -31,7 +31,7 @@ import {
   authLogBootstrapShapedFlags,
   dataLogCreateExtendFlags,
 } from "@e2e-utils/e2e-grant-flags";
-import { describeForEachBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
+import { describeForEachBootstrapPool } from "@e2e-utils/e2e-bootstrap-variant";
 import type {
   E2eBootstrapVariant,
   E2eBootstrapVariantPool,
@@ -54,7 +54,7 @@ import {
 } from "@e2e-utils/parent-grant-ab-split";
 import { sha256Hex } from "@e2e-utils/statement-sign-bytes";
 
-describeForEachBootstrapVariant(
+describeForEachBootstrapPool(
   "Auth log → data log delegation chain",
   (pool: E2eBootstrapVariantPool) => {
     test.describe.configure({ mode: "serial" });

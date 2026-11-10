@@ -25,11 +25,11 @@ import {
   e2eReceiptBootstrapRootLogId,
 } from "@e2e-utils/e2e-env-guards";
 import { authLogBootstrapShapedFlags } from "@e2e-utils/e2e-grant-flags";
-import { describeForEachBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
+import { describeForEachBootstrapPool } from "@e2e-utils/e2e-bootstrap-variant";
 import type { E2eBootstrapVariantPool } from "@e2e-utils/e2e-bootstrap-variant";
 import { completeGrantRegistrationThroughReceipt } from "@e2e-utils/register-grant-through-receipt";
 
-describeForEachBootstrapVariant(
+describeForEachBootstrapPool(
   "Bootstrap root + child auth grant e2e",
   (pool: E2eBootstrapVariantPool) => {
     test.describe.configure({ mode: "serial" });

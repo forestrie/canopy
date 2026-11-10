@@ -42,6 +42,17 @@ describe("e2e-env-guards skip paths", () => {
     expect(() => assertBootstrapMintE2eEnv()).not.toThrow();
   });
 
+  it("assertBootstrapMintE2eEnv still requires the pinned key material without a pool", () => {
+    // Lane suites pin one contract per alg; a missing key must fail here,
+    // not as a genesis 422 later.
+    delete process.env.E2E_UNIVOCITY_CONTRACT_POOL_FILE;
+    delete process.env.E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE;
+
+    expect(() => assertBootstrapMintE2eEnv()).toThrow(
+      /E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE/,
+    );
+  });
+
   it("assertBootstrapReceiptE2eEnv throws when coordinator env is missing", () => {
     delete process.env.DELEGATION_COORDINATOR_URL;
     delete process.env.COORDINATOR_APP_TOKEN;
