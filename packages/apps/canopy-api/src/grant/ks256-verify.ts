@@ -2,7 +2,7 @@
  * KS256 COSE Sign1 verification: Keccak-256 Sig_structure + ecrecover / ERC-1271.
  * Matches univocity `verifyKS256Raw` / `verifyDelegationProofKS256`. EOA
  * recovery, with its low-s bound, is delegation-cose's
- * {@link recoverKs256Signer}, so canopy has one copy of it.
+ * {@link recoverKs256Signer}, shared with canopy's other KS256 verifiers.
  */
 
 import { keccak_256 } from "@noble/hashes/sha3";

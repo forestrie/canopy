@@ -1,9 +1,10 @@
 /**
- * KS256 EOA signer recovery: the one TypeScript copy, shared by delegation
- * certificate verification here and canopy-api's COSE_Sign1 check
- * (`packages/apps/canopy-api/src/grant/ks256-verify.ts`). A recovered KS256
- * signature must be low-s, as arbor's verifiers and univocity's
- * `verifyKS256Raw` also require; see
+ * KS256 EOA signer recovery, shared by this package's delegation
+ * certificate and on-chain delegation checks and by canopy-api's COSE_Sign1
+ * and onboarding attestation checks. grant-builder, which does not depend on
+ * this package, applies the same bound in `verifyKs256GrantStatement`. A
+ * recovered KS256 signature must be low-s, as arbor's verifiers and
+ * univocity's `verifyKS256Raw` also require; see
  * [checkpoints-and-receipts.md](https://github.com/forestrie/protocol/blob/main/spec/checkpoints-and-receipts.md)
  * and the shared vector `vectors/fixtures/ks256-low-s.json` in
  * [forestrie/protocol](https://github.com/forestrie/protocol/blob/main/vectors/README.md).
