@@ -32,11 +32,10 @@ import {
 import {
   exportEs256RootXy,
   fetchLogPendingDelegation,
-  generateEs256RootKeyPair,
   importEs256PemKeyPair,
   uploadByokRootPublicKey,
 } from "@e2e-utils/coordinator-delegation-helpers";
-import { bootstrapEs256PrivateKeyPem } from "@e2e-utils/mint-es256-root-grant-e2e";
+import { claimBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
 import {
   exchangeEs256ControlPlaneSession,
   postSigningRouteWithSession,
@@ -51,10 +50,6 @@ import {
 import { sleepMs } from "@e2e-utils/arithmetic-backoff-poll";
 import { postRegisterGrantExpect303 } from "@e2e-utils/bootstrap-grant-setup";
 import { mintOnboardTokenE2e } from "@e2e-utils/onboard-token-e2e";
-import {
-  es256BootstrapContractAddrBytes,
-  univocityGenesisChainId,
-} from "@forestrie/canopy-e2e-kit";
 import { modeCWebhookSealSkipReason } from "@e2e-utils/mode-c-e2e-env";
 
 /** How long the certificate → receipt leg may take with the hint live. */
@@ -83,17 +78,16 @@ test.describe("late-delegation seal hint", () => {
     unauthorizedRequest,
   }, testInfo) => {
     const coordinator = assertCoordinatorApiE2eEnv();
+    const variant = claimBootstrapVariant("es256", "late delegation seal");
     const baseURL = testInfo.project.use.baseURL ?? "";
     const rootLogId = randomUUID();
     const rootLogHex32 = normalizeForestrieHexId32(rootLogId);
-    // The root key MUST be the pinned bootstrap key: genesis chain-anchors
-    // bootstrapKey to the contract's on-chain bootstrapConfig() (canopy#203),
-    // so a freshly generated key can never register against the pinned
-    // instance. Fresh keys remain fine where no pin exists (unit-style runs).
-    const pinnedPem = bootstrapEs256PrivateKeyPem();
-    const rootKeyPair = pinnedPem
-      ? await importEs256PemKeyPair(pinnedPem)
-      : await generateEs256RootKeyPair();
+    // The root key MUST be the claimed contract's bootstrap key: genesis
+    // chain-anchors bootstrapKey to the contract's on-chain bootstrapConfig()
+    // (canopy#203), so a freshly generated key can never register.
+    const rootKeyPair = await importEs256PemKeyPair(
+      variant.bootstrapPrivateKey(),
+    );
 
     const { x, y } = await exportEs256RootXy(rootKeyPair);
     const publicRoot = await uploadByokRootPublicKey({
@@ -121,14 +115,15 @@ test.describe("late-delegation seal hint", () => {
     });
 
     const onboardToken = await mintOnboardTokenE2e(unauthorizedRequest, {
-      chainId: univocityGenesisChainId(),
-      univocityAddr: es256BootstrapContractAddrBytes(),
+      chainId: variant.chainId,
+      univocityAddr: variant.contractAddrBytes,
     });
     const { grantBase64 } = await mintByokBootstrapGrant({
       request: unauthorizedRequest,
       rootLogId,
       onboardToken,
       rootKeyPair,
+      univocityAddr: variant.contractAddrBytes,
     });
     const { statusUrlAbsolute } = await postRegisterGrantExpect303(
       unauthorizedRequest,

@@ -62,7 +62,10 @@ import {
   withRequiresUserVerification,
 } from "@e2e-utils/e2e-grant-flags";
 import { describeForEachBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
-import type { E2eBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
+import type {
+  E2eBootstrapVariant,
+  E2eBootstrapVariantPool,
+} from "@e2e-utils/e2e-bootstrap-variant";
 import {
   decodeEntryIdHex,
   entryIdHexToIdtimestampBe8,
@@ -119,8 +122,9 @@ async function absoluteUrl(baseURL: string, location: string): Promise<string> {
 
 describeForEachBootstrapVariant(
   "Passkey-rooted data log — endorsed session leaves (ADR-0065)",
-  (variant: E2eBootstrapVariant) => {
+  (pool: E2eBootstrapVariantPool) => {
     test.describe.configure({ mode: "serial" });
+    let variant: E2eBootstrapVariant;
 
     const shared = {
       rootLogId: "",
@@ -135,6 +139,7 @@ describeForEachBootstrapVariant(
 
     test.beforeAll(async ({ unauthorizedRequest }, testInfo) => {
       assertSystemE2eEnv();
+      variant = pool.claim("passkey endorsed session");
       const custody = custodianCustodySignEnv()!;
       const rootLogId = e2eReceiptBootstrapRootLogId();
       const authLogId = randomUUID();

@@ -8,7 +8,10 @@ import {
 } from "@e2e-utils/bootstrap-grant-flow";
 import { e2eReceiptBootstrapRootLogId } from "@e2e-utils/e2e-env-guards";
 import { describeForEachBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
-import type { E2eBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
+import type {
+  E2eBootstrapVariant,
+  E2eBootstrapVariantPool,
+} from "@e2e-utils/e2e-bootstrap-variant";
 import {
   assert303ContentHashLocation,
   postLogEntriesCoseSign1,
@@ -34,8 +37,9 @@ function e2eFirstStatementPayload(): Uint8Array {
 
 describeForEachBootstrapVariant(
   "Bootstrap log e2e — first signed entry",
-  (variant: E2eBootstrapVariant) => {
+  (pool: E2eBootstrapVariantPool) => {
     test.describe.configure({ mode: "serial" });
+    let variant: E2eBootstrapVariant;
 
     const shared = {
       logId: "",
@@ -44,6 +48,7 @@ describeForEachBootstrapVariant(
     };
 
     test.beforeAll(async ({ unauthorizedRequest }, testInfo) => {
+      variant = pool.claim("first signed entry");
       test.skip(
         !variant.supportsRootStatementRegistration,
         "register-statement not supported for this bootstrap variant",

@@ -13,12 +13,11 @@ import {
 } from "@e2e-utils/coordinator-api-env";
 import {
   exportEs256RootXy,
-  generateEs256RootKeyPair,
   importEs256PemKeyPair,
   uploadByokRootPublicKey,
   verifyByokDelegationCertificate,
 } from "@e2e-utils/coordinator-delegation-helpers";
-import { bootstrapEs256PrivateKeyPem } from "@e2e-utils/mint-es256-root-grant-e2e";
+import { claimBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
 import {
   exchangeEs256ControlPlaneSession,
   postSigningRouteWithSession,
@@ -47,10 +46,6 @@ import {
 import { sha256Hex } from "@e2e-utils/statement-sign-bytes";
 import { postRegisterGrantExpect303 } from "@e2e-utils/bootstrap-grant-setup";
 import { mintOnboardTokenE2e } from "@e2e-utils/onboard-token-e2e";
-import {
-  es256BootstrapContractAddrBytes,
-  univocityGenesisChainId,
-} from "@forestrie/canopy-e2e-kit";
 import {
   hasModeCWebhookSealE2eEnv,
   modeCWebhookSealSkipReason,
@@ -81,17 +76,16 @@ test.describe("BYOK checkpoint seal e2e", () => {
     unauthorizedRequest,
   }, testInfo) => {
     const coordinator = assertCoordinatorApiE2eEnv();
+    const variant = claimBootstrapVariant("es256", "wallet-managed log seals");
     const rootLogId = randomUUID();
     const rootLogHex32 = normalizeForestrieHexId32(rootLogId);
     const baseURL = testInfo.project.use.baseURL ?? "";
-    // The root key MUST be the pinned bootstrap key: genesis chain-anchors
-    // bootstrapKey to the contract's on-chain bootstrapConfig() (canopy#203),
-    // so a freshly generated key can never register against the pinned
-    // instance. Fresh keys remain fine where no pin exists (unit-style runs).
-    const pinnedPem = bootstrapEs256PrivateKeyPem();
-    const rootKeyPair = pinnedPem
-      ? await importEs256PemKeyPair(pinnedPem)
-      : await generateEs256RootKeyPair();
+    // The root key MUST be the claimed contract's bootstrap key: genesis
+    // chain-anchors bootstrapKey to the contract's on-chain bootstrapConfig()
+    // (canopy#203), so a freshly generated key can never register.
+    const rootKeyPair = await importEs256PemKeyPair(
+      variant.bootstrapPrivateKey(),
+    );
     const signedMaterialKeys = new Set<string>();
     const byokPollStats = {
       pendingEntriesSeen: 0,
@@ -124,8 +118,8 @@ test.describe("BYOK checkpoint seal e2e", () => {
     });
 
     const onboardToken = await mintOnboardTokenE2e(unauthorizedRequest, {
-      chainId: univocityGenesisChainId(),
-      univocityAddr: es256BootstrapContractAddrBytes(),
+      chainId: variant.chainId,
+      univocityAddr: variant.contractAddrBytes,
     });
 
     const { grantBase64: mintGrantB64, grantData } =
@@ -134,6 +128,7 @@ test.describe("BYOK checkpoint seal e2e", () => {
         rootLogId,
         onboardToken,
         rootKeyPair,
+        univocityAddr: variant.contractAddrBytes,
       });
 
     const { statusUrlAbsolute } = await postRegisterGrantExpect303(

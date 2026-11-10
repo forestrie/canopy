@@ -31,11 +31,7 @@ import {
 import type { ByokPollStats } from "./byok-wallet-seal-helpers.js";
 import type { E2eBootstrapVariant } from "./e2e-bootstrap-variant.js";
 import { normalizeForestrieHexId32 } from "./forestrie-hex-id.js";
-import {
-  bootstrapKs256PrivateKeyHex,
-  ks256AddressFromPrivateKeyHex,
-} from "./ks256-wallet-grant.js";
-import { bootstrapEs256PrivateKeyPem } from "./mint-es256-root-grant-e2e.js";
+import { ks256AddressFromPrivateKeyHex } from "./ks256-wallet-grant.js";
 
 const RECEIPT_LOCATION_RE =
   /\/logs\/[^/]+\/[^/]+\/\d+\/entries\/[0-9a-f]{32}\/receipt(?:\?|$)/i;
@@ -83,12 +79,7 @@ async function loadBootstrapSigningContext(
   variant: E2eBootstrapVariant,
 ): Promise<BootstrapSigningContext> {
   if (variant.id === "es256") {
-    const pem = bootstrapEs256PrivateKeyPem();
-    if (!pem) {
-      throw new Error(
-        "E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE is required for ES256 bootstrap delegation",
-      );
-    }
+    const pem = variant.bootstrapPrivateKey();
     const boot = await variant.fetchBootstrapKey();
     if (boot.key.length !== 64) {
       throw new Error("ES256 bootstrap key must be 64-byte x‖y");
@@ -106,12 +97,7 @@ async function loadBootstrapSigningContext(
     return { variant, es256RootKeyPair: rootKeyPair };
   }
 
-  const privateKeyHex = bootstrapKs256PrivateKeyHex();
-  if (!privateKeyHex) {
-    throw new Error(
-      "E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_FILE is required for KS256 bootstrap delegation",
-    );
-  }
+  const privateKeyHex = variant.bootstrapPrivateKey();
   const boot = await variant.fetchBootstrapKey();
   if (boot.key.length !== 20) {
     throw new Error("KS256 bootstrap key must be 20-byte address");
