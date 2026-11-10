@@ -92,6 +92,11 @@ export interface Env {
    * never are. See env/log-authority-reader.ts.
    */
   UNIVOCITY_AUTHORITY_CACHE_SECONDS?: string;
+  /**
+   * Part of every authority cache key. Change it when a lane is reset, so no
+   * answer cached before the reset is served after it.
+   */
+  UNIVOCITY_AUTHORITY_CACHE_GENERATION?: string;
   /** JSON map: chainId → preference-ordered RPC URLs (deploy-resolved). */
   SUPPORTED_CHAINS_RPC?: string;
   /** CREATE3 factory for uups-counterfactual genesis binding (optional). */

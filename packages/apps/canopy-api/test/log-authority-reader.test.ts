@@ -84,6 +84,28 @@ describe("createUnivocityLogAuthorityReader", () => {
     expect(url).toBe(`${SERVICE_URL}/api/logs/${uuidOf(logId)}/authority`);
   });
 
+  it("a new cache generation does not serve a final answer an older one cached, so a lane reset can reuse log ids", async () => {
+    const logId = randomLogId();
+    const fetchSpy = stubUnivocity(
+      new Map([[uuidOf(logId), [anchored(true)]]]),
+    );
+    const cache = await privateCache();
+    const reader = (cacheGeneration: string) =>
+      createUnivocityLogAuthorityReader({
+        serviceUrl: SERVICE_URL,
+        anchoredCacheSeconds: ANCHORED_CACHE_SECONDS,
+        cacheGeneration,
+        cache,
+      });
+
+    await reader("before-reset").read(logId);
+    await reader("before-reset").read(logId);
+    expect(fetchSpy).toHaveBeenCalledOnce();
+
+    await reader("after-reset").read(logId);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
   it("ignores a cached entry canopy did not write, and asks univocity", async () => {
     const logId = randomLogId();
     const url = `${SERVICE_URL}/api/logs/${uuidOf(logId)}/authority`;

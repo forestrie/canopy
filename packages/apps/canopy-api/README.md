@@ -37,6 +37,9 @@ sequenced.
 - `UNIVOCITY_AUTHORITY_CACHE_SECONDS`: edge-cache time for an anchored answer
   that is not yet final (default 30). Final answers are cached without
   expiry; pending answers never.
+- `UNIVOCITY_AUTHORITY_CACHE_GENERATION`: part of every authority cache key.
+  Change it whenever the lane's univocity store is reset: the reset reuses
+  log ids, and a zone purge does not reliably clear Cache API entries.
 - `DELEGATION_COORDINATOR_URL`, `COORDINATOR_APP_TOKEN` (secret): public-root
   and webhook forwards to the delegation coordinator.
 

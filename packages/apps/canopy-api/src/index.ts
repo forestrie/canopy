@@ -64,6 +64,7 @@ function logAuthorityReaderForEnv(env: Env): LogAuthorityReader | undefined {
       Number.isFinite(parsed) && parsed >= 0
         ? parsed
         : DEFAULT_AUTHORITY_CACHE_SECONDS,
+    cacheGeneration: env.UNIVOCITY_AUTHORITY_CACHE_GENERATION,
   });
 }
 
@@ -77,6 +78,7 @@ function receiptAuthorityResolverForEnv(env: Env): ReceiptAuthorityResolver {
     env.UNIVOCITY_SERVICE_URL?.trim() ?? "",
     env.UNIVOCITY_API_TOKEN?.trim() ?? "",
     env.UNIVOCITY_AUTHORITY_CACHE_SECONDS?.trim() ?? "",
+    env.UNIVOCITY_AUTHORITY_CACHE_GENERATION?.trim() ?? "",
     env.FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX ?? "",
     env.SUPPORTED_CHAINS_RPC?.trim() ?? "",
   ].join("\0");

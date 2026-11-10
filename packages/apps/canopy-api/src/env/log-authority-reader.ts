@@ -47,6 +47,12 @@ const FRESH_UNTIL_HEADER = "x-canopy-fresh-until";
  *   require one today.
  * @param config.anchoredCacheSeconds how long an anchored answer that is not
  *   yet final is cached (`UNIVOCITY_AUTHORITY_CACHE_SECONDS`).
+ * @param config.cacheGeneration part of every cache key
+ *   (`UNIVOCITY_AUTHORITY_CACHE_GENERATION`). A lane reset wipes univocity
+ *   but keeps its URL and reuses log ids (the lane's fixed root log among
+ *   them), so final answers cached before it would otherwise outlive it in
+ *   every colo; changing the generation makes them unreachable. A zone purge
+ *   does not reliably reach Cache API entries.
  * @param config.cache Cache API cache; defaults to `caches.default`.
  * @param config.now clock in unix ms; defaults to `Date.now`.
  */
@@ -54,19 +60,22 @@ export function createUnivocityLogAuthorityReader(config: {
   serviceUrl: string;
   token?: string;
   anchoredCacheSeconds: number;
+  cacheGeneration?: string;
   cache?: Cache;
   now?: () => number;
 }): LogAuthorityReader {
   const base = config.serviceUrl.trim().replace(/\/+$/, "");
   const token = config.token?.trim();
   const now = config.now ?? Date.now;
+  const generation = encodeURIComponent(config.cacheGeneration?.trim() ?? "");
 
   return {
     async read(logId: Uint8Array): Promise<LogAuthority> {
       const url = `${base}/api/logs/${bytesToUuid(logId)}/authority`;
+      const cacheKey = `${url}?canopy-cache-generation=${generation}`;
       const cache = config.cache ?? caches.default;
 
-      const hit = await fromCache(cache, url, now());
+      const hit = await fromCache(cache, cacheKey, now());
       if (hit) return hit;
 
       let res: Response;
@@ -110,7 +119,7 @@ export function createUnivocityLogAuthorityReader(config: {
           "cache-control": `public, max-age=${ttl}`,
           [FRESH_UNTIL_HEADER]: String(now() + ttl * 1000),
         };
-        await cache.put(url, new Response(body, { status: 200, headers }));
+        await cache.put(cacheKey, new Response(body, { status: 200, headers }));
       }
       return authority;
     },
