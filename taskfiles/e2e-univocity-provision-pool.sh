@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Provision a POOL of fresh univocity contracts for the bootstrap suite
-# (tests-system.yml `bootstrap-univocity`; locally via
-# `task e2e-univocity:provision-pool`).
+# (tests-system.yml's system-tests job; locally via
+# `task e2e-univocity:provision-pool` or `task test:e2e:preflight`).
 #
 # A univocity contract accepts exactly one root forest (the first to publish a
 # checkpoint), so the suite needs one contract per forest it creates. This
@@ -97,11 +97,19 @@ RUN_ID="${GITHUB_RUN_ID:-$(date +%s)}"
 export E2E_PROVISION_RUN_ID="$RUN_ID"
 export RPC_URL="$RPC"
 
-# Always install the release at the last-good pin (univocity-last-good.jsonc);
-# UNIVOCITY_TOOLS_VERSION in the environment still wins for a one-off run.
-# E2E_UNIVOCITY_SKIP_INSTALL=1 keeps an already installed (e.g. dev) deployer.
+# In CI and on Linux, install the release at the last-good pin
+# (univocity-last-good.jsonc), replacing any cached copy; UNIVOCITY_TOOLS_VERSION
+# in the environment still wins for a one-off run. Release binaries are
+# linux-x64 only, so elsewhere an installed deployer is kept and a missing one
+# is built from the sibling univocity-tools checkout. REFRESH_TOOLS is read
+# from the environment by univocity-tools.yml, not as a task var.
+# E2E_UNIVOCITY_SKIP_INSTALL=1 keeps whatever deployer is installed.
 if [ "${E2E_UNIVOCITY_SKIP_INSTALL:-}" != "1" ]; then
-  task install:release REFRESH_TOOLS=1
+  if [ -n "${CI:-}" ] || [ "$(uname -s)" = "Linux" ]; then
+    REFRESH_TOOLS=1 task install:release
+  elif [ ! -x "$DEPLOYER" ]; then
+    task install:dev
+  fi
 fi
 [ -x "$DEPLOYER" ] || fail "deployer binary missing at ${DEPLOYER}"
 mkdir -p "${ROOT_DIR}/.work" "$PROPOSAL_DIR" "$RELEASE_ROOT"
