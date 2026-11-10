@@ -120,7 +120,7 @@ The **worker** must have **`CUSTODIAN_APP_TOKEN`** (Wrangler secret) for SCITT r
 | **`deploy-workers.yml`** | Deploy workers; chains **tests-system.yml** on **dev** after health |
 | **`release.yaml`** | Tag → deploy **dev** → **tests-system.yml** → promote **prod** → prod health |
 
-**tests-system.yml** manual inputs (optional): `es256_address` / `ks256_address` plus matching bootstrap key material; genesis log ids are derived from addresses when omitted. Supplied addresses skip bootstrap mutating specs for that alg.
+**tests-system.yml** manual dispatch takes `environment` and `playwright_project`; it has no contract inputs, since every run provisions its own pool.
 
 GitHub Environment **`dev`** or **`prod`** (Doppler sync): `secrets.*` and `vars.*` on Playwright steps — **no** repo-root `.env` and **no** Doppler CLI in CI jobs.
 
