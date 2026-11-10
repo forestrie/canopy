@@ -39,6 +39,8 @@ export type LogAuthority =
       blockedBy?: Uint8Array;
       /** A reservation's lapse time, unix seconds. */
       expiresAt?: number;
+      /** Decimal EIP-155 chain id of the log's univocity instance. */
+      chainId?: string;
     }
   | { kind: "conflicted"; blockedBy?: Uint8Array }
   | { kind: "unclaimed" }

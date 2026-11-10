@@ -10,6 +10,8 @@ export type CoordinatorForwardStepStatus =
   | "ok"
   | "inherited"
   | "skipped"
+  /** The coordinator already holds a different root for the log (409). */
+  | "conflict"
   | "error";
 
 export interface CoordinatorRegistrationStatus {

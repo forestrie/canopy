@@ -165,14 +165,14 @@ function classify(f: Record<string, unknown>): LogAuthority {
       ? { kind: "conflicted", blockedBy }
       : { kind: "conflicted" };
   }
+  const chainId =
+    typeof f.chainId === "string" && /^\d+$/.test(f.chainId)
+      ? f.chainId
+      : undefined;
   if (state === AUTHORITY_STATE_ANCHORED && !blockedBy) {
     const alg = toInt(f.alg);
     const key = f.key instanceof Uint8Array ? f.key : undefined;
     if (alg === null || !key) throw new Error("anchored answer has no key");
-    const chainId =
-      typeof f.chainId === "string" && /^\d+$/.test(f.chainId)
-        ? f.chainId
-        : undefined;
     return {
       kind: "anchored",
       final,
@@ -187,6 +187,7 @@ function classify(f: Record<string, unknown>): LogAuthority {
     state,
     ...(blockedBy ? { blockedBy } : {}),
     ...(expiresAt !== null ? { expiresAt } : {}),
+    ...(chainId ? { chainId } : {}),
   };
 }
 

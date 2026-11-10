@@ -64,6 +64,14 @@ export interface ForwardCoordinatorRegistrationInput {
    * best-effort instance-binding write.
    */
   chainBinding?: ForwardChainBinding;
+  /**
+   * Unix seconds at which a root registered by `prepare` lapses with its
+   * univocity reservation (devdocs ADR-0075 decision 3). The coordinator
+   * then treats the root, and the delegation certificates stored under it,
+   * as absent. Omitted for a permanent root: genesis, and the forward made
+   * when a create grant is committed.
+   */
+  expiresAt?: number;
   fetchImpl?: typeof fetch;
 }
 
@@ -73,6 +81,7 @@ interface PublicRootJsonBody {
   y?: string;
   key?: string;
   chainBinding?: { chainId: string; univocityAddr?: string };
+  expiresAt?: number;
 }
 
 export function isCoordinatorForwardConfigured(
@@ -190,6 +199,9 @@ export async function forwardCoordinatorRegistration(
     if (input.chainBinding) {
       publicRootBody.chainBinding = input.chainBinding;
     }
+    if (input.expiresAt !== undefined) {
+      publicRootBody.expiresAt = input.expiresAt;
+    }
   } catch (error) {
     status.detail =
       error instanceof Error ? error.message : "invalid bootstrap key";
@@ -205,6 +217,12 @@ export async function forwardCoordinatorRegistration(
       publicRootBody,
       input.timeoutMs,
     );
+    if (rootResp.status === 409) {
+      // The coordinator stores a log's root once (devdocs ADR-0075 d3).
+      status.publicRoot = "conflict";
+      status.detail = "the coordinator holds a different root for this log";
+      return status;
+    }
     if (!rootResp.ok) {
       status.detail = `public-root returned ${rootResp.status}`;
       return status;

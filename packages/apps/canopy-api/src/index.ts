@@ -178,6 +178,7 @@ const handler = {
         {
           ...env,
           resolveReceiptAuthority: receiptAuthorityResolverForEnv(env),
+          logAuthority: logAuthorityReaderForEnv(env),
         },
         corsHeaders,
       );

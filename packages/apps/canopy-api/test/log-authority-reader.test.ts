@@ -190,6 +190,7 @@ describe("createUnivocityLogAuthorityReader", () => {
       kind: "pending",
       state: "anchored",
       blockedBy: ancestor,
+      chainId: "84532",
     });
   });
 
