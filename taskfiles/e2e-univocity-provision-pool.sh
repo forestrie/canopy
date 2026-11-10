@@ -101,7 +101,7 @@ RUN_ID="${GITHUB_RUN_ID:-$(date +%s)}"
 export E2E_PROVISION_RUN_ID="$RUN_ID"
 export RPC_URL="$RPC"
 
-# In CI and on Linux, install the release at the last-good pin
+# On linux-x64 (CI included), install the release at the last-good pin
 # (univocity-last-good.jsonc), replacing any cached copy; UNIVOCITY_TOOLS_VERSION
 # in the environment still wins for a one-off run. Release binaries are
 # linux-x64 only, so elsewhere an installed deployer is kept and a missing one
@@ -109,7 +109,7 @@ export RPC_URL="$RPC"
 # from the environment by univocity-tools.yml, not as a task var.
 # E2E_UNIVOCITY_SKIP_INSTALL=1 keeps whatever deployer is installed.
 if [ "${E2E_UNIVOCITY_SKIP_INSTALL:-}" != "1" ]; then
-  if [ -n "${CI:-}" ] || [ "$(uname -s)" = "Linux" ]; then
+  if [ "$(uname -s)" = "Linux" ] && [ "$(uname -m)" = "x86_64" ]; then
     REFRESH_TOOLS=1 task install:release
   elif [ ! -x "$DEPLOYER" ]; then
     task install:dev
