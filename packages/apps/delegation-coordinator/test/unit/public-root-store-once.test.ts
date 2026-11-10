@@ -113,6 +113,23 @@ async function certCount(logHex32: string): Promise<number> {
   });
 }
 
+/** Set a log's signing route, with a per-log issuer token, at its store. */
+async function setSigningRoute(logHex32: string): Promise<void> {
+  const stub = getStoreStubForLogId(env as unknown as Env, logHex32);
+  const res = await stub.fetch(`http://store/signing-route/${logHex32}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: "wallet", issuerToken: "lapsed-owner-token" }),
+  });
+  expect(res.status).toBe(200);
+}
+
+/** The log's signing route as the edge reads it from the store. */
+function getSigningRoute(logHex32: string): Promise<Response> {
+  const stub = getStoreStubForLogId(env as unknown as Env, logHex32);
+  return stub.fetch(`http://store/signing-route/${logHex32}`);
+}
+
 describe("public root is stored once", () => {
   it("the same key again is 200; a different key is 409 and the stored root is unchanged", async () => {
     const logUuid = randomUUID();
@@ -149,7 +166,7 @@ describe("public root is stored once", () => {
     expect((await owner.submitCert()).status).toBe(200);
   });
 
-  it("after expiresAt, a prepare root and the certificates under it are absent", async () => {
+  it("after expiresAt, a prepare root and everything stored under it are absent", async () => {
     const logUuid = randomUUID();
     const logHex32 = normalizeLogIdToHex32(logUuid);
     const lapsed = await rootWithCert(logHex32, 304);
@@ -157,10 +174,14 @@ describe("public root is stored once", () => {
 
     expect((await postRoot(logUuid, lapsed.root, FAR_FUTURE)).status).toBe(200);
     expect((await lapsed.submitCert()).status).toBe(200);
+    await setSigningRoute(logHex32);
+    expect((await getSigningRoute(logHex32)).status).toBe(200);
     await lapse(logHex32);
 
     expect((await getRoot(logUuid)).status).toBe(404);
     expect(await certCount(logHex32)).toBe(0);
+    // The lapsed owner's issuer token must not authenticate for the next.
+    expect((await getSigningRoute(logHex32)).status).toBe(404);
     // Another owner's claim may now register its root.
     expect((await postRoot(logUuid, next.root, FAR_FUTURE)).status).toBe(200);
     expect((await next.submitCert()).status).toBe(200);

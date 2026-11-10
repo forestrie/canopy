@@ -123,6 +123,9 @@ const PENDING_CAP_PER_LOG = 32;
  * (see `purgeLapsedRoots`).
  */
 const LAPSED_ROOT_TABLES = [
+  // The signing route's issuer token authenticates for the log, so it must
+  // not outlive the owner who set it.
+  "signing_routes",
   "delegation_certificates",
   "materials",
   "pending",
@@ -955,9 +958,10 @@ export class DelegationStoreDO extends DurableObject<Env> {
    * A root registered by prepare lapses with its univocity reservation
    * ([devdocs ADR-0075](https://github.com/forestrie/devdocs/blob/main/adr/adr-0075-sec-child-root-claimed-once.md)
    * decision 3). Runs before every route, so no read sees a lapsed root or
-   * anything stored under it: its certificates, materials, pending requests,
-   * queued webhook deliveries and webhook config all go with it, and the
-   * next claimant registers from nothing.
+   * anything stored under it: its signing route and issuer token,
+   * certificates, materials, pending requests, queued webhook deliveries
+   * and webhook config all go with it, and the next claimant registers from
+   * nothing.
    */
   private purgeLapsedRoots(nowSeconds: number): void {
     const sql = this.ctx.storage.sql;
