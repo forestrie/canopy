@@ -53,7 +53,10 @@ const FRESH_UNTIL_HEADER = "x-canopy-fresh-until";
  *   them), so final answers cached before it would otherwise outlive it in
  *   every colo; changing the generation makes them unreachable. A zone purge
  *   does not reliably reach Cache API entries.
- * @param config.cache Cache API cache; defaults to `caches.default`.
+ * @param config.cache the Cache API cache answers are kept in. The worker
+ *   passes `caches.default`; taking it as a parameter keeps this module free
+ *   of the Workers-only global, so code typed for other runtimes (the e2e
+ *   suite imports canopy-api source) still compiles.
  * @param config.now clock in unix ms; defaults to `Date.now`.
  */
 export function createUnivocityLogAuthorityReader(config: {
@@ -61,7 +64,7 @@ export function createUnivocityLogAuthorityReader(config: {
   token?: string;
   anchoredCacheSeconds: number;
   cacheGeneration?: string;
-  cache?: Cache;
+  cache: Cache;
   now?: () => number;
 }): LogAuthorityReader {
   const base = config.serviceUrl.trim().replace(/\/+$/, "");
@@ -72,7 +75,7 @@ export function createUnivocityLogAuthorityReader(config: {
     async read(logId: Uint8Array): Promise<LogAuthority> {
       const url = `${base}/api/logs/${bytesToUuid(logId)}/authority`;
       const cacheKey = authorityCacheKey(base, logId, config.cacheGeneration);
-      const cache = config.cache ?? caches.default;
+      const cache = config.cache;
 
       const hit = await fromCache(cache, cacheKey, now());
       if (hit) return hit;
