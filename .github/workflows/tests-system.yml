@@ -248,7 +248,10 @@ jobs:
     # Playwright cannot install chromium on ubuntu-26.04 (ubuntu-latest
     # since 2026-10-24); unpin once it supports it.
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    # Each log a spec creates and then writes to waits up to 180 s to anchor
+    # (e2e-kit retryWhileAuthorityPending); the suite does that about seven
+    # times on top of a ~14 minute run.
+    timeout-minutes: 60
     environment: ${{ github.event_name == 'push' && 'dev' || inputs.environment }}
 
     steps:
