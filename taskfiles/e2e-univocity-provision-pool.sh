@@ -126,25 +126,34 @@ GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}" task e2e-univocity:extract
 ENTRIES="${KEY_DIR}/entries.tsv"
 : > "$ENTRIES"
 
-# deployed_key_matches MANIFEST PROPOSAL: true when the contract MANIFEST names
+# deployed_key_matches MANIFEST PROPOSAL: 0 when the contract MANIFEST names
 # carries on chain the bootstrap key PROPOSAL generated (ES256 x||y, KS256
-# address; bootstrapConfig() returns the same bytes). Another run sending with
-# the same DEPLOY_KEY nonce can replace this attempt's transaction: the
-# deployer then reports the other run's contract, at the same address, as its
-# own. The read is retried briefly because a load-balanced RPC can lag the
-# deployer's own code wait.
+# address; bootstrapConfig() returns the same bytes), 1 when it carries another
+# key, 2 when the key cannot be read. Another run sending with the same
+# DEPLOY_KEY nonce can replace this attempt's transaction: the deployer then
+# reports the other run's contract, at the same address, as its own. The read
+# is retried because a load-balanced RPC can lag the deployer's own code wait.
 deployed_key_matches() {
-  local addr want got n
+  local addr want got n err="${KEY_DIR}/cast.err"
   addr=$(jq -r '.imutableUnivocity' "$1")
   want=$(jq -r '.bootstrapKey // empty' "$2" | tr 'A-F' 'a-f')
-  [ -n "$want" ] || return 1
-  for n in 1 2 3; do
-    got=$(cast call "$addr" "bootstrapConfig()(int64,bytes)" --rpc-url "$RPC" 2>/dev/null \
+  if [ -z "$want" ]; then
+    echo "::warning::proposal $2 has no bootstrapKey to check ${addr} against" >&2
+    return 2
+  fi
+  for n in 1 2 3 4 5 6; do
+    got=$(cast call "$addr" "bootstrapConfig()(int64,bytes)" --rpc-url "$RPC" 2>"$err" \
       | sed -n 2p | tr 'A-F' 'a-f') || got=""
-    [ -n "$got" ] && break
+    if [ -n "$got" ]; then
+      [ "$got" = "$want" ] && return 0
+      return 1
+    fi
     sleep $((n * 2))
   done
-  [ "$got" = "$want" ]
+  # The RPC URL can carry a provider key; keep it out of the log.
+  got=$(tail -c 300 "$err")
+  echo "::warning::could not read bootstrapConfig() at ${addr}: ${got//"$RPC"/<rpc>}" >&2
+  return 2
 }
 
 # deploy_one ALG INDEX: deploy one contract and record it in ENTRIES.
@@ -155,7 +164,7 @@ deployed_key_matches() {
 # jittered so two overlapping runs fall out of step. Provisioning holds the
 # key for minutes, not seconds.
 deploy_one() {
-  local alg="$1" i="$2" attempt run_id pem key pointer manifest proposal keyfile
+  local alg="$1" i="$2" attempt run_id pem key pointer manifest proposal keyfile rc
   for attempt in 1 2 3 4 5; do
     run_id="${RUN_ID}-${alg}-${i}-${attempt}"
     pem="${KEY_DIR}/${alg}-${i}-${attempt}.pem"
@@ -177,16 +186,21 @@ deploy_one() {
       [ -f "$pointer" ] || fail "manifest pointer missing: ${pointer}"
       manifest=$(cat "$pointer")
       proposal="${PROPOSAL_DIR}/proposal-${alg}-${run_id}.json"
-      if deployed_key_matches "$manifest" "$proposal"; then
-        if [ "$alg" = "es256" ]; then keyfile="$pem"; else keyfile="$key"; fi
-        printf '%s\t%s\t%s\n' "$alg" "$manifest" "$keyfile" >> "$ENTRIES"
-        return 0
-      fi
-      echo "::warning::${alg} contract ${i}, attempt ${attempt}: the contract on chain does not carry this attempt's bootstrap key" >&2
+      rc=0
+      deployed_key_matches "$manifest" "$proposal" || rc=$?
+      case "$rc" in
+        0)
+          if [ "$alg" = "es256" ]; then keyfile="$pem"; else keyfile="$key"; fi
+          printf '%s\t%s\t%s\n' "$alg" "$manifest" "$keyfile" >> "$ENTRIES"
+          return 0
+          ;;
+        1) echo "::warning::${alg} contract ${i}, attempt ${attempt}: the contract on chain carries another run's bootstrap key (its transaction replaced this one)" >&2 ;;
+        *) echo "::warning::${alg} contract ${i}, attempt ${attempt}: could not verify the deployed bootstrap key" >&2 ;;
+      esac
     else
       echo "::warning::deploy of ${alg} contract ${i}, attempt ${attempt}, failed" >&2
     fi
-    sleep $((attempt * 5 + RANDOM % 10))
+    [ "$attempt" -lt 5 ] && sleep $((attempt * 5 + RANDOM % 10))
   done
   fail "deploy of ${alg} contract ${i} failed after 5 attempts"
 }
