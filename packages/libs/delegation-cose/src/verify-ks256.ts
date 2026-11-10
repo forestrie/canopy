@@ -5,51 +5,10 @@
  * [plan-0031 KS256 forest roots](https://github.com/forestrie/canopy/blob/main/docs/plans/plan-0031-ks256-forest-roots.md).
  */
 
-import { keccak_256 } from "@noble/hashes/sha3";
-import { secp256k1 } from "@noble/curves/secp256k1";
 import { bytesEqual } from "./bytes-utils.js";
 import type { Ks256VerifyHooks } from "./ks256-verify-hooks.js";
 import { decodeKs256Certificate } from "./decode-ks256-certificate.js";
-import { KS256_EOA_SIG_BYTES } from "./payload-labels.js";
-
-/**
- * Derive a 20-byte Ethereum address from an uncompressed secp256k1 public key.
- *
- * @param uncompressed - 65-byte `0x04‖x‖y` point encoding.
- */
-function addressFromUncompressedPubkey(uncompressed: Uint8Array): Uint8Array {
-  const hash = keccak_256(uncompressed.slice(1));
-  return hash.slice(-20);
-}
-
-/**
- * Recover the EOA signer address from a KS256 signature over a message hash.
- *
- * @param hash - 32-byte keccak256 digest of Sig_structure.
- * @param signature - 65-byte `r‖s‖v` signature.
- * @returns Recovered address or `null` when recovery fails.
- */
-function recoverSignerAddress(
-  hash: Uint8Array,
-  signature: Uint8Array,
-): Uint8Array | null {
-  if (signature.length !== KS256_EOA_SIG_BYTES) return null;
-  const r = signature.slice(0, 32);
-  const s = signature.slice(32, 64);
-  let v = signature[64]!;
-  if (v >= 27) v -= 27;
-  const recovery = v;
-  if (recovery > 3) return null;
-  try {
-    const sig = secp256k1.Signature.fromCompact(
-      new Uint8Array([...r, ...s]),
-    ).addRecoveryBit(recovery);
-    const pub = sig.recoverPublicKey(hash);
-    return addressFromUncompressedPubkey(pub.toRawBytes(false));
-  } catch {
-    return null;
-  }
-}
+import { recoverKs256Signer } from "./recover-ks256-signer.js";
 
 /**
  * Verify a KS256 delegation certificate against the expected root signer
@@ -62,8 +21,9 @@ function recoverSignerAddress(
  *   uses {@link Ks256VerifyHooks.isValidSignature} (ERC-1271) instead of EOA
  *   recovery.
  * @returns `true` when the root authorized the Sig_structure digest; `false`
- *   when it did not, or when the certificate's protected `alg` is not KS256 or
- *   it carries a WebAuthn envelope (alg confusion, as arbor rejects it).
+ *   when it did not, when an EOA root's signature is high-s, or when the
+ *   certificate's protected `alg` is not KS256 or it carries a WebAuthn
+ *   envelope (alg confusion, as arbor rejects it).
  */
 export async function verifyDelegationCertificateKs256(
   certificate: Uint8Array,
@@ -84,9 +44,6 @@ export async function verifyDelegationCertificateKs256(
     }
   }
 
-  if (signature.length !== KS256_EOA_SIG_BYTES) {
-    return false;
-  }
-  const recovered = recoverSignerAddress(hash, signature);
-  return recovered !== null && bytesEqual(recovered, rootSignerAddress);
+  const recovered = recoverKs256Signer(hash, signature);
+  return recovered.ok && bytesEqual(recovered.address, rootSignerAddress);
 }
