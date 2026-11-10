@@ -1,5 +1,7 @@
 /**
- * Receipt authority resolver: trust root + local delegation verification.
+ * Receipt authority resolver: a log's trust root, from univocity only, plus
+ * local delegation verification. An unavailable or pending root is transient
+ * ({@link TrustRootUnresolvedError}); a conflicted log verifies nothing.
  */
 
 import type { ParsedVerifyKey } from "@forestrie/encoding";
@@ -10,13 +12,13 @@ import {
 import { resolveReceiptVerifyKey } from "../grant/delegation-verify.js";
 import { isCanopyApiPoolTestMode } from "./runtime-mode.js";
 import {
-  createCoordinatorPublicTrustRootClient,
-  createCustodianPublicTrustRootClient,
-  createUnivocityPublicTrustRootClient,
+  createUnivocityTrustRootClient,
   isTrustRootNotFound,
+  TrustRootConflictedError,
   type RootVerifyKey,
   type TrustRootClient,
 } from "./trust-root-client.js";
+import type { LogAuthorityReader } from "./log-authority-reader.js";
 import { importEs256PublicKeyFromGrantDataXy64 } from "../scrapi/custodian-grant.js";
 
 const MAX_OWNER_LOG_CACHE = 64;
@@ -82,10 +84,10 @@ export type ReceiptAuthorityResolver = (
 ) => Promise<ReceiptVerifyKey[] | null>;
 
 /**
- * Resolve verify-key candidates from each trust-root client. When coordinator
- * public-root differs from Custodian curator signing (dev custodial forests),
- * merging keys lets receipt signature verify against the key that actually
- * sealed the peak.
+ * Resolve verify-key candidates from each trust-root client, merging the keys
+ * every client yields. Production has one client (univocity); tests may pass
+ * several. A conflicted log ({@link TrustRootConflictedError}) verifies
+ * nothing, so it is the terminal negative `null`.
  */
 export async function resolveReceiptVerifyKeysFromTrustRoots(
   ownerLogIdLowerHex32: string,
@@ -101,6 +103,7 @@ export async function resolveReceiptVerifyKeysFromTrustRoots(
       trustRoot = await client.logSigningKey(ownerLogIdLowerHex32);
     } catch (error) {
       if (isTrustRootNotFound(error)) continue;
+      if (error instanceof TrustRootConflictedError) return null;
       throw error;
     }
     sawTrustRoot = true;
@@ -126,12 +129,16 @@ export async function resolveReceiptVerifyKeysFromTrustRoots(
   return null;
 }
 
+/**
+ * Builds the resolver canopy-api verifies receipts with.
+ *
+ * @param config.logAuthority univocity's log authority, the only source of
+ *   root keys. Without it, no log has a trust root (retryable).
+ * @param config.testReceiptVerifyEs256XyHex pool-test mode only: a fixed
+ *   ES256 root in place of univocity.
+ */
 export function createReceiptAuthorityResolver(config: {
-  trustRootUrl: string;
-  coordinatorTrustRootUrl?: string;
-  coordinatorToken?: string;
-  univocityTrustRootUrl?: string;
-  univocityToken?: string;
+  logAuthority?: LogAuthorityReader;
   nodeEnv: string;
   testReceiptVerifyEs256XyHex?: string;
   /** chainId → preference-ordered RPC URLs for KS256 ERC-1271 verify. */
@@ -151,32 +158,9 @@ export function createReceiptAuthorityResolver(config: {
       },
     ];
   } else {
-    trustRootClients = [];
-    const univocityUrl = config.univocityTrustRootUrl?.trim();
-    const univocityToken = config.univocityToken?.trim();
-    if (univocityUrl && univocityToken) {
-      trustRootClients.push(
-        createUnivocityPublicTrustRootClient({
-          univocityBaseUrl: univocityUrl,
-          token: univocityToken,
-        }),
-      );
-    }
-    trustRootClients.push(
-      createCustodianPublicTrustRootClient({
-        custodianBaseUrl: config.trustRootUrl,
-      }),
-    );
-    const coordinatorUrl = config.coordinatorTrustRootUrl?.trim();
-    const coordinatorToken = config.coordinatorToken?.trim();
-    if (coordinatorUrl && coordinatorToken) {
-      trustRootClients.push(
-        createCoordinatorPublicTrustRootClient({
-          coordinatorBaseUrl: coordinatorUrl,
-          token: coordinatorToken,
-        }),
-      );
-    }
+    trustRootClients = config.logAuthority
+      ? [createUnivocityTrustRootClient(config.logAuthority)]
+      : [];
   }
 
   const cache = new Map<string, Promise<ReceiptVerifyKey[] | null>>();

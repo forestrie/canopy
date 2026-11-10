@@ -71,20 +71,12 @@ let receiptAuthorityResolverCache:
   | { signature: string; resolver: ReceiptAuthorityResolver }
   | undefined;
 
-function trustRootUrlForEnv(env: Env): string {
-  const explicit = env.TRUST_ROOT_URL?.trim();
-  if (explicit) return explicit;
-  return env.CUSTODIAN_URL?.trim() ?? "";
-}
-
 function receiptAuthorityResolverForEnv(env: Env): ReceiptAuthorityResolver {
   const signature = [
     env.NODE_ENV,
-    trustRootUrlForEnv(env),
-    env.DELEGATION_COORDINATOR_URL?.trim() ?? "",
-    env.COORDINATOR_APP_TOKEN?.trim() ?? "",
     env.UNIVOCITY_SERVICE_URL?.trim() ?? "",
     env.UNIVOCITY_API_TOKEN?.trim() ?? "",
+    env.UNIVOCITY_AUTHORITY_CACHE_SECONDS?.trim() ?? "",
     env.FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX ?? "",
     env.SUPPORTED_CHAINS_RPC?.trim() ?? "",
   ].join("\0");
@@ -95,11 +87,7 @@ function receiptAuthorityResolverForEnv(env: Env): ReceiptAuthorityResolver {
     receiptAuthorityResolverCache = {
       signature,
       resolver: createReceiptAuthorityResolver({
-        trustRootUrl: trustRootUrlForEnv(env),
-        coordinatorTrustRootUrl: env.DELEGATION_COORDINATOR_URL,
-        coordinatorToken: env.COORDINATOR_APP_TOKEN,
-        univocityTrustRootUrl: env.UNIVOCITY_SERVICE_URL,
-        univocityToken: env.UNIVOCITY_API_TOKEN,
+        logAuthority: logAuthorityReaderForEnv(env),
         nodeEnv: env.NODE_ENV,
         testReceiptVerifyEs256XyHex:
           env.FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX,
