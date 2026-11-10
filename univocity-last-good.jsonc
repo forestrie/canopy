@@ -30,5 +30,7 @@
   // protected header must carry tree-size-2 (-65933) as deterministic CBOR
   // and match the stored size; size-driven consistency fold (FOR-567). No
   // ABI change. Receipts from a sealer older than arbor #102 are rejected.
-  "contracts": "v0.3.0",
+  // v0.4.0: verifyKS256Raw refuses high-s (s > (n-1)/2); the consistency
+  // library refuses malformed proofs with distinct errors. ABI adds one error.
+  "contracts": "v0.4.0",
 }
