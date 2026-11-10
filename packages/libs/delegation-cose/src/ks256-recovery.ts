@@ -10,8 +10,9 @@ export type Ks256Recovery =
 /**
  * Why a KS256 EOA signature recovered no signer:
  * - `signature_wrong_length`: not 65 bytes `r‖s‖v`;
- * - `signature_high_s`: `s > (n-1)/2`, the malleated twin of a valid
- *   signature, refused before recovery;
+ * - `signature_high_s`: `s > (n-1)/2`, refused before recovery because
+ *   anyone can make such a signature from a valid low-s one (its twin
+ *   recovers the same address);
  * - `recovery_failed`: `r`, `s` or `v` out of range, or no point recovers.
  */
 export type Ks256RecoveryFailure =

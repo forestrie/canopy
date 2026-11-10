@@ -1,6 +1,7 @@
 /**
  * The shared KS256 low-s vector against canopy-api's COSE_Sign1 check
- * ({@link verifyKs256CoseSign1}: grants, statements, child-log prepare).
+ * ({@link verifyKs256CoseSign1}: grants, statements, child-log prepare,
+ * and receipt delegation certificates through verifyKs256DelegationCert).
  * Source of truth: forestrie/protocol vectors/fixtures/ks256-low-s.json;
  * canopy's one copy is packages/shared/encoding/src/testdata/, pinned by
  * SHA-256 below. Do not edit the copy; change protocol and re-copy.
