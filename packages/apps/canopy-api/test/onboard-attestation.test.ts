@@ -203,6 +203,7 @@ describe("verifyOnboardAttestation — per-alg vectors", () => {
       expectation({ alg: COSE_ALG_KS256, key: KS256_ADDR }),
     );
     expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.detail).toContain("signature invalid");
   });
 
   it("rejects a KS256 signature recovering to a different address", async () => {
