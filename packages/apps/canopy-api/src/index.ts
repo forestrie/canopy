@@ -334,12 +334,6 @@ const handler = {
           );
         }
 
-        const univocityServiceUrl = env.UNIVOCITY_SERVICE_URL?.trim();
-        const univocityApiToken = env.UNIVOCITY_API_TOKEN?.trim();
-        const univocityGrantClient =
-          univocityServiceUrl && univocityApiToken
-            ? { serviceUrl: univocityServiceUrl, token: univocityApiToken }
-            : undefined;
         const response = await queryRegistrationStatus(
           request,
           segments.slice(1),
@@ -350,7 +344,6 @@ const handler = {
           massifHeight,
           env.QUEUE_SHARD_COUNT,
           env.R2_GRANTS,
-          univocityGrantClient,
         );
 
         const headers = new Headers(response.headers);

@@ -395,7 +395,6 @@ async function enqueueAndStoreGrant(
       inner,
       env.queueEnv! as GrantSequencingEnv,
       bootstrapCanonicalLogId,
-      targetLogUuid,
     );
   } catch (error) {
     if (error instanceof QueueFullError) {

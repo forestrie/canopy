@@ -6,7 +6,7 @@
  */
 
 import { env } from "cloudflare:test";
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import {
   urkleLeafTableStartByteOffset,
   leafCountForMassifHeight,
@@ -422,6 +422,65 @@ describe("query-registration-status byte-range read", () => {
     // The route itself: a SequencingQueue that still reports the old
     // 2^h-based massifIndex must not steer the read. h=14, leaf 8192 lives
     // in massif 1; the stale index (0) names a decoy that exists.
+    it("a status poll carrying ?subject= writes nothing anywhere, and answers as without it", async () => {
+      const massifHeight = 14;
+      const idtimestamp = 0x0657065706570657n;
+      const bootstrapLogId = crypto.randomUUID();
+      const genesis = validGenesisV2Es256CborMap();
+      genesis.set(
+        FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID,
+        toPaddedWire32(logIdToWireBytes(bootstrapLogId)),
+      );
+      await testEnv.R2_GRANTS.put(
+        `forests/forest/${logIdToStorageSegment(logIdToWireBytes(bootstrapLogId))}/genesis.cbor`,
+        encodeCborDeterministic(genesis) as Uint8Array,
+      );
+      await testEnv.R2_MMRS.put(
+        v2MassifObjectKey(massifHeight, logId, 0),
+        buildMassifWithIdtimestamps(
+          massifHeight,
+          0,
+          new Map([[3, idtimestamp]]),
+        ),
+      );
+      const queue = {
+        idFromName: () => ({}) as DurableObjectId,
+        get: () =>
+          ({
+            resolveContent: async () => ({ leafIndex: 3n, massifIndex: 0 }),
+          }) as never,
+      };
+      const contentHash = "cd".repeat(32);
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      const poll = (search: string) =>
+        queryRegistrationStatus(
+          new Request(
+            `http://localhost/logs/${bootstrapLogId}/${logId}/entries/${contentHash}${search}`,
+          ),
+          [bootstrapLogId, logId, "entries", contentHash],
+          queue,
+          testEnv.R2_MMRS,
+          massifHeight,
+          "1",
+          testEnv.R2_GRANTS,
+        );
+
+      try {
+        const plain = await poll("");
+        const withSubject = await poll(`?subject=${crypto.randomUUID()}`);
+        const withBadSubject = await poll("?subject=not-a-log-id");
+
+        expect(plain.status).toBe(303);
+        for (const r of [withSubject, withBadSubject]) {
+          expect(r.status).toBe(303);
+          expect(r.headers.get("Location")).toBe(plain.headers.get("Location"));
+        }
+        expect(fetchSpy).not.toHaveBeenCalled();
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
     it("registration status ignores a stale massifIndex from the queue", async () => {
       const massifHeight = 14;
       const leafIndex = 8192;

@@ -145,15 +145,9 @@ describeForEachBootstrapVariant(
         absolute = `${baseURL}${absolute.startsWith("/") ? "" : "/"}${absolute}`;
       }
       const escaped = logId.replace(/-/g, "\\-");
-      // The entry id ends the PATH, not the URL: the 303 Location carries
-      // `?subject=<logId>`. Anchoring on `$` rejected that, which only showed up
-      // when this spec first actually ran (FOR-531) — it had skipped for as long
-      // as a pinned address disabled the bootstrap suite.
+      // The status poll is read-only, so the 303 Location is the bare path.
       expect(absolute).toMatch(
-        new RegExp(
-          `/logs/${escaped}/${escaped}/entries/[0-9a-f]{64}(\\?|$)`,
-          "i",
-        ),
+        new RegExp(`/logs/${escaped}/${escaped}/entries/[0-9a-f]{64}$`, "i"),
       );
     });
 
@@ -297,13 +291,10 @@ describeForEachBootstrapVariant(
           absolute = `${baseURL}${absolute.startsWith("/") ? "" : "/"}${absolute}`;
         }
         const escaped = rootLogId.replace(/-/g, "\\-");
-        // Same `?subject=` tolerance as above — this branch is only reached on a
-        // 303, so it asserts the same Location shape.
+        // This branch is only reached on a 303, so it asserts the same
+        // Location shape as above.
         expect(absolute).toMatch(
-          new RegExp(
-            `/logs/${escaped}/${escaped}/entries/[0-9a-f]{64}(\\?|$)`,
-            "i",
-          ),
+          new RegExp(`/logs/${escaped}/${escaped}/entries/[0-9a-f]{64}$`, "i"),
         );
         return;
       }
