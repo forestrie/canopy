@@ -105,6 +105,9 @@ test.describe("BYOK uint64 delegation range", () => {
     // Genesis chain-anchors the bootstrap key to the contract's on-chain
     // bootstrapConfig(), so the root must be the claimed contract's
     // bootstrap key.
+    // Refuses a pool entry whose key is not the contract's on-chain
+    // bootstrapConfig(), so a mispaired pool fails here, not at genesis.
+    await variant.fetchBootstrapKey();
     const rootKeyPair = await importEs256PemKeyPair(
       variant.bootstrapPrivateKey(),
     );

@@ -83,6 +83,9 @@ test.describe("BYOK checkpoint seal e2e", () => {
     // The root key MUST be the claimed contract's bootstrap key: genesis
     // chain-anchors bootstrapKey to the contract's on-chain bootstrapConfig()
     // (canopy#203), so a freshly generated key can never register.
+    // Refuses a pool entry whose key is not the contract's on-chain
+    // bootstrapConfig(), so a mispaired pool fails here, not at genesis.
+    await variant.fetchBootstrapKey();
     const rootKeyPair = await importEs256PemKeyPair(
       variant.bootstrapPrivateKey(),
     );
