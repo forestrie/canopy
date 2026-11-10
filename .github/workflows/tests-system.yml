@@ -264,6 +264,12 @@ jobs:
             fi
             COORD_URL="$(trim_ws "${DELEGATION_COORDINATOR_URL:-}")"
             COORD_TOKEN="$(trim_ws "${COORDINATOR_APP_TOKEN:-}")"
+            # Without the pool the bootstrap specs skip rather than fail, so
+            # a lost pool would pass the suite with no bootstrap coverage.
+            if [ ! -s "${E2E_UNIVOCITY_CONTRACT_POOL_FILE:-}" ]; then
+              echo "::error::The univocity contract pool is missing (E2E_UNIVOCITY_CONTRACT_POOL_FILE='${E2E_UNIVOCITY_CONTRACT_POOL_FILE:-}'); the provisioning step must export it."
+              exit 1
+            fi
             task e2e-shared:validate-univocity-deploy
             pnpm --filter @canopy/api-e2e exec playwright install chromium
             pnpm --filter @canopy/api-e2e exec playwright test \
