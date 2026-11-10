@@ -22,7 +22,8 @@
  *   (keccak256 over Sig_structure) — no second convention. The 20-byte
  *   address may be a contract account (plan-2607-45 Safe 1x1 Mode D):
  *   optional ERC-1271 hooks extend WHO may hold the address, never WHAT is
- *   signed. EOA roots recover as before.
+ *   signed. EOA roots recover through `recoverKs256Signer`, which refuses
+ *   high-s.
  *
  * Self-contained, no challenge round-trip: the key may be in cold custody,
  * and replay within the window only yields duplicate pending requests for
