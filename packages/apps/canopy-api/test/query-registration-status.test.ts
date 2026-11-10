@@ -419,9 +419,8 @@ describe("query-registration-status byte-range read", () => {
       });
     }
 
-    // The route itself: a SequencingQueue that still reports the old
-    // 2^h-based massifIndex must not steer the read. h=14, leaf 8192 lives
-    // in massif 1; the stale index (0) names a decoy that exists.
+    // The status poll is read-only: it writes nothing, to R2, the queue or
+    // univocity, whatever its query string carries.
     it("a status poll carrying ?subject= writes nothing anywhere, and answers as without it", async () => {
       const massifHeight = 14;
       const idtimestamp = 0x0657065706570657n;
@@ -443,13 +442,29 @@ describe("query-registration-status byte-range read", () => {
           new Map([[3, idtimestamp]]),
         ),
       );
+      // Every call the poll makes on the queue and both buckets is recorded;
+      // only reads may appear.
+      const calls: string[] = [];
+      const recording = <T extends object>(name: string, target: T): T =>
+        new Proxy(target, {
+          get(t, prop, receiver) {
+            const v = Reflect.get(t, prop, receiver);
+            if (typeof v !== "function") return v;
+            return (...args: unknown[]) => {
+              calls.push(`${name}.${String(prop)}`);
+              return (v as (...a: unknown[]) => unknown).apply(t, args);
+            };
+          },
+        });
       const queue = {
         idFromName: () => ({}) as DurableObjectId,
         get: () =>
-          ({
+          recording("queue", {
             resolveContent: async () => ({ leafIndex: 3n, massifIndex: 0 }),
           }) as never,
       };
+      const mmrs = recording("mmrs", testEnv.R2_MMRS);
+      const grants = recording("grants", testEnv.R2_GRANTS);
       const contentHash = "cd".repeat(32);
       const fetchSpy = vi.spyOn(globalThis, "fetch");
       const poll = (search: string) =>
@@ -459,10 +474,10 @@ describe("query-registration-status byte-range read", () => {
           ),
           [bootstrapLogId, logId, "entries", contentHash],
           queue,
-          testEnv.R2_MMRS,
+          mmrs,
           massifHeight,
           "1",
-          testEnv.R2_GRANTS,
+          grants,
         );
 
       try {
@@ -476,11 +491,23 @@ describe("query-registration-status byte-range read", () => {
           expect(r.headers.get("Location")).toBe(plain.headers.get("Location"));
         }
         expect(fetchSpy).not.toHaveBeenCalled();
+        expect(calls.length).toBeGreaterThan(0);
+        expect(
+          calls.filter(
+            (c) =>
+              !/^(queue\.resolveContent|mmrs\.(get|head)|grants\.(get|head))$/.test(
+                c,
+              ),
+          ),
+        ).toEqual([]);
       } finally {
         fetchSpy.mockRestore();
       }
     });
 
+    // The route itself: a SequencingQueue that still reports the old
+    // 2^h-based massifIndex must not steer the read. h=14, leaf 8192 lives
+    // in massif 1; the stale index (0) names a decoy that exists.
     it("registration status ignores a stale massifIndex from the queue", async () => {
       const massifHeight = 14;
       const leafIndex = 8192;
