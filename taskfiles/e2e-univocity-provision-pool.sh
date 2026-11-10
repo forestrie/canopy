@@ -114,14 +114,37 @@ GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}" task e2e-univocity:extract
 ENTRIES="${KEY_DIR}/entries.tsv"
 : > "$ENTRIES"
 
+# deployed_key_matches MANIFEST PROPOSAL: true when the contract MANIFEST names
+# carries on chain the bootstrap key PROPOSAL generated (ES256 x||y, KS256
+# address; bootstrapConfig() returns the same bytes). Another run sending with
+# the same DEPLOY_KEY nonce can replace this attempt's transaction: the
+# deployer then reports the other run's contract, at the same address, as its
+# own. The read is retried briefly because a load-balanced RPC can lag the
+# deployer's own code wait.
+deployed_key_matches() {
+  local addr want got n
+  addr=$(jq -r '.imutableUnivocity' "$1")
+  want=$(jq -r '.bootstrapKey // empty' "$2" | tr 'A-F' 'a-f')
+  [ -n "$want" ] || return 1
+  for n in 1 2 3; do
+    got=$(cast call "$addr" "bootstrapConfig()(int64,bytes)" --rpc-url "$RPC" 2>/dev/null \
+      | sed -n 2p | tr 'A-F' 'a-f') || got=""
+    [ -n "$got" ] && break
+    sleep $((n * 2))
+  done
+  [ "$got" = "$want" ]
+}
+
 # deploy_one ALG INDEX: deploy one contract and record it in ENTRIES.
 # A failed attempt is retried with a fresh run id and key: another run using
 # the same DEPLOY_KEY (deploy-workers and release can overlap) may take the
-# nonce this deployer read, so its transaction is refused; the next attempt
-# reads the nonce again. Provisioning holds the key for minutes, not seconds.
+# nonce this deployer read, so its transaction is refused, or replace it (see
+# deployed_key_matches); the next attempt reads the nonce again. The backoff is
+# jittered so two overlapping runs fall out of step. Provisioning holds the
+# key for minutes, not seconds.
 deploy_one() {
-  local alg="$1" i="$2" attempt run_id pem key pointer manifest keyfile
-  for attempt in 1 2 3; do
+  local alg="$1" i="$2" attempt run_id pem key pointer manifest proposal keyfile
+  for attempt in 1 2 3 4 5; do
     run_id="${RUN_ID}-${alg}-${i}-${attempt}"
     pem="${KEY_DIR}/${alg}-${i}-${attempt}.pem"
     key="${KEY_DIR}/${alg}-${i}-${attempt}.key"
@@ -141,14 +164,19 @@ deploy_one() {
       pointer="${PROPOSAL_DIR}/provision-${run_id}-${alg}.manifest"
       [ -f "$pointer" ] || fail "manifest pointer missing: ${pointer}"
       manifest=$(cat "$pointer")
-      if [ "$alg" = "es256" ]; then keyfile="$pem"; else keyfile="$key"; fi
-      printf '%s\t%s\t%s\n' "$alg" "$manifest" "$keyfile" >> "$ENTRIES"
-      return 0
+      proposal="${PROPOSAL_DIR}/proposal-${alg}-${run_id}.json"
+      if deployed_key_matches "$manifest" "$proposal"; then
+        if [ "$alg" = "es256" ]; then keyfile="$pem"; else keyfile="$key"; fi
+        printf '%s\t%s\t%s\n' "$alg" "$manifest" "$keyfile" >> "$ENTRIES"
+        return 0
+      fi
+      echo "::warning::${alg} contract ${i}, attempt ${attempt}: the contract on chain does not carry this attempt's bootstrap key" >&2
+    else
+      echo "::warning::deploy of ${alg} contract ${i}, attempt ${attempt}, failed" >&2
     fi
-    echo "::warning::deploy of ${alg} contract ${i}, attempt ${attempt}, failed" >&2
-    sleep $((attempt * 5))
+    sleep $((attempt * 5 + RANDOM % 10))
   done
-  fail "deploy of ${alg} contract ${i} failed after 3 attempts"
+  fail "deploy of ${alg} contract ${i} failed after 5 attempts"
 }
 
 # Serial: one DEPLOY_KEY, no nonce manager.
