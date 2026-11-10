@@ -1,10 +1,12 @@
 /**
  * KS256 COSE Sign1 verification: Keccak-256 Sig_structure + ecrecover / ERC-1271.
- * Matches univocity `verifyKS256Raw` / `verifyDelegationProofKS256`.
+ * Matches univocity `verifyKS256Raw` / `verifyDelegationProofKS256`. EOA
+ * recovery, with its low-s bound, is delegation-cose's
+ * {@link recoverKs256Signer}, so canopy has one copy of it.
  */
 
 import { keccak_256 } from "@noble/hashes/sha3";
-import { secp256k1 } from "@noble/curves/secp256k1";
+import { recoverKs256Signer } from "@forestrie/delegation-cose";
 import {
   COSE_ALG_KS256,
   decodeCoseSign1,
@@ -39,35 +41,10 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return true;
 }
 
-function addressFromUncompressedPubkey(uncompressed: Uint8Array): Uint8Array {
-  const hash = keccak_256(uncompressed.slice(1));
-  return hash.slice(-20);
-}
-
-function recoverSignerAddress(
-  hash: Uint8Array,
-  signature: Uint8Array,
-): Uint8Array | null {
-  if (signature.length !== 65) return null;
-  const r = signature.slice(0, 32);
-  const s = signature.slice(32, 64);
-  let v = signature[64]!;
-  if (v >= 27) v -= 27;
-  const recovery = v;
-  if (recovery > 3) return null;
-  try {
-    const sig = secp256k1.Signature.fromCompact(
-      new Uint8Array([...r, ...s]),
-    ).addRecoveryBit(recovery);
-    const pub = sig.recoverPublicKey(hash);
-    return addressFromUncompressedPubkey(pub.toRawBytes(false));
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Verify a COSE Sign1 with KS256 (Keccak Sig_structure + 65-byte eth sig).
+ * An EOA root's signature must be low-s; a contract root's goes to ERC-1271
+ * unchanged.
  */
 export async function verifyKs256CoseSign1(
   coseSign1Bytes: Uint8Array,
@@ -135,14 +112,17 @@ export async function verifyKs256CoseSign1(
     return false;
   }
 
-  const recovered = recoverSignerAddress(hash, signature);
-  const ok = recovered !== null && bytesEqual(recovered, root.address);
+  const recovered = recoverKs256Signer(hash, signature);
+  const ok = recovered.ok && bytesEqual(recovered.address, root.address);
   if (!ok && opts?.logFailures) {
     console.warn(
       JSON.stringify({
         tag: "verifyKs256Failure",
         prefix: opts.logPrefix ?? "",
-        reason: "ecrecover_mismatch",
+        reason:
+          !recovered.ok && recovered.reason === "signature_high_s"
+            ? "signature_high_s"
+            : "ecrecover_mismatch",
       }),
     );
   }
