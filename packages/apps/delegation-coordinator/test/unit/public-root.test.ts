@@ -91,7 +91,7 @@ describe("GET /api/logs/{logId}/public-root", () => {
     expect(getRes.headers.get("Cache-Control")).toBe("no-store");
   });
 
-  it("second POST upserts and GET reflects new bytes", async () => {
+  it("a second POST with a different key is refused, and GET still serves the first", async () => {
     const logUuid = randomUUID();
     const first = sampleXy();
     const second = {
@@ -131,7 +131,7 @@ describe("GET /api/logs/{logId}/public-root", () => {
         }),
       },
     );
-    expect(postSecond.status).toBe(200);
+    expect(postSecond.status).toBe(409);
 
     const getRes = await fetchWithDoRetry(
       `http://localhost/api/logs/${logUuid}/public-root`,
@@ -145,8 +145,8 @@ describe("GET /api/logs/{logId}/public-root", () => {
         new Uint8Array(await getRes.arrayBuffer()),
       ) as Map<string, unknown>,
     ) as unknown as TrustRootResponseCbor;
-    expect(decoded.x).toEqual(second.x);
-    expect(decoded.y).toEqual(second.y);
+    expect(decoded.x).toEqual(first.x);
+    expect(decoded.y).toEqual(first.y);
   });
 });
 

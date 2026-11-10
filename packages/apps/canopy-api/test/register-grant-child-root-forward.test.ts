@@ -23,6 +23,7 @@ import {
   registerGrant,
   type RegisterGrantEnv,
 } from "../src/scrapi/register-grant.js";
+import { anchoredReader } from "./helpers/log-authority-stub.js";
 import { forestrieGrantAuthorizationHeader } from "./helpers/custodian-transparent-grant.js";
 import { generateKs256TestKey } from "./helpers/ks256-forestrie-grant.js";
 
@@ -104,8 +105,13 @@ function env(): RegisterGrantEnv {
       massifHeight: 14,
     },
     creationGrantValidator: {
-      validate: async () => ({ kind: "accepted", created: true }),
+      validate: async () => ({
+        kind: "accepted",
+        created: true,
+        state: "committed",
+      }),
     },
+    logAuthority: anchoredReader(),
     coordinatorForward: {
       DELEGATION_COORDINATOR_URL: COORDINATOR,
       COORDINATOR_APP_TOKEN: "coordinator-token",

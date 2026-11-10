@@ -213,8 +213,8 @@ jobs:
       CANOPY_FQDN_ALIASES: ${{ vars.CANOPY_FQDN_ALIASES }}
       DELEGATION_COORDINATOR_URL: ${{ vars.DELEGATION_COORDINATOR_URL }}
       DELEGATION_COORDINATOR_URL_ALIASES: ${{ vars.DELEGATION_COORDINATOR_URL_ALIASES }}
-      # Optional: univocity owned grant store + authority resolver. When set, the
-      # worker delegates creation-grant validation and genesis storage to it.
+      # Required for canopy-api: univocity is the only source of log root keys
+      # (authority reads) and the grant claim store.
       UNIVOCITY_SERVICE_URL: ${{ vars.UNIVOCITY_SERVICE_URL }}
       SUPPORTED_CHAINS_RPC: ${{ vars.SUPPORTED_CHAINS_RPC }}
       # Keyed RPC endpoint (Doppler `alchemy` project → GitHub Environment
@@ -294,11 +294,10 @@ jobs:
       - name: Unit tests
         run: pnpm --filter ${{ matrix.target.pkg }} run test
 
-      - name: Configure Custodian secrets and deploy canopy-api
+      - name: Configure secrets and deploy canopy-api
         if: matrix.target.app == 'canopy-api'
         working-directory: packages/apps/canopy-api
         env:
-          CUSTODIAN_APP_TOKEN: ${{ secrets.CUSTODIAN_APP_TOKEN }}
           CANOPY_OPS_ADMIN_TOKEN: ${{ secrets.CANOPY_OPS_ADMIN_TOKEN }}
           COORDINATOR_APP_TOKEN: ${{ secrets.COORDINATOR_APP_TOKEN }}
           UNIVOCITY_API_TOKEN: ${{ secrets.UNIVOCITY_API_TOKEN }}
@@ -310,15 +309,9 @@ jobs:
             printf '%s' "$value" | wrangler secret put "$name" --env "$ENV"
           }
           ENV="${DEPLOY_ENV}"
-          APP=$(trim_ws "${CUSTODIAN_APP_TOKEN:-}")
-          if [ -z "$APP" ]; then
-            echo "::error::CUSTODIAN_APP_TOKEN is required for canopy-api (receipt verification)."
-            exit 1
-          fi
-          put_wrangler_secret CUSTODIAN_APP_TOKEN "$APP"
           COORD=$(trim_ws "${COORDINATOR_APP_TOKEN:-}")
           if [ -z "$COORD" ]; then
-            echo "::error::COORDINATOR_APP_TOKEN is required for canopy-api BYOK receipt verification."
+            echo "::error::COORDINATOR_APP_TOKEN is required for canopy-api (public-root forwards to the coordinator)."
             exit 1
           fi
           put_wrangler_secret COORDINATOR_APP_TOKEN "$COORD"
@@ -330,7 +323,7 @@ jobs:
           put_wrangler_secret CANOPY_OPS_ADMIN_TOKEN "$OPS"
           UNIV=$(trim_ws "${UNIVOCITY_API_TOKEN:-}")
           if [ -z "$UNIV" ]; then
-            echo "::error::UNIVOCITY_API_TOKEN is required for canopy-api (creation-grant validation)."
+            echo "::error::UNIVOCITY_API_TOKEN is required for canopy-api (grant claims and log authority)."
             exit 1
           fi
           put_wrangler_secret UNIVOCITY_API_TOKEN "$UNIV"
@@ -351,7 +344,7 @@ jobs:
             exit 1
           fi
           put_wrangler_secret CDP_API_KEY_SECRET "${CDP_API_KEY_SECRET}"
-          for key in CANOPY_ID FOREST_PROJECT_ID CUSTODIAN_URL DELEGATION_COORDINATOR_URL R2_MMRS_BUCKET_NAME R2_GRANTS_BUCKET_NAME SEQUENCING_QUEUE_SCRIPT_NAME CANOPY_FQDN UNIVOCITY_SERVICE_URL; do
+          for key in CANOPY_ID FOREST_PROJECT_ID DELEGATION_COORDINATOR_URL R2_MMRS_BUCKET_NAME R2_GRANTS_BUCKET_NAME SEQUENCING_QUEUE_SCRIPT_NAME CANOPY_FQDN UNIVOCITY_SERVICE_URL; do
             if [ -z "$(trim_ws "${!key:-}")" ]; then
               echo "::error::${key} is required in GitHub Environment ${ENV}."
               exit 1

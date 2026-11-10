@@ -4,6 +4,7 @@ import {
   resolveReceiptOnce,
 } from "@forestrie/scrapi-client";
 import { playwrightFetch } from "./playwright-fetch.js";
+import { E2E_AUTHORITY_ANCHOR_WAIT_MS } from "./authority-pending-retry.js";
 
 /**
  * Backoff ladders + poll loops over the @forestrie/scrapi-client poll-once
@@ -18,8 +19,13 @@ import { playwrightFetch } from "./playwright-fetch.js";
  */
 export const E2E_POLL_MAX_WAIT_MS = 30_000;
 
-/** Playwright harness for serial suites with several 30s poll stages in one test. */
-export const E2E_SYSTEM_TEST_TIMEOUT_MS = E2E_POLL_MAX_WAIT_MS * 8 + 15_000;
+/**
+ * Playwright harness for serial suites with several 30s poll stages in one
+ * test, plus two logs anchoring in turn (an auth log, then a data log under
+ * it), each waited out by {@link E2E_AUTHORITY_ANCHOR_WAIT_MS}.
+ */
+export const E2E_SYSTEM_TEST_TIMEOUT_MS =
+  E2E_POLL_MAX_WAIT_MS * 8 + 15_000 + 2 * E2E_AUTHORITY_ANCHOR_WAIT_MS;
 
 /**
  * Per-attempt wait (milliseconds) before the next query-registration-status GET

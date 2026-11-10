@@ -50,6 +50,7 @@ When the log is already initialized, the **auth grant must be supplied in the Au
 ## Errors
 
 - **400 Bad Request** — Invalid grant request (missing required fields, invalid values). CBOR Concise Problem Details; optional `detail` or extension members.
+- **409 Conflict** — `authority-pending` (with `Retry-After`, `state`, and `blockedBy` when an ancestor blocks it) when the owner log (`ownerLogId`) is not yet anchored, or `authority-conflict` (no `Retry-After`) when it is conflicted ([protocol ADR-0070](https://github.com/forestrie/protocol/blob/main/adr/adr-0070-sec-log-authority-anchored-before-use.md)). Both come before univocity and before any x402 payment, so a refused grant is never charged. For a create grant, univocity's own 409 (the child is already claimed by a different grant) is passed back, and the grant is not sequenced ([devdocs ADR-0075](https://github.com/forestrie/devdocs/blob/main/adr/adr-0075-sec-child-root-claimed-once.md)).
 - **413 Payload Too Large** — Request body exceeds configured maximum.
 - **415 Unsupported Media Type** — Body is not CBOR.
 - **500 Internal Server Error** — Storage or internal failure. CBOR problem details.

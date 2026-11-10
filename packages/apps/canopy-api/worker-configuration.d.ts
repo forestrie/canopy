@@ -20,7 +20,6 @@ declare namespace Cloudflare {
     GRANT_STORAGE_PUBLIC_BASE:
       | "https://grants-dev.forestrie.dev"
       | "https://grants.forestrie.dev";
-    CUSTODIAN_URL: string;
     DELEGATION_SIGNER_URL: string;
     DELEGATION_SIGNER_BEARER_TOKEN: string;
     SEQUENCING_QUEUE: DurableObjectNamespace /* SequencingQueue from forestrie-ingress */;

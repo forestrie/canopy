@@ -12,7 +12,9 @@
  *
  * **Flow:** The client sends the signed statement (COSE Sign1 body) and
  * **`Authorization: Forestrie-Grant`** holding a **transparent statement** (embedded grant,
- * idtimestamp, receipt). The handler resolves and authorizes the grant via receipt inclusion
+ * idtimestamp, receipt). The handler first refuses unless **`T`** is anchored on chain
+ * ({@link refuseUnlessAnchored}: 409 while pending, 409 when conflicted), then resolves and
+ * authorizes the grant via receipt inclusion
  * ({@link grantAuthorize}), checks that it **allows statement registration** on **`T`**, resolves
  * the **signer source** (ADR-0065 §4: `grantData`, or — when the statement carries a `-65801`
  * session-key endorsement — the session key that endorsement binds, verified under the
@@ -67,6 +69,8 @@ import {
 } from "./auth-grant.js";
 import { isCanopyApiPoolTestMode } from "../env/runtime-mode.js";
 import type { ReceiptAuthorityResolver } from "../env/receipt-authority-resolver.js";
+import type { LogAuthorityReader } from "../env/log-authority-reader.js";
+import { refuseUnlessAnchored } from "./log-admission.js";
 import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
 import { getMaxStatementSize } from "./transparency-configuration";
 import { getParsedGenesis } from "../forest/genesis-cache.js";
@@ -96,6 +100,8 @@ export interface RegisterStatementResponse {
 /**
  * Registers one signed statement; **`grant.logId`** is always the target log **`T`**.
  *
+ * @param logAuthority univocity's log authority; `T` must be anchored before
+ *   anything else is checked ({@link refuseUnlessAnchored}).
  * @see File-level comment for full flow, **`O` vs `T`**, and caveats.
  */
 export async function registerSignedStatement(
@@ -108,6 +114,7 @@ export async function registerSignedStatement(
   bootstrapLogIdSegment: string,
   r2Grants: R2Bucket,
   supportedChainsEnv: SupportedChainsEnv,
+  logAuthority?: LogAuthorityReader,
 ): Promise<Response> {
   try {
     const nenv = nodeEnv ?? "production";
@@ -152,6 +159,12 @@ export async function registerSignedStatement(
     } catch {
       return ClientErrors.badRequest("Invalid logId in grant");
     }
+
+    // --- Admission: T must be anchored (protocol ADR-0070) ---
+    // Refused before any verification work: a statement under a pending log
+    // is retried after anchoring, and one under a conflicted log never lands.
+    const refusal = await refuseUnlessAnchored(grant.logId, logAuthority, nenv);
+    if (refusal) return refusal;
 
     // --- Grant authorization — receipt-based inclusion only (no bootstrap path) ---
     // Same primitive as register-grant's "initialized log" branch: proves the Forestrie-Grant is
