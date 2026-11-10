@@ -11,23 +11,11 @@
 # bootstrapPrivateKey is the ES256 PEM text or the KS256 private key hex, as
 # written by the deployer. The file holds private keys: mode 600, never logged.
 #
-# When GITHUB_OUTPUT is set, writes one output `contract_pool_b64` (base64 of
-# the pool file). The keys are ephemeral, minted in-run, so the output is not a
-# registered secret and passes through (see the secret-egress-ok note in the
-# workflow).
+# When GITHUB_ENV is set (CI), exports E2E_UNIVOCITY_CONTRACT_POOL_FILE to the
+# job's later steps. The pool never leaves the job that provisioned it.
 set -euo pipefail
 
 trim_ws() { printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'; }
-
-b64_nowrap() {
-  base64 -w0 "$1" 2>/dev/null || base64 < "$1" | tr -d '\n'
-}
-
-github_out() {
-  if [ -n "${GITHUB_OUTPUT:-}" ]; then
-    echo "$1=$2" >> "$GITHUB_OUTPUT"
-  fi
-}
 
 fail() {
   echo "::error::$*" >&2
@@ -79,7 +67,6 @@ POOL_OUT="${E2E_UNIVOCITY_CONTRACT_POOL_OUT:-${ROOT_DIR}/.work/e2e-univocity-poo
 
 if [ "${PLAYWRIGHT_PROJECT:-system}" = "prod" ]; then
   echo "prod project — skipping Univocity pool provision"
-  github_out contract_pool_b64 ""
   exit 0
 fi
 
@@ -162,4 +149,6 @@ rm -rf "$KEY_DIR"
 rm -rf "${POOL_OUT}.claims"
 echo "wrote ${POOL_OUT} (es256=${POOL_ES256}, ks256=${POOL_KS256})"
 
-github_out contract_pool_b64 "$(b64_nowrap "$POOL_OUT")"
+if [ -n "${GITHUB_ENV:-}" ]; then
+  echo "E2E_UNIVOCITY_CONTRACT_POOL_FILE=${POOL_OUT}" >> "$GITHUB_ENV"
+fi

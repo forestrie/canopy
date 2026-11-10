@@ -114,8 +114,8 @@ tasks:
   ci-prepare:
     desc: |
       Bootstrap suite CI: deploy the contract pool (tests-system.yml).
-      Writes GITHUB_OUTPUT contract_pool_b64 when set. Requires DEPLOY_KEY,
-      E2E_UNIVOCITY_RPC_URL, GH_TOKEN for fetch.
+      Exports E2E_UNIVOCITY_CONTRACT_POOL_FILE via GITHUB_ENV when set.
+      Requires DEPLOY_KEY, E2E_UNIVOCITY_RPC_URL, GH_TOKEN for fetch.
     cmds:
       - bash taskfiles/e2e-univocity-provision-pool.sh
 

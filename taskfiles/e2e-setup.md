@@ -88,12 +88,11 @@ bootstrap system specs skip; other projects still run.
 
 Requires **`gh`** auth, Foundry **`cast`**, Doppler **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`**, and **univocity-tools** at the last-good pin in [`univocity-last-good.jsonc`](../univocity-last-good.jsonc) (`deploy provision e2e`; sibling `task install:dev` locally, release binaries in CI).
 
-**CI:** **`task e2e-univocity:ci-prepare`** in **tests-system.yml**, unconditionally —
-the bootstrap suite always deploys its own ephemeral contract pool, passed to the
-test job as the `contract_pool_b64` job output (base64 of the pool JSON, decoded to
-`$RUNNER_TEMP/e2e-univocity-pool.json`). There is no
-pinned-contract mode: a pinned address set `*_ALLOW_BOOTSTRAP=false`, which
-skipped every bootstrap spec (FOR-531).
+**CI:** **`task e2e-univocity:ci-prepare`** in **tests-system.yml**'s test job,
+unconditionally: every attempt of the job deploys its own ephemeral contract pool
+to `$RUNNER_TEMP/e2e-univocity-pool.json`, so a re-run never reuses contracts an
+earlier attempt rooted. There is no pinned-contract mode: a pinned contract could
+serve only the first forest that used it.
 
 Run ES256 bootstrap specs only:
 
