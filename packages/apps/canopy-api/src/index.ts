@@ -65,6 +65,7 @@ function logAuthorityReaderForEnv(env: Env): LogAuthorityReader | undefined {
         ? parsed
         : DEFAULT_AUTHORITY_CACHE_SECONDS,
     cacheGeneration: env.UNIVOCITY_AUTHORITY_CACHE_GENERATION,
+    cache: caches.default,
   });
 }
 
