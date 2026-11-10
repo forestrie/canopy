@@ -60,11 +60,13 @@ silently divergent behaviour between deployments. **Why:** the same API surface
 must be auditable regardless of how a lane is configured.
 [ARC-0026 §admission](https://github.com/forestrie/devdocs/blob/main/arc/arc-0026-onboard-grant-apis-and-fee-tracing.md).
 
-### C7 — Child-log registration needs the parent grant, not an operator token
+### C7 — Child-log registration needs the parent grant, claimed once
 Registering a child public root requires the parent's create grant (parent
-`K(L)`) — never an operator-issued onboard token. **Why:** hierarchy
-independence — the operator is a fungible pipe, it does not confer authority.
-⤷ specialises P9. [ADR-0053](https://github.com/forestrie/devdocs/blob/main/adr/adr-0053-child-log-onboarding-parent-authorized.md).
+`K(L)`), claimed once through univocity before anything else stores it —
+never an operator-issued onboard token. **Why:** the operator is a fungible
+pipe that confers no authority, and a root stored before its claim can be
+replaced by any log owner.
+⤷ specialises P9, P14. [ADR-0075](https://github.com/forestrie/devdocs/blob/main/adr/adr-0075-sec-child-root-claimed-once.md) · [ADR-0053](https://github.com/forestrie/devdocs/blob/main/adr/adr-0053-child-log-onboarding-parent-authorized.md).
 
 ### C8 — CBOR is the default wire format
 Responses are CBOR except `/api/health` and scitt-configuration; statement
@@ -77,7 +79,7 @@ The **user** control plane authenticates by wallet challenge; **operator**
 actions live behind `/admin/api/`; **public sealing** (certificate verify) is
 unauthenticated-but-verified. A route in one plane MUST NOT accept another
 plane's authority. **Why:** each plane's authority source is different — mixing
-them lets one plane's credential act in another (FOR-129).
+them lets one plane's credential act in another.
 [ARC-0023](https://github.com/forestrie/devdocs/blob/main/arc/arc-0023-wallet-challenge-control-plane-auth.md).
 
 ### C10 — register-grant payment keeps payer, registrar, and subject decoupled
