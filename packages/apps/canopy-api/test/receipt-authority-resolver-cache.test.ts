@@ -55,7 +55,6 @@ describe("receipt authority resolver cache", () => {
     expect(receiptA.length).toBe(receiptB.length);
 
     const resolve = createReceiptAuthorityResolver({
-      trustRootUrl: "https://custodian.invalid/v1",
       nodeEnv: "test",
       testReceiptVerifyEs256XyHex: bytesToHex(custodyRaw.slice(1)),
     });

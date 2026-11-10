@@ -17,6 +17,10 @@ import { handlePaymentsRequest } from "./payments/handle-payments-request.js";
 import { registerGrant, type RegisterGrantEnv } from "./scrapi/register-grant";
 import { createUnivocityGrantValidator } from "./scrapi/univocity-grant-client.js";
 import { registerSignedStatement } from "./scrapi/register-signed-statement";
+import {
+  createUnivocityLogAuthorityReader,
+  type LogAuthorityReader,
+} from "./env/log-authority-reader.js";
 import { queryRegistrationStatus } from "./scrapi/query-registration-status";
 import { resolveReceipt } from "./scrapi/resolve-receipt";
 import { getTransparencyConfiguration } from "./scrapi/transparency-configuration";
@@ -41,24 +45,40 @@ function buildBootstrapEnvForRegisterGrant(
   };
 }
 
+/** Default for UNIVOCITY_AUTHORITY_CACHE_SECONDS. */
+const DEFAULT_AUTHORITY_CACHE_SECONDS = 30;
+
+/**
+ * The log authority reader admission uses, or undefined when univocity is not
+ * configured (then admission is a 503 outside pool-test mode).
+ */
+function logAuthorityReaderForEnv(env: Env): LogAuthorityReader | undefined {
+  const serviceUrl = env.UNIVOCITY_SERVICE_URL?.trim();
+  if (!serviceUrl) return undefined;
+  const raw = env.UNIVOCITY_AUTHORITY_CACHE_SECONDS?.trim();
+  const parsed = raw ? Number(raw) : DEFAULT_AUTHORITY_CACHE_SECONDS;
+  return createUnivocityLogAuthorityReader({
+    serviceUrl,
+    token: env.UNIVOCITY_API_TOKEN,
+    anchoredCacheSeconds:
+      Number.isFinite(parsed) && parsed >= 0
+        ? parsed
+        : DEFAULT_AUTHORITY_CACHE_SECONDS,
+    cacheGeneration: env.UNIVOCITY_AUTHORITY_CACHE_GENERATION,
+  });
+}
+
 let receiptAuthorityResolverCache:
   | { signature: string; resolver: ReceiptAuthorityResolver }
   | undefined;
 
-function trustRootUrlForEnv(env: Env): string {
-  const explicit = env.TRUST_ROOT_URL?.trim();
-  if (explicit) return explicit;
-  return env.CUSTODIAN_URL?.trim() ?? "";
-}
-
 function receiptAuthorityResolverForEnv(env: Env): ReceiptAuthorityResolver {
   const signature = [
     env.NODE_ENV,
-    trustRootUrlForEnv(env),
-    env.DELEGATION_COORDINATOR_URL?.trim() ?? "",
-    env.COORDINATOR_APP_TOKEN?.trim() ?? "",
     env.UNIVOCITY_SERVICE_URL?.trim() ?? "",
     env.UNIVOCITY_API_TOKEN?.trim() ?? "",
+    env.UNIVOCITY_AUTHORITY_CACHE_SECONDS?.trim() ?? "",
+    env.UNIVOCITY_AUTHORITY_CACHE_GENERATION?.trim() ?? "",
     env.FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX ?? "",
     env.SUPPORTED_CHAINS_RPC?.trim() ?? "",
   ].join("\0");
@@ -69,11 +89,7 @@ function receiptAuthorityResolverForEnv(env: Env): ReceiptAuthorityResolver {
     receiptAuthorityResolverCache = {
       signature,
       resolver: createReceiptAuthorityResolver({
-        trustRootUrl: trustRootUrlForEnv(env),
-        coordinatorTrustRootUrl: env.DELEGATION_COORDINATOR_URL,
-        coordinatorToken: env.COORDINATOR_APP_TOKEN,
-        univocityTrustRootUrl: env.UNIVOCITY_SERVICE_URL,
-        univocityToken: env.UNIVOCITY_API_TOKEN,
+        logAuthority: logAuthorityReaderForEnv(env),
         nodeEnv: env.NODE_ENV,
         testReceiptVerifyEs256XyHex:
           env.FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX,
@@ -152,6 +168,7 @@ const handler = {
         {
           ...env,
           resolveReceiptAuthority: receiptAuthorityResolverForEnv(env),
+          logAuthority: logAuthorityReaderForEnv(env),
         },
         corsHeaders,
       );
@@ -237,6 +254,7 @@ const handler = {
             queueEnv: queueEnvForSequencing,
             bootstrapEnv: bootstrapEnvForGrant,
             resolveReceiptAuthority,
+            logAuthority: logAuthorityReaderForEnv(env),
             creationGrantValidator,
             coordinatorForward: {
               DELEGATION_COORDINATOR_URL: env.DELEGATION_COORDINATOR_URL,
@@ -279,6 +297,7 @@ const handler = {
             segments[1],
             env.R2_GRANTS,
             env,
+            logAuthorityReaderForEnv(env),
           );
           const headers = new Headers(response.headers);
           Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));
@@ -317,12 +336,6 @@ const handler = {
           );
         }
 
-        const univocityServiceUrl = env.UNIVOCITY_SERVICE_URL?.trim();
-        const univocityApiToken = env.UNIVOCITY_API_TOKEN?.trim();
-        const univocityGrantClient =
-          univocityServiceUrl && univocityApiToken
-            ? { serviceUrl: univocityServiceUrl, token: univocityApiToken }
-            : undefined;
         const response = await queryRegistrationStatus(
           request,
           segments.slice(1),
@@ -333,7 +346,6 @@ const handler = {
           massifHeight,
           env.QUEUE_SHARD_COUNT,
           env.R2_GRANTS,
-          univocityGrantClient,
         );
 
         const headers = new Headers(response.headers);

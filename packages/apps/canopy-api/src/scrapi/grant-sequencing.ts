@@ -23,10 +23,6 @@ function contentHashBuffer(inner: Uint8Array): ArrayBuffer {
 
 /**
  * Dedupe by inner, then enqueue(ownerLogId, inner). Returns status URL path and inner hex for the caller to return 303 and store grant.
- *
- * When `subjectLogIdUuid` is set, the status URL carries `?subject=` so
- * query-registration-status can patch the univocity grant store with the
- * sequenced idtimestamp once the leaf is committed.
  */
 export async function enqueueGrantForSequencing(
   ownerLogIdBytes: Uint8Array,
@@ -34,17 +30,11 @@ export async function enqueueGrantForSequencing(
   env: GrantSequencingEnv,
   /** Canonical UUID for bootstrap log id (first path segment under `/logs/`). */
   bootstrapCanonicalLogId: string,
-  /** Grant subject (T); optional query on the status URL for store patch. */
-  subjectLogIdUuid?: string,
 ): Promise<GrantSequencingResult> {
   const ownerLogIdUuid = bytesToUuid(ownerLogIdBytes);
   const innerHex = grantCommitmentHashToHex(inner);
   const queue = getQueueForLog(env, ownerLogIdUuid);
-  const subjectQ =
-    subjectLogIdUuid && subjectLogIdUuid.length > 0
-      ? `?subject=${encodeURIComponent(subjectLogIdUuid)}`
-      : "";
-  const statusUrlPath = `/logs/${bootstrapCanonicalLogId}/${ownerLogIdUuid}/entries/${innerHex}${subjectQ}`;
+  const statusUrlPath = `/logs/${bootstrapCanonicalLogId}/${ownerLogIdUuid}/entries/${innerHex}`;
 
   const contentHash = contentHashBuffer(inner);
 

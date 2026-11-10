@@ -269,11 +269,6 @@ varsBlock = setStringProperty(
 );
 varsBlock = setStringProperty(
   varsBlock,
-  "CUSTODIAN_URL",
-  process.env.CUSTODIAN_URL,
-);
-varsBlock = setStringProperty(
-  varsBlock,
   "DELEGATION_COORDINATOR_URL",
   process.env.DELEGATION_COORDINATOR_URL,
 );

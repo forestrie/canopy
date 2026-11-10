@@ -6,7 +6,7 @@
  */
 
 import { env } from "cloudflare:test";
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import {
   urkleLeafTableStartByteOffset,
   leafCountForMassifHeight,
@@ -418,6 +418,92 @@ describe("query-registration-status byte-range read", () => {
         ).resolves.toBe(expectedIdtimestamp);
       });
     }
+
+    // The status poll is read-only: it writes nothing, to R2, the queue or
+    // univocity, whatever its query string carries.
+    it("a status poll carrying ?subject= writes nothing anywhere, and answers as without it", async () => {
+      const massifHeight = 14;
+      const idtimestamp = 0x0657065706570657n;
+      const bootstrapLogId = crypto.randomUUID();
+      const genesis = validGenesisV2Es256CborMap();
+      genesis.set(
+        FOREST_GENESIS_LABEL_BOOTSTRAP_LOG_ID,
+        toPaddedWire32(logIdToWireBytes(bootstrapLogId)),
+      );
+      await testEnv.R2_GRANTS.put(
+        `forests/forest/${logIdToStorageSegment(logIdToWireBytes(bootstrapLogId))}/genesis.cbor`,
+        encodeCborDeterministic(genesis) as Uint8Array,
+      );
+      await testEnv.R2_MMRS.put(
+        v2MassifObjectKey(massifHeight, logId, 0),
+        buildMassifWithIdtimestamps(
+          massifHeight,
+          0,
+          new Map([[3, idtimestamp]]),
+        ),
+      );
+      // Every call the poll makes on the queue and both buckets is recorded;
+      // only reads may appear.
+      const calls: string[] = [];
+      const recording = <T extends object>(name: string, target: T): T =>
+        new Proxy(target, {
+          get(t, prop, receiver) {
+            const v = Reflect.get(t, prop, receiver);
+            if (typeof v !== "function") return v;
+            return (...args: unknown[]) => {
+              calls.push(`${name}.${String(prop)}`);
+              return (v as (...a: unknown[]) => unknown).apply(t, args);
+            };
+          },
+        });
+      const queue = {
+        idFromName: () => ({}) as DurableObjectId,
+        get: () =>
+          recording("queue", {
+            resolveContent: async () => ({ leafIndex: 3n, massifIndex: 0 }),
+          }) as never,
+      };
+      const mmrs = recording("mmrs", testEnv.R2_MMRS);
+      const grants = recording("grants", testEnv.R2_GRANTS);
+      const contentHash = "cd".repeat(32);
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      const poll = (search: string) =>
+        queryRegistrationStatus(
+          new Request(
+            `http://localhost/logs/${bootstrapLogId}/${logId}/entries/${contentHash}${search}`,
+          ),
+          [bootstrapLogId, logId, "entries", contentHash],
+          queue,
+          mmrs,
+          massifHeight,
+          "1",
+          grants,
+        );
+
+      try {
+        const plain = await poll("");
+        const withSubject = await poll(`?subject=${crypto.randomUUID()}`);
+        const withBadSubject = await poll("?subject=not-a-log-id");
+
+        expect(plain.status).toBe(303);
+        for (const r of [withSubject, withBadSubject]) {
+          expect(r.status).toBe(303);
+          expect(r.headers.get("Location")).toBe(plain.headers.get("Location"));
+        }
+        expect(fetchSpy).not.toHaveBeenCalled();
+        expect(calls.length).toBeGreaterThan(0);
+        expect(
+          calls.filter(
+            (c) =>
+              !/^(queue\.resolveContent|mmrs\.(get|head)|grants\.(get|head))$/.test(
+                c,
+              ),
+          ),
+        ).toEqual([]);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
 
     // The route itself: a SequencingQueue that still reports the old
     // 2^h-based massifIndex must not steer the read. h=14, leaf 8192 lives

@@ -1,5 +1,4 @@
 import { problemResponse } from "../cbor-api/cbor-response.js";
-import type { CanopyBootstrapTrioEnv } from "./canopy-bootstrap-trio-env.js";
 import type { CanopyCheckRequestEnv } from "./canopy-check-request-env.js";
 import type { CanopyOpsAdminEnv } from "./canopy-ops-admin-env.js";
 import type { CanopyReceiptVerifierEnv } from "./canopy-receipt-verifier-env.js";
@@ -21,7 +20,6 @@ function pathnameIsPaymentsOps(pathname: string): boolean {
 }
 
 export type {
-  CanopyBootstrapTrioEnv,
   CanopyCheckRequestEnv,
   CanopyOpsAdminEnv,
   CanopyReceiptVerifierEnv,
@@ -70,8 +68,6 @@ export function checkRequestEnv(
   if (pathnameIsOnboardingRoute(pathname)) {
     return null;
   }
-  const trio = responseIfBootstrapTrioIncomplete(env, corsHeaders);
-  if (trio) return trio;
   const queue = responseIfSequencingQueueIncomplete(env, corsHeaders);
   if (queue) return queue;
   return responseIfReceiptVerifierMisconfigured(env, corsHeaders);
@@ -98,8 +94,11 @@ export function responseIfSequencingQueueIncomplete(
 }
 
 /**
- * Non-pool workers need CUSTODIAN_APP_TOKEN to resolve per-log receipt verify keys.
- * Setting FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX outside pool mode is a 503.
+ * Non-pool workers need UNIVOCITY_SERVICE_URL: univocity is the only source of
+ * log root keys, for receipt verification and admission
+ * ([devdocs ADR-0075](https://github.com/forestrie/devdocs/blob/main/adr/adr-0075-sec-child-root-claimed-once.md)
+ * decision 5). Setting FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX outside pool
+ * mode is a 503.
  */
 export function responseIfReceiptVerifierMisconfigured(
   env: CanopyReceiptVerifierEnv,
@@ -115,41 +114,12 @@ export function responseIfReceiptVerifierMisconfigured(
       headers: corsHeaders,
     });
   }
-  if (!env.CUSTODIAN_APP_TOKEN?.trim()) {
+  if (!env.UNIVOCITY_SERVICE_URL?.trim()) {
     return problemResponse(503, "Service Unavailable", "about:blank", {
       detail:
-        "Canopy API is misconfigured (missing CUSTODIAN_APP_TOKEN; required for SCITT receipt verification).",
-      headers: corsHeaders,
-    });
-  }
-  if (
-    env.DELEGATION_COORDINATOR_URL?.trim() &&
-    !env.COORDINATOR_APP_TOKEN?.trim()
-  ) {
-    return problemResponse(503, "Service Unavailable", "about:blank", {
-      detail:
-        "Canopy API is misconfigured (missing COORDINATOR_APP_TOKEN; required when DELEGATION_COORDINATOR_URL is set for BYOK receipt verification).",
+        "Canopy API is misconfigured (missing UNIVOCITY_SERVICE_URL; required for log authority and SCITT receipt verification).",
       headers: corsHeaders,
     });
   }
   return null;
-}
-
-/**
- * Non-pool workers must have CUSTODIAN_URL (non-empty). Bootstrap grants are
- * verified against forest genesis + grantData; per-log Custodian keys use APP_TOKEN on receipt paths.
- */
-export function responseIfBootstrapTrioIncomplete(
-  env: CanopyBootstrapTrioEnv,
-  corsHeaders: Record<string, string>,
-): Response | null {
-  if (isCanopyApiPoolTestMode(env)) {
-    return null;
-  }
-  if (env.CUSTODIAN_URL?.trim()) return null;
-
-  return problemResponse(503, "Service Unavailable", "about:blank", {
-    detail: "Canopy API is misconfigured (missing CUSTODIAN_URL).",
-    headers: corsHeaders,
-  });
 }

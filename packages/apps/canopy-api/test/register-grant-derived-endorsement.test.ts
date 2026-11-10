@@ -11,6 +11,7 @@ import {
   registerGrant,
   type RegisterGrantEnv,
 } from "../src/scrapi/register-grant.js";
+import { anchoredReader } from "./helpers/log-authority-stub.js";
 import { COSE_ALG_ES256 } from "../src/cose/cose-key.js";
 import { encodeCustodianProfileForestrieGrant } from "./helpers/custodian-transparent-grant.js";
 
@@ -74,6 +75,7 @@ function envWith(bootstrapLogId = PARENT): RegisterGrantEnv {
       r2Mmrs: {} as R2Bucket,
       massifHeight: 14,
     },
+    logAuthority: anchoredReader(),
   };
 }
 

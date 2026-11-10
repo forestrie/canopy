@@ -1,5 +1,6 @@
 import type { APIRequestContext, APIResponse } from "@playwright/test";
 import { expect } from "@playwright/test";
+import { retryWhileAuthorityPending } from "./authority-pending-retry.js";
 
 const COSE_SIGN1_CONTENT_TYPE = 'application/cose; cose-type="cose-sign1"';
 
@@ -12,14 +13,17 @@ export async function postLogEntriesCoseSign1(
     sign1Bytes: Uint8Array;
   },
 ): Promise<APIResponse> {
-  return request.post(`/register/${opts.bootstrapLogId}/entries`, {
-    headers: {
-      Authorization: `Forestrie-Grant ${opts.completedGrantB64}`,
-      "content-type": COSE_SIGN1_CONTENT_TYPE,
-    },
-    data: Buffer.from(opts.sign1Bytes),
-    maxRedirects: 0,
-  });
+  // A data log created moments ago may not be anchored yet.
+  return retryWhileAuthorityPending(() =>
+    request.post(`/register/${opts.bootstrapLogId}/entries`, {
+      headers: {
+        Authorization: `Forestrie-Grant ${opts.completedGrantB64}`,
+        "content-type": COSE_SIGN1_CONTENT_TYPE,
+      },
+      data: Buffer.from(opts.sign1Bytes),
+      maxRedirects: 0,
+    }),
+  );
 }
 
 export function assert303ContentHashLocation(opts: {

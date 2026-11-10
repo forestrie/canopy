@@ -17,4 +17,13 @@ export interface SubmitPublicRootRequest {
   key?: string;
   /** The log's chain binding (plan-2607-46 slice 03), sent at genesis. */
   chainBinding?: { chainId: string; univocityAddr?: string };
+  /**
+   * Unix seconds at which the root lapses: canopy-api `prepare` sends its
+   * univocity reservation's `expiresAt`
+   * ([devdocs ADR-0075](https://github.com/forestrie/devdocs/blob/main/adr/adr-0075-sec-child-root-claimed-once.md)
+   * decision 3). Once it passes, the root and the delegation certificates
+   * stored under it are absent. Absent: permanent (genesis, and the forward
+   * made when create commits the grant).
+   */
+  expiresAt?: number;
 }

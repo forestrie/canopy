@@ -12,6 +12,7 @@ import {
   decodeCborDeterministic,
   encodeCborDeterministic,
 } from "@forestrie/encoding";
+import { env, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { secp256k1 } from "@noble/curves/secp256k1";
@@ -31,6 +32,8 @@ import {
   testDelegatedCoseKey,
 } from "./byok-material-fixture.js";
 import { fetchWithDoRetry } from "./fetch-with-do-retry.js";
+import { getStoreStubForLogId } from "../../src/handlers/handler.js";
+import type { Env } from "../../src/env.js";
 
 const TEST_TOKEN = "test-coordinator-token";
 
@@ -425,9 +428,10 @@ describe("BYOK on-chain delegation proof", () => {
     expect(resp.onchainProof).toBeUndefined();
   });
 
-  it("omits onchainProof when the public root alg rotates after submission", async () => {
-    // Signature was validated against the KS256 root at submit time; a later
-    // ES256 root replace must not rebuild the proof under the new header.
+  it("omits onchainProof when a stored root's alg differs from the one it was validated under", async () => {
+    // Signature was validated against the KS256 root at submit time. A root is
+    // stored once, so the API refuses a replacement (409); a row an older
+    // build rotated must still not rebuild the proof under the new header.
     const logUuid = randomUUID();
     const address = rootAddress(ROOT_PRIVATE_KEY_HEX);
     await registerKs256Root(logUuid, address);
@@ -460,7 +464,31 @@ describe("BYOK on-chain delegation proof", () => {
       mmrEnd: 16383,
       delegatedPublicKey: sub.delegatedPublicKey,
     });
-    await registerEs256Root(logUuid, material.x, material.y);
+    const replace = await fetchWithDoRetry(
+      `http://localhost/api/logs/${logUuid}/public-root`,
+      {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          alg: "ES256",
+          x: bytesToBase64(material.x),
+          y: bytesToBase64(material.y),
+        }),
+      },
+    );
+    expect(replace.status).toBe(409);
+    await runInDurableObject(
+      getStoreStubForLogId(env as unknown as Env, sub.logHex32),
+      async (_instance, state) => {
+        state.storage.sql.exec(
+          `UPDATE public_roots SET alg = 'ES256', x = ?, y = ?
+            WHERE log_id_hex32 = ?`,
+          material.x,
+          material.y,
+          sub.logHex32,
+        );
+      },
+    );
 
     const issueRes = await issueDelegation(sub);
     expect(issueRes.status).toBe(200);

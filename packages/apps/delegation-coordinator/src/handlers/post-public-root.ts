@@ -3,6 +3,10 @@
  *
  * Operator app token required. Supports ES256 x/y and v2 COSE alg int keys
  * per [univocity docs/arc](https://github.com/forestrie/univocity/blob/main/docs/arc/).
+ * The store keeps a log's root once: the same key again is 200, a different
+ * key 409, and an optional `expiresAt` makes the root lapse
+ * ([devdocs ADR-0075](https://github.com/forestrie/devdocs/blob/main/adr/adr-0075-sec-child-root-claimed-once.md)
+ * decision 3). The store validates `expiresAt`.
  */
 
 import type { Env } from "../env.js";
@@ -92,6 +96,7 @@ export async function handlePostPublicRoot(
           x: body.x,
           y: body.y,
           chainBinding: body.chainBinding,
+          expiresAt: body.expiresAt,
         }),
       });
     }
@@ -142,6 +147,7 @@ export async function handlePostPublicRoot(
         alg: body.alg,
         key: body.key,
         chainBinding: body.chainBinding,
+        expiresAt: body.expiresAt,
       }),
     });
   } catch (error) {

@@ -14,6 +14,13 @@
  *   auth log and `T` is the new child log. See
  *   [grants.md §2 logId vs ownerLogId](https://github.com/forestrie/canopy/blob/main/docs/grants.md#2-logid-vs-ownerlogid-authorized-vs-owning).
  *
+ * ## Admission: the owner log is anchored
+ *
+ * Every path first refuses unless univocity reports **`O`** anchored on chain
+ * ({@link refuseUnlessAnchored}; protocol ADR-0070): 409 `authority-pending`
+ * while it is pending, 409 `authority-conflict` once conflicted, before payment
+ * or univocity's claim.
+ *
  * ## Two paths: creation vs steady-state
  *
  * - **Creation grant** (target `T` has no MMRS state yet): the grant is the credential being
@@ -74,6 +81,12 @@ import {
   type ParsedForestGenesis,
 } from "../forest/genesis-cache.js";
 import type { CreationGrantValidator } from "./univocity-grant-client.js";
+import type { LogAuthorityReader } from "../env/log-authority-reader.js";
+import {
+  authorityConflictResponse,
+  PROBLEM_AUTHORITY_CONFLICT,
+  refuseUnlessAnchored,
+} from "./log-admission.js";
 import { verifyDerivedEndorsementEnvelope } from "./verify-derived-endorsement-envelope.js";
 
 export interface RegisterGrantEnv {
@@ -96,6 +109,12 @@ export interface RegisterGrantEnv {
   };
   /** Receipt authority resolver (trust root + delegation); required for receipt inclusion. */
   resolveReceiptAuthority?: ReceiptAuthorityResolver;
+  /**
+   * univocity's log authority. The owner log `O` a grant is sequenced into
+   * must be anchored before anything else is done for the grant, on every
+   * path ({@link refuseUnlessAnchored}). Required outside pool-test mode.
+   */
+  logAuthority?: LogAuthorityReader;
   /**
    * Creation-grant validation seam. Required to register a creation grant: when
    * absent, a creation grant returns `503`. The production implementation
@@ -182,6 +201,17 @@ export async function registerGrant(
     return ClientErrors.badRequest("Invalid ownerLogId in grant");
   }
 
+  // Admission (devdocs ADR-0075 decision 8): the grant is sequenced into O,
+  // so O must be anchored. Refused before payment and before univocity is
+  // asked to claim anything, so a committed claim always has an anchored
+  // owner and a retry after anchoring is charged once.
+  const refusal = await refuseUnlessAnchored(
+    grant.ownerLogId,
+    env.logAuthority,
+    env.nodeEnv,
+  );
+  if (refusal) return refusal;
+
   // Payment gate setup (plan-2608-09 W2). Dark by default: only under
   // REGISTER_GRANT_ADMISSION=paid|either do we read the parent-grant evidence
   // from the body and evaluate the gate, so the unset/open default is
@@ -238,11 +268,13 @@ export async function registerGrant(
     );
   }
 
-  // Creation grant (uninitialized T): delegated to the univocity owned grant
-  // store. Univocity verifies the signature chain against the owner's root key
-  // (anchored to the on-chain bootstrap key) and enforces global logId -> R
-  // uniqueness atomically (201 new / 200 idempotent / 409 conflict). There is no
-  // local fallback: without a validator a creation grant is a 503.
+  // Creation grant (uninitialized T): claimed through the univocity owned
+  // grant store with intent commit, before it is sequenced (devdocs ADR-0075
+  // decisions 2 and 8). Univocity verifies the signature chain against the
+  // owner's root key, enforces global logId -> R uniqueness, and stores the
+  // grant write-once (201 new / 200 the same grant / 409 a different grant or
+  // forest). A refused grant is never sequenced. There is no local fallback:
+  // without a validator a creation grant is a 503.
   if (!logInitialized) {
     if (isDerivedEndorsementGrant(grantFlags)) {
       return registerDerivedEndorsementGrant(
@@ -305,8 +337,13 @@ export async function registerGrant(
         }
       }
       case "conflict":
+        // univocity re-checks the owner at commit; a conflict found since
+        // admission read a cached anchored answer is the same refusal.
+        if (decision.title === PROBLEM_AUTHORITY_CONFLICT) {
+          return authorityConflictResponse(grant.ownerLogId);
+        }
         return ClientErrors.conflict(
-          "logId already registered to a different forest (global uniqueness).",
+          `Univocity refused the claim (${decision.title || "conflict"}): ${decision.detail || "the log is already claimed by a different grant or forest."}`,
         );
       case "rejected":
         return ClientErrors.forbidden(
@@ -358,7 +395,6 @@ async function enqueueAndStoreGrant(
       inner,
       env.queueEnv! as GrantSequencingEnv,
       bootstrapCanonicalLogId,
-      targetLogUuid,
     );
   } catch (error) {
     if (error instanceof QueueFullError) {

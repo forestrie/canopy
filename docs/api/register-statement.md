@@ -26,7 +26,8 @@ Registers a signed statement (COSE Sign1) into the log identified by **`grant.lo
 1. **Get grant from request** — Read **Authorization: Forestrie-Grant** header; base64-decode the token → COSE-decode; yield GrantResult (grant from payload, receipt from unprotected headers). If missing, wrong scheme, or invalid → **401**, **400**, or **403**.
 2. **Receipt-based inclusion** — When inclusion is required, the grant must be completed (idtimestamp) and the **receipt is part of the artifact** (unprotected headers). The API verifies the receipt (MMR inclusion). See [ARC-0001](../arc-0001-grant-verification.md) and [Plan 0005](../plans/plan-0005-grant-receipt-unified-resolve.md). Missing or invalid receipt → **403 Forbidden**.
 3. **Verify grant shape and signer** — Forestrie-Grant wire **v0**: payload map keys **1–6** only ([ARC-0001 §6](arc-0001-grant-verification.md)). The **`grant`** bitmap must satisfy **`isStatementRegistrationGrant`** (data-log checkpoint **or** root auth bootstrap). From the request body (COSE Sign1 statement), obtain the signer (e.g. kid). Compare with **`statementSignerBindingBytes(grant)`** = committed **`grantData`** only (64-byte ES256 **x||y** → first 32 bytes). If they do not match → **403 Forbidden** (e.g. `signer_mismatch`).
-4. On success, proceed to existing enqueue logic (303 See Other with Location to the entry).
+4. **Target log authority** — The target log (`grant.logId`) must be anchored on chain, per univocity's authority answer ([protocol ADR-0070](https://github.com/forestrie/protocol/blob/main/adr/adr-0070-sec-log-authority-anchored-before-use.md)). A pending log → **409** `authority-pending` with `Retry-After`, `state` and, when an ancestor blocks it, `blockedBy`; retrying after anchoring succeeds. A conflicted log → **409** `authority-conflict`, with no `Retry-After`: waiting never helps. A log univocity holds no claim for → **403**. univocity unavailable with nothing cached → **503** with `Retry-After`.
+5. On success, proceed to existing enqueue logic (303 See Other with Location to the entry).
 
 ## Response
 
@@ -38,14 +39,15 @@ All error responses are CBOR (Concise Problem Details) consistent with other API
 
 ## Errors (summary)
 
-| Status    | Meaning                                                 |
-| --------- | ------------------------------------------------------- |
-| 400       | Bad Request (e.g. invalid statement body).              |
-| 401 / 402 | Grant location missing, malformed, or grant not found.  |
-| 403       | Statement signer does not match grant’s signer binding. |
-| 413       | Payload too large.                                      |
-| 415       | Unsupported media type.                                 |
-| 500 / 503 | Server / storage error.                                 |
+| Status    | Meaning                                                                                                         |
+| --------- | --------------------------------------------------------------------------------------------------------------- |
+| 400       | Bad Request (e.g. invalid statement body).                                                                      |
+| 401 / 402 | Grant location missing, malformed, or grant not found.                                                          |
+| 403       | Statement signer does not match grant’s signer binding.                                                         |
+| 409       | Target log authority is pending (`authority-pending`, with `Retry-After`) or conflicted (`authority-conflict`). |
+| 413       | Payload too large.                                                                                              |
+| 415       | Unsupported media type.                                                                                         |
+| 500 / 503 | Server / storage error.                                                                                         |
 
 ## Rate limiting
 

@@ -10,6 +10,7 @@ import { getBootstrapVariant } from "./e2e-bootstrap-variant.js";
 import { mintBootstrapGrant } from "./bootstrap-grant-flow.js";
 import { playwrightFetch } from "./playwright-fetch.js";
 import type { ProblemDetails } from "./problem-details.js";
+import { retryWhileAuthorityPending } from "./authority-pending-retry.js";
 
 /** Thrown when register-grant returns a non-303 status (carries CBOR problem + raw response). */
 export class RegisterGrantHttpError extends Error {
@@ -99,9 +100,9 @@ export async function postRegisterGrantExpect303(
       encodeCborDeterministic({ parentGrant: parentBytes }),
     );
   }
-  const registerRes = await unauthorizedRequest.post(
-    `/register/${opts.bootstrapLogId}/grants`,
-    post,
+  // The owner log may not be anchored yet when it was created moments ago.
+  const registerRes = await retryWhileAuthorityPending(() =>
+    unauthorizedRequest.post(`/register/${opts.bootstrapLogId}/grants`, post),
   );
   try {
     const { statusUrl } = interpretRegisterRedirect(

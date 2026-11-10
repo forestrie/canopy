@@ -10,77 +10,45 @@
  * `Authorization: Forestrie-Grant <base64>` (the same grant-as-credential transport
  * register-grant / register-signed-statement use); no request body is required.
  *
- * ## Security core (the whole point)
+ * ## Security core: claim through univocity first
  *
  * Authority is the parent log's `K(L)` — the create grant's COSE_Sign1 envelope
- * signer — and **never** an operator onboard token. We resolve the parent authority
- * key and verify the create grant's envelope against it:
+ * signer — and **never** an operator onboard token. canopy-api does not hold
+ * that key: it reserves the child through univocity (`POST /api/grants`,
+ * intent `reserve`), which verifies the envelope against the owner's root key
+ * (on chain once the owner has checkpointed, else its stored grant chain
+ * anchored at the bootstrap key; EOA or ERC-1271), claims `logId -> R`, and
+ * stores the grant write-once. Only an accepted claim reaches the coordinator,
+ * so no owner can replace another log's root, and a different grant for a
+ * claimed child is univocity's 409
+ * ([devdocs ADR-0075](https://github.com/forestrie/devdocs/blob/main/adr/adr-0075-sec-child-root-claimed-once.md)
+ * decisions 1-3).
  *
- *  - **Parent is the forest root** (`ownerLogId` has a stored genesis whose bootstrap
- *    log id equals it): verify against the genesis bootstrap key. This is where the
- *    recursion bottoms out.
- *  - **Parent is an intermediate child**: resolve the parent's registered root key
- *    from the coordinator (`GET /api/logs/{ownerLogId}/public-root`, via
- *    trust-root-client) and verify against it. The parent's own root was registered
- *    (auto-forward or a prior prepare) and verified against *its* parent — a
- *    recursive chain terminating at the root genesis. If the parent has no registered
- *    public root, onboarding must start higher up: `409`.
+ * A reservation confers no authority (protocol ADR-0070), so `prepare` is
+ * allowed under a pending owner. It lapses at `expiresAt` unless create
+ * commits the grant; a re-post refreshes it. The root is forwarded with that
+ * lapse time, so the coordinator's root lapses with the claim.
  *
- * The envelope crypto mirrors register-grant's creation path (which delegates to
- * univocity's "verify COSE envelope against the owner authority key" step) and the
- * local `verifyDerivedEndorsementEnvelope` helper: COSE_Sign1 over the 32-byte grant
- * digest, ES256 or KS256 by the parent root's alg.
- *
- * ## KS256 (ADR-0053 amendment 2026-10-18, plan-2610-03 D2, D3, D6)
+ * ## KS256 (ADR-0053 amendment 2026-10-18)
  *
  * The child root may be a 64-byte ES256 key or a 20-byte KS256 address
- * (grantData length decides, {@link childRootForwardFromGrantData}). A KS256
- * parent, EOA or contract, verifies by `keccak256(Sig_structure)`: ecrecover,
- * or ERC-1271 `isValidSignature` over the RPC `SUPPORTED_CHAINS_RPC` gives for
- * the forest's chain. The chain is the genesis chain binding on the root path
- * and the `chainId` the coordinator holds for the parent's root otherwise, and
- * the child's forward carries it on so its own children can do the same. An RPC
- * failure is 503; without RPC for the chain only ecrecover runs, so a contract
- * parent gets a 403 that says so.
+ * (grantData length decides, {@link childRootForwardFromGrantData}). The
+ * forward carries the forest's chain, from univocity's answer for the owner,
+ * so the child's own delegations can be checked by ERC-1271 on that chain.
  */
-
-import {
-  verifyCoseSign1WithParsedKey,
-  type ParsedVerifyKey,
-} from "@forestrie/encoding";
 
 import { cborResponse } from "../cbor-api/cbor-response.js";
 import { bytesEqual } from "../cbor-api/cbor-map-utils.js";
 import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
-import { COSE_ALG_ES256, COSE_ALG_KS256 } from "../cose/cose-key.js";
-import {
-  createCoordinatorPublicTrustRootClient,
-  isTrustRootNotFound,
-  type RegisteredPublicRoot,
-} from "../env/trust-root-client.js";
-import {
-  rpcUrlsForEnvChainId,
-  type SupportedChainsEnv,
-} from "../env/supported-chains-for-env.js";
-import { Erc1271UnavailableError } from "@forestrie/chain-rpc";
+import type { LogAuthorityReader } from "../env/log-authority-reader.js";
 import { getGrantFromRequest } from "../scrapi/auth-grant.js";
-import { verifyKs256CoseSign1 } from "../grant/ks256-verify.js";
-import { isParsedKs256RootKey } from "../grant/parsed-ks256-root-key.js";
-import { verifyGrantCoseSign1WithGrantDataXy } from "../scrapi/custodian-grant.js";
+import { authorityConflictResponse } from "../scrapi/log-admission.js";
+import { reserveChildGrantWithUnivocity } from "../scrapi/univocity-grant-client.js";
 import { hasCreateAndExtend } from "../grant/grant-flags.js";
 import { grantDataToBytes } from "../grant/grant-data.js";
-import { logIdBytesToCustodianLowerHex } from "../grant/uuid-bytes.js";
-import {
-  logIdToStorageSegment,
-  logIdToWireBytes,
-} from "../grant/log-id-wire.js";
-import type { Grant, GrantResult } from "../grant/types.js";
-import { getParsedGenesis, type ParsedForestGenesis } from "./genesis-cache.js";
-import {
-  childRootForwardFromGrantData,
-  forwardChainBindingFromGenesis,
-  type ForwardChainBinding,
-} from "./child-root-forward.js";
+import { bytesToUuid } from "../grant/uuid-bytes.js";
+import { logIdToWireBytes } from "../grant/log-id-wire.js";
+import { childRootForwardFromGrantData } from "./child-root-forward.js";
 import {
   forwardCoordinatorRegistration,
   isCoordinatorForwardConfigured,
@@ -93,202 +61,16 @@ import {
 import { tryUnivocityInstanceIdFromChainBinding } from "@canopy/univocity-instance-id";
 import { readRegistration } from "../payments/registration-store.js";
 
-export interface PrepareChildLogEnv
-  extends CoordinatorForwardEnv,
-    SupportedChainsEnv {
-  /** Genesis lookup bucket (resolves whether the parent is the forest root). */
+export interface PrepareChildLogEnv extends CoordinatorForwardEnv {
+  /** Registration lookup bucket (the parent's univocity instance binding). */
   R2_GRANTS: R2Bucket;
   /** Gates insecure-local webhook URLs when `"dev"`. */
   NODE_ENV?: string;
-}
-
-/**
- * Verify the create grant's COSE envelope against the genesis bootstrap authority
- * key (parent == forest root). Mirrors {@link verifyDerivedEndorsementEnvelope}.
- * The genesis `bootstrapAlg` decides the key type and the key length must agree
- * with it (D6); a KS256 root verifies on the genesis chain binding's chain.
- */
-async function verifyGrantAgainstGenesisKey(
-  grantBytes: Uint8Array,
-  genesis: ParsedForestGenesis,
-  env: SupportedChainsEnv,
-): Promise<true | Response> {
-  const authority = "the forest root genesis authority key";
-  if (genesis.bootstrapAlg != null && genesis.bootstrapKey) {
-    if (
-      genesis.bootstrapAlg === COSE_ALG_ES256 &&
-      genesis.bootstrapKey.length === 64
-    ) {
-      const ok = await verifyGrantCoseSign1WithGrantDataXy(
-        grantBytes,
-        genesis.bootstrapKey,
-      );
-      return ok || forbiddenDidNotVerify(authority);
-    }
-    if (
-      genesis.bootstrapAlg === COSE_ALG_KS256 &&
-      genesis.bootstrapKey.length === 20
-    ) {
-      return verifyGrantAgainstKs256Parent(
-        grantBytes,
-        genesis.bootstrapKey,
-        genesis.chainBinding?.chainId,
-        env,
-        authority,
-      );
-    }
-    return forbiddenDidNotVerify(authority);
-  }
-  if (genesis.x && genesis.y) {
-    const xy = new Uint8Array(64);
-    xy.set(genesis.x, 0);
-    xy.set(genesis.y, 32);
-    const ok = await verifyGrantCoseSign1WithGrantDataXy(grantBytes, xy);
-    return ok || forbiddenDidNotVerify(authority);
-  }
-  return forbiddenDidNotVerify(authority);
-}
-
-/**
- * Verify a create grant signed by a KS256 parent root (D3), with the existing
- * {@link verifyKs256CoseSign1}: ERC-1271 when the address has code on `chainId`
- * and RPC is configured for it, else ecrecover.
- *
- * @param chainId — the forest's EIP-155 chain; undefined when unknown, which
- *   leaves only ecrecover.
- * @returns `true`, 503 when the chain RPC fails (retryable, never a verdict),
- *   or 403. With no RPC the 403 says a contract parent cannot be verified.
- */
-async function verifyGrantAgainstKs256Parent(
-  grantBytes: Uint8Array,
-  address: Uint8Array,
-  chainId: string | undefined,
-  env: SupportedChainsEnv,
-  authority: string,
-): Promise<true | Response> {
-  const rpcUrls = chainId ? (rpcUrlsForEnvChainId(env, chainId) ?? []) : [];
-  let ok: boolean;
-  try {
-    ok = await verifyKs256CoseSign1(
-      grantBytes,
-      { kind: "KS256", alg: COSE_ALG_KS256, address },
-      {
-        rpcUrls,
-        throwOnUnavailable: true,
-        logFailures: true,
-        logPrefix: "prepare-ks256-parent",
-      },
-    );
-  } catch (e) {
-    if (e instanceof Erc1271UnavailableError) {
-      return ServerErrors.serviceUnavailable(
-        "ERC-1271 verification of the KS256 parent root is unavailable; retry.",
-      );
-    }
-    throw e;
-  }
-  if (ok) return true;
-  if (rpcUrls.length === 0) {
-    const chain = chainId
-      ? `chain ${chainId}`
-      : "the parent's chain (none is registered for its root)";
-    return ClientErrors.forbidden(
-      `Create grant signature did not verify against ${authority} by ecrecover. No RPC is configured for ${chain}, so a contract (ERC-1271) parent cannot be verified.`,
-    );
-  }
-  return forbiddenDidNotVerify(authority);
-}
-
-function forbiddenDidNotVerify(authority: string): Response {
-  return ClientErrors.forbidden(
-    `Create grant signature did not verify against ${authority}.`,
-  );
-}
-
-/**
- * Resolve the parent authority key for `grant.ownerLogId` and verify the create
- * grant's envelope against it. On a valid signature, returns the forest's chain
- * binding as far as it is known here, for the child's forward; otherwise a
- * `Response` describing the failure (400/403/409/503).
- */
-async function verifyCreateGrantAgainstParent(
-  grantResult: GrantResult,
-  grant: Grant,
-  env: PrepareChildLogEnv,
-): Promise<{ chainBinding?: ForwardChainBinding } | Response> {
-  const grantBytes = grantResult.bytes;
-  if (!grantBytes?.length) {
-    return ClientErrors.badRequest("Create grant is missing raw bytes.");
-  }
-
-  // Parent == forest root? A stored genesis whose bootstrap log id equals the
-  // owner log id is the terminal authority (recursion bottoms out here).
-  const ownerSeg = logIdToStorageSegment(grant.ownerLogId);
-  const genesisLookup = await getParsedGenesis(ownerSeg, {
-    R2_GRANTS: env.R2_GRANTS,
-  });
-  if (!("kind" in genesisLookup)) {
-    const verified = await verifyGrantAgainstGenesisKey(
-      grantBytes,
-      genesisLookup,
-      env,
-    );
-    if (verified !== true) return verified;
-    return {
-      chainBinding: forwardChainBindingFromGenesis(genesisLookup.chainBinding),
-    };
-  }
-  if (genesisLookup.kind === "corrupt") {
-    return ServerErrors.internal(
-      "Stored genesis for the parent forest is invalid.",
-    );
-  }
-
-  // Parent is an intermediate child log: resolve its registered root key, and
-  // the chain the coordinator holds for it, from the coordinator public-root. A
-  // missing public root means the parent was never onboarded — start higher up
-  // the hierarchy.
-  const parentHex32 = logIdBytesToCustodianLowerHex(grant.ownerLogId);
-  let parentRoot: RegisteredPublicRoot;
-  try {
-    const client = createCoordinatorPublicTrustRootClient({
-      coordinatorBaseUrl: env.DELEGATION_COORDINATOR_URL!.trim(),
-      token: env.COORDINATOR_APP_TOKEN!.trim(),
-    });
-    parentRoot = await client.logPublicRoot(parentHex32);
-  } catch (e) {
-    if (isTrustRootNotFound(e)) {
-      return ClientErrors.conflict(
-        "Parent log has no registered public root; onboard the parent (prepare or create) before its children.",
-      );
-    }
-    const msg = e instanceof Error ? e.message : String(e);
-    console.warn("prepare: parent public-root resolve failed", e);
-    return ServerErrors.serviceUnavailable(
-      msg.length > 200 ? `${msg.slice(0, 200)}…` : msg,
-    );
-  }
-
-  const { key: parentKey, chainId } = parentRoot;
-  const chainBinding = chainId ? { chainId } : undefined;
-  const authority = "the parent log's registered root key";
-  if (isParsedKs256RootKey(parentKey)) {
-    const verified = await verifyGrantAgainstKs256Parent(
-      grantBytes,
-      parentKey.address,
-      chainId,
-      env,
-      authority,
-    );
-    if (verified !== true) return verified;
-    return { chainBinding };
-  }
-  const ok = await verifyCoseSign1WithParsedKey(
-    grantBytes,
-    parentKey satisfies ParsedVerifyKey,
-  );
-  if (!ok) return forbiddenDidNotVerify(authority);
-  return { chainBinding };
+  /** univocity base URL and bearer: the child is reserved there first. */
+  UNIVOCITY_SERVICE_URL?: string;
+  UNIVOCITY_API_TOKEN?: string;
+  /** univocity's log authority: the owner's chain, and conflicted owners. */
+  logAuthority?: LogAuthorityReader;
 }
 
 function parsePrepareWebhookUrl(
@@ -315,6 +97,11 @@ function parsePrepareWebhookUrl(
 /**
  * Handle `POST /api/forest/{childLogId}/prepare`. See the module doc for the
  * authority model. `childLogIdSeg` is the raw path segment.
+ *
+ * Answers 201 when univocity created the reservation and 200 for the same
+ * grant again; either carries `expiresAt` unless the grant is already
+ * committed. univocity's 409 (a different grant for the child) and 4xx (403
+ * here) are passed back with nothing forwarded.
  */
 export async function handlePrepareChildLog(
   request: Request,
@@ -324,6 +111,13 @@ export async function handlePrepareChildLog(
   if (!isCoordinatorForwardConfigured(env)) {
     return ServerErrors.serviceUnavailable(
       "prepare requires delegation coordinator configuration (DELEGATION_COORDINATOR_URL and COORDINATOR_APP_TOKEN).",
+    );
+  }
+  const univocityUrl = env.UNIVOCITY_SERVICE_URL?.trim();
+  const univocityToken = env.UNIVOCITY_API_TOKEN?.trim();
+  if (!univocityUrl || !univocityToken || !env.logAuthority) {
+    return ServerErrors.serviceUnavailable(
+      "prepare requires univocity (UNIVOCITY_SERVICE_URL and UNIVOCITY_API_TOKEN).",
     );
   }
 
@@ -337,6 +131,9 @@ export async function handlePrepareChildLog(
     return ClientErrors.badRequest(
       "prepare requires a create-log grant (GF_CREATE|GF_EXTEND).",
     );
+  }
+  if (!grantResult.bytes?.length) {
+    return ClientErrors.badRequest("Create grant is missing raw bytes.");
   }
 
   let childLogId: Uint8Array;
@@ -371,17 +168,49 @@ export async function handlePrepareChildLog(
     );
   }
 
-  // Security core: verify the create grant against the parent authority key.
-  const verified = await verifyCreateGrantAgainstParent(
-    grantResult,
-    grant,
-    env,
-  );
-  if (verified instanceof Response) return verified;
-  const { chainBinding } = verified;
-
+  // Validate everything the caller sent before claiming, so a bad request
+  // never leaves a reservation behind.
   const webhookParsed = parsePrepareWebhookUrl(request, env);
   if (webhookParsed instanceof Response) return webhookParsed;
+
+  // The owner's answer gives the forest's chain for the forward. A pending
+  // owner may take reservations; a conflicted one never anchors anything.
+  const owner = await env.logAuthority.read(grant.ownerLogId);
+  switch (owner.kind) {
+    case "conflicted":
+      return authorityConflictResponse(grant.ownerLogId, owner.blockedBy);
+    case "unclaimed":
+      return ClientErrors.conflict(
+        `Parent log ${bytesToUuid(grant.ownerLogId)} has no claim; onboard the parent (prepare or create) before its children.`,
+      );
+    case "unavailable":
+      return ServerErrors.serviceUnavailable(
+        `Log authority is unavailable: ${owner.detail}`,
+      );
+  }
+  const chainBinding = owner.chainId ? { chainId: owner.chainId } : undefined;
+
+  // Security core: univocity verifies the grant against the owner's key and
+  // reserves the child. Nothing reaches the coordinator unless it accepts.
+  const claim = await reserveChildGrantWithUnivocity(
+    { serviceUrl: univocityUrl, token: univocityToken },
+    grantResult.bytes,
+  );
+  switch (claim.kind) {
+    case "conflict":
+      return ClientErrors.conflict(
+        `Univocity refused the claim (${claim.title || "conflict"}): ${claim.detail || "the child is already claimed by a different grant or forest."}`,
+      );
+    case "rejected":
+      return ClientErrors.forbidden(
+        claim.detail ||
+          "Univocity rejected the create grant (it does not verify against the owner's key).",
+      );
+    case "unavailable":
+      return ServerErrors.serviceUnavailable(
+        claim.detail || "Univocity grant claims are unavailable.",
+      );
+  }
 
   // Only the root registers a webhook of its own (the genesis-only forward), so
   // a child would otherwise have none at all. Binding the child to its parent's
@@ -401,12 +230,18 @@ export async function handlePrepareChildLog(
     logIdWire: grant.logId,
     ...childRoot,
     ...(chainBinding ? { chainBinding } : {}),
+    ...(claim.expiresAt !== undefined ? { expiresAt: claim.expiresAt } : {}),
     ...(webhookParsed.webhookUrl
       ? { webhookUrl: webhookParsed.webhookUrl }
       : {}),
     ...(univocityInstanceId ? { univocityInstanceId } : {}),
   });
 
+  if (status.publicRoot === "conflict") {
+    return ClientErrors.conflict(
+      status.detail ?? "The coordinator holds a different root for this log.",
+    );
+  }
   if (status.publicRoot !== "ok") {
     return ServerErrors.serviceUnavailable(
       status.detail ??
@@ -424,11 +259,13 @@ export async function handlePrepareChildLog(
     {
       publicRoot: status.publicRoot,
       webhook: status.webhook,
+      state: claim.state,
+      ...(claim.expiresAt !== undefined ? { expiresAt: claim.expiresAt } : {}),
       ...(status.univocityInstanceId
         ? { univocityInstanceId: status.univocityInstanceId }
         : {}),
       ...(status.detail ? { detail: status.detail } : {}),
     },
-    201,
+    claim.created ? 201 : 200,
   );
 }

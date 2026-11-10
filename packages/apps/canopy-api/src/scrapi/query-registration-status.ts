@@ -6,8 +6,10 @@
  * sequencing is complete, by consulting the SequencingQueue Durable Object.
  *
  * On cache hit, reads the idtimestamp from the massif using an efficient
- * byte-range request, then (best-effort) patches the univocity grant store
- * so publishers bind the sequenced leaf.
+ * byte-range request. The poll is read-only: it writes nothing, here or in
+ * univocity, whatever the query string carries. The sealer binds a sequenced
+ * grant to its leaf in univocity's grant store, not this poll
+ * ([devdocs ADR-0075](https://github.com/forestrie/devdocs/blob/main/adr/adr-0075-sec-child-root-claimed-once.md)).
  *
  * See: arbor/docs/arc-cloudflare-do-ingress.md section 3.12
  */
@@ -22,8 +24,6 @@ import { readIdtimestampFromMassif } from "./sequencing-result.js";
 import { logIdSegmentToCanonicalUuid } from "../grant/log-id-wire.js";
 import { bytesToUuid } from "../grant/uuid-bytes.js";
 import { getParsedGenesis } from "../forest/genesis-cache.js";
-import { patchGrantIdtimestamp } from "./patch-grant-idtimestamp.js";
-import type { UnivocityGrantClient } from "./univocity-grant-client-config.js";
 
 function isSha256Hex(id: string): boolean {
   return /^[0-9a-f]{64}$/i.test(id);
@@ -56,8 +56,6 @@ export async function queryRegistrationStatus(
   massifHeight: number,
   shardCountStr: string,
   r2Grants: R2Bucket,
-  /** When set, patch univocity grant store with the sequenced idtimestamp. */
-  univocityGrantClient?: UnivocityGrantClient,
 ): Promise<Response> {
   const [bootstrapSeg, logIDRaw, _, contentHashRaw] = entrySegments;
 
@@ -89,20 +87,10 @@ export async function queryRegistrationStatus(
   }
 
   const contentHash = contentHashRaw.toLowerCase();
-  const subjectParam = new URL(request.url).searchParams.get("subject");
-  let subjectLogId = logID;
-  if (subjectParam) {
-    try {
-      subjectLogId = logIdSegmentToCanonicalUuid(subjectParam);
-    } catch {
-      return ClientErrors.badRequest("subject query must be a valid log id");
-    }
-  }
 
   console.log("[query-registration-status] begin", {
     logID,
     contentHash,
-    subjectLogId,
     url: request.url,
   });
 
@@ -148,26 +136,6 @@ export async function queryRegistrationStatus(
       idtimestamp: idtimestamp.toString(16),
       mmrIndex: entryMmrIndex.toString(),
     });
-
-    if (univocityGrantClient && idtimestamp !== 0n) {
-      const patched = await patchGrantIdtimestamp({
-        client: univocityGrantClient,
-        rootLogId: bootstrapUrlUuid,
-        subjectLogId,
-        idtimestamp,
-      });
-      if (!patched.ok) {
-        console.warn(
-          "[query-registration-status] grant idtimestamp patch failed",
-          {
-            rootLogId: bootstrapUrlUuid,
-            subjectLogId,
-            status: patched.status,
-            detail: patched.detail,
-          },
-        );
-      }
-    }
 
     const entryId = encodeEntryId({
       idtimestamp,
