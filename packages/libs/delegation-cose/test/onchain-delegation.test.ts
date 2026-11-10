@@ -358,9 +358,10 @@ describe("verifyOnchainDelegationSignatureKs256", () => {
 
 describe("verifyOnchainDelegationSignatureKs256 low-s", () => {
   it("rejects the high-s twin of a valid signature (contract parity)", async () => {
-    // univocity's verifyKS256Raw refuses s > (n-1)/2, so a proof the
-    // coordinator accepted would revert at publish. The twin (r, n-s, v^1)
-    // recovers the same address, so only the s bound refuses it.
+    // univocity's verifyKS256Raw refuses s > (n-1)/2 from the contract
+    // release that adds the bound, so a high-s proof the coordinator stored
+    // would revert at publish there. The twin (r, n-s, v^1) recovers the
+    // same address, so only the s bound refuses it.
     const proof = signOnchainDelegationKs256(
       fixtureInput(),
       TEST_PRIVATE_KEY_HEX,

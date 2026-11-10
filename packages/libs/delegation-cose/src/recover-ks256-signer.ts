@@ -3,13 +3,18 @@
  * certificate and on-chain delegation checks and by canopy-api's COSE_Sign1
  * and onboarding attestation checks. grant-builder, which does not depend on
  * this package, applies the same bound in `verifyKs256GrantStatement`. A
- * recovered KS256 signature must be low-s, as arbor's verifiers and
- * univocity's `verifyKS256Raw` also require; see
+ * recovered KS256 signature must be low-s, the rule
  * [checkpoints-and-receipts.md](https://github.com/forestrie/protocol/blob/main/spec/checkpoints-and-receipts.md)
- * and the shared vector `vectors/fixtures/ks256-low-s.json` in
+ * sets for every KS256 verifier, checked against the shared vector
+ * `vectors/fixtures/ks256-low-s.json` in
  * [forestrie/protocol](https://github.com/forestrie/protocol/blob/main/vectors/README.md).
- * Contract (ERC-1271) roots never reach this: the contract judges its own
- * signature format.
+ * arbor applies the same bound, and so does univocity's `verifyKS256Raw` from
+ * the contract release that adds it; instances deployed before that release
+ * still accept high-s.
+ *
+ * A contract (ERC-1271) root judges its own signature. Callers with hooks
+ * send it there before recovery; a caller that recovers first (no hooks, or
+ * an offline verifier) simply fails to recover a contract root's signature.
  */
 
 import { secp256k1 } from "@noble/curves/secp256k1";

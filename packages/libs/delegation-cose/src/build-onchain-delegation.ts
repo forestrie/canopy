@@ -359,7 +359,10 @@ export async function verifyOnchainDelegationSignatureKs256(
   // Contract: `v < 27 → v += 27` then ecrecover. Recovery ids 2/3 cannot
   // succeed on-chain; reject them for exact parity (noble may still recover).
   if (v > 1) return false;
-  // verifyKS256Raw also refuses high-s, which recoverKs256Signer applies.
+  // recoverKs256Signer refuses high-s, as univocity's verifyKS256Raw does
+  // from the contract release that adds the bound: a proof stored here
+  // must publish on that release. Older instances accept high-s too, so
+  // for them this is only stricter, and no honest signer emits high-s.
   const recovered = recoverKs256Signer(hash, signature);
   return recovered.ok && bytesEqual(recovered.address, rootSignerAddress);
 }
