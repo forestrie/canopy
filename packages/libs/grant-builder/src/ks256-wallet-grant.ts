@@ -201,8 +201,9 @@ export function verifyKs256GrantStatement(
     const compact = secp256k1.Signature.fromCompact(
       new Uint8Array([...r, ...s]),
     );
-    // A recovered KS256 signature must be low-s, as every canopy, arbor and
-    // univocity verifier requires (delegation-cose recoverKs256Signer).
+    // A recovered KS256 signature must be low-s, as canopy (delegation-cose
+    // recoverKs256Signer) and arbor require, and univocity's verifyKS256Raw
+    // from the contract release that adds the bound.
     if (compact.hasHighS()) return false;
     const pub = compact.addRecoveryBit(recovery).recoverPublicKey(hash);
     const recovered = addressFromUncompressedPubkey(pub.toRawBytes(false));
