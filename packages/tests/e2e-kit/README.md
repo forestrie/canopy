@@ -20,8 +20,9 @@ of contracts per run (one per forest it creates, since a contract accepts one ro
 forest) and hands it to Playwright as `E2E_UNIVOCITY_CONTRACT_POOL_FILE`. There is
 no pinned-contract mode in canopy: a pinned contract could serve only the first
 forest that used it. Specs claim a contract per forest with
-`describeForEachBootstrapVariant` (`pool.claim(purpose)`) or
-`claimBootstrapVariant(alg, purpose)`.
+`describeForEachBootstrapPool` (`pool.claim(purpose)`) or
+`claimBootstrapVariant(alg, purpose)`. `describeForEachBootstrapVariant` stays
+for lane suites that pin one contract per alg by env.
 
 Cross-repo lane specs (forest genesis, Mode B/C registration, BYOK) run in
 **`forestrie/system-testing`** — not `tests-system.yml`.

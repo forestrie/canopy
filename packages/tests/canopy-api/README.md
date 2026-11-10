@@ -44,7 +44,7 @@ See **`taskfiles/e2e-setup.md`**.
 
 ### Bootstrap grant (mint + register-grant)
 
-`tests/system/grants-bootstrap.spec.ts` (and related bootstrap specs) exercise **ephemeral Imutable chain binding**: genesis **`POST /api/forest/{log-id}/genesis`** with real `(chain-id, univocity-addr)` from preflight, **contract-bootstrap-signed** root creation grant, and **`POST /register/{bootstrap-logid}/grants`** (303 See Other). Each spec runs for **ES256** and **KS256** via `describeForEachBootstrapVariant`.
+`tests/system/grants-bootstrap.spec.ts` (and related bootstrap specs) exercise **ephemeral Imutable chain binding**: genesis **`POST /api/forest/{log-id}/genesis`** with real `(chain-id, univocity-addr)` from preflight, **contract-bootstrap-signed** root creation grant, and **`POST /register/{bootstrap-logid}/grants`** (303 See Other). Each spec runs for **ES256** and **KS256** via `describeForEachBootstrapPool`, and each forest it creates claims its own univocity contract.
 
 Requires **`CANOPY_OPS_ADMIN_TOKEN`** (mint onboard tokens + genesis), Univocity provision env (see below), and for child/delegation specs **`CUSTODIAN_URL`** + **`CUSTODIAN_APP_TOKEN`**. The **deployed** worker needs **`R2_MMRS`**, sequencing queue bindings, and `bootstrapEnv` + `queueEnv`.
 
@@ -103,7 +103,7 @@ Other keys:
 
 Provisioned in **`task test:e2e:preflight`** (default). Playwright sources **`.work/e2e-univocity.env`**:
 
-- **`E2E_UNIVOCITY_CONTRACT_POOL_FILE`** — pool JSON of fresh contracts (`alg`, `address`, `bootstrapPrivateKey`); each forest a spec creates claims its own contract, because a contract accepts one root forest. Pool size: **`E2E_UNIVOCITY_POOL_ES256`** (default 20), **`E2E_UNIVOCITY_POOL_KS256`** (default 12)
+- **`E2E_UNIVOCITY_CONTRACT_POOL_FILE`** — pool JSON of fresh contracts (`alg`, `address`, `bootstrapPrivateKey`); each forest a spec creates claims its own contract, because a contract accepts one root forest. Pool size: **`E2E_UNIVOCITY_POOL_ES256`** (default 20), **`E2E_UNIVOCITY_POOL_KS256`** (default 15)
 - **`E2E_UNIVOCITY_RPC_URL`**, **`E2E_UNIVOCITY_CHAIN_ID`** (optional defaults)
 - **`CANOPY_OPS_ADMIN_TOKEN`**: mint onboard tokens (`POST /api/payments/onboard-tokens`); genesis uses a minted token as `Bearer`
 
