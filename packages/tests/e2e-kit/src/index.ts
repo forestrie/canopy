@@ -67,6 +67,7 @@ export type {
 export { attachReceiptAndIdtimestampToTransparentStatement } from "@forestrie/receipt-verify";
 export { genesisBodyEs256 } from "./genesis-body-es256.js";
 export * from "./univocity-genesis-e2e.js";
+export * from "./univocity-contract-pool.js";
 export * from "./e2e-env-guards.js";
 export * from "./e2e-grant-flags.js";
 export * from "./forest-genesis-e2e.js";

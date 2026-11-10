@@ -30,12 +30,11 @@ import { buildCompletedGrantBase64 } from "@e2e-utils/bootstrap-grant-flow";
 import { assertCoordinatorApiE2eEnv } from "@e2e-utils/coordinator-api-env";
 import {
   exportEs256RootXy,
-  generateEs256RootKeyPair,
   importEs256PemKeyPair,
   uploadByokRootPublicKey,
   verifyByokDelegationCertificate,
 } from "@e2e-utils/coordinator-delegation-helpers";
-import { bootstrapEs256PrivateKeyPem } from "@e2e-utils/mint-es256-root-grant-e2e";
+import { claimBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
 import {
   exchangeEs256ControlPlaneSession,
   postSigningRouteWithSession,
@@ -54,11 +53,8 @@ import { mintOnboardTokenE2e } from "@e2e-utils/onboard-token-e2e";
 import { sleepMs } from "@e2e-utils/arithmetic-backoff-poll";
 import {
   type BootstrapSigningContext,
-  es256BootstrapContractAddrBytes,
-  getBootstrapVariant,
   pollBootstrapRegistrationThroughReceipt,
   signStandingAdvanceDelegation,
-  univocityGenesisChainId,
 } from "@forestrie/canopy-e2e-kit";
 import {
   decodeCoseSign1Parts,
@@ -102,17 +98,21 @@ test.describe("BYOK uint64 delegation range", () => {
     unauthorizedRequest,
   }, testInfo) => {
     const coordinator = assertCoordinatorApiE2eEnv();
+    const variant = claimBootstrapVariant("es256", "uint64 delegation range");
     const baseURL = testInfo.project.use.baseURL ?? "";
     const rootLogId = randomUUID();
     const rootLogHex32 = normalizeForestrieHexId32(rootLogId);
     // Genesis chain-anchors the bootstrap key to the contract's on-chain
-    // bootstrapConfig(), so the root must be the pinned bootstrap key.
-    const pinnedPem = bootstrapEs256PrivateKeyPem();
-    const rootKeyPair = pinnedPem
-      ? await importEs256PemKeyPair(pinnedPem)
-      : await generateEs256RootKeyPair();
+    // bootstrapConfig(), so the root must be the claimed contract's
+    // bootstrap key.
+    // Refuses a pool entry whose key is not the contract's on-chain
+    // bootstrapConfig(), so a mispaired pool fails here, not at genesis.
+    await variant.fetchBootstrapKey();
+    const rootKeyPair = await importEs256PemKeyPair(
+      variant.bootstrapPrivateKey(),
+    );
     const signingContext: BootstrapSigningContext = {
-      variant: getBootstrapVariant("es256"),
+      variant,
       es256RootKeyPair: rootKeyPair,
     };
 
@@ -201,14 +201,15 @@ test.describe("BYOK uint64 delegation range", () => {
 
     // Seal the bootstrap grant (mmrIndex 0).
     const onboardToken = await mintOnboardTokenE2e(unauthorizedRequest, {
-      chainId: univocityGenesisChainId(),
-      univocityAddr: es256BootstrapContractAddrBytes(),
+      chainId: variant.chainId,
+      univocityAddr: variant.contractAddrBytes,
     });
     const { grantBase64, grantData } = await mintByokBootstrapGrant({
       request: unauthorizedRequest,
       rootLogId,
       onboardToken,
       rootKeyPair,
+      univocityAddr: variant.contractAddrBytes,
     });
     const { statusUrlAbsolute } = await postRegisterGrantExpect303(
       unauthorizedRequest,

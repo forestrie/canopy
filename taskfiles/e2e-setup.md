@@ -65,25 +65,38 @@ Deployed coordinator webhook delivery requires Cloudflare Secrets Store
 
 **Univocity ephemeral provision** (bootstrap **system** specs):
 
+A univocity contract accepts exactly one root forest (the first to publish a
+checkpoint), so the suite needs one fresh contract per forest it creates. Preflight
+and CI deploy a **pool** (default 20 ES256 + 15 KS256; override with
+**`E2E_UNIVOCITY_POOL_ES256`** / **`E2E_UNIVOCITY_POOL_KS256`**). The suite creates 13
+ES256 and 9 KS256 forests per run; the rest are spares for Playwright retries, each
+of which claims a fresh contract for the forest it re-creates.
+
 Provisioned automatically in preflight (see [plan-0032](../docs/plans/plan-0032-univocity-imutable-e2e-provision.md), [plan-0049](../docs/plans/plan-0049-e2e-imutable-provision-consolidation.md)). Playwright reads **`.work/e2e-univocity.env`**:
 
-- **`E2E_UNIVOCITY_ADDRESS_*_BOOTSTRAP`**, **`E2E_UNIVOCITY_GENESIS_LOG_ID_*`**
-- **`E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE`** — ES256 root grant signing
-- **`E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_FILE`** — KS256 root grant signing
+- **`E2E_UNIVOCITY_CONTRACT_POOL_FILE`** — path to the pool JSON
+  `{"chainId","contracts":[{"alg","address","bootstrapPrivateKey"}]}` written by
+  `taskfiles/e2e-univocity-provision-pool.sh` (default `.work/e2e-univocity-pool.json`, mode 600,
+  holds ephemeral private keys). Specs claim one contract per forest from it;
+  claims are files in `<pool>.claims/`. A contract stays claimed once a run
+  has rooted a forest on it, so a second local Playwright run against the
+  same pool fails with "pool exhausted": re-run `task test:e2e:preflight`
+  (or `task e2e-univocity:provision-pool`) to deploy a fresh pool.
 - **`E2E_UNIVOCITY_RPC_URL`** — RPC for Playwright `eth_call` and on-chain provision; configure in Doppler or GitHub Environment. Preflight copies it to **`RPC_URL`** for deployer/`cast` (univocity-tools convention). Override per invocation with `task ... RPC_URL=https://...` without changing Doppler.
-- **`E2E_UNIVOCITY_CHAIN_ID`** — optional; default `84532`
+- **`E2E_UNIVOCITY_CHAIN_ID`** — the pool's `chainId`, written by preflight; default `84532`
 
 **Opt out:** `SKIP_UNIVOCITY_PROVISION=true` or **`E2E_SKIP_UNIVOCITY_PROVISION=true`** —
 bootstrap system specs skip; other projects still run.
 
-**Manual provision:** `doppler run -- task e2e-univocity:provision`
+**Manual provision:** `doppler run -- task e2e-univocity:provision-pool`
 
 Requires **`gh`** auth, Foundry **`cast`**, Doppler **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`**, and **univocity-tools** at the last-good pin in [`univocity-last-good.jsonc`](../univocity-last-good.jsonc) (`deploy provision e2e`; sibling `task install:dev` locally, release binaries in CI).
 
-**CI:** **`task e2e-univocity:ci-prepare`** in **tests-system.yml**, unconditionally —
-the bootstrap suite always deploys its own ephemeral instances. There is no
-pinned-contract mode: a pinned address set `*_ALLOW_BOOTSTRAP=false`, which
-skipped every bootstrap spec (FOR-531).
+**CI:** **`task e2e-univocity:ci-prepare`** in **tests-system.yml**'s test job,
+unconditionally: every attempt of the job deploys its own ephemeral contract pool
+to `$RUNNER_TEMP/e2e-univocity-pool.json`, so a re-run never reuses contracts an
+earlier attempt rooted. There is no pinned-contract mode: a pinned contract could
+serve only the first forest that used it.
 
 Run ES256 bootstrap specs only:
 
@@ -107,7 +120,7 @@ The **worker** must have **`CUSTODIAN_APP_TOKEN`** (Wrangler secret) for SCITT r
 | **`deploy-workers.yml`** | Deploy workers; chains **tests-system.yml** on **dev** after health |
 | **`release.yaml`** | Tag → deploy **dev** → **tests-system.yml** → promote **prod** → prod health |
 
-**tests-system.yml** manual inputs (optional): `es256_address` / `ks256_address` plus matching bootstrap key material; genesis log ids are derived from addresses when omitted. Supplied addresses skip bootstrap mutating specs for that alg.
+**tests-system.yml** manual dispatch takes `environment` and `playwright_project`; it has no contract inputs, since every run provisions its own pool.
 
 GitHub Environment **`dev`** or **`prod`** (Doppler sync): `secrets.*` and `vars.*` on Playwright steps — **no** repo-root `.env` and **no** Doppler CLI in CI jobs.
 

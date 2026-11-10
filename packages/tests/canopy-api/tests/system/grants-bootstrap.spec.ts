@@ -25,8 +25,8 @@ import {
   assertBootstrapMintE2eEnv,
   e2eReceiptBootstrapRootLogId,
 } from "@e2e-utils/e2e-env-guards";
-import { describeForEachBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
-import type { E2eBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
+import { describeForEachBootstrapPool } from "@e2e-utils/e2e-bootstrap-variant";
+import type { E2eBootstrapVariantPool } from "@e2e-utils/e2e-bootstrap-variant";
 import {
   formatProblemDetailsMessage,
   reportProblemDetails,
@@ -51,15 +51,19 @@ function forestrieGrantBase64ToBytes(b64: string): Uint8Array {
  * Ephemeral Imutable chain-bound bootstrap: genesis POST, contract-bootstrap-signed
  * root creation grant, register-grant, sequencing → SCITT receipt.
  */
-describeForEachBootstrapVariant(
+describeForEachBootstrapPool(
   "Bootstrap grant e2e — mint and register-grant",
-  (variant: E2eBootstrapVariant) => {
-    test.describe.configure({ mode: "serial" });
+  (pool: E2eBootstrapVariantPool) => {
+    // Not serial: each test roots its own forest on its own contract and
+    // shares nothing with the others, so a retry re-runs only the failed
+    // test and claims one contract, not one per test in the group.
+    test.describe.configure({ mode: "default" });
 
     test("genesis is created with real chain binding and verifies via GET", async ({
       unauthorizedRequest,
     }) => {
       assertBootstrapMintE2eEnv();
+      const variant = pool.claim("genesis verifies via GET");
       const onboardToken = await mintOnboardTokenE2e(unauthorizedRequest, {
         chainId: variant.chainId,
         univocityAddr: variant.contractAddrBytes,
@@ -95,6 +99,7 @@ describeForEachBootstrapVariant(
     test("Root grant mint yields valid transparent statement", async ({
       unauthorizedRequest,
     }) => {
+      const variant = pool.claim("root grant mint");
       const logId = randomUUID();
       const { grantBase64 } = await mintBootstrapGrant(
         unauthorizedRequest,
@@ -109,6 +114,7 @@ describeForEachBootstrapVariant(
     test("After bootstrap mint, POST /register/{bootstrap}/grants returns 303 See Other (enqueued)", async ({
       unauthorizedRequest,
     }, testInfo) => {
+      const variant = pool.claim("register-grant 303");
       const logId = randomUUID();
       const baseURL = testInfo.project.use.baseURL ?? "";
 
@@ -154,6 +160,7 @@ describeForEachBootstrapVariant(
     test("Bootstrap mint + register, poll sequencing, SCITT receipt, mmrIndex 0", async ({
       unauthorizedRequest,
     }, testInfo) => {
+      const variant = pool.claim("receipt mmrIndex 0");
       const logId = e2eReceiptBootstrapRootLogId();
       const baseURL = testInfo.project.use.baseURL ?? "";
 
@@ -255,6 +262,7 @@ describeForEachBootstrapVariant(
       unauthorizedRequest,
     }, testInfo) => {
       assertBootstrapMintE2eEnv();
+      const variant = pool.claim("warm root register-grant");
       const onboardToken = await mintOnboardTokenE2e(unauthorizedRequest, {
         chainId: variant.chainId,
         univocityAddr: variant.contractAddrBytes,

@@ -45,7 +45,8 @@ import {
   requiresChildPayment,
   withChildPaymentRequired,
 } from "@e2e-utils/e2e-grant-flags";
-import { getBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
+import type { E2eBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
+import { claimBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
 import { completeGrantRegistrationThroughReceipt } from "@e2e-utils/register-grant-through-receipt";
 import {
   postRegisterGrantWithPayment,
@@ -88,11 +89,12 @@ test.describe("paid register-grant (GF_CHILD_PAYMENT_REQUIRED)", () => {
 
   // ES256 only: genesis-derived offline verify (the L2 beat) yields no keys for a
   // KS256 trust root (ADR-0045), so the policy-bit proof is asserted on ES256.
-  const variant = getBootstrapVariant("es256");
+  let variant: E2eBootstrapVariant;
   const shared = { rootLogId: "", baseURL: "" };
 
   test.beforeAll(async ({ unauthorizedRequest }, testInfo) => {
     assertSystemE2eEnv();
+    variant = claimBootstrapVariant("es256", "paid register-grant root");
     const rootLogId = e2eReceiptBootstrapRootLogId();
     const baseURL = testInfo.project.use.baseURL ?? "";
 

@@ -15,9 +15,14 @@ Suites are named for what they exercise; the promotion phase that runs them
 T0–T4 tiers are retired — one token could not carry both, so "T3" meant the lane
 suite and the qualification gate interchangeably (FOR-531).
 
-Both suites provision their own instances. There is no pinned-contract mode in
-canopy: a supplied address set `*_ALLOW_BOOTSTRAP=false`, which skipped every
-bootstrap spec.
+Both suites provision their own instances. Canopy's bootstrap suite deploys a pool
+of contracts per run (one per forest it creates, since a contract accepts one root
+forest) and hands it to Playwright as `E2E_UNIVOCITY_CONTRACT_POOL_FILE`. There is
+no pinned-contract mode in canopy: a pinned contract could serve only the first
+forest that used it. Specs claim a contract per forest with
+`describeForEachBootstrapPool` (`pool.claim(purpose)`) or
+`claimBootstrapVariant(alg, purpose)`. `describeForEachBootstrapVariant` stays
+for lane suites that pin one contract per alg by env.
 
 Cross-repo lane specs (forest genesis, Mode B/C registration, BYOK) run in
 **`forestrie/system-testing`** — not `tests-system.yml`.

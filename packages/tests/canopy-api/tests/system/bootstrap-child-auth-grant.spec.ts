@@ -25,13 +25,13 @@ import {
   e2eReceiptBootstrapRootLogId,
 } from "@e2e-utils/e2e-env-guards";
 import { authLogBootstrapShapedFlags } from "@e2e-utils/e2e-grant-flags";
-import { describeForEachBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
-import type { E2eBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
+import { describeForEachBootstrapPool } from "@e2e-utils/e2e-bootstrap-variant";
+import type { E2eBootstrapVariantPool } from "@e2e-utils/e2e-bootstrap-variant";
 import { completeGrantRegistrationThroughReceipt } from "@e2e-utils/register-grant-through-receipt";
 
-describeForEachBootstrapVariant(
+describeForEachBootstrapPool(
   "Bootstrap root + child auth grant e2e",
-  (variant: E2eBootstrapVariant) => {
+  (pool: E2eBootstrapVariantPool) => {
     test.describe.configure({ mode: "serial" });
 
     test("POST /register/grants (child grant) returns 303 to parent entries; receipt polls", async ({
@@ -39,6 +39,7 @@ describeForEachBootstrapVariant(
     }, testInfo) => {
       assertSystemE2eEnv();
       const custodyEnv = custodianCustodySignEnv()!;
+      const variant = pool.claim("child auth grant");
 
       const rootLogId = e2eReceiptBootstrapRootLogId();
       const childLogId = randomUUID();

@@ -7,8 +7,14 @@ import {
   mintBootstrapGrant,
 } from "@e2e-utils/bootstrap-grant-flow";
 import { e2eReceiptBootstrapRootLogId } from "@e2e-utils/e2e-env-guards";
-import { describeForEachBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
-import type { E2eBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
+import {
+  describeForEachBootstrapPool,
+  getBootstrapVariant,
+} from "@e2e-utils/e2e-bootstrap-variant";
+import type {
+  E2eBootstrapVariant,
+  E2eBootstrapVariantPool,
+} from "@e2e-utils/e2e-bootstrap-variant";
 import {
   assert303ContentHashLocation,
   postLogEntriesCoseSign1,
@@ -32,10 +38,11 @@ function e2eFirstStatementPayload(): Uint8Array {
   return new Uint8Array(u8);
 }
 
-describeForEachBootstrapVariant(
+describeForEachBootstrapPool(
   "Bootstrap log e2e — first signed entry",
-  (variant: E2eBootstrapVariant) => {
+  (pool: E2eBootstrapVariantPool) => {
     test.describe.configure({ mode: "serial" });
+    let variant: E2eBootstrapVariant;
 
     const shared = {
       logId: "",
@@ -44,10 +51,13 @@ describeForEachBootstrapVariant(
     };
 
     test.beforeAll(async ({ unauthorizedRequest }, testInfo) => {
+      // Skip before claiming: a skipped group must not consume a contract.
+      // The flag is per alg, so the pinned variant of the alg answers it.
       test.skip(
-        !variant.supportsRootStatementRegistration,
+        !getBootstrapVariant(pool.id).supportsRootStatementRegistration,
         "register-statement not supported for this bootstrap variant",
       );
+      variant = pool.claim("first signed entry");
 
       const logId = e2eReceiptBootstrapRootLogId();
       const baseURL = testInfo.project.use.baseURL ?? "";

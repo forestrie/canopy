@@ -31,8 +31,11 @@ import {
   authLogBootstrapShapedFlags,
   dataLogCreateExtendFlags,
 } from "@e2e-utils/e2e-grant-flags";
-import { describeForEachBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
-import type { E2eBootstrapVariant } from "@e2e-utils/e2e-bootstrap-variant";
+import { describeForEachBootstrapPool } from "@e2e-utils/e2e-bootstrap-variant";
+import type {
+  E2eBootstrapVariant,
+  E2eBootstrapVariantPool,
+} from "@e2e-utils/e2e-bootstrap-variant";
 import { e2eDataLogDelegationStatementPayload } from "@e2e-utils/multi-log-grant-chain";
 import {
   assert303ContentHashLocation,
@@ -51,15 +54,17 @@ import {
 } from "@e2e-utils/parent-grant-ab-split";
 import { sha256Hex } from "@e2e-utils/statement-sign-bytes";
 
-describeForEachBootstrapVariant(
+describeForEachBootstrapPool(
   "Auth log → data log delegation chain",
-  (variant: E2eBootstrapVariant) => {
+  (pool: E2eBootstrapVariantPool) => {
     test.describe.configure({ mode: "serial" });
+    let variant: E2eBootstrapVariant;
 
     const shared = { rootLogId: "", baseURL: "" };
 
     test.beforeAll(async ({ unauthorizedRequest }, testInfo) => {
       assertSystemE2eEnv();
+      variant = pool.claim("delegation chain");
       const rootLogId = e2eReceiptBootstrapRootLogId();
       const baseURL = testInfo.project.use.baseURL ?? "";
 

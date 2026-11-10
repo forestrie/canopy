@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { custodianCustodySignEnv } from "./custodian-custody-grant.js";
 import { hasCoordinatorApiE2eEnv } from "./coordinator-api-env.js";
-import { univocityProvisionSkipReason } from "./univocity-genesis-e2e.js";
 import { KS256_UNIVOCITY_MANIFEST_PLACEHOLDER } from "./system-test-manifest-constants.js";
+import { CONTRACT_POOL_FILE_ENV } from "./univocity-contract-pool.js";
+import { univocityProvisionSkipReason } from "./univocity-genesis-e2e.js";
 
 /**
  * New bootstrap forest log id for e2e (genesis + contract-bootstrap root grant + register).
@@ -28,14 +29,24 @@ export function ks256BootstrapMaterialRequired(): boolean {
 }
 
 /**
- * Root bootstrap mint requires ops onboard token + ephemeral Imutable provision
- * (ES256/KS256 contract addresses and bootstrap signing material).
+ * Root bootstrap mint requires the ops onboard token and univocity chain
+ * binding switched on, plus contracts to root forests on: either a contract
+ * pool ({@link CONTRACT_POOL_FILE_ENV}; each pooled variant carries its own
+ * key) or one contract per alg pinned by env, with its bootstrap key file.
  */
 export function assertBootstrapMintE2eEnv(): void {
   if (!process.env.CANOPY_OPS_ADMIN_TOKEN?.trim()) {
     throw new Error(
       `CANOPY_OPS_ADMIN_TOKEN is required to mint onboard tokens for POST /api/forest/{log-id}/genesis. ${BOOTSTRAP_MINT_E2E_HELP}`,
     );
+  }
+  if (process.env[CONTRACT_POOL_FILE_ENV]?.trim()) {
+    if (process.env.E2E_SKIP_UNIVOCITY_CHAIN_BINDING?.trim() === "true") {
+      throw new Error(
+        `Univocity provision skipped (SKIP_UNIVOCITY_PROVISION). ${BOOTSTRAP_MINT_E2E_HELP}`,
+      );
+    }
+    return;
   }
   const skip = univocityProvisionSkipReason();
   if (skip) {

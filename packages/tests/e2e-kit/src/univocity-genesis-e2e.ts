@@ -189,7 +189,11 @@ function decodeInt256Word(word64Hex: string): number {
   return n;
 }
 
-async function univocityChainBindingSkipReason(
+/**
+ * Why `contractAddr` cannot serve a spec that needs `requiredAlg` (its
+ * on-chain `bootstrapConfig()` is unreadable or another alg), or null.
+ */
+export async function univocityChainBindingSkipReason(
   contractAddr: string,
   requiredAlg: number,
 ): Promise<string | null> {

@@ -13,7 +13,7 @@ Serial suite; uses a **fresh UUID** per test except the long poll test which use
 - Root creation grant signed by **contract bootstrap key** (ES256 PEM or KS256 wallet).
 - **Cold MMRS** root accepts `POST /register/{R}/grants` (**303**).
 - End-to-end **sequencing + SCITT receipt** (`mmrIndex` 0 for a fresh log).
-- Runs for **ES256** and **KS256** variants via `describeForEachBootstrapVariant`.
+- Runs for **ES256** and **KS256** via `describeForEachBootstrapPool`; each test claims its own univocity contract.
 
 ## Auth under test
 

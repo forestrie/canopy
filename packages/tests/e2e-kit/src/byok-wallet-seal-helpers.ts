@@ -13,10 +13,7 @@ import {
 } from "@forestrie/grant-builder";
 import type { Grant } from "@forestrie/grant-builder";
 import { ensureForestGenesisEs256E2e } from "./forest-genesis-e2e.js";
-import {
-  es256BootstrapContractAddrBytes,
-  univocityGenesisChainId,
-} from "./univocity-genesis-e2e.js";
+import { univocityGenesisChainId } from "./univocity-genesis-e2e.js";
 import {
   buildByokDelegationMaterial,
   bytesToBase64,
@@ -95,11 +92,19 @@ async function signCoseSign1(opts: {
   ]);
 }
 
+/**
+ * Genesis a BYOK root forest on `univocityAddr` and sign its root creation
+ * grant with `rootKeyPair`. Univocity anchors genesis to the contract's
+ * on-chain bootstrap key, so `rootKeyPair` must be that contract's bootstrap
+ * key: claim the contract for this forest alone (a contract has one root log).
+ */
 export async function mintByokBootstrapGrant(opts: {
   request: APIRequestContext;
   rootLogId: string;
   onboardToken: string;
   rootKeyPair: CryptoKeyPair;
+  /** The 20-byte ES256 univocity contract this forest is rooted on. */
+  univocityAddr: Uint8Array;
 }): Promise<{ grantBase64: string; grantData: Uint8Array }> {
   const { x, y } = await exportEs256RootXy(opts.rootKeyPair);
   const grantData = new Uint8Array(64);
@@ -109,7 +114,7 @@ export async function mintByokBootstrapGrant(opts: {
     logId: opts.rootLogId,
     onboardToken: opts.onboardToken,
     bootstrapKey: grantData,
-    univocityAddr: es256BootstrapContractAddrBytes(),
+    univocityAddr: opts.univocityAddr,
     chainId: univocityGenesisChainId(),
   });
   const grantBitmap = new Uint8Array(8);
