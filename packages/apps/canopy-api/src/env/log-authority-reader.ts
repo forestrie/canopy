@@ -34,7 +34,8 @@ const FINAL_CACHE_SECONDS = 31_536_000;
 /**
  * Header on a cached entry holding the unix ms after which it is stale. The
  * reader checks it as well as relying on `max-age`, so freshness does not
- * depend on when the cache evicts.
+ * depend on when the cache evicts. canopy writes it on every entry, final
+ * ones included, and trusts no entry without it.
  */
 const FRESH_UNTIL_HEADER = "x-canopy-fresh-until";
 
@@ -65,13 +66,8 @@ export function createUnivocityLogAuthorityReader(config: {
       const url = `${base}/api/logs/${bytesToUuid(logId)}/authority`;
       const cache = config.cache ?? caches.default;
 
-      const cached = await cache.match(url);
-      if (cached) {
-        const freshUntil = Number(cached.headers.get(FRESH_UNTIL_HEADER));
-        if (!freshUntil || now() < freshUntil) {
-          return classify(decodeFields(await cached.arrayBuffer()));
-        }
-      }
+      const hit = await fromCache(cache, url, now());
+      if (hit) return hit;
 
       let res: Response;
       try {
@@ -112,15 +108,35 @@ export function createUnivocityLogAuthorityReader(config: {
         const headers: Record<string, string> = {
           "content-type": "application/cbor",
           "cache-control": `public, max-age=${ttl}`,
+          [FRESH_UNTIL_HEADER]: String(now() + ttl * 1000),
         };
-        if (ttl !== FINAL_CACHE_SECONDS) {
-          headers[FRESH_UNTIL_HEADER] = String(now() + ttl * 1000);
-        }
         await cache.put(url, new Response(body, { status: 200, headers }));
       }
       return authority;
     },
   };
+}
+
+/**
+ * A cached answer canopy wrote and that is still fresh, or null. Every entry
+ * canopy writes carries {@link FRESH_UNTIL_HEADER}, final ones included, so an
+ * entry without it was put there by something else and is never trusted. An
+ * entry that no longer decodes is a miss, not an error.
+ */
+async function fromCache(
+  cache: Cache,
+  url: string,
+  nowMs: number,
+): Promise<LogAuthority | null> {
+  const cached = await cache.match(url);
+  if (!cached) return null;
+  const freshUntil = Number(cached.headers.get(FRESH_UNTIL_HEADER));
+  if (!Number.isFinite(freshUntil) || freshUntil <= nowMs) return null;
+  try {
+    return classify(decodeFields(await cached.arrayBuffer()));
+  } catch {
+    return null;
+  }
 }
 
 /** Seconds to cache an answer for, or null when it must not be cached. */

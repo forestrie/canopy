@@ -84,6 +84,59 @@ describe("createUnivocityLogAuthorityReader", () => {
     expect(url).toBe(`${SERVICE_URL}/api/logs/${uuidOf(logId)}/authority`);
   });
 
+  it("ignores a cached entry canopy did not write, and asks univocity", async () => {
+    const logId = randomLogId();
+    const url = `${SERVICE_URL}/api/logs/${uuidOf(logId)}/authority`;
+    const cache = await privateCache();
+    // Something else (an HTTP cache, say) left an anchored answer under the
+    // same key, without canopy's freshness header.
+    await cache.put(
+      url,
+      new Response(
+        encodeCborDeterministic(anchored(true)) as unknown as BodyInit,
+        {
+          headers: {
+            "content-type": "application/cbor",
+            "cache-control": "max-age=600",
+          },
+        },
+      ),
+    );
+    const fetchSpy = stubUnivocity(new Map([[uuidOf(logId), [503]]]));
+    const reader = createUnivocityLogAuthorityReader({
+      serviceUrl: SERVICE_URL,
+      anchoredCacheSeconds: ANCHORED_CACHE_SECONDS,
+      cache,
+    });
+
+    expect((await reader.read(logId)).kind).toBe("unavailable");
+    expect(fetchSpy).toHaveBeenCalledOnce();
+  });
+
+  it("treats a cached answer it cannot decode as a miss, not an error", async () => {
+    const logId = randomLogId();
+    const url = `${SERVICE_URL}/api/logs/${uuidOf(logId)}/authority`;
+    const cache = await privateCache();
+    await cache.put(
+      url,
+      new Response("not cbor", {
+        headers: {
+          "content-type": "application/cbor",
+          "cache-control": "max-age=600",
+          "x-canopy-fresh-until": String(Date.now() + 600_000),
+        },
+      }),
+    );
+    stubUnivocity(new Map([[uuidOf(logId), [anchored(true)]]]));
+    const reader = createUnivocityLogAuthorityReader({
+      serviceUrl: SERVICE_URL,
+      anchoredCacheSeconds: ANCHORED_CACHE_SECONDS,
+      cache,
+    });
+
+    expect((await reader.read(logId)).kind).toBe("anchored");
+  });
+
   it("re-reads an anchored answer that is not final once its cache time passes, so a conflict takes effect", async () => {
     const logId = randomLogId();
     const fetchSpy = stubUnivocity(
