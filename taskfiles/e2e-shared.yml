@@ -262,10 +262,14 @@ tasks:
           exit 1
         fi
 
+        CHAIN_ID="$(jq -r '.chainId // empty' "$POOL_FILE")"
         mkdir -p "{{.ROOT_DIR}}/.work"
         {
           echo "export E2E_UNIVOCITY_CONTRACT_POOL_FILE=${POOL_FILE}"
           echo "export E2E_SKIP_UNIVOCITY_CHAIN_BINDING=false"
+          # The chain the pool was deployed to; genesis and onboard tokens
+          # bind to it.
+          if [ -n "$CHAIN_ID" ]; then echo "export E2E_UNIVOCITY_CHAIN_ID=${CHAIN_ID}"; fi
         } > "{{.E2E_UNIVOCITY_ENV_FILE}}"
         echo "Wrote {{.E2E_UNIVOCITY_ENV_FILE}}"
 

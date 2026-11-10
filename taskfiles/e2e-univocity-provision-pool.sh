@@ -7,7 +7,8 @@
 # checkpoint), so the suite needs one contract per forest it creates. This
 # script deploys them serially (the deployer has no nonce manager) and writes
 # one JSON pool file for the e2e kit:
-#   {"contracts":[{"alg":"es256"|"ks256","address":"0x..","bootstrapPrivateKey":".."}]}
+#   {"chainId":"84532","contracts":[{"alg":"es256"|"ks256","address":"0x..","bootstrapPrivateKey":".."}]}
+# chainId is the chain every contract was deployed to (from the manifests).
 # bootstrapPrivateKey is the ES256 PEM text or the KS256 private key hex, as
 # written by the deployer. The file holds private keys: mode 600, never logged.
 #
@@ -29,7 +30,7 @@ fail() {
 assemble_pool() {
   local out="$1" entries="$2"
   local tmp="${out}.tmp.$$"
-  local alg manifest keyfile addr key
+  local alg manifest keyfile addr key chain chain_id=""
   : > "$tmp"
   chmod 600 "$tmp"
   local acc='{"contracts":[]}'
@@ -42,6 +43,9 @@ assemble_pool() {
       *) rm -f "$tmp"; fail "bad or missing imutableUnivocity address for ${alg} in ${manifest}" ;;
     esac
     [ -s "$keyfile" ] || { rm -f "$tmp"; fail "bootstrap key file missing or empty for ${alg}: ${keyfile}"; }
+    chain=$(jq -r '.chainId // empty' "$manifest")
+    [ -n "$chain_id" ] || chain_id="$chain"
+    [ "$chain" = "$chain_id" ] || { rm -f "$tmp"; fail "contracts on two chains: ${chain_id} and ${chain} (${manifest})"; }
     if [ "$alg" = "es256" ]; then
       key=$(cat "$keyfile")
     else
@@ -51,7 +55,7 @@ assemble_pool() {
       '.contracts += [{alg: $alg, address: $a, bootstrapPrivateKey: $k}]' <<<"$acc")
     echo "pool contract: alg=${alg} address=${addr}"
   done < "$entries"
-  printf '%s\n' "$acc" > "$tmp"
+  jq -c --arg c "$chain_id" '{chainId: $c} + .' <<<"$acc" > "$tmp"
   chmod 600 "$tmp"
   mv "$tmp" "$out"
 }

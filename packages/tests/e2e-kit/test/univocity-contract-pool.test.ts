@@ -47,6 +47,15 @@ describe("claimUnivocityContract", () => {
     );
   });
 
+  test("reads a pool that records the chain it was deployed to", () => {
+    const dir = mkdtempSync(join(tmpdir(), "e2e-pool-"));
+    const file = join(dir, "pool.json");
+    writeFileSync(file, JSON.stringify({ chainId: "84532", contracts: pool }));
+    process.env.E2E_UNIVOCITY_CONTRACT_POOL_FILE = file;
+
+    expect(claimUnivocityContract("ks256", "forest one").address).toBe(KS256_A);
+  });
+
   test("refuses a claim once every contract of the alg is taken", () => {
     claimUnivocityContract("ks256", "forest one");
 
