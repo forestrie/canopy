@@ -62,22 +62,16 @@ export interface Env {
   X402_SETTLEMENT_DO?: DurableObjectNamespace;
   // Number of DO shards for x402 settlement (typically 4)
   X402_DO_SHARD_COUNT?: string;
-  /** Base URL of arbor Custodian (no trailing slash). */
-  CUSTODIAN_URL?: string;
   /**
-   * Trust-root read URL (defaults to CUSTODIAN_URL in pilot).
-   * Future BYOK: Univocity trust-root service.
+   * Delegation Coordinator base URL. canopy-api forwards public roots and
+   * webhooks to it (genesis, prepare, create); it is never a key source.
    */
-  TRUST_ROOT_URL?: string;
-  /** Maps to Custodian secret APP_TOKEN; curator/log-key + receipt verification. */
-  CUSTODIAN_APP_TOKEN?: string;
-  /** Delegation Coordinator base URL for BYOK public-root receipt verification. */
   DELEGATION_COORDINATOR_URL?: string;
-  /** Delegation Coordinator bearer token for public-root receipt verification. */
+  /** Delegation Coordinator bearer token for those forwards. */
   COORDINATOR_APP_TOKEN?: string;
   /**
    * Pool-test only: 128 hex chars = ES256 public x‖y (64 bytes) for receipt Sign1 verify
-   * when Custodian is not used. Forbidden when NODE_ENV !== "test" (503).
+   * in place of univocity. Forbidden when NODE_ENV !== "test" (503).
    */
   FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX?: string;
   /** Bootstrap signing alg: ES256 (default) or KS256. */

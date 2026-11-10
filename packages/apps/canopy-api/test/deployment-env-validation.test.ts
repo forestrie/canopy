@@ -1,6 +1,7 @@
 /**
- * Non-pool workers must have CUSTODIAN_URL, SEQUENCING_QUEUE, and CUSTODIAN_APP_TOKEN
- * (and must not set the pool-only receipt test hex).
+ * Non-pool workers must have SEQUENCING_QUEUE and UNIVOCITY_SERVICE_URL, the
+ * only source of log root keys (and must not set the pool-only receipt test
+ * hex). Custodian settings are not needed.
  * Vitest pool uses NODE_ENV "test" and skips these checks — see AGENTS.md.
  */
 
@@ -22,20 +23,17 @@ const fakeQueue = {} as DurableObjectNamespace;
 
 const devLikeBase: Partial<Env> = {
   NODE_ENV: "development",
-  CUSTODIAN_URL: "https://custodian.example/v1",
-  CUSTODIAN_APP_TOKEN: "app-token",
+  UNIVOCITY_SERVICE_URL: "https://univocity.example",
   SEQUENCING_QUEUE: fakeQueue,
 };
 
-describe("CUSTODIAN_URL validation (non-pool NODE_ENV)", () => {
-  it("returns 503 on /api/health when CUSTODIAN_URL is missing", async () => {
-    const badEnv: Env = {
+describe("Log authority env (non-pool NODE_ENV)", () => {
+  it("returns 503 on /api/health when UNIVOCITY_SERVICE_URL is missing", async () => {
+    const badEnv = {
       ...poolEnv,
-      NODE_ENV: "development",
-      CUSTODIAN_URL: undefined,
-      CUSTODIAN_APP_TOKEN: "app",
-      SEQUENCING_QUEUE: fakeQueue,
-    };
+      ...devLikeBase,
+      UNIVOCITY_SERVICE_URL: undefined,
+    } as unknown as Env;
 
     const response = await worker.fetch(
       new Request("http://localhost/api/health"),
@@ -47,7 +45,19 @@ describe("CUSTODIAN_URL validation (non-pool NODE_ENV)", () => {
     const decoded = decodeCborAsObject(
       new Uint8Array(await response.arrayBuffer()),
     ) as { detail?: string };
-    expect(decoded.detail).toMatch(/CUSTODIAN_URL/);
+    expect(decoded.detail).toMatch(/UNIVOCITY_SERVICE_URL/);
+  });
+
+  it("needs no Custodian settings", async () => {
+    const okEnv = { ...poolEnv, ...devLikeBase } as unknown as Env;
+
+    const response = await worker.fetch(
+      new Request("http://localhost/api/health"),
+      okEnv,
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(200);
   });
 });
 
@@ -70,26 +80,6 @@ describe("Sequencing + receipt verifier env (non-pool NODE_ENV)", () => {
       new Uint8Array(await response.arrayBuffer()),
     ) as { detail?: string };
     expect(decoded.detail).toMatch(/SEQUENCING_QUEUE/);
-  });
-
-  it("returns 503 when CUSTODIAN_APP_TOKEN is missing", async () => {
-    const badEnv: Env = {
-      ...poolEnv,
-      ...devLikeBase,
-      CUSTODIAN_APP_TOKEN: undefined,
-    };
-
-    const response = await worker.fetch(
-      new Request("http://localhost/api/health"),
-      badEnv,
-      {} as ExecutionContext,
-    );
-
-    expect(response.status).toBe(503);
-    const decoded = decodeCborAsObject(
-      new Uint8Array(await response.arrayBuffer()),
-    ) as { detail?: string };
-    expect(decoded.detail).toMatch(/CUSTODIAN_APP_TOKEN/);
   });
 
   it("returns 503 when FORESTRIE_RECEIPT_VERIFY_TEST_ES256_XY_HEX is set", async () => {
@@ -142,12 +132,11 @@ describe("Payments ops env (non-pool NODE_ENV)", () => {
 describe("Forest genesis route env (non-pool NODE_ENV)", () => {
   const forestLogId = "123e4567-e89b-12d3-a456-426614174000";
 
-  it("allows forest genesis POST without bootstrap trio when onboard token is valid", async () => {
+  it("allows forest genesis POST without log authority config when onboard token is valid", async () => {
     const okEnv = {
       ...poolEnv,
       NODE_ENV: "development",
-      CUSTODIAN_URL: undefined,
-      CUSTODIAN_APP_TOKEN: undefined,
+      UNIVOCITY_SERVICE_URL: undefined,
       SEQUENCING_QUEUE: undefined,
     } as unknown as Env;
 
@@ -174,12 +163,11 @@ describe("Forest genesis route env (non-pool NODE_ENV)", () => {
     expect(response.status).toBe(201);
   });
 
-  it("allows public GET genesis without bootstrap trio", async () => {
+  it("allows public GET genesis without log authority config", async () => {
     const okEnv = {
       ...poolEnv,
       NODE_ENV: "development",
-      CUSTODIAN_URL: undefined,
-      CUSTODIAN_APP_TOKEN: undefined,
+      UNIVOCITY_SERVICE_URL: undefined,
       SEQUENCING_QUEUE: undefined,
     } as unknown as Env;
 
