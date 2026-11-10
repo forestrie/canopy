@@ -3,7 +3,8 @@
  * production seam posts a creation grant to univocity `POST /api/grants` and maps
  * the HTTP status to a {@link UnivocityGrantResult}. These tests mock `fetch` to
  * assert the request shape (URL, bearer auth, CBOR body) and the status mapping:
- * 201/200 -> accepted, 409 -> conflict, 4xx -> rejected, 5xx/throw -> unavailable.
+ * 201/200 -> accepted, 409 -> conflict, 401/403 -> unavailable, other 4xx ->
+ * rejected, 5xx/throw -> unavailable.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -126,6 +127,18 @@ describe("createUnivocityGrantValidator", () => {
     );
     expect(r).toMatchObject({ kind: "rejected", status: 422 });
   });
+
+  it.each([401, 403])(
+    "%i (univocity refused canopy's own credentials) -> unavailable, never a verdict on the grant",
+    async (status) => {
+      spyFetch(status);
+      const r = await createUnivocityGrantValidator(CLIENT).validate(
+        rootLogId(),
+        statementBytes(),
+      );
+      expect(r.kind).toBe("unavailable");
+    },
+  );
 
   it("503 -> unavailable", async () => {
     spyFetch(503);

@@ -10,8 +10,8 @@
  * at `expiresAt` unless committed, and a re-post refreshes it. Create commits
  * (`commit`): the grant will be sequenced, so its claim never lapses. The HTTP
  * status maps to {@link UnivocityGrantResult}: 201/200 accepted (200 for the
- * same grant again), 409 conflict, other 4xx rejected, anything else
- * unavailable.
+ * same grant again), 409 conflict, 401/403 (canopy's own credentials)
+ * unavailable, other 4xx rejected, anything else unavailable.
  */
 
 import {
@@ -180,6 +180,15 @@ export async function postGrantClaimToUnivocity(
   }
   if (res.status === 409) {
     return { kind: "conflict", ...(await readProblem(res)) };
+  }
+  if (res.status === 401 || res.status === 403) {
+    // univocity refused canopy's bearer (a rotated UNIVOCITY_API_TOKEN, or
+    // a proxy in front of it): an operator fault, never a verdict on the
+    // grant, so the caller answers 503 rather than a terminal 403.
+    return {
+      kind: "unavailable",
+      detail: `univocity grants refused canopy's credentials (${res.status})`,
+    };
   }
   if (res.status >= 400 && res.status < 500) {
     return {
