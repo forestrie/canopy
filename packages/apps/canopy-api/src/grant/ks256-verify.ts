@@ -45,8 +45,9 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 
 /**
  * Verify a COSE Sign1 with KS256 (Keccak Sig_structure + 65-byte eth sig).
- * An EOA root's signature must be low-s; a contract root's goes to ERC-1271
- * unchanged.
+ * An EOA root's signature must be low-s. With `opts.rpcUrls` set, a root that
+ * holds code has its signature checked by ERC-1271 unchanged; without RPC
+ * every root goes to recovery, where a contract root's signature fails.
  */
 export async function verifyKs256CoseSign1(
   coseSign1Bytes: Uint8Array,
