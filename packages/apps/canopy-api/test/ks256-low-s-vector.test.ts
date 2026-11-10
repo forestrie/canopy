@@ -7,8 +7,8 @@
  * SHA-256 below. Do not edit the copy; change protocol and re-copy.
  *
  * Each reject case is the high-s twin of an accept case and recovers the same
- * address, so only the s bound refuses it. A contract root's signature goes
- * to ERC-1271 unchanged.
+ * address, so only the s bound refuses it. With RPC configured, a contract
+ * root's signature goes to ERC-1271 unchanged.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";

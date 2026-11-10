@@ -1,7 +1,9 @@
 /**
  * KS256 COSE Sign1 verification: Keccak-256 Sig_structure + ecrecover / ERC-1271.
- * Matches univocity `verifyKS256Raw` / `verifyDelegationProofKS256` from the
- * contract release that bounds `s`; earlier instances also accept high-s. EOA
+ * Follows univocity `verifyKS256Raw` / `verifyDelegationProofKS256` with two
+ * differences: the contract always sends a root with code to ERC-1271, canopy
+ * only when RPC is configured; and only the contract release that bounds `s`
+ * refuses high-s, earlier instances accept it. EOA
  * recovery, with its low-s bound, is delegation-cose's
  * {@link recoverKs256Signer}, which canopy's other KS256 verifiers share
  * except grant-builder's, which applies the same bound inline.
