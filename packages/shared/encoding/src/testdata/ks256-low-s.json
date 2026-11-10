@@ -8,13 +8,14 @@
     "digest": "keccak256(Sig_structure); Sig_structure is [\"Signature1\", protected, h'', payload]",
     "low_s_bound": "7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0",
     "cose_sign1": "untagged, empty unprotected header, attached payload",
+    "payload": "the canonical CBOR map {1: h'<ASCII text>'}; a map because verifiers that decode the payload (arbor's delegation certificate check) require a canonical integer-keyed map before the signature check",
     "test_key": "private_key_d_hex is keccak256 of the label, reduced mod n; a test scalar, never a deployed key"
   },
   "alg": -65799,
   "protected_header_hex": "a1013a00010106",
-  "payload_hex": "466f72657374726965204b53323536206c6f772d7320636f6e666f726d616e636520766563746f72",
-  "sig_structure_hex": "846a5369676e61747572653147a1013a00010106405828466f72657374726965204b53323536206c6f772d7320636f6e666f726d616e636520766563746f72",
-  "digest_hex": "62a751d4f1da5fce4a11536001b806741eb38c92423d1e605b61a2522ad2d17e",
+  "payload_hex": "a1015828466f72657374726965204b53323536206c6f772d7320636f6e666f726d616e636520766563746f72",
+  "sig_structure_hex": "846a5369676e61747572653147a1013a0001010640582ca1015828466f72657374726965204b53323536206c6f772d7320636f6e666f726d616e636520766563746f72",
+  "digest_hex": "a202d294e1ad5d7680fcf1f9bedc1d1741433c452ba37601631c102178e2f1c4",
   "test_key": {
     "label": "forestrie/protocol vectors/fixtures/ks256-low-s.json test key",
     "private_key_d_hex": "6c3ba588ea160dfbf8aff70af55db0533cc6c11e26c90e99f41578d9a623dff6",
@@ -24,8 +25,8 @@
     {
       "name": "accept/low-s",
       "signer_address_hex": "c2493c60623fb575251b9ec4e62934fa2df5cad7",
-      "signature_hex": "9f9abcf431a6b3da1a7c68e36ab6de20ee5c337bca682a417308bcca87ad26e34975879f4fedb8ed557a7bb62393ab34d21ca4614eea8a827c84b8e18a4d821900",
-      "cose_sign1_hex": "8447a1013a00010106a05828466f72657374726965204b53323536206c6f772d7320636f6e666f726d616e636520766563746f7258419f9abcf431a6b3da1a7c68e36ab6de20ee5c337bca682a417308bcca87ad26e34975879f4fedb8ed557a7bb62393ab34d21ca4614eea8a827c84b8e18a4d821900",
+      "signature_hex": "9be95b71a1c37af6f33cc715fc8fd4762e8f46e4c26d120042ec71da2db7aae314c5be12e63a299c1473aa2f44da5dfca87590dbaeec47a4aeb39163d2c8c4d600",
+      "cose_sign1_hex": "8447a1013a00010106a0582ca1015828466f72657374726965204b53323536206c6f772d7320636f6e666f726d616e636520766563746f7258419be95b71a1c37af6f33cc715fc8fd4762e8f46e4c26d120042ec71da2db7aae314c5be12e63a299c1473aa2f44da5dfca87590dbaeec47a4aeb39163d2c8c4d600",
       "expect": {
         "result": "accept"
       },
@@ -35,8 +36,8 @@
       "name": "reject/high-s",
       "twin_of": "accept/low-s",
       "signer_address_hex": "c2493c60623fb575251b9ec4e62934fa2df5cad7",
-      "signature_hex": "9f9abcf431a6b3da1a7c68e36ab6de20ee5c337bca682a417308bcca87ad26e3b68a7860b0124712aa858449dc6c54c9e8923885605e15b9434da5ab45e8bf2801",
-      "cose_sign1_hex": "8447a1013a00010106a05828466f72657374726965204b53323536206c6f772d7320636f6e666f726d616e636520766563746f7258419f9abcf431a6b3da1a7c68e36ab6de20ee5c337bca682a417308bcca87ad26e3b68a7860b0124712aa858449dc6c54c9e8923885605e15b9434da5ab45e8bf2801",
+      "signature_hex": "9be95b71a1c37af6f33cc715fc8fd4762e8f46e4c26d120042ec71da2db7aae3eb3a41ed19c5d663eb8c55d0bb25a20212394c0b005c5897111ecd28fd6d7c6b01",
+      "cose_sign1_hex": "8447a1013a00010106a0582ca1015828466f72657374726965204b53323536206c6f772d7320636f6e666f726d616e636520766563746f7258419be95b71a1c37af6f33cc715fc8fd4762e8f46e4c26d120042ec71da2db7aae3eb3a41ed19c5d663eb8c55d0bb25a20212394c0b005c5897111ecd28fd6d7c6b01",
       "expect": {
         "result": "reject",
         "reason": "signature_malleable"
@@ -45,9 +46,9 @@
     },
     {
       "name": "accept/s-at-bound",
-      "signer_address_hex": "b9840a84a3152d0d3e56ffdd4ed5e8bc1870c6ec",
-      "signature_hex": "9f9abcf431a6b3da1a7c68e36ab6de20ee5c337bca682a417308bcca87ad26e37fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a000",
-      "cose_sign1_hex": "8447a1013a00010106a05828466f72657374726965204b53323536206c6f772d7320636f6e666f726d616e636520766563746f7258419f9abcf431a6b3da1a7c68e36ab6de20ee5c337bca682a417308bcca87ad26e37fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a000",
+      "signer_address_hex": "17ee0a98dc6a8eb8b8620e262791414897b624e8",
+      "signature_hex": "9be95b71a1c37af6f33cc715fc8fd4762e8f46e4c26d120042ec71da2db7aae37fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a000",
+      "cose_sign1_hex": "8447a1013a00010106a0582ca1015828466f72657374726965204b53323536206c6f772d7320636f6e666f726d616e636520766563746f7258419be95b71a1c37af6f33cc715fc8fd4762e8f46e4c26d120042ec71da2db7aae37fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a000",
       "expect": {
         "result": "accept"
       },
@@ -56,9 +57,9 @@
     {
       "name": "reject/s-above-bound",
       "twin_of": "accept/s-at-bound",
-      "signer_address_hex": "b9840a84a3152d0d3e56ffdd4ed5e8bc1870c6ec",
-      "signature_hex": "9f9abcf431a6b3da1a7c68e36ab6de20ee5c337bca682a417308bcca87ad26e37fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a101",
-      "cose_sign1_hex": "8447a1013a00010106a05828466f72657374726965204b53323536206c6f772d7320636f6e666f726d616e636520766563746f7258419f9abcf431a6b3da1a7c68e36ab6de20ee5c337bca682a417308bcca87ad26e37fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a101",
+      "signer_address_hex": "17ee0a98dc6a8eb8b8620e262791414897b624e8",
+      "signature_hex": "9be95b71a1c37af6f33cc715fc8fd4762e8f46e4c26d120042ec71da2db7aae37fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a101",
+      "cose_sign1_hex": "8447a1013a00010106a0582ca1015828466f72657374726965204b53323536206c6f772d7320636f6e666f726d616e636520766563746f7258419be95b71a1c37af6f33cc715fc8fd4762e8f46e4c26d120042ec71da2db7aae37fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a101",
       "expect": {
         "result": "reject",
         "reason": "signature_malleable"

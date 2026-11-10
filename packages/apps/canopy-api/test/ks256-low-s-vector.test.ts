@@ -19,7 +19,7 @@ import {
 import type { ParsedKs256RootKey } from "../src/grant/parsed-ks256-root-key.js";
 
 const VECTOR_SHA256 =
-  "ea9ad006babbc2e96499aa48ddfcf02dfc01b18c47aa5a027e827577e8e6050b";
+  "3a325aaa1bb296316f3f4ef8e2d8a8ae4c1728c00fc283f3cdd2438a2c9d88dc";
 
 interface Ks256LowSCase {
   name: string;
