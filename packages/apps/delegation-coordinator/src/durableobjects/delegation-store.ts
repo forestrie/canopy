@@ -52,6 +52,7 @@ import type {
   SealerEpochTombstoneTarget,
 } from "../types/delegate-key-tombstone-request.js";
 import { purgeClaimlessDelegateKeys } from "../purge-claimless-delegate-keys.js";
+import { storedRootKey } from "../stored-root-key.js";
 import type { SigningRoute } from "../types/signing-route.js";
 import type { SubmitDelegationCertificateRequest } from "../types/submit-delegation-certificate-request.js";
 import type { PutWebhookRequest } from "../types/put-webhook-request.js";
@@ -116,6 +117,19 @@ const PENDING_TTL_SECONDS = 60 * 60;
 
 /** Max pending hints retained per target log id. */
 const PENDING_CAP_PER_LOG = 32;
+
+/**
+ * Per-log tables cleared when a prepare root lapses, the root's own row last
+ * (see `purgeLapsedRoots`).
+ */
+const LAPSED_ROOT_TABLES = [
+  "delegation_certificates",
+  "materials",
+  "pending",
+  "webhook_deliveries",
+  "log_delegation_config",
+  "public_roots",
+] as const;
 
 /**
  * Suggested TTL a signer applies when pre-signing an advance delegation to the
@@ -317,6 +331,7 @@ export class DelegationStoreDO extends DurableObject<Env> {
   /** Route internal fetch paths to store handlers. */
   async fetch(request: Request): Promise<Response> {
     this.ensureSchema();
+    this.purgeLapsedRoots(Math.floor(Date.now() / 1000));
     if (!this.rangeMigrationDone) {
       await this.advanceRangeMigrationFromFetch();
     }
@@ -622,7 +637,8 @@ export class DelegationStoreDO extends DurableObject<Env> {
         x BLOB NOT NULL,
         y BLOB NOT NULL,
         chain_id TEXT,
-        uploaded_at INTEGER NOT NULL
+        uploaded_at INTEGER NOT NULL,
+        expires_at INTEGER
       )
     `);
 
@@ -643,6 +659,11 @@ export class DelegationStoreDO extends DurableObject<Env> {
     this.ensureEnabledAuthorityColumns();
     this.ensureLogConfigUnivocityInstanceIdColumns();
     this.ensurePublicRootChainColumn();
+    this.ensurePublicRootExpiresAtColumn();
+    this.ctx.storage.sql.exec(`
+      CREATE INDEX IF NOT EXISTS idx_public_roots_expires_at
+      ON public_roots (expires_at) WHERE expires_at IS NOT NULL
+    `);
 
     // Instance-level webhooks (FOR-468). Per-univocity-instance, replicated to
     // every shard — like delegate_keys — so a log's shard can copy the URL into
@@ -908,6 +929,56 @@ export class DelegationStoreDO extends DurableObject<Env> {
         `ALTER TABLE public_roots ADD COLUMN chain_id TEXT`,
       );
     }
+  }
+
+  /**
+   * Nullable `expires_at` (unix seconds) on public_roots: when a root
+   * registered by prepare lapses with its univocity reservation. NULL is
+   * permanent, which every legacy row is.
+   */
+  private ensurePublicRootExpiresAtColumn(): void {
+    try {
+      [
+        ...this.ctx.storage.sql.exec(
+          `SELECT expires_at FROM public_roots LIMIT 0`,
+        ),
+      ];
+      return;
+    } catch {
+      this.ctx.storage.sql.exec(
+        `ALTER TABLE public_roots ADD COLUMN expires_at INTEGER`,
+      );
+    }
+  }
+
+  /**
+   * A root registered by prepare lapses with its univocity reservation
+   * ([devdocs ADR-0075](https://github.com/forestrie/devdocs/blob/main/adr/adr-0075-sec-child-root-claimed-once.md)
+   * decision 3). Runs before every route, so no read sees a lapsed root or
+   * anything stored under it: its certificates, materials, pending requests,
+   * queued webhook deliveries and webhook config all go with it, and the
+   * next claimant registers from nothing.
+   */
+  private purgeLapsedRoots(nowSeconds: number): void {
+    const sql = this.ctx.storage.sql;
+    const lapsed = [
+      ...sql.exec(
+        `SELECT log_id_hex32 FROM public_roots
+          WHERE expires_at IS NOT NULL AND expires_at <= ?`,
+        nowSeconds,
+      ),
+    ] as Array<{ log_id_hex32: string }>;
+    if (lapsed.length === 0) return;
+    this.ctx.storage.transactionSync(() => {
+      for (const { log_id_hex32: logIdHex32 } of lapsed) {
+        for (const table of LAPSED_ROOT_TABLES) {
+          sql.exec(`DELETE FROM ${table} WHERE log_id_hex32 = ?`, logIdHex32);
+        }
+      }
+    });
+    console.info(
+      JSON.stringify({ event: "public_roots_lapsed", count: lapsed.length }),
+    );
   }
 
   /**
@@ -1240,6 +1311,22 @@ export class DelegationStoreDO extends DurableObject<Env> {
     }
     const chainId = chainIdRaw ?? null;
 
+    const expiresAt = body.expiresAt ?? null;
+    if (
+      expiresAt !== null &&
+      (!Number.isSafeInteger(expiresAt) || expiresAt <= 0)
+    ) {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Invalid request",
+          status: 400,
+          detail: "expiresAt must be a positive integer (unix seconds)",
+        },
+        { status: 400 },
+      );
+    }
+
     const algRaw = body.alg;
     if (algRaw === "ES256") {
       if (!body.x || !body.y) {
@@ -1266,23 +1353,13 @@ export class DelegationStoreDO extends DurableObject<Env> {
           { status: 400 },
         );
       }
-      this.ctx.storage.sql.exec(
-        `INSERT INTO public_roots (log_id_hex32, alg, x, y, chain_id, uploaded_at)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(log_id_hex32) DO UPDATE SET
-           alg = excluded.alg,
-           x = excluded.x,
-           y = excluded.y,
-           chain_id = COALESCE(excluded.chain_id, public_roots.chain_id),
-           uploaded_at = excluded.uploaded_at`,
-        logIdHex32,
-        body.alg,
+      return this.storeRootOnce(logIdHex32, {
+        alg: "ES256",
         x,
         y,
         chainId,
-        Date.now(),
-      );
-      return Response.json({ ok: true });
+        expiresAt,
+      });
     }
 
     const algInt =
@@ -1327,23 +1404,93 @@ export class DelegationStoreDO extends DurableObject<Env> {
       );
     }
 
-    this.ctx.storage.sql.exec(
-      `INSERT INTO public_roots (log_id_hex32, alg, x, y, chain_id, uploaded_at)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON CONFLICT(log_id_hex32) DO UPDATE SET
-         alg = excluded.alg,
-         x = excluded.x,
-         y = excluded.y,
-         chain_id = COALESCE(excluded.chain_id, public_roots.chain_id),
-         uploaded_at = excluded.uploaded_at`,
-      logIdHex32,
-      String(algInt),
-      key,
-      new Uint8Array(0),
+    return this.storeRootOnce(logIdHex32, {
+      alg: String(algInt),
+      x: key,
+      y: new Uint8Array(0),
       chainId,
-      Date.now(),
-    );
+      expiresAt,
+    });
+  }
 
+  /**
+   * Insert-or-compare for a log's public root (devdocs ADR-0075 decision
+   * 3). canopy-api forwards a root only after univocity has claimed the
+   * log, so a stored root is never replaced: the same key again is 200, and
+   * may refresh a prepare root's lapse time or make it permanent (a NULL
+   * `expiresAt`, sent when create commits the grant); a permanent root stays
+   * permanent. A different key is 409. Lapsed roots were already purged by
+   * `purgeLapsedRoots`, so they count as absent.
+   */
+  private storeRootOnce(
+    logIdHex32: string,
+    root: {
+      alg: string;
+      x: Uint8Array;
+      y: Uint8Array;
+      chainId: string | null;
+      expiresAt: number | null;
+    },
+  ): Response {
+    const sql = this.ctx.storage.sql;
+    const stored = [
+      ...sql.exec(
+        `SELECT alg, x, y, expires_at FROM public_roots WHERE log_id_hex32 = ?`,
+        logIdHex32,
+      ),
+    ][0] as
+      | {
+          alg: string;
+          x: ArrayBuffer;
+          y: ArrayBuffer;
+          expires_at: number | null;
+        }
+      | undefined;
+
+    if (!stored) {
+      sql.exec(
+        `INSERT INTO public_roots
+           (log_id_hex32, alg, x, y, chain_id, uploaded_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        logIdHex32,
+        root.alg,
+        root.x,
+        root.y,
+        root.chainId,
+        Date.now(),
+        root.expiresAt,
+      );
+      return Response.json({ ok: true });
+    }
+
+    if (
+      storedRootKey(stored.alg, stored.x, stored.y) !==
+      storedRootKey(root.alg, root.x, root.y)
+    ) {
+      return Response.json(
+        {
+          type: "about:blank",
+          title: "Conflict",
+          status: 409,
+          detail:
+            "a different public root is already stored for this log; a log's root is set once",
+        },
+        { status: 409 },
+      );
+    }
+
+    const expiresAt =
+      stored.expires_at === null || root.expiresAt === null
+        ? null
+        : Math.max(stored.expires_at, root.expiresAt);
+    sql.exec(
+      `UPDATE public_roots
+          SET chain_id = COALESCE(?, chain_id), expires_at = ?
+        WHERE log_id_hex32 = ?`,
+      root.chainId,
+      expiresAt,
+      logIdHex32,
+    );
     return Response.json({ ok: true });
   }
 

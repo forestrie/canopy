@@ -17,4 +17,9 @@ export interface PutPublicRootBody {
    * instance-binding webhook write.
    */
   chainBinding?: { chainId: string; univocityAddr?: string };
+  /**
+   * Unix seconds at which a root registered by canopy-api `prepare` lapses
+   * with its univocity reservation; absent for a permanent root.
+   */
+  expiresAt?: number;
 }
