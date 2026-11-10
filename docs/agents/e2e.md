@@ -20,7 +20,7 @@ doppler run --project canopy --config dev -- task test:e2e
 **Preflight** installs tooling, validates Doppler env (including Canopy health), checks
 **deployed arbor univocity** includes FOR-123 when `UNIVOCITY_SERVICE_URL` is set
 (see [plan-0047](../plans/plan-0047-ks256-byok-register-grant-remediation.md)), and
-**provisions a pool of ephemeral Univocity contracts by default** (one per forest the suite creates, default 20 ES256 + 12 KS256; writes **`.work/e2e-univocity.env`** and the pool file **`.work/e2e-univocity-pool.json`**).
+**provisions a pool of ephemeral Univocity contracts by default** (one per forest the suite creates, default 20 ES256 + 15 KS256; writes **`.work/e2e-univocity.env`** and the pool file **`.work/e2e-univocity-pool.json`**).
 
 **Opt out:** `SKIP_UNIVOCITY_PROVISION=true` or `E2E_SKIP_UNIVOCITY_PROVISION=true`.
 

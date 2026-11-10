@@ -54,7 +54,10 @@ function forestrieGrantBase64ToBytes(b64: string): Uint8Array {
 describeForEachBootstrapVariant(
   "Bootstrap grant e2e — mint and register-grant",
   (pool: E2eBootstrapVariantPool) => {
-    test.describe.configure({ mode: "serial" });
+    // Not serial: each test roots its own forest on its own contract and
+    // shares nothing with the others, so a retry re-runs only the failed
+    // test and claims one contract, not one per test in the group.
+    test.describe.configure({ mode: "default" });
 
     test("genesis is created with real chain binding and verifies via GET", async ({
       unauthorizedRequest,

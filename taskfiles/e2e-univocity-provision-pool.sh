@@ -70,15 +70,17 @@ if [ "${PLAYWRIGHT_PROJECT:-system}" = "prod" ]; then
   exit 0
 fi
 
-# Pool sizes per run. Inventory of forests the suite creates: 14 ES256 and
-# 8 KS256 (grants-bootstrap 5 per alg; bootstrap-child-auth-grant,
-# auth-data-log-chain, bootstrap-log-first-entry and passkey-endorsed-session-seal
-# 1 per alg each; register-grant-payment 1 ES256; byok-checkpoint-seal,
-# byok-uint64-delegation-range and late-delegation-seal-hint 1 ES256 each).
-# Playwright retries (2 in CI) re-run a whole serial describe group with fresh
-# forests, so the defaults carry spares.
+# Pool sizes per run. Inventory of forests the suite creates: 13 ES256 and
+# 9 KS256. Per alg: grants-bootstrap 5; bootstrap-child-auth-grant,
+# auth-data-log-chain, bootstrap-log-first-entry and
+# passkey-endorsed-session-seal 1 each. ES256 only: register-grant-payment,
+# byok-checkpoint-seal, byok-uint64-delegation-range and
+# late-delegation-seal-hint 1 each.
+# Spares: CI retries a failed test (or the serial group around it) twice,
+# and no retried unit creates more than one forest, so each flaky test costs
+# at most 2 contracts. 6-7 spares per alg absorb three flaky tests per alg.
 POOL_ES256="${E2E_UNIVOCITY_POOL_ES256:-20}"
-POOL_KS256="${E2E_UNIVOCITY_POOL_KS256:-12}"
+POOL_KS256="${E2E_UNIVOCITY_POOL_KS256:-15}"
 case "$POOL_ES256$POOL_KS256" in
   *[!0-9]*|"") fail "E2E_UNIVOCITY_POOL_ES256 / E2E_UNIVOCITY_POOL_KS256 must be non-negative integers" ;;
 esac

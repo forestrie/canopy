@@ -67,10 +67,10 @@ Deployed coordinator webhook delivery requires Cloudflare Secrets Store
 
 A univocity contract accepts exactly one root forest (the first to publish a
 checkpoint), so the suite needs one fresh contract per forest it creates. Preflight
-and CI deploy a **pool** (default 20 ES256 + 12 KS256; override with
-**`E2E_UNIVOCITY_POOL_ES256`** / **`E2E_UNIVOCITY_POOL_KS256`**). The suite creates 14
-ES256 and 8 KS256 forests per run; the rest are spares for Playwright retries, which
-re-run a serial describe group with fresh forests.
+and CI deploy a **pool** (default 20 ES256 + 15 KS256; override with
+**`E2E_UNIVOCITY_POOL_ES256`** / **`E2E_UNIVOCITY_POOL_KS256`**). The suite creates 13
+ES256 and 9 KS256 forests per run; the rest are spares for Playwright retries, each
+of which claims a fresh contract for the forest it re-creates.
 
 Provisioned automatically in preflight (see [plan-0032](../docs/plans/plan-0032-univocity-imutable-e2e-provision.md), [plan-0049](../docs/plans/plan-0049-e2e-imutable-provision-consolidation.md)). Playwright reads **`.work/e2e-univocity.env`**:
 
