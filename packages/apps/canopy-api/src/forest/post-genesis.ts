@@ -47,6 +47,8 @@ import { isSupportedChainIdForEnv } from "../env/supported-chains-for-env.js";
 import type { SupportedChainsEnv } from "../env/supported-chains-for-env.js";
 import { verifyUnivocityDeployment } from "../onboarding/univocity-deployment-gate.js";
 import type { UnivocityGateEnv } from "../onboarding/univocity-gate-env.js";
+import type { LogAuthorityReader } from "../env/log-authority-reader.js";
+import { authorityConflictResponse } from "../scrapi/log-admission.js";
 import { problemResponse } from "../cbor-api/cbor-response.js";
 import {
   getGenesisFromUnivocity,
@@ -67,6 +69,11 @@ export interface PostGenesisEnv extends SupportedChainsEnv, UnivocityGateEnv {
    */
   UNIVOCITY_SERVICE_URL?: string;
   UNIVOCITY_API_TOKEN?: string;
+  /**
+   * univocity's log authority. Genesis refuses a log id univocity holds a
+   * live reservation or a conflict for; absent in pool tests.
+   */
+  logAuthority?: LogAuthorityReader;
 }
 
 function bytesToHex(bytes: Uint8Array): string {
@@ -256,6 +263,41 @@ export interface PostGenesisSuccess {
   alreadyExisted: boolean;
 }
 
+/**
+ * A forest root's log id must not already be another forest's child
+ * ([devdocs ADR-0075](https://github.com/forestrie/devdocs/blob/main/adr/adr-0075-sec-child-root-claimed-once.md)).
+ * univocity's genesis claims `R -> R` in its logId index, but a `prepare`
+ * reservation lives outside that index, so genesis would otherwise take a
+ * reserved child's id and its owner's later create would fail. A live
+ * reservation (state `reserved`) is 409; a conflicted log is 409
+ * `authority-conflict`; an unreachable univocity is 503. Any other answer is
+ * this forest's own claim (an idempotent retry) or none, and univocity's
+ * genesis store decides.
+ */
+async function refuseClaimedSubject(
+  logId: Uint8Array,
+  reader: LogAuthorityReader | undefined,
+): Promise<Response | null> {
+  if (!reader) return null;
+  const authority = await reader.read(logId);
+  switch (authority.kind) {
+    case "pending":
+      return authority.state === "reserved"
+        ? ClientErrors.conflict(
+            "log id is reserved as a child of another forest; a forest root needs an unclaimed log id",
+          )
+        : null;
+    case "conflicted":
+      return authorityConflictResponse(logId, authority.blockedBy);
+    case "unavailable":
+      return ServerErrors.serviceUnavailable(
+        `Log authority is unavailable: ${authority.detail}`,
+      );
+    default:
+      return null;
+  }
+}
+
 export async function postForestGenesis(
   request: Request,
   logIdRouteSegment: string,
@@ -364,6 +406,9 @@ export async function postForestGenesis(
   // local-copy logic below; the old exists early-return let a crash between
   // univocity create and the local put strand every retry on a success
   // response whose genesis could never be read back.
+  const refusal = await refuseClaimedSubject(logId, env.logAuthority);
+  if (refusal) return refusal;
+
   const univocity = univocityGenesisClientFromEnv(env);
   let forwardExists = false;
   if (univocity) {

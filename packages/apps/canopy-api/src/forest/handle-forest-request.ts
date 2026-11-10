@@ -6,7 +6,6 @@ import { cborResponse } from "../cbor-api/cbor-response.js";
 import { problemResponse } from "../cbor-api/cbor-response.js";
 import { ClientErrors, ServerErrors } from "../cbor-api/problem-details.js";
 import type { ReceiptAuthorityResolver } from "../env/receipt-authority-resolver.js";
-import type { LogAuthorityReader } from "../env/log-authority-reader.js";
 import { resolveGenesisAuth } from "../payments/genesis-auth.js";
 import { buildGenesisRegistrationResponse } from "../payments/genesis-registration-response.js";
 import {
@@ -54,8 +53,6 @@ export interface ForestHandlerEnv
     SupportedChainsEnv {
   NODE_ENV: string;
   resolveReceiptAuthority?: ReceiptAuthorityResolver;
-  /** univocity's log authority, for prepare. */
-  logAuthority?: LogAuthorityReader;
 }
 
 function attachCors(
