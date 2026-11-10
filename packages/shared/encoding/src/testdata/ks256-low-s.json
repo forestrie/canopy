@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "description": "A KS256 COSE_Sign1 signature and its high-s twin over one Sig_structure, with the expected verdicts. Every verifier that recovers a KS256 signer must accept s <= (n-1)/2 and reject s > (n-1)/2, n the secp256k1 group order (spec/checkpoints-and-receipts.md). A second pair straddles the bound itself.",
+  "generator": "cast wallet sign --no-hash (Foundry 1.5.1, RFC 6979) signs digest_hex with test_key for accept/low-s; each other case is derived from it as its note says. Deterministic: rerunning gives these bytes.",
+  "conventions": {
+    "hex": "unprefixed lowercase",
+    "signature": "65 bytes r || s || v, big-endian r and s, v the recovery id 0 or 1",
+    "digest": "keccak256(Sig_structure); Sig_structure is [\"Signature1\", protected, h'', payload]",
+    "low_s_bound": "7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0",
+    "cose_sign1": "untagged, empty unprotected header, attached payload",
+    "payload": "the canonical CBOR map {1: h'<ASCII text>'}; a map because verifiers that decode the payload (arbor's delegation certificate check) require a canonical integer-keyed map before the signature check",
+    "test_key": "private_key_d_hex is keccak256 of the label, reduced mod n; a test scalar, never a deployed key"
+  },
+  "alg": -65799,
+  "protected_header_hex": "a1013a00010106",
+  "payload_hex": "a1015828466f72657374726965204b53323536206c6f772d7320636f6e666f726d616e636520766563746f72",
+  "sig_structure_hex": "846a5369676e61747572653147a1013a0001010640582ca1015828466f72657374726965204b53323536206c6f772d7320636f6e666f726d616e636520766563746f72",
+  "digest_hex": "a202d294e1ad5d7680fcf1f9bedc1d1741433c452ba37601631c102178e2f1c4",
+  "test_key": {
+    "label": "forestrie/protocol vectors/fixtures/ks256-low-s.json test key",
+    "private_key_d_hex": "6c3ba588ea160dfbf8aff70af55db0533cc6c11e26c90e99f41578d9a623dff6",
+    "address_hex": "c2493c60623fb575251b9ec4e62934fa2df5cad7"
+  },
+  "cases": [
+    {
+      "name": "accept/low-s",
+      "signer_address_hex": "c2493c60623fb575251b9ec4e62934fa2df5cad7",
+      "signature_hex": "9be95b71a1c37af6f33cc715fc8fd4762e8f46e4c26d120042ec71da2db7aae314c5be12e63a299c1473aa2f44da5dfca87590dbaeec47a4aeb39163d2c8c4d600",
+      "cose_sign1_hex": "8447a1013a00010106a0582ca1015828466f72657374726965204b53323536206c6f772d7320636f6e666f726d616e636520766563746f7258419be95b71a1c37af6f33cc715fc8fd4762e8f46e4c26d120042ec71da2db7aae314c5be12e63a299c1473aa2f44da5dfca87590dbaeec47a4aeb39163d2c8c4d600",
+      "expect": {
+        "result": "accept"
+      },
+      "note": "the test key's RFC 6979 signature; s is below (n-1)/2"
+    },
+    {
+      "name": "reject/high-s",
+      "twin_of": "accept/low-s",
+      "signer_address_hex": "c2493c60623fb575251b9ec4e62934fa2df5cad7",
+      "signature_hex": "9be95b71a1c37af6f33cc715fc8fd4762e8f46e4c26d120042ec71da2db7aae3eb3a41ed19c5d663eb8c55d0bb25a20212394c0b005c5897111ecd28fd6d7c6b01",
+      "cose_sign1_hex": "8447a1013a00010106a0582ca1015828466f72657374726965204b53323536206c6f772d7320636f6e666f726d616e636520766563746f7258419be95b71a1c37af6f33cc715fc8fd4762e8f46e4c26d120042ec71da2db7aae3eb3a41ed19c5d663eb8c55d0bb25a20212394c0b005c5897111ecd28fd6d7c6b01",
+      "expect": {
+        "result": "reject",
+        "reason": "signature_malleable"
+      },
+      "note": "(r, n-s, v^1): the malleated twin of accept/low-s; it recovers the same address, so only the s bound rejects it"
+    },
+    {
+      "name": "accept/s-at-bound",
+      "signer_address_hex": "17ee0a98dc6a8eb8b8620e262791414897b624e8",
+      "signature_hex": "9be95b71a1c37af6f33cc715fc8fd4762e8f46e4c26d120042ec71da2db7aae37fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a000",
+      "cose_sign1_hex": "8447a1013a00010106a0582ca1015828466f72657374726965204b53323536206c6f772d7320636f6e666f726d616e636520766563746f7258419be95b71a1c37af6f33cc715fc8fd4762e8f46e4c26d120042ec71da2db7aae37fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a000",
+      "expect": {
+        "result": "accept"
+      },
+      "note": "s = (n-1)/2, the largest s accepted; r and v are accept/low-s's, and the signer is the address this recovers to"
+    },
+    {
+      "name": "reject/s-above-bound",
+      "twin_of": "accept/s-at-bound",
+      "signer_address_hex": "17ee0a98dc6a8eb8b8620e262791414897b624e8",
+      "signature_hex": "9be95b71a1c37af6f33cc715fc8fd4762e8f46e4c26d120042ec71da2db7aae37fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a101",
+      "cose_sign1_hex": "8447a1013a00010106a0582ca1015828466f72657374726965204b53323536206c6f772d7320636f6e666f726d616e636520766563746f7258419be95b71a1c37af6f33cc715fc8fd4762e8f46e4c26d120042ec71da2db7aae37fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a101",
+      "expect": {
+        "result": "reject",
+        "reason": "signature_malleable"
+      },
+      "note": "s = (n+1)/2, the smallest s rejected: the twin of accept/s-at-bound"
+    }
+  ]
+}

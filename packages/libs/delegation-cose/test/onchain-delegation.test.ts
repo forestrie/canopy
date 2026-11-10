@@ -356,6 +356,34 @@ describe("verifyOnchainDelegationSignatureKs256", () => {
   });
 });
 
+describe("verifyOnchainDelegationSignatureKs256 low-s", () => {
+  it("rejects the high-s twin of a valid signature (contract parity)", async () => {
+    // univocity's verifyKS256Raw refuses s > (n-1)/2 from the contract
+    // release that adds the bound, so a high-s proof the coordinator stored
+    // would revert at publish there. The twin (r, n-s, v^1) recovers the
+    // same address, so only the s bound refuses it.
+    const proof = signOnchainDelegationKs256(
+      fixtureInput(),
+      TEST_PRIVATE_KEY_HEX,
+    );
+    const twin = new Uint8Array(proof.signature);
+    const s = BigInt("0x" + bytesToHex(twin.slice(32, 64)));
+    twin.set(
+      hexToBytes((secp256k1.CURVE.n - s).toString(16).padStart(64, "0")),
+      32,
+    );
+    // Flip the recovery bit, whether v is written 0/1 or 27/28.
+    const v = twin[64]!;
+    twin[64] = v >= 27 ? 27 + ((v - 27) ^ 1) : v ^ 1;
+    const ok = await verifyOnchainDelegationSignatureKs256(
+      fixtureInput(),
+      twin,
+      hexToBytes(TEST_ADDRESS_HEX),
+    );
+    expect(ok).toBe(false);
+  });
+});
+
 describe("exported on-chain vectors (FOR-332)", () => {
   it("KS256 vector signature verifies against the fixture root", async () => {
     // Pins testdata/onchain-delegation-vectors.json to the live signer so a

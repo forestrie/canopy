@@ -102,5 +102,7 @@ export {
 } from "./parse-delegated-cose-key.js";
 export { verifyDelegationCertificateEs256 } from "./verify-es256.js";
 export { verifyDelegationCertificateKs256 } from "./verify-ks256.js";
+export { recoverKs256Signer } from "./recover-ks256-signer.js";
+export type { Ks256Recovery, Ks256RecoveryFailure } from "./ks256-recovery.js";
 export { extractKs256CertificateDigest } from "./decode-ks256-certificate.js";
 export { encodeIntKeyCbor } from "./encode-int-map.js";

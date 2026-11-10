@@ -198,10 +198,14 @@ export function verifyKs256GrantStatement(
   const recovery = v;
   if (recovery > 3) return false;
   try {
-    const sig = secp256k1.Signature.fromCompact(
+    const compact = secp256k1.Signature.fromCompact(
       new Uint8Array([...r, ...s]),
-    ).addRecoveryBit(recovery);
-    const pub = sig.recoverPublicKey(hash);
+    );
+    // A recovered KS256 signature must be low-s, as canopy (delegation-cose
+    // recoverKs256Signer) and arbor require, and univocity's verifyKS256Raw
+    // from the contract release that adds the bound.
+    if (compact.hasHighS()) return false;
+    const pub = compact.addRecoveryBit(recovery).recoverPublicKey(hash);
     const recovered = addressFromUncompressedPubkey(pub.toRawBytes(false));
     return bytesEqual(recovered, expectedAddress20);
   } catch {

@@ -57,6 +57,8 @@ interface AttestationTweaks {
   univocityAddr?: string;
   iss?: string | null;
   corruptSignature?: boolean;
+  /** KS256 only: replace (r, s, v) with its high-s twin (r, n-s, v^1). */
+  highS?: boolean;
   /** Replace the computed signature (contract-signer envelopes). */
   signature?: Uint8Array;
 }
@@ -108,6 +110,13 @@ function buildAttestation(
     signature = new Uint8Array(65);
     signature.set(sig.toCompactRawBytes(), 0);
     signature[64] = (sig.recovery ?? 0) + 27;
+    if (t.highS) {
+      const twin = new secp256k1.Signature(sig.r, secp256k1.CURVE.n - sig.s);
+      signature.set(twin.toCompactRawBytes(), 0);
+      // Flip the recovery bit, whether v is written 0/1 or 27/28.
+      const v = signature[64]!;
+      signature[64] = v >= 27 ? 27 + ((v - 27) ^ 1) : v ^ 1;
+    }
   }
   if (t.signature) signature = t.signature;
   if (t.corruptSignature) signature[10]! ^= 0xff;
@@ -182,6 +191,16 @@ describe("verifyOnboardAttestation — per-alg vectors", () => {
     const v = await verifyOnboardAttestation(
       buildAttestation(COSE_ALG_ES256, { alg: -999 }),
       expectation({ alg: -999 }),
+    );
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.detail).toContain("signature invalid");
+  });
+
+  it("rejects the high-s twin of a valid KS256 attestation", async () => {
+    // (r, n-s, v^1) recovers the same address; only the s bound refuses it.
+    const v = await verifyOnboardAttestation(
+      buildAttestation(COSE_ALG_KS256, { highS: true }),
+      expectation({ alg: COSE_ALG_KS256, key: KS256_ADDR }),
     );
     expect(v.ok).toBe(false);
     if (!v.ok) expect(v.detail).toContain("signature invalid");

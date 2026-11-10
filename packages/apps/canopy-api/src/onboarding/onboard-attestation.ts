@@ -22,7 +22,8 @@
  *   (keccak256 over Sig_structure) — no second convention. The 20-byte
  *   address may be a contract account (plan-2607-45 Safe 1x1 Mode D):
  *   optional ERC-1271 hooks extend WHO may hold the address, never WHAT is
- *   signed. EOA roots recover as before.
+ *   signed. EOA roots recover through `recoverKs256Signer`, which refuses
+ *   high-s.
  *
  * Self-contained, no challenge round-trip: the key may be in cold custody,
  * and replay within the window only yields duplicate pending requests for
@@ -31,11 +32,11 @@
  */
 
 import { p256 } from "@noble/curves/p256";
-import { secp256k1 } from "@noble/curves/secp256k1";
 import { sha256 } from "@noble/hashes/sha2";
 import { keccak_256 } from "@noble/hashes/sha3";
 import {
   decodeCoseSign1Parts,
+  recoverKs256Signer,
   type Ks256VerifyHooks,
 } from "@forestrie/delegation-cose";
 import { Erc1271UnavailableError } from "@forestrie/chain-rpc";
@@ -162,25 +163,13 @@ async function verifyKs256(
     }
   }
   // The delegation-cose KS256 EOA profile: keccak256(Sig_structure), 65-byte
-  // r‖s‖v EOA recovery, address comparison.
-  if (signature.length !== 65) return false;
-  let v = signature[64]!;
-  if (v >= 27) v -= 27;
-  if (v > 3) return false;
-  try {
-    const sig = secp256k1.Signature.fromCompact(
-      signature.slice(0, 64),
-    ).addRecoveryBit(v);
-    const pub = sig.recoverPublicKey(hash).toRawBytes(false);
-    const addr = keccak_256(pub.slice(1)).slice(-20);
-    if (addr.length !== keyAddress.length) return false;
-    for (let i = 0; i < 20; i++) {
-      if (addr[i] !== keyAddress[i]) return false;
-    }
-    return true;
-  } catch {
-    return false;
+  // r‖s‖v EOA recovery refusing high-s, address comparison.
+  const recovered = recoverKs256Signer(hash, signature);
+  if (!recovered.ok) return false;
+  for (let i = 0; i < 20; i++) {
+    if (recovered.address[i] !== keyAddress[i]) return false;
   }
+  return true;
 }
 
 /**
