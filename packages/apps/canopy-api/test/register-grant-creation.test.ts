@@ -183,6 +183,7 @@ describe("registerGrant creation-grant delegation", () => {
     const { validator, calls } = mockValidator({
       kind: "accepted",
       created: true,
+      state: "committed",
     });
     const res = await register(envWith(validator));
     expect(res.status).toBe(303);
@@ -193,21 +194,58 @@ describe("registerGrant creation-grant delegation", () => {
   });
 
   it("idempotent accepted (created=false) -> 303", async () => {
-    const { validator } = mockValidator({ kind: "accepted", created: false });
+    const { validator } = mockValidator({
+      kind: "accepted",
+      created: false,
+      state: "committed",
+    });
     const res = await register(envWith(validator));
     expect(res.status).toBe(303);
   });
 
-  it("conflict -> 409 (cross-forest logId reuse)", async () => {
+  it("a different grant already claiming the log -> 409, and nothing is sequenced", async () => {
+    const { enqueueGrantForSequencing } = await import(
+      "../src/scrapi/grant-sequencing.js"
+    );
+    vi.mocked(enqueueGrantForSequencing).mockClear();
     const { validator } = mockValidator({
       kind: "conflict",
-      detail: "logId already bound",
+      title: "grant-already-claimed",
+      detail: "a different grant claims this log",
     });
     const res = await register(envWith(validator));
     expect(res.status).toBe(409);
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as Record<string, unknown>;
+    expect(String(body.detail)).toContain("grant-already-claimed");
+    expect(enqueueGrantForSequencing).not.toHaveBeenCalled();
   });
 
-  it("rejected -> 403 (invalid signature chain)", async () => {
+  it("univocity finding the owner conflicted at commit -> 409 authority-conflict, nothing sequenced", async () => {
+    const { enqueueGrantForSequencing } = await import(
+      "../src/scrapi/grant-sequencing.js"
+    );
+    vi.mocked(enqueueGrantForSequencing).mockClear();
+    const { validator } = mockValidator({
+      kind: "conflict",
+      title: "authority-conflict",
+      detail: "owner conflicted",
+    });
+    const res = await register(envWith(validator));
+    expect(res.status).toBe(409);
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as Record<string, unknown>;
+    expect(body.type).toBe("authority-conflict");
+    expect(enqueueGrantForSequencing).not.toHaveBeenCalled();
+  });
+
+  it("rejected -> 403 (invalid signature chain), nothing sequenced", async () => {
+    const { enqueueGrantForSequencing } = await import(
+      "../src/scrapi/grant-sequencing.js"
+    );
+    vi.mocked(enqueueGrantForSequencing).mockClear();
     const { validator } = mockValidator({
       kind: "rejected",
       status: 422,
@@ -215,6 +253,7 @@ describe("registerGrant creation-grant delegation", () => {
     });
     const res = await register(envWith(validator));
     expect(res.status).toBe(403);
+    expect(enqueueGrantForSequencing).not.toHaveBeenCalled();
   });
 
   it("unavailable -> 503 (univocity transient/unreachable)", async () => {
@@ -235,6 +274,7 @@ describe("registerGrant creation-grant delegation", () => {
     const { validator, calls } = mockValidator({
       kind: "accepted",
       created: true,
+      state: "committed",
     });
     const noCreate = new Uint8Array(8);
     noCreate[7] = 0x01;
@@ -253,6 +293,7 @@ describe("registerGrant creation-grant delegation", () => {
     const { validator, calls } = mockValidator({
       kind: "accepted",
       created: true,
+      state: "committed",
     });
     const env: RegisterGrantEnv = {
       ...envWith(validator),
@@ -303,6 +344,7 @@ describe("registerGrant admission: the owner log must be anchored", () => {
     const { validator, calls } = mockValidator({
       kind: "accepted",
       created: true,
+      state: "committed",
     });
     const { reader, asked } = readerAnswering(PENDING);
     const res = await register(envWith(validator, reader));
@@ -323,6 +365,7 @@ describe("registerGrant admission: the owner log must be anchored", () => {
     const { validator, calls } = mockValidator({
       kind: "accepted",
       created: true,
+      state: "committed",
     });
     const { reader } = readerAnswering({ kind: "conflicted" });
     const res = await register(envWith(validator, reader));
@@ -340,6 +383,7 @@ describe("registerGrant admission: the owner log must be anchored", () => {
     const { validator, calls } = mockValidator({
       kind: "accepted",
       created: true,
+      state: "committed",
     });
     const { reader } = readerAnswering({
       kind: "unavailable",
@@ -355,6 +399,7 @@ describe("registerGrant admission: the owner log must be anchored", () => {
     const { validator, calls } = mockValidator({
       kind: "accepted",
       created: true,
+      state: "committed",
     });
     const { reader } = readerAnswering(PENDING, ANCHORED);
     const sent: SettlementJob[] = [];

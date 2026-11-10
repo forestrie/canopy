@@ -105,7 +105,11 @@ function env(): RegisterGrantEnv {
       massifHeight: 14,
     },
     creationGrantValidator: {
-      validate: async () => ({ kind: "accepted", created: true }),
+      validate: async () => ({
+        kind: "accepted",
+        created: true,
+        state: "committed",
+      }),
     },
     logAuthority: anchoredReader(),
     coordinatorForward: {

@@ -89,22 +89,7 @@ export async function refuseUnlessAnchored(
         { "Retry-After": String(AUTHORITY_PENDING_RETRY_AFTER_SECONDS) },
       );
     case "conflicted":
-      return cborResponse(
-        {
-          type: PROBLEM_AUTHORITY_CONFLICT,
-          title: "Authority Conflict",
-          status: 409,
-          detail: authority.blockedBy
-            ? `Log ${logUuid} is under conflicted log ${bytesToUuid(authority.blockedBy)}: the chain recorded a different owner or key than its claim. Start a new log.`
-            : `Log ${logUuid} is conflicted: the chain recorded a different owner or key than its claim. Start a new log.`,
-          logId: logUuid,
-          state: "conflicted",
-          ...(authority.blockedBy
-            ? { blockedBy: bytesToUuid(authority.blockedBy) }
-            : {}),
-        },
-        409,
-      );
+      return authorityConflictResponse(logId, authority.blockedBy);
     case "unclaimed":
       return ClientErrors.forbidden(
         `Log ${logUuid} has no claim: it must be created through its owner's create grant first.`,
@@ -115,4 +100,30 @@ export async function refuseUnlessAnchored(
         AUTHORITY_UNAVAILABLE_RETRY_AFTER_SECONDS,
       );
   }
+}
+
+/**
+ * 409 `authority-conflict` for `logId`: the chain recorded a different owner
+ * or key than its claim, for the log or for its ancestor `blockedBy`. Final,
+ * so there is no `Retry-After`; the log's creator must start a new log.
+ */
+export function authorityConflictResponse(
+  logId: Uint8Array,
+  blockedBy?: Uint8Array,
+): Response {
+  const logUuid = bytesToUuid(logId);
+  return cborResponse(
+    {
+      type: PROBLEM_AUTHORITY_CONFLICT,
+      title: "Authority Conflict",
+      status: 409,
+      detail: blockedBy
+        ? `Log ${logUuid} is under conflicted log ${bytesToUuid(blockedBy)}: the chain recorded a different owner or key than its claim. Start a new log.`
+        : `Log ${logUuid} is conflicted: the chain recorded a different owner or key than its claim. Start a new log.`,
+      logId: logUuid,
+      state: "conflicted",
+      ...(blockedBy ? { blockedBy: bytesToUuid(blockedBy) } : {}),
+    },
+    409,
+  );
 }

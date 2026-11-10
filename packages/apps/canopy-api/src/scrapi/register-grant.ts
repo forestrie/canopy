@@ -82,7 +82,11 @@ import {
 } from "../forest/genesis-cache.js";
 import type { CreationGrantValidator } from "./univocity-grant-client.js";
 import type { LogAuthorityReader } from "../env/log-authority-reader.js";
-import { refuseUnlessAnchored } from "./log-admission.js";
+import {
+  authorityConflictResponse,
+  PROBLEM_AUTHORITY_CONFLICT,
+  refuseUnlessAnchored,
+} from "./log-admission.js";
 import { verifyDerivedEndorsementEnvelope } from "./verify-derived-endorsement-envelope.js";
 
 export interface RegisterGrantEnv {
@@ -264,11 +268,13 @@ export async function registerGrant(
     );
   }
 
-  // Creation grant (uninitialized T): delegated to the univocity owned grant
-  // store. Univocity verifies the signature chain against the owner's root key
-  // (anchored to the on-chain bootstrap key) and enforces global logId -> R
-  // uniqueness atomically (201 new / 200 idempotent / 409 conflict). There is no
-  // local fallback: without a validator a creation grant is a 503.
+  // Creation grant (uninitialized T): claimed through the univocity owned
+  // grant store with intent commit, before it is sequenced (devdocs ADR-0075
+  // decisions 2 and 8). Univocity verifies the signature chain against the
+  // owner's root key, enforces global logId -> R uniqueness, and stores the
+  // grant write-once (201 new / 200 the same grant / 409 a different grant or
+  // forest). A refused grant is never sequenced. There is no local fallback:
+  // without a validator a creation grant is a 503.
   if (!logInitialized) {
     if (isDerivedEndorsementGrant(grantFlags)) {
       return registerDerivedEndorsementGrant(
@@ -331,8 +337,13 @@ export async function registerGrant(
         }
       }
       case "conflict":
+        // univocity re-checks the owner at commit; a conflict found since
+        // admission read a cached anchored answer is the same refusal.
+        if (decision.title === PROBLEM_AUTHORITY_CONFLICT) {
+          return authorityConflictResponse(grant.ownerLogId);
+        }
         return ClientErrors.conflict(
-          "logId already registered to a different forest (global uniqueness).",
+          `Univocity refused the claim (${decision.title || "conflict"}): ${decision.detail || "the log is already claimed by a different grant or forest."}`,
         );
       case "rejected":
         return ClientErrors.forbidden(
