@@ -5,6 +5,7 @@ import {
   interpretRegisterRedirect,
 } from "@forestrie/scrapi-client";
 import { signX402PaymentE2e } from "./x402-payer-e2e.js";
+import { retryWhileAuthorityPending } from "./authority-pending-retry.js";
 
 /**
  * Pay-on-402 register-grant, beside {@link postRegisterGrantExpect303}
@@ -87,12 +88,15 @@ export async function postRegisterGrantWithPayment(
     ...bodyHeaders,
   };
 
-  // 1) Unpaid attempt.
-  const first = await opts.request.post(path, {
-    headers: baseHeaders,
-    maxRedirects: 0,
-    ...(data ? { data } : {}),
-  });
+  // 1) Unpaid attempt. canopy refuses a pending owner log before the payment
+  // gate, so only this attempt waits for it to anchor.
+  const first = await retryWhileAuthorityPending(() =>
+    opts.request.post(path, {
+      headers: baseHeaders,
+      maxRedirects: 0,
+      ...(data ? { data } : {}),
+    }),
+  );
 
   // Gate dark (or bit absent): the unpaid request already registers.
   if (first.status() === 303) {

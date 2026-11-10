@@ -120,6 +120,7 @@ export * from "./mode-c-webhook-seal-helpers.js";
 export * from "./mode-c-webhook-tunnel.js";
 export * from "./mode-c-webhook-receiver.js";
 export * from "./post-entries-e2e.js";
+export * from "./authority-pending-retry.js";
 export * from "./custodian-custody-grant.js";
 export * from "./custodian-api-env.js";
 export * from "./custodian-api-sign.js";
