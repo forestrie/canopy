@@ -2,11 +2,11 @@
  * Mint CANOPY_PAYMENTS_ONBOARD_TOKEN via ops API for genesis POST e2e.
  *
  * Bindings are mandatory on every token (ADR-0059 decision 8), and a
- * break-glass mint reserves its univocity instance. System e2e reuses one
- * pinned dev contract across runs and across ephemeral forests, which is
- * exactly the "abandoned R" case the ops release route exists for
- * (plan-2607-02 R4) — so minting here releases any prior claim first, which
- * doubles as the release route's system-level exercise.
+ * break-glass mint reserves its univocity instance. Lane suites that pin one
+ * dev contract across runs and forests hit exactly the "abandoned R" case the
+ * ops release route exists for (plan-2607-02 R4), so minting releases any
+ * prior claim on a pinned contract first. A contract from canopy's pool
+ * (univocity-contract-pool.ts) is fresh and is never released.
  */
 
 import {
@@ -16,6 +16,7 @@ import {
 import type { APIRequestContext } from "@playwright/test";
 
 import { problemDetailFromResponse } from "./problem-detail.js";
+import { isPooledUnivocityContract } from "./univocity-contract-pool.js";
 const BOOTSTRAP_MINT_E2E_HELP =
   "Run via Doppler (project canopy, config dev or prod), e.g. task test:e2e. " +
   "See packages/tests/canopy-api/README.md.";
@@ -50,7 +51,9 @@ export function univocityInstanceIdE2e(binding: E2eChainBinding): string {
 /**
  * Best-effort release of the instance reservation for `binding` via the ops
  * chain-bindings route. 404 (nothing held) is success; no-op when the ops
- * token is absent.
+ * token is absent, and for a pooled contract: nothing earlier can hold its
+ * claim, and leaving it in place means a contract handed to two forests is
+ * refused at genesis (409) instead of failing later as authority-pending.
  */
 export async function releaseChainBindingClaimE2e(
   request: APIRequestContext,
@@ -58,6 +61,7 @@ export async function releaseChainBindingClaimE2e(
 ): Promise<void> {
   const ops = process.env.CANOPY_OPS_ADMIN_TOKEN?.trim();
   if (!ops) return;
+  if (isPooledUnivocityContract(addrHex(binding.univocityAddr))) return;
   const id = encodeURIComponent(univocityInstanceIdE2e(binding));
   const res = await request.delete(`/api/payments/chain-bindings/${id}`, {
     headers: { Authorization: `Bearer ${ops}` },

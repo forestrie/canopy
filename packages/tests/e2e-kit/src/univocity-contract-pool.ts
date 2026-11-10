@@ -94,6 +94,20 @@ export function univocityContractPoolSkipReason(
   return null;
 }
 
+/**
+ * Whether `address` (hex, with or without 0x) is one of the configured pool's
+ * contracts; false when no pool is configured. A pooled contract is fresh and
+ * serves exactly one forest, so no earlier run can hold its instance claim.
+ */
+export function isPooledUnivocityContract(address: string): boolean {
+  const poolFile = process.env[CONTRACT_POOL_FILE_ENV]?.trim();
+  if (!poolFile) return false;
+  const want = address.trim().toLowerCase().replace(/^0x/, "");
+  return readPool(poolFile).some(
+    (c) => c.address.slice(2).toLowerCase() === want,
+  );
+}
+
 function requirePoolFile(): string {
   const poolFile = process.env[CONTRACT_POOL_FILE_ENV]?.trim();
   if (!poolFile) {
