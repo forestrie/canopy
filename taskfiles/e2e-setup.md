@@ -77,7 +77,11 @@ Provisioned automatically in preflight (see [plan-0032](../docs/plans/plan-0032-
 - **`E2E_UNIVOCITY_CONTRACT_POOL_FILE`** — path to the pool JSON
   `{"contracts":[{"alg","address","bootstrapPrivateKey"}]}` written by
   `taskfiles/e2e-univocity-provision-pool.sh` (default `.work/e2e-univocity-pool.json`, mode 600,
-  holds ephemeral private keys). Specs claim one contract per forest from it.
+  holds ephemeral private keys). Specs claim one contract per forest from it;
+  claims are files in `<pool>.claims/`. A contract stays claimed once a run
+  has rooted a forest on it, so a second local Playwright run against the
+  same pool fails with "pool exhausted": re-run `task test:e2e:preflight`
+  (or `task e2e-univocity:provision-pool`) to deploy a fresh pool.
 - **`E2E_UNIVOCITY_RPC_URL`** — RPC for Playwright `eth_call` and on-chain provision; configure in Doppler or GitHub Environment. Preflight copies it to **`RPC_URL`** for deployer/`cast` (univocity-tools convention). Override per invocation with `task ... RPC_URL=https://...` without changing Doppler.
 - **`E2E_UNIVOCITY_CHAIN_ID`** — optional; default `84532`
 
