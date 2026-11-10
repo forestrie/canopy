@@ -114,30 +114,41 @@ GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}" task e2e-univocity:extract
 ENTRIES="${KEY_DIR}/entries.tsv"
 : > "$ENTRIES"
 
+# deploy_one ALG INDEX: deploy one contract and record it in ENTRIES.
+# A failed attempt is retried with a fresh run id and key: another run using
+# the same DEPLOY_KEY (deploy-workers and release can overlap) may take the
+# nonce this deployer read, so its transaction is refused; the next attempt
+# reads the nonce again. Provisioning holds the key for minutes, not seconds.
 deploy_one() {
-  local alg="$1" i="$2"
-  local run_id="${RUN_ID}-${alg}-${i}"
-  local pem="${KEY_DIR}/${alg}-${i}.pem"
-  local key="${KEY_DIR}/${alg}-${i}.key"
-  "$DEPLOYER" deploy provision e2e \
-    --source-root "$ROOT_DIR" \
-    --work-dir "${ROOT_DIR}/.work" \
-    --release-root "$RELEASE_ROOT" \
-    --rpc-url "$RPC" \
-    --deploy-key "$DEPLOY_KEY" \
-    --run-id "$run_id" \
-    --alg "$alg" \
-    --skip-fetch \
-    --proposal-dir "$PROPOSAL_DIR" \
-    --bootstrap-es256-pem-out "$pem" \
-    --bootstrap-ks256-key-out "$key" \
-    --fetch-auth-kind env
-  local pointer="${PROPOSAL_DIR}/provision-${run_id}-${alg}.manifest"
-  [ -f "$pointer" ] || fail "manifest pointer missing: ${pointer}"
-  local manifest keyfile
-  manifest=$(cat "$pointer")
-  if [ "$alg" = "es256" ]; then keyfile="$pem"; else keyfile="$key"; fi
-  printf '%s\t%s\t%s\n' "$alg" "$manifest" "$keyfile" >> "$ENTRIES"
+  local alg="$1" i="$2" attempt run_id pem key pointer manifest keyfile
+  for attempt in 1 2 3; do
+    run_id="${RUN_ID}-${alg}-${i}-${attempt}"
+    pem="${KEY_DIR}/${alg}-${i}-${attempt}.pem"
+    key="${KEY_DIR}/${alg}-${i}-${attempt}.key"
+    if "$DEPLOYER" deploy provision e2e \
+      --source-root "$ROOT_DIR" \
+      --work-dir "${ROOT_DIR}/.work" \
+      --release-root "$RELEASE_ROOT" \
+      --rpc-url "$RPC" \
+      --deploy-key "$DEPLOY_KEY" \
+      --run-id "$run_id" \
+      --alg "$alg" \
+      --skip-fetch \
+      --proposal-dir "$PROPOSAL_DIR" \
+      --bootstrap-es256-pem-out "$pem" \
+      --bootstrap-ks256-key-out "$key" \
+      --fetch-auth-kind env; then
+      pointer="${PROPOSAL_DIR}/provision-${run_id}-${alg}.manifest"
+      [ -f "$pointer" ] || fail "manifest pointer missing: ${pointer}"
+      manifest=$(cat "$pointer")
+      if [ "$alg" = "es256" ]; then keyfile="$pem"; else keyfile="$key"; fi
+      printf '%s\t%s\t%s\n' "$alg" "$manifest" "$keyfile" >> "$ENTRIES"
+      return 0
+    fi
+    echo "::warning::deploy of ${alg} contract ${i}, attempt ${attempt}, failed" >&2
+    sleep $((attempt * 5))
+  done
+  fail "deploy of ${alg} contract ${i} failed after 3 attempts"
 }
 
 # Serial: one DEPLOY_KEY, no nonce manager.
