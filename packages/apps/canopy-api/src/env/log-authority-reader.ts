@@ -67,12 +67,11 @@ export function createUnivocityLogAuthorityReader(config: {
   const base = config.serviceUrl.trim().replace(/\/+$/, "");
   const token = config.token?.trim();
   const now = config.now ?? Date.now;
-  const generation = encodeURIComponent(config.cacheGeneration?.trim() ?? "");
 
   return {
     async read(logId: Uint8Array): Promise<LogAuthority> {
       const url = `${base}/api/logs/${bytesToUuid(logId)}/authority`;
-      const cacheKey = `${url}?canopy-cache-generation=${generation}`;
+      const cacheKey = authorityCacheKey(base, logId, config.cacheGeneration);
       const cache = config.cache ?? caches.default;
 
       const hit = await fromCache(cache, cacheKey, now());
@@ -124,6 +123,24 @@ export function createUnivocityLogAuthorityReader(config: {
       return authority;
     },
   };
+}
+
+/**
+ * The edge-cache key for a log's authority answer: univocity's URL for it,
+ * qualified by the cache generation so a lane reset can retire every answer
+ * cached before it. Only the cache sees this key; univocity is always asked
+ * at the plain URL.
+ *
+ * @param serviceUrl univocity base URL, without a trailing slash.
+ * @param generation `UNIVOCITY_AUTHORITY_CACHE_GENERATION`; absent is "".
+ */
+export function authorityCacheKey(
+  serviceUrl: string,
+  logId: Uint8Array,
+  generation?: string,
+): string {
+  const g = encodeURIComponent(generation?.trim() ?? "");
+  return `${serviceUrl}/api/logs/${bytesToUuid(logId)}/authority?canopy-cache-generation=${g}`;
 }
 
 /**

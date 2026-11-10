@@ -8,7 +8,10 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { encodeCborDeterministic } from "@forestrie/encoding";
-import { createUnivocityLogAuthorityReader } from "../src/env/log-authority-reader.js";
+import {
+  authorityCacheKey,
+  createUnivocityLogAuthorityReader,
+} from "../src/env/log-authority-reader.js";
 
 const SERVICE_URL = "https://univocity.test";
 const ANCHORED_CACHE_SECONDS = 30;
@@ -108,12 +111,11 @@ describe("createUnivocityLogAuthorityReader", () => {
 
   it("ignores a cached entry canopy did not write, and asks univocity", async () => {
     const logId = randomLogId();
-    const url = `${SERVICE_URL}/api/logs/${uuidOf(logId)}/authority`;
     const cache = await privateCache();
     // Something else (an HTTP cache, say) left an anchored answer under the
-    // same key, without canopy's freshness header.
+    // reader's own key, without canopy's freshness header.
     await cache.put(
-      url,
+      authorityCacheKey(SERVICE_URL, logId, "g1"),
       new Response(
         encodeCborDeterministic(anchored(true)) as unknown as BodyInit,
         {
@@ -128,6 +130,7 @@ describe("createUnivocityLogAuthorityReader", () => {
     const reader = createUnivocityLogAuthorityReader({
       serviceUrl: SERVICE_URL,
       anchoredCacheSeconds: ANCHORED_CACHE_SECONDS,
+      cacheGeneration: "g1",
       cache,
     });
 
@@ -137,10 +140,9 @@ describe("createUnivocityLogAuthorityReader", () => {
 
   it("treats a cached answer it cannot decode as a miss, not an error", async () => {
     const logId = randomLogId();
-    const url = `${SERVICE_URL}/api/logs/${uuidOf(logId)}/authority`;
     const cache = await privateCache();
     await cache.put(
-      url,
+      authorityCacheKey(SERVICE_URL, logId, "g1"),
       new Response("not cbor", {
         headers: {
           "content-type": "application/cbor",
@@ -149,14 +151,18 @@ describe("createUnivocityLogAuthorityReader", () => {
         },
       }),
     );
-    stubUnivocity(new Map([[uuidOf(logId), [anchored(true)]]]));
+    const fetchSpy = stubUnivocity(
+      new Map([[uuidOf(logId), [anchored(true)]]]),
+    );
     const reader = createUnivocityLogAuthorityReader({
       serviceUrl: SERVICE_URL,
       anchoredCacheSeconds: ANCHORED_CACHE_SECONDS,
+      cacheGeneration: "g1",
       cache,
     });
 
     expect((await reader.read(logId)).kind).toBe("anchored");
+    expect(fetchSpy).toHaveBeenCalledOnce();
   });
 
   it("re-reads an anchored answer that is not final once its cache time passes, so a conflict takes effect", async () => {
