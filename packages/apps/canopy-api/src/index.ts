@@ -17,6 +17,10 @@ import { handlePaymentsRequest } from "./payments/handle-payments-request.js";
 import { registerGrant, type RegisterGrantEnv } from "./scrapi/register-grant";
 import { createUnivocityGrantValidator } from "./scrapi/univocity-grant-client.js";
 import { registerSignedStatement } from "./scrapi/register-signed-statement";
+import {
+  createUnivocityLogAuthorityReader,
+  type LogAuthorityReader,
+} from "./env/log-authority-reader.js";
 import { queryRegistrationStatus } from "./scrapi/query-registration-status";
 import { resolveReceipt } from "./scrapi/resolve-receipt";
 import { getTransparencyConfiguration } from "./scrapi/transparency-configuration";
@@ -39,6 +43,28 @@ function buildBootstrapEnvForRegisterGrant(
     r2Mmrs: env.R2_MMRS,
     massifHeight,
   };
+}
+
+/** Default for UNIVOCITY_AUTHORITY_CACHE_SECONDS. */
+const DEFAULT_AUTHORITY_CACHE_SECONDS = 30;
+
+/**
+ * The log authority reader admission uses, or undefined when univocity is not
+ * configured (then admission is a 503 outside pool-test mode).
+ */
+function logAuthorityReaderForEnv(env: Env): LogAuthorityReader | undefined {
+  const serviceUrl = env.UNIVOCITY_SERVICE_URL?.trim();
+  if (!serviceUrl) return undefined;
+  const raw = env.UNIVOCITY_AUTHORITY_CACHE_SECONDS?.trim();
+  const parsed = raw ? Number(raw) : DEFAULT_AUTHORITY_CACHE_SECONDS;
+  return createUnivocityLogAuthorityReader({
+    serviceUrl,
+    token: env.UNIVOCITY_API_TOKEN,
+    anchoredCacheSeconds:
+      Number.isFinite(parsed) && parsed >= 0
+        ? parsed
+        : DEFAULT_AUTHORITY_CACHE_SECONDS,
+  });
 }
 
 let receiptAuthorityResolverCache:
@@ -237,6 +263,7 @@ const handler = {
             queueEnv: queueEnvForSequencing,
             bootstrapEnv: bootstrapEnvForGrant,
             resolveReceiptAuthority,
+            logAuthority: logAuthorityReaderForEnv(env),
             creationGrantValidator,
             coordinatorForward: {
               DELEGATION_COORDINATOR_URL: env.DELEGATION_COORDINATOR_URL,
@@ -279,6 +306,7 @@ const handler = {
             segments[1],
             env.R2_GRANTS,
             env,
+            logAuthorityReaderForEnv(env),
           );
           const headers = new Headers(response.headers);
           Object.entries(corsHeaders).forEach(([k, v]) => headers.set(k, v));

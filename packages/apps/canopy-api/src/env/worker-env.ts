@@ -84,9 +84,20 @@ export interface Env {
   BOOTSTRAP_ALG?: string;
   /** Bearer secret for ops onboard-token mint/list/revoke (Wrangler secret). */
   CANOPY_OPS_ADMIN_TOKEN?: string;
+  /**
+   * arbor univocity base URL: claims create grants (`POST /api/grants`) and
+   * answers each log's authority (`GET /api/logs/{logId}/authority`), the
+   * only source of root keys. Required outside pool-test mode.
+   */
   UNIVOCITY_SERVICE_URL?: string;
   /** Bearer token authorizing canopy -> univocity owned-store calls. */
   UNIVOCITY_API_TOKEN?: string;
+  /**
+   * Seconds to cache an anchored authority answer that is not yet final
+   * (default 30). Final answers are cached without expiry; pending answers
+   * never are. See env/log-authority-reader.ts.
+   */
+  UNIVOCITY_AUTHORITY_CACHE_SECONDS?: string;
   /** JSON map: chainId → preference-ordered RPC URLs (deploy-resolved). */
   SUPPORTED_CHAINS_RPC?: string;
   /** CREATE3 factory for uups-counterfactual genesis binding (optional). */

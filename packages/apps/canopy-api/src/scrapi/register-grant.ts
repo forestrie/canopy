@@ -14,6 +14,13 @@
  *   auth log and `T` is the new child log. See
  *   [grants.md §2 logId vs ownerLogId](https://github.com/forestrie/canopy/blob/main/docs/grants.md#2-logid-vs-ownerlogid-authorized-vs-owning).
  *
+ * ## Admission: the owner log is anchored
+ *
+ * Every path first refuses unless univocity reports **`O`** anchored on chain
+ * ({@link refuseUnlessAnchored}; protocol ADR-0070): 409 `authority-pending`
+ * while it is pending, 409 `authority-conflict` once conflicted, before payment
+ * or univocity's claim.
+ *
  * ## Two paths: creation vs steady-state
  *
  * - **Creation grant** (target `T` has no MMRS state yet): the grant is the credential being
@@ -74,6 +81,8 @@ import {
   type ParsedForestGenesis,
 } from "../forest/genesis-cache.js";
 import type { CreationGrantValidator } from "./univocity-grant-client.js";
+import type { LogAuthorityReader } from "../env/log-authority-reader.js";
+import { refuseUnlessAnchored } from "./log-admission.js";
 import { verifyDerivedEndorsementEnvelope } from "./verify-derived-endorsement-envelope.js";
 
 export interface RegisterGrantEnv {
@@ -96,6 +105,12 @@ export interface RegisterGrantEnv {
   };
   /** Receipt authority resolver (trust root + delegation); required for receipt inclusion. */
   resolveReceiptAuthority?: ReceiptAuthorityResolver;
+  /**
+   * univocity's log authority. The owner log `O` a grant is sequenced into
+   * must be anchored before anything else is done for the grant, on every
+   * path ({@link refuseUnlessAnchored}). Required outside pool-test mode.
+   */
+  logAuthority?: LogAuthorityReader;
   /**
    * Creation-grant validation seam. Required to register a creation grant: when
    * absent, a creation grant returns `503`. The production implementation
@@ -181,6 +196,17 @@ export async function registerGrant(
   } catch {
     return ClientErrors.badRequest("Invalid ownerLogId in grant");
   }
+
+  // Admission (devdocs ADR-0075 decision 8): the grant is sequenced into O,
+  // so O must be anchored. Refused before payment and before univocity is
+  // asked to claim anything, so a committed claim always has an anchored
+  // owner and a retry after anchoring is charged once.
+  const refusal = await refuseUnlessAnchored(
+    grant.ownerLogId,
+    env.logAuthority,
+    env.nodeEnv,
+  );
+  if (refusal) return refusal;
 
   // Payment gate setup (plan-2608-09 W2). Dark by default: only under
   // REGISTER_GRANT_ADMISSION=paid|either do we read the parent-grant evidence
