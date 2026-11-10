@@ -103,11 +103,8 @@ Other keys:
 
 Provisioned in **`task test:e2e:preflight`** (default). Playwright sources **`.work/e2e-univocity.env`**:
 
-- **`E2E_UNIVOCITY_ADDRESS_*_BOOTSTRAP`**, **`E2E_UNIVOCITY_GENESIS_LOG_ID_*`**
-- **`E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE`** — ES256 root grant + owner envelope signing
-- **`E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_FILE`** — KS256 root grant + owner envelope signing
+- **`E2E_UNIVOCITY_CONTRACT_POOL_FILE`** — pool JSON of fresh contracts (`alg`, `address`, `bootstrapPrivateKey`); each forest a spec creates claims its own contract, because a contract accepts one root forest. Pool size: **`E2E_UNIVOCITY_POOL_ES256`** (default 20), **`E2E_UNIVOCITY_POOL_KS256`** (default 12)
 - **`E2E_UNIVOCITY_RPC_URL`**, **`E2E_UNIVOCITY_CHAIN_ID`** (optional defaults)
-- **`E2E_UNIVOCITY_ES256_ALLOW_BOOTSTRAP`**, **`E2E_UNIVOCITY_KS256_ALLOW_BOOTSTRAP`** — when `false`, bootstrap mutating specs skip for that alg (CI when a supplied address is used instead of fresh provision)
 - **`CANOPY_OPS_ADMIN_TOKEN`**: mint onboard tokens (`POST /api/payments/onboard-tokens`); genesis uses a minted token as `Bearer`
 
 Opt out: **`SKIP_UNIVOCITY_PROVISION=true`** (bootstrap system specs skip per variant). See [plan-0032](../../docs/plans/plan-0032-univocity-imutable-e2e-provision.md).

@@ -65,23 +65,33 @@ Deployed coordinator webhook delivery requires Cloudflare Secrets Store
 
 **Univocity ephemeral provision** (bootstrap **system** specs):
 
+A univocity contract accepts exactly one root forest (the first to publish a
+checkpoint), so the suite needs one fresh contract per forest it creates. Preflight
+and CI deploy a **pool** (default 20 ES256 + 12 KS256; override with
+**`E2E_UNIVOCITY_POOL_ES256`** / **`E2E_UNIVOCITY_POOL_KS256`**). The suite creates 14
+ES256 and 8 KS256 forests per run; the rest are spares for Playwright retries, which
+re-run a serial describe group with fresh forests.
+
 Provisioned automatically in preflight (see [plan-0032](../docs/plans/plan-0032-univocity-imutable-e2e-provision.md), [plan-0049](../docs/plans/plan-0049-e2e-imutable-provision-consolidation.md)). Playwright reads **`.work/e2e-univocity.env`**:
 
-- **`E2E_UNIVOCITY_ADDRESS_*_BOOTSTRAP`**, **`E2E_UNIVOCITY_GENESIS_LOG_ID_*`**
-- **`E2E_UNIVOCITY_ES256_BOOTSTRAP_PEM_FILE`** — ES256 root grant signing
-- **`E2E_UNIVOCITY_KS256_BOOTSTRAP_KEY_FILE`** — KS256 root grant signing
+- **`E2E_UNIVOCITY_CONTRACT_POOL_FILE`** — path to the pool JSON
+  `{"contracts":[{"alg","address","bootstrapPrivateKey"}]}` written by
+  `taskfiles/e2e-univocity-provision-pool.sh` (default `.work/e2e-univocity-pool.json`, mode 600,
+  holds ephemeral private keys). Specs claim one contract per forest from it.
 - **`E2E_UNIVOCITY_RPC_URL`** — RPC for Playwright `eth_call` and on-chain provision; configure in Doppler or GitHub Environment. Preflight copies it to **`RPC_URL`** for deployer/`cast` (univocity-tools convention). Override per invocation with `task ... RPC_URL=https://...` without changing Doppler.
 - **`E2E_UNIVOCITY_CHAIN_ID`** — optional; default `84532`
 
 **Opt out:** `SKIP_UNIVOCITY_PROVISION=true` or **`E2E_SKIP_UNIVOCITY_PROVISION=true`** —
 bootstrap system specs skip; other projects still run.
 
-**Manual provision:** `doppler run -- task e2e-univocity:provision`
+**Manual provision:** `doppler run -- task e2e-univocity:provision-pool`
 
 Requires **`gh`** auth, Foundry **`cast`**, Doppler **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`**, and **univocity-tools** at the last-good pin in [`univocity-last-good.jsonc`](../univocity-last-good.jsonc) (`deploy provision e2e`; sibling `task install:dev` locally, release binaries in CI).
 
 **CI:** **`task e2e-univocity:ci-prepare`** in **tests-system.yml**, unconditionally —
-the bootstrap suite always deploys its own ephemeral instances. There is no
+the bootstrap suite always deploys its own ephemeral contract pool, passed to the
+test job as the `contract_pool_b64` job output (base64 of the pool JSON, decoded to
+`$RUNNER_TEMP/e2e-univocity-pool.json`). There is no
 pinned-contract mode: a pinned address set `*_ALLOW_BOOTSTRAP=false`, which
 skipped every bootstrap spec (FOR-531).
 
