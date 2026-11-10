@@ -29,6 +29,7 @@ import { bytesEqual, toArrayBuffer } from "./bytes-utils.js";
 import { encodeIntKeyCbor } from "./encode-int-map.js";
 import { encodeSigStructure } from "./encode-sig-structure.js";
 import type { Ks256VerifyHooks } from "./ks256-verify-hooks.js";
+import { recoverKs256Signer } from "./recover-ks256-signer.js";
 import {
   COSE_ALG_ES256,
   COSE_ALG_ES256_WEBAUTHN,
@@ -321,10 +322,6 @@ export async function signOnchainDelegationEs256(
   };
 }
 
-function addressFromUncompressedPubkey(uncompressed: Uint8Array): Uint8Array {
-  return keccak_256(uncompressed.slice(1)).slice(-20);
-}
-
 /**
  * Verify a wallet's on-chain delegation signature against the expected KS256
  * root address (EOA recovery, or ERC-1271 via hooks for contract roots).
@@ -362,15 +359,9 @@ export async function verifyOnchainDelegationSignatureKs256(
   // Contract: `v < 27 → v += 27` then ecrecover. Recovery ids 2/3 cannot
   // succeed on-chain; reject them for exact parity (noble may still recover).
   if (v > 1) return false;
-  try {
-    const sig = secp256k1.Signature.fromCompact(
-      signature.slice(0, 64),
-    ).addRecoveryBit(v);
-    const pub = sig.recoverPublicKey(hash).toRawBytes(false);
-    return bytesEqual(addressFromUncompressedPubkey(pub), rootSignerAddress);
-  } catch {
-    return false;
-  }
+  // verifyKS256Raw also refuses high-s, which recoverKs256Signer applies.
+  const recovered = recoverKs256Signer(hash, signature);
+  return recovered.ok && bytesEqual(recovered.address, rootSignerAddress);
 }
 
 /**
