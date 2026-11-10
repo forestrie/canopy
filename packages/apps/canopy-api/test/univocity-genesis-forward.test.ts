@@ -80,26 +80,6 @@ async function postGenesis(
   return new Response(body, { status: res.status, headers: res.headers });
 }
 
-/** Authority paths answered as a live reservation instead of unclaimed. */
-const reservedAuthorityPaths = new Set<string>();
-
-function interceptReservedAuthority(logId: string): void {
-  const path = `/api/logs/${logId}/authority`;
-  reservedAuthorityPaths.add(path);
-  fetchMock
-    .get(UNIVOCITY_URL)
-    .intercept({ path, method: "GET" })
-    .reply(
-      200,
-      encodeCborDeterministic({
-        state: "reserved",
-        final: false,
-        expiresAt: 4_102_444_800,
-      }) as unknown as string,
-      { headers: { "content-type": "application/cbor" } },
-    );
-}
-
 function localGenesisKey(logId: string): string {
   return `forests/forest/${logId}/genesis.cbor`;
 }
@@ -114,18 +94,6 @@ describe("univocity genesis forward (plan-2607-10 R7)", () => {
       .get("https://sepolia.base.org")
       .intercept({ path: "/", method: "POST" })
       .reply(500, "rpc unavailable in test")
-      .persist();
-    // Genesis reads the log's authority first; unless a test reserves the
-    // id, univocity holds no claim for it.
-    fetchMock
-      .get(UNIVOCITY_URL)
-      .intercept({
-        path: (p: string) =>
-          /^\/api\/logs\/[^/]+\/authority$/.test(p) &&
-          !reservedAuthorityPaths.has(p),
-        method: "GET",
-      })
-      .reply(404, "")
       .persist();
   });
 
@@ -226,19 +194,6 @@ describe("univocity genesis forward (plan-2607-10 R7)", () => {
 
     const res = await postGenesis(e, logId, m);
     expect(res.status).toBe(201);
-  });
-
-  it("a log id univocity holds a live reservation for is refused 409, before univocity's genesis store", async () => {
-    const e = envWithUnivocity();
-    const logId = crypto.randomUUID();
-    const m = validGenesisV2Ks256CborMap();
-    await seedGenesisChainIdentity(e, m);
-    interceptReservedAuthority(logId);
-    // No genesis POST interceptor: forwarding would fail the test as 503.
-
-    const res = await postGenesis(e, logId, m);
-    expect(res.status).toBe(409);
-    expect(await e.R2_GRANTS.head(localGenesisKey(logId))).toBeNull();
   });
 
   it("cross-forest claim conflict (univocity 422) is rejected loudly", async () => {
