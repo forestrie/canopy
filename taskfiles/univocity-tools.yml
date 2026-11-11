@@ -3,17 +3,6 @@ version: "3"
 
 vars:
   INSTALL_DIR: '{{.INSTALL_DIR | default ".cache/univocity-tools"}}'
-  # Tools range pinned in univocity-last-good.jsonc, resolved per run to the
-  # highest matching release (a hardcoded default went stale unnoticed). An
-  # explicit UNIVOCITY_TOOLS_VERSION tag, or "latest", still wins.
-  UNIVOCITY_TOOLS_VERSION:
-    sh: |
-      set -euo pipefail
-      if [ -n "${UNIVOCITY_TOOLS_VERSION:-}" ]; then
-        printf '%s' "$UNIVOCITY_TOOLS_VERSION"
-      else
-        node "{{.ROOT_DIR}}/scripts/univocity-pin.mjs" tools
-      fi
   UNIVOCITY_TOOLS_TASKFILE:
     sh: |
       set -euo pipefail
@@ -56,6 +45,9 @@ tasks:
         task -t "{{.UNIVOCITY_TOOLS_TASKFILE}}" \
           "install:${TARGET}:{{.INSTALL_DIR}}" \
           USER_WORKING_DIR="{{.USER_WORKING_DIR}}"
+        # A dev build replaced the binaries: forget any release tag recorded
+        # by install:release so it is not mistaken for that release.
+        rm -f "{{.INSTALL_DIR}}/deployer.tag" "{{.INSTALL_DIR}}/contract-artefacts.tag"
 
   install:*:*:
     desc: |
@@ -74,6 +66,7 @@ tasks:
         task -t "{{.UNIVOCITY_TOOLS_TASKFILE}}" \
           "install:{{.TARGET}}:{{.INSTALL_DIR}}" \
           USER_WORKING_DIR="{{.USER_WORKING_DIR}}"
+        rm -f "{{.INSTALL_DIR}}/deployer.tag" "{{.INSTALL_DIR}}/contract-artefacts.tag"
 
   install:release:
     desc: |
@@ -84,13 +77,23 @@ tasks:
       REFRESH_TOOLS=1 to re-fetch. An installed binary is reused only when it
       was installed from the same resolved tag.
     vars:
+      # Tools release: the highest release in the range pinned in
+      # univocity-last-good.jsonc, resolved when this task runs (task-level,
+      # so tasks that do not install tools never call the GitHub API). An
+      # explicit UNIVOCITY_TOOLS_VERSION tag, or "latest", still wins.
       TOOLS_TAG:
         sh: |
-          if [ "{{.UNIVOCITY_TOOLS_VERSION}}" = "latest" ]; then
-            gh api repos/forestrie/univocity-tools/releases/latest --jq '.tag_name'
+          set -euo pipefail
+          want="${UNIVOCITY_TOOLS_VERSION:-}"
+          if [ "$want" = "latest" ]; then
+            tag="$(gh api repos/forestrie/univocity-tools/releases/latest --jq '.tag_name')"
+          elif [ -n "$want" ]; then
+            tag="$want"
           else
-            echo "{{.UNIVOCITY_TOOLS_VERSION}}"
+            tag="$(node "{{.ROOT_DIR}}/scripts/univocity-pin.mjs" tools)"
           fi
+          [ -n "$tag" ] || { echo "empty univocity-tools release tag" >&2; exit 1; }
+          printf '%s' "$tag"
       RELEASE_BASE: https://github.com/forestrie/univocity-tools/releases/download/{{.TOOLS_TAG}}
       INSTALL_DIR_ABS:
         sh: |
