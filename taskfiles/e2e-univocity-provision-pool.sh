@@ -101,19 +101,34 @@ RUN_ID="${GITHUB_RUN_ID:-$(date +%s)}"
 export E2E_PROVISION_RUN_ID="$RUN_ID"
 export RPC_URL="$RPC"
 
-# On linux-x64 (CI included), install the release at the last-good pin
-# (univocity-last-good.jsonc), replacing any cached copy; UNIVOCITY_TOOLS_VERSION
-# in the environment still wins for a one-off run. Release binaries are
-# linux-x64 only, so elsewhere an installed deployer is kept and a missing one
-# is built from the sibling univocity-tools checkout. REFRESH_TOOLS is read
-# from the environment by univocity-tools.yml, not as a task var.
-# E2E_UNIVOCITY_SKIP_INSTALL=1 keeps whatever deployer is installed.
-if [ "${E2E_UNIVOCITY_SKIP_INSTALL:-}" != "1" ]; then
-  if [ "$(uname -s)" = "Linux" ] && [ "$(uname -m)" = "x86_64" ]; then
-    REFRESH_TOOLS=1 task install:release
-  elif [ ! -x "$DEPLOYER" ]; then
-    task install:dev
-  fi
+# Resolve the pinned ranges (univocity-last-good.jsonc) to release tags once,
+# so every task below uses the same tags; a tag already in the environment
+# wins for a one-off run, and a range matching no release stops the run here.
+resolve_pin() { # KEY ENV_VAR_NAME
+  [ -n "$(trim_ws "${!2:-}")" ] && return 0
+  local tag
+  tag="$(node "${ROOT_DIR}/scripts/univocity-pin.mjs" "$1")" ||
+    fail "could not resolve the univocity $1 range"
+  [ -n "$(trim_ws "$tag")" ] || fail "empty univocity $1 release tag"
+  export "$2=$tag"
+}
+resolve_pin contracts UNIVOCITY_CONTRACTS_VERSION
+
+# On linux-x64 (CI included), resolve the tools range and install that
+# release, replacing any cached copy. Release binaries are linux-x64 only, so
+# elsewhere the tools range is not resolved: an installed deployer is used as
+# is and a missing one is built from the sibling univocity-tools checkout.
+# REFRESH_TOOLS is read from the environment by univocity-tools.yml, not as a
+# task var. E2E_UNIVOCITY_SKIP_INSTALL=1 keeps whatever deployer is installed.
+if [ "${E2E_UNIVOCITY_SKIP_INSTALL:-}" = "1" ]; then
+  echo "using installed deployer at ${DEPLOYER} (E2E_UNIVOCITY_SKIP_INSTALL=1)"
+elif [ "$(uname -s)" = "Linux" ] && [ "$(uname -m)" = "x86_64" ]; then
+  resolve_pin tools UNIVOCITY_TOOLS_VERSION
+  REFRESH_TOOLS=1 task install:release
+elif [ -x "$DEPLOYER" ]; then
+  echo "using installed deployer at ${DEPLOYER} (release binaries are linux-x64 only): $("$DEPLOYER" --version 2>&1 | head -1 || true)"
+else
+  task install:dev
 fi
 [ -x "$DEPLOYER" ] || fail "deployer binary missing at ${DEPLOYER}"
 mkdir -p "${ROOT_DIR}/.work" "$PROPOSAL_DIR" "$RELEASE_ROOT"
