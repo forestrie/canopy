@@ -42,12 +42,18 @@ tasks:
             exit 1
             ;;
         esac
+        # Absolute, from ROOT_DIR, so the sibling task installs where the
+        # tag cleanup below looks whatever directory task was run from.
+        case "{{.INSTALL_DIR}}" in
+          /*) INSTALL_ABS="{{.INSTALL_DIR}}" ;;
+          *) INSTALL_ABS="{{.ROOT_DIR}}/{{.INSTALL_DIR}}" ;;
+        esac
         task -t "{{.UNIVOCITY_TOOLS_TASKFILE}}" \
-          "install:${TARGET}:{{.INSTALL_DIR}}" \
+          "install:${TARGET}:${INSTALL_ABS}" \
           USER_WORKING_DIR="{{.USER_WORKING_DIR}}"
         # A dev build replaced the binaries: forget any release tag recorded
         # by install:release so it is not mistaken for that release.
-        rm -f "{{.INSTALL_DIR}}/deployer.tag" "{{.INSTALL_DIR}}/contract-artefacts.tag"
+        rm -f "${INSTALL_ABS}/deployer.tag" "${INSTALL_ABS}/contract-artefacts.tag"
 
   install:*:*:
     desc: |
@@ -63,10 +69,16 @@ tasks:
     cmds:
       - |
         set -euo pipefail
+        # Absolute, from ROOT_DIR, so the sibling task installs where the
+        # tag cleanup below looks whatever directory task was run from.
+        case "{{.INSTALL_DIR}}" in
+          /*) INSTALL_ABS="{{.INSTALL_DIR}}" ;;
+          *) INSTALL_ABS="{{.ROOT_DIR}}/{{.INSTALL_DIR}}" ;;
+        esac
         task -t "{{.UNIVOCITY_TOOLS_TASKFILE}}" \
-          "install:{{.TARGET}}:{{.INSTALL_DIR}}" \
+          "install:{{.TARGET}}:${INSTALL_ABS}" \
           USER_WORKING_DIR="{{.USER_WORKING_DIR}}"
-        rm -f "{{.INSTALL_DIR}}/deployer.tag" "{{.INSTALL_DIR}}/contract-artefacts.tag"
+        rm -f "${INSTALL_ABS}/deployer.tag" "${INSTALL_ABS}/contract-artefacts.tag"
 
   install:release:
     desc: |
