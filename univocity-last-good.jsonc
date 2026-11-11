@@ -19,8 +19,9 @@
   // the next minor is a change here: edit the range, let the suite run, and
   // the diff records that the new minor was exercised.
   //
-  // Range syntax: space-separated comparators (>=, >, <=, <, =) over X.Y.Z,
-  // all of which must hold. The upper bound is exclusive.
+  // Range syntax: a lower bound (>= or >) and an exclusive upper bound (<),
+  // both over X.Y.Z and inside one major.minor, e.g. ">=0.4.0 <0.5.0". Any
+  // other shape is refused.
   //
   // The contract release matters more than it looks. Univocity contracts are
   // IMMUTABLE, so a forest deployed against a buggy release keeps the bug:
