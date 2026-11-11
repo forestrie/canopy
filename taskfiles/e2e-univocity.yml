@@ -11,21 +11,6 @@ vars:
   CART_BIN: "{{.TOOLS_CACHE_DIR}}/contract-artefacts"
   WORK_DIR: "{{.ROOT_DIR}}/.work/univocity-e2e"
   RELEASE_ROOT: "{{.ROOT_DIR}}/.work/univocity-release"
-  # Fetched archives are kept per resolved tag, so a newer patch is never
-  # hidden behind an archive an earlier run left behind.
-  FETCH_DIR: "{{.WORK_DIR}}/releases/{{.UNIVOCITY_CONTRACTS_VERSION}}"
-  # Contract release to deploy: the highest release in the range pinned in
-  # univocity-last-good.jsonc, resolved per run (never "latest": univocity
-  # contracts are immutable, so a forest deployed against a buggy release
-  # keeps the bug). An explicit UNIVOCITY_CONTRACTS_VERSION tag still wins.
-  UNIVOCITY_CONTRACTS_VERSION:
-    sh: |
-      set -euo pipefail
-      if [ -n "${UNIVOCITY_CONTRACTS_VERSION:-}" ]; then
-        printf '%s' "$UNIVOCITY_CONTRACTS_VERSION"
-      else
-        node "{{.ROOT_DIR}}/scripts/univocity-pin.mjs" contracts
-      fi
   RUN_ID: '{{.RUN_ID | default ""}}'
   ALG: '{{.ALG | default "es256"}}'
   PROPOSAL_DIR: "{{.ROOT_DIR}}/.work/univocity-e2e/proposals"
@@ -36,6 +21,25 @@ vars:
 tasks:
   fetch-release:
     desc: Fetch the pinned univocity contract build archive (requires gh auth or GH_TOKEN).
+    vars:
+      # Contract release to deploy: the highest release in the range pinned in
+      # univocity-last-good.jsonc, resolved when this task runs (never
+      # "latest": univocity contracts are immutable, so a forest deployed
+      # against a buggy release keeps the bug). An explicit
+      # UNIVOCITY_CONTRACTS_VERSION tag still wins. Task-level, not global, so
+      # tasks that do not need it never call the GitHub API.
+      UNIVOCITY_CONTRACTS_VERSION:
+        sh: |
+          set -euo pipefail
+          tag="${UNIVOCITY_CONTRACTS_VERSION:-}"
+          if [ -z "$tag" ]; then
+            tag="$(node "{{.ROOT_DIR}}/scripts/univocity-pin.mjs" contracts)"
+          fi
+          [ -n "$tag" ] || { echo "empty univocity contracts release tag" >&2; exit 1; }
+          printf '%s' "$tag"
+      # Fetched archives are kept per resolved tag, so a newer patch is never
+      # hidden behind an archive an earlier run left behind.
+      FETCH_DIR: "{{.WORK_DIR}}/releases/{{.UNIVOCITY_CONTRACTS_VERSION}}"
     preconditions:
       - sh: test -x "{{.DEPLOYER_BIN}}" && test -x "{{.CART_BIN}}"
         msg: "Run task install:dev (or install:release) first — binaries missing under {{.TOOLS_CACHE_DIR}}"
@@ -55,6 +59,25 @@ tasks:
   extract:
     desc: Extract fetched build archive into RELEASE_ROOT.
     deps: [fetch-release]
+    vars:
+      # Contract release to deploy: the highest release in the range pinned in
+      # univocity-last-good.jsonc, resolved when this task runs (never
+      # "latest": univocity contracts are immutable, so a forest deployed
+      # against a buggy release keeps the bug). An explicit
+      # UNIVOCITY_CONTRACTS_VERSION tag still wins. Task-level, not global, so
+      # tasks that do not need it never call the GitHub API.
+      UNIVOCITY_CONTRACTS_VERSION:
+        sh: |
+          set -euo pipefail
+          tag="${UNIVOCITY_CONTRACTS_VERSION:-}"
+          if [ -z "$tag" ]; then
+            tag="$(node "{{.ROOT_DIR}}/scripts/univocity-pin.mjs" contracts)"
+          fi
+          [ -n "$tag" ] || { echo "empty univocity contracts release tag" >&2; exit 1; }
+          printf '%s' "$tag"
+      # Fetched archives are kept per resolved tag, so a newer patch is never
+      # hidden behind an archive an earlier run left behind.
+      FETCH_DIR: "{{.WORK_DIR}}/releases/{{.UNIVOCITY_CONTRACTS_VERSION}}"
     cmds:
       - |
         set -euo pipefail
@@ -63,6 +86,8 @@ tasks:
           echo "build archive not found under {{.FETCH_DIR}}/univocity (run fetch-release)" >&2
           exit 1
         fi
+        # The archive is extracted flat, so clear the previous release's files.
+        rm -rf "{{.RELEASE_ROOT}}"
         mkdir -p "{{.RELEASE_ROOT}}"
         "{{.CART_BIN}}" archive-extract "$ARCHIVE" \
           --work-dir "{{.FETCH_DIR}}" \
