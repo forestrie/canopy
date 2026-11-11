@@ -40,7 +40,7 @@
     // Part of every authority cache key: change it when the lane's
     // univocity store is reset, so answers cached before the reset are
     // never served after it.
-    "UNIVOCITY_AUTHORITY_CACHE_GENERATION": "1",
+    "UNIVOCITY_AUTHORITY_CACHE_GENERATION": "2",
     "SUPPORTED_CHAINS_RPC": "{\"84532\":[\"https://sepolia.base.org\"]}",
   },
   "r2_buckets": [
@@ -120,7 +120,7 @@
         "X402_PRICE_UPTO_MAX": "$1.00",
         "GRANT_STORAGE_PUBLIC_BASE": "https://grants-dev.forestrie.dev",
         "UNIVOCITY_AUTHORITY_CACHE_SECONDS": "30",
-        "UNIVOCITY_AUTHORITY_CACHE_GENERATION": "1",
+        "UNIVOCITY_AUTHORITY_CACHE_GENERATION": "2",
         "ROOT_LOG_ID": "123e4567e89b12d3a456426614174000",
         // Self-service onboard (FOR-166); SUPPORTED_CHAINS_RPC via deploy contract.
         "SUPPORTED_CHAINS_RPC": "{\"84532\":[\"https://sepolia.base.org\"]}",
@@ -214,7 +214,7 @@
         "X402_PRICE_UPTO_MAX": "$1.00",
         "GRANT_STORAGE_PUBLIC_BASE": "https://grants.forestrie.dev",
         "UNIVOCITY_AUTHORITY_CACHE_SECONDS": "30",
-        "UNIVOCITY_AUTHORITY_CACHE_GENERATION": "1",
+        "UNIVOCITY_AUTHORITY_CACHE_GENERATION": "2",
         "ONBOARD_TOKEN_TTL_SEC": "604800",
         "ONBOARD_GATE_CACHE_TTL_SEC": "300",
         "ONBOARD_MAX_PENDING_PER_BINDING": "3",
