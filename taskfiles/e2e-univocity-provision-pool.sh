@@ -126,7 +126,7 @@ elif [ "$(uname -s)" = "Linux" ] && [ "$(uname -m)" = "x86_64" ]; then
   resolve_pin tools UNIVOCITY_TOOLS_VERSION
   REFRESH_TOOLS=1 task install:release
 elif [ -x "$DEPLOYER" ]; then
-  echo "using installed deployer at ${DEPLOYER} (release binaries are linux-x64 only)"
+  echo "using installed deployer at ${DEPLOYER} (release binaries are linux-x64 only): $("$DEPLOYER" --version 2>&1 | head -1 || true)"
 else
   task install:dev
 fi
