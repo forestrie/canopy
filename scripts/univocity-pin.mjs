@@ -9,14 +9,15 @@
 // loudly, printing nothing on stdout, when the range matches no release: an
 // empty version would silently become "latest" in `cart fetch-release`.
 //
-// Ranges are space-separated comparators (>=, >, <=, <, =) over X.Y.Z, all of
-// which must hold, e.g. ">=0.4.0 <0.5.0". Anything else is rejected rather
-// than guessed at.
+// A range is exactly a lower bound (>= or >) and an exclusive upper bound (<)
+// over X.Y.Z that stays within one major.minor, e.g. ">=0.4.0 <0.5.0". Anything
+// else is rejected rather than guessed at: a wider range would let a minor
+// release (ABI or signing changes) in without a reviewed change.
 //
 // GitHub auth: GH_TOKEN / GITHUB_TOKEN when set (CI), else an authenticated
 // `gh` (local runs), else unauthenticated with a warning.
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -27,15 +28,24 @@ const REPOS = {
 
 export function main(argv, env, io) {
   const key = argv[0];
-  if (!(key in REPOS)) {
-    throw new Error("usage: univocity-pin.mjs tools|contracts");
+  if (!Object.hasOwn(REPOS, key ?? "")) {
+    return Promise.reject(
+      new Error("usage: univocity-pin.mjs tools|contracts"),
+    );
   }
-  return io.listReleases(REPOS[key], env).then((releases) => {
-    const range = parsePinsJsonc(io.readPins(), key);
-    const tag = resolveRange(range, releases);
-    io.log(`univocity ${key}: range "${range}" resolved to ${tag}`);
-    return tag;
-  });
+  return Promise.resolve()
+    .then(() => {
+      // Validate the range before spending an API call on the listing.
+      const range = parsePinsJsonc(io.readPins(), key);
+      parseRange(range);
+      return range;
+    })
+    .then(async (range) => {
+      const releases = await io.listReleases(REPOS[key], env);
+      const tag = resolveRange(range, releases);
+      io.log(`univocity ${key}: range "${range}" resolved to ${tag}`);
+      return tag;
+    });
 }
 
 export function resolveRange(range, releases) {
@@ -72,21 +82,28 @@ export function parsePinsJsonc(text, key) {
 }
 
 function parseRange(range) {
-  const parts = range.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) throw new Error(`unsupported range "${range}"`);
-  return parts.map((part) => {
-    const m = /^(>=|<=|>|<|=)?(\d+\.\d+\.\d+)$/.exec(part);
-    if (!m) throw new Error(`unsupported range "${range}" (at "${part}")`);
-    const bound = parseVersion(m[2]);
-    const test = {
-      ">=": (c) => c >= 0,
-      ">": (c) => c > 0,
-      "<=": (c) => c <= 0,
-      "<": (c) => c < 0,
-      "=": (c) => c === 0,
-    }[m[1] ?? "="];
-    return (v) => test(compareVersions(v, bound));
+  const bad = (why) => new Error(`unsupported range "${range}" (${why})`);
+  const parts = range.trim().split(/\s+/);
+  if (parts.length !== 2) throw bad("need a lower and an upper bound");
+  const [lo, hi] = parts.map((part) => {
+    const m = /^(>=|>|<)(\d+\.\d+\.\d+)$/.exec(part);
+    if (!m) throw bad(`at "${part}"`);
+    return { op: m[1], v: parseVersion(m[2]) };
   });
+  if (lo.op === "<" || hi.op !== "<") {
+    throw bad("lower bound first (>= or >), then an exclusive upper (<)");
+  }
+  const ceiling = [lo.v[0], lo.v[1] + 1, 0];
+  if (compareVersions(lo.v, hi.v) >= 0 || compareVersions(hi.v, ceiling) > 0) {
+    throw bad(`must stay within ${lo.v[0]}.${lo.v[1]}.x`);
+  }
+  return [
+    (v) =>
+      lo.op === ">="
+        ? compareVersions(v, lo.v) >= 0
+        : compareVersions(v, lo.v) > 0,
+    (v) => compareVersions(v, hi.v) < 0,
+  ];
 }
 
 // Strict X.Y.Z with an optional leading "v"; a pre-release or build suffix
@@ -108,7 +125,11 @@ async function listReleases(repo, env) {
       const out = execFileSync(
         "gh",
         ["api", "--paginate", "--slurp", `repos/${repo}/releases?per_page=100`],
-        { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+        {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+          timeout: 60_000,
+        },
       );
       return JSON.parse(out).flat();
     } catch {
@@ -123,6 +144,7 @@ async function listReleases(repo, env) {
     const res = await fetch(
       `https://api.github.com/repos/${repo}/releases?per_page=100&page=${page}`,
       {
+        signal: AbortSignal.timeout(30_000),
         headers: {
           accept: "application/vnd.github+json",
           ...(token ? { authorization: `Bearer ${token}` } : {}),
@@ -138,7 +160,7 @@ async function listReleases(repo, env) {
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainModule()) {
   const here = dirname(fileURLToPath(import.meta.url));
   main(process.argv.slice(2), process.env, {
     listReleases,
@@ -152,4 +174,18 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       process.exit(1);
     },
   );
+}
+
+// process.argv[1] may be a symlink while import.meta.url is already resolved
+// (or the reverse), so compare real paths; a false negative here would exit 0
+// with no output, which downstream reads as "no version" and so as latest.
+function isMainModule() {
+  try {
+    return (
+      realpathSync(process.argv[1]) ===
+      realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return false;
+  }
 }
