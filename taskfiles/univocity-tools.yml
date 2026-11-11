@@ -3,15 +3,16 @@ version: "3"
 
 vars:
   INSTALL_DIR: '{{.INSTALL_DIR | default ".cache/univocity-tools"}}'
-  # Last-good pin, not a hardcoded default: see univocity-last-good.jsonc for
-  # why (a `| default "v0.6.0"` here went four releases stale unnoticed).
+  # Tools range pinned in univocity-last-good.jsonc, resolved per run to the
+  # highest matching release (a hardcoded default went stale unnoticed). An
+  # explicit UNIVOCITY_TOOLS_VERSION tag, or "latest", still wins.
   UNIVOCITY_TOOLS_VERSION:
     sh: |
       set -euo pipefail
       if [ -n "${UNIVOCITY_TOOLS_VERSION:-}" ]; then
         printf '%s' "$UNIVOCITY_TOOLS_VERSION"
       else
-        "{{.ROOT_DIR}}/taskfiles/univocity-last-good.sh" tools
+        node "{{.ROOT_DIR}}/scripts/univocity-pin.mjs" tools
       fi
   UNIVOCITY_TOOLS_TASKFILE:
     sh: |
@@ -78,9 +79,10 @@ tasks:
     desc: |
       Download deployer + contract-artefacts linux-x64 from a GitHub release
       into INSTALL_DIR (CI parity; no sibling checkout required).
-      Defaults to the last-good pin (univocity-last-good.jsonc).
+      Defaults to the highest release in the range in univocity-last-good.jsonc.
       Set UNIVOCITY_TOOLS_VERSION=latest or an explicit tag to override;
-      REFRESH_TOOLS=1 to re-fetch.
+      REFRESH_TOOLS=1 to re-fetch. An installed binary is reused only when it
+      was installed from the same resolved tag.
     vars:
       TOOLS_TAG:
         sh: |
@@ -107,8 +109,10 @@ tasks:
         echo "Installing univocity-tools {{.TOOLS_TAG}} into $DEST"
         for app in deployer contract-artefacts; do
           DEST_BIN="$DEST/${app}"
-          if [ -x "$DEST_BIN" ] && [ "${REFRESH_TOOLS:-}" != "1" ]; then
-            echo "${app} already present at $DEST_BIN"
+          TAG_FILE="${DEST_BIN}.tag"
+          if [ -x "$DEST_BIN" ] && [ "${REFRESH_TOOLS:-}" != "1" ] \
+            && [ "$(cat "$TAG_FILE" 2>/dev/null)" = "{{.TOOLS_TAG}}" ]; then
+            echo "${app} {{.TOOLS_TAG}} already present at $DEST_BIN"
             continue
           fi
           SRC="${DEST}/${app}-linux-x64"
@@ -126,5 +130,6 @@ tasks:
           fi
           cp "$SRC" "$DEST_BIN"
           chmod +x "$DEST_BIN"
+          printf '%s' "{{.TOOLS_TAG}}" > "$TAG_FILE"
           echo "$DEST_BIN"
         done

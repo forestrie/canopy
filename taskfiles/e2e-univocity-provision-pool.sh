@@ -101,9 +101,21 @@ RUN_ID="${GITHUB_RUN_ID:-$(date +%s)}"
 export E2E_PROVISION_RUN_ID="$RUN_ID"
 export RPC_URL="$RPC"
 
-# On linux-x64 (CI included), install the release at the last-good pin
-# (univocity-last-good.jsonc), replacing any cached copy; UNIVOCITY_TOOLS_VERSION
-# in the environment still wins for a one-off run. Release binaries are
+# Resolve the pinned ranges (univocity-last-good.jsonc) to release tags once,
+# so every task below uses the same tags; a tag already in the environment
+# wins for a one-off run, and a range matching no release stops the run here.
+resolve_pin() { # KEY ENV_VAR_NAME
+  [ -n "$(trim_ws "${!2:-}")" ] && return 0
+  local tag
+  tag="$(node "${ROOT_DIR}/scripts/univocity-pin.mjs" "$1")" ||
+    fail "could not resolve the univocity $1 range"
+  export "$2=$tag"
+}
+resolve_pin tools UNIVOCITY_TOOLS_VERSION
+resolve_pin contracts UNIVOCITY_CONTRACTS_VERSION
+
+# On linux-x64 (CI included), install the tools release resolved above,
+# replacing any cached copy. Release binaries are
 # linux-x64 only, so elsewhere an installed deployer is kept and a missing one
 # is built from the sibling univocity-tools checkout. REFRESH_TOOLS is read
 # from the environment by univocity-tools.yml, not as a task var.

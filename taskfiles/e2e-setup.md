@@ -90,7 +90,7 @@ bootstrap system specs skip; other projects still run.
 
 **Manual provision:** `doppler run -- task e2e-univocity:provision-pool`
 
-Requires **`gh`** auth, Foundry **`cast`**, Doppler **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`**, and **univocity-tools** at the last-good pin in [`univocity-last-good.jsonc`](../univocity-last-good.jsonc) (`deploy provision e2e`; sibling `task install:dev` locally, release binaries in CI).
+Requires **`gh`** auth, Foundry **`cast`**, Doppler **`DEPLOY_KEY`**, **`E2E_UNIVOCITY_RPC_URL`**, and **univocity-tools** at the highest release in the range pinned in [`univocity-last-good.jsonc`](../univocity-last-good.jsonc) (`deploy provision e2e`; sibling `task install:dev` locally, release binaries in CI).
 
 **CI:** **`task e2e-univocity:ci-prepare`** in **tests-system.yml**'s test job,
 unconditionally: every attempt of the job deploys its own ephemeral contract pool
