@@ -31,7 +31,7 @@ tasks:
       UNIVOCITY_CONTRACTS_VERSION:
         sh: |
           set -euo pipefail
-          tag="${UNIVOCITY_CONTRACTS_VERSION:-}"
+          tag="$(printf '%s' "${UNIVOCITY_CONTRACTS_VERSION:-}" | tr -d '[:space:]')"
           if [ -z "$tag" ]; then
             tag="$(node "{{.ROOT_DIR}}/scripts/univocity-pin.mjs" contracts)"
           fi
@@ -69,7 +69,7 @@ tasks:
       UNIVOCITY_CONTRACTS_VERSION:
         sh: |
           set -euo pipefail
-          tag="${UNIVOCITY_CONTRACTS_VERSION:-}"
+          tag="$(printf '%s' "${UNIVOCITY_CONTRACTS_VERSION:-}" | tr -d '[:space:]')"
           if [ -z "$tag" ]; then
             tag="$(node "{{.ROOT_DIR}}/scripts/univocity-pin.mjs" contracts)"
           fi
