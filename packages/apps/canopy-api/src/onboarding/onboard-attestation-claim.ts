@@ -80,6 +80,27 @@ async function storedAttestationClaimKey(
 }
 
 /**
+ * Create-only put of a claim marker.
+ *
+ * @returns false when the marker already exists.
+ */
+async function putClaimMarker(
+  env: OnboardAttestationClaimEnv,
+  key: string,
+  marker: { instanceId: string | undefined; iat?: number; exp?: number },
+): Promise<boolean> {
+  const written = await env.R2_GRANTS.put(
+    key,
+    JSON.stringify({ ...marker, usedAt: Date.now() }),
+    {
+      httpMetadata: { contentType: "application/json" },
+      onlyIf: { etagDoesNotMatch: "*" },
+    },
+  );
+  return written !== null;
+}
+
+/**
  * Claim a verified attestation for one onboard request, with an R2
  * create-if-absent put (`etagDoesNotMatch: "*"`, null when the marker exists).
  * Call after verification and every refusal that should not burn the
@@ -89,7 +110,8 @@ async function storedAttestationClaimKey(
  * contact data. Markers are kept indefinitely (one tiny object per onboard
  * request): correctness needs a marker only until `exp` plus the iat skew, but
  * keeping it avoids a lifecycle rule whose timing would have to track
- * ONBOARD_ATTESTATION_MAX_WINDOW_SEC.
+ * ONBOARD_ATTESTATION_MAX_WINDOW_SEC. The marker written for the instance's
+ * stored attestation holds only `instanceId` and `usedAt`.
  *
  * @returns true if this caller won the claim; false if already used.
  */
@@ -98,25 +120,20 @@ export async function claimOnboardAttestation(
   attestation: Uint8Array,
   claim: OnboardAttestationClaimInput,
 ): Promise<boolean> {
-  const key = await onboardAttestationClaimKey(attestation);
   // Before single-use claims, every accepted attestation was stored at the
   // instance's public key with no marker, so one still inside its window
-  // would win the put below. The stored one is spent: refuse it.
-  if (
-    claim.instanceId &&
-    (await storedAttestationClaimKey(env, claim.instanceId)) === key
-  ) {
-    return false;
+  // could win the claim below, even after a create replaced it. Mark the
+  // stored one used first: presenting it is then refused, and stays refused
+  // once this create replaces it.
+  if (claim.instanceId) {
+    const storedKey = await storedAttestationClaimKey(env, claim.instanceId);
+    if (storedKey) {
+      await putClaimMarker(env, storedKey, { instanceId: claim.instanceId });
+    }
   }
-  const body = JSON.stringify({
+  return putClaimMarker(env, await onboardAttestationClaimKey(attestation), {
     instanceId: claim.instanceId,
     iat: claim.iat,
     exp: claim.exp,
-    usedAt: Date.now(),
   });
-  const written = await env.R2_GRANTS.put(key, body, {
-    httpMetadata: { contentType: "application/json" },
-    onlyIf: { etagDoesNotMatch: "*" },
-  });
-  return written !== null;
 }

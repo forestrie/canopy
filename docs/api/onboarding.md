@@ -84,7 +84,7 @@ canopy keeps the accepted attestation, publicly readable, at
 claim marker at `payments/used-attestations/{hex SHA-256 of the
 Sig_structure}`. The stored attestation counts as used even without a
 marker, as one accepted before claims existed has none: presenting it
-answers `409`.
+answers `409`, also after a later create replaces it.
 
 ### Create refusals
 

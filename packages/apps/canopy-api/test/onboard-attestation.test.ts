@@ -661,6 +661,25 @@ describe("POST /api/onboarding/requests — attestation gate", () => {
       expect(res.status).toBe(409);
     });
 
+    // A copy taken while it was stored stays spent after the owner's next
+    // create replaces the stored attestation.
+    it("an attestation stored before single-use claims stays used once a create replaces it", async () => {
+      stubChain();
+      const e = requestEnv();
+      const old = attestedFields();
+      const instanceId = tryUnivocityInstanceIdFromChainBinding({
+        chainId: CHAIN,
+        univocityAddr: ADDR,
+      })!;
+      await e.R2_GRANTS.put(
+        `payments/attestations/${instanceId}.cose`,
+        old.get(7) as Uint8Array,
+      );
+      expect((await postCreate(e, attestedFields(120))).status).toBe(201);
+      const res = await postCreate(e, old);
+      expect(res.status).toBe(409);
+    });
+
     it("a create refused by the pending cap does not burn the attestation", async () => {
       stubChain();
       const e = requestEnv();
