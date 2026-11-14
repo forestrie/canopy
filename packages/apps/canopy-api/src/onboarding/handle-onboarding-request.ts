@@ -130,8 +130,6 @@ export interface OnboardingHandlerEnv
   ONBOARD_AUTO_APPROVE?: string;
   ONBOARD_AUTO_APPROVE_CHAIN_IDS?: string;
   ONBOARD_AUTO_APPROVE_LABEL_PREFIX?: string;
-  /** Slice-06 flag (ADR-0059 D8): require the bootstrap-key attestation. */
-  ONBOARD_REQUIRE_KEY_ATTESTATION?: string;
   /** Accepted attestation `aud` override (request origin always accepted). */
   ONBOARD_ATTESTATION_AUD?: string;
   /** Ceiling on attestation exp-iat (seconds; default 86400). */
@@ -372,15 +370,13 @@ async function handleCreateRequest(
     );
   }
 
-  // Bootstrap-key registrant attestation (slice 06, ADR-0059 D8). The gate
-  // probe supplies the chain-declared (alg, key) trust anchor. An attestation
-  // is VERIFIED whenever present — a request carrying a bad one is rejected
-  // even while the flag is off, so a broken producer is caught before the
-  // flag arms; the flag only controls whether absence is fatal. Break-glass
-  // ops mint is the documented waiver (visible via admittedBy).
-  const requireAttestation =
-    env.ONBOARD_REQUIRE_KEY_ATTESTATION?.trim() === "true";
-  if (!attestation && requireAttestation) {
+  // Bootstrap-key registrant attestation (ADR-0059 decision 8), required for
+  // every onboard request, auto-approve included. The gate probe supplies
+  // the chain-declared (alg, key) trust anchor. The waivers live outside
+  // this path: the ops break-glass mint (POST /api/payments/onboard-tokens,
+  // admittedBy "ops") and the CREATE3 proof for uups-counterfactual
+  // instances at genesis.
+  if (!attestation) {
     return attachCors(
       ClientErrors.badRequest(
         "onboard request requires a bootstrap-key attestation (CBOR key 7)",
@@ -388,48 +384,44 @@ async function handleCreateRequest(
       corsHeaders,
     );
   }
-  if (attestation) {
-    const requestOrigin = new URL(request.url).origin;
-    const audOverride = env.ONBOARD_ATTESTATION_AUD?.trim();
-    const maxWindowRaw = Number.parseInt(
-      env.ONBOARD_ATTESTATION_MAX_WINDOW_SEC?.trim() ?? "",
-      10,
+  const requestOrigin = new URL(request.url).origin;
+  const audOverride = env.ONBOARD_ATTESTATION_AUD?.trim();
+  const maxWindowRaw = Number.parseInt(
+    env.ONBOARD_ATTESTATION_MAX_WINDOW_SEC?.trim() ?? "",
+    10,
+  );
+  const verdict = await verifyOnboardAttestation(
+    attestation,
+    {
+      alg: gate.bootstrapAlg,
+      key: gate.bootstrapKey,
+      chainId: chainId.trim(),
+      univocityAddr: gate.univocityAddr,
+      acceptedAud: audOverride ? [audOverride, requestOrigin] : [requestOrigin],
+      nowSec: Math.floor(Date.now() / 1000),
+      maxWindowSec:
+        Number.isFinite(maxWindowRaw) && maxWindowRaw > 0
+          ? maxWindowRaw
+          : DEFAULT_ATTESTATION_MAX_WINDOW_SEC,
+    },
+    // Safe 1x1 (Mode D, plan-2607-45): the bootstrap key may be a contract
+    // account — the ERC-1271 capability lets it validate; EOA roots are
+    // unaffected.
+    attestationVerifyCapabilities(env, chainId.trim(), gate.bootstrapAlg),
+  );
+  if (!verdict.ok) {
+    // RPC outage is an availability outcome, not a verdict — 503 like the
+    // deployment gate's RPC-failure path (plan-2607-09 R1).
+    return attachCors(
+      verdict.unavailable
+        ? problemResponse(503, "Service Unavailable", "about:blank", {
+            detail: `attestation verification unavailable: ${verdict.detail}`,
+          })
+        : problemResponse(403, "Forbidden", "about:blank", {
+            detail: `attestation rejected: ${verdict.detail}`,
+          }),
+      corsHeaders,
     );
-    const verdict = await verifyOnboardAttestation(
-      attestation,
-      {
-        alg: gate.bootstrapAlg,
-        key: gate.bootstrapKey,
-        chainId: chainId.trim(),
-        univocityAddr: gate.univocityAddr,
-        acceptedAud: audOverride
-          ? [audOverride, requestOrigin]
-          : [requestOrigin],
-        nowSec: Math.floor(Date.now() / 1000),
-        maxWindowSec:
-          Number.isFinite(maxWindowRaw) && maxWindowRaw > 0
-            ? maxWindowRaw
-            : DEFAULT_ATTESTATION_MAX_WINDOW_SEC,
-      },
-      // Safe 1x1 (Mode D, plan-2607-45): the bootstrap key may be a contract
-      // account — the ERC-1271 capability lets it validate; EOA roots are
-      // unaffected.
-      attestationVerifyCapabilities(env, chainId.trim(), gate.bootstrapAlg),
-    );
-    if (!verdict.ok) {
-      // RPC outage is an availability outcome, not a verdict — 503 like the
-      // deployment gate's RPC-failure path (plan-2607-09 R1).
-      return attachCors(
-        verdict.unavailable
-          ? problemResponse(503, "Service Unavailable", "about:blank", {
-              detail: `attestation verification unavailable: ${verdict.detail}`,
-            })
-          : problemResponse(403, "Forbidden", "about:blank", {
-              detail: `attestation rejected: ${verdict.detail}`,
-            }),
-        corsHeaders,
-      );
-    }
   }
 
   const pendingCount = await countNonTerminalRequestsForBinding(
@@ -456,7 +448,7 @@ async function handleCreateRequest(
     mandateOrigin,
     plannedForestR,
     ttlSec: defaultRequestTtlSec(env),
-    attested: attestation !== undefined,
+    attested: true,
   });
 
   // Retention (D8): one small COSE object per instance, standing dispute
@@ -464,18 +456,16 @@ async function handleCreateRequest(
   // the TTL'd request record; last attestation per instance wins. Written
   // only once the request record exists — a quota- or cap-rejected create
   // must not overwrite the standing blob (plan-2607-46 slice 01 hygiene).
-  if (attestation) {
-    const instanceId = tryUnivocityInstanceIdFromChainBinding({
-      chainId: chainId.trim(),
-      univocityAddr: gate.univocityAddr,
-    });
-    if (instanceId) {
-      await env.R2_GRANTS.put(
-        `payments/attestations/${instanceId}.cose`,
-        attestation,
-        { httpMetadata: { contentType: "application/cose" } },
-      );
-    }
+  const instanceId = tryUnivocityInstanceIdFromChainBinding({
+    chainId: chainId.trim(),
+    univocityAddr: gate.univocityAddr,
+  });
+  if (instanceId) {
+    await env.R2_GRANTS.put(
+      `payments/attestations/${instanceId}.cose`,
+      attestation,
+      { httpMetadata: { contentType: "application/cose" } },
+    );
   }
 
   scheduleOnboardWebhook(ctx, env, "onboard.request.created", {
