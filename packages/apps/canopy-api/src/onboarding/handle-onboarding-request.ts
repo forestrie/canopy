@@ -269,8 +269,10 @@ function publicRequestView(record: OnboardRequestRecord) {
  * Hard cutover on the bootstrap-key attestation (ADR-0059 decision 8,
  * plan-2611-11 decisions Q46): a request created before attestation became
  * mandatory carries no `attested` mark and is never admitted — no approve,
- * redeem or reissue — so the bypass closes at deploy rather than at the
- * request's expiresAt. The requester creates a new, attested request.
+ * redeem or reissue. A token it already produced is refused at genesis
+ * (`resolveGenesisAuth` in payments/genesis-auth.ts). Together these
+ * close the bypass at deploy rather than at the request's or token's expiry.
+ * The requester creates a new, attested request.
  */
 function unattestedRequestConflict(): Response {
   return ClientErrors.conflict(

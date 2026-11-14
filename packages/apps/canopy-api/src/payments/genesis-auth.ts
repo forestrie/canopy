@@ -10,6 +10,7 @@
 
 import { ClientErrors } from "../cbor-api/problem-details.js";
 import { logIdSegmentToCanonicalUuid } from "../grant/log-id-wire.js";
+import { readOnboardRequest } from "../onboarding/onboard-request-store.js";
 import {
   isOnboardTokenActive,
   readOnboardTokenRecord,
@@ -64,6 +65,18 @@ export async function resolveGenesisAuth(
   const tokenRecord = await readOnboardTokenRecord(env, active.hash);
   if (!tokenRecord) {
     return ClientErrors.unauthorized("Invalid or revoked onboard token.");
+  }
+
+  // Q46 hard cutover (ADR-0059 decision 8): a token redeemed from a request
+  // created before attestation was required stays active until its expiry,
+  // so refuse it here too. Break-glass tokens carry no requestId and pass.
+  if (tokenRecord.requestId) {
+    const request = await readOnboardRequest(env, tokenRecord.requestId);
+    if (request?.attested !== true) {
+      return ClientErrors.forbidden(
+        "Onboard token was redeemed from a request without the required bootstrap-key attestation; create a new attested onboard request",
+      );
+    }
   }
   if (tokenRecord.consumedForestR) {
     let pathUuid: string;

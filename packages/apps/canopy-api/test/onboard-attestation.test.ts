@@ -18,8 +18,15 @@ import { tryUnivocityInstanceIdFromChainBinding } from "@canopy/univocity-instan
 import worker from "../src/index";
 import type { Env } from "../src/index";
 import { decodeCborAsObject } from "./helpers/cbor-decode-object.js";
-import { listOnboardTokens } from "../src/payments/onboard-token-store.js";
-import { readUnivocityInstanceReservation } from "../src/payments/instance-registry.js";
+import {
+  listOnboardTokens,
+  mintOnboardToken,
+} from "../src/payments/onboard-token-store.js";
+import {
+  readUnivocityInstanceReservation,
+  requestHolder,
+  reserveUnivocityInstance,
+} from "../src/payments/instance-registry.js";
 import {
   createOnboardRequest,
   listOnboardRequests,
@@ -38,6 +45,10 @@ import {
   bootstrapConfigCallData,
   rootLogIdCallData,
 } from "../src/onboarding/univocity-identity-probe.js";
+import {
+  seedGenesisChainIdentity,
+  validGenesisV2Es256CborMap,
+} from "./helpers/genesis-v2-body.js";
 
 const poolEnv = env as unknown as Env;
 const OPS = "vitest-ops-admin-token";
@@ -554,7 +565,8 @@ describe("POST /api/onboarding/requests — attestation gate", () => {
 describe("onboard requests without an attestation mark (Q46 hard cutover)", () => {
   // A request created before the cutover has no `attested` mark. Whatever
   // state it reached, it must never be admitted: no approve, redeem or
-  // reissue, so the pre-cutover bypass closes at deploy, not at expiresAt.
+  // reissue, and no genesis with a token it already produced, so the
+  // pre-cutover bypass closes at deploy, not at expiresAt.
   async function seedUnattested(
     e: Env,
     addr: string,
@@ -640,4 +652,69 @@ describe("onboard requests without an attestation mark (Q46 hard cutover)", () =
     expect(await problemDetail(res)).toContain("attestation");
     expect((await readOnboardRequest(e, requestId))?.status).toBe("pending");
   });
+
+  // A token redeemed from an unattested request before the cutover is still
+  // active. Genesis must refuse it, or it sets the instance root (P14).
+  it.each([
+    ["an attested", 201, true, 0x71, "registered"],
+    ["an unattested", 403, false, 0x72, "reserved"],
+  ] as const)(
+    "genesis with a token redeemed from %s request answers %i",
+    async (_kind, status, attested, addrByte, reservationState) => {
+      stubChain();
+      const e = requestEnv();
+      const chainBinding = {
+        chainId: CHAIN,
+        univocityAddr: addrByte.toString(16).repeat(20),
+      };
+      const { record } = await createOnboardRequest(e, {
+        label: "pre-cutover-token",
+        chainBinding,
+        contactEmail: "owner@example.test",
+        ttlSec: 3600,
+        attested,
+      });
+      await transitionPendingToApprovedCas(e, record.requestId);
+      await transitionApprovedToRedeemedCas(e, record.requestId);
+      const minted = await mintOnboardToken(e, {
+        label: record.label,
+        requestId: record.requestId,
+        chainBinding,
+        admittedBy: "ops",
+      });
+      const instanceId = tryUnivocityInstanceIdFromChainBinding(chainBinding)!;
+      await reserveUnivocityInstance(
+        e,
+        instanceId,
+        requestHolder(record.requestId),
+      );
+
+      const genesisMap = validGenesisV2Es256CborMap({
+        chainId: CHAIN,
+        univocityAddr: new Uint8Array(20).fill(addrByte),
+      });
+      await seedGenesisChainIdentity(e, genesisMap);
+      const res = await worker.fetch(
+        new Request(
+          `http://localhost/api/forest/${crypto.randomUUID()}/genesis`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${minted.token}`,
+              "Content-Type": "application/cbor",
+            },
+            body: encodeCborDeterministic(genesisMap) as unknown as BodyInit,
+          },
+        ),
+        e,
+        testCtx,
+      );
+      expect(res.status).toBe(status);
+      if (!attested) {
+        expect(await problemDetail(res)).toContain("attestation");
+      }
+      const reservation = await readUnivocityInstanceReservation(e, instanceId);
+      expect(reservation?.state).toBe(reservationState);
+    },
+  );
 });
