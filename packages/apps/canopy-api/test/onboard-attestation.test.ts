@@ -592,6 +592,28 @@ describe("POST /api/onboarding/requests — attestation gate", () => {
       ]);
     }
 
+    /**
+     * Same signed bytes, the other valid ES256 signature (r, n-s): ES256
+     * verifies high-s, so anyone can make this twin without the key.
+     */
+    function otherSignature(attestation: Uint8Array): Uint8Array {
+      const [protectedBytes, unprotected, payloadBytes, signature] =
+        decodeCborDeterministic(attestation) as [
+          Uint8Array,
+          Map<unknown, unknown>,
+          Uint8Array,
+          Uint8Array,
+        ];
+      const sig = p256.Signature.fromCompact(signature);
+      const twin = new p256.Signature(sig.r, p256.CURVE.n - sig.s);
+      return encodeCborDeterministic([
+        protectedBytes,
+        unprotected,
+        payloadBytes,
+        twin.toCompactRawBytes(),
+      ]);
+    }
+
     it.each([
       ["the same attestation bytes", 409, (f: Map<number, unknown>) => f],
       [
@@ -599,6 +621,12 @@ describe("POST /api/onboarding/requests — attestation gate", () => {
         409,
         (f: Map<number, unknown>) =>
           new Map(f).set(7, rewrapped(f.get(7) as Uint8Array)),
+      ],
+      [
+        "the same signed content, the other valid ECDSA signature",
+        409,
+        (f: Map<number, unknown>) =>
+          new Map(f).set(7, otherSignature(f.get(7) as Uint8Array)),
       ],
       [
         "a fresh attestation for the same binding",
