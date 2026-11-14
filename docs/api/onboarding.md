@@ -111,7 +111,7 @@ the request expires.
 |--------|----------|---------|
 | 401 | `Invalid redeem code` | wrong redeem code |
 | 402 | payment challenge | pending request; this deployment takes payment as approval |
-| 409 | `Request predates the required bootstrap-key attestation; create a new attested onboard request` | the request was created before attestation was required |
+| 409 | `Request predates single-use attestations and is forfeit; create a new attested onboard request` | the request was created before this deploy (before single-use claims) |
 | 409 | `Request awaiting operator approval; …` | pending request; this deployment needs operator approval |
 | 409 | `Request not approved`, `Request was rejected` | the request is not redeemable |
 | 409 | `Univocity instance is already reserved or registered` | another holder has the instance |
@@ -122,29 +122,40 @@ the request expires.
 
 `POST /api/onboarding/requests/{id}/approve` (CBOR) and
 `POST /api/onboarding/admin/requests/{id}/approve` (JSON), ops admin bearer.
-A request created before attestation was required answers `409` with the
-same `Request predates the required bootstrap-key attestation; …` detail
-and stays pending.
+A request created before this deploy (before single-use claims) answers
+`409` with the same `Request predates single-use attestations and is
+forfeit; …` detail and stays pending. Auto-approve never approves one.
 
 ## Genesis with the token
 
 `POST /api/forest/{R}/genesis` with `Authorization: Bearer <token>`.
-Redeem marks each token it mints from an attested request, and genesis
-answers `403` for a request's token without that mark: `Onboard token has
-no bootstrap-key attestation mark; redeem its onboard request again for a
-new token, or create a new attested onboard request if that request had no
-attestation`. Tokens from the break-glass mint are not tied to a request
-and are not refused for this reason.
+Redeem marks each token it mints, and genesis answers `403` for a
+request's token without that mark: `Onboard token predates single-use
+attestations and is forfeit; create a new attested onboard request`.
+Tokens from the break-glass mint are not tied to a request and are not
+refused for this reason.
 
-Tokens minted before redeem marked them have no mark, even when their
-request was attested. The holder redeems the same request again, with the
-same redeem code: that returns a marked token and revokes the old one, until
-the request expires. Creating a new request does not help, because the old
-request still holds the instance's reservation.
+## Requests and tokens from before single-use claims
 
-Requests and tokens from before attestation was required cannot be
-admitted. The owner creates a new, attested request. A reservation such a
-request already holds stays until the operator releases it with
-`DELETE /api/payments/chain-bindings/{id}`. The operator also releases the
-reservation of an attested request that expired before its holder
-redeemed it again.
+Before single-use claims, canopy marked any request with a verified
+attestation as attested and published that attestation, so anyone could
+replay it into an attested request. A request created before this deploy
+(before single-use claims) therefore proves nothing about ownership,
+attested or not, and is forfeit. So is every token redeemed from one.
+
+Create now records the claim on the request once the claim wins. Approve,
+auto-approve, redeem and re-redeem admit only a request carrying it, and
+the per-binding pending cap counts only those. Redeem marks only the tokens
+it mints from such a request. Pre-production lanes take no real fees, so
+there is no refund and no re-admission.
+
+The owner creates a new, attested request. If the old request still holds
+the instance's reservation, the new request's admission (redeem) answers
+`409` `Univocity instance is already reserved or registered` until the
+canopy operator releases the reservation with
+`DELETE /api/payments/chain-bindings/{id}`.
+
+**Rollout.** Before promoting this deploy to Lane B, ops releases every
+reservation a forfeit request or token still holds, with
+`DELETE /api/payments/chain-bindings/{id}`, or resets that lane's
+onboarding state.

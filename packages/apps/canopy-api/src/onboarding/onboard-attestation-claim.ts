@@ -113,13 +113,15 @@ async function putClaimMarker(
  * ONBOARD_ATTESTATION_MAX_WINDOW_SEC. The marker written for the instance's
  * stored attestation holds only `instanceId` and `usedAt`.
  *
- * @returns true if this caller won the claim; false if already used.
+ * @returns the marker key if this caller won the claim, for create to
+ *   record on the request (OnboardRequestRecord.attestationClaimKey); null
+ *   if the attestation was already used.
  */
 export async function claimOnboardAttestation(
   env: OnboardAttestationClaimEnv,
   attestation: Uint8Array,
   claim: OnboardAttestationClaimInput,
-): Promise<boolean> {
+): Promise<string | null> {
   // Before single-use claims, every accepted attestation was stored at the
   // instance's public key with no marker, so one still inside its window
   // could win the claim below, even after a create replaced it. Mark the
@@ -131,9 +133,11 @@ export async function claimOnboardAttestation(
       await putClaimMarker(env, storedKey, { instanceId: claim.instanceId });
     }
   }
-  return putClaimMarker(env, await onboardAttestationClaimKey(attestation), {
+  const key = await onboardAttestationClaimKey(attestation);
+  const won = await putClaimMarker(env, key, {
     instanceId: claim.instanceId,
     iat: claim.iat,
     exp: claim.exp,
   });
+  return won ? key : null;
 }

@@ -15,7 +15,10 @@ export interface MintOnboardTokenOptions {
    */
   chainBinding: OnboardTokenChainBinding;
   admittedBy?: OnboardAdmittedBy;
-  /** The source request's attestation mark; see OnboardTokenRecord.attested. */
+  /**
+   * True only when the source request carries the single-use attestation
+   * claim mark; see OnboardTokenRecord.attested.
+   */
   attested?: boolean;
 }
 

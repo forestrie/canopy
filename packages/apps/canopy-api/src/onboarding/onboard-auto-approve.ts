@@ -1,5 +1,6 @@
 import type { OnboardRequestRecord } from "./onboard-request-record.js";
 import { isSupportedChainIdForEnv } from "../env/supported-chains-for-env.js";
+import { hasAttestationClaim } from "./onboard-request-store.js";
 
 export interface OnboardAutoApproveEnv {
   NODE_ENV?: string;
@@ -9,11 +10,21 @@ export interface OnboardAutoApproveEnv {
   SUPPORTED_CHAINS_RPC?: string;
 }
 
+/**
+ * Dev auto-approve policy for a just-created onboard request (ADR-0059
+ * decision 3): off in prod, opt-in by env, narrowed by chain allowlist and
+ * label prefix. Never approves a record without the single-use attestation
+ * claim mark: one created before single-use claims is forfeit.
+ */
 export function shouldAutoApproveRequest(
   env: OnboardAutoApproveEnv,
   record: OnboardRequestRecord,
 ): boolean {
   if (env.NODE_ENV?.trim() === "prod") {
+    return false;
+  }
+
+  if (!hasAttestationClaim(record)) {
     return false;
   }
 

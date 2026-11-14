@@ -45,6 +45,7 @@ import {
   countNonTerminalRequestsForBinding,
   createOnboardRequest,
   effectiveStatus,
+  hasAttestationClaim,
   listOnboardRequests,
   readOnboardRequest,
   readOnboardRequestWithEtag,
@@ -270,19 +271,21 @@ function publicRequestView(record: OnboardRequestRecord) {
 }
 
 /**
- * Hard cutover on the bootstrap-key attestation (ADR-0059 decision 8): a
- * request created before attestation became mandatory carries no `attested`
- * mark and is never admitted: no approve, redeem or reissue. A token it
- * already produced is refused at genesis (`resolveGenesisAuth` in
- * payments/genesis-auth.ts). Lanes are pre-production with no real fees, so
- * such requests and tokens are forfeit: no refund, no re-admission. Any
- * reservation they hold stays until ops releases it with
- * `DELETE /api/payments/chain-bindings/{id}`. The requester creates a new,
- * attested request.
+ * Hard cutover on single-use attestations (ADR-0059 decision 8). A request
+ * created before this deploy (before single-use claims) has no claim mark
+ * ({@link hasAttestationClaim}), attested or not: the code before it marked
+ * any verified attestation `attested: true` and published it, so anyone could
+ * replay it into such a record. These requests are never admitted: no
+ * approve, auto-approve, redeem or reissue. A token one already produced is
+ * refused at genesis (`resolveGenesisAuth` in payments/genesis-auth.ts).
+ * Lanes are pre-production with no real fees, so such requests and tokens
+ * are forfeit: no refund, no re-admission. Any reservation they hold stays
+ * until ops releases it with `DELETE /api/payments/chain-bindings/{id}`;
+ * until then the owner's new request answers 409 at admission.
  */
-function unattestedRequestConflict(): Response {
+function forfeitRequestConflict(): Response {
   return ClientErrors.conflict(
-    "Request predates the required bootstrap-key attestation; create a new attested onboard request",
+    "Request predates single-use attestations and is forfeit; create a new attested onboard request",
   );
 }
 
@@ -461,17 +464,18 @@ async function handleCreateRequest(
 
   // Single use: the stored attestation is publicly readable, so a copy must
   // not mint a second request. Claimed after the cap check (a refusal above
-  // does not burn it) and immediately before the record is created.
+  // does not burn it) and immediately before the record is created, which
+  // records the marker key as the mark admission requires.
   const instanceId = tryUnivocityInstanceIdFromChainBinding({
     chainId: chainId.trim(),
     univocityAddr: gate.univocityAddr,
   });
-  const attestationClaimed = await claimOnboardAttestation(env, attestation, {
+  const attestationClaimKey = await claimOnboardAttestation(env, attestation, {
     instanceId,
     iat: verdict.iat,
     exp: verdict.exp,
   });
-  if (!attestationClaimed) {
+  if (!attestationClaimKey) {
     return attachCors(
       ClientErrors.conflict("attestation already used; sign a new one"),
       corsHeaders,
@@ -488,7 +492,7 @@ async function handleCreateRequest(
     mandateOrigin,
     plannedForestR,
     ttlSec: defaultRequestTtlSec(env),
-    attested: true,
+    attestationClaimKey,
   });
 
   // Retention (D8): one small COSE object per instance, standing dispute
@@ -598,7 +602,7 @@ async function reissueRedeemedToken(
       chainBinding: current.record.chainBinding,
       expiry: now + defaultTokenTtlSec(env),
       admittedBy,
-      attested: current.record.attested === true,
+      attested: hasAttestationClaim(current.record),
     });
 
     const withRef: OnboardRequestRecord = {
@@ -692,8 +696,10 @@ async function handleRedeem(
     );
   }
 
-  if (record.attested !== true) {
-    return attachCors(unattestedRequestConflict(), corsHeaders);
+  // Before any approve, payment or reissue: a request created before
+  // single-use claims is forfeit.
+  if (!hasAttestationClaim(record)) {
+    return attachCors(forfeitRequestConflict(), corsHeaders);
   }
 
   // Approval gate. An ops-`approved` request redeems as before with no payment.
@@ -836,7 +842,8 @@ async function handleRedeem(
       : transition.record.autoApproved
         ? "auto"
         : "ops",
-    attested: transition.record.attested === true,
+    // The stamp genesis requires; only a claimed request reaches here.
+    attested: hasAttestationClaim(transition.record),
   });
 
   const withRef: OnboardRequestRecord = {
@@ -879,12 +886,12 @@ async function handleOpsApprove(
   ctx: ExecutionContext,
   responseFormat: "json" | "cbor" = "cbor",
 ): Promise<Response> {
-  // `attested` is set once at create and never changes, so reading it ahead
-  // of the approve CAS leaves no window.
+  // The claim mark is set once at create and never changes, so reading it
+  // ahead of the approve CAS leaves no window.
   const current = await readOnboardRequest(env, requestId);
-  if (current && current.attested !== true) {
+  if (current && !hasAttestationClaim(current)) {
     return attachFormat(
-      unattestedRequestConflict(),
+      forfeitRequestConflict(),
       corsHeaders,
       responseFormat === "json",
     );

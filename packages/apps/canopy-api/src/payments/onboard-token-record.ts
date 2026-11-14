@@ -25,9 +25,11 @@ export interface OnboardTokenRecord {
   consumedForestR?: string;
   admittedBy?: OnboardAdmittedBy;
   /**
-   * True when the token was minted from an onboard request that carried the
-   * bootstrap-key attestation (ADR-0059 decision 8). Genesis refuses a
+   * True when the token was minted from an onboard request carrying the
+   * single-use attestation claim mark (OnboardRequestRecord
+   * .attestationClaimKey; ADR-0059 decision 8). Genesis refuses a
    * request-derived token without it, so it never reads the request record.
+   * Tokens redeemed before this deploy have none and are forfeit.
    */
   attested?: boolean;
 }

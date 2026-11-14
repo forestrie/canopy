@@ -22,6 +22,7 @@ import { decodeCborAsObject } from "./helpers/cbor-decode-object.js";
 import {
   listOnboardTokens,
   mintOnboardToken,
+  readOnboardTokenRecord,
 } from "../src/payments/onboard-token-store.js";
 import {
   readUnivocityInstanceReservation,
@@ -43,6 +44,7 @@ import {
   ONBOARD_ATTESTATION_CONTENT_TYPE,
   verifyOnboardAttestation,
 } from "../src/onboarding/onboard-attestation.js";
+import { onboardAttestationClaimKey } from "../src/onboarding/onboard-attestation-claim.js";
 import {
   COSE_ALG_ES256,
   COSE_ALG_KS256,
@@ -505,6 +507,12 @@ function baseFields(addr = ADDR): Map<number, unknown> {
   ]);
 }
 
+/**
+ * Stands in for the marker key a winning create writes, for requests seeded
+ * straight into the store. Admission checks only that the key is present.
+ */
+const TEST_CLAIM_KEY = "payments/used-attestations/test";
+
 describe("POST /api/onboarding/requests — attestation gate", () => {
   it("a present-but-invalid attestation is rejected (403)", async () => {
     stubChain();
@@ -699,7 +707,7 @@ describe("POST /api/onboarding/requests — attestation gate", () => {
           chainBinding,
           contactEmail: "owner@example.test",
           ttlSec: 3600,
-          attested: true,
+          attestationClaimKey: TEST_CLAIM_KEY,
         });
       }
       const now = Math.floor(Date.now() / 1000);
@@ -745,24 +753,44 @@ describe("POST /api/onboarding/requests — attestation gate", () => {
   });
 });
 
-// --- hard cutover: requests created before attestation was required ---
+// --- forfeit: requests and tokens created before single-use claims ---
 
-describe("onboard requests without an attestation mark (Q46 hard cutover)", () => {
-  // A request created before the cutover has no `attested` mark. Whatever
-  // state it reached, it must never be admitted: no approve, redeem or
-  // reissue, and no genesis with a token it already produced, so the
-  // pre-cutover bypass closes at deploy, not at expiresAt.
-  async function seedUnattested(
+describe("onboard requests created before single-use claims (forfeit)", () => {
+  // Before single-use claims, create marked a request `attested: true` for
+  // any verified attestation and published that attestation, so anyone could
+  // replay it into an `attested: true` record. No record from before this
+  // deploy proves ownership, attested or not. Only a record carrying the
+  // claim key that create writes once its claim wins is ever admitted, and
+  // only a token stamped from such a record passes genesis.
+  const REQUEST_FORFEIT =
+    "Request predates single-use attestations and is forfeit; create a new attested onboard request";
+  const TOKEN_FORFEIT =
+    "Onboard token predates single-use attestations and is forfeit; create a new attested onboard request";
+
+  /** A pre-deploy record: no claim key, and `attested: true` or nothing. */
+  type PreDeployKind = "unattested" | "attested";
+
+  /** Write a request as the code before single-use claims wrote it. */
+  async function seedPreDeploy(
     e: Env,
     addr: string,
-    reach: "pending" | "approved" | "redeemed",
+    kind: PreDeployKind,
+    reach: "pending" | "approved" | "redeemed" = "pending",
   ): Promise<{ requestId: string; redeemCode: string }> {
     const { record, redeemCode } = await createOnboardRequest(e, {
-      label: "pre-cutover",
+      label: "pre-deploy",
       chainBinding: { chainId: CHAIN, univocityAddr: addr },
       contactEmail: "owner@example.test",
       ttlSec: 3600,
+      attestationClaimKey: TEST_CLAIM_KEY,
     });
+    const preDeploy: Record<string, unknown> = { ...record };
+    delete preDeploy.attestationClaimKey;
+    if (kind === "attested") preDeploy.attested = true;
+    await e.R2_GRANTS.put(
+      onboardRequestR2Key(record.requestId),
+      JSON.stringify(preDeploy),
+    );
     if (reach !== "pending") {
       await transitionPendingToApprovedCas(e, record.requestId);
     }
@@ -781,45 +809,29 @@ describe("onboard requests without an attestation mark (Q46 hard cutover)", () =
     return body.detail;
   }
 
-  it.each([
-    ["pending", "c".repeat(40)],
-    ["approved", "d".repeat(40)],
-    ["redeemed", "e".repeat(40)],
-  ] as const)(
-    "redeem of an unattested %s record is refused (409), mints nothing",
-    async (reach, addr) => {
-      const e = requestEnv();
-      const { requestId, redeemCode } = await seedUnattested(e, addr, reach);
-      const res = await worker.fetch(
-        new Request(
-          `http://localhost/api/onboarding/requests/${requestId}/redeem`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/cbor" },
-            body: encodeCborDeterministic(
-              new Map<number, unknown>([[1, redeemCode]]),
-            ) as unknown as BodyInit,
-          },
-        ),
-        e,
-        testCtx,
-      );
-      expect(res.status).toBe(409);
-      expect(await problemDetail(res)).toContain("attestation");
-      const tokens = await listOnboardTokens(e);
-      expect(tokens.filter((t) => t.requestId === requestId)).toEqual([]);
-      const instanceId = tryUnivocityInstanceIdFromChainBinding({
-        chainId: CHAIN,
-        univocityAddr: addr,
-      });
-      expect(await readUnivocityInstanceReservation(e, instanceId!)).toBeNull();
-    },
-  );
+  function postRedeem(
+    e: Env,
+    requestId: string,
+    redeemCode: string,
+  ): Promise<Response> {
+    return worker.fetch(
+      new Request(
+        `http://localhost/api/onboarding/requests/${requestId}/redeem`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/cbor" },
+          body: encodeCborDeterministic(
+            new Map<number, unknown>([[1, redeemCode]]),
+          ) as unknown as BodyInit,
+        },
+      ),
+      e,
+      testCtx,
+    );
+  }
 
-  it("ops approve of a pending record is refused (409)", async () => {
-    const e = requestEnv();
-    const { requestId } = await seedUnattested(e, "f".repeat(40), "pending");
-    const res = await worker.fetch(
+  function postApprove(e: Env, requestId: string): Promise<Response> {
+    return worker.fetch(
       new Request(
         `http://localhost/api/onboarding/requests/${requestId}/approve`,
         {
@@ -833,29 +845,106 @@ describe("onboard requests without an attestation mark (Q46 hard cutover)", () =
       e,
       testCtx,
     );
-    expect(res.status).toBe(409);
-    expect(await problemDetail(res)).toContain("attestation");
-    expect((await readOnboardRequest(e, requestId))?.status).toBe("pending");
-  });
+  }
 
-  // An unattested record can never be admitted, so it must not hold one of
-  // the binding's pending slots (cap 3) against the owner's attested create.
+  /** Seed the chain identity for the binding and post genesis with `token`. */
+  async function postGenesis(
+    e: Env,
+    addrByte: number,
+    token: string,
+  ): Promise<Response> {
+    const genesisMap = validGenesisV2Es256CborMap({
+      chainId: CHAIN,
+      univocityAddr: new Uint8Array(20).fill(addrByte),
+    });
+    await seedGenesisChainIdentity(e, genesisMap);
+    return worker.fetch(
+      new Request(
+        `http://localhost/api/forest/${crypto.randomUUID()}/genesis`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/cbor",
+          },
+          body: encodeCborDeterministic(genesisMap) as unknown as BodyInit,
+        },
+      ),
+      e,
+      testCtx,
+    );
+  }
+
+  // Whatever state a pre-deploy record reached, it is never admitted. The
+  // redeemed rows are re-redeem, which reissues a token.
   it.each([
-    ["unattested", 201, false, "1".repeat(40)],
-    ["attested", 409, true, "2".repeat(40)],
+    ["unattested", "pending", "c".repeat(40)],
+    ["unattested", "approved", "d".repeat(40)],
+    ["unattested", "redeemed", "e".repeat(40)],
+    ["attested", "pending", "c1".repeat(20)],
+    ["attested", "approved", "d1".repeat(20)],
+    ["attested", "redeemed", "e1".repeat(20)],
+  ] as const)(
+    "redeem of a pre-deploy %s %s record is refused (409), mints nothing",
+    async (kind, reach, addr) => {
+      const e = requestEnv();
+      const { requestId, redeemCode } = await seedPreDeploy(
+        e,
+        addr,
+        kind,
+        reach,
+      );
+      const res = await postRedeem(e, requestId, redeemCode);
+      expect(res.status).toBe(409);
+      expect(await problemDetail(res)).toBe(REQUEST_FORFEIT);
+      const tokens = await listOnboardTokens(e);
+      expect(tokens.filter((t) => t.requestId === requestId)).toEqual([]);
+      const instanceId = tryUnivocityInstanceIdFromChainBinding({
+        chainId: CHAIN,
+        univocityAddr: addr,
+      });
+      expect(await readUnivocityInstanceReservation(e, instanceId!)).toBeNull();
+    },
+  );
+
+  it.each([
+    ["unattested", "f".repeat(40)],
+    ["attested", "f1".repeat(20)],
+  ] as const)(
+    "ops approve of a pre-deploy %s pending record is refused (409)",
+    async (kind, addr) => {
+      const e = requestEnv();
+      const { requestId } = await seedPreDeploy(e, addr, kind);
+      const res = await postApprove(e, requestId);
+      expect(res.status).toBe(409);
+      expect(await problemDetail(res)).toBe(REQUEST_FORFEIT);
+      expect((await readOnboardRequest(e, requestId))?.status).toBe("pending");
+    },
+  );
+
+  // A pre-deploy record can never be admitted, so it must not hold one of
+  // the binding's pending slots (cap 3) against the owner's new create.
+  it.each([
+    ["pre-deploy unattested", 201, "unattested", "1".repeat(40)],
+    ["pre-deploy attested", 201, "attested", "4".repeat(40)],
+    ["claimed", 409, "claimed", "2".repeat(40)],
   ] as const)(
     "three %s pending records, then an attested create answers %i",
-    async (_kind, status, attested, addr) => {
+    async (_what, status, kind, addr) => {
       stubChain();
       const e = requestEnv();
       for (let i = 0; i < 3; i++) {
-        await createOnboardRequest(e, {
-          label: "pre-cutover",
-          chainBinding: { chainId: CHAIN, univocityAddr: addr },
-          contactEmail: "owner@example.test",
-          ttlSec: 3600,
-          attested,
-        });
+        if (kind === "claimed") {
+          await createOnboardRequest(e, {
+            label: "filler",
+            chainBinding: { chainId: CHAIN, univocityAddr: addr },
+            contactEmail: "owner@example.test",
+            ttlSec: 3600,
+            attestationClaimKey: TEST_CLAIM_KEY,
+          });
+        } else {
+          await seedPreDeploy(e, addr, kind);
+        }
       }
       const now = Math.floor(Date.now() / 1000);
       const fields = baseFields(addr);
@@ -872,154 +961,94 @@ describe("onboard requests without an attestation mark (Q46 hard cutover)", () =
     },
   );
 
-  // A token redeemed from an unattested request before the cutover is still
-  // active. Genesis must refuse it, or it sets the instance root (P14).
+  // A token redeemed before this deploy has no stamp and stays active until
+  // its expiry. Genesis must refuse it, or it sets the instance root (P14).
   it.each([
-    ["an attested", 201, true, 0x71, "registered"],
-    ["an unattested", 403, false, 0x72, "reserved"],
+    ["a claimed request, stamped", 201, "claimed", 0x71, "registered"],
+    ["a pre-deploy unattested request", 403, "unattested", 0x72, "reserved"],
+    ["a pre-deploy attested request", 403, "attested", 0x75, "reserved"],
   ] as const)(
-    "genesis with a token redeemed from %s request answers %i",
-    async (_kind, status, attested, addrByte, reservationState) => {
+    "genesis with a token redeemed from %s answers %i",
+    async (_what, status, kind, addrByte, reservationState) => {
       stubChain();
       const e = requestEnv();
       const chainBinding = {
         chainId: CHAIN,
         univocityAddr: addrByte.toString(16).repeat(20),
       };
-      const { record } = await createOnboardRequest(e, {
-        label: "pre-cutover-token",
-        chainBinding,
-        contactEmail: "owner@example.test",
-        ttlSec: 3600,
-        attested,
-      });
-      await transitionPendingToApprovedCas(e, record.requestId);
-      await transitionApprovedToRedeemedCas(e, record.requestId);
-      // Redeem stamps the token from the request; a pre-cutover token has
-      // no stamp at all.
+      let requestId: string;
+      if (kind === "claimed") {
+        const { record } = await createOnboardRequest(e, {
+          label: "claimed-token",
+          chainBinding,
+          contactEmail: "owner@example.test",
+          ttlSec: 3600,
+          attestationClaimKey: TEST_CLAIM_KEY,
+        });
+        requestId = record.requestId;
+        await transitionPendingToApprovedCas(e, requestId);
+        await transitionApprovedToRedeemedCas(e, requestId);
+      } else {
+        ({ requestId } = await seedPreDeploy(
+          e,
+          chainBinding.univocityAddr,
+          kind,
+          "redeemed",
+        ));
+      }
+      // Redeem stamps the token it mints from a claimed request; a token
+      // from before this deploy has no stamp at all.
       const minted = await mintOnboardToken(e, {
-        label: record.label,
-        requestId: record.requestId,
+        label: "token",
+        requestId,
         chainBinding,
         admittedBy: "ops",
-        attested: attested ? true : undefined,
+        attested: kind === "claimed" ? true : undefined,
       });
       const instanceId = tryUnivocityInstanceIdFromChainBinding(chainBinding)!;
-      await reserveUnivocityInstance(
-        e,
-        instanceId,
-        requestHolder(record.requestId),
-      );
+      await reserveUnivocityInstance(e, instanceId, requestHolder(requestId));
 
-      const genesisMap = validGenesisV2Es256CborMap({
-        chainId: CHAIN,
-        univocityAddr: new Uint8Array(20).fill(addrByte),
-      });
-      await seedGenesisChainIdentity(e, genesisMap);
-      const res = await worker.fetch(
-        new Request(
-          `http://localhost/api/forest/${crypto.randomUUID()}/genesis`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${minted.token}`,
-              "Content-Type": "application/cbor",
-            },
-            body: encodeCborDeterministic(genesisMap) as unknown as BodyInit,
-          },
-        ),
-        e,
-        testCtx,
-      );
+      const res = await postGenesis(e, addrByte, minted.token);
       expect(res.status).toBe(status);
-      if (!attested) {
-        expect(await problemDetail(res)).toContain("attestation");
+      if (status === 403) {
+        expect(await problemDetail(res)).toBe(TOKEN_FORFEIT);
       }
       const reservation = await readUnivocityInstanceReservation(e, instanceId);
       expect(reservation?.state).toBe(reservationState);
     },
   );
 
-  // A token minted before redeem stamped `attested` has no stamp even when
-  // its request was attested. Genesis refuses it, so the refusal must name
-  // the recovery that works: re-redeem the same request. A new request
-  // cannot help, because the old one still holds the reservation.
-  it("genesis refuses an unstamped token from an attested request until it is re-redeemed", async () => {
+  it("a fresh create is marked, approved, redeemed to a stamped token, and genesis answers 201", async () => {
     stubChain();
     const e = requestEnv();
-    const addrByte = 0x75;
-    const chainBinding = {
-      chainId: CHAIN,
-      univocityAddr: addrByte.toString(16).repeat(20),
-    };
-    const { record, redeemCode } = await createOnboardRequest(e, {
-      label: "pre-stamp-token",
-      chainBinding,
-      contactEmail: "owner@example.test",
-      ttlSec: 3600,
-      attested: true,
+    const addrByte = 0x76;
+    const addr = addrByte.toString(16).repeat(20);
+    const now = Math.floor(Date.now() / 1000);
+    const attestation = buildAttestation(COSE_ALG_ES256, {
+      univocityAddr: addr,
+      iat: now - 60,
+      exp: now + 3600,
     });
-    await transitionPendingToApprovedCas(e, record.requestId);
-    await transitionApprovedToRedeemedCas(e, record.requestId);
-    const legacy = await mintOnboardToken(e, {
-      label: record.label,
-      requestId: record.requestId,
-      chainBinding,
-      admittedBy: "ops",
-    });
-    const instanceId = tryUnivocityInstanceIdFromChainBinding(chainBinding)!;
-    await reserveUnivocityInstance(
-      e,
-      instanceId,
-      requestHolder(record.requestId),
-    );
-    const genesisMap = validGenesisV2Es256CborMap({
-      chainId: CHAIN,
-      univocityAddr: new Uint8Array(20).fill(addrByte),
-    });
-    await seedGenesisChainIdentity(e, genesisMap);
-    const genesis = (token: string) =>
-      worker.fetch(
-        new Request(
-          `http://localhost/api/forest/${crypto.randomUUID()}/genesis`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/cbor",
-            },
-            body: encodeCborDeterministic(genesisMap) as unknown as BodyInit,
-          },
-        ),
-        e,
-        testCtx,
-      );
-
-    const refused = await genesis(legacy.token);
-    expect(refused.status).toBe(403);
-    expect(await problemDetail(refused)).toContain(
-      "redeem its onboard request again",
+    const fields = baseFields(addr);
+    fields.set(7, attestation);
+    const created = await postCreate(e, fields);
+    expect(created.status).toBe(201);
+    const { requestId, redeemCode } = decodeCborAsObject(
+      new Uint8Array(await created.arrayBuffer()),
+    ) as { requestId: string; redeemCode: string };
+    expect((await readOnboardRequest(e, requestId))?.attestationClaimKey).toBe(
+      await onboardAttestationClaimKey(attestation),
     );
 
-    const redeemed = await worker.fetch(
-      new Request(
-        `http://localhost/api/onboarding/requests/${record.requestId}/redeem`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/cbor" },
-          body: encodeCborDeterministic(
-            new Map<number, unknown>([[1, redeemCode]]),
-          ) as unknown as BodyInit,
-        },
-      ),
-      e,
-      testCtx,
-    );
+    expect((await postApprove(e, requestId)).status).toBe(200);
+    const redeemed = await postRedeem(e, requestId, redeemCode);
     expect(redeemed.status).toBe(200);
-    const { token } = decodeCborAsObject(
+    const { token, ref } = decodeCborAsObject(
       new Uint8Array(await redeemed.arrayBuffer()),
-    ) as { token: string };
-    expect((await genesis(token)).status).toBe(201);
+    ) as { token: string; ref: string };
+    expect((await readOnboardTokenRecord(e, ref))?.attested).toBe(true);
+
+    expect((await postGenesis(e, addrByte, token)).status).toBe(201);
   });
 
   // Request records hold PII and are kept only until redemption plus a
@@ -1029,7 +1058,7 @@ describe("onboard requests without an attestation mark (Q46 hard cutover)", () =
     ["first redeem", 1, 0x73],
     ["re-redeem", 2, 0x74],
   ] as const)(
-    "genesis with a token from an attested request's %s answers 201 once the request record is gone",
+    "genesis with a token from a claimed request's %s answers 201 once the request record is gone",
     async (_kind, redeems, addrByte) => {
       stubChain();
       const e = requestEnv();
@@ -1042,25 +1071,12 @@ describe("onboard requests without an attestation mark (Q46 hard cutover)", () =
         chainBinding,
         contactEmail: "owner@example.test",
         ttlSec: 3600,
-        attested: true,
+        attestationClaimKey: TEST_CLAIM_KEY,
       });
       await transitionPendingToApprovedCas(e, record.requestId);
       let token = "";
       for (let i = 0; i < redeems; i++) {
-        const redeemed = await worker.fetch(
-          new Request(
-            `http://localhost/api/onboarding/requests/${record.requestId}/redeem`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/cbor" },
-              body: encodeCborDeterministic(
-                new Map<number, unknown>([[1, redeemCode]]),
-              ) as unknown as BodyInit,
-            },
-          ),
-          e,
-          testCtx,
-        );
+        const redeemed = await postRedeem(e, record.requestId, redeemCode);
         expect(redeemed.status).toBe(200);
         token = (
           decodeCborAsObject(new Uint8Array(await redeemed.arrayBuffer())) as {
@@ -1070,27 +1086,7 @@ describe("onboard requests without an attestation mark (Q46 hard cutover)", () =
       }
       await e.R2_GRANTS.delete(onboardRequestR2Key(record.requestId));
 
-      const genesisMap = validGenesisV2Es256CborMap({
-        chainId: CHAIN,
-        univocityAddr: new Uint8Array(20).fill(addrByte),
-      });
-      await seedGenesisChainIdentity(e, genesisMap);
-      const res = await worker.fetch(
-        new Request(
-          `http://localhost/api/forest/${crypto.randomUUID()}/genesis`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/cbor",
-            },
-            body: encodeCborDeterministic(genesisMap) as unknown as BodyInit,
-          },
-        ),
-        e,
-        testCtx,
-      );
-      expect(res.status).toBe(201);
+      expect((await postGenesis(e, addrByte, token)).status).toBe(201);
     },
   );
 });

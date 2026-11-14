@@ -11,7 +11,11 @@ const baseRecord: OnboardRequestRecord = {
   redeemCodeHash: "abc",
   createdAt: 1,
   expiresAt: 9999999999,
+  attestationClaimKey: "payments/used-attestations/test",
 };
+
+/** Auto-approve config under which {@link baseRecord} is approved. */
+const AUTO_APPROVE_ENV = { ONBOARD_AUTO_APPROVE: "true" };
 
 const SUPPORTED_CHAINS_RPC = JSON.stringify({
   "84532": ["https://x"],
@@ -59,6 +63,23 @@ describe("onboard auto-approve", () => {
           SUPPORTED_CHAINS_RPC,
         },
         baseRecord,
+      ),
+    ).toBe(false);
+  });
+
+  // A record without the claim key was created before single-use claims
+  // and is forfeit, whether or not it was marked attested (ADR-0059 D8).
+  it.each([
+    ["with no attestation mark", {}],
+    ["marked attested before single-use claims", { attested: true }],
+  ])("never auto-approves a record %s", (_what, extra) => {
+    const preDeploy: Record<string, unknown> = { ...baseRecord, ...extra };
+    delete preDeploy.attestationClaimKey;
+    expect(shouldAutoApproveRequest(AUTO_APPROVE_ENV, baseRecord)).toBe(true);
+    expect(
+      shouldAutoApproveRequest(
+        AUTO_APPROVE_ENV,
+        preDeploy as unknown as OnboardRequestRecord,
       ),
     ).toBe(false);
   });

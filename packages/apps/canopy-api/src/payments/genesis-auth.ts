@@ -66,20 +66,20 @@ export async function resolveGenesisAuth(
     return ClientErrors.unauthorized("Invalid or revoked onboard token.");
   }
 
-  // Hard cutover (ADR-0059 decision 8): a token redeemed from a request
-  // created before attestation was required stays active until its expiry,
-  // so refuse it here too. Such tokens are forfeit (pre-production, no real
-  // fees); a reservation they hold stays until ops releases it with
-  // `DELETE /api/payments/chain-bindings/{id}`. Break-glass tokens carry no
-  // requestId and pass. The mark is read from the token, not the request:
-  // request records hold PII and need not outlive their tokens (FOR-710).
-  // A token minted before redeem stamped the mark has none even when its
-  // request was attested; re-redeeming that request mints a stamped token
-  // (until the request expires). A new request cannot help: the old one
-  // still holds the reservation.
+  // Hard cutover on single-use attestations (ADR-0059 decision 8): redeem
+  // stamps `attested` only on a token it mints from a request carrying the
+  // single-use claim mark. A token redeemed before this deploy (before
+  // single-use claims) has no stamp, whether or not its request was marked
+  // attested, and stays active until its expiry, so refuse it here. Such
+  // tokens are forfeit (pre-production, no real fees), and so is their
+  // request: re-redeem refuses it too. A reservation they hold stays until
+  // ops releases it with `DELETE /api/payments/chain-bindings/{id}`.
+  // Break-glass tokens carry no requestId and pass. The stamp is read from
+  // the token, not the request: request records hold PII and need not
+  // outlive their tokens (FOR-710).
   if (tokenRecord.requestId && tokenRecord.attested !== true) {
     return ClientErrors.forbidden(
-      "Onboard token has no bootstrap-key attestation mark; redeem its onboard request again for a new token, or create a new attested onboard request if that request had no attestation",
+      "Onboard token predates single-use attestations and is forfeit; create a new attested onboard request",
     );
   }
   if (tokenRecord.consumedForestR) {
