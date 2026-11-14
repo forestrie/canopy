@@ -155,7 +155,7 @@ tasks:
 
   bucket:lifecycle:used-attestations:
     desc: |
-      Expire spent onboard-attestation claim markers (ADR-0059 decision 8).
+      Expire spent onboard-attestation claim markers (plan-2611-11 Q48).
 
       canopy-api writes a marker per onboard create under
       payments/used-attestations/ to make a bootstrap-key attestation

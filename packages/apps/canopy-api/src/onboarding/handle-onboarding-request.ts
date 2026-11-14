@@ -290,7 +290,7 @@ function publicRequestView(record: OnboardRequestRecord) {
 }
 
 /**
- * Hard cutover on single-use attestations (ADR-0059 decision 8). A request
+ * Hard cutover on single-use attestations (plan-2611-11 Q49). A request
  * created before this deploy (before single-use claims) has no claim mark
  * ({@link hasAttestationClaim}), attested or not: the code before it marked
  * any verified attestation `attested: true` and published it, so anyone could

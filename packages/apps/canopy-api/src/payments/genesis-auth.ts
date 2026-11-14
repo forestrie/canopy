@@ -66,7 +66,7 @@ export async function resolveGenesisAuth(
     return ClientErrors.unauthorized("Invalid or revoked onboard token.");
   }
 
-  // Hard cutover on single-use attestations (ADR-0059 decision 8): redeem
+  // Hard cutover on single-use attestations (plan-2611-11 Q49): redeem
   // stamps `attested` only on a token it mints from a request carrying the
   // single-use claim mark. A token redeemed before this deploy (before
   // single-use claims) has no stamp, whether or not its request was marked

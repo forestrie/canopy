@@ -25,10 +25,11 @@ export interface OnboardRequestRecord {
   /**
    * Key of the single-use claim marker (`payments/used-attestations/…`)
    * that create wrote for this request's bootstrap-key attestation
-   * (ADR-0059 decision 8; onboard-attestation-claim.ts). Set only once the
+   * (plan-2611-11 Q48; onboard-attestation-claim.ts). Set only once the
    * claim wins, and never changed. A record without it was created before
-   * this deploy (before single-use claims) and is forfeit: it is never
-   * approved, redeemed or reissued, and never counts toward the pending cap.
+   * this deploy (before single-use claims) and is forfeit (Q49): it is
+   * never approved, redeemed or reissued, and never counts toward the
+   * pending cap.
    * See {@link hasAttestationClaim}.
    */
   attestationClaimKey?: string;
