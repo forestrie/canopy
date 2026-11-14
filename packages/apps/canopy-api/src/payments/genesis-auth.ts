@@ -73,9 +73,13 @@ export async function resolveGenesisAuth(
   // `DELETE /api/payments/chain-bindings/{id}`. Break-glass tokens carry no
   // requestId and pass. The mark is read from the token, not the request:
   // request records hold PII and need not outlive their tokens (FOR-710).
+  // A token minted before redeem stamped the mark has none even when its
+  // request was attested; re-redeeming that request mints a stamped token
+  // (until the request expires). A new request cannot help: the old one
+  // still holds the reservation.
   if (tokenRecord.requestId && tokenRecord.attested !== true) {
     return ClientErrors.forbidden(
-      "Onboard token was redeemed from a request without the required bootstrap-key attestation; create a new attested onboard request",
+      "Onboard token has no bootstrap-key attestation mark; redeem its onboard request again for a new token, or create a new attested onboard request if that request had no attestation",
     );
   }
   if (tokenRecord.consumedForestR) {

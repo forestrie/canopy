@@ -126,14 +126,23 @@ and stays pending.
 
 ## Genesis with the token
 
-`POST /api/forest/{R}/genesis` with `Authorization: Bearer <token>`. A
-token redeemed from a request created before attestation was required
-answers `403` with `Onboard token was redeemed from a request without the
-required bootstrap-key attestation; create a new attested onboard request`.
-Tokens from the break-glass mint are not tied to a request and are not
-refused for this reason.
+`POST /api/forest/{R}/genesis` with `Authorization: Bearer <token>`.
+Redeem marks each token it mints from an attested request, and genesis
+answers `403` for a request's token without that mark: `Onboard token has
+no bootstrap-key attestation mark; redeem its onboard request again for a
+new token, or create a new attested onboard request if that request had no
+attestation`. Tokens from the break-glass mint are not tied to a request
+and are not refused for this reason.
+
+Tokens minted before redeem marked them have no mark, even when their
+request was attested. The holder redeems the same request again, with the
+same redeem code: that returns a marked token and revokes the old one, until
+the request expires. Creating a new request does not help, because the old
+request still holds the instance's reservation.
 
 Requests and tokens from before attestation was required cannot be
 admitted. The owner creates a new, attested request. A reservation such a
 request already holds stays until the operator releases it with
-`DELETE /api/payments/chain-bindings/{id}`.
+`DELETE /api/payments/chain-bindings/{id}`. The operator also releases the
+reservation of an attested request that expired before its holder
+redeemed it again.

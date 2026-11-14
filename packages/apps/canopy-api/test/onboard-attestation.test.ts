@@ -895,6 +895,88 @@ describe("onboard requests without an attestation mark (Q46 hard cutover)", () =
     },
   );
 
+  // A token minted before redeem stamped `attested` has no stamp even when
+  // its request was attested. Genesis refuses it, so the refusal must name
+  // the recovery that works: re-redeem the same request. A new request
+  // cannot help, because the old one still holds the reservation.
+  it("genesis refuses an unstamped token from an attested request until it is re-redeemed", async () => {
+    stubChain();
+    const e = requestEnv();
+    const addrByte = 0x75;
+    const chainBinding = {
+      chainId: CHAIN,
+      univocityAddr: addrByte.toString(16).repeat(20),
+    };
+    const { record, redeemCode } = await createOnboardRequest(e, {
+      label: "pre-stamp-token",
+      chainBinding,
+      contactEmail: "owner@example.test",
+      ttlSec: 3600,
+      attested: true,
+    });
+    await transitionPendingToApprovedCas(e, record.requestId);
+    await transitionApprovedToRedeemedCas(e, record.requestId);
+    const legacy = await mintOnboardToken(e, {
+      label: record.label,
+      requestId: record.requestId,
+      chainBinding,
+      admittedBy: "ops",
+    });
+    const instanceId = tryUnivocityInstanceIdFromChainBinding(chainBinding)!;
+    await reserveUnivocityInstance(
+      e,
+      instanceId,
+      requestHolder(record.requestId),
+    );
+    const genesisMap = validGenesisV2Es256CborMap({
+      chainId: CHAIN,
+      univocityAddr: new Uint8Array(20).fill(addrByte),
+    });
+    await seedGenesisChainIdentity(e, genesisMap);
+    const genesis = (token: string) =>
+      worker.fetch(
+        new Request(
+          `http://localhost/api/forest/${crypto.randomUUID()}/genesis`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/cbor",
+            },
+            body: encodeCborDeterministic(genesisMap) as unknown as BodyInit,
+          },
+        ),
+        e,
+        testCtx,
+      );
+
+    const refused = await genesis(legacy.token);
+    expect(refused.status).toBe(403);
+    expect(await problemDetail(refused)).toContain(
+      "redeem its onboard request again",
+    );
+
+    const redeemed = await worker.fetch(
+      new Request(
+        `http://localhost/api/onboarding/requests/${record.requestId}/redeem`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/cbor" },
+          body: encodeCborDeterministic(
+            new Map<number, unknown>([[1, redeemCode]]),
+          ) as unknown as BodyInit,
+        },
+      ),
+      e,
+      testCtx,
+    );
+    expect(redeemed.status).toBe(200);
+    const { token } = decodeCborAsObject(
+      new Uint8Array(await redeemed.arrayBuffer()),
+    ) as { token: string };
+    expect((await genesis(token)).status).toBe(201);
+  });
+
   // Request records hold PII and are kept only until redemption plus a
   // short TTL (ADR-0059; FOR-710). Genesis must not depend on one outliving
   // the token it produced.
