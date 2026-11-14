@@ -643,6 +643,24 @@ describe("POST /api/onboarding/requests — attestation gate", () => {
       expect(res.status).toBe(status);
     });
 
+    // Before single-use claims, canopy stored every accepted attestation
+    // publicly with no marker. A still-valid one must not be claimable now.
+    it("a create presenting the attestation stored before single-use claims answers 409", async () => {
+      stubChain();
+      const e = requestEnv();
+      const fields = attestedFields();
+      const instanceId = tryUnivocityInstanceIdFromChainBinding({
+        chainId: CHAIN,
+        univocityAddr: ADDR,
+      })!;
+      await e.R2_GRANTS.put(
+        `payments/attestations/${instanceId}.cose`,
+        fields.get(7) as Uint8Array,
+      );
+      const res = await postCreate(e, fields);
+      expect(res.status).toBe(409);
+    });
+
     it("a create refused by the pending cap does not burn the attestation", async () => {
       stubChain();
       const e = requestEnv();

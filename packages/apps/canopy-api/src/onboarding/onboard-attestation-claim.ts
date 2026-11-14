@@ -15,6 +15,14 @@ export interface OnboardAttestationClaimEnv {
   R2_GRANTS: R2Bucket;
 }
 
+/**
+ * Public key of the instance's retained attestation: the last one accepted,
+ * kept as dispute evidence (ADR-0059 decision 8).
+ */
+export function storedOnboardAttestationKey(instanceId: string): string {
+  return `payments/attestations/${instanceId}.cose`;
+}
+
 export interface OnboardAttestationClaimInput {
   /** Univocity instance id the attestation binds to. */
   instanceId: string | undefined;
@@ -52,6 +60,26 @@ export async function onboardAttestationClaimKey(
 }
 
 /**
+ * Claim key of the attestation stored for the instance, or undefined when
+ * none is stored or it does not decode.
+ */
+async function storedAttestationClaimKey(
+  env: OnboardAttestationClaimEnv,
+  instanceId: string,
+): Promise<string | undefined> {
+  const stored = await env.R2_GRANTS.get(
+    storedOnboardAttestationKey(instanceId),
+  );
+  if (!stored) return undefined;
+  const bytes = new Uint8Array(await stored.arrayBuffer());
+  try {
+    return await onboardAttestationClaimKey(bytes);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Claim a verified attestation for one onboard request, with an R2
  * create-if-absent put (`etagDoesNotMatch: "*"`, null when the marker exists).
  * Call after verification and every refusal that should not burn the
@@ -71,6 +99,15 @@ export async function claimOnboardAttestation(
   claim: OnboardAttestationClaimInput,
 ): Promise<boolean> {
   const key = await onboardAttestationClaimKey(attestation);
+  // Before single-use claims, every accepted attestation was stored at the
+  // instance's public key with no marker, so one still inside its window
+  // would win the put below. The stored one is spent: refuse it.
+  if (
+    claim.instanceId &&
+    (await storedAttestationClaimKey(env, claim.instanceId)) === key
+  ) {
+    return false;
+  }
   const body = JSON.stringify({
     instanceId: claim.instanceId,
     iat: claim.iat,

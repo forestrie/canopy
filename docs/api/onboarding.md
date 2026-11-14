@@ -82,7 +82,9 @@ attestation up.
 canopy keeps the accepted attestation, publicly readable, at
 `payments/attestations/{instanceId}.cose` as dispute evidence, and the
 claim marker at `payments/used-attestations/{hex SHA-256 of the
-Sig_structure}`.
+Sig_structure}`. The stored attestation counts as used even without a
+marker, as one accepted before claims existed has none: presenting it
+answers `409`.
 
 ### Create refusals
 
