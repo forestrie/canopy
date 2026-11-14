@@ -65,7 +65,9 @@ never trusts the envelope's own claim.
   `eip155:{chainId}:0x{univocityAddr}`.
 - **Window:** iat at most 300 seconds ahead of canopy's clock, exp in the
   future, and `exp - iat` at most `ONBOARD_ATTESTATION_MAX_WINDOW_SEC`
-  (default 86400).
+  (default 86400). 86400 is also a hard ceiling: the setting can lower the
+  window but a larger value counts as 86400, because marker expiry below
+  depends on it.
 - **Signature:** ES256 is a 64-byte `r || s` over SHA-256 of the
   Sig_structure. KS256 signs keccak-256 of the Sig_structure: for an
   externally owned account, the delegation-cose profile, a 65-byte
@@ -83,6 +85,16 @@ canopy keeps the accepted attestation, publicly readable, at
 `payments/attestations/{instanceId}.cose` as dispute evidence, and the
 claim marker at `payments/used-attestations/{hex SHA-256 of the
 Sig_structure}`.
+
+R2 expires claim markers two days after they are written, by lifecycle
+rule `expire-used-attestations`, which ops applies to each lane's grants
+bucket with `R2_GRANTS_BUCKET_NAME=<bucket> task
+cf:bucket:lifecycle:used-attestations`. A marker is needed only until its
+attestation expires, and an attestation can never verify after that. exp
+is at most iat plus the 24-hour ceiling, and iat at most 300 seconds ahead
+of canopy's clock, so a marker is needed for at most 24 hours and 5 minutes
+after it is written. R2 deletes an object only once it reaches the age,
+never before.
 
 ### Create refusals
 

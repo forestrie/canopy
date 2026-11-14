@@ -67,10 +67,12 @@ export async function onboardAttestationClaimKey(
  * attestation, immediately before the request record is created.
  *
  * The marker is public, like the attestation itself, and holds no secrets or
- * contact data. Markers are kept indefinitely (one tiny object per onboard
- * request): correctness needs a marker only until `exp` plus the iat skew, but
- * keeping it avoids a lifecycle rule whose timing would have to track
- * ONBOARD_ATTESTATION_MAX_WINDOW_SEC.
+ * contact data. R2 expires markers 2 days after they are written (task
+ * cf:bucket:lifecycle:used-attestations). A marker is needed only
+ * until its attestation's `exp`, which verification bounds: exp <= iat + the
+ * window (hard ceiling 24 h, ATTESTATION_WINDOW_CEILING_SEC) and iat <= now +
+ * 300 s, so at most 24 h 5 min after the marker is written. R2 deletes an
+ * object only once it reaches the age, never before.
  *
  * @returns the marker key if this caller won the claim, for create to
  *   record on the request (OnboardRequestRecord.attestationClaimKey); null

@@ -111,7 +111,7 @@ export interface Env {
   ONBOARD_GATE_CACHE_TTL_SEC?: string;
   /** Accepted attestation `aud` override (request origin always accepted). */
   ONBOARD_ATTESTATION_AUD?: string;
-  /** Ceiling on attestation exp-iat (seconds; default 86400). */
+  /** Ceiling on attestation exp-iat (seconds; default and maximum 86400). */
   ONBOARD_ATTESTATION_MAX_WINDOW_SEC?: string;
   /** x402-settlement worker base URL for the fee-account read (FOR-497). */
   X402_SETTLEMENT_URL?: string;

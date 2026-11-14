@@ -63,7 +63,7 @@ import {
 } from "./univocity-deployment-gate.js";
 import type { UnivocityGateEnv } from "./univocity-deployment-gate.js";
 import {
-  DEFAULT_ATTESTATION_MAX_WINDOW_SEC,
+  ATTESTATION_WINDOW_CEILING_SEC,
   verifyOnboardAttestation,
 } from "./onboard-attestation.js";
 import { claimOnboardAttestation } from "./onboard-attestation-claim.js";
@@ -134,7 +134,10 @@ export interface OnboardingHandlerEnv
   ONBOARD_AUTO_APPROVE_LABEL_PREFIX?: string;
   /** Accepted attestation `aud` override (request origin always accepted). */
   ONBOARD_ATTESTATION_AUD?: string;
-  /** Ceiling on attestation exp-iat (seconds; default 86400). */
+  /**
+   * Ceiling on attestation exp-iat in seconds; may lower the 86400 default,
+   * never raise it (see attestationMaxWindowSec).
+   */
   ONBOARD_ATTESTATION_MAX_WINDOW_SEC?: string;
   /**
    * Admission policy (ADR-0059 decision 3): `vetted` — ops approval only,
@@ -230,6 +233,25 @@ async function reserveForRequest(
     );
   }
   return null;
+}
+
+/**
+ * The attestation freshness window for this deployment, in seconds.
+ * `ONBOARD_ATTESTATION_MAX_WINDOW_SEC` (a positive integer) may lower it;
+ * unset, invalid or larger values give the 24 h
+ * {@link ATTESTATION_WINDOW_CEILING_SEC}. The ceiling is hard because the
+ * 2-day R2 expiry on claim markers (task
+ * cf:bucket:lifecycle:used-attestations) depends on it: a wider
+ * window would let an attestation outlive its marker and be claimed again.
+ */
+function attestationMaxWindowSec(env: OnboardingHandlerEnv): number {
+  const raw = Number.parseInt(
+    env.ONBOARD_ATTESTATION_MAX_WINDOW_SEC?.trim() ?? "",
+    10,
+  );
+  return Number.isFinite(raw) && raw > 0
+    ? Math.min(raw, ATTESTATION_WINDOW_CEILING_SEC)
+    : ATTESTATION_WINDOW_CEILING_SEC;
 }
 
 function maxPendingPerBinding(env: OnboardingHandlerEnv): number {
@@ -407,10 +429,6 @@ async function handleCreateRequest(
   }
   const requestOrigin = new URL(request.url).origin;
   const audOverride = env.ONBOARD_ATTESTATION_AUD?.trim();
-  const maxWindowRaw = Number.parseInt(
-    env.ONBOARD_ATTESTATION_MAX_WINDOW_SEC?.trim() ?? "",
-    10,
-  );
   const verdict = await verifyOnboardAttestation(
     attestation,
     {
@@ -420,10 +438,7 @@ async function handleCreateRequest(
       univocityAddr: gate.univocityAddr,
       acceptedAud: audOverride ? [audOverride, requestOrigin] : [requestOrigin],
       nowSec: Math.floor(Date.now() / 1000),
-      maxWindowSec:
-        Number.isFinite(maxWindowRaw) && maxWindowRaw > 0
-          ? maxWindowRaw
-          : DEFAULT_ATTESTATION_MAX_WINDOW_SEC,
+      maxWindowSec: attestationMaxWindowSec(env),
     },
     // Safe 1x1 (Mode D, plan-2607-45): the bootstrap key may be a contract
     // account — the ERC-1271 capability lets it validate; EOA roots are

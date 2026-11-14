@@ -40,6 +40,7 @@ import {
 } from "../src/onboarding/onboard-request-store.js";
 import { onboardRequestR2Key } from "../src/onboarding/onboard-request-hash.js";
 import {
+  ATTESTATION_WINDOW_CEILING_SEC,
   CLAIM_CHAIN_BINDING,
   ONBOARD_ATTESTATION_CONTENT_TYPE,
   verifyOnboardAttestation,
@@ -549,6 +550,44 @@ describe("POST /api/onboarding/requests — attestation gate", () => {
       expect(listed.requests.filter((r) => r.label === label)).toEqual([]);
     },
   );
+
+  // 24 h is a hard ceiling on exp - iat: config may lower it, never raise it.
+  // The 2-day expiry on claim markers (task
+  // cf:bucket:lifecycle:used-attestations) depends on it.
+  it.each([
+    ["unset", 23, 201, undefined],
+    ["172800", 30, 403, "172800"],
+    ["172800", 23, 201, "172800"],
+    ["3600", 2, 403, "3600"],
+  ] as const)(
+    "with ONBOARD_ATTESTATION_MAX_WINDOW_SEC %s, a %i h window answers %i",
+    async (_label, windowHours, status, configured) => {
+      stubChain();
+      const iat = Math.floor(Date.now() / 1000) - 60;
+      const fields = baseFields();
+      fields.set(
+        7,
+        buildAttestation(COSE_ALG_ES256, {
+          iat,
+          exp: iat + windowHours * 3600,
+        }),
+      );
+      const e = requestEnv(
+        configured ? { ONBOARD_ATTESTATION_MAX_WINDOW_SEC: configured } : {},
+      );
+      expect((await postCreate(e, fields)).status).toBe(status);
+    },
+  );
+
+  it("the window ceiling plus the iat skew stays inside the 2-day marker expiry", () => {
+    // A marker written at T guards an attestation whose exp is at most
+    // T + 300 s (iat skew) + the ceiling. Past exp it can never verify, so
+    // R2 may delete the marker; before exp it must not.
+    const MARKER_EXPIRY_SEC = 2 * 24 * 60 * 60;
+    expect(ATTESTATION_WINDOW_CEILING_SEC + 300).toBeLessThan(
+      MARKER_EXPIRY_SEC,
+    );
+  });
 
   it("the same auto-approve-eligible request with an attestation is approved (201)", async () => {
     stubChain();
