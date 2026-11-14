@@ -8,6 +8,7 @@ import { secp256k1 } from "@noble/curves/secp256k1";
 import { sha256 } from "@noble/hashes/sha2";
 import { keccak_256 } from "@noble/hashes/sha3";
 import {
+  decodeCborDeterministic,
   encodeCborDeterministic,
   encodeSigStructure,
 } from "@forestrie/encoding";
@@ -33,6 +34,7 @@ import {
   readOnboardRequest,
   transitionApprovedToRedeemedCas,
   transitionPendingToApprovedCas,
+  transitionPendingToRejectedCas,
 } from "../src/onboarding/onboard-request-store.js";
 import {
   CLAIM_CHAIN_BINDING,
@@ -555,6 +557,95 @@ describe("POST /api/onboarding/requests — attestation gate", () => {
       status?: string;
     };
     expect(body.status).toBe("approved");
+  });
+
+  // Single use: the stored attestation is publicly readable, so a copy of a
+  // spent one must not mint a second request.
+  describe("single-use claim", () => {
+    function attestedFields(iatOffset = 60): Map<number, unknown> {
+      const now = Math.floor(Date.now() / 1000);
+      const fields = baseFields();
+      fields.set(
+        7,
+        buildAttestation(COSE_ALG_ES256, {
+          iat: now - iatOffset,
+          exp: now + 3600,
+        }),
+      );
+      return fields;
+    }
+
+    /** Same signed bytes, different (unsigned) unprotected header. */
+    function rewrapped(attestation: Uint8Array): Uint8Array {
+      const [protectedBytes, , payloadBytes, signature] =
+        decodeCborDeterministic(attestation) as [
+          Uint8Array,
+          Map<unknown, unknown>,
+          Uint8Array,
+          Uint8Array,
+        ];
+      return encodeCborDeterministic([
+        protectedBytes,
+        new Map([[4, new Uint8Array([1, 2, 3])]]),
+        payloadBytes,
+        signature,
+      ]);
+    }
+
+    it.each([
+      ["the same attestation bytes", 409, (f: Map<number, unknown>) => f],
+      [
+        "the same signed content, different unprotected header",
+        409,
+        (f: Map<number, unknown>) =>
+          new Map(f).set(7, rewrapped(f.get(7) as Uint8Array)),
+      ],
+      [
+        "a fresh attestation for the same binding",
+        201,
+        (_f: Map<number, unknown>) => attestedFields(120),
+      ],
+    ])("a second create with %s answers %i", async (_what, status, second) => {
+      stubChain();
+      const e = requestEnv();
+      const first = attestedFields();
+      expect((await postCreate(e, first)).status).toBe(201);
+      const res = await postCreate(e, second(first));
+      expect(res.status).toBe(status);
+    });
+
+    it("a create refused by the pending cap does not burn the attestation", async () => {
+      stubChain();
+      const e = requestEnv();
+      const addr = "3".repeat(40);
+      const chainBinding = { chainId: CHAIN, univocityAddr: addr };
+      for (let i = 0; i < 3; i++) {
+        await createOnboardRequest(e, {
+          label: "filler",
+          chainBinding,
+          contactEmail: "owner@example.test",
+          ttlSec: 3600,
+          attested: true,
+        });
+      }
+      const now = Math.floor(Date.now() / 1000);
+      const fields = baseFields(addr);
+      fields.set(
+        7,
+        buildAttestation(COSE_ALG_ES256, {
+          univocityAddr: addr,
+          iat: now - 60,
+          exp: now + 3600,
+        }),
+      );
+      expect((await postCreate(e, fields)).status).toBe(409);
+      // Make room: reject one filler so the cap no longer refuses.
+      const pending = (await listOnboardRequests(e)).requests.filter(
+        (r) => r.label === "filler" && r.status === "pending",
+      );
+      await transitionPendingToRejectedCas(e, pending[0]!.requestId, "room");
+      expect((await postCreate(e, fields)).status).toBe(201);
+    });
   });
 
   it("a valid attestation is accepted, recorded, and retained", async () => {

@@ -65,6 +65,7 @@ import {
   DEFAULT_ATTESTATION_MAX_WINDOW_SEC,
   verifyOnboardAttestation,
 } from "./onboard-attestation.js";
+import { claimOnboardAttestation } from "./onboard-attestation-claim.js";
 import type { SettlementJob } from "@canopy/x402-settlement-types";
 import {
   verifyOnboardPayment,
@@ -453,6 +454,25 @@ async function handleCreateRequest(
     );
   }
 
+  // Single use: the stored attestation is publicly readable, so a copy must
+  // not mint a second request. Claimed after the cap check (a refusal above
+  // does not burn it) and immediately before the record is created.
+  const instanceId = tryUnivocityInstanceIdFromChainBinding({
+    chainId: chainId.trim(),
+    univocityAddr: gate.univocityAddr,
+  });
+  const attestationClaimed = await claimOnboardAttestation(env, attestation, {
+    instanceId,
+    iat: verdict.iat,
+    exp: verdict.exp,
+  });
+  if (!attestationClaimed) {
+    return attachCors(
+      ClientErrors.conflict("attestation already used; sign a new one"),
+      corsHeaders,
+    );
+  }
+
   const { record, redeemCode } = await createOnboardRequest(env, {
     label,
     chainBinding: {
@@ -471,10 +491,6 @@ async function handleCreateRequest(
   // the TTL'd request record; last attestation per instance wins. Written
   // only once the request record exists — a quota- or cap-rejected create
   // must not overwrite the standing blob (plan-2607-46 slice 01 hygiene).
-  const instanceId = tryUnivocityInstanceIdFromChainBinding({
-    chainId: chainId.trim(),
-    univocityAddr: gate.univocityAddr,
-  });
   if (instanceId) {
     await env.R2_GRANTS.put(
       `payments/attestations/${instanceId}.cose`,

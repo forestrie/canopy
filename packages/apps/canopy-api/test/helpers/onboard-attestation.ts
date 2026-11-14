@@ -30,6 +30,13 @@ const FIELD_UNIVOCITY_ADDR = 3;
 const FIELD_ATTESTATION = 7;
 
 /**
+ * Every attestation is single-use, so each one must differ in its signed
+ * bytes even within one clock second: the counter backdates `iat` by one
+ * more second per call, staying far inside the verifier's window.
+ */
+let attestationCounter = 0;
+
+/**
  * Return `fields` plus a fresh attestation (key 7) over the binding in keys
  * 2 and 3, signed by the fixture bootstrap key.
  */
@@ -60,6 +67,7 @@ export function bootstrapConfigResultHex(): string {
 
 function signAttestation(chainId: string, univocityAddr: string): Uint8Array {
   const now = Math.floor(Date.now() / 1000);
+  const iat = now - 60 - attestationCounter++;
   const protectedBytes = encodeCborDeterministic(
     new Map<number, unknown>([
       [1, COSE_ALG_ES256],
@@ -71,7 +79,7 @@ function signAttestation(chainId: string, univocityAddr: string): Uint8Array {
       [1, `eip155:${chainId}:0x${univocityAddr}`],
       [3, ONBOARD_TEST_ORIGIN],
       [4, now + 3600],
-      [6, now - 60],
+      [6, iat],
       [
         CLAIM_CHAIN_BINDING,
         new Map<number, unknown>([

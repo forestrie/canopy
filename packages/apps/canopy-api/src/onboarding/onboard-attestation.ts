@@ -25,10 +25,10 @@
  *   signed. EOA roots recover through `recoverKs256Signer`, which refuses
  *   high-s.
  *
- * Self-contained, no challenge round-trip: the key may be in cold custody,
- * and replay within the window only yields duplicate pending requests for
- * the owner's own instance — the exclusive thing (the reservation) is still
- * won at redeem.
+ * Self-contained, no challenge round-trip: the key may be in cold custody.
+ * Replay is refused by the single-use claim (`onboard-attestation-claim.ts`),
+ * not by this verifier: the stored attestation is publicly readable, so once
+ * spent it is public evidence, never a credential.
  */
 
 import { p256 } from "@noble/curves/p256";
