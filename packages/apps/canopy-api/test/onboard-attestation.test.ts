@@ -14,8 +14,18 @@ import {
 import { env } from "cloudflare:test";
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { Erc1271UnavailableError } from "@forestrie/chain-rpc";
+import { tryUnivocityInstanceIdFromChainBinding } from "@canopy/univocity-instance-id";
 import worker from "../src/index";
 import type { Env } from "../src/index";
+import { decodeCborAsObject } from "./helpers/cbor-decode-object.js";
+import { listOnboardTokens } from "../src/payments/onboard-token-store.js";
+import { readUnivocityInstanceReservation } from "../src/payments/instance-registry.js";
+import {
+  createOnboardRequest,
+  readOnboardRequest,
+  transitionApprovedToRedeemedCas,
+  transitionPendingToApprovedCas,
+} from "../src/onboarding/onboard-request-store.js";
 import {
   CLAIM_CHAIN_BINDING,
   ONBOARD_ATTESTATION_CONTENT_TYPE,
@@ -515,5 +525,98 @@ describe("POST /api/onboarding/requests — attestation gate", () => {
     // frame pop at teardown (miniflare sqlite-shm assertion).
     const bytes = new Uint8Array(await stored!.arrayBuffer());
     expect(bytes.length).toBeGreaterThan(0);
+  });
+});
+
+// --- hard cutover: requests created before attestation was required ---
+
+describe("onboard requests without an attestation mark (Q46 hard cutover)", () => {
+  // A request created before the cutover has no `attested` mark. Whatever
+  // state it reached, it must never be admitted: no approve, redeem or
+  // reissue, so the pre-cutover bypass closes at deploy, not at expiresAt.
+  async function seedUnattested(
+    e: Env,
+    addr: string,
+    reach: "pending" | "approved" | "redeemed",
+  ): Promise<{ requestId: string; redeemCode: string }> {
+    const { record, redeemCode } = await createOnboardRequest(e, {
+      label: "pre-cutover",
+      chainBinding: { chainId: CHAIN, univocityAddr: addr },
+      contactEmail: "owner@example.test",
+      ttlSec: 3600,
+    });
+    if (reach !== "pending") {
+      await transitionPendingToApprovedCas(e, record.requestId);
+    }
+    if (reach === "redeemed") {
+      await transitionApprovedToRedeemedCas(e, record.requestId);
+    }
+    return { requestId: record.requestId, redeemCode };
+  }
+
+  async function problemDetail(res: Response): Promise<string | undefined> {
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as {
+      detail?: string;
+    };
+    return body.detail;
+  }
+
+  it.each([
+    ["pending", "c".repeat(40)],
+    ["approved", "d".repeat(40)],
+    ["redeemed", "e".repeat(40)],
+  ] as const)(
+    "redeem of an unattested %s record is refused (409), mints nothing",
+    async (reach, addr) => {
+      const e = requestEnv();
+      const { requestId, redeemCode } = await seedUnattested(e, addr, reach);
+      const res = await worker.fetch(
+        new Request(
+          `http://localhost/api/onboarding/requests/${requestId}/redeem`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/cbor" },
+            body: encodeCborDeterministic(
+              new Map<number, unknown>([[1, redeemCode]]),
+            ) as unknown as BodyInit,
+          },
+        ),
+        e,
+        testCtx,
+      );
+      expect(res.status).toBe(409);
+      expect(await problemDetail(res)).toContain("attestation");
+      const tokens = await listOnboardTokens(e);
+      expect(tokens.filter((t) => t.requestId === requestId)).toEqual([]);
+      const instanceId = tryUnivocityInstanceIdFromChainBinding({
+        chainId: CHAIN,
+        univocityAddr: addr,
+      });
+      expect(await readUnivocityInstanceReservation(e, instanceId!)).toBeNull();
+    },
+  );
+
+  it("ops approve of a pending record is refused (409)", async () => {
+    const e = requestEnv();
+    const { requestId } = await seedUnattested(e, "f".repeat(40), "pending");
+    const res = await worker.fetch(
+      new Request(
+        `http://localhost/api/onboarding/requests/${requestId}/approve`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${OPS}`,
+            "Content-Type": "application/cbor",
+          },
+        },
+      ),
+      e,
+      testCtx,
+    );
+    expect(res.status).toBe(409);
+    expect(await problemDetail(res)).toContain("attestation");
+    expect((await readOnboardRequest(e, requestId))?.status).toBe("pending");
   });
 });

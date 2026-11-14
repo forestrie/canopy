@@ -265,6 +265,19 @@ function publicRequestView(record: OnboardRequestRecord) {
   };
 }
 
+/**
+ * Hard cutover on the bootstrap-key attestation (ADR-0059 decision 8,
+ * plan-2611-11 decisions Q46): a request created before attestation became
+ * mandatory carries no `attested` mark and is never admitted — no approve,
+ * redeem or reissue — so the bypass closes at deploy rather than at the
+ * request's expiresAt. The requester creates a new, attested request.
+ */
+function unattestedRequestConflict(): Response {
+  return ClientErrors.conflict(
+    "Request predates the required bootstrap-key attestation; create a new attested onboard request",
+  );
+}
+
 async function pendingTransitionConflict(
   env: OnboardingHandlerEnv,
   requestId: string,
@@ -655,6 +668,10 @@ async function handleRedeem(
     );
   }
 
+  if (record.attested !== true) {
+    return attachCors(unattestedRequestConflict(), corsHeaders);
+  }
+
   // Approval gate. An ops-`approved` request redeems as before with no payment.
   // A `pending` (unapproved) request may be approved by paying — payment is an
   // alternative approver (FOR-433/FOR-434). Other states error as before.
@@ -837,6 +854,17 @@ async function handleOpsApprove(
   ctx: ExecutionContext,
   responseFormat: "json" | "cbor" = "cbor",
 ): Promise<Response> {
+  // `attested` is set once at create and never changes, so reading it ahead
+  // of the approve CAS leaves no window.
+  const current = await readOnboardRequest(env, requestId);
+  if (current && current.attested !== true) {
+    return attachFormat(
+      unattestedRequestConflict(),
+      corsHeaders,
+      responseFormat === "json",
+    );
+  }
+
   const approved = await approveRequestRecord(env, requestId);
   if (approved instanceof Response) {
     return attachFormat(approved, corsHeaders, responseFormat === "json");
