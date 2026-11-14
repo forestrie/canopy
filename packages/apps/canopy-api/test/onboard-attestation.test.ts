@@ -1,7 +1,7 @@
 /**
- * Bootstrap-key registrant attestation (plan-2607-43 slice 06, ADR-0059 D8):
+ * Bootstrap-key registrant attestation (ADR-0059 D8):
  * per-alg vectors, freshness, aud, binding equality, unconfusability, and
- * the flag gate on POST /api/onboarding/requests.
+ * the required-attestation gate on POST /api/onboarding/requests.
  */
 import { p256 } from "@noble/curves/p256";
 import { secp256k1 } from "@noble/curves/secp256k1";
@@ -398,7 +398,7 @@ describe("verifyOnboardAttestation — contract-account roots (ERC-1271 hooks)",
   });
 });
 
-// --- flag gate on POST /api/onboarding/requests ---
+// --- required-attestation gate on POST /api/onboarding/requests ---
 
 const SUPPORTED_CHAINS_RPC = JSON.stringify({
   [CHAIN]: ["https://rpc.example.invalid"],
@@ -479,14 +479,8 @@ function baseFields(addr = ADDR): Map<number, unknown> {
   ]);
 }
 
-describe("POST /api/onboarding/requests — attestation gate (slice 06)", () => {
-  it("flag off: absent attestation passes through", async () => {
-    stubChain();
-    const res = await postCreate(requestEnv(), baseFields());
-    expect(res.status).toBe(201);
-  });
-
-  it("flag off: a present-but-invalid attestation still rejects (403)", async () => {
+describe("POST /api/onboarding/requests — attestation gate", () => {
+  it("a present-but-invalid attestation is rejected (403)", async () => {
     stubChain();
     const bad = buildAttestation(COSE_ALG_ES256, { corruptSignature: true });
     const fields = baseFields();
@@ -495,16 +489,13 @@ describe("POST /api/onboarding/requests — attestation gate (slice 06)", () => 
     expect(res.status).toBe(403);
   });
 
-  it("flag on: absent attestation is a 400", async () => {
+  it("a request without an attestation is refused (400)", async () => {
     stubChain();
-    const res = await postCreate(
-      requestEnv({ ONBOARD_REQUIRE_KEY_ATTESTATION: "true" }),
-      baseFields(),
-    );
+    const res = await postCreate(requestEnv(), baseFields());
     expect(res.status).toBe(400);
   });
 
-  it("flag on: a valid attestation is accepted, recorded, and retained", async () => {
+  it("a valid attestation is accepted, recorded, and retained", async () => {
     stubChain();
     // NOW is a fixed test epoch; the handler reads the real clock, so issue a
     // fresh attestation around the live clock instead.
@@ -514,10 +505,7 @@ describe("POST /api/onboarding/requests — attestation gate (slice 06)", () => 
       7,
       buildAttestation(COSE_ALG_ES256, { iat: now - 60, exp: now + 3600 }),
     );
-    const res = await postCreate(
-      requestEnv({ ONBOARD_REQUIRE_KEY_ATTESTATION: "true" }),
-      fields,
-    );
+    const res = await postCreate(requestEnv(), fields);
     expect(res.status).toBe(201);
     const stored = await poolEnv.R2_GRANTS.get(
       `payments/attestations/eip155:${CHAIN}:0x${ADDR}.cose`,

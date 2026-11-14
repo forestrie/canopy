@@ -14,6 +14,10 @@ import {
   rootLogIdCallData,
 } from "../src/onboarding/univocity-identity-probe.js";
 
+import {
+  bootstrapConfigResultHex,
+  withAttestation,
+} from "./helpers/onboard-attestation.js";
 const poolEnv = env as unknown as Env;
 const OPS = "vitest-ops-admin-token";
 const CHAIN = "84532";
@@ -46,17 +50,6 @@ function createBody(fields: Record<number, unknown>): Uint8Array {
   return encodeCborDeterministic(m);
 }
 
-function validBootstrapConfigResultHex(): string {
-  const alg =
-    "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff9";
-  const offset =
-    "0000000000000000000000000000000000000000000000000000000000000040";
-  const len =
-    "0000000000000000000000000000000000000000000000000000000000000040";
-  const key = "00".repeat(64);
-  return `0x${alg}${offset}${len}${key}`;
-}
-
 function mockUnivocityRpcFetch(originalFetch: typeof fetch) {
   return vi.fn(async (input, init) => {
     const body = init?.body ? JSON.parse(String(init.body)) : {};
@@ -67,7 +60,7 @@ function mockUnivocityRpcFetch(originalFetch: typeof fetch) {
           JSON.stringify({
             jsonrpc: "2.0",
             id: 1,
-            result: validBootstrapConfigResultHex(),
+            result: bootstrapConfigResultHex(),
           }),
           { status: 200 },
         );
@@ -104,12 +97,14 @@ describe("onboard request CAS transitions", () => {
       new Request("http://localhost/api/onboarding/requests", {
         method: "POST",
         headers: { "Content-Type": "application/cbor" },
-        body: createBody({
-          1: "cas-test",
-          2: CHAIN,
-          3: DEPLOYED_ADDR,
-          4: "op@example.com",
-        }),
+        body: createBody(
+          withAttestation({
+            1: "cas-test",
+            2: CHAIN,
+            3: DEPLOYED_ADDR,
+            4: "op@example.com",
+          }),
+        ),
       }),
       e,
       testCtx,

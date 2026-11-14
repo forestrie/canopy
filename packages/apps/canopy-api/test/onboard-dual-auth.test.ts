@@ -21,6 +21,10 @@ import {
   rootLogIdCallData,
 } from "../src/onboarding/univocity-identity-probe.js";
 
+import {
+  bootstrapConfigResultHex,
+  withAttestation,
+} from "./helpers/onboard-attestation.js";
 const poolEnv = env as unknown as Env;
 const OPS = "vitest-ops-admin-token";
 const CHAIN = "84532";
@@ -36,17 +40,6 @@ function createBody(fields: Record<number, unknown>): Uint8Array {
   return encodeCborDeterministic(m);
 }
 
-/** ES256 bootstrapConfig() result the Univocity deployment gate accepts. */
-function validBootstrapConfigResultHex(): string {
-  const alg =
-    "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff9"; // -7 (ES256)
-  const offset =
-    "0000000000000000000000000000000000000000000000000000000000000040";
-  const len =
-    "0000000000000000000000000000000000000000000000000000000000000040"; // 64-byte key
-  return `0x${alg}${offset}${len}${"00".repeat(64)}`;
-}
-
 /** Stub the chain RPC so the onboard deployment gate passes (as sibling tests do). */
 function mockUnivocityRpcFetch(originalFetch: typeof fetch) {
   return vi.fn(async (input, init) => {
@@ -58,7 +51,7 @@ function mockUnivocityRpcFetch(originalFetch: typeof fetch) {
           JSON.stringify({
             jsonrpc: "2.0",
             id: 1,
-            result: validBootstrapConfigResultHex(),
+            result: bootstrapConfigResultHex(),
           }),
           { status: 200 },
         );
@@ -114,12 +107,14 @@ async function createRequest(e: Env, label: string) {
     new Request("http://localhost/api/onboarding/requests", {
       method: "POST",
       headers: { "Content-Type": "application/cbor" },
-      body: createBody({
-        1: label,
-        2: CHAIN,
-        3: DEPLOYED_ADDR,
-        4: "op@example.com",
-      }),
+      body: createBody(
+        withAttestation({
+          1: label,
+          2: CHAIN,
+          3: DEPLOYED_ADDR,
+          4: "op@example.com",
+        }),
+      ),
     }),
     e,
     testCtx,
