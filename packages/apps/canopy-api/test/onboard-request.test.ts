@@ -70,7 +70,7 @@ function createBody(fields: Record<number, unknown>): Uint8Array {
   return encodeCborDeterministic(m);
 }
 
-function inbootstrapConfigResultHex(): string {
+function invalidBootstrapConfigResultHex(): string {
   const alg =
     "0000000000000000000000000000000000000000000000000000000000000000";
   const offset =
@@ -163,7 +163,7 @@ describe("onboard request create", () => {
   it("rejects non-Univocity contract (invalid bootstrapConfig)", async () => {
     globalThis.fetch = mockUnivocityRpcFetch(
       originalFetch,
-      inbootstrapConfigResultHex(),
+      invalidBootstrapConfigResultHex(),
     );
 
     const e = envWithOnboard();
