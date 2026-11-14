@@ -29,6 +29,7 @@ import {
   reserveUnivocityInstance,
 } from "../src/payments/instance-registry.js";
 import {
+  countNonTerminalRequestsForBinding,
   createOnboardRequest,
   listOnboardRequests,
   readOnboardRequest,
@@ -641,6 +642,11 @@ describe("POST /api/onboarding/requests — attestation gate", () => {
       expect((await postCreate(e, first)).status).toBe(201);
       const res = await postCreate(e, second(first));
       expect(res.status).toBe(status);
+      // A refused replay creates no record, so replays cannot fill the
+      // binding's pending cap against the owner.
+      expect(await countNonTerminalRequestsForBinding(e, CHAIN, ADDR)).toBe(
+        status === 201 ? 2 : 1,
+      );
     });
 
     // Before single-use claims, canopy stored every accepted attestation
@@ -659,6 +665,7 @@ describe("POST /api/onboarding/requests — attestation gate", () => {
       );
       const res = await postCreate(e, fields);
       expect(res.status).toBe(409);
+      expect(await countNonTerminalRequestsForBinding(e, CHAIN, ADDR)).toBe(0);
     });
 
     // A copy taken while it was stored stays spent after the owner's next
@@ -678,6 +685,7 @@ describe("POST /api/onboarding/requests — attestation gate", () => {
       expect((await postCreate(e, attestedFields(120))).status).toBe(201);
       const res = await postCreate(e, old);
       expect(res.status).toBe(409);
+      expect(await countNonTerminalRequestsForBinding(e, CHAIN, ADDR)).toBe(1);
     });
 
     it("a create refused by the pending cap does not burn the attestation", async () => {
