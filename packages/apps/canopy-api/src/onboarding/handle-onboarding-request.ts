@@ -66,10 +66,7 @@ import {
   DEFAULT_ATTESTATION_MAX_WINDOW_SEC,
   verifyOnboardAttestation,
 } from "./onboard-attestation.js";
-import {
-  claimOnboardAttestation,
-  storedOnboardAttestationKey,
-} from "./onboard-attestation-claim.js";
+import { claimOnboardAttestation } from "./onboard-attestation-claim.js";
 import type { SettlementJob } from "@canopy/x402-settlement-types";
 import {
   verifyOnboardPayment,
@@ -502,7 +499,7 @@ async function handleCreateRequest(
   // must not overwrite the standing blob (plan-2607-46 slice 01 hygiene).
   if (instanceId) {
     await env.R2_GRANTS.put(
-      storedOnboardAttestationKey(instanceId),
+      `payments/attestations/${instanceId}.cose`,
       attestation,
       { httpMetadata: { contentType: "application/cose" } },
     );

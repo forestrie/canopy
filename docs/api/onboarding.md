@@ -82,9 +82,7 @@ attestation up.
 canopy keeps the accepted attestation, publicly readable, at
 `payments/attestations/{instanceId}.cose` as dispute evidence, and the
 claim marker at `payments/used-attestations/{hex SHA-256 of the
-Sig_structure}`. The stored attestation counts as used even without a
-marker, as one accepted before claims existed has none: presenting it
-answers `409`, also after a later create replaces it.
+Sig_structure}`.
 
 ### Create refusals
 
@@ -148,6 +146,13 @@ auto-approve, redeem and re-redeem admit only a request carrying it, and
 the per-binding pending cap counts only those. Redeem marks only the tokens
 it mints from such a request. Pre-production lanes take no real fees, so
 there is no refund and no re-admission.
+
+An attestation accepted before this deploy has no claim marker, so
+whoever first presents one that canopy published can still claim it once
+after the deploy, and the request that creates is admitted like any other.
+That lasts until the attestation expires: at most 24 hours and 300 seconds
+after the deploy (one hour for attestations the CLI signs). This is
+accepted, and no code guards it.
 
 The owner creates a new, attested request. If the old request still holds
 the instance's reservation, the new request's admission (redeem) answers
