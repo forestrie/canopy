@@ -511,18 +511,19 @@ describe("POST /api/onboarding/requests — attestation gate", () => {
     expect(res.status).toBe(403);
   });
 
+  // Dev auto-approve config shared by the refusal row and its positive
+  // control, which pins that the row really is auto-approve-eligible.
+  const AUTO_APPROVE: Partial<Env> = {
+    ONBOARD_AUTO_APPROVE: "true",
+    ONBOARD_AUTO_APPROVE_CHAIN_IDS: CHAIN,
+    ONBOARD_AUTO_APPROVE_LABEL_PREFIX: "dev-auto-",
+  };
+  const AUTO_APPROVE_LABEL = "dev-auto-x";
+
   // Q46: auto-approve is no exception — an eligible request is refused too.
   it.each([
     ["a plain", {}, "attestation-test"],
-    [
-      "an auto-approve-eligible",
-      {
-        ONBOARD_AUTO_APPROVE: "true",
-        ONBOARD_AUTO_APPROVE_CHAIN_IDS: CHAIN,
-        ONBOARD_AUTO_APPROVE_LABEL_PREFIX: "dev-auto-",
-      },
-      "dev-auto-x",
-    ],
+    ["an auto-approve-eligible", AUTO_APPROVE, AUTO_APPROVE_LABEL],
   ] as const)(
     "%s request without an attestation is refused (400)",
     async (_kind, overrides, label) => {
@@ -536,6 +537,25 @@ describe("POST /api/onboarding/requests — attestation gate", () => {
       expect(listed.requests.filter((r) => r.label === label)).toEqual([]);
     },
   );
+
+  it("the same auto-approve-eligible request with an attestation is approved (201)", async () => {
+    stubChain();
+    const now = Math.floor(Date.now() / 1000);
+    const fields = baseFields();
+    fields.set(1, AUTO_APPROVE_LABEL);
+    fields.set(
+      7,
+      buildAttestation(COSE_ALG_ES256, { iat: now - 60, exp: now + 3600 }),
+    );
+    const res = await postCreate(requestEnv(AUTO_APPROVE), fields);
+    expect(res.status).toBe(201);
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as {
+      status?: string;
+    };
+    expect(body.status).toBe("approved");
+  });
 
   it("a valid attestation is accepted, recorded, and retained", async () => {
     stubChain();
