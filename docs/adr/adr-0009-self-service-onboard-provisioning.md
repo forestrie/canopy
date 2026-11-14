@@ -6,7 +6,9 @@
 [plan-0039](../plans/plan-0039-self-service-onboard-provisioning.md),
 [devdocs ARC-021.7](../../../devdocs/arc/arc-021-payment-onboarding/07-self-service-onboard-request.md),
 [FOR-166](https://linear.app/forestrie/issue/FOR-166),
-[ADR-0010](adr-0010-supported-chains-rpc-config.md)
+[ADR-0010](adr-0010-supported-chains-rpc-config.md),
+[Onboarding API](../api/onboarding.md) (the current wire, CBOR map keys
+included)
 
 ---
 

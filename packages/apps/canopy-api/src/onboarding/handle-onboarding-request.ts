@@ -45,6 +45,7 @@ import {
   countNonTerminalRequestsForBinding,
   createOnboardRequest,
   effectiveStatus,
+  hasAttestationClaim,
   listOnboardRequests,
   readOnboardRequest,
   readOnboardRequestWithEtag,
@@ -62,9 +63,10 @@ import {
 } from "./univocity-deployment-gate.js";
 import type { UnivocityGateEnv } from "./univocity-deployment-gate.js";
 import {
-  DEFAULT_ATTESTATION_MAX_WINDOW_SEC,
+  ATTESTATION_WINDOW_CEILING_SEC,
   verifyOnboardAttestation,
 } from "./onboard-attestation.js";
+import { claimOnboardAttestation } from "./onboard-attestation-claim.js";
 import type { SettlementJob } from "@canopy/x402-settlement-types";
 import {
   verifyOnboardPayment,
@@ -130,11 +132,12 @@ export interface OnboardingHandlerEnv
   ONBOARD_AUTO_APPROVE?: string;
   ONBOARD_AUTO_APPROVE_CHAIN_IDS?: string;
   ONBOARD_AUTO_APPROVE_LABEL_PREFIX?: string;
-  /** Slice-06 flag (ADR-0059 D8): require the bootstrap-key attestation. */
-  ONBOARD_REQUIRE_KEY_ATTESTATION?: string;
   /** Accepted attestation `aud` override (request origin always accepted). */
   ONBOARD_ATTESTATION_AUD?: string;
-  /** Ceiling on attestation exp-iat (seconds; default 86400). */
+  /**
+   * Ceiling on attestation exp-iat in seconds; may lower the 86400 default,
+   * never raise it (see attestationMaxWindowSec).
+   */
   ONBOARD_ATTESTATION_MAX_WINDOW_SEC?: string;
   /**
    * Admission policy (ADR-0059 decision 3): `vetted` — ops approval only,
@@ -232,6 +235,25 @@ async function reserveForRequest(
   return null;
 }
 
+/**
+ * The attestation freshness window for this deployment, in seconds.
+ * `ONBOARD_ATTESTATION_MAX_WINDOW_SEC` (a positive integer) may lower it;
+ * unset, invalid or larger values give the 24 h
+ * {@link ATTESTATION_WINDOW_CEILING_SEC}. The ceiling is hard because the
+ * 2-day R2 expiry on claim markers (task
+ * cf:bucket:lifecycle:used-attestations) depends on it: a wider
+ * window would let an attestation outlive its marker and be claimed again.
+ */
+function attestationMaxWindowSec(env: OnboardingHandlerEnv): number {
+  const raw = Number.parseInt(
+    env.ONBOARD_ATTESTATION_MAX_WINDOW_SEC?.trim() ?? "",
+    10,
+  );
+  return Number.isFinite(raw) && raw > 0
+    ? Math.min(raw, ATTESTATION_WINDOW_CEILING_SEC)
+    : ATTESTATION_WINDOW_CEILING_SEC;
+}
+
 function maxPendingPerBinding(env: OnboardingHandlerEnv): number {
   const raw = env.ONBOARD_MAX_PENDING_PER_BINDING?.trim();
   if (raw) {
@@ -265,6 +287,25 @@ function publicRequestView(record: OnboardRequestRecord) {
     plannedForestR: record.plannedForestR,
     onboardTokenRef: record.onboardTokenRef,
   };
+}
+
+/**
+ * Hard cutover on single-use attestations (plan-2611-11 Q49). A request
+ * created before this deploy (before single-use claims) has no claim mark
+ * ({@link hasAttestationClaim}), attested or not: the code before it marked
+ * any verified attestation `attested: true` and published it, so anyone could
+ * replay it into such a record. These requests are never admitted: no
+ * approve, auto-approve, redeem or reissue. A token one already produced is
+ * refused at genesis (`resolveGenesisAuth` in payments/genesis-auth.ts).
+ * Lanes are pre-production with no real fees, so such requests and tokens
+ * are forfeit: no refund, no re-admission. Any reservation they hold stays
+ * until ops releases it with `DELETE /api/payments/chain-bindings/{id}`;
+ * until then the owner's new request answers 409 at admission.
+ */
+function forfeitRequestConflict(): Response {
+  return ClientErrors.conflict(
+    "Request predates single-use attestations and is forfeit; create a new attested onboard request",
+  );
 }
 
 async function pendingTransitionConflict(
@@ -372,15 +413,13 @@ async function handleCreateRequest(
     );
   }
 
-  // Bootstrap-key registrant attestation (slice 06, ADR-0059 D8). The gate
-  // probe supplies the chain-declared (alg, key) trust anchor. An attestation
-  // is VERIFIED whenever present — a request carrying a bad one is rejected
-  // even while the flag is off, so a broken producer is caught before the
-  // flag arms; the flag only controls whether absence is fatal. Break-glass
-  // ops mint is the documented waiver (visible via admittedBy).
-  const requireAttestation =
-    env.ONBOARD_REQUIRE_KEY_ATTESTATION?.trim() === "true";
-  if (!attestation && requireAttestation) {
+  // Bootstrap-key registrant attestation (ADR-0059 decision 8), required for
+  // every onboard request, auto-approve included. The gate probe supplies
+  // the chain-declared (alg, key) trust anchor. The waivers live outside
+  // this path: the ops break-glass mint (POST /api/payments/onboard-tokens,
+  // admittedBy "ops") and the CREATE3 proof for uups-counterfactual
+  // instances at genesis.
+  if (!attestation) {
     return attachCors(
       ClientErrors.badRequest(
         "onboard request requires a bootstrap-key attestation (CBOR key 7)",
@@ -388,48 +427,37 @@ async function handleCreateRequest(
       corsHeaders,
     );
   }
-  if (attestation) {
-    const requestOrigin = new URL(request.url).origin;
-    const audOverride = env.ONBOARD_ATTESTATION_AUD?.trim();
-    const maxWindowRaw = Number.parseInt(
-      env.ONBOARD_ATTESTATION_MAX_WINDOW_SEC?.trim() ?? "",
-      10,
+  const requestOrigin = new URL(request.url).origin;
+  const audOverride = env.ONBOARD_ATTESTATION_AUD?.trim();
+  const verdict = await verifyOnboardAttestation(
+    attestation,
+    {
+      alg: gate.bootstrapAlg,
+      key: gate.bootstrapKey,
+      chainId: chainId.trim(),
+      univocityAddr: gate.univocityAddr,
+      acceptedAud: audOverride ? [audOverride, requestOrigin] : [requestOrigin],
+      nowSec: Math.floor(Date.now() / 1000),
+      maxWindowSec: attestationMaxWindowSec(env),
+    },
+    // Safe 1x1 (Mode D, plan-2607-45): the bootstrap key may be a contract
+    // account — the ERC-1271 capability lets it validate; EOA roots are
+    // unaffected.
+    attestationVerifyCapabilities(env, chainId.trim(), gate.bootstrapAlg),
+  );
+  if (!verdict.ok) {
+    // RPC outage is an availability outcome, not a verdict — 503 like the
+    // deployment gate's RPC-failure path (plan-2607-09 R1).
+    return attachCors(
+      verdict.unavailable
+        ? problemResponse(503, "Service Unavailable", "about:blank", {
+            detail: `attestation verification unavailable: ${verdict.detail}`,
+          })
+        : problemResponse(403, "Forbidden", "about:blank", {
+            detail: `attestation rejected: ${verdict.detail}`,
+          }),
+      corsHeaders,
     );
-    const verdict = await verifyOnboardAttestation(
-      attestation,
-      {
-        alg: gate.bootstrapAlg,
-        key: gate.bootstrapKey,
-        chainId: chainId.trim(),
-        univocityAddr: gate.univocityAddr,
-        acceptedAud: audOverride
-          ? [audOverride, requestOrigin]
-          : [requestOrigin],
-        nowSec: Math.floor(Date.now() / 1000),
-        maxWindowSec:
-          Number.isFinite(maxWindowRaw) && maxWindowRaw > 0
-            ? maxWindowRaw
-            : DEFAULT_ATTESTATION_MAX_WINDOW_SEC,
-      },
-      // Safe 1x1 (Mode D, plan-2607-45): the bootstrap key may be a contract
-      // account — the ERC-1271 capability lets it validate; EOA roots are
-      // unaffected.
-      attestationVerifyCapabilities(env, chainId.trim(), gate.bootstrapAlg),
-    );
-    if (!verdict.ok) {
-      // RPC outage is an availability outcome, not a verdict — 503 like the
-      // deployment gate's RPC-failure path (plan-2607-09 R1).
-      return attachCors(
-        verdict.unavailable
-          ? problemResponse(503, "Service Unavailable", "about:blank", {
-              detail: `attestation verification unavailable: ${verdict.detail}`,
-            })
-          : problemResponse(403, "Forbidden", "about:blank", {
-              detail: `attestation rejected: ${verdict.detail}`,
-            }),
-        corsHeaders,
-      );
-    }
   }
 
   const pendingCount = await countNonTerminalRequestsForBinding(
@@ -446,34 +474,76 @@ async function handleCreateRequest(
     );
   }
 
-  const { record, redeemCode } = await createOnboardRequest(env, {
-    label,
-    chainBinding: {
-      chainId: chainId.trim(),
-      univocityAddr: gate.univocityAddr,
-    },
-    contactEmail,
-    mandateOrigin,
-    plannedForestR,
-    ttlSec: defaultRequestTtlSec(env),
-    attested: attestation !== undefined,
+  // Single use: the stored attestation is publicly readable, so a copy must
+  // not mint a second request. Claimed after the cap check (a refusal above
+  // does not burn it) and immediately before the record is created, which
+  // records the marker key as the mark admission requires.
+  const instanceId = tryUnivocityInstanceIdFromChainBinding({
+    chainId: chainId.trim(),
+    univocityAddr: gate.univocityAddr,
   });
+  const attestationClaimKey = await claimOnboardAttestation(env, attestation, {
+    instanceId,
+    iat: verdict.iat,
+    exp: verdict.exp,
+  });
+  if (!attestationClaimKey) {
+    return attachCors(
+      ClientErrors.conflict("attestation already used; sign a new one"),
+      corsHeaders,
+    );
+  }
+
+  // A failed create releases the claim so the owner can retry with the same
+  // attestation (the bootstrap key may be in cold custody). Safe: nothing
+  // has published this attestation yet, and a published copy would have
+  // lost the claim above.
+  let created: Awaited<ReturnType<typeof createOnboardRequest>>;
+  try {
+    created = await createOnboardRequest(env, {
+      label,
+      chainBinding: {
+        chainId: chainId.trim(),
+        univocityAddr: gate.univocityAddr,
+      },
+      contactEmail,
+      mandateOrigin,
+      plannedForestR,
+      ttlSec: defaultRequestTtlSec(env),
+      attestationClaimKey,
+    });
+  } catch (err) {
+    await env.R2_GRANTS.delete(attestationClaimKey).catch(() => {});
+    throw err;
+  }
+  const { record, redeemCode } = created;
 
   // Retention (D8): one small COSE object per instance, standing dispute
   // evidence, verifiable against chain state forever. Deliberately outside
   // the TTL'd request record; last attestation per instance wins. Written
   // only once the request record exists — a quota- or cap-rejected create
   // must not overwrite the standing blob (plan-2607-46 slice 01 hygiene).
-  if (attestation) {
-    const instanceId = tryUnivocityInstanceIdFromChainBinding({
-      chainId: chainId.trim(),
-      univocityAddr: gate.univocityAddr,
-    });
-    if (instanceId) {
+  // A failed write is logged with the attestation and the create goes on:
+  // failing it would strand a claimed request, holding a pending-cap slot,
+  // whose redeem code reached no one.
+  if (instanceId) {
+    try {
       await env.R2_GRANTS.put(
         `payments/attestations/${instanceId}.cose`,
         attestation,
         { httpMetadata: { contentType: "application/cose" } },
+      );
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          tag: "onboardAttestationNotRetained",
+          requestId: record.requestId,
+          instanceId,
+          attestationHex: Array.from(attestation)
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join(""),
+          detail: err instanceof Error ? err.message : String(err),
+        }),
       );
     }
   }
@@ -572,6 +642,7 @@ async function reissueRedeemedToken(
       chainBinding: current.record.chainBinding,
       expiry: now + defaultTokenTtlSec(env),
       admittedBy,
+      attested: hasAttestationClaim(current.record),
     });
 
     const withRef: OnboardRequestRecord = {
@@ -663,6 +734,12 @@ async function handleRedeem(
       ClientErrors.unauthorized("Invalid redeem code"),
       corsHeaders,
     );
+  }
+
+  // Before any approve, payment or reissue: a request created before
+  // single-use claims is forfeit.
+  if (!hasAttestationClaim(record)) {
+    return attachCors(forfeitRequestConflict(), corsHeaders);
   }
 
   // Approval gate. An ops-`approved` request redeems as before with no payment.
@@ -805,6 +882,8 @@ async function handleRedeem(
       : transition.record.autoApproved
         ? "auto"
         : "ops",
+    // The stamp genesis requires; only a claimed request reaches here.
+    attested: hasAttestationClaim(transition.record),
   });
 
   const withRef: OnboardRequestRecord = {
@@ -847,6 +926,17 @@ async function handleOpsApprove(
   ctx: ExecutionContext,
   responseFormat: "json" | "cbor" = "cbor",
 ): Promise<Response> {
+  // The claim mark is set once at create and never changes, so reading it
+  // ahead of the approve CAS leaves no window.
+  const current = await readOnboardRequest(env, requestId);
+  if (current && !hasAttestationClaim(current)) {
+    return attachFormat(
+      forfeitRequestConflict(),
+      corsHeaders,
+      responseFormat === "json",
+    );
+  }
+
   const approved = await approveRequestRecord(env, requestId);
   if (approved instanceof Response) {
     return attachFormat(approved, corsHeaders, responseFormat === "json");

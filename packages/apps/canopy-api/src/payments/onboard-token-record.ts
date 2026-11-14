@@ -24,4 +24,12 @@ export interface OnboardTokenRecord {
   chainBinding?: OnboardTokenChainBinding;
   consumedForestR?: string;
   admittedBy?: OnboardAdmittedBy;
+  /**
+   * True when the token was minted from an onboard request carrying the
+   * single-use attestation claim mark (OnboardRequestRecord
+   * .attestationClaimKey; plan-2611-11 Q49). Genesis refuses a
+   * request-derived token without it, so it never reads the request record.
+   * Tokens redeemed before this deploy have none and are forfeit.
+   */
+  attested?: boolean;
 }

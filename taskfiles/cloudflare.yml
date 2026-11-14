@@ -153,6 +153,47 @@ tasks:
             || echo "lifecycle rule expire-used-auth may already exist"
           wrangler r2 bucket lifecycle list "$BUCKET"
 
+  bucket:lifecycle:used-attestations:
+    desc: |
+      Expire spent onboard-attestation claim markers (plan-2611-11 Q48).
+
+      canopy-api writes a marker per onboard create under
+      payments/used-attestations/ to make a bootstrap-key attestation
+      single-use (onboard-attestation-claim.ts). Those markers are never
+      rewritten and would grow without bound, so R2 expires them by age
+      instead of us running a sweep.
+
+      SAFETY — the expiry window MUST exceed the attestation validity window.
+      A marker is needed only until its attestation's exp; past exp the
+      attestation can never verify again. Verification bounds exp: exp is at
+      most iat + the window, the window has a hard 24 h ceiling in code
+      (ATTESTATION_WINDOW_CEILING_SEC, onboard-attestation.ts), and iat is at
+      most 300 s ahead of canopy's clock. So a marker written at T is needed
+      until at most T + 24 h 5 min, and 2 days is enough. R2 deletes an
+      object only after it reaches the age, never before.
+      If the window ceiling is ever raised near this window, RAISE THIS TOO.
+      canopy-api test/onboard-attestation.test.ts reads --expire-days from
+      the command below and fails when it is not above ceiling + skew.
+    cmds:
+      - cmd: |
+          # NOTE: the grants bucket is NOT {{.CANOPY_ID}}-grants. canopy-api
+          # rewrites the R2_GRANTS binding at deploy time from the consumer
+          # contract (apply-runtime-contract.mjs <- R2_GRANTS_BUCKET_NAME):
+          #
+          #   lane A (wrangler env "dev")   -> forest-<project>-grants
+          #   lane B (wrangler env "prod",  -> forest-<project>-grants-b
+          #           which is STAGE, not production)
+          #
+          # Pass the real name explicitly. Defaulting to the CANOPY_ID form
+          # targets an unused legacy bucket, so the rule applies cleanly and
+          # then silently protects nothing.
+          BUCKET="${R2_GRANTS_BUCKET_NAME:?set R2_GRANTS_BUCKET_NAME (see GitHub Environment var of the same name, e.g. forest-dev-5-grants / forest-dev-5-grants-b)}"
+          wrangler r2 bucket lifecycle add "$BUCKET" \
+            expire-used-attestations payments/used-attestations/ \
+            --expire-days 2 --force \
+            || echo "lifecycle rule expire-used-attestations may already exist"
+          wrangler r2 bucket lifecycle list "$BUCKET"
+
   bucket:empty:
     desc: Delete all objects in the R2 bucket (DESTRUCTIVE!)
     cmds:

@@ -65,6 +65,23 @@ export async function resolveGenesisAuth(
   if (!tokenRecord) {
     return ClientErrors.unauthorized("Invalid or revoked onboard token.");
   }
+
+  // Hard cutover on single-use attestations (plan-2611-11 Q49): redeem
+  // stamps `attested` only on a token it mints from a request carrying the
+  // single-use claim mark. A token redeemed before this deploy (before
+  // single-use claims) has no stamp, whether or not its request was marked
+  // attested, and stays active until its expiry, so refuse it here. Such
+  // tokens are forfeit (pre-production, no real fees), and so is their
+  // request: re-redeem refuses it too. A reservation they hold stays until
+  // ops releases it with `DELETE /api/payments/chain-bindings/{id}`.
+  // Break-glass tokens carry no requestId and pass. The stamp is read from
+  // the token, not the request: request records hold PII and need not
+  // outlive their tokens (FOR-710).
+  if (tokenRecord.requestId && tokenRecord.attested !== true) {
+    return ClientErrors.forbidden(
+      "Onboard token predates single-use attestations and is forfeit; create a new attested onboard request",
+    );
+  }
   if (tokenRecord.consumedForestR) {
     let pathUuid: string;
     try {

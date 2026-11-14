@@ -98,7 +98,7 @@ export async function createOnboardRequest(
     redeemCodeHash,
     createdAt: now,
     expiresAt: now + input.ttlSec,
-    ...(input.attested ? { attested: true } : {}),
+    attestationClaimKey: input.attestationClaimKey,
   };
   await env.R2_GRANTS.put(
     onboardRequestR2Key(requestId),
@@ -141,6 +141,26 @@ export async function writeOnboardRequest(
   );
 }
 
+/**
+ * True when create wrote the single-use attestation claim mark on the
+ * record. A record without it was created before this deploy (before
+ * single-use claims), when anyone could replay the owner's public
+ * attestation into an `attested: true` record, so it proves nothing about
+ * ownership and is forfeit (plan-2611-11 Q49).
+ */
+export function hasAttestationClaim(record: OnboardRequestRecord): boolean {
+  return (
+    typeof record.attestationClaimKey === "string" &&
+    record.attestationClaimKey.length > 0
+  );
+}
+
+/**
+ * Count the binding's live (pending or approved) requests for the
+ * per-binding cap. A record without the attestation claim mark is skipped:
+ * it was created before single-use claims and can never be admitted, so it
+ * must not hold a slot against the owner's new request.
+ */
 export async function countNonTerminalRequestsForBinding(
   env: OnboardRequestStoreEnv,
   chainId: string,
@@ -153,6 +173,7 @@ export async function countNonTerminalRequestsForBinding(
     if (!got) continue;
     const record = decodeRecord(new Uint8Array(await got.arrayBuffer()));
     if (!record) continue;
+    if (!hasAttestationClaim(record)) continue;
     const status = effectiveStatus(record);
     if (status !== "pending" && status !== "approved") continue;
     if (

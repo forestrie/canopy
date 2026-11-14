@@ -282,13 +282,8 @@ varsBlock = setStringProperty(
   "SUPPORTED_CHAINS_RPC",
   loadSupportedChainsRpcResolved(),
 );
-// Slice-06 attestation gate (ADR-0059 D8): armed per lane by GitHub var, no
-// code change. AUD override optional — the request origin is always accepted.
-varsBlock = setStringProperty(
-  varsBlock,
-  "ONBOARD_REQUIRE_KEY_ATTESTATION",
-  process.env.ONBOARD_REQUIRE_KEY_ATTESTATION?.trim(),
-);
+// Onboard attestation (ADR-0059 D8) is always required. AUD override
+// optional — the request origin is always accepted.
 varsBlock = setStringProperty(
   varsBlock,
   "ONBOARD_ATTESTATION_AUD",

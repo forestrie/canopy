@@ -109,11 +109,9 @@ export interface Env {
   ONBOARD_AUTO_APPROVE_LABEL_PREFIX?: string;
   ONBOARD_TOKEN_TTL_SEC?: string;
   ONBOARD_GATE_CACHE_TTL_SEC?: string;
-  /** Slice-06 flag: require the bootstrap-key attestation on onboard requests. */
-  ONBOARD_REQUIRE_KEY_ATTESTATION?: string;
   /** Accepted attestation `aud` override (request origin always accepted). */
   ONBOARD_ATTESTATION_AUD?: string;
-  /** Ceiling on attestation exp-iat (seconds; default 86400). */
+  /** Ceiling on attestation exp-iat (seconds; default and maximum 86400). */
   ONBOARD_ATTESTATION_MAX_WINDOW_SEC?: string;
   /** x402-settlement worker base URL for the fee-account read (FOR-497). */
   X402_SETTLEMENT_URL?: string;

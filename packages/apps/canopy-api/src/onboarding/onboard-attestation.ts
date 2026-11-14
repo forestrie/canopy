@@ -25,10 +25,10 @@
  *   signed. EOA roots recover through `recoverKs256Signer`, which refuses
  *   high-s.
  *
- * Self-contained, no challenge round-trip: the key may be in cold custody,
- * and replay within the window only yields duplicate pending requests for
- * the owner's own instance — the exclusive thing (the reservation) is still
- * won at redeem.
+ * Self-contained, no challenge round-trip: the key may be in cold custody.
+ * Replay is refused by the single-use claim (`onboard-attestation-claim.ts`),
+ * not by this verifier: the stored attestation is publicly readable, so once
+ * spent it is public evidence, never a credential.
  */
 
 import { p256 } from "@noble/curves/p256";
@@ -64,10 +64,22 @@ export const CLAIM_CHAIN_BINDING = -70000;
 const BINDING_CHAIN_ID = 1;
 const BINDING_UNIVOCITY_ADDR = 2;
 
-/** Default ceiling on `exp - iat` — generous for key ceremonies (≤ 24 h). */
-export const DEFAULT_ATTESTATION_MAX_WINDOW_SEC = 24 * 60 * 60;
-/** Clock-skew tolerance on `iat`. */
-const IAT_SKEW_SEC = 300;
+/**
+ * Hard ceiling, and default, on an onboard attestation's `exp - iat`: 24 h,
+ * generous for key ceremonies (plan-2611-11 Q48).
+ * ONBOARD_ATTESTATION_MAX_WINDOW_SEC may lower it, never raise it
+ * (handle-onboarding-request.ts). The 2-day R2 expiry on
+ * claim markers (task cf:bucket:lifecycle:used-attestations) depends
+ * on this ceiling: a marker is needed until its attestation's exp, at most
+ * this ceiling plus the 300 s iat skew after the marker is written. Raise
+ * this and that rule must rise with it.
+ */
+export const ATTESTATION_WINDOW_CEILING_SEC = 24 * 60 * 60;
+/**
+ * Clock-skew tolerance on `iat`. The claim-marker expiry depends on it too:
+ * see {@link ATTESTATION_WINDOW_CEILING_SEC}.
+ */
+export const IAT_SKEW_SEC = 300;
 
 export interface BootstrapKeyCwtExpectation {
   /** Chain-declared bootstrap alg (COSE id) — the envelope must match. */
@@ -80,7 +92,7 @@ export interface BootstrapKeyCwtExpectation {
   /** Accepted `aud` values (operator origin; env override plus request origin). */
   acceptedAud: string[];
   nowSec: number;
-  /** Ceiling on the freshness window; default {@link DEFAULT_ATTESTATION_MAX_WINDOW_SEC}. */
+  /** Ceiling on the freshness window; default {@link ATTESTATION_WINDOW_CEILING_SEC}. */
   maxWindowSec?: number;
 }
 
@@ -308,7 +320,7 @@ export async function verifyBootstrapKeyCwt(
   if (iat === null || exp === null) {
     return { ok: false, detail: "attestation missing iat/exp" };
   }
-  const maxWindow = expected.maxWindowSec ?? DEFAULT_ATTESTATION_MAX_WINDOW_SEC;
+  const maxWindow = expected.maxWindowSec ?? ATTESTATION_WINDOW_CEILING_SEC;
   if (iat > expected.nowSec + IAT_SKEW_SEC) {
     return { ok: false, detail: "attestation issued in the future" };
   }

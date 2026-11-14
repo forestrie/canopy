@@ -1,32 +1,64 @@
 /**
- * Bootstrap-key registrant attestation (plan-2607-43 slice 06, ADR-0059 D8):
+ * Bootstrap-key registrant attestation (ADR-0059 D8):
  * per-alg vectors, freshness, aud, binding equality, unconfusability, and
- * the flag gate on POST /api/onboarding/requests.
+ * the required-attestation gate on POST /api/onboarding/requests.
  */
 import { p256 } from "@noble/curves/p256";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { sha256 } from "@noble/hashes/sha2";
 import { keccak_256 } from "@noble/hashes/sha3";
 import {
+  decodeCborDeterministic,
   encodeCborDeterministic,
   encodeSigStructure,
 } from "@forestrie/encoding";
 import { env } from "cloudflare:test";
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { Erc1271UnavailableError } from "@forestrie/chain-rpc";
+import { tryUnivocityInstanceIdFromChainBinding } from "@canopy/univocity-instance-id";
 import worker from "../src/index";
 import type { Env } from "../src/index";
+import { decodeCborAsObject } from "./helpers/cbor-decode-object.js";
 import {
+  listOnboardTokens,
+  mintOnboardToken,
+  readOnboardTokenRecord,
+} from "../src/payments/onboard-token-store.js";
+import {
+  readUnivocityInstanceReservation,
+  requestHolder,
+  reserveUnivocityInstance,
+} from "../src/payments/instance-registry.js";
+import {
+  countNonTerminalRequestsForBinding,
+  createOnboardRequest,
+  listOnboardRequests,
+  readOnboardRequest,
+  transitionApprovedToRedeemedCas,
+  transitionPendingToApprovedCas,
+  transitionPendingToRejectedCas,
+} from "../src/onboarding/onboard-request-store.js";
+import { onboardRequestR2Key } from "../src/onboarding/onboard-request-hash.js";
+import {
+  ATTESTATION_WINDOW_CEILING_SEC,
   CLAIM_CHAIN_BINDING,
+  IAT_SKEW_SEC,
   ONBOARD_ATTESTATION_CONTENT_TYPE,
   verifyOnboardAttestation,
 } from "../src/onboarding/onboard-attestation.js";
+import { onboardAttestationClaimKey } from "../src/onboarding/onboard-attestation-claim.js";
 import {
   COSE_ALG_ES256,
   COSE_ALG_KS256,
   bootstrapConfigCallData,
   rootLogIdCallData,
 } from "../src/onboarding/univocity-identity-probe.js";
+import {
+  seedGenesisChainIdentity,
+  validGenesisV2Es256CborMap,
+} from "./helpers/genesis-v2-body.js";
+// Holds the R2 lifecycle rule for claim markers (bucket:lifecycle:used-attestations).
+import cloudflareTaskfile from "../../../../taskfiles/cloudflare.yml?raw";
 
 const poolEnv = env as unknown as Env;
 const OPS = "vitest-ops-admin-token";
@@ -398,7 +430,7 @@ describe("verifyOnboardAttestation — contract-account roots (ERC-1271 hooks)",
   });
 });
 
-// --- flag gate on POST /api/onboarding/requests ---
+// --- required-attestation gate on POST /api/onboarding/requests ---
 
 const SUPPORTED_CHAINS_RPC = JSON.stringify({
   [CHAIN]: ["https://rpc.example.invalid"],
@@ -479,14 +511,14 @@ function baseFields(addr = ADDR): Map<number, unknown> {
   ]);
 }
 
-describe("POST /api/onboarding/requests — attestation gate (slice 06)", () => {
-  it("flag off: absent attestation passes through", async () => {
-    stubChain();
-    const res = await postCreate(requestEnv(), baseFields());
-    expect(res.status).toBe(201);
-  });
+/**
+ * Stands in for the marker key a winning create writes, for requests seeded
+ * straight into the store. Admission checks only that the key is present.
+ */
+const TEST_CLAIM_KEY = "payments/used-attestations/test";
 
-  it("flag off: a present-but-invalid attestation still rejects (403)", async () => {
+describe("POST /api/onboarding/requests — attestation gate", () => {
+  it("a present-but-invalid attestation is rejected (403)", async () => {
     stubChain();
     const bad = buildAttestation(COSE_ALG_ES256, { corruptSignature: true });
     const fields = baseFields();
@@ -495,16 +527,275 @@ describe("POST /api/onboarding/requests — attestation gate (slice 06)", () => 
     expect(res.status).toBe(403);
   });
 
-  it("flag on: absent attestation is a 400", async () => {
-    stubChain();
-    const res = await postCreate(
-      requestEnv({ ONBOARD_REQUIRE_KEY_ATTESTATION: "true" }),
-      baseFields(),
+  // Dev auto-approve config shared by the refusal row and its positive
+  // control, which pins that the row really is auto-approve-eligible.
+  const AUTO_APPROVE: Partial<Env> = {
+    ONBOARD_AUTO_APPROVE: "true",
+    ONBOARD_AUTO_APPROVE_CHAIN_IDS: CHAIN,
+    ONBOARD_AUTO_APPROVE_LABEL_PREFIX: "dev-auto-",
+  };
+  const AUTO_APPROVE_LABEL = "dev-auto-x";
+
+  // Q46: auto-approve is no exception — an eligible request is refused too.
+  it.each([
+    ["a plain", {}, "attestation-test"],
+    ["an auto-approve-eligible", AUTO_APPROVE, AUTO_APPROVE_LABEL],
+  ] as const)(
+    "%s request without an attestation is refused (400)",
+    async (_kind, overrides, label) => {
+      stubChain();
+      const e = requestEnv(overrides);
+      const fields = baseFields();
+      fields.set(1, label);
+      const res = await postCreate(e, fields);
+      expect(res.status).toBe(400);
+      const listed = await listOnboardRequests(e);
+      expect(listed.requests.filter((r) => r.label === label)).toEqual([]);
+    },
+  );
+
+  // 24 h is a hard ceiling on exp - iat: config may lower it, never raise it.
+  // The 2-day expiry on claim markers (task
+  // cf:bucket:lifecycle:used-attestations) depends on it.
+  it.each([
+    ["unset", 23, 201, undefined],
+    ["172800", 30, 403, "172800"],
+    ["172800", 23, 201, "172800"],
+    ["3600", 2, 403, "3600"],
+  ] as const)(
+    "with ONBOARD_ATTESTATION_MAX_WINDOW_SEC %s, a %i h window answers %i",
+    async (_label, windowHours, status, configured) => {
+      stubChain();
+      const iat = Math.floor(Date.now() / 1000) - 60;
+      const fields = baseFields();
+      fields.set(
+        7,
+        buildAttestation(COSE_ALG_ES256, {
+          iat,
+          exp: iat + windowHours * 3600,
+        }),
+      );
+      const e = requestEnv(
+        configured ? { ONBOARD_ATTESTATION_MAX_WINDOW_SEC: configured } : {},
+      );
+      expect((await postCreate(e, fields)).status).toBe(status);
+    },
+  );
+
+  it("the window ceiling plus the iat skew stays inside the marker expiry rule", () => {
+    // A marker written at T guards an attestation whose exp is at most
+    // T + the iat skew + the ceiling. Past exp it can never verify, so R2
+    // may delete the marker; before exp it must not. The expiry is read
+    // from the task that applies the rule, so the two cannot drift apart.
+    const rules = [
+      ...cloudflareTaskfile.matchAll(
+        /expire-used-attestations\s+payments\/used-attestations\/[\s\\]*--expire-days\s+(\d+)/g,
+      ),
+    ];
+    expect(rules).toHaveLength(1);
+    const markerExpirySec = Number(rules[0]![1]) * 24 * 60 * 60;
+    expect(ATTESTATION_WINDOW_CEILING_SEC + IAT_SKEW_SEC).toBeLessThan(
+      markerExpirySec,
     );
-    expect(res.status).toBe(400);
   });
 
-  it("flag on: a valid attestation is accepted, recorded, and retained", async () => {
+  it("the same auto-approve-eligible request with an attestation is approved (201)", async () => {
+    stubChain();
+    const now = Math.floor(Date.now() / 1000);
+    const fields = baseFields();
+    fields.set(1, AUTO_APPROVE_LABEL);
+    fields.set(
+      7,
+      buildAttestation(COSE_ALG_ES256, { iat: now - 60, exp: now + 3600 }),
+    );
+    const res = await postCreate(requestEnv(AUTO_APPROVE), fields);
+    expect(res.status).toBe(201);
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as {
+      status?: string;
+    };
+    expect(body.status).toBe("approved");
+  });
+
+  // Single use: the stored attestation is publicly readable, so a copy of a
+  // spent one must not mint a second request.
+  describe("single-use claim", () => {
+    function attestedFields(iatOffset = 60): Map<number, unknown> {
+      const now = Math.floor(Date.now() / 1000);
+      const fields = baseFields();
+      fields.set(
+        7,
+        buildAttestation(COSE_ALG_ES256, {
+          iat: now - iatOffset,
+          exp: now + 3600,
+        }),
+      );
+      return fields;
+    }
+
+    /** Same signed bytes, different (unsigned) unprotected header. */
+    function rewrapped(attestation: Uint8Array): Uint8Array {
+      const [protectedBytes, , payloadBytes, signature] =
+        decodeCborDeterministic(attestation) as [
+          Uint8Array,
+          Map<unknown, unknown>,
+          Uint8Array,
+          Uint8Array,
+        ];
+      return encodeCborDeterministic([
+        protectedBytes,
+        new Map([[4, new Uint8Array([1, 2, 3])]]),
+        payloadBytes,
+        signature,
+      ]);
+    }
+
+    /**
+     * Same signed bytes, the other valid ES256 signature (r, n-s): ES256
+     * verifies high-s, so anyone can make this twin without the key.
+     */
+    function otherSignature(attestation: Uint8Array): Uint8Array {
+      const [protectedBytes, unprotected, payloadBytes, signature] =
+        decodeCborDeterministic(attestation) as [
+          Uint8Array,
+          Map<unknown, unknown>,
+          Uint8Array,
+          Uint8Array,
+        ];
+      const sig = p256.Signature.fromCompact(signature);
+      const twin = new p256.Signature(sig.r, p256.CURVE.n - sig.s);
+      return encodeCborDeterministic([
+        protectedBytes,
+        unprotected,
+        payloadBytes,
+        twin.toCompactRawBytes(),
+      ]);
+    }
+
+    it.each([
+      ["the same attestation bytes", 409, (f: Map<number, unknown>) => f],
+      [
+        "the same signed content, different unprotected header",
+        409,
+        (f: Map<number, unknown>) =>
+          new Map(f).set(7, rewrapped(f.get(7) as Uint8Array)),
+      ],
+      [
+        "the same signed content, the other valid ECDSA signature",
+        409,
+        (f: Map<number, unknown>) =>
+          new Map(f).set(7, otherSignature(f.get(7) as Uint8Array)),
+      ],
+      [
+        "a fresh attestation for the same binding",
+        201,
+        (_f: Map<number, unknown>) => attestedFields(120),
+      ],
+    ])("a second create with %s answers %i", async (_what, status, second) => {
+      stubChain();
+      const e = requestEnv();
+      const first = attestedFields();
+      expect((await postCreate(e, first)).status).toBe(201);
+      const res = await postCreate(e, second(first));
+      expect(res.status).toBe(status);
+      // A refused replay creates no record, so replays cannot fill the
+      // binding's pending cap against the owner.
+      expect(await countNonTerminalRequestsForBinding(e, CHAIN, ADDR)).toBe(
+        status === 201 ? 2 : 1,
+      );
+    });
+
+    it("a create refused by the pending cap does not burn the attestation", async () => {
+      stubChain();
+      const e = requestEnv();
+      const addr = "3".repeat(40);
+      const chainBinding = { chainId: CHAIN, univocityAddr: addr };
+      for (let i = 0; i < 3; i++) {
+        await createOnboardRequest(e, {
+          label: "filler",
+          chainBinding,
+          contactEmail: "owner@example.test",
+          ttlSec: 3600,
+          attestationClaimKey: TEST_CLAIM_KEY,
+        });
+      }
+      const now = Math.floor(Date.now() / 1000);
+      const fields = baseFields(addr);
+      fields.set(
+        7,
+        buildAttestation(COSE_ALG_ES256, {
+          univocityAddr: addr,
+          iat: now - 60,
+          exp: now + 3600,
+        }),
+      );
+      expect((await postCreate(e, fields)).status).toBe(409);
+      // Make room: reject one filler so the cap no longer refuses.
+      const pending = (await listOnboardRequests(e)).requests.filter(
+        (r) => r.label === "filler" && r.status === "pending",
+      );
+      await transitionPendingToRejectedCas(e, pending[0]!.requestId, "room");
+      expect((await postCreate(e, fields)).status).toBe(201);
+    });
+
+    /** R2_GRANTS whose first put to a matching key throws, as R2 can. */
+    function failFirstPut(
+      bucket: R2Bucket,
+      matches: (key: string) => boolean,
+    ): R2Bucket {
+      let failed = false;
+      return new Proxy(bucket, {
+        get(target, prop) {
+          if (prop === "put") {
+            return (key: string, ...rest: unknown[]) => {
+              if (!failed && matches(key)) {
+                failed = true;
+                return Promise.reject(new Error("R2 put failed (test)"));
+              }
+              return (target.put as (...a: unknown[]) => unknown)(key, ...rest);
+            };
+          }
+          const v = Reflect.get(target, prop) as unknown;
+          return typeof v === "function" ? v.bind(target) : v;
+        },
+      });
+    }
+
+    // A storage failure after the claim must neither burn the attestation
+    // nor leave a claimed request whose redeem code reached no one: that
+    // request would hold a pending-cap slot for the request TTL.
+    it.each([
+      ["the request record write", 500, 201, "onboarding/requests/"],
+      ["the attestation publish", 201, 409, "payments/attestations/"],
+    ] as const)(
+      "when %s fails, the create answers %i and a retry %i",
+      async (_what, firstStatus, retryStatus, prefix) => {
+        stubChain();
+        const e = requestEnv();
+        const flaky = {
+          ...e,
+          R2_GRANTS: failFirstPut(e.R2_GRANTS, (k) => k.startsWith(prefix)),
+        };
+        const fields = attestedFields();
+        const first = await postCreate(flaky, fields);
+        expect(first.status).toBe(firstStatus);
+        const retry = await postCreate(flaky, fields);
+        expect(retry.status).toBe(retryStatus);
+        // The one live request is the one whose redeem code went out.
+        const created = firstStatus === 201 ? first : retry;
+        const body = decodeCborAsObject(
+          new Uint8Array(await created.arrayBuffer()),
+        ) as { redeemCode?: string };
+        expect(body.redeemCode).toMatch(/^[0-9a-f]{64}$/);
+        expect(await countNonTerminalRequestsForBinding(e, CHAIN, ADDR)).toBe(
+          1,
+        );
+      },
+    );
+  });
+
+  it("a valid attestation is accepted, recorded, and retained", async () => {
     stubChain();
     // NOW is a fixed test epoch; the handler reads the real clock, so issue a
     // fresh attestation around the live clock instead.
@@ -514,10 +805,7 @@ describe("POST /api/onboarding/requests — attestation gate (slice 06)", () => 
       7,
       buildAttestation(COSE_ALG_ES256, { iat: now - 60, exp: now + 3600 }),
     );
-    const res = await postCreate(
-      requestEnv({ ONBOARD_REQUIRE_KEY_ATTESTATION: "true" }),
-      fields,
-    );
+    const res = await postCreate(requestEnv(), fields);
     expect(res.status).toBe(201);
     const stored = await poolEnv.R2_GRANTS.get(
       `payments/attestations/eip155:${CHAIN}:0x${ADDR}.cose`,
@@ -528,4 +816,342 @@ describe("POST /api/onboarding/requests — attestation gate (slice 06)", () => 
     const bytes = new Uint8Array(await stored!.arrayBuffer());
     expect(bytes.length).toBeGreaterThan(0);
   });
+});
+
+// --- forfeit: requests and tokens created before single-use claims ---
+
+describe("onboard requests created before single-use claims (forfeit)", () => {
+  // Before single-use claims, create marked a request `attested: true` for
+  // any verified attestation and published that attestation, so anyone could
+  // replay it into an `attested: true` record. No record from before this
+  // deploy proves ownership, attested or not. Only a record carrying the
+  // claim key that create writes once its claim wins is ever admitted, and
+  // only a token stamped from such a record passes genesis.
+  const REQUEST_FORFEIT =
+    "Request predates single-use attestations and is forfeit; create a new attested onboard request";
+  const TOKEN_FORFEIT =
+    "Onboard token predates single-use attestations and is forfeit; create a new attested onboard request";
+
+  /** A pre-deploy record: no claim key, and `attested: true` or nothing. */
+  type PreDeployKind = "unattested" | "attested";
+
+  /** Write a request as the code before single-use claims wrote it. */
+  async function seedPreDeploy(
+    e: Env,
+    addr: string,
+    kind: PreDeployKind,
+    reach: "pending" | "approved" | "redeemed" = "pending",
+  ): Promise<{ requestId: string; redeemCode: string }> {
+    const { record, redeemCode } = await createOnboardRequest(e, {
+      label: "pre-deploy",
+      chainBinding: { chainId: CHAIN, univocityAddr: addr },
+      contactEmail: "owner@example.test",
+      ttlSec: 3600,
+      attestationClaimKey: TEST_CLAIM_KEY,
+    });
+    const preDeploy: Record<string, unknown> = { ...record };
+    delete preDeploy.attestationClaimKey;
+    if (kind === "attested") preDeploy.attested = true;
+    await e.R2_GRANTS.put(
+      onboardRequestR2Key(record.requestId),
+      JSON.stringify(preDeploy),
+    );
+    if (reach !== "pending") {
+      await transitionPendingToApprovedCas(e, record.requestId);
+    }
+    if (reach === "redeemed") {
+      await transitionApprovedToRedeemedCas(e, record.requestId);
+    }
+    return { requestId: record.requestId, redeemCode };
+  }
+
+  async function problemDetail(res: Response): Promise<string | undefined> {
+    const body = decodeCborAsObject(
+      new Uint8Array(await res.arrayBuffer()),
+    ) as {
+      detail?: string;
+    };
+    return body.detail;
+  }
+
+  function postRedeem(
+    e: Env,
+    requestId: string,
+    redeemCode: string,
+  ): Promise<Response> {
+    return worker.fetch(
+      new Request(
+        `http://localhost/api/onboarding/requests/${requestId}/redeem`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/cbor" },
+          body: encodeCborDeterministic(
+            new Map<number, unknown>([[1, redeemCode]]),
+          ) as unknown as BodyInit,
+        },
+      ),
+      e,
+      testCtx,
+    );
+  }
+
+  function postApprove(e: Env, requestId: string): Promise<Response> {
+    return worker.fetch(
+      new Request(
+        `http://localhost/api/onboarding/requests/${requestId}/approve`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${OPS}`,
+            "Content-Type": "application/cbor",
+          },
+        },
+      ),
+      e,
+      testCtx,
+    );
+  }
+
+  /** Seed the chain identity for the binding and post genesis with `token`. */
+  async function postGenesis(
+    e: Env,
+    addrByte: number,
+    token: string,
+  ): Promise<Response> {
+    const genesisMap = validGenesisV2Es256CborMap({
+      chainId: CHAIN,
+      univocityAddr: new Uint8Array(20).fill(addrByte),
+    });
+    await seedGenesisChainIdentity(e, genesisMap);
+    return worker.fetch(
+      new Request(
+        `http://localhost/api/forest/${crypto.randomUUID()}/genesis`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/cbor",
+          },
+          body: encodeCborDeterministic(genesisMap) as unknown as BodyInit,
+        },
+      ),
+      e,
+      testCtx,
+    );
+  }
+
+  // Whatever state a pre-deploy record reached, it is never admitted. The
+  // redeemed rows are re-redeem, which reissues a token.
+  it.each([
+    ["unattested", "pending", "c".repeat(40)],
+    ["unattested", "approved", "d".repeat(40)],
+    ["unattested", "redeemed", "e".repeat(40)],
+    ["attested", "pending", "c1".repeat(20)],
+    ["attested", "approved", "d1".repeat(20)],
+    ["attested", "redeemed", "e1".repeat(20)],
+  ] as const)(
+    "redeem of a pre-deploy %s %s record is refused (409), mints nothing",
+    async (kind, reach, addr) => {
+      const e = requestEnv();
+      const { requestId, redeemCode } = await seedPreDeploy(
+        e,
+        addr,
+        kind,
+        reach,
+      );
+      const res = await postRedeem(e, requestId, redeemCode);
+      expect(res.status).toBe(409);
+      expect(await problemDetail(res)).toBe(REQUEST_FORFEIT);
+      const tokens = await listOnboardTokens(e);
+      expect(tokens.filter((t) => t.requestId === requestId)).toEqual([]);
+      const instanceId = tryUnivocityInstanceIdFromChainBinding({
+        chainId: CHAIN,
+        univocityAddr: addr,
+      });
+      expect(await readUnivocityInstanceReservation(e, instanceId!)).toBeNull();
+    },
+  );
+
+  it.each([
+    ["unattested", "f".repeat(40)],
+    ["attested", "f1".repeat(20)],
+  ] as const)(
+    "ops approve of a pre-deploy %s pending record is refused (409)",
+    async (kind, addr) => {
+      const e = requestEnv();
+      const { requestId } = await seedPreDeploy(e, addr, kind);
+      const res = await postApprove(e, requestId);
+      expect(res.status).toBe(409);
+      expect(await problemDetail(res)).toBe(REQUEST_FORFEIT);
+      expect((await readOnboardRequest(e, requestId))?.status).toBe("pending");
+    },
+  );
+
+  // A pre-deploy record can never be admitted, so it must not hold one of
+  // the binding's pending slots (cap 3) against the owner's new create.
+  it.each([
+    ["pre-deploy unattested", 201, "unattested", "1".repeat(40)],
+    ["pre-deploy attested", 201, "attested", "4".repeat(40)],
+    ["claimed", 409, "claimed", "2".repeat(40)],
+  ] as const)(
+    "three %s pending records, then an attested create answers %i",
+    async (_what, status, kind, addr) => {
+      stubChain();
+      const e = requestEnv();
+      for (let i = 0; i < 3; i++) {
+        if (kind === "claimed") {
+          await createOnboardRequest(e, {
+            label: "filler",
+            chainBinding: { chainId: CHAIN, univocityAddr: addr },
+            contactEmail: "owner@example.test",
+            ttlSec: 3600,
+            attestationClaimKey: TEST_CLAIM_KEY,
+          });
+        } else {
+          await seedPreDeploy(e, addr, kind);
+        }
+      }
+      const now = Math.floor(Date.now() / 1000);
+      const fields = baseFields(addr);
+      fields.set(
+        7,
+        buildAttestation(COSE_ALG_ES256, {
+          univocityAddr: addr,
+          iat: now - 60,
+          exp: now + 3600,
+        }),
+      );
+      const res = await postCreate(e, fields);
+      expect(res.status).toBe(status);
+    },
+  );
+
+  // A token redeemed before this deploy has no stamp and stays active until
+  // its expiry. Genesis must refuse it, or it sets the instance root (P14).
+  it.each([
+    ["a claimed request, stamped", 201, "claimed", 0x71, "registered"],
+    ["a pre-deploy unattested request", 403, "unattested", 0x72, "reserved"],
+    ["a pre-deploy attested request", 403, "attested", 0x75, "reserved"],
+  ] as const)(
+    "genesis with a token redeemed from %s answers %i",
+    async (_what, status, kind, addrByte, reservationState) => {
+      stubChain();
+      const e = requestEnv();
+      const chainBinding = {
+        chainId: CHAIN,
+        univocityAddr: addrByte.toString(16).repeat(20),
+      };
+      let requestId: string;
+      if (kind === "claimed") {
+        const { record } = await createOnboardRequest(e, {
+          label: "claimed-token",
+          chainBinding,
+          contactEmail: "owner@example.test",
+          ttlSec: 3600,
+          attestationClaimKey: TEST_CLAIM_KEY,
+        });
+        requestId = record.requestId;
+        await transitionPendingToApprovedCas(e, requestId);
+        await transitionApprovedToRedeemedCas(e, requestId);
+      } else {
+        ({ requestId } = await seedPreDeploy(
+          e,
+          chainBinding.univocityAddr,
+          kind,
+          "redeemed",
+        ));
+      }
+      // Redeem stamps the token it mints from a claimed request; a token
+      // from before this deploy has no stamp at all.
+      const minted = await mintOnboardToken(e, {
+        label: "token",
+        requestId,
+        chainBinding,
+        admittedBy: "ops",
+        attested: kind === "claimed" ? true : undefined,
+      });
+      const instanceId = tryUnivocityInstanceIdFromChainBinding(chainBinding)!;
+      await reserveUnivocityInstance(e, instanceId, requestHolder(requestId));
+
+      const res = await postGenesis(e, addrByte, minted.token);
+      expect(res.status).toBe(status);
+      if (status === 403) {
+        expect(await problemDetail(res)).toBe(TOKEN_FORFEIT);
+      }
+      const reservation = await readUnivocityInstanceReservation(e, instanceId);
+      expect(reservation?.state).toBe(reservationState);
+    },
+  );
+
+  it("a fresh create is marked, approved, redeemed to a stamped token, and genesis answers 201", async () => {
+    stubChain();
+    const e = requestEnv();
+    const addrByte = 0x76;
+    const addr = addrByte.toString(16).repeat(20);
+    const now = Math.floor(Date.now() / 1000);
+    const attestation = buildAttestation(COSE_ALG_ES256, {
+      univocityAddr: addr,
+      iat: now - 60,
+      exp: now + 3600,
+    });
+    const fields = baseFields(addr);
+    fields.set(7, attestation);
+    const created = await postCreate(e, fields);
+    expect(created.status).toBe(201);
+    const { requestId, redeemCode } = decodeCborAsObject(
+      new Uint8Array(await created.arrayBuffer()),
+    ) as { requestId: string; redeemCode: string };
+    expect((await readOnboardRequest(e, requestId))?.attestationClaimKey).toBe(
+      await onboardAttestationClaimKey(attestation),
+    );
+
+    expect((await postApprove(e, requestId)).status).toBe(200);
+    const redeemed = await postRedeem(e, requestId, redeemCode);
+    expect(redeemed.status).toBe(200);
+    const { token, ref } = decodeCborAsObject(
+      new Uint8Array(await redeemed.arrayBuffer()),
+    ) as { token: string; ref: string };
+    expect((await readOnboardTokenRecord(e, ref))?.attested).toBe(true);
+
+    expect((await postGenesis(e, addrByte, token)).status).toBe(201);
+  });
+
+  // Request records hold PII and are kept only until redemption plus a
+  // short TTL (ADR-0059; FOR-710). Genesis must not depend on one outliving
+  // the token it produced.
+  it.each([
+    ["first redeem", 1, 0x73],
+    ["re-redeem", 2, 0x74],
+  ] as const)(
+    "genesis with a token from a claimed request's %s answers 201 once the request record is gone",
+    async (_kind, redeems, addrByte) => {
+      stubChain();
+      const e = requestEnv();
+      const chainBinding = {
+        chainId: CHAIN,
+        univocityAddr: addrByte.toString(16).repeat(20),
+      };
+      const { record, redeemCode } = await createOnboardRequest(e, {
+        label: "scrubbed-request",
+        chainBinding,
+        contactEmail: "owner@example.test",
+        ttlSec: 3600,
+        attestationClaimKey: TEST_CLAIM_KEY,
+      });
+      await transitionPendingToApprovedCas(e, record.requestId);
+      let token = "";
+      for (let i = 0; i < redeems; i++) {
+        const redeemed = await postRedeem(e, record.requestId, redeemCode);
+        expect(redeemed.status).toBe(200);
+        token = (
+          decodeCborAsObject(new Uint8Array(await redeemed.arrayBuffer())) as {
+            token: string;
+          }
+        ).token;
+      }
+      await e.R2_GRANTS.delete(onboardRequestR2Key(record.requestId));
+
+      expect((await postGenesis(e, addrByte, token)).status).toBe(201);
+    },
+  );
 });
