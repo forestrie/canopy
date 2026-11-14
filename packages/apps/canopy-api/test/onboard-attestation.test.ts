@@ -653,6 +653,40 @@ describe("onboard requests without an attestation mark (Q46 hard cutover)", () =
     expect((await readOnboardRequest(e, requestId))?.status).toBe("pending");
   });
 
+  // An unattested record can never be admitted, so it must not hold one of
+  // the binding's pending slots (cap 3) against the owner's attested create.
+  it.each([
+    ["unattested", 201, false, "1".repeat(40)],
+    ["attested", 409, true, "2".repeat(40)],
+  ] as const)(
+    "three %s pending records, then an attested create answers %i",
+    async (_kind, status, attested, addr) => {
+      stubChain();
+      const e = requestEnv();
+      for (let i = 0; i < 3; i++) {
+        await createOnboardRequest(e, {
+          label: "pre-cutover",
+          chainBinding: { chainId: CHAIN, univocityAddr: addr },
+          contactEmail: "owner@example.test",
+          ttlSec: 3600,
+          attested,
+        });
+      }
+      const now = Math.floor(Date.now() / 1000);
+      const fields = baseFields(addr);
+      fields.set(
+        7,
+        buildAttestation(COSE_ALG_ES256, {
+          univocityAddr: addr,
+          iat: now - 60,
+          exp: now + 3600,
+        }),
+      );
+      const res = await postCreate(e, fields);
+      expect(res.status).toBe(status);
+    },
+  );
+
   // A token redeemed from an unattested request before the cutover is still
   // active. Genesis must refuse it, or it sets the instance root (P14).
   it.each([

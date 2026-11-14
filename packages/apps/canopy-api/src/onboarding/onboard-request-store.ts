@@ -141,6 +141,12 @@ export async function writeOnboardRequest(
   );
 }
 
+/**
+ * Count the binding's live (pending or approved) requests for the
+ * per-binding cap. A record without the `attested` mark is skipped: since
+ * the Q46 hard cutover it can never be admitted, so it must not hold a slot
+ * against the owner's attested request.
+ */
 export async function countNonTerminalRequestsForBinding(
   env: OnboardRequestStoreEnv,
   chainId: string,
@@ -153,6 +159,7 @@ export async function countNonTerminalRequestsForBinding(
     if (!got) continue;
     const record = decodeRecord(new Uint8Array(await got.arrayBuffer()));
     if (!record) continue;
+    if (record.attested !== true) continue;
     const status = effectiveStatus(record);
     if (status !== "pending" && status !== "approved") continue;
     if (
