@@ -728,6 +728,61 @@ describe("POST /api/onboarding/requests — attestation gate", () => {
       await transitionPendingToRejectedCas(e, pending[0]!.requestId, "room");
       expect((await postCreate(e, fields)).status).toBe(201);
     });
+
+    /** R2_GRANTS whose first put to a matching key throws, as R2 can. */
+    function failFirstPut(
+      bucket: R2Bucket,
+      matches: (key: string) => boolean,
+    ): R2Bucket {
+      let failed = false;
+      return new Proxy(bucket, {
+        get(target, prop) {
+          if (prop === "put") {
+            return (key: string, ...rest: unknown[]) => {
+              if (!failed && matches(key)) {
+                failed = true;
+                return Promise.reject(new Error("R2 put failed (test)"));
+              }
+              return (target.put as (...a: unknown[]) => unknown)(key, ...rest);
+            };
+          }
+          const v = Reflect.get(target, prop) as unknown;
+          return typeof v === "function" ? v.bind(target) : v;
+        },
+      });
+    }
+
+    // A storage failure after the claim must neither burn the attestation
+    // nor leave a claimed request whose redeem code reached no one: that
+    // request would hold a pending-cap slot for the request TTL.
+    it.each([
+      ["the request record write", 500, 201, "onboarding/requests/"],
+      ["the attestation publish", 201, 409, "payments/attestations/"],
+    ] as const)(
+      "when %s fails, the create answers %i and a retry %i",
+      async (_what, firstStatus, retryStatus, prefix) => {
+        stubChain();
+        const e = requestEnv();
+        const flaky = {
+          ...e,
+          R2_GRANTS: failFirstPut(e.R2_GRANTS, (k) => k.startsWith(prefix)),
+        };
+        const fields = attestedFields();
+        const first = await postCreate(flaky, fields);
+        expect(first.status).toBe(firstStatus);
+        const retry = await postCreate(flaky, fields);
+        expect(retry.status).toBe(retryStatus);
+        // The one live request is the one whose redeem code went out.
+        const created = firstStatus === 201 ? first : retry;
+        const body = decodeCborAsObject(
+          new Uint8Array(await created.arrayBuffer()),
+        ) as { redeemCode?: string };
+        expect(body.redeemCode).toMatch(/^[0-9a-f]{64}$/);
+        expect(await countNonTerminalRequestsForBinding(e, CHAIN, ADDR)).toBe(
+          1,
+        );
+      },
+    );
   });
 
   it("a valid attestation is accepted, recorded, and retained", async () => {

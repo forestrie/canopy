@@ -494,30 +494,58 @@ async function handleCreateRequest(
     );
   }
 
-  const { record, redeemCode } = await createOnboardRequest(env, {
-    label,
-    chainBinding: {
-      chainId: chainId.trim(),
-      univocityAddr: gate.univocityAddr,
-    },
-    contactEmail,
-    mandateOrigin,
-    plannedForestR,
-    ttlSec: defaultRequestTtlSec(env),
-    attestationClaimKey,
-  });
+  // A failed create releases the claim so the owner can retry with the same
+  // attestation (the bootstrap key may be in cold custody). Safe: nothing
+  // has published this attestation yet, and a published copy would have
+  // lost the claim above.
+  let created: Awaited<ReturnType<typeof createOnboardRequest>>;
+  try {
+    created = await createOnboardRequest(env, {
+      label,
+      chainBinding: {
+        chainId: chainId.trim(),
+        univocityAddr: gate.univocityAddr,
+      },
+      contactEmail,
+      mandateOrigin,
+      plannedForestR,
+      ttlSec: defaultRequestTtlSec(env),
+      attestationClaimKey,
+    });
+  } catch (err) {
+    await env.R2_GRANTS.delete(attestationClaimKey).catch(() => {});
+    throw err;
+  }
+  const { record, redeemCode } = created;
 
   // Retention (D8): one small COSE object per instance, standing dispute
   // evidence, verifiable against chain state forever. Deliberately outside
   // the TTL'd request record; last attestation per instance wins. Written
   // only once the request record exists — a quota- or cap-rejected create
   // must not overwrite the standing blob (plan-2607-46 slice 01 hygiene).
+  // A failed write is logged with the attestation and the create goes on:
+  // failing it would strand a claimed request, holding a pending-cap slot,
+  // whose redeem code reached no one.
   if (instanceId) {
-    await env.R2_GRANTS.put(
-      `payments/attestations/${instanceId}.cose`,
-      attestation,
-      { httpMetadata: { contentType: "application/cose" } },
-    );
+    try {
+      await env.R2_GRANTS.put(
+        `payments/attestations/${instanceId}.cose`,
+        attestation,
+        { httpMetadata: { contentType: "application/cose" } },
+      );
+    } catch (err) {
+      console.error(
+        JSON.stringify({
+          tag: "onboardAttestationNotRetained",
+          requestId: record.requestId,
+          instanceId,
+          attestationHex: Array.from(attestation)
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join(""),
+          detail: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
   }
 
   scheduleOnboardWebhook(ctx, env, "onboard.request.created", {
