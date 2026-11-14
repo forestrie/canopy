@@ -42,6 +42,7 @@ import { onboardRequestR2Key } from "../src/onboarding/onboard-request-hash.js";
 import {
   ATTESTATION_WINDOW_CEILING_SEC,
   CLAIM_CHAIN_BINDING,
+  IAT_SKEW_SEC,
   ONBOARD_ATTESTATION_CONTENT_TYPE,
   verifyOnboardAttestation,
 } from "../src/onboarding/onboard-attestation.js";
@@ -56,6 +57,8 @@ import {
   seedGenesisChainIdentity,
   validGenesisV2Es256CborMap,
 } from "./helpers/genesis-v2-body.js";
+// Holds the R2 lifecycle rule for claim markers (bucket:lifecycle:used-attestations).
+import cloudflareTaskfile from "../../../../taskfiles/cloudflare.yml?raw";
 
 const poolEnv = env as unknown as Env;
 const OPS = "vitest-ops-admin-token";
@@ -579,13 +582,20 @@ describe("POST /api/onboarding/requests — attestation gate", () => {
     },
   );
 
-  it("the window ceiling plus the iat skew stays inside the 2-day marker expiry", () => {
+  it("the window ceiling plus the iat skew stays inside the marker expiry rule", () => {
     // A marker written at T guards an attestation whose exp is at most
-    // T + 300 s (iat skew) + the ceiling. Past exp it can never verify, so
-    // R2 may delete the marker; before exp it must not.
-    const MARKER_EXPIRY_SEC = 2 * 24 * 60 * 60;
-    expect(ATTESTATION_WINDOW_CEILING_SEC + 300).toBeLessThan(
-      MARKER_EXPIRY_SEC,
+    // T + the iat skew + the ceiling. Past exp it can never verify, so R2
+    // may delete the marker; before exp it must not. The expiry is read
+    // from the task that applies the rule, so the two cannot drift apart.
+    const rules = [
+      ...cloudflareTaskfile.matchAll(
+        /expire-used-attestations\s+payments\/used-attestations\/[\s\\]*--expire-days\s+(\d+)/g,
+      ),
+    ];
+    expect(rules).toHaveLength(1);
+    const markerExpirySec = Number(rules[0]![1]) * 24 * 60 * 60;
+    expect(ATTESTATION_WINDOW_CEILING_SEC + IAT_SKEW_SEC).toBeLessThan(
+      markerExpirySec,
     );
   });
 

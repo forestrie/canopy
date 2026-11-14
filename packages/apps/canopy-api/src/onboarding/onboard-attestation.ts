@@ -74,8 +74,11 @@ const BINDING_UNIVOCITY_ADDR = 2;
  * this and that rule must rise with it.
  */
 export const ATTESTATION_WINDOW_CEILING_SEC = 24 * 60 * 60;
-/** Clock-skew tolerance on `iat`. */
-const IAT_SKEW_SEC = 300;
+/**
+ * Clock-skew tolerance on `iat`. The claim-marker expiry depends on it too:
+ * see {@link ATTESTATION_WINDOW_CEILING_SEC}.
+ */
+export const IAT_SKEW_SEC = 300;
 
 export interface BootstrapKeyCwtExpectation {
   /** Chain-declared bootstrap alg (COSE id) — the envelope must match. */

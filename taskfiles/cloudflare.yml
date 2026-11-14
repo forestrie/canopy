@@ -172,6 +172,8 @@ tasks:
       until at most T + 24 h 5 min, and 2 days is enough. R2 deletes an
       object only after it reaches the age, never before.
       If the window ceiling is ever raised near this window, RAISE THIS TOO.
+      canopy-api test/onboard-attestation.test.ts reads --expire-days from
+      the command below and fails when it is not above ceiling + skew.
     cmds:
       - cmd: |
           # NOTE: the grants bucket is NOT {{.CANOPY_ID}}-grants. canopy-api
