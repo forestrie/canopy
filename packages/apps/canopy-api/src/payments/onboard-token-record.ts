@@ -24,4 +24,10 @@ export interface OnboardTokenRecord {
   chainBinding?: OnboardTokenChainBinding;
   consumedForestR?: string;
   admittedBy?: OnboardAdmittedBy;
+  /**
+   * True when the token was minted from an onboard request that carried the
+   * bootstrap-key attestation (ADR-0059 decision 8). Genesis refuses a
+   * request-derived token without it, so it never reads the request record.
+   */
+  attested?: boolean;
 }

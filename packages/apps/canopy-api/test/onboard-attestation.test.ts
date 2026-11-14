@@ -36,6 +36,7 @@ import {
   transitionPendingToApprovedCas,
   transitionPendingToRejectedCas,
 } from "../src/onboarding/onboard-request-store.js";
+import { onboardRequestR2Key } from "../src/onboarding/onboard-request-hash.js";
 import {
   CLAIM_CHAIN_BINDING,
   ONBOARD_ATTESTATION_CONTENT_TYPE,
@@ -849,11 +850,14 @@ describe("onboard requests without an attestation mark (Q46 hard cutover)", () =
       });
       await transitionPendingToApprovedCas(e, record.requestId);
       await transitionApprovedToRedeemedCas(e, record.requestId);
+      // Redeem stamps the token from the request; a pre-cutover token has
+      // no stamp at all.
       const minted = await mintOnboardToken(e, {
         label: record.label,
         requestId: record.requestId,
         chainBinding,
         admittedBy: "ops",
+        attested: attested ? true : undefined,
       });
       const instanceId = tryUnivocityInstanceIdFromChainBinding(chainBinding)!;
       await reserveUnivocityInstance(
@@ -888,6 +892,78 @@ describe("onboard requests without an attestation mark (Q46 hard cutover)", () =
       }
       const reservation = await readUnivocityInstanceReservation(e, instanceId);
       expect(reservation?.state).toBe(reservationState);
+    },
+  );
+
+  // Request records hold PII and are kept only until redemption plus a
+  // short TTL (ADR-0059; FOR-710). Genesis must not depend on one outliving
+  // the token it produced.
+  it.each([
+    ["first redeem", 1, 0x73],
+    ["re-redeem", 2, 0x74],
+  ] as const)(
+    "genesis with a token from an attested request's %s answers 201 once the request record is gone",
+    async (_kind, redeems, addrByte) => {
+      stubChain();
+      const e = requestEnv();
+      const chainBinding = {
+        chainId: CHAIN,
+        univocityAddr: addrByte.toString(16).repeat(20),
+      };
+      const { record, redeemCode } = await createOnboardRequest(e, {
+        label: "scrubbed-request",
+        chainBinding,
+        contactEmail: "owner@example.test",
+        ttlSec: 3600,
+        attested: true,
+      });
+      await transitionPendingToApprovedCas(e, record.requestId);
+      let token = "";
+      for (let i = 0; i < redeems; i++) {
+        const redeemed = await worker.fetch(
+          new Request(
+            `http://localhost/api/onboarding/requests/${record.requestId}/redeem`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/cbor" },
+              body: encodeCborDeterministic(
+                new Map<number, unknown>([[1, redeemCode]]),
+              ) as unknown as BodyInit,
+            },
+          ),
+          e,
+          testCtx,
+        );
+        expect(redeemed.status).toBe(200);
+        token = (
+          decodeCborAsObject(new Uint8Array(await redeemed.arrayBuffer())) as {
+            token: string;
+          }
+        ).token;
+      }
+      await e.R2_GRANTS.delete(onboardRequestR2Key(record.requestId));
+
+      const genesisMap = validGenesisV2Es256CborMap({
+        chainId: CHAIN,
+        univocityAddr: new Uint8Array(20).fill(addrByte),
+      });
+      await seedGenesisChainIdentity(e, genesisMap);
+      const res = await worker.fetch(
+        new Request(
+          `http://localhost/api/forest/${crypto.randomUUID()}/genesis`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/cbor",
+            },
+            body: encodeCborDeterministic(genesisMap) as unknown as BodyInit,
+          },
+        ),
+        e,
+        testCtx,
+      );
+      expect(res.status).toBe(201);
     },
   );
 });

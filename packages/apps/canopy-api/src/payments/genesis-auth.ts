@@ -10,7 +10,6 @@
 
 import { ClientErrors } from "../cbor-api/problem-details.js";
 import { logIdSegmentToCanonicalUuid } from "../grant/log-id-wire.js";
-import { readOnboardRequest } from "../onboarding/onboard-request-store.js";
 import {
   isOnboardTokenActive,
   readOnboardTokenRecord,
@@ -72,14 +71,12 @@ export async function resolveGenesisAuth(
   // so refuse it here too. Such tokens are forfeit (pre-production, no real
   // fees); a reservation they hold stays until ops releases it with
   // `DELETE /api/payments/chain-bindings/{id}`. Break-glass tokens carry no
-  // requestId and pass.
-  if (tokenRecord.requestId) {
-    const request = await readOnboardRequest(env, tokenRecord.requestId);
-    if (request?.attested !== true) {
-      return ClientErrors.forbidden(
-        "Onboard token was redeemed from a request without the required bootstrap-key attestation; create a new attested onboard request",
-      );
-    }
+  // requestId and pass. The mark is read from the token, not the request:
+  // request records hold PII and need not outlive their tokens (FOR-710).
+  if (tokenRecord.requestId && tokenRecord.attested !== true) {
+    return ClientErrors.forbidden(
+      "Onboard token was redeemed from a request without the required bootstrap-key attestation; create a new attested onboard request",
+    );
   }
   if (tokenRecord.consumedForestR) {
     let pathUuid: string;

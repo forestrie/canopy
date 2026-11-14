@@ -595,6 +595,7 @@ async function reissueRedeemedToken(
       chainBinding: current.record.chainBinding,
       expiry: now + defaultTokenTtlSec(env),
       admittedBy,
+      attested: current.record.attested === true,
     });
 
     const withRef: OnboardRequestRecord = {
@@ -832,6 +833,7 @@ async function handleRedeem(
       : transition.record.autoApproved
         ? "auto"
         : "ops",
+    attested: transition.record.attested === true,
   });
 
   const withRef: OnboardRequestRecord = {

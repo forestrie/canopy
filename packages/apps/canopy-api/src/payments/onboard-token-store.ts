@@ -60,6 +60,7 @@ export async function mintOnboardToken(
     requestId: options.requestId,
     chainBinding: options.chainBinding,
     admittedBy: options.admittedBy,
+    attested: options.attested,
   };
   await env.R2_GRANTS.put(onboardTokenR2Key(hash), encodeRecord(record), {
     httpMetadata: { contentType: "application/json" },
