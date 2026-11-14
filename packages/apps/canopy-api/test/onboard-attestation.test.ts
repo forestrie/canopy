@@ -22,6 +22,7 @@ import { listOnboardTokens } from "../src/payments/onboard-token-store.js";
 import { readUnivocityInstanceReservation } from "../src/payments/instance-registry.js";
 import {
   createOnboardRequest,
+  listOnboardRequests,
   readOnboardRequest,
   transitionApprovedToRedeemedCas,
   transitionPendingToApprovedCas,
@@ -499,11 +500,31 @@ describe("POST /api/onboarding/requests — attestation gate", () => {
     expect(res.status).toBe(403);
   });
 
-  it("a request without an attestation is refused (400)", async () => {
-    stubChain();
-    const res = await postCreate(requestEnv(), baseFields());
-    expect(res.status).toBe(400);
-  });
+  // Q46: auto-approve is no exception — an eligible request is refused too.
+  it.each([
+    ["a plain", {}, "attestation-test"],
+    [
+      "an auto-approve-eligible",
+      {
+        ONBOARD_AUTO_APPROVE: "true",
+        ONBOARD_AUTO_APPROVE_CHAIN_IDS: CHAIN,
+        ONBOARD_AUTO_APPROVE_LABEL_PREFIX: "dev-auto-",
+      },
+      "dev-auto-x",
+    ],
+  ] as const)(
+    "%s request without an attestation is refused (400)",
+    async (_kind, overrides, label) => {
+      stubChain();
+      const e = requestEnv(overrides);
+      const fields = baseFields();
+      fields.set(1, label);
+      const res = await postCreate(e, fields);
+      expect(res.status).toBe(400);
+      const listed = await listOnboardRequests(e);
+      expect(listed.requests.filter((r) => r.label === label)).toEqual([]);
+    },
+  );
 
   it("a valid attestation is accepted, recorded, and retained", async () => {
     stubChain();
