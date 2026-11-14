@@ -67,9 +67,12 @@ export async function resolveGenesisAuth(
     return ClientErrors.unauthorized("Invalid or revoked onboard token.");
   }
 
-  // Q46 hard cutover (ADR-0059 decision 8): a token redeemed from a request
+  // Hard cutover (ADR-0059 decision 8): a token redeemed from a request
   // created before attestation was required stays active until its expiry,
-  // so refuse it here too. Break-glass tokens carry no requestId and pass.
+  // so refuse it here too. Such tokens are forfeit (pre-production, no real
+  // fees); a reservation they hold stays until ops releases it with
+  // `DELETE /api/payments/chain-bindings/{id}`. Break-glass tokens carry no
+  // requestId and pass.
   if (tokenRecord.requestId) {
     const request = await readOnboardRequest(env, tokenRecord.requestId);
     if (request?.attested !== true) {
