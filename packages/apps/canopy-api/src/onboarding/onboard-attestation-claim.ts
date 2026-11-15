@@ -1,8 +1,8 @@
 /**
- * Single-use claim for the bootstrap-key onboard attestation of ADR-0059
- * decision 8. Single use, the marker expiry and the window ceiling it
- * depends on are forestrie/work plan-2611-11 decision Q48, due to fold into
- * devdocs ADR-0076; the accepted residual below is Q50.
+ * Single-use claim for the bootstrap-key onboard attestation of devdocs
+ * ADR-0059 decision 8. Single use and the marker expiry are devdocs
+ * ADR-0077 decision 2, the window ceiling they depend on is decision 3,
+ * and the accepted residual below is decision 5.
  *
  * The spent attestation is stored at `payments/attestations/{id}.cose` in a
  * publicly served bucket, so anyone can read a still-valid one and post their
