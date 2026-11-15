@@ -290,17 +290,17 @@ function publicRequestView(record: OnboardRequestRecord) {
 }
 
 /**
- * Hard cutover on single-use attestations (plan-2611-11 Q49). A request
- * created before this deploy (before single-use claims) has no claim mark
- * ({@link hasAttestationClaim}), attested or not: the code before it marked
- * any verified attestation `attested: true` and published it, so anyone could
- * replay it into such a record. These requests are never admitted: no
+ * Hard cutover on single-use attestations (devdocs ADR-0077 decision 4). A
+ * request created before this deploy (before single-use claims) has no claim
+ * mark ({@link hasAttestationClaim}), attested or not: the code before it
+ * marked any verified attestation `attested: true` and published it, so anyone
+ * could replay it into such a record. These requests are never admitted: no
  * approve, auto-approve, redeem or reissue. A token one already produced is
- * refused at genesis (`resolveGenesisAuth` in payments/genesis-auth.ts).
- * Lanes are pre-production with no real fees, so such requests and tokens
- * are forfeit: no refund, no re-admission. Any reservation they hold stays
- * until ops releases it with `DELETE /api/payments/chain-bindings/{id}`;
- * until then the owner's new request answers 409 at admission.
+ * refused at genesis (`resolveGenesisAuth` in payments/genesis-auth.ts). Lanes
+ * are pre-production with no real fees, so such requests and tokens are
+ * forfeit: no refund, no re-admission. Any reservation they hold stays until
+ * ops releases it with `DELETE /api/payments/chain-bindings/{id}`; until then
+ * the owner's new request answers 409 at admission.
  */
 function forfeitRequestConflict(): Response {
   return ClientErrors.conflict(

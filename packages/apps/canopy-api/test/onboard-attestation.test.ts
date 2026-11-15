@@ -536,7 +536,8 @@ describe("POST /api/onboarding/requests — attestation gate", () => {
   };
   const AUTO_APPROVE_LABEL = "dev-auto-x";
 
-  // Q46: auto-approve is no exception — an eligible request is refused too.
+  // devdocs ADR-0077 decision 1: auto-approve is no exception, so an
+  // eligible request is refused too.
   it.each([
     ["a plain", {}, "attestation-test"],
     ["an auto-approve-eligible", AUTO_APPROVE, AUTO_APPROVE_LABEL],

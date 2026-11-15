@@ -146,7 +146,7 @@ export async function writeOnboardRequest(
  * record. A record without it was created before this deploy (before
  * single-use claims), when anyone could replay the owner's public
  * attestation into an `attested: true` record, so it proves nothing about
- * ownership and is forfeit (plan-2611-11 Q49).
+ * ownership and is forfeit (devdocs ADR-0077 decision 4).
  */
 export function hasAttestationClaim(record: OnboardRequestRecord): boolean {
   return (

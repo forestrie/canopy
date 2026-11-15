@@ -66,7 +66,7 @@ const BINDING_UNIVOCITY_ADDR = 2;
 
 /**
  * Hard ceiling, and default, on an onboard attestation's `exp - iat`: 24 h,
- * generous for key ceremonies (plan-2611-11 Q48).
+ * generous for key ceremonies (devdocs ADR-0077 decision 3).
  * ONBOARD_ATTESTATION_MAX_WINDOW_SEC may lower it, never raise it
  * (handle-onboarding-request.ts). The 2-day R2 expiry on
  * claim markers (task cf:bucket:lifecycle:used-attestations) depends

@@ -68,8 +68,8 @@ describe("onboard auto-approve", () => {
   });
 
   // A record without the claim key was created before single-use claims
-  // and is forfeit, whether or not it was marked attested (plan-2611-11
-  // Q49).
+  // and is forfeit, whether or not it was marked attested (devdocs
+  // ADR-0077 decision 4).
   it.each([
     ["with no attestation mark", {}],
     ["marked attested before single-use claims", { attested: true }],
