@@ -83,7 +83,7 @@ devdocs.
 
 | Domain | Primary refs |
 | ------ | ------------- |
-| Grant verification | [devdocs ARC-0019](https://github.com/forestrie/protocol/blob/main/decisions/arc-0019-grant-verification-model.md), [canopy grant verification map](https://github.com/forestrie/canopy/blob/main/docs/arc/canopy-grant-verification-implementation.md) |
+| Grant verification | [devdocs ARC-0019](https://github.com/forestrie/protocol/blob/main/arc/arc-0019-grant-verification-model.md), [canopy grant verification map](https://github.com/forestrie/canopy/blob/main/docs/arc/canopy-grant-verification-implementation.md) |
 | x402 settlement | [devdocs ARC-0015](https://github.com/forestrie/devdocs/blob/main/arc/retired/arc-0015-x402-settlement-architecture.md) (SUPERSEDED; current model: [payments theme index](https://github.com/forestrie/devdocs/blob/main/themes/payments-fees.md)) |
 | Authority / fee hierarchy | [devdocs ARC-0017](https://github.com/forestrie/devdocs/blob/main/arc/arc-0017-hierarchical-authority-logs-and-fee-distribution.md) |
 | Checkpoint auth (on-chain) | [univocity ARC-0017](https://github.com/forestrie/univocity/blob/main/docs/arc/arc-0017-auth-overview.md) |

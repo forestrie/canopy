@@ -48,7 +48,7 @@ delegation APIs, Playwright e2e.
 |--------|-------|
 | Sequencing / signing (GKE) | [arc-arbor](../arc-arbor/SKILL.md) |
 | On-chain checkpoints | [arc-univocity](../arc-univocity/SKILL.md) |
-| Grant verification model | [devdocs ARC-0019](https://github.com/forestrie/protocol/blob/main/decisions/arc-0019-grant-verification-model.md) |
+| Grant verification model | [devdocs ARC-0019](https://github.com/forestrie/protocol/blob/main/arc/arc-0019-grant-verification-model.md) |
 | MMR / COSE receipts | [draft-bryce-cose-receipts-mmr-profile](https://github.com/robinbryce/draft-bryce-cose-receipts-mmr-profile) |
 
 ## Gotchas

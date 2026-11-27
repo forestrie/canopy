@@ -12,7 +12,7 @@ Glossary/links: [`arc-canopy` skill](https://github.com/forestrie/forestrie-agen
 Verify (layers A–C) uses only the supplied trust anchors / genesis COSE root —
 never the network, coordinator, RPC, or a live tile read inside the verify path.
 **Why:** offline verify is the headline claim; a hidden fetch makes it false.
-⤷ specialises P2. [ADR-0045](https://github.com/forestrie/protocol/blob/main/decisions/adr-0045-receipt-verify-offline-contract.md).
+⤷ specialises P2. [ADR-0045](https://github.com/forestrie/protocol/blob/main/adr/adr-0045-receipt-verify-offline-contract.md).
 
 ### C2 — Enforce global logId→R uniqueness at grant POST
 Grant POST checks an atomic `logId → R` index and returns 409 on conflict.
@@ -38,13 +38,13 @@ never substitutes for it. **Why:** issuance authority (parent) and endorsed
 signer (`grantData`) are structurally distinct — collapsing them is a forgery
 vector; and admission is the last verifier on the path, so a fail-open here is a
 fail-open for the whole chain.
-⤷ specialises P10. [ARC-0019 §6](https://github.com/forestrie/protocol/blob/main/decisions/arc-0019-grant-verification-model.md) · [ADR-0065](https://github.com/forestrie/protocol/blob/main/decisions/adr-0065-endorsed-session-key-admission.md).
+⤷ specialises P10. [ARC-0019 §6](https://github.com/forestrie/protocol/blob/main/arc/arc-0019-grant-verification-model.md) · [ADR-0065](https://github.com/forestrie/protocol/blob/main/adr/adr-0065-endorsed-session-key-admission.md).
 
 ### C4 — Reject obsolete grant wire fields
 Reject wire-v0 grant maps carrying keys 7/8 (legacy signer/kind); `grantData` is
 the sole statement-signer binding. **Why:** accepting removed fields
 re-introduces the ambiguity ARC-0019 eliminated.
-⤷ specialises P16. [ARC-0019 §6.0](https://github.com/forestrie/protocol/blob/main/decisions/arc-0019-grant-verification-model.md) · [ADR-0048](https://github.com/forestrie/devdocs/blob/main/adr/adr-0048-encoding-owns-grant-wire-layer.md).
+⤷ specialises P16. [ARC-0019 §6.0](https://github.com/forestrie/protocol/blob/main/arc/arc-0019-grant-verification-model.md) · [ADR-0048](https://github.com/forestrie/devdocs/blob/main/adr/adr-0048-encoding-owns-grant-wire-layer.md).
 
 ### C5 — Only the instance root is liable; meter per checkpoint
 Fee liability is 1:1 with the univocity instance root (`chainBinding`); meter
